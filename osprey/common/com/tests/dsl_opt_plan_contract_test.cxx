@@ -29,7 +29,7 @@
 #include "dsl_tensor_evolution_opt.h"
 #include "dsl_tensor_locality_opt.h"
 #include "dsl_opcode.h"
-#include "dsl_opt_plan.h"
+#include "dsl_opt_plan_opt.h"
 #include "dsl_tensor_evolution.h"
 
 BOOL Run_vsaopt = FALSE;
@@ -308,9 +308,14 @@ Check_Main_Plan(const AIO2_PLAN_FIXTURE *fixture)
     DSL_OPT_PLAN_RECORD plan;
     DSL_OPT_PLAN_MEMBER_RECORD member;
     DSL_OPT_SELECTION_RESULT selection;
+    DSL_OPT_SELECTION_RESULT recorded;
     if (!DSL_opt_plan_verify(fixture->context, stderr) ||
-        !DSL_opt_plan_select(fixture->context, 1, &selection, stderr) ||
-        !DSL_opt_plan_select(fixture->context, 1, &selection, stderr) ||
+        !VHO_DSL_Opt_Plan_Select
+             (fixture->context, 1, &selection, stderr) ||
+        !VHO_DSL_Opt_Plan_Select
+             (fixture->context, 1, &selection, stderr) ||
+        !DSL_opt_plan_get_selection(fixture->context, &recorded) ||
+        memcmp(&selection, &recorded, sizeof(selection)) != 0 ||
         selection.selected_plan_id != fixture->baseline_plan ||
         selection.legal_plan_count != 2 ||
         selection.complete_cost_count != 1 ||
@@ -438,6 +443,16 @@ Run_Negative_Contract(void)
              (&fixture, graph, &budget, &plan_fixture, stderr))
         return 1;
 
+    memset(&selection, 0, sizeof(selection));
+    selection.selected_plan_id = plan_fixture.baseline_plan;
+    selection.target_profile_id = 1;
+    selection.legal_plan_count = 2;
+    selection.complete_cost_count = 2;
+    if (DSL_opt_plan_record_selection
+            (plan_fixture.context, &selection, quiet) ||
+        DSL_opt_plan_get_selection(plan_fixture.context, &selection))
+        return 1;
+
     memset(&cost, 0, sizeof(cost));
     cost.target_profile_id = 1;
     cost.ordering_key = 300;
@@ -460,11 +475,11 @@ Run_Negative_Contract(void)
     if (DSL_opt_plan_add_plan
             (plan_fixture.context, &plan, &plan_id, quiet) ||
         DSL_opt_plan_plan_count(plan_fixture.context) != 2 ||
-        DSL_opt_plan_select
+        VHO_DSL_Opt_Plan_Select
             (plan_fixture.context, 2, &selection, quiet) ||
         selection.selected_plan_id != 0 ||
         selection.target_mismatch_count != 2 ||
-        !DSL_opt_plan_select
+        !VHO_DSL_Opt_Plan_Select
             (plan_fixture.context, 1, &selection, stderr) ||
         selection.selected_plan_id != plan_fixture.baseline_plan)
         return 1;

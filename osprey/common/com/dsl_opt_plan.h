@@ -3,8 +3,10 @@
  */
 
 /*
- * AIO-2 PU-local candidate, legality, cost, fallback, and plan-selection
+ * AIO-2 PU-local candidate, legality, cost, fallback, and recorded-selection
  * service. Its records are runtime-only and do not change WHIRL layout.
+ * Phase-owned code chooses a plan; common/com only stores and verifies the
+ * resulting selection record.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO2-PLAN-COST.md.
  */
@@ -231,11 +233,13 @@ extern BOOL DSL_opt_plan_add_plan
                                  const DSL_OPT_PLAN_INPUT *input,
                                  DSL_OPT_PLAN_ID *plan_id,
                                  FILE *diagnostic);
-extern BOOL DSL_opt_plan_select
+extern BOOL DSL_opt_plan_record_selection
                                 (DSL_OPT_PLAN_CONTEXT *context,
-                                 UINT32 target_profile_id,
-                                 DSL_OPT_SELECTION_RESULT *result,
+                                 const DSL_OPT_SELECTION_RESULT *result,
                                  FILE *diagnostic);
+extern BOOL DSL_opt_plan_get_selection
+                                (const DSL_OPT_PLAN_CONTEXT *context,
+                                 DSL_OPT_SELECTION_RESULT *result);
 extern BOOL DSL_opt_plan_verify
                                 (const DSL_OPT_PLAN_CONTEXT *context,
                                  FILE *diagnostic);

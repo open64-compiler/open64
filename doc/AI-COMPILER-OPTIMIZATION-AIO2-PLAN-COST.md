@@ -2,7 +2,8 @@
 
 ## Status
 
-Completed on 2026-09-24. This is the implementation contract for the second
+Completed on 2026-09-24 and migrated to its final phase-ownership boundary in
+Ownership M5 on 2026-09-27. This is the implementation contract for the second
 check-only AI optimization milestone. AIO-2 is runtime-only, per-PU, and
 additive. It does not change executable WHIRL, TensorDescriptorIR,
 mapped-image sections, ELF numbering, frontend APIs, or lowering behavior.
@@ -14,22 +15,26 @@ and target-resource information are available. AIO-2 preserves that discipline
 for tensor optimization: a legal alternative remains representational until a
 complete plan has explicit legality and comparable cost evidence.
 
-The initial common service does not reuse an LNO record because existing LNO
-cost structures are loop- and phase-specific. Later target cost producers may
-adapt LNO and target information into this common contract; they must not make
-the common layer depend on LNO-private types.
+The common IR service does not reuse an LNO record because existing LNO cost
+structures are loop- and phase-specific. Later target cost producers may adapt
+LNO and target information into this common contract; they must not make the
+common layer depend on LNO-private types. Selection policy is not a common IR
+service: VHO owns the target-specific decision over the neutral records.
 
 ## Ownership And Lifetime
 
 1. One `DSL_OPT_PLAN_CONTEXT` belongs to one active PU and one verified
    `TensorEvolutionGraph`.
-2. The normal VHO per-PU driver will eventually own both lifetimes. AIO-2 tests
-   invoke the services directly before that orchestration hook is introduced.
+2. The VHO per-PU phase owns the context lifetime and selection policy. Focused
+   tests invoke the same VHO selector directly within one active PU.
 3. Candidate, cost, plan, and membership records are immutable after insertion.
    Selection changes only the context's selected-plan result.
 4. Records use stable graph-local and DSL-image IDs. They own no `WN *`,
    `ST *`, `CODEREP *`, frontend object, or borrowed string.
 5. Cross-PU plans remain future IPA work.
+6. `common/com` owns candidate, cost, plan, membership, and recorded-selection
+   construction, structural verification, access, and printing. It does not
+   compare plan costs or choose a winner.
 
 ## Candidate Contract
 
@@ -84,9 +89,13 @@ fallback plan. The first plan is the proven, completely costed baseline. Every
 non-baseline plan names an earlier proven and completely costed fallback for
 the same target profile.
 
-Selection scans plans in stable ID order and chooses the lowest complete cost.
-Equal costs retain the earlier deterministic plan. Rejected, target-mismatched,
-and incomplete-cost plans remain inspectable but cannot be selected.
+`VHO_DSL_Opt_Plan_Select()` scans plans in stable ID order and chooses the
+lowest complete cost. Equal costs retain the earlier deterministic plan.
+Rejected, target-mismatched, and incomplete-cost plans remain inspectable but
+cannot be selected. The phase records its result through
+`DSL_opt_plan_record_selection()`. That common service checks only structural
+consistency and selectability; it does not enforce minimum cost or otherwise
+repeat VHO policy.
 
 ## Search Budgets
 
@@ -113,8 +122,8 @@ an analysis result, not a tiled implementation and not a performance claim.
 ## Inspection And Certification
 
 `DSL_opt_plan_print()` emits deterministic candidate, term, plan, fallback,
-and selection evidence. The service is intentionally absent from `ir_b2a`
-because AIO-2 is runtime-only.
+and recorded-selection evidence. The service is intentionally absent from
+`ir_b2a` because AIO-2 is runtime-only.
 
 Certification requires independent repeated runs with identical graph and plan
 traces; unknown-cost, malformed-cost, malformed-membership, target-mismatch,

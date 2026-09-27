@@ -1015,10 +1015,14 @@ artifact.
     fact, control-snapshot, and locality records with construction,
     verification, access, and printing. WOPT continues to own CFG-derived
     control-snapshot capture through its existing adapter.
-24. [ ] Ownership M5: after all common callers have moved, relocate AIO-2
-    selection policy to the owning phase, split tests by owner, rerun retained
-    artifact comparisons, and certify no binary WHIRL, mapped-image, runtime
-    ABI, or backend shared-library dependency regression.
+24. [x] Ownership M5: relocate AIO-2 selection policy to VHO after all
+    production callers have moved. Common retains candidate, cost, plan,
+    membership, and recorded-selection IR with policy-free construction,
+    structural verification, access, and printing. VHO owns legal-plan cost
+    comparison, target filtering, deterministic tie-breaking, and selection.
+    Linked tests use the VHO selector and certify unchanged selected records,
+    runtime traces, binary WHIRL, mapped-image behavior, runtime ABI, and
+    backend shared-library dependency closure.
 
 ## Related Documents
 

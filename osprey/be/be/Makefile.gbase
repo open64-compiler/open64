@@ -311,6 +311,7 @@ BE_VHO_CXX_SRCS = \
   dsl_lower.cxx          \
   dsl_shape_refine.cxx   \
   dsl_opt.cxx            \
+  dsl_opt_plan_opt.cxx   \
   dsl_tensor_evolution_opt.cxx \
   dsl_tensor_analysis_opt.cxx \
   dsl_tensor_locality_opt.cxx \

@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "dsl_tile_candidate_opt.h"
+#include "dsl_opt_plan_opt.h"
 #include "dsl_tensor_analysis_opt.h"
 #include "dsl_opcode.h"
 #include "dsl_shape.h"
@@ -874,7 +875,7 @@ VHO_DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
         }
         if (analysis->control.select_plans) {
             DSL_OPT_SELECTION_RESULT selection;
-            if (!DSL_opt_plan_select
+            if (!VHO_DSL_Opt_Plan_Select
                      (context, analysis->control.target_profile_id,
                       &selection, diagnostic))
                 return FALSE;

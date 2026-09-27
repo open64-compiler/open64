@@ -3,9 +3,9 @@
  */
 
 /*
- * Implements the AIO-2 PU-local candidate, legality, cost, fallback, and plan
- * selection service. Plans are runtime-only analysis objects and do not change
- * WHIRL binary layout. Design:
+ * Implements the AIO-2 PU-local candidate, legality, cost, fallback, and
+ * recorded-selection service. Plans are runtime-only analysis objects and do
+ * not change WHIRL binary layout. Selection policy belongs to VHO. Design:
  * doc/AI-COMPILER-OPTIMIZATION-AIO2-PLAN-COST.md.
  */
 
@@ -93,6 +93,52 @@ DSL_Opt_Plan_Active (const DSL_OPT_PLAN_CONTEXT *context)
            DSL_Opt_Plan_Owner_Valid(context->owner_pu_st) &&
            PU_Info_proc_sym(context->pu) == context->owner_pu_st &&
            Current_pu == &Pu_Table[ST_pu(St_Table[context->owner_pu_st])];
+}
+
+static BOOL
+DSL_Opt_Selection_Record_Valid
+        (const DSL_OPT_PLAN_CONTEXT *context,
+         const DSL_OPT_SELECTION_RESULT *selection)
+{
+    if (context == NULL || selection == NULL ||
+        selection->selected_plan_id == 0 ||
+        selection->selected_plan_id > context->plans.size() ||
+        selection->target_profile_id == 0)
+        return FALSE;
+
+    UINT32 legal = 0;
+    UINT32 complete = 0;
+    UINT32 incomplete = 0;
+    UINT32 target_mismatch = 0;
+    UINT32 rejected = 0;
+    for (UINT32 i = 0; i < context->plans.size(); ++i) {
+        const DSL_OPT_PLAN_RECORD &plan = context->plans[i];
+        const DSL_OPT_COST_RECORD &cost = context->costs[plan.cost_id - 1];
+        if (plan.legality != DSL_OPT_LEGALITY_PROVEN) {
+            ++rejected;
+            continue;
+        }
+        ++legal;
+        if (cost.target_profile_id != selection->target_profile_id)
+            ++target_mismatch;
+        else if (!cost.complete)
+            ++incomplete;
+        else
+            ++complete;
+    }
+
+    const DSL_OPT_PLAN_RECORD &selected =
+        context->plans[selection->selected_plan_id - 1];
+    const DSL_OPT_COST_RECORD &selected_cost =
+        context->costs[selected.cost_id - 1];
+    return selected.legality == DSL_OPT_LEGALITY_PROVEN &&
+           selected_cost.complete &&
+           selected_cost.target_profile_id == selection->target_profile_id &&
+           selection->legal_plan_count == legal &&
+           selection->complete_cost_count == complete &&
+           selection->incomplete_cost_count == incomplete &&
+           selection->target_mismatch_count == target_mismatch &&
+           selection->rejected_plan_count == rejected;
 }
 
 static BOOL
@@ -591,88 +637,46 @@ DSL_opt_plan_verify
     }
     if (expected_member != context->members.size())
         return DSL_Opt_Plan_Report(diagnostic, "orphan plan member", 0);
-    if (context->selection_complete) {
-        if (context->selection.selected_plan_id == 0 ||
-            context->selection.selected_plan_id > context->plans.size() ||
-            context->selection.target_profile_id == 0)
-            return DSL_Opt_Plan_Report(diagnostic, "invalid selection", 0);
-        const DSL_OPT_PLAN_RECORD &selected =
-            context->plans[context->selection.selected_plan_id - 1];
-        const DSL_OPT_COST_RECORD &selected_cost =
-            context->costs[selected.cost_id - 1];
-        if (selected.legality != DSL_OPT_LEGALITY_PROVEN ||
-            !selected_cost.complete ||
-            selected_cost.target_profile_id !=
-                context->selection.target_profile_id)
-            return DSL_Opt_Plan_Report
-                       (diagnostic, "unselectable selected plan", selected.id);
-    }
+    if (context->selection_complete &&
+        !DSL_Opt_Selection_Record_Valid(context, &context->selection))
+        return DSL_Opt_Plan_Report(diagnostic, "invalid selection record", 0);
     return TRUE;
 }
 
 BOOL
-DSL_opt_plan_select
-        (DSL_OPT_PLAN_CONTEXT *context, UINT32 target_profile_id,
-         DSL_OPT_SELECTION_RESULT *result, FILE *diagnostic)
+DSL_opt_plan_record_selection
+        (DSL_OPT_PLAN_CONTEXT *context,
+         const DSL_OPT_SELECTION_RESULT *result, FILE *diagnostic)
 {
-    DSL_OPT_SELECTION_RESULT selection;
-    UINT64 best_cost = ~(UINT64)0;
-    memset(&selection, 0, sizeof(selection));
-    selection.target_profile_id = target_profile_id;
-    if (result != NULL)
-        memset(result, 0, sizeof(*result));
-    if (target_profile_id == 0 || !DSL_opt_plan_verify(context, diagnostic))
+    if (!DSL_Opt_Plan_Active(context) || result == NULL ||
+        !DSL_opt_plan_verify(context, diagnostic))
         return FALSE;
     if (context->selection_complete) {
-        if (context->selection.target_profile_id != target_profile_id)
-            return DSL_Opt_Plan_Report
-                       (diagnostic, "selection target changed", 0);
-        if (result != NULL)
-            *result = context->selection;
-        return TRUE;
+        if (memcmp(&context->selection, result, sizeof(*result)) == 0)
+            return TRUE;
+        return DSL_Opt_Plan_Report
+                   (diagnostic, "selection already recorded", 0);
     }
-
-    /*
-     * Selection is deliberately boring: only proven plans with complete cost
-     * evidence for this target compete. Candidate generation must preserve a
-     * legal baseline instead of asking selection to repair an incomplete plan.
-     */
-    for (UINT32 i = 0; i < context->plans.size(); ++i) {
-        const DSL_OPT_PLAN_RECORD &plan = context->plans[i];
-        const DSL_OPT_COST_RECORD &cost = context->costs[plan.cost_id - 1];
-        if (plan.legality != DSL_OPT_LEGALITY_PROVEN) {
-            ++selection.rejected_plan_count;
-            continue;
-        }
-        ++selection.legal_plan_count;
-        if (cost.target_profile_id != target_profile_id) {
-            ++selection.target_mismatch_count;
-            continue;
-        }
-        if (!cost.complete) {
-            ++selection.incomplete_cost_count;
-            continue;
-        }
-        ++selection.complete_cost_count;
-        if (selection.selected_plan_id == 0 || cost.total < best_cost) {
-            selection.selected_plan_id = plan.id;
-            best_cost = cost.total;
-        }
-    }
-    if (selection.selected_plan_id == 0) {
-        if (result != NULL)
-            *result = selection;
-        return DSL_Opt_Plan_Report(diagnostic, "no selectable plan", 0);
-    }
-    context->selection = selection;
+    if (!DSL_Opt_Selection_Record_Valid(context, result))
+        return DSL_Opt_Plan_Report(diagnostic, "invalid selection record", 0);
+    context->selection = *result;
     context->selection_complete = TRUE;
     if (!DSL_opt_plan_verify(context, diagnostic)) {
         context->selection_complete = FALSE;
         memset(&context->selection, 0, sizeof(context->selection));
         return FALSE;
     }
-    if (result != NULL)
-        *result = selection;
+    return TRUE;
+}
+
+BOOL
+DSL_opt_plan_get_selection
+        (const DSL_OPT_PLAN_CONTEXT *context,
+         DSL_OPT_SELECTION_RESULT *result)
+{
+    if (context == NULL || result == NULL || !context->selection_complete)
+        return FALSE;
+    *result = context->selection;
     return TRUE;
 }
 

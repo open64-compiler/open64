@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "dsl_fetch_pipeline_opt.h"
+#include "dsl_opt_plan_opt.h"
 #include "pu_info.h"
 
 struct DSL_FETCH_PIPELINE_ANALYSIS {
@@ -722,7 +723,7 @@ VHO_DSL_Fetch_Pipeline_Build
         }
         if (analysis->control.select_plans) {
             DSL_OPT_SELECTION_RESULT selection;
-            if (!DSL_opt_plan_select
+            if (!VHO_DSL_Opt_Plan_Select
                      (context, analysis->control.target_profile_id,
                       &selection, diagnostic))
                 return FALSE;

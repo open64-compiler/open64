@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "dsl_runtime_variant_opt.h"
+#include "dsl_opt_plan_opt.h"
 #include "dsl_opcode.h"
 #include "pu_info.h"
 #include "symtab.h"
@@ -308,7 +309,7 @@ DSL_Runtime_Select
          DSL_RUNTIME_VARIANT_SITE_RECORD *site, FILE *diagnostic)
 {
     DSL_OPT_SELECTION_RESULT result;
-    if (!DSL_opt_plan_select
+    if (!VHO_DSL_Opt_Plan_Select
              (analysis->plan_contexts.back(),
               analysis->control.target_profile_id, &result, diagnostic))
         return FALSE;
