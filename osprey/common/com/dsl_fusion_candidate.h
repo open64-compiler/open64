@@ -3,8 +3,7 @@
  */
 
 /*
- * AIO-5 PU-local, check-only semantic and generic fusion candidate discovery.
- * It exposes planning evidence and performs no executable WHIRL rewrite.
+ * Policy-free AIO-5 CommonFusionPlanIR records and structural services.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md.
  */
@@ -16,14 +15,8 @@
 
 #include "defs.h"
 #include "dsl_opt_plan.h"
-#include "dsl_layout_candidate.h"
-#include "dsl_tensor_analysis.h"
-#include "dsl_tensor_locality.h"
-
-struct pu_info;
-struct DSL_FUSION_CANDIDATE_ANALYSIS;
-
-typedef struct DSL_FUSION_CANDIDATE_ANALYSIS DSL_FUSION_CANDIDATE_ANALYSIS;
+struct DSL_FUSION_PLAN_IR;
+typedef struct DSL_FUSION_PLAN_IR DSL_FUSION_PLAN_IR;
 typedef UINT32 DSL_FUSION_SITE_ID;
 typedef UINT32 DSL_FUSION_MEMBER_ID;
 typedef UINT32 DSL_FUSION_BOUNDARY_ID;
@@ -68,19 +61,6 @@ enum {
     DSL_FUSION_REPRESENTATION_BROADCAST_BIAS = 0x00000002,
     DSL_FUSION_REPRESENTATION_PRESERVE_REGION = 0x00000004
 };
-
-typedef struct {
-    UINT32 generate_candidates;
-    UINT32 select_plans;
-    UINT32 apply_transformation;
-    UINT32 target_profile_id;
-    UINT64 resource_limit_bytes;
-    UINT32 max_sites;
-    UINT32 enable_semantic_patterns;
-    UINT32 enable_generic_clusters;
-    UINT32 max_cluster_members;
-    UINT32 reserved;
-} DSL_FUSION_CONTROL;
 
 typedef struct {
     DSL_FUSION_SITE_ID id;
@@ -134,54 +114,42 @@ typedef struct {
     UINT32 reserved;
 } DSL_FUSION_BOUNDARY_RECORD;
 
-extern void DSL_fusion_control_init (DSL_FUSION_CONTROL *control);
-extern DSL_FUSION_CANDIDATE_ANALYSIS *DSL_fusion_candidates_create
-                                (struct pu_info *pu,
-                                 const DSL_TENSOR_EVOLUTION_GRAPH *graph,
-                                 const DSL_TENSOR_ANALYSIS *tensor_analysis,
-                                 const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
-                                 const DSL_FUSION_CONTROL *control,
+typedef struct {
+    ST_IDX owner_pu_st;
+    const DSL_FUSION_SITE_RECORD *sites;
+    UINT32 site_count;
+    const DSL_FUSION_MEMBER_RECORD *members;
+    UINT32 member_count;
+    const DSL_FUSION_BOUNDARY_RECORD *boundaries;
+    UINT32 boundary_count;
+} DSL_FUSION_PLAN_IR_CREATE_INFO;
+
+extern DSL_FUSION_PLAN_IR *DSL_fusion_plan_ir_create
+                                (const DSL_FUSION_PLAN_IR_CREATE_INFO *info,
                                  FILE *diagnostic);
-extern DSL_FUSION_CANDIDATE_ANALYSIS *DSL_fusion_candidates_create_with_layout
-                                (struct pu_info *pu,
-                                 const DSL_TENSOR_EVOLUTION_GRAPH *graph,
-                                 const DSL_TENSOR_ANALYSIS *tensor_analysis,
-                                 const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
-                                 const DSL_LOGICAL_LAYOUT_ANALYSIS *layout,
-                                 const DSL_FUSION_CONTROL *control,
+extern void DSL_fusion_plan_ir_destroy (DSL_FUSION_PLAN_IR *ir);
+extern BOOL DSL_fusion_plan_ir_verify
+                                (const DSL_FUSION_PLAN_IR *ir,
                                  FILE *diagnostic);
-extern void DSL_fusion_candidates_destroy
-                                (DSL_FUSION_CANDIDATE_ANALYSIS *analysis);
-extern BOOL DSL_fusion_candidates_build
-                                (DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
-                                 FILE *diagnostic);
-extern BOOL DSL_fusion_candidates_verify
-                                (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
-                                 FILE *diagnostic);
-extern void DSL_fusion_candidates_print
-                                (FILE *file,
-                                 const DSL_FUSION_CANDIDATE_ANALYSIS *analysis);
-extern UINT32 DSL_fusion_candidates_site_count
-                                (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis);
-extern UINT32 DSL_fusion_candidates_member_count
-                                (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis);
-extern UINT32 DSL_fusion_candidates_boundary_count
-                                (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis);
-extern BOOL DSL_fusion_candidates_get_site
-                                (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
+extern void DSL_fusion_plan_ir_print
+                                (FILE *file, const DSL_FUSION_PLAN_IR *ir);
+extern ST_IDX DSL_fusion_plan_ir_owner (const DSL_FUSION_PLAN_IR *ir);
+extern UINT32 DSL_fusion_plan_ir_site_count (const DSL_FUSION_PLAN_IR *ir);
+extern UINT32 DSL_fusion_plan_ir_member_count (const DSL_FUSION_PLAN_IR *ir);
+extern UINT32 DSL_fusion_plan_ir_boundary_count
+                                (const DSL_FUSION_PLAN_IR *ir);
+extern BOOL DSL_fusion_plan_ir_get_site
+                                (const DSL_FUSION_PLAN_IR *ir,
                                  DSL_FUSION_SITE_ID id,
                                  DSL_FUSION_SITE_RECORD *record);
-extern BOOL DSL_fusion_candidates_get_member
-                                (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
+extern BOOL DSL_fusion_plan_ir_get_member
+                                (const DSL_FUSION_PLAN_IR *ir,
                                  DSL_FUSION_MEMBER_ID id,
                                  DSL_FUSION_MEMBER_RECORD *record);
-extern BOOL DSL_fusion_candidates_get_boundary
-                                (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
+extern BOOL DSL_fusion_plan_ir_get_boundary
+                                (const DSL_FUSION_PLAN_IR *ir,
                                  DSL_FUSION_BOUNDARY_ID id,
                                  DSL_FUSION_BOUNDARY_RECORD *record);
-extern const DSL_OPT_PLAN_CONTEXT *DSL_fusion_candidates_get_plan_context
-                                (const DSL_FUSION_CANDIDATE_ANALYSIS *analysis,
-                                 DSL_FUSION_SITE_ID id);
 extern const char *DSL_fusion_pattern_name (UINT32 pattern);
 extern const char *DSL_fusion_member_role_name (UINT32 role);
 extern const char *DSL_fusion_boundary_kind_name (UINT32 kind);

@@ -44,6 +44,7 @@ struct DSL_TILE_ANALYSIS {
     const DSL_TENSOR_ANALYSIS *tensor_analysis;
     const DSL_TENSOR_LOCALITY_ANALYSIS *locality;
     const DSL_RESIDENCY_ANALYSIS *residency;
+    const DSL_RESIDENCY_PLAN_IR *residency_ir;
     VHO_DSL_TILE_CONTROL control;
     std::vector<DSL_TILE_SITE_RECORD> sites;
     std::vector<DSL_TILE_PLAN_RECORD> tile_plans;
@@ -268,21 +269,21 @@ DSL_Tile_Source_Evolution
     if (!DSL_tensor_evolution_find_semantic_root
              (analysis->graph, tensor.value_id, source))
         return FALSE;
-    if (analysis->residency == NULL)
+    if (analysis->residency_ir == NULL)
         return TRUE;
     for (UINT32 site_id = 1;
-         site_id <= DSL_residency_site_count(analysis->residency);
+         site_id <= DSL_residency_plan_ir_site_count(analysis->residency_ir);
          ++site_id) {
         DSL_RESIDENCY_SITE_RECORD site;
-        if (!DSL_residency_get_site
-                 (analysis->residency, site_id, &site))
+        if (!DSL_residency_plan_ir_get_site
+                 (analysis->residency_ir, site_id, &site))
             return FALSE;
         if (site.semantic_value_id != tensor.value_id)
             continue;
         for (UINT32 i = 0; i < site.alternative_count; ++i) {
             DSL_RESIDENCY_ALTERNATIVE_RECORD alternative;
-            if (!DSL_residency_get_alternative
-                     (analysis->residency,
+            if (!DSL_residency_plan_ir_get_alternative
+                     (analysis->residency_ir,
                       site.first_alternative_id + i, &alternative))
                 return FALSE;
             if (alternative.plan_id == site.selected_plan_id)
@@ -735,7 +736,7 @@ VHO_DSL_Tile_Create
         !DSL_tensor_analysis_verify(tensor_analysis, diagnostic) ||
         !DSL_tensor_locality_verify(locality, diagnostic) ||
         (residency != NULL &&
-         !DSL_residency_verify(residency, diagnostic))) {
+         !VHO_DSL_Residency_Verify(residency, diagnostic))) {
         DSL_Tile_Report(diagnostic, "invalid active analysis", 0);
         return NULL;
     }
@@ -746,6 +747,8 @@ VHO_DSL_Tile_Create
     analysis->tensor_analysis = tensor_analysis;
     analysis->locality = locality;
     analysis->residency = residency;
+    analysis->residency_ir = residency == NULL ? NULL :
+                             VHO_DSL_Residency_Get_IR(residency);
     analysis->control = *control;
     analysis->ir = NULL;
     analysis->built = FALSE;

@@ -13,7 +13,7 @@
 #include <stdio.h>
 
 #include "defs.h"
-#include "dsl_distributed_candidate.h"
+#include "dsl_distributed_candidate_opt.h"
 #include "dsl_fetch_pipeline.h"
 #include "dsl_tensor_locality.h"
 #include "dsl_tile_candidate_opt.h"

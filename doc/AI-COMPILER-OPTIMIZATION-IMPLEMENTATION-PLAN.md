@@ -1000,8 +1000,14 @@ artifact.
     policy-free bulk-created tile/fetch/pipeline records and structural
     services; VHO owns active-PU capture, legality, costs, selection, and
     semantic verification. AIO-10 and AIO-11 consume the neutral IR handles.
-22. [ ] Ownership M3: move AIO-5 through AIO-8 candidate discovery, legality,
+22. [x] Ownership M3: move AIO-5 through AIO-8 candidate discovery, legality,
     cost, and selection into VHO while preserving record schemas and traces.
+    Common now owns policy-free `FusionPlanIR`, `LogicalLayoutIR`,
+    `DistributedPlanIR`, and `ResidencyPlanIR` containers plus construction,
+    structural verification, access, and generic printing. VHO owns active-PU
+    fact capture, candidate formation, semantic/target/resource legality,
+    costs, selection, and semantic verification. AIO-9 through AIO-12 consume
+    the neutral common IR handles, preserving the phase ownership boundary.
 23. [ ] Ownership M4: move AIO-1, AIO-3, and AIO-4 PU fact capture into VHO;
     keep graph/fact/snapshot/locality records and structural services common.
 24. [ ] Ownership M5: after all common callers have moved, relocate AIO-2

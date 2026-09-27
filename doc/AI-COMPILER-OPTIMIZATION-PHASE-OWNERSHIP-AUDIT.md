@@ -47,10 +47,10 @@ The following must not remain in common:
 | AIO-2 | `dsl_opt_plan` | Needs split | Common may retain candidate/cost/plan records and construction. `DSL_opt_plan_select()` is an optimization decision and must move to a VHO/OPT selection service. Selection verification may structurally check a recorded result but must not choose it. |
 | AIO-3 | `dsl_tensor_analysis` | Needs split | Records, construction, structural verification, access, and printing remain common. `DSL_tensor_analysis_build()` scans PU values, nodes, operands, and descriptors and must move to VHO. |
 | AIO-4 | `dsl_tensor_locality` | Needs split | Snapshot/locality record storage remains common. PU control-position capture, lifetime/reuse-distance/access analysis, byte estimates, and locality classification move to VHO unless a later part explicitly requires WOPT CFG/SSA state. |
-| AIO-5 | `dsl_fusion_candidate` | Needs split | Fusion candidate/member/boundary IR remains common. Pattern matching, boundary discovery, semantic legality, cost construction, and plan selection move to VHO. WOPT may later own CFG/SSA-enabled fusion support through a separate phase adapter. |
-| AIO-6 | `dsl_layout_candidate` | Needs split | Layout descriptor/site/alternative IR remains common. Alternative discovery, conversion legality, cost construction, and selection move to VHO. |
-| AIO-7 | `dsl_distributed_candidate` | Needs split | Placement, sharding, alias-range, communication-epoch, and intent records remain common. PU-local derivation, legality, communication cost, and selection move to VHO; cross-PU inference is deferred to explicit IPA. |
-| AIO-8 | `dsl_residency_candidate` and `dsl_memory_hierarchy` | Partial | Static target memory-hierarchy descriptors and common residency records conform. Residency candidate formation, capacity/resource legality, cost construction, and selection in `dsl_residency_candidate` move to VHO. |
+| AIO-5 | `dsl_fusion_candidate` plus `dsl_fusion_candidate_opt` | Conforms after Ownership M3 | Common owns policy-free fusion candidate/member/boundary records, bulk construction, structural verification, access, and generic printing. VHO owns pattern matching, boundary discovery, semantic legality, cost construction, selection, and semantic verification. WOPT may later own CFG/SSA-enabled fusion support through a separate phase adapter. |
+| AIO-6 | `dsl_layout_candidate` plus `dsl_layout_candidate_opt` | Conforms after Ownership M3 | Common owns policy-free layout descriptor/site/alternative records and structural services. VHO owns alternative discovery, conversion legality, cost construction, selection, graph overlays, and semantic verification. |
+| AIO-7 | `dsl_distributed_candidate` plus `dsl_distributed_candidate_opt` | Conforms after Ownership M3 | Common owns policy-free placement, sharding, alias-range, communication-epoch, and intent records plus structural services. VHO owns PU-local derivation, legality, communication cost, selection, and semantic verification; cross-PU inference remains deferred to explicit IPA. |
+| AIO-8 | `dsl_residency_candidate`, `dsl_residency_candidate_opt`, and `dsl_memory_hierarchy` | Conforms after Ownership M3 | Common owns static target memory-hierarchy descriptors and policy-free residency records with structural services. VHO owns candidate formation, capacity/resource legality, cost construction, selection, graph overlays, and semantic verification. |
 | AIO-9 | `dsl_tile_candidate` plus `dsl_tile_candidate_opt` | Conforms after Ownership M2 | Common owns tile site/plan/stage records, bulk construction, structural verification, access, stable names, and generic printing. VHO owns matmul shape capture, target/resource legality, tile-family generation, costs, selection, and semantic verification. Canonical-loop realization remains reserved for LNO. |
 | AIO-10 | `dsl_fetch_pipeline` plus `dsl_fetch_pipeline_opt` | Conforms after Ownership M2 | Common owns fetch/pipeline records, bulk construction, structural verification, access, stable names, and generic printing. VHO consumes `CommonTilePlanIR` and owns movement-plan generation, overlap estimates, barrier/resource legality, costs, selection, and semantic verification. |
 | AIO-11 | `dsl_physical_plan` plus `dsl_physical_plan_opt` | Conforms after Ownership M1 | Common owns provider capability and CommonPhysicalPlanIR records, bulk construction, structural verification, access, and generic printing. VHO owns provider candidate discovery, capability/legality checks, cost construction, implementation selection, semantic verification, and executable lowering. |
@@ -103,8 +103,14 @@ AIO-12 lanes prove unchanged selected records and downstream behavior.
 
 ### Ownership M3: Semantic Alternatives
 
-Split AIO-5 through AIO-8 candidate discovery, legality, cost, and selection
-into VHO. Preserve every common record and deterministic trace.
+Completed. AIO-5 through AIO-8 candidate discovery, legality, cost, selection,
+and semantic verification reside in `be/vho/*_candidate_opt.{h,cxx}`. Common
+retains neutral `FusionPlanIR`, `LogicalLayoutIR`, `DistributedPlanIR`, and
+`ResidencyPlanIR` containers with construction, structural verification,
+access, and generic printing. AIO-9 through AIO-12 consume those common IR
+handles instead of depending on the producing VHO analyses. Linked AIO-5
+through AIO-12 lanes preserve deterministic decisions, analysis-only WHIRL,
+and `ir_b2a -st -src` evidence.
 
 ### Ownership M4: Fact Capture
 

@@ -81,6 +81,14 @@ contexts are owned by the active PU and destroyed with the analysis. Cross-PU
 layout propagation belongs to a future explicit IPA scope and is not inferred
 automatically.
 
+`osprey/common/com/dsl_layout_candidate.{h,cxx}` owns the policy-free
+`DSL_LOGICAL_LAYOUT_IR` container, copied record construction, structural
+verification, access, stable names, and generic printing.
+`osprey/be/vho/dsl_layout_candidate_opt.{h,cxx}` owns active-PU site discovery,
+alternative generation, conversion legality, costs, selection, graph overlays,
+and semantic verification. Consumers receive the neutral common IR rather than
+calling through the VHO analysis object.
+
 ## 7. Compatibility
 
 AIO-6 adds no mapped-image table, ELF section, opcode, persistent type kind, or

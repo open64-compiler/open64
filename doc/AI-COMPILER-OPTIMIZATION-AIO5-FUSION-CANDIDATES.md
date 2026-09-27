@@ -153,6 +153,19 @@ intentionally unsupported and rejected in AIO-5. A later focused milestone
 must introduce mutation, post-rewrite verification, and before/after IR review
 evidence under its own control.
 
+## Ownership Boundary
+
+`osprey/common/com/dsl_fusion_candidate.{h,cxx}` defines the policy-free
+`DSL_FUSION_PLAN_IR` container and owns copied record construction, structural
+verification, access, stable names, and generic printing. It does not inspect
+the active PU or decide candidates.
+
+`osprey/be/vho/dsl_fusion_candidate_opt.{h,cxx}` owns active-PU pattern and
+trait discovery, cluster and boundary formation, semantic/resource legality,
+cost construction, selection, graph overlays, and semantic verification. It
+materializes its result into the neutral common IR so downstream phases can
+consume records without depending on the producer's policy implementation.
+
 ## Binary Compatibility
 
 AIO-5 changes no WHIRL node, opcode, type, symbol, mapped-image section, ELF

@@ -22,6 +22,7 @@ struct DSL_FETCH_PIPELINE_ANALYSIS {
     DSL_TENSOR_EVOLUTION_GRAPH *graph;
     const DSL_TENSOR_LOCALITY_ANALYSIS *locality;
     const DSL_DISTRIBUTED_ANALYSIS *distributed;
+    const DSL_DISTRIBUTED_PLAN_IR *distributed_ir;
     const DSL_TILE_ANALYSIS *tile;
     const DSL_TILE_PLAN_IR *tile_ir;
     VHO_DSL_FETCH_PIPELINE_CONTROL control;
@@ -168,20 +169,21 @@ DSL_Fetch_Distributed_Safe
         (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
          DSL_IR_VALUE_ID value_id)
 {
-    if (analysis->distributed == NULL)
+    if (analysis->distributed_ir == NULL)
         return TRUE;
     for (UINT32 id = 1;
-         id <= DSL_distributed_site_count(analysis->distributed); ++id) {
+         id <= DSL_distributed_plan_ir_site_count(analysis->distributed_ir);
+         ++id) {
         DSL_DISTRIBUTED_SITE_RECORD site;
-        if (!DSL_distributed_get_site
-                 (analysis->distributed, id, &site))
+        if (!DSL_distributed_plan_ir_get_site
+                 (analysis->distributed_ir, id, &site))
             return FALSE;
         if (site.semantic_value_id != value_id)
             continue;
         for (UINT32 i = 0; i < site.alternative_count; ++i) {
             DSL_DISTRIBUTED_ALTERNATIVE_RECORD alternative;
-            if (!DSL_distributed_get_alternative
-                     (analysis->distributed,
+            if (!DSL_distributed_plan_ir_get_alternative
+                     (analysis->distributed_ir,
                       site.first_alternative_id + i, &alternative))
                 return FALSE;
             if (alternative.plan_id == site.selected_plan_id)
@@ -585,7 +587,7 @@ VHO_DSL_Fetch_Pipeline_Create
         !DSL_tensor_locality_verify(locality, diagnostic) ||
         !VHO_DSL_Tile_Verify(tile, diagnostic) ||
         (distributed != NULL &&
-         !DSL_distributed_verify(distributed, diagnostic))) {
+         !VHO_DSL_Distributed_Verify(distributed, diagnostic))) {
         DSL_Fetch_Pipeline_Report(diagnostic, "invalid active analysis", 0);
         return NULL;
     }
@@ -596,6 +598,8 @@ VHO_DSL_Fetch_Pipeline_Create
     analysis->graph = graph;
     analysis->locality = locality;
     analysis->distributed = distributed;
+    analysis->distributed_ir = distributed == NULL ? NULL :
+                               VHO_DSL_Distributed_Get_IR(distributed);
     analysis->tile = tile;
     analysis->tile_ir = VHO_DSL_Tile_Get_IR(tile);
     analysis->control = *control;

@@ -13,7 +13,7 @@
 #include <stdio.h>
 
 #include "defs.h"
-#include "dsl_residency_candidate.h"
+#include "dsl_residency_candidate_opt.h"
 #include "dsl_tensor_analysis.h"
 #include "dsl_tensor_locality.h"
 #include "dsl_tile_candidate.h"

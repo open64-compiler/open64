@@ -87,6 +87,19 @@ supersede it.
 Transformation application is prohibited. Selection identifies the currently
 preferred analysis-only plan; it does not allocate the selected tier.
 
+## Ownership Boundary
+
+`osprey/common/com/dsl_residency_candidate.{h,cxx}` owns the policy-free
+`DSL_RESIDENCY_PLAN_IR` container, copied record construction, structural
+verification, access, stable names, and generic printing. Static target memory
+hierarchy descriptors remain common target-description data.
+
+`osprey/be/vho/dsl_residency_candidate_opt.{h,cxx}` owns active-PU candidate
+formation, lifetime/locality consumption, target capacity and resource
+legality, movement and spill costs, selection, graph overlays, and semantic
+verification. AIO-9 consumes the neutral residency IR handle and therefore does
+not depend on the VHO producer implementation.
+
 ## Scope And Compatibility
 
 All creation, build, verification, query, and print operations require the

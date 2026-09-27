@@ -311,6 +311,10 @@ BE_VHO_CXX_SRCS = \
   dsl_lower.cxx          \
   dsl_shape_refine.cxx   \
   dsl_opt.cxx            \
+  dsl_fusion_candidate_opt.cxx \
+  dsl_layout_candidate_opt.cxx \
+  dsl_distributed_candidate_opt.cxx \
+  dsl_residency_candidate_opt.cxx \
   dsl_tile_candidate_opt.cxx \
   dsl_fetch_pipeline_opt.cxx \
   dsl_physical_plan_opt.cxx \

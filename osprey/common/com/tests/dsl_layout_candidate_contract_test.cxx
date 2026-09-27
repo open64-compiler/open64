@@ -25,7 +25,7 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
-#include "dsl_layout_candidate.h"
+#include "dsl_layout_candidate_opt.h"
 #include "dsl_opcode.h"
 #include "dsl_tensor_analysis.h"
 #include "dsl_tensor_evolution.h"
@@ -62,6 +62,40 @@ typedef struct {
     DSL_TENSOR_LOCALITY_ANALYSIS *locality;
     DSL_LOGICAL_LAYOUT_ANALYSIS *layout;
 } AIO6_ANALYSIS;
+
+#define AIO6_LAYOUT_COUNT(name)                                          \
+static UINT32 AIO6_layout_##name##_count                                 \
+        (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis)                    \
+{                                                                        \
+    return DSL_logical_layout_ir_##name##_count                          \
+               (VHO_DSL_Logical_Layout_Get_IR(analysis));                \
+}
+AIO6_LAYOUT_COUNT(descriptor)
+AIO6_LAYOUT_COUNT(axis)
+AIO6_LAYOUT_COUNT(block)
+AIO6_LAYOUT_COUNT(site)
+AIO6_LAYOUT_COUNT(alternative)
+#undef AIO6_LAYOUT_COUNT
+
+#define AIO6_LAYOUT_GET(name, id_type, record_type)                       \
+static BOOL AIO6_layout_get_##name                                       \
+        (const DSL_LOGICAL_LAYOUT_ANALYSIS *analysis, id_type id,         \
+         record_type *record)                                            \
+{                                                                        \
+    return DSL_logical_layout_ir_get_##name                              \
+               (VHO_DSL_Logical_Layout_Get_IR(analysis), id, record);     \
+}
+AIO6_LAYOUT_GET(descriptor, DSL_LOGICAL_LAYOUT_DESCRIPTOR_ID,
+                DSL_LOGICAL_LAYOUT_DESCRIPTOR_RECORD)
+AIO6_LAYOUT_GET(axis, DSL_LOGICAL_LAYOUT_AXIS_ID,
+                DSL_LOGICAL_LAYOUT_AXIS_RECORD)
+AIO6_LAYOUT_GET(block, DSL_LOGICAL_LAYOUT_BLOCK_ID,
+                DSL_LOGICAL_LAYOUT_BLOCK_RECORD)
+AIO6_LAYOUT_GET(site, DSL_LOGICAL_LAYOUT_SITE_ID,
+                DSL_LOGICAL_LAYOUT_SITE_RECORD)
+AIO6_LAYOUT_GET(alternative, DSL_LOGICAL_LAYOUT_ALTERNATIVE_ID,
+                DSL_LOGICAL_LAYOUT_ALTERNATIVE_RECORD)
+#undef AIO6_LAYOUT_GET
 
 static void
 Initialize_Test_Context(void)
@@ -262,7 +296,7 @@ Create_Snapshot
 static void
 Destroy_Analysis (AIO6_ANALYSIS *analysis)
 {
-    DSL_logical_layout_destroy(analysis->layout);
+    VHO_DSL_Logical_Layout_Destroy(analysis->layout);
     DSL_tensor_locality_destroy(analysis->locality);
     DSL_tensor_control_snapshot_destroy(analysis->snapshot);
     DSL_tensor_analysis_destroy(analysis->tensor_analysis);
@@ -275,7 +309,7 @@ Build_Analysis
         (const AIO6_FIXTURE *fixture, AIO6_CONTROL_KIND kind,
          BOOL select_plans, FILE *trace, AIO6_ANALYSIS *analysis)
 {
-    DSL_LOGICAL_LAYOUT_CONTROL control;
+    VHO_DSL_LOGICAL_LAYOUT_CONTROL control;
     memset(analysis, 0, sizeof(*analysis));
     analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
@@ -294,21 +328,21 @@ Build_Analysis
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
         !DSL_tensor_locality_build(analysis->locality, stderr))
         return FALSE;
-    DSL_logical_layout_control_init(&control);
+    VHO_DSL_Logical_Layout_Control_Init(&control);
     control.select_plans = select_plans;
     control.focus_value_id =
         DSL_Builder_Get_Value_Image_Id(fixture->values[2]);
-    analysis->layout = DSL_logical_layout_create
+    analysis->layout = VHO_DSL_Logical_Layout_Create
                            (fixture->pu, analysis->graph,
                             analysis->tensor_analysis, analysis->locality,
                             &control, stderr);
     if (analysis->layout == NULL ||
-        !DSL_logical_layout_build(analysis->layout, stderr) ||
-        !DSL_logical_layout_verify(analysis->layout, stderr))
+        !VHO_DSL_Logical_Layout_Build(analysis->layout, stderr) ||
+        !VHO_DSL_Logical_Layout_Verify(analysis->layout, stderr))
         return FALSE;
     if (trace != NULL) {
         DSL_tensor_evolution_print(trace, analysis->graph);
-        DSL_logical_layout_print(trace, analysis->layout);
+        VHO_DSL_Logical_Layout_Print(trace, analysis->layout);
     }
     return TRUE;
 }
@@ -321,34 +355,34 @@ Check_Main_Contract (const AIO6_ANALYSIS *analysis, BOOL selected)
     DSL_LOGICAL_LAYOUT_BLOCK_RECORD block;
     DSL_LOGICAL_LAYOUT_SITE_RECORD site;
     DSL_LOGICAL_LAYOUT_ALTERNATIVE_RECORD alternative;
-    if (DSL_logical_layout_descriptor_count(analysis->layout) != 2 ||
-        DSL_logical_layout_axis_count(analysis->layout) != 4 ||
-        DSL_logical_layout_block_count(analysis->layout) != 2 ||
-        DSL_logical_layout_site_count(analysis->layout) != 1 ||
-        DSL_logical_layout_alternative_count(analysis->layout) != 2 ||
+    if (AIO6_layout_descriptor_count(analysis->layout) != 2 ||
+        AIO6_layout_axis_count(analysis->layout) != 4 ||
+        AIO6_layout_block_count(analysis->layout) != 2 ||
+        AIO6_layout_site_count(analysis->layout) != 1 ||
+        AIO6_layout_alternative_count(analysis->layout) != 2 ||
         DSL_tensor_evolution_node_count(analysis->graph) != 6 ||
         DSL_tensor_evolution_edge_count(analysis->graph) != 2 ||
-        !DSL_logical_layout_get_descriptor
+        !AIO6_layout_get_descriptor
              (analysis->layout, 1, &descriptor) ||
         descriptor.kind != DSL_LOGICAL_LAYOUT_PERMUTED ||
-        !DSL_logical_layout_get_axis(analysis->layout, 1, &axis) ||
+        !AIO6_layout_get_axis(analysis->layout, 1, &axis) ||
         axis.source_axis != 1 ||
-        !DSL_logical_layout_get_axis(analysis->layout, 2, &axis) ||
+        !AIO6_layout_get_axis(analysis->layout, 2, &axis) ||
         axis.source_axis != 0 ||
-        !DSL_logical_layout_get_descriptor
+        !AIO6_layout_get_descriptor
              (analysis->layout, 2, &descriptor) ||
         descriptor.kind != DSL_LOGICAL_LAYOUT_BLOCKED ||
-        !DSL_logical_layout_get_block(analysis->layout, 1, &block) ||
+        !AIO6_layout_get_block(analysis->layout, 1, &block) ||
         block.axis != 0 || block.factor != 8 ||
-        !DSL_logical_layout_get_block(analysis->layout, 2, &block) ||
+        !AIO6_layout_get_block(analysis->layout, 2, &block) ||
         block.axis != 1 || block.factor != 8 ||
-        !DSL_logical_layout_get_site(analysis->layout, 1, &site) ||
+        !AIO6_layout_get_site(analysis->layout, 1, &site) ||
         site.alternative_count != 2 ||
         (selected && site.selected_plan_id != site.baseline_plan_id) ||
         (!selected && site.selected_plan_id != 0))
         return FALSE;
     for (UINT32 id = 1; id <= 2; ++id) {
-        if (!DSL_logical_layout_get_alternative
+        if (!AIO6_layout_get_alternative
                  (analysis->layout, id, &alternative) ||
             alternative.compatibility_state !=
                 DSL_LAYOUT_COMPATIBILITY_PROVEN ||
@@ -425,7 +459,7 @@ Run_Classification (AIO6_CONTROL_KIND kind, UINT32 expected_state)
     DSL_Opcode_Register_Common_Substrate();
     if (!Create_Fixture("aio6_classification", "[16,16]", &fixture) ||
         !Build_Analysis(&fixture, kind, FALSE, NULL, &analysis) ||
-        !DSL_logical_layout_get_alternative
+        !AIO6_layout_get_alternative
              (analysis.layout, 1, &alternative) ||
         alternative.compatibility_state != expected_state)
         return 1;
@@ -447,8 +481,8 @@ Run_Unknown_Shape(void)
              ("aio6_unknown_shape", "[16,<pending>]", &fixture) ||
         !Build_Analysis
              (&fixture, AIO6_CONTROL_STRAIGHT, FALSE, NULL, &analysis) ||
-        DSL_logical_layout_alternative_count(analysis.layout) != 1 ||
-        !DSL_logical_layout_get_alternative
+        AIO6_layout_alternative_count(analysis.layout) != 1 ||
+        !AIO6_layout_get_alternative
              (analysis.layout, 1, &alternative) ||
         alternative.conversion_state != DSL_LAYOUT_CONVERSION_UNKNOWN ||
         alternative.legality != DSL_OPT_LEGALITY_UNKNOWN)
@@ -464,7 +498,7 @@ Run_Control_And_Scope(void)
     AIO6_FIXTURE first;
     AIO6_FIXTURE second;
     AIO6_ANALYSIS analysis;
-    DSL_LOGICAL_LAYOUT_CONTROL control;
+    VHO_DSL_LOGICAL_LAYOUT_CONTROL control;
     DSL_LOGICAL_LAYOUT_ANALYSIS *disabled;
     FILE *quiet = tmpfile();
     DSL_Builder_Begin_Program();
@@ -472,7 +506,7 @@ Run_Control_And_Scope(void)
     if (quiet == NULL ||
         !Create_Fixture("aio6_scope_first", "[16,16]", &first))
         return 1;
-    DSL_logical_layout_control_init(&control);
+    VHO_DSL_Logical_Layout_Control_Init(&control);
     control.apply_transformation = 1;
     analysis.graph = DSL_tensor_evolution_create(first.pu, stderr);
     if (analysis.graph == NULL ||
@@ -490,35 +524,35 @@ Run_Control_And_Scope(void)
                              analysis.snapshot, stderr);
     if (analysis.locality == NULL ||
         !DSL_tensor_locality_build(analysis.locality, stderr) ||
-        DSL_logical_layout_create
+        VHO_DSL_Logical_Layout_Create
             (first.pu, analysis.graph, analysis.tensor_analysis,
              analysis.locality, &control, quiet) != NULL)
         return 1;
     control.apply_transformation = 0;
     control.generate_candidates = 0;
-    disabled = DSL_logical_layout_create
+    disabled = VHO_DSL_Logical_Layout_Create
                    (first.pu, analysis.graph, analysis.tensor_analysis,
                     analysis.locality, &control, stderr);
     if (disabled == NULL ||
-        !DSL_logical_layout_build(disabled, stderr) ||
-        !DSL_logical_layout_verify(disabled, stderr) ||
-        DSL_logical_layout_site_count(disabled) != 0 ||
-        DSL_logical_layout_alternative_count(disabled) != 0)
+        !VHO_DSL_Logical_Layout_Build(disabled, stderr) ||
+        !VHO_DSL_Logical_Layout_Verify(disabled, stderr) ||
+        AIO6_layout_site_count(disabled) != 0 ||
+        AIO6_layout_alternative_count(disabled) != 0)
         return 1;
-    DSL_logical_layout_destroy(disabled);
+    VHO_DSL_Logical_Layout_Destroy(disabled);
     control.generate_candidates = 1;
     control.focus_value_id =
         DSL_Builder_Get_Value_Image_Id(first.values[2]);
-    analysis.layout = DSL_logical_layout_create
+    analysis.layout = VHO_DSL_Logical_Layout_Create
                           (first.pu, analysis.graph,
                            analysis.tensor_analysis, analysis.locality,
                            &control, stderr);
     if (analysis.layout == NULL ||
-        !DSL_logical_layout_build(analysis.layout, stderr) ||
+        !VHO_DSL_Logical_Layout_Build(analysis.layout, stderr) ||
         !Create_Fixture("aio6_scope_second", "[16,16]", &second) ||
-        DSL_logical_layout_verify(analysis.layout, quiet) ||
+        VHO_DSL_Logical_Layout_Verify(analysis.layout, quiet) ||
         !DSL_Builder_Select_PU(first.pu) ||
-        !DSL_logical_layout_verify(analysis.layout, stderr))
+        !VHO_DSL_Logical_Layout_Verify(analysis.layout, stderr))
         return 1;
     Destroy_Analysis(&analysis);
     fclose(quiet);

@@ -382,8 +382,10 @@ dsl_tensor_locality_contract_test.o: \
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_fusion_candidate_contract_test: $(OBJECTS) controls.o \
+		dsl_layout_candidate_opt.o dsl_fusion_candidate_opt.o \
 		dsl_fusion_candidate_contract_test.o
 	$(link.c++f) -o $@ dsl_fusion_candidate_contract_test.o controls.o \
+		dsl_layout_candidate_opt.o dsl_fusion_candidate_opt.o \
 		$(OBJECTS) $(LDFLAGS)
 
 dsl_fusion_candidate_contract_test.o: \
@@ -391,8 +393,9 @@ dsl_fusion_candidate_contract_test.o: \
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_layout_candidate_contract_test: $(OBJECTS) controls.o \
-		dsl_layout_candidate_contract_test.o
+		dsl_layout_candidate_opt.o dsl_layout_candidate_contract_test.o
 	$(link.c++f) -o $@ dsl_layout_candidate_contract_test.o controls.o \
+		dsl_layout_candidate_opt.o \
 		$(OBJECTS) $(LDFLAGS)
 
 dsl_layout_candidate_contract_test.o: \
@@ -400,8 +403,10 @@ dsl_layout_candidate_contract_test.o: \
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_distributed_candidate_contract_test: $(OBJECTS) controls.o \
+		dsl_distributed_candidate_opt.o \
 		dsl_distributed_candidate_contract_test.o
 	$(link.c++f) -o $@ dsl_distributed_candidate_contract_test.o controls.o \
+		dsl_distributed_candidate_opt.o \
 		$(OBJECTS) $(LDFLAGS)
 
 dsl_distributed_candidate_contract_test.o: \
@@ -409,8 +414,9 @@ dsl_distributed_candidate_contract_test.o: \
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_residency_candidate_contract_test: $(OBJECTS) controls.o \
-		dsl_residency_candidate_contract_test.o
+		dsl_residency_candidate_opt.o dsl_residency_candidate_contract_test.o
 	$(link.c++f) -o $@ dsl_residency_candidate_contract_test.o controls.o \
+		dsl_residency_candidate_opt.o \
 		$(OBJECTS) $(LDFLAGS)
 
 dsl_residency_candidate_contract_test.o: \
@@ -418,18 +424,22 @@ dsl_residency_candidate_contract_test.o: \
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_tile_candidate_contract_test: $(OBJECTS) controls.o \
-		dsl_tile_candidate_opt.o dsl_tile_candidate_contract_test.o
+		dsl_residency_candidate_opt.o dsl_tile_candidate_opt.o \
+		dsl_tile_candidate_contract_test.o
 	$(link.c++f) -o $@ dsl_tile_candidate_contract_test.o controls.o \
-		dsl_tile_candidate_opt.o $(OBJECTS) $(LDFLAGS)
+		dsl_residency_candidate_opt.o dsl_tile_candidate_opt.o \
+		$(OBJECTS) $(LDFLAGS)
 
 dsl_tile_candidate_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_tile_candidate_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_fetch_pipeline_contract_test: $(OBJECTS) controls.o \
+		dsl_distributed_candidate_opt.o dsl_residency_candidate_opt.o \
 		dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o \
 		dsl_fetch_pipeline_contract_test.o
 	$(link.c++f) -o $@ dsl_fetch_pipeline_contract_test.o controls.o \
+		dsl_distributed_candidate_opt.o dsl_residency_candidate_opt.o \
 		dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o \
 		$(OBJECTS) $(LDFLAGS)
 
@@ -439,12 +449,14 @@ dsl_fetch_pipeline_contract_test.o: \
 
 dsl_physical_plan_contract_test: $(OBJECTS) controls.o dsl_lower.o \
 		dsl_opt.o dsl_shape_refine.o dsl_runtime_variant_opt.o \
+		dsl_distributed_candidate_opt.o dsl_residency_candidate_opt.o \
 		dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o \
 		dsl_physical_plan_opt.o \
 		dsl_physical_plan_contract_test.o
 	$(link.c++f) -o $@ dsl_physical_plan_contract_test.o controls.o \
 		dsl_lower.o dsl_opt.o dsl_shape_refine.o \
-		dsl_runtime_variant_opt.o dsl_tile_candidate_opt.o \
+		dsl_runtime_variant_opt.o dsl_distributed_candidate_opt.o \
+		dsl_residency_candidate_opt.o dsl_tile_candidate_opt.o \
 		dsl_fetch_pipeline_opt.o dsl_physical_plan_opt.o \
 		$(OBJECTS) $(LDFLAGS)
 
@@ -471,6 +483,19 @@ dsl_runtime_variant_opt.o: $(BE_VHO_DIR)/dsl_runtime_variant_opt.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_physical_plan_opt.o: $(BE_VHO_DIR)/dsl_physical_plan_opt.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_fusion_candidate_opt.o: $(BE_VHO_DIR)/dsl_fusion_candidate_opt.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_layout_candidate_opt.o: $(BE_VHO_DIR)/dsl_layout_candidate_opt.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_distributed_candidate_opt.o: \
+		$(BE_VHO_DIR)/dsl_distributed_candidate_opt.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_residency_candidate_opt.o: $(BE_VHO_DIR)/dsl_residency_candidate_opt.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_tile_candidate_opt.o: $(BE_VHO_DIR)/dsl_tile_candidate_opt.cxx

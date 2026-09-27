@@ -3,8 +3,7 @@
  */
 
 /*
- * AIO-7 PU-local placement, sharding, ownership, and derived communication
- * plans. The API records runtime-only candidates and does not rewrite WHIRL.
+ * Policy-free AIO-7 CommonDistributedPlanIR records and structural services.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO7-DISTRIBUTED.md.
  */
@@ -16,13 +15,10 @@
 
 #include "defs.h"
 #include "dsl_opt_plan.h"
-#include "dsl_tensor_analysis.h"
-#include "dsl_tensor_locality.h"
+#include "dsl_tensor_evolution.h"
 
-struct pu_info;
-struct DSL_DISTRIBUTED_ANALYSIS;
-
-typedef struct DSL_DISTRIBUTED_ANALYSIS DSL_DISTRIBUTED_ANALYSIS;
+struct DSL_DISTRIBUTED_PLAN_IR;
+typedef struct DSL_DISTRIBUTED_PLAN_IR DSL_DISTRIBUTED_PLAN_IR;
 typedef UINT32 DSL_DISTRIBUTED_DESCRIPTOR_ID;
 typedef UINT32 DSL_DISTRIBUTED_RANGE_ID;
 typedef UINT32 DSL_DISTRIBUTED_ALIAS_ID;
@@ -84,23 +80,6 @@ enum {
     DSL_DISTRIBUTED_FLAG_PROVISIONAL = 0x00000001,
     DSL_DISTRIBUTED_FLAG_SEMANTICS_PRESERVING = 0x00000002
 };
-
-typedef struct {
-    UINT32 generate_candidates;
-    UINT32 derive_communication;
-    UINT32 select_plans;
-    UINT32 apply_transformation;
-    UINT32 target_profile_id;
-    DSL_IR_VALUE_ID focus_value_id;
-    UINT32 device_count;
-    UINT32 max_sites;
-    UINT32 max_alternatives_per_site;
-    UINT32 enable_replication;
-    UINT32 enable_axis_sharding;
-    UINT32 enable_partial_reduction;
-    UINT32 enable_migration;
-    UINT32 reserved;
-} DSL_DISTRIBUTED_CONTROL;
 
 typedef struct {
     DSL_DISTRIBUTED_DESCRIPTOR_ID id;
@@ -191,70 +170,78 @@ typedef struct {
     UINT32 reserved1;
 } DSL_COMMUNICATION_INTENT_RECORD;
 
-extern void DSL_distributed_control_init
-                                (DSL_DISTRIBUTED_CONTROL *control);
-extern DSL_DISTRIBUTED_ANALYSIS *DSL_distributed_create
-                                (struct pu_info *pu,
-                                 DSL_TENSOR_EVOLUTION_GRAPH *graph,
-                                 const DSL_TENSOR_ANALYSIS *tensor_analysis,
-                                 const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
-                                 const DSL_DISTRIBUTED_CONTROL *control,
+typedef struct {
+    ST_IDX owner_pu_st;
+    const DSL_DISTRIBUTED_DESCRIPTOR_RECORD *descriptors;
+    UINT32 descriptor_count;
+    const DSL_DISTRIBUTED_ALIAS_RECORD *aliases;
+    UINT32 alias_count;
+    const DSL_DISTRIBUTED_RANGE_RECORD *ranges;
+    UINT32 range_count;
+    const DSL_DISTRIBUTED_SITE_RECORD *sites;
+    UINT32 site_count;
+    const DSL_DISTRIBUTED_ALTERNATIVE_RECORD *alternatives;
+    UINT32 alternative_count;
+    const DSL_COMMUNICATION_EPOCH_RECORD *epochs;
+    UINT32 epoch_count;
+    const DSL_COMMUNICATION_INTENT_RECORD *intents;
+    UINT32 intent_count;
+} DSL_DISTRIBUTED_PLAN_IR_CREATE_INFO;
+
+extern DSL_DISTRIBUTED_PLAN_IR *DSL_distributed_plan_ir_create
+                                (const DSL_DISTRIBUTED_PLAN_IR_CREATE_INFO *info,
                                  FILE *diagnostic);
-extern void DSL_distributed_destroy (DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern BOOL DSL_distributed_build
-                                (DSL_DISTRIBUTED_ANALYSIS *analysis,
+extern void DSL_distributed_plan_ir_destroy (DSL_DISTRIBUTED_PLAN_IR *ir);
+extern BOOL DSL_distributed_plan_ir_verify
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir,
                                  FILE *diagnostic);
-extern BOOL DSL_distributed_verify
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis,
-                                 FILE *diagnostic);
-extern void DSL_distributed_print
+extern void DSL_distributed_plan_ir_print
                                 (FILE *file,
-                                 const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern UINT32 DSL_distributed_descriptor_count
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern UINT32 DSL_distributed_alias_count
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern UINT32 DSL_distributed_range_count
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern UINT32 DSL_distributed_site_count
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern UINT32 DSL_distributed_alternative_count
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern UINT32 DSL_communication_epoch_count
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern UINT32 DSL_communication_intent_count
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis);
-extern BOOL DSL_distributed_get_descriptor
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis,
+                                 const DSL_DISTRIBUTED_PLAN_IR *ir);
+extern ST_IDX DSL_distributed_plan_ir_owner
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir);
+extern UINT32 DSL_distributed_plan_ir_descriptor_count
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir);
+extern UINT32 DSL_distributed_plan_ir_alias_count
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir);
+extern UINT32 DSL_distributed_plan_ir_range_count
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir);
+extern UINT32 DSL_distributed_plan_ir_site_count
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir);
+extern UINT32 DSL_distributed_plan_ir_alternative_count
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir);
+extern UINT32 DSL_distributed_plan_ir_epoch_count
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir);
+extern UINT32 DSL_distributed_plan_ir_intent_count
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir);
+extern BOOL DSL_distributed_plan_ir_get_descriptor
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir,
                                  DSL_DISTRIBUTED_DESCRIPTOR_ID id,
                                  DSL_DISTRIBUTED_DESCRIPTOR_RECORD *record);
-extern BOOL DSL_distributed_get_alias
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis,
+extern BOOL DSL_distributed_plan_ir_get_alias
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir,
                                  DSL_DISTRIBUTED_ALIAS_ID id,
                                  DSL_DISTRIBUTED_ALIAS_RECORD *record);
-extern BOOL DSL_distributed_get_range
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis,
+extern BOOL DSL_distributed_plan_ir_get_range
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir,
                                  DSL_DISTRIBUTED_RANGE_ID id,
                                  DSL_DISTRIBUTED_RANGE_RECORD *record);
-extern BOOL DSL_distributed_get_site
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis,
+extern BOOL DSL_distributed_plan_ir_get_site
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir,
                                  DSL_DISTRIBUTED_SITE_ID id,
                                  DSL_DISTRIBUTED_SITE_RECORD *record);
-extern BOOL DSL_distributed_get_alternative
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis,
+extern BOOL DSL_distributed_plan_ir_get_alternative
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir,
                                  DSL_DISTRIBUTED_ALTERNATIVE_ID id,
                                  DSL_DISTRIBUTED_ALTERNATIVE_RECORD *record);
-extern BOOL DSL_communication_get_epoch
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis,
+extern BOOL DSL_distributed_plan_ir_get_epoch
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir,
                                  DSL_COMMUNICATION_EPOCH_ID id,
                                  DSL_COMMUNICATION_EPOCH_RECORD *record);
-extern BOOL DSL_communication_get_intent
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis,
+extern BOOL DSL_distributed_plan_ir_get_intent
+                                (const DSL_DISTRIBUTED_PLAN_IR *ir,
                                  DSL_COMMUNICATION_INTENT_ID id,
                                  DSL_COMMUNICATION_INTENT_RECORD *record);
-extern const DSL_OPT_PLAN_CONTEXT *DSL_distributed_get_plan_context
-                                (const DSL_DISTRIBUTED_ANALYSIS *analysis,
-                                 DSL_DISTRIBUTED_SITE_ID id);
 extern const char *DSL_placement_kind_name (UINT32 kind);
 extern const char *DSL_sharding_kind_name (UINT32 kind);
 extern const char *DSL_distributed_ownership_name (UINT32 kind);

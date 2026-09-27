@@ -124,6 +124,19 @@ reviewed.
 Transformation application is rejected in this milestone. Generation-off is a
 valid empty analysis. Selection-off still builds complete inspectable plans.
 
+## Ownership Boundary
+
+`osprey/common/com/dsl_distributed_candidate.{h,cxx}` owns the policy-free
+`DSL_DISTRIBUTED_PLAN_IR` container and its copied records, structural
+verification, access, stable names, and generic printing. Structurally valid
+unknown ownership/range facts remain representable so policy can fail closed
+at the semantic layer.
+
+`osprey/be/vho/dsl_distributed_candidate_opt.{h,cxx}` owns active-PU placement
+and sharding derivation, alias-range and communication intent formation,
+semantic/resource legality, communication cost, selection, graph overlays, and
+semantic verification. Cross-PU inference remains an explicit future IPA task.
+
 ## Certification
 
 The focused `common.matmul -> common.relu` fixture uses one `[8,8]` float32
