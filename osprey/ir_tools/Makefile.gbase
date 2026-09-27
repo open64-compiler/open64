@@ -177,6 +177,7 @@ LDIRT += dsl_fetch_pipeline_contract_test \
 	dsl_fetch_pipeline_contract_test.o
 LDIRT += dsl_physical_plan_contract_test \
 	dsl_physical_plan_contract_test.o
+LDIRT += dsl_runtime_variant_opt.o
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
 LDIRT += dsl_opt_contract_test dsl_opt_contract_test.o
 LDIRT += dsl_shape_refine_contract_test dsl_shape_refine_contract_test.o
@@ -433,9 +434,11 @@ dsl_fetch_pipeline_contract_test.o: \
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_physical_plan_contract_test: $(OBJECTS) controls.o dsl_lower.o \
-		dsl_opt.o dsl_shape_refine.o dsl_physical_plan_contract_test.o
+		dsl_opt.o dsl_shape_refine.o dsl_runtime_variant_opt.o \
+		dsl_physical_plan_contract_test.o
 	$(link.c++f) -o $@ dsl_physical_plan_contract_test.o controls.o \
-		dsl_lower.o dsl_opt.o dsl_shape_refine.o $(OBJECTS) $(LDFLAGS)
+		dsl_lower.o dsl_opt.o dsl_shape_refine.o \
+		dsl_runtime_variant_opt.o $(OBJECTS) $(LDFLAGS)
 
 dsl_physical_plan_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_physical_plan_contract_test.cxx
@@ -454,6 +457,9 @@ dsl_lower.o: $(BE_VHO_DIR)/dsl_lower.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_opt.o: $(BE_VHO_DIR)/dsl_opt.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_runtime_variant_opt.o: $(BE_VHO_DIR)/dsl_runtime_variant_opt.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_opt_contract_test: $(OBJECTS) controls.o dsl_opt.o \

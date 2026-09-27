@@ -311,6 +311,7 @@ BE_VHO_CXX_SRCS = \
   dsl_lower.cxx          \
   dsl_shape_refine.cxx   \
   dsl_opt.cxx            \
+  dsl_runtime_variant_opt.cxx \
   fhe_convert.cxx        \
   fhe_semantic_convert.cxx \
   f90_lower.cxx           \

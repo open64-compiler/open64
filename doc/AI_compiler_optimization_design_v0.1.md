@@ -513,6 +513,13 @@ WHIRL unchanged; executable conditional dispatch is a later application step.
 See `AI-COMPILER-OPTIMIZATION-AIO12-RUNTIME-VARIANT.md` for the record schema,
 invariants, compatibility boundary, and G15 certification.
 
+RuntimeVariantIR definition, construction, structural verification, access,
+and generic printing reside in `common/com`. PU fact capture, capability and
+legality checks, profitability, selection, semantic verification, and guard
+evaluation reside in VHO. This separation is normative for all AI optimization
+IR families: common represents decisions; the phase owning the compilation
+scope makes them.
+
 # 4 Top Three AI Compiler Research Opportunities
 
 The prior research opportunity analysis identified three architectural opportunities. They are not independent late passes. Each one spans the phase pipeline and requires persistent IR structures.

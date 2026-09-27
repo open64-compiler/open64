@@ -3,10 +3,9 @@
  */
 
 /*
- * AIO-12 PU-local certified runtime variants and guards. The first slice
- * selects between a reviewed provider implementation and its unconditional
- * direct fallback using operand-alignment observations. It is runtime-only
- * and does not rewrite or extend binary WHIRL. Design:
+ * Common RuntimeVariantIR records and construction services. Optimization
+ * policy, candidate discovery, costing, selection, and guard evaluation live
+ * in be/vho. See
  * doc/AI-COMPILER-OPTIMIZATION-AIO12-RUNTIME-VARIANT.md.
  */
 
@@ -16,13 +15,13 @@
 #include <stdio.h>
 
 #include "defs.h"
+#include "dsl_ir_image.h"
 #include "dsl_opt_plan.h"
-#include "dsl_physical_plan.h"
+#include "symtab_idx.h"
 
-struct pu_info;
-struct DSL_RUNTIME_VARIANT_ANALYSIS;
+struct DSL_RUNTIME_VARIANT_IR;
 
-typedef struct DSL_RUNTIME_VARIANT_ANALYSIS DSL_RUNTIME_VARIANT_ANALYSIS;
+typedef struct DSL_RUNTIME_VARIANT_IR DSL_RUNTIME_VARIANT_IR;
 typedef UINT32 DSL_RUNTIME_VARIANT_SITE_ID;
 typedef UINT32 DSL_RUNTIME_VARIANT_ID;
 typedef UINT32 DSL_RUNTIME_GUARD_ID;
@@ -69,26 +68,11 @@ enum {
 };
 
 typedef struct {
-    UINT32 generate_variants;
-    UINT32 select_policy;
-    UINT32 apply_selected_variant;
-    UINT32 optimization_level;
-    UINT32 target_profile_id;
-    DSL_IR_VALUE_ID focus_value_id;
-    UINT32 required_operand_alignment;
-    UINT32 guard_evaluation_cost;
-    UINT32 max_sites;
-    UINT32 max_variants_per_site;
-    UINT32 max_guards_per_variant;
-    UINT32 reserved;
-} DSL_RUNTIME_VARIANT_CONTROL;
-
-typedef struct {
     DSL_RUNTIME_VARIANT_SITE_ID id;
     ST_IDX owner_pu_st;
     DSL_IR_NODE_ID semantic_node_id;
     DSL_IR_VALUE_ID semantic_value_id;
-    DSL_PHYSICAL_SITE_ID physical_site_id;
+    UINT32 physical_site_id;
     DSL_RUNTIME_VARIANT_ID first_variant_id;
     UINT32 variant_count;
     DSL_RUNTIME_VARIANT_ID baseline_variant_id;
@@ -100,7 +84,7 @@ typedef struct {
 typedef struct {
     DSL_RUNTIME_VARIANT_ID id;
     DSL_RUNTIME_VARIANT_SITE_ID site_id;
-    DSL_PHYSICAL_IMPLEMENTATION_ID physical_implementation_id;
+    UINT32 physical_implementation_id;
     DSL_RUNTIME_GUARD_ID first_guard_id;
     UINT32 guard_count;
     DSL_RUNTIME_VARIANT_ID fallback_variant_id;
@@ -129,77 +113,46 @@ typedef struct {
     UINT32 reserved1;
 } DSL_RUNTIME_GUARD_RECORD;
 
-/* Borrowed runtime facts used only for one guard evaluation call. */
 typedef struct {
-    UINT32 operand_ordinal;
-    UINT32 rank;
-    const INT64 *dimensions;
-    UINT32 observed_alignment;
-    UINT32 reserved;
-} DSL_RUNTIME_GUARD_OBSERVATION;
+    ST_IDX owner_pu_st;
+    const DSL_RUNTIME_VARIANT_SITE_RECORD *sites;
+    UINT32 site_count;
+    const DSL_RUNTIME_VARIANT_RECORD *variants;
+    UINT32 variant_count;
+    const DSL_RUNTIME_GUARD_RECORD *guards;
+    UINT32 guard_count;
+} DSL_RUNTIME_VARIANT_IR_CREATE_INFO;
 
-typedef struct {
-    DSL_RUNTIME_VARIANT_SITE_ID site_id;
-    DSL_RUNTIME_VARIANT_ID selected_variant_id;
-    DSL_PHYSICAL_IMPLEMENTATION_ID selected_implementation_id;
-    UINT32 evaluated_guard_count;
-    UINT64 evaluation_cost;
-    UINT32 guard_passed;
-    UINT32 fallback_taken;
-} DSL_RUNTIME_VARIANT_EVALUATION_RESULT;
-
-extern void DSL_runtime_variant_control_init
-                                (DSL_RUNTIME_VARIANT_CONTROL *control);
-extern DSL_RUNTIME_VARIANT_ANALYSIS *DSL_runtime_variant_create
-                                (struct pu_info *pu,
-                                 const DSL_TENSOR_EVOLUTION_GRAPH *graph,
-                                 const DSL_PHYSICAL_PLAN_ANALYSIS *physical,
-                                 const DSL_RUNTIME_VARIANT_CONTROL *control,
+extern DSL_RUNTIME_VARIANT_IR *DSL_runtime_variant_ir_create
+                                (const DSL_RUNTIME_VARIANT_IR_CREATE_INFO *info,
                                  FILE *diagnostic);
-extern void DSL_runtime_variant_destroy
-                                (DSL_RUNTIME_VARIANT_ANALYSIS *analysis);
-extern BOOL DSL_runtime_variant_build
-                                (DSL_RUNTIME_VARIANT_ANALYSIS *analysis,
+extern void DSL_runtime_variant_ir_destroy (DSL_RUNTIME_VARIANT_IR *ir);
+extern BOOL DSL_runtime_variant_ir_verify
+                                (const DSL_RUNTIME_VARIANT_IR *ir,
                                  FILE *diagnostic);
-extern BOOL DSL_runtime_variant_verify
-                                (const DSL_RUNTIME_VARIANT_ANALYSIS *analysis,
-                                 FILE *diagnostic);
-extern BOOL DSL_runtime_variant_evaluate
-                                (const DSL_RUNTIME_VARIANT_ANALYSIS *analysis,
-                                 DSL_RUNTIME_VARIANT_SITE_ID site_id,
-                                 const DSL_RUNTIME_GUARD_OBSERVATION
-                                     *observations,
-                                 UINT32 observation_count,
-                                 DSL_RUNTIME_VARIANT_EVALUATION_RESULT *result,
-                                 FILE *diagnostic);
-extern void DSL_runtime_variant_print
+extern void DSL_runtime_variant_ir_print
                                 (FILE *file,
-                                 const DSL_RUNTIME_VARIANT_ANALYSIS *analysis);
-extern void DSL_runtime_variant_print_evaluation
-                                (FILE *file, const char *label,
-                                 const DSL_RUNTIME_VARIANT_EVALUATION_RESULT
-                                     *result);
-extern UINT32 DSL_runtime_variant_site_count
-                                (const DSL_RUNTIME_VARIANT_ANALYSIS *analysis);
-extern UINT32 DSL_runtime_variant_count
-                                (const DSL_RUNTIME_VARIANT_ANALYSIS *analysis);
-extern UINT32 DSL_runtime_guard_count
-                                (const DSL_RUNTIME_VARIANT_ANALYSIS *analysis);
-extern BOOL DSL_runtime_variant_get_site
-                                (const DSL_RUNTIME_VARIANT_ANALYSIS *analysis,
+                                 const DSL_RUNTIME_VARIANT_IR *ir);
+extern ST_IDX DSL_runtime_variant_ir_owner
+                                (const DSL_RUNTIME_VARIANT_IR *ir);
+extern UINT32 DSL_runtime_variant_ir_site_count
+                                (const DSL_RUNTIME_VARIANT_IR *ir);
+extern UINT32 DSL_runtime_variant_ir_variant_count
+                                (const DSL_RUNTIME_VARIANT_IR *ir);
+extern UINT32 DSL_runtime_variant_ir_guard_count
+                                (const DSL_RUNTIME_VARIANT_IR *ir);
+extern BOOL DSL_runtime_variant_ir_get_site
+                                (const DSL_RUNTIME_VARIANT_IR *ir,
                                  DSL_RUNTIME_VARIANT_SITE_ID id,
                                  DSL_RUNTIME_VARIANT_SITE_RECORD *record);
-extern BOOL DSL_runtime_variant_get_variant
-                                (const DSL_RUNTIME_VARIANT_ANALYSIS *analysis,
+extern BOOL DSL_runtime_variant_ir_get_variant
+                                (const DSL_RUNTIME_VARIANT_IR *ir,
                                  DSL_RUNTIME_VARIANT_ID id,
                                  DSL_RUNTIME_VARIANT_RECORD *record);
-extern BOOL DSL_runtime_variant_get_guard
-                                (const DSL_RUNTIME_VARIANT_ANALYSIS *analysis,
+extern BOOL DSL_runtime_variant_ir_get_guard
+                                (const DSL_RUNTIME_VARIANT_IR *ir,
                                  DSL_RUNTIME_GUARD_ID id,
                                  DSL_RUNTIME_GUARD_RECORD *record);
-extern const DSL_OPT_PLAN_CONTEXT *DSL_runtime_variant_get_plan_context
-                                (const DSL_RUNTIME_VARIANT_ANALYSIS *analysis,
-                                 DSL_RUNTIME_VARIANT_SITE_ID site_id);
 extern const char *DSL_runtime_guard_kind_name (UINT32 kind);
 extern const char *DSL_runtime_guard_comparison_name (UINT32 comparison);
 

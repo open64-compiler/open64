@@ -57,8 +57,8 @@ physical implementation identities rather than cloning provider descriptions.
 
 ## Compilation Scope And Ownership
 
-`DSL_RUNTIME_VARIANT_ANALYSIS` is owned by the active PU and requires the
-owning PU's local symbol table to be active. It consumes:
+`DSL_RUNTIME_VARIANT_ANALYSIS` is a VHO-owned analysis context for the active
+PU and requires the owning PU's local symbol table to be active. It consumes:
 
 - the active PU;
 - its TensorEvolutionGraph;
@@ -68,14 +68,25 @@ owning PU's local symbol table to be active. It consumes:
 The service does not inspect another PU. Cross-PU profitability, specialization,
 or guard summaries require explicit IPA design and are not inferred here.
 
-The implementation lives in:
+The IR definition and construction service lives in:
 
 ```text
 osprey/common/com/dsl_runtime_variant.h
 osprey/common/com/dsl_runtime_variant.cxx
 ```
 
-Public records contain stable IDs and fixed scalar fields. Internal vectors
+The optimization logic lives in:
+
+```text
+osprey/be/vho/dsl_runtime_variant_opt.h
+osprey/be/vho/dsl_runtime_variant_opt.cxx
+```
+
+Common/com owns the stable records, bulk constructor, structural verifier,
+generic accessors, and generic printer. VHO owns physical-plan fact capture,
+target capability checks, candidate and cost construction, static selection,
+semantic verification, and guard evaluation. Public common records contain
+stable IDs and fixed scalar fields. VHO's working vectors and plan contexts
 remain runtime analysis storage and never become WHIRL table records.
 
 ## RuntimeVariantIR
@@ -127,21 +138,23 @@ malformed observations fail closed instead of choosing a variant.
 
 ## Build And Evaluation Flow
 
-Preparation:
+VHO preparation:
 
 1. Verify active-PU ownership, TensorEvolutionGraph, and AIO-11 analysis.
 2. Require a selected, available, semantics-preserving cuBLASLt
    `common.matmul.v1` implementation with a proven direct fallback.
 3. Verify both operand references and tensor descriptors.
 
-Plan construction:
+VHO plan construction followed by common IR creation:
 
 1. Add the direct baseline variant and AIO-2 baseline plan.
 2. Add the cuBLASLt variant with `kid0` and `kid1` alignment guards.
 3. Add the complete guard cost to `runtime_selection`.
 4. Select among complete proven plans through AIO-2.
+5. Pass the completed records to the policy-free common RuntimeVariantIR
+   constructor and run both structural and VHO semantic verification.
 
-Runtime evaluation:
+VHO guard evaluation:
 
 1. Start from the statically selected variant.
 2. Evaluate required guards in ordinal order and accumulate actual predicate

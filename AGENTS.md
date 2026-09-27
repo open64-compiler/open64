@@ -85,6 +85,15 @@ only when the current task needs detail.
    the DSL operator, version, canonical attributes, and TensorDescriptorIR
    identity. Continue using WOPT's existing `CODEREP` instantiation of
    `wn_simp_code.h`; do not add a parallel WOPT simplifier.
+6. Keep `common/com` policy-free. It may define DSL IR records, stable IDs,
+   constructors/interning, structural verification, generic accessors, and
+   logical printers. Fact harvesting from a PU, candidate discovery, legality
+   analysis, cost/profitability modeling, optimization selection, and IR
+   transformation belong in the phase that owns the compilation scope:
+   `be/vho` for WHIRL/VHO work, `be/opt` for CFG/SSA/CODEREP work, `be/lno` for
+   canonical-loop work, and IPA for cross-PU work. Do not place an optimization
+   decision in `common/com` merely because its selected result is represented
+   by a common IR record.
 
 ## PREOPT Canonicalization And Optimization Roles
 
