@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "dsl_fusion_candidate_opt.h"
+#include "dsl_tensor_analysis_opt.h"
 #include "dsl_opcode.h"
 #include "pu_info.h"
 
@@ -899,7 +900,7 @@ VHO_DSL_Fusion_Create_With_Layout
         DSL_tensor_evolution_owner(graph) != PU_Info_proc_sym(pu) ||
         !DSL_Fusion_Control_Valid(*control) ||
         !DSL_tensor_evolution_verify(graph, diagnostic) ||
-        !DSL_tensor_analysis_verify(tensor_analysis, diagnostic) ||
+        !VHO_DSL_Tensor_Analysis_Verify(tensor_analysis, diagnostic) ||
         !DSL_tensor_locality_verify(locality, diagnostic) ||
         (layout != NULL &&
          !VHO_DSL_Logical_Layout_Verify(layout, diagnostic))) {

@@ -3,9 +3,9 @@
  */
 
 /*
- * Maintains the AIO-1 runtime-only, PU-local tensor representation evolution
- * graph. Semantic roots remain immutable while alternatives form explicit
- * descendant nodes. Design:
+ * Maintains the policy-free AIO-1 runtime-only, PU-local tensor representation
+ * evolution graph. VHO selects semantic roots; common constructs immutable
+ * roots and explicit representation descendants. Design:
  * doc/AI-COMPILER-OPTIMIZATION-AIO1-TENSOR-EVOLUTION.md.
  */
 
@@ -168,50 +168,48 @@ DSL_tensor_evolution_find_semantic_root
 }
 
 BOOL
-DSL_tensor_evolution_build_semantic_roots
-        (DSL_TENSOR_EVOLUTION_GRAPH *graph, FILE *diagnostic)
+DSL_tensor_evolution_add_semantic_root
+        (DSL_TENSOR_EVOLUTION_GRAPH *graph, DSL_IR_VALUE_ID value_id,
+         TY_IDX descriptor_ty, DSL_TENSOR_EVOLUTION_NODE_ID *root_id,
+         FILE *diagnostic)
 {
-    if (!DSL_Tensor_Evolution_Active(graph))
+    DSL_IR_VALUE_RECORD value;
+    DSL_TENSOR_EVOLUTION_NODE_RECORD root;
+
+    if (root_id != NULL)
+        *root_id = DSL_TENSOR_EVOLUTION_NODE_INVALID_ID;
+    if (!DSL_Tensor_Evolution_Active(graph) ||
+        value_id == DSL_IR_VALUE_INVALID_ID ||
+        !DSL_IR_Image_Get_Value(value_id, &value) ||
+        !DSL_Tensor_Evolution_Value_Owned(graph, value) ||
+        value.ty != descriptor_ty ||
+        !DSL_Tensor_Evolution_Descriptor_Valid(descriptor_ty))
         return DSL_Tensor_Evolution_Report
-                   (diagnostic, "program unit is not active", 0);
-    if (!DSL_IR_Image_Validate(diagnostic))
-        return FALSE;
+                   (diagnostic, "invalid semantic root input", value_id);
+    if ((value.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0)
+        return DSL_Tensor_Evolution_Report
+                   (diagnostic, "redirected value is not a root", value_id);
 
-    /*
-     * A semantic root is the stable identity of one live tensor value. Later
-     * representation choices branch from it; they never replace or retype it.
-     */
-    for (DSL_IR_VALUE_ID id = 1; id <= DSL_IR_Image_Value_Count(); ++id) {
-        DSL_IR_VALUE_RECORD value;
-        DSL_TENSOR_EVOLUTION_NODE_RECORD root;
-        if (!DSL_IR_Image_Get_Value(id, &value))
+    if (DSL_tensor_evolution_find_semantic_root(graph, value_id, &root)) {
+        if (root.descriptor_ty != descriptor_ty)
             return DSL_Tensor_Evolution_Report
-                       (diagnostic, "missing DSL value", id);
-        if ((value.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0 ||
-            !DSL_Tensor_Evolution_Value_Owned(graph, value))
-            continue;
-        if (!TY_is_tensor_extension(value.ty))
-            continue;
-        if (!DSL_Tensor_Evolution_Descriptor_Valid(value.ty))
-            return DSL_Tensor_Evolution_Report
-                       (diagnostic, "tensor descriptor is not canonical", id);
-        if (DSL_tensor_evolution_find_semantic_root(graph, id, &root)) {
-            if (root.descriptor_ty != value.ty)
-                return DSL_Tensor_Evolution_Report
-                           (diagnostic, "semantic root changed type", id);
-            continue;
-        }
-
-        memset(&root, 0, sizeof(root));
-        root.id = graph->nodes.size() + 1;
-        root.kind = DSL_TENSOR_EVOLUTION_NODE_SEMANTIC;
-        root.owner_pu_st = graph->owner_pu_st;
-        root.semantic_value_id = value.id;
-        root.descriptor_ty = value.ty;
-        root.semantic_root_id = root.id;
-        graph->nodes.push_back(root);
+                       (diagnostic, "semantic root changed type", value_id);
+        if (root_id != NULL)
+            *root_id = root.id;
+        return TRUE;
     }
-    return DSL_tensor_evolution_verify(graph, diagnostic);
+
+    memset(&root, 0, sizeof(root));
+    root.id = graph->nodes.size() + 1;
+    root.kind = DSL_TENSOR_EVOLUTION_NODE_SEMANTIC;
+    root.owner_pu_st = graph->owner_pu_st;
+    root.semantic_value_id = value.id;
+    root.descriptor_ty = value.ty;
+    root.semantic_root_id = root.id;
+    graph->nodes.push_back(root);
+    if (root_id != NULL)
+        *root_id = root.id;
+    return TRUE;
 }
 
 BOOL

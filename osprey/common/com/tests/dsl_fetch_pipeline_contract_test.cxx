@@ -25,6 +25,9 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
+#include "dsl_tensor_analysis_opt.h"
+#include "dsl_tensor_evolution_opt.h"
+#include "dsl_tensor_locality_opt.h"
 #include "dsl_fetch_pipeline.h"
 #include "dsl_fetch_pipeline_opt.h"
 #include "dsl_opcode.h"
@@ -223,20 +226,20 @@ Build_Analysis (const AIO10_FIXTURE *fixture, UINT32 profile,
     memset(analysis, 0, sizeof(*analysis));
     analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots
              (analysis->graph, stderr))
         return FALSE;
     analysis->tensor = DSL_tensor_analysis_create
                            (fixture->pu, analysis->graph, stderr);
     if (analysis->tensor == NULL ||
-        !DSL_tensor_analysis_build(analysis->tensor, stderr))
+        !VHO_DSL_Tensor_Analysis_Build(analysis->tensor, stderr))
         return FALSE;
     analysis->snapshot = Create_Snapshot(fixture);
     analysis->locality = DSL_tensor_locality_create
                              (fixture->pu, analysis->tensor,
                               analysis->snapshot, stderr);
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
-        !DSL_tensor_locality_build(analysis->locality, stderr))
+        !VHO_DSL_Tensor_Locality_Build(analysis->locality, stderr))
         return FALSE;
 
     VHO_DSL_Tile_Control_Init(&tile_control);

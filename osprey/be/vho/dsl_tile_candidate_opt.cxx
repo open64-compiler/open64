@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "dsl_tile_candidate_opt.h"
+#include "dsl_tensor_analysis_opt.h"
 #include "dsl_opcode.h"
 #include "dsl_shape.h"
 #include "pu_info.h"
@@ -733,7 +734,7 @@ VHO_DSL_Tile_Create
         DSL_tensor_evolution_owner(graph) != PU_Info_proc_sym(pu) ||
         !DSL_Tile_Control_Valid(*control) ||
         !DSL_tensor_evolution_verify(graph, diagnostic) ||
-        !DSL_tensor_analysis_verify(tensor_analysis, diagnostic) ||
+        !VHO_DSL_Tensor_Analysis_Verify(tensor_analysis, diagnostic) ||
         !DSL_tensor_locality_verify(locality, diagnostic) ||
         (residency != NULL &&
          !VHO_DSL_Residency_Verify(residency, diagnostic))) {

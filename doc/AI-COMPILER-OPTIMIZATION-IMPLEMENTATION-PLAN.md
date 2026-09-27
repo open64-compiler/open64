@@ -1008,8 +1008,13 @@ artifact.
     fact capture, candidate formation, semantic/target/resource legality,
     costs, selection, and semantic verification. AIO-9 through AIO-12 consume
     the neutral common IR handles, preserving the phase ownership boundary.
-23. [ ] Ownership M4: move AIO-1, AIO-3, and AIO-4 PU fact capture into VHO;
+23. [x] Ownership M4: move AIO-1, AIO-3, and AIO-4 PU fact capture into VHO;
     keep graph/fact/snapshot/locality records and structural services common.
+    VHO now owns active-PU semantic-root scanning, semantic tensor fact/use
+    derivation, and tensor lifetime/locality derivation. Common retains graph,
+    fact, control-snapshot, and locality records with construction,
+    verification, access, and printing. WOPT continues to own CFG-derived
+    control-snapshot capture through its existing adapter.
 24. [ ] Ownership M5: after all common callers have moved, relocate AIO-2
     selection policy to the owning phase, split tests by owner, rerun retained
     artifact comparisons, and certify no binary WHIRL, mapped-image, runtime

@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "dsl_residency_candidate_opt.h"
+#include "dsl_tensor_analysis_opt.h"
 #include "pu_info.h"
 
 struct DSL_RESIDENCY_ANALYSIS {
@@ -409,7 +410,7 @@ VHO_DSL_Residency_Create
         DSL_tensor_evolution_owner(graph) != PU_Info_proc_sym(pu) ||
         !DSL_Residency_Control_Valid(*control) ||
         !DSL_tensor_evolution_verify(graph, diagnostic) ||
-        !DSL_tensor_analysis_verify(tensor_analysis, diagnostic) ||
+        !VHO_DSL_Tensor_Analysis_Verify(tensor_analysis, diagnostic) ||
         !DSL_tensor_locality_verify(locality, diagnostic)) {
         DSL_Residency_Report(diagnostic, "invalid active analysis", 0);
         return NULL;

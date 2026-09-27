@@ -25,6 +25,9 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
+#include "dsl_tensor_analysis_opt.h"
+#include "dsl_tensor_evolution_opt.h"
+#include "dsl_tensor_locality_opt.h"
 #include "dsl_layout_candidate_opt.h"
 #include "dsl_opcode.h"
 #include "dsl_tensor_analysis.h"
@@ -313,20 +316,20 @@ Build_Analysis
     memset(analysis, 0, sizeof(*analysis));
     analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots
              (analysis->graph, stderr))
         return FALSE;
     analysis->tensor_analysis = DSL_tensor_analysis_create
                                     (fixture->pu, analysis->graph, stderr);
     if (analysis->tensor_analysis == NULL ||
-        !DSL_tensor_analysis_build(analysis->tensor_analysis, stderr))
+        !VHO_DSL_Tensor_Analysis_Build(analysis->tensor_analysis, stderr))
         return FALSE;
     analysis->snapshot = Create_Snapshot(fixture, kind);
     analysis->locality = DSL_tensor_locality_create
                              (fixture->pu, analysis->tensor_analysis,
                               analysis->snapshot, stderr);
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
-        !DSL_tensor_locality_build(analysis->locality, stderr))
+        !VHO_DSL_Tensor_Locality_Build(analysis->locality, stderr))
         return FALSE;
     VHO_DSL_Logical_Layout_Control_Init(&control);
     control.select_plans = select_plans;
@@ -510,20 +513,20 @@ Run_Control_And_Scope(void)
     control.apply_transformation = 1;
     analysis.graph = DSL_tensor_evolution_create(first.pu, stderr);
     if (analysis.graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots
              (analysis.graph, stderr))
         return 1;
     analysis.tensor_analysis = DSL_tensor_analysis_create
                                    (first.pu, analysis.graph, stderr);
     if (analysis.tensor_analysis == NULL ||
-        !DSL_tensor_analysis_build(analysis.tensor_analysis, stderr))
+        !VHO_DSL_Tensor_Analysis_Build(analysis.tensor_analysis, stderr))
         return 1;
     analysis.snapshot = Create_Snapshot(&first, AIO6_CONTROL_STRAIGHT);
     analysis.locality = DSL_tensor_locality_create
                             (first.pu, analysis.tensor_analysis,
                              analysis.snapshot, stderr);
     if (analysis.locality == NULL ||
-        !DSL_tensor_locality_build(analysis.locality, stderr) ||
+        !VHO_DSL_Tensor_Locality_Build(analysis.locality, stderr) ||
         VHO_DSL_Logical_Layout_Create
             (first.pu, analysis.graph, analysis.tensor_analysis,
              analysis.locality, &control, quiet) != NULL)

@@ -3,7 +3,7 @@
  */
 
 /*
- * AIO-4 PU-local lifetime, reuse, locality, and copied control-flow evidence.
+ * Policy-free AIO-4 lifetime/locality records and copied control-flow evidence.
  * The common contract never retains WOPT-owned objects or changes WHIRL.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO4-LIFETIME-LOCALITY.md.
@@ -180,9 +180,6 @@ extern DSL_TENSOR_LOCALITY_ANALYSIS *DSL_tensor_locality_create
                                  FILE *diagnostic);
 extern void DSL_tensor_locality_destroy
                                 (DSL_TENSOR_LOCALITY_ANALYSIS *analysis);
-extern BOOL DSL_tensor_locality_build
-                                (DSL_TENSOR_LOCALITY_ANALYSIS *analysis,
-                                 FILE *diagnostic);
 extern BOOL DSL_tensor_locality_verify
                                 (const DSL_TENSOR_LOCALITY_ANALYSIS *analysis,
                                  FILE *diagnostic);

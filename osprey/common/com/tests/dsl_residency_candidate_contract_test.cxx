@@ -25,6 +25,9 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
+#include "dsl_tensor_analysis_opt.h"
+#include "dsl_tensor_evolution_opt.h"
+#include "dsl_tensor_locality_opt.h"
 #include "dsl_residency_candidate_opt.h"
 #include "dsl_opcode.h"
 
@@ -281,20 +284,20 @@ Build_Analysis (const AIO8_FIXTURE *fixture, AIO8_CONTROL_KIND kind,
     memset(analysis, 0, sizeof(*analysis));
     analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots
              (analysis->graph, stderr))
         return FALSE;
     analysis->tensor = DSL_tensor_analysis_create
                            (fixture->pu, analysis->graph, stderr);
     if (analysis->tensor == NULL ||
-        !DSL_tensor_analysis_build(analysis->tensor, stderr))
+        !VHO_DSL_Tensor_Analysis_Build(analysis->tensor, stderr))
         return FALSE;
     analysis->snapshot = Create_Snapshot(fixture, kind);
     analysis->locality = DSL_tensor_locality_create
                              (fixture->pu, analysis->tensor,
                               analysis->snapshot, stderr);
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
-        !DSL_tensor_locality_build(analysis->locality, stderr))
+        !VHO_DSL_Tensor_Locality_Build(analysis->locality, stderr))
         return FALSE;
     VHO_DSL_Residency_Control_Init(&control);
     control.target_profile_id = profile_id;
@@ -515,19 +518,19 @@ Run_Control(void)
     memset(&analysis, 0, sizeof(analysis));
     analysis.graph = DSL_tensor_evolution_create(fixture.pu, stderr);
     if (analysis.graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots(analysis.graph, stderr))
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(analysis.graph, stderr))
         return 1;
     analysis.tensor = DSL_tensor_analysis_create
                           (fixture.pu, analysis.graph, stderr);
     if (analysis.tensor == NULL ||
-        !DSL_tensor_analysis_build(analysis.tensor, stderr))
+        !VHO_DSL_Tensor_Analysis_Build(analysis.tensor, stderr))
         return 1;
     analysis.snapshot = Create_Snapshot(&fixture, AIO8_CONTROL_STRAIGHT);
     analysis.locality = DSL_tensor_locality_create
                             (fixture.pu, analysis.tensor,
                              analysis.snapshot, stderr);
     if (analysis.locality == NULL ||
-        !DSL_tensor_locality_build(analysis.locality, stderr))
+        !VHO_DSL_Tensor_Locality_Build(analysis.locality, stderr))
         return 1;
     VHO_DSL_Residency_Control_Init(&control);
     control.apply_transformation = 1;

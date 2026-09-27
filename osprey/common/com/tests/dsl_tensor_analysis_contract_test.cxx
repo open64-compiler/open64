@@ -25,6 +25,9 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
+#include "dsl_tensor_analysis_opt.h"
+#include "dsl_tensor_evolution_opt.h"
+#include "dsl_tensor_locality_opt.h"
 #include "dsl_opcode.h"
 #include "dsl_tensor_analysis.h"
 #include "dsl_tensor_evolution.h"
@@ -342,11 +345,11 @@ Analyze_Fixture
     DSL_TENSOR_ANALYSIS *analysis;
     DSL_TENSOR_FACT_RECORD result;
     if (graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots(graph, stderr))
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr))
         return FALSE;
     analysis = DSL_tensor_analysis_create(fixture->pu, graph, stderr);
-    if (analysis == NULL || !DSL_tensor_analysis_build(analysis, stderr) ||
-        !DSL_tensor_analysis_build(analysis, stderr) ||
+    if (analysis == NULL || !VHO_DSL_Tensor_Analysis_Build(analysis, stderr) ||
+        !VHO_DSL_Tensor_Analysis_Build(analysis, stderr) ||
         !DSL_tensor_analysis_verify(analysis, stderr) ||
         !DSL_tensor_analysis_is_complete(analysis) ||
         DSL_tensor_analysis_fact_count(analysis) !=
@@ -515,10 +518,10 @@ Run_Metadata_Independence(void)
         return 1;
     graph = DSL_tensor_evolution_create(fixture.pu, stderr);
     if (graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots(graph, stderr))
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr))
         return 1;
     before = DSL_tensor_analysis_create(fixture.pu, graph, stderr);
-    if (before == NULL || !DSL_tensor_analysis_build(before, stderr))
+    if (before == NULL || !VHO_DSL_Tensor_Analysis_Build(before, stderr))
         return 1;
     metadata.name = "source_layer_name";
     metadata.value = "metadata_must_not_change_semantics";
@@ -526,7 +529,7 @@ Run_Metadata_Independence(void)
              (fixture.operands[0], &metadata, 1))
         return 1;
     after = DSL_tensor_analysis_create(fixture.pu, graph, stderr);
-    if (after == NULL || !DSL_tensor_analysis_build(after, stderr) ||
+    if (after == NULL || !VHO_DSL_Tensor_Analysis_Build(after, stderr) ||
         !Records_Equal(before, after) ||
         DSL_tensor_analysis_get_fact(after, 0, &unused) ||
         DSL_tensor_analysis_get_fact(after, 4, &unused) ||
@@ -574,10 +577,10 @@ Run_Incomplete_And_Ownership(void)
         return 1;
     graph = DSL_tensor_evolution_create(pending_pu, stderr);
     if (graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots(graph, stderr))
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr))
         return 1;
     analysis = DSL_tensor_analysis_create(pending_pu, graph, stderr);
-    if (analysis == NULL || !DSL_tensor_analysis_build(analysis, quiet) ||
+    if (analysis == NULL || !VHO_DSL_Tensor_Analysis_Build(analysis, quiet) ||
         DSL_tensor_analysis_is_complete(analysis) ||
         !DSL_tensor_analysis_find_fact
              (analysis, DSL_Builder_Get_Value_Image_Id(pending), &fact) ||
@@ -592,10 +595,10 @@ Run_Incomplete_And_Ownership(void)
         return 1;
     graph = DSL_tensor_evolution_create(first.pu, stderr);
     if (graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots(graph, stderr))
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr))
         return 1;
     analysis = DSL_tensor_analysis_create(first.pu, graph, stderr);
-    if (analysis == NULL || !DSL_tensor_analysis_build(analysis, stderr) ||
+    if (analysis == NULL || !VHO_DSL_Tensor_Analysis_Build(analysis, stderr) ||
         !Create_CNN_Fixture(&second) ||
         DSL_tensor_analysis_verify(analysis, quiet) ||
         !DSL_Builder_Select_PU(first.pu) ||

@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "dsl_layout_candidate_opt.h"
+#include "dsl_tensor_analysis_opt.h"
 #include "dsl_opcode.h"
 #include "dsl_shape.h"
 #include "pu_info.h"
@@ -515,7 +516,7 @@ VHO_DSL_Logical_Layout_Create
         DSL_tensor_evolution_owner(graph) != PU_Info_proc_sym(pu) ||
         !DSL_Logical_Layout_Control_Valid(*control) ||
         !DSL_tensor_evolution_verify(graph, diagnostic) ||
-        !DSL_tensor_analysis_verify(tensor_analysis, diagnostic) ||
+        !VHO_DSL_Tensor_Analysis_Verify(tensor_analysis, diagnostic) ||
         !DSL_tensor_locality_verify(locality, diagnostic)) {
         DSL_Logical_Layout_Report(diagnostic, "invalid active analysis", 0);
         return NULL;
@@ -774,7 +775,7 @@ VHO_DSL_Logical_Layout_Verify
             analysis->alternatives.size() ||
         !DSL_Logical_Layout_Control_Valid(analysis->control) ||
         !DSL_tensor_evolution_verify(analysis->graph, diagnostic) ||
-        !DSL_tensor_analysis_verify
+        !VHO_DSL_Tensor_Analysis_Verify
              (analysis->tensor_analysis, diagnostic) ||
         !DSL_tensor_locality_verify(analysis->locality, diagnostic) ||
         analysis->sites.size() != analysis->plans.size() ||

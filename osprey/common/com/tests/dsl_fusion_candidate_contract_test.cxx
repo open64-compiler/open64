@@ -25,6 +25,9 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
+#include "dsl_tensor_analysis_opt.h"
+#include "dsl_tensor_evolution_opt.h"
+#include "dsl_tensor_locality_opt.h"
 #include "dsl_fusion_candidate_opt.h"
 #include "dsl_layout_candidate_opt.h"
 #include "dsl_opcode.h"
@@ -342,20 +345,20 @@ Build_Generic_Analysis
     memset(analysis, 0, sizeof(*analysis));
     analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots
              (analysis->graph, stderr))
         return FALSE;
     analysis->tensor_analysis = DSL_tensor_analysis_create
                                     (fixture->pu, analysis->graph, stderr);
     if (analysis->tensor_analysis == NULL ||
-        !DSL_tensor_analysis_build(analysis->tensor_analysis, stderr))
+        !VHO_DSL_Tensor_Analysis_Build(analysis->tensor_analysis, stderr))
         return FALSE;
     analysis->snapshot = Create_Control_Snapshot(fixture, 0);
     analysis->locality = DSL_tensor_locality_create
                              (fixture->pu, analysis->tensor_analysis,
                               analysis->snapshot, stderr);
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
-        !DSL_tensor_locality_build(analysis->locality, stderr))
+        !VHO_DSL_Tensor_Locality_Build(analysis->locality, stderr))
         return FALSE;
     VHO_DSL_Logical_Layout_Control_Init(&layout_control);
     analysis->layout = VHO_DSL_Logical_Layout_Create
@@ -389,14 +392,14 @@ Build_Analysis
     memset(analysis, 0, sizeof(*analysis));
     analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots
              (analysis->graph, stderr))
         return FALSE;
     analysis->tensor_analysis = DSL_tensor_analysis_create
                                     (fixture->pu, analysis->graph,
                                      stderr);
     if (analysis->tensor_analysis == NULL ||
-        !DSL_tensor_analysis_build(analysis->tensor_analysis, stderr))
+        !VHO_DSL_Tensor_Analysis_Build(analysis->tensor_analysis, stderr))
         return FALSE;
     analysis->snapshot = Create_Control_Snapshot
                              (fixture, control_flags);
@@ -404,7 +407,7 @@ Build_Analysis
                              (fixture->pu, analysis->tensor_analysis,
                               analysis->snapshot, stderr);
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
-        !DSL_tensor_locality_build(analysis->locality, stderr))
+        !VHO_DSL_Tensor_Locality_Build(analysis->locality, stderr))
         return FALSE;
     analysis->fusion = VHO_DSL_Fusion_Create
                            (fixture->pu, analysis->graph,
@@ -663,20 +666,20 @@ Run_Generic_Rejection
     } else {
         analysis.graph = DSL_tensor_evolution_create(fixture.pu, stderr);
         if (analysis.graph == NULL ||
-            !DSL_tensor_evolution_build_semantic_roots
+            !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots
                  (analysis.graph, stderr))
             return 1;
         analysis.tensor_analysis = DSL_tensor_analysis_create
                                        (fixture.pu, analysis.graph, stderr);
         if (analysis.tensor_analysis == NULL ||
-            !DSL_tensor_analysis_build(analysis.tensor_analysis, stderr))
+            !VHO_DSL_Tensor_Analysis_Build(analysis.tensor_analysis, stderr))
             return 1;
         analysis.snapshot = Create_Control_Snapshot(&fixture, control_flags);
         analysis.locality = DSL_tensor_locality_create
                                 (fixture.pu, analysis.tensor_analysis,
                                  analysis.snapshot, stderr);
         if (analysis.locality == NULL ||
-            !DSL_tensor_locality_build(analysis.locality, stderr))
+            !VHO_DSL_Tensor_Locality_Build(analysis.locality, stderr))
             return 1;
         analysis.fusion = VHO_DSL_Fusion_Create
                               (fixture.pu, analysis.graph,
@@ -761,20 +764,20 @@ Run_Control_Contract(void)
     control.apply_transformation = 1;
     analysis.graph = DSL_tensor_evolution_create(fixture.pu, quiet);
     if (analysis.graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots
              (analysis.graph, quiet))
         return 1;
     analysis.tensor_analysis = DSL_tensor_analysis_create
                                    (fixture.pu, analysis.graph, quiet);
     if (analysis.tensor_analysis == NULL ||
-        !DSL_tensor_analysis_build(analysis.tensor_analysis, quiet))
+        !VHO_DSL_Tensor_Analysis_Build(analysis.tensor_analysis, quiet))
         return 1;
     analysis.snapshot = Create_Control_Snapshot(&fixture, FALSE);
     analysis.locality = DSL_tensor_locality_create
                             (fixture.pu, analysis.tensor_analysis,
                              analysis.snapshot, quiet);
     if (analysis.locality == NULL ||
-        !DSL_tensor_locality_build(analysis.locality, quiet))
+        !VHO_DSL_Tensor_Locality_Build(analysis.locality, quiet))
         return 1;
     fusion = VHO_DSL_Fusion_Create
                  (fixture.pu, analysis.graph, analysis.tensor_analysis,

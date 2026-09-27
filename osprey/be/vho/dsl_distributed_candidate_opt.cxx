@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "dsl_distributed_candidate_opt.h"
+#include "dsl_tensor_analysis_opt.h"
 #include "dsl_opcode.h"
 #include "dsl_shape.h"
 #include "pu_info.h"
@@ -663,7 +664,7 @@ VHO_DSL_Distributed_Create
         DSL_tensor_evolution_owner(graph) != PU_Info_proc_sym(pu) ||
         !DSL_Distributed_Control_Valid(*control) ||
         !DSL_tensor_evolution_verify(graph, diagnostic) ||
-        !DSL_tensor_analysis_verify(tensor_analysis, diagnostic) ||
+        !VHO_DSL_Tensor_Analysis_Verify(tensor_analysis, diagnostic) ||
         !DSL_tensor_locality_verify(locality, diagnostic)) {
         DSL_Distributed_Report(diagnostic, "invalid active analysis", 0);
         return NULL;

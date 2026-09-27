@@ -43,10 +43,10 @@ The following must not remain in common:
 | Milestone | Current service | Finding | Required owner/action |
 | --- | --- | --- | --- |
 | AIO-0 | Documentation and baseline artifacts | Conforms | No optimization implementation exists. Keep inventory and evidence in documentation/tests. |
-| AIO-1 | `dsl_tensor_evolution` | Needs split | Common may retain graph records, add/intern APIs, structural verification, access, and printing. `DSL_tensor_evolution_build_semantic_roots()` scans the active DSL image and must move to VHO fact capture. The later add-layout/distributed/local/tile/staged-buffer calls must receive phase-decided content rather than decide it. |
+| AIO-1 | `dsl_tensor_evolution` plus `dsl_tensor_evolution_opt` | Conforms after Ownership M4 | Common owns graph records, explicit add APIs, verification, access, and printing. VHO scans the active DSL image and decides which live tensor values become semantic roots. Later representation add calls continue to receive phase-decided content. |
 | AIO-2 | `dsl_opt_plan` | Needs split | Common may retain candidate/cost/plan records and construction. `DSL_opt_plan_select()` is an optimization decision and must move to a VHO/OPT selection service. Selection verification may structurally check a recorded result but must not choose it. |
-| AIO-3 | `dsl_tensor_analysis` | Needs split | Records, construction, structural verification, access, and printing remain common. `DSL_tensor_analysis_build()` scans PU values, nodes, operands, and descriptors and must move to VHO. |
-| AIO-4 | `dsl_tensor_locality` | Needs split | Snapshot/locality record storage remains common. PU control-position capture, lifetime/reuse-distance/access analysis, byte estimates, and locality classification move to VHO unless a later part explicitly requires WOPT CFG/SSA state. |
+| AIO-3 | `dsl_tensor_analysis` plus `dsl_tensor_analysis_opt` | Conforms after Ownership M4 | Common owns tensor fact/use records, construction, verification, access, and printing. VHO scans PU values, nodes, operands, descriptors, and operator contracts to derive fact contents. |
+| AIO-4 | `dsl_tensor_locality` plus `dsl_tensor_locality_opt` and `opt_dsl_locality` | Conforms after Ownership M4 | Common owns control-snapshot and locality records with construction, verification, access, and printing. WOPT owns CFG-derived control-position capture. VHO owns lifetime, reuse-distance, access, byte-cost, critical-path, and locality derivation from the copied snapshot and tensor facts. |
 | AIO-5 | `dsl_fusion_candidate` plus `dsl_fusion_candidate_opt` | Conforms after Ownership M3 | Common owns policy-free fusion candidate/member/boundary records, bulk construction, structural verification, access, and generic printing. VHO owns pattern matching, boundary discovery, semantic legality, cost construction, selection, and semantic verification. WOPT may later own CFG/SSA-enabled fusion support through a separate phase adapter. |
 | AIO-6 | `dsl_layout_candidate` plus `dsl_layout_candidate_opt` | Conforms after Ownership M3 | Common owns policy-free layout descriptor/site/alternative records and structural services. VHO owns alternative discovery, conversion legality, cost construction, selection, graph overlays, and semantic verification. |
 | AIO-7 | `dsl_distributed_candidate` plus `dsl_distributed_candidate_opt` | Conforms after Ownership M3 | Common owns policy-free placement, sharding, alias-range, communication-epoch, and intent records plus structural services. VHO owns PU-local derivation, legality, communication cost, selection, and semantic verification; cross-PU inference remains deferred to explicit IPA. |
@@ -114,9 +114,14 @@ and `ir_b2a -st -src` evidence.
 
 ### Ownership M4: Fact Capture
 
-Split AIO-1, AIO-3, and AIO-4. Common retains TensorEvolutionGraph,
-TensorAnalysisIR, TensorControlSnapshotIR, and TensorLocalityIR construction;
-VHO creates their contents from the active PU.
+Completed. `dsl_tensor_evolution_opt`, `dsl_tensor_analysis_opt`, and
+`dsl_tensor_locality_opt` own active-PU semantic-root, tensor fact/use, and
+lifetime/locality derivation. Common retains TensorEvolutionGraph,
+TensorAnalysisIR, TensorControlSnapshotIR, and TensorLocalityIR construction,
+verification, access, and printing. CFG-derived snapshot capture remains in
+WOPT's `opt_dsl_locality` adapter. Linked AIO-1 through AIO-12 lanes prove
+unchanged analysis decisions and binary WHIRL; AIO-5 through AIO-12 `.B` files
+and normalized `ir_b2a -st -src` traces match Ownership M3 evidence.
 
 ### Ownership M5: Selection Core And Certification
 

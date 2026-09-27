@@ -3,8 +3,8 @@
  */
 
 /*
- * AIO-1 runtime-only, PU-local tensor identity and representation evolution
- * graph. This public contract adds no mapped-image or WHIRL layout state.
+ * Policy-free AIO-1 PU-local tensor identity and representation evolution
+ * graph. VHO captures roots; this contract adds no mapped-image state.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO1-TENSOR-EVOLUTION.md.
  */
@@ -90,8 +90,11 @@ extern DSL_TENSOR_EVOLUTION_GRAPH *DSL_tensor_evolution_create
                                 (struct pu_info *pu, FILE *diagnostic);
 extern void DSL_tensor_evolution_destroy
                                 (DSL_TENSOR_EVOLUTION_GRAPH *graph);
-extern BOOL DSL_tensor_evolution_build_semantic_roots
+extern BOOL DSL_tensor_evolution_add_semantic_root
                                 (DSL_TENSOR_EVOLUTION_GRAPH *graph,
+                                 DSL_IR_VALUE_ID value_id,
+                                 TY_IDX descriptor_ty,
+                                 DSL_TENSOR_EVOLUTION_NODE_ID *root_id,
                                  FILE *diagnostic);
 extern BOOL DSL_tensor_evolution_add_logical_layout
                                 (DSL_TENSOR_EVOLUTION_GRAPH *graph,
