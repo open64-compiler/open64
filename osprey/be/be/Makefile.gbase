@@ -323,6 +323,7 @@ BE_VHO_CXX_SRCS = \
   dsl_fetch_pipeline_opt.cxx \
   dsl_physical_plan_opt.cxx \
   dsl_runtime_variant_opt.cxx \
+  dsl_telemetry_feedback_opt.cxx \
   fhe_convert.cxx        \
   fhe_semantic_convert.cxx \
   f90_lower.cxx           \
@@ -353,6 +354,7 @@ COMMON_COM_CXX_SRCS = \
   dsl_fetch_pipeline.cxx \
   dsl_physical_plan.cxx \
   dsl_runtime_variant.cxx \
+  dsl_telemetry_profile.cxx \
   dsl_shape.cxx        \
   dsl_tensor_analysis.cxx \
   dsl_tensor_locality.cxx \

@@ -890,3 +890,10 @@ VHO_DSL_Runtime_Variant_Get_Plan_Context
            site_id > analysis->plan_contexts.size() ? NULL :
            analysis->plan_contexts[site_id - 1];
 }
+
+const DSL_TENSOR_EVOLUTION_GRAPH *
+VHO_DSL_Runtime_Variant_Get_Evolution_Graph
+        (const DSL_RUNTIME_VARIANT_ANALYSIS *analysis)
+{
+    return analysis == NULL ? NULL : analysis->graph;
+}

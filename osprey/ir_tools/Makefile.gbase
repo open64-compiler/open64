@@ -182,6 +182,7 @@ LDIRT += dsl_fetch_pipeline_contract_test \
 LDIRT += dsl_physical_plan_contract_test \
 	dsl_physical_plan_contract_test.o
 LDIRT += dsl_runtime_variant_opt.o
+LDIRT += dsl_telemetry_feedback_opt.o
 LDIRT += dsl_physical_plan_opt.o
 LDIRT += dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
@@ -242,6 +243,7 @@ COMMON_COM_CXX_SRC =	\
 	dsl_fetch_pipeline.cxx \
 	dsl_physical_plan.cxx \
 	dsl_runtime_variant.cxx \
+	dsl_telemetry_profile.cxx \
 	dsl_shape.cxx	\
 	dsl_tensor_analysis.cxx \
 	dsl_tensor_locality.cxx \
@@ -487,6 +489,7 @@ dsl_fetch_pipeline_contract_test.o: \
 
 dsl_physical_plan_contract_test: $(OBJECTS) controls.o dsl_lower.o \
 		dsl_opt.o dsl_shape_refine.o dsl_runtime_variant_opt.o \
+		dsl_telemetry_feedback_opt.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
 		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_distributed_candidate_opt.o dsl_residency_candidate_opt.o \
@@ -497,7 +500,8 @@ dsl_physical_plan_contract_test: $(OBJECTS) controls.o dsl_lower.o \
 		dsl_lower.o dsl_opt.o dsl_shape_refine.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
 		$(DSL_SELECTION_OPT_OBJS) \
-		dsl_runtime_variant_opt.o dsl_distributed_candidate_opt.o \
+		dsl_runtime_variant_opt.o dsl_telemetry_feedback_opt.o \
+		dsl_distributed_candidate_opt.o \
 		dsl_residency_candidate_opt.o dsl_tile_candidate_opt.o \
 		dsl_fetch_pipeline_opt.o dsl_physical_plan_opt.o \
 		$(OBJECTS) $(LDFLAGS)
@@ -525,6 +529,10 @@ dsl_opt_plan_opt.o: $(BE_VHO_DIR)/dsl_opt_plan_opt.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_runtime_variant_opt.o: $(BE_VHO_DIR)/dsl_runtime_variant_opt.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_telemetry_feedback_opt.o: \
+		$(BE_VHO_DIR)/dsl_telemetry_feedback_opt.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_physical_plan_opt.o: $(BE_VHO_DIR)/dsl_physical_plan_opt.cxx

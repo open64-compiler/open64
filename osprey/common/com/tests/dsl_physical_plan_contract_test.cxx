@@ -43,6 +43,7 @@
 #include "dsl_opcode.h"
 #include "dsl_physical_plan_opt.h"
 #include "dsl_runtime_variant_opt.h"
+#include "dsl_telemetry_feedback_opt.h"
 #include "open64_dsl_runtime_abi.h"
 
 BOOL Run_vsaopt = FALSE;
@@ -946,6 +947,334 @@ Run_Runtime_Variant_Control(void)
     return 0;
 }
 
+static DSL_TELEMETRY_PROFILE_IR *
+Create_Telemetry_Profile
+        (const AIO11_ANALYSIS *analysis, BOOL stale_identity,
+         UINT32 record_count, UINT32 schema_version,
+         UINT32 profile_generation, UINT32 target_profile_id,
+         BOOL malformed_counter, FILE *diagnostic)
+{
+    const DSL_RUNTIME_VARIANT_IR *runtime_ir =
+        VHO_DSL_Runtime_Variant_Get_IR(analysis->runtime_variant);
+    DSL_RUNTIME_VARIANT_SITE_RECORD site;
+    DSL_RUNTIME_VARIANT_RECORD baseline;
+    DSL_RUNTIME_VARIANT_RECORD fast;
+    DSL_TELEMETRY_RECORD records[2];
+    DSL_TELEMETRY_PROFILE_CREATE_INFO info;
+    if (runtime_ir == NULL ||
+        !DSL_runtime_variant_ir_get_site(runtime_ir, 1, &site) ||
+        !DSL_runtime_variant_ir_get_variant
+             (runtime_ir, site.baseline_variant_id, &baseline) ||
+        !DSL_runtime_variant_ir_get_variant
+             (runtime_ir, site.selected_variant_id, &fast))
+        return NULL;
+
+    memset(records, 0, sizeof(records));
+    records[0].id = 1;
+    records[0].site_id = site.id;
+    records[0].variant_id = baseline.id;
+    records[0].optimization_plan_id = baseline.optimization_plan_id;
+    records[0].variant_identity = baseline.identity;
+    records[0].sample_count = 100;
+    records[0].selected_count = 30;
+    records[0].latency_ns_total = 70000;
+    records[0].latency_ns_min = 680;
+    records[0].latency_ns_max = 720;
+    records[0].achieved_occupancy_ppm = 520000;
+    records[0].memory_read_bytes = 3276800;
+    records[0].memory_write_bytes = 1638400;
+    records[0].cache_hit_count = 900;
+    records[0].cache_miss_count = 100;
+    records[0].launch_ns_total = 5000;
+    records[0].flags = DSL_TELEMETRY_RECORD_FLAG_COMPLETE;
+
+    records[1].id = 2;
+    records[1].site_id = site.id;
+    records[1].variant_id = fast.id;
+    records[1].optimization_plan_id = fast.optimization_plan_id;
+    records[1].variant_identity = fast.identity;
+    records[1].sample_count = 100;
+    records[1].selected_count = 70;
+    records[1].guard_evaluation_count = 100;
+    records[1].guard_pass_count = 70;
+    records[1].latency_ns_total = 100000;
+    records[1].latency_ns_min = 980;
+    records[1].latency_ns_max = 1020;
+    records[1].achieved_occupancy_ppm = 610000;
+    records[1].memory_read_bytes = 2457600;
+    records[1].memory_write_bytes = 819200;
+    records[1].communication_ns_total = 10000;
+    records[1].overlap_ns_total = 6000;
+    records[1].cache_hit_count = 950;
+    records[1].cache_miss_count = 50;
+    records[1].launch_ns_total = 8000;
+    records[1].flags = DSL_TELEMETRY_RECORD_FLAG_COMPLETE;
+    if (stale_identity)
+        ++records[1].variant_identity;
+    if (malformed_counter)
+        records[1].selected_count = records[1].sample_count + 1;
+
+    memset(&info, 0, sizeof(info));
+    info.header.schema_version = schema_version;
+    info.header.producer_kind = DSL_TELEMETRY_PRODUCER_BENCHMARK;
+    info.header.profile_generation = profile_generation;
+    info.header.target_profile_id = target_profile_id;
+    info.header.owner_pu_st = site.owner_pu_st;
+    info.header.instrumentation_phase = PROFILE_PHASE_BEFORE_VHO;
+    info.header.record_count = record_count;
+    info.records = records;
+    info.record_count = record_count;
+    return DSL_telemetry_profile_create(&info, diagnostic);
+}
+
+static BOOL
+Check_Telemetry_Feedback
+        (AIO11_ANALYSIS *analysis,
+         const DSL_TELEMETRY_FEEDBACK_ANALYSIS *feedback)
+{
+    const DSL_RUNTIME_VARIANT_IR *runtime_ir =
+        VHO_DSL_Runtime_Variant_Get_IR(analysis->runtime_variant);
+    const DSL_OPT_PLAN_CONTEXT *source_context;
+    DSL_RUNTIME_VARIANT_SITE_RECORD site;
+    DSL_OPT_SELECTION_RESULT source_selection;
+    VHO_DSL_TELEMETRY_SITE_RESULT result;
+    VHO_DSL_TELEMETRY_VARIANT_RESULT baseline;
+    VHO_DSL_TELEMETRY_VARIANT_RESULT fast;
+    return runtime_ir != NULL &&
+           DSL_runtime_variant_ir_get_site(runtime_ir, 1, &site) &&
+           (source_context = VHO_DSL_Runtime_Variant_Get_Plan_Context
+                                (analysis->runtime_variant, site.id)) != NULL &&
+           DSL_opt_plan_get_selection(source_context, &source_selection) &&
+           source_selection.selected_plan_id == 2 &&
+           VHO_DSL_Telemetry_Feedback_Status(feedback) ==
+               VHO_DSL_TELEMETRY_STATUS_APPLIED &&
+           VHO_DSL_Telemetry_Feedback_Site_Count(feedback) == 1 &&
+           VHO_DSL_Telemetry_Feedback_Variant_Count(feedback) == 2 &&
+           VHO_DSL_Telemetry_Feedback_Get_Site
+               (feedback, 1, &result) &&
+           result.original_variant_id == site.selected_variant_id &&
+           result.recommended_variant_id == site.baseline_variant_id &&
+           result.recommended_plan_id == 1 &&
+           result.profitability_changed && !result.legality_changed &&
+           VHO_DSL_Telemetry_Feedback_Get_Variant
+               (feedback, 1, &baseline) &&
+           baseline.variant_id == site.baseline_variant_id &&
+           baseline.average_latency_ns == 700 && baseline.recommended &&
+           !baseline.originally_selected &&
+           VHO_DSL_Telemetry_Feedback_Get_Variant
+               (feedback, 2, &fast) &&
+           fast.variant_id == site.selected_variant_id &&
+           fast.average_latency_ns == 1000 &&
+           fast.guard_hit_rate_ppm == 700000 &&
+           fast.originally_selected && !fast.recommended;
+}
+
+static int
+Run_Telemetry_Feedback_Mode(void)
+{
+    const char *artifact = getenv("OPEN64_AIO13_ARTIFACT");
+    const char *trace_path = getenv("OPEN64_AIO13_ANALYSIS");
+    AIO11_FIXTURE fixture;
+    AIO11_ANALYSIS analysis;
+    DSL_TELEMETRY_PROFILE_IR *profile;
+    DSL_TELEMETRY_FEEDBACK_ANALYSIS *feedback;
+    VHO_DSL_TELEMETRY_FEEDBACK_CONTROL control;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    UINT32 direct =
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT);
+    UINT32 cublas =
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT);
+    UINT32 nodes;
+    UINT32 values;
+    UINT32 types;
+    FILE *trace;
+    if (artifact == NULL || artifact[0] == '\0' || trace_path == NULL ||
+        trace_path[0] == '\0' || (trace = fopen(trace_path, "w")) == NULL)
+        return 1;
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    if (!Create_Fixture("aio11_physical_plan", &fixture))
+        return 1;
+    nodes = DSL_IR_Image_Node_Count();
+    values = DSL_IR_Image_Value_Count();
+    types = TY_Table_Size();
+    if (!Build_Analysis
+             (&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 3,
+              direct | cublas, direct | cublas, trace, &analysis) ||
+        !Build_Runtime_Variants(&fixture, trace, &analysis) ||
+        (profile = Create_Telemetry_Profile
+                       (&analysis, FALSE, 2,
+                        DSL_TELEMETRY_PROFILE_SCHEMA_VERSION, 7,
+                        DSL_TARGET_PROFILE_NVIDIA_HOPPER, FALSE,
+                        stderr)) == NULL)
+        return 1;
+    VHO_DSL_Telemetry_Feedback_Control_Init(&control);
+    control.expected_profile_generation = 7;
+    feedback = VHO_DSL_Telemetry_Feedback_Create
+                   (fixture.pu, analysis.runtime_variant, profile,
+                    &control, stderr);
+    if (feedback == NULL ||
+        !VHO_DSL_Telemetry_Feedback_Build(feedback, stderr) ||
+        !VHO_DSL_Telemetry_Feedback_Verify(feedback, stderr) ||
+        !Check_Telemetry_Feedback(&analysis, feedback) ||
+        DSL_IR_Image_Node_Count() != nodes ||
+        DSL_IR_Image_Value_Count() != values || TY_Table_Size() != types)
+        return 1;
+    VHO_DSL_Telemetry_Feedback_Print(trace, feedback);
+    fclose(trace);
+    VHO_DSL_Telemetry_Feedback_Destroy(feedback);
+    DSL_telemetry_profile_destroy(profile);
+    Destroy_Analysis(&analysis);
+    memset(&verify, 0, sizeof(verify));
+    if (!DSL_Builder_Verify_Program(&verify))
+        return 1;
+    request.path = artifact;
+    request.flags = 0;
+    if (!DSL_Builder_Finalize_Mapped_Image(&request))
+        return 1;
+    printf("AIO-13 telemetry feedback passed\n");
+    return 0;
+}
+
+static int
+Run_Telemetry_No_Profile(void)
+{
+    const char *trace_path = getenv("OPEN64_AIO13_ANALYSIS");
+    AIO11_FIXTURE fixture;
+    AIO11_ANALYSIS analysis;
+    DSL_TELEMETRY_FEEDBACK_ANALYSIS *feedback;
+    VHO_DSL_TELEMETRY_FEEDBACK_CONTROL control;
+    UINT32 direct =
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT);
+    UINT32 cublas =
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT);
+    FILE *trace = trace_path == NULL ? NULL : fopen(trace_path, "w");
+    if (trace_path != NULL && trace == NULL)
+        return 1;
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    if (!Create_Fixture("aio13_no_profile", &fixture) ||
+        !Build_Analysis
+             (&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 3,
+              direct | cublas, direct | cublas, NULL, &analysis) ||
+        !Build_Runtime_Variants(&fixture, NULL, &analysis))
+        return 1;
+    VHO_DSL_Telemetry_Feedback_Control_Init(&control);
+    control.expected_profile_generation = 7;
+    feedback = VHO_DSL_Telemetry_Feedback_Create
+                   (fixture.pu, analysis.runtime_variant, NULL,
+                    &control, stderr);
+    if (feedback == NULL ||
+        !VHO_DSL_Telemetry_Feedback_Build(feedback, stderr) ||
+        !VHO_DSL_Telemetry_Feedback_Verify(feedback, stderr) ||
+        VHO_DSL_Telemetry_Feedback_Status(feedback) !=
+            VHO_DSL_TELEMETRY_STATUS_NO_PROFILE ||
+        VHO_DSL_Telemetry_Feedback_Site_Count(feedback) != 0 ||
+        VHO_DSL_Telemetry_Feedback_Variant_Count(feedback) != 0)
+        return 1;
+    VHO_DSL_Telemetry_Feedback_Print(trace, feedback);
+    if (trace != NULL)
+        fclose(trace);
+    VHO_DSL_Telemetry_Feedback_Destroy(feedback);
+    Destroy_Analysis(&analysis);
+    printf("AIO-13 deterministic no-profile behavior passed\n");
+    return 0;
+}
+
+static int
+Run_Telemetry_Negative(void)
+{
+    AIO11_FIXTURE fixture;
+    AIO11_ANALYSIS analysis;
+    DSL_TELEMETRY_PROFILE_IR *stale;
+    DSL_TELEMETRY_PROFILE_IR *incomplete;
+    DSL_TELEMETRY_PROFILE_IR *stale_generation;
+    DSL_TELEMETRY_PROFILE_IR *stale_target;
+    DSL_TELEMETRY_FEEDBACK_ANALYSIS *feedback;
+    VHO_DSL_TELEMETRY_FEEDBACK_CONTROL control;
+    UINT32 direct =
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT);
+    UINT32 cublas =
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT);
+    FILE *quiet = tmpfile();
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    if (quiet == NULL ||
+        !Create_Fixture("aio13_negative", &fixture) ||
+        !Build_Analysis
+             (&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 3,
+              direct | cublas, direct | cublas, NULL, &analysis) ||
+        !Build_Runtime_Variants(&fixture, NULL, &analysis) ||
+        (stale = Create_Telemetry_Profile
+                     (&analysis, TRUE, 2,
+                      DSL_TELEMETRY_PROFILE_SCHEMA_VERSION, 7,
+                      DSL_TARGET_PROFILE_NVIDIA_HOPPER, FALSE,
+                      stderr)) == NULL ||
+        (incomplete = Create_Telemetry_Profile
+                          (&analysis, FALSE, 1,
+                           DSL_TELEMETRY_PROFILE_SCHEMA_VERSION, 7,
+                           DSL_TARGET_PROFILE_NVIDIA_HOPPER, FALSE,
+                           stderr)) == NULL ||
+        (stale_generation = Create_Telemetry_Profile
+                                (&analysis, FALSE, 2,
+                                 DSL_TELEMETRY_PROFILE_SCHEMA_VERSION, 8,
+                                 DSL_TARGET_PROFILE_NVIDIA_HOPPER, FALSE,
+                                 stderr)) == NULL ||
+        (stale_target = Create_Telemetry_Profile
+                            (&analysis, FALSE, 2,
+                             DSL_TELEMETRY_PROFILE_SCHEMA_VERSION, 7,
+                             DSL_TARGET_PROFILE_NVIDIA_BLACKWELL, FALSE,
+                             stderr)) == NULL ||
+        Create_Telemetry_Profile
+            (&analysis, FALSE, 2,
+             DSL_TELEMETRY_PROFILE_SCHEMA_VERSION + 1, 7,
+             DSL_TARGET_PROFILE_NVIDIA_HOPPER, FALSE, quiet) != NULL ||
+        Create_Telemetry_Profile
+            (&analysis, FALSE, 2,
+             DSL_TELEMETRY_PROFILE_SCHEMA_VERSION, 7,
+             DSL_TARGET_PROFILE_NVIDIA_HOPPER, TRUE, quiet) != NULL)
+        return 1;
+    VHO_DSL_Telemetry_Feedback_Control_Init(&control);
+    control.expected_profile_generation = 7;
+    feedback = VHO_DSL_Telemetry_Feedback_Create
+                   (fixture.pu, analysis.runtime_variant, stale,
+                    &control, stderr);
+    if (feedback == NULL ||
+        VHO_DSL_Telemetry_Feedback_Build(feedback, quiet))
+        return 1;
+    VHO_DSL_Telemetry_Feedback_Destroy(feedback);
+    feedback = VHO_DSL_Telemetry_Feedback_Create
+                   (fixture.pu, analysis.runtime_variant, incomplete,
+                    &control, stderr);
+    if (feedback == NULL ||
+        VHO_DSL_Telemetry_Feedback_Build(feedback, quiet))
+        return 1;
+    VHO_DSL_Telemetry_Feedback_Destroy(feedback);
+    feedback = VHO_DSL_Telemetry_Feedback_Create
+                   (fixture.pu, analysis.runtime_variant, stale_generation,
+                    &control, stderr);
+    if (feedback == NULL ||
+        VHO_DSL_Telemetry_Feedback_Build(feedback, quiet))
+        return 1;
+    VHO_DSL_Telemetry_Feedback_Destroy(feedback);
+    feedback = VHO_DSL_Telemetry_Feedback_Create
+                   (fixture.pu, analysis.runtime_variant, stale_target,
+                    &control, stderr);
+    if (feedback == NULL ||
+        VHO_DSL_Telemetry_Feedback_Build(feedback, quiet))
+        return 1;
+    VHO_DSL_Telemetry_Feedback_Destroy(feedback);
+    DSL_telemetry_profile_destroy(stale);
+    DSL_telemetry_profile_destroy(incomplete);
+    DSL_telemetry_profile_destroy(stale_generation);
+    DSL_telemetry_profile_destroy(stale_target);
+    Destroy_Analysis(&analysis);
+    fclose(quiet);
+    printf("AIO-13 malformed, stale, and incomplete profile rejection passed\n");
+    return 0;
+}
+
 int
 main(void)
 {
@@ -1011,5 +1340,11 @@ main(void)
         return Run_Runtime_Variant_Mode();
     if (strcmp(mode, "runtime-variant-control") == 0)
         return Run_Runtime_Variant_Control();
+    if (strcmp(mode, "telemetry-feedback") == 0)
+        return Run_Telemetry_Feedback_Mode();
+    if (strcmp(mode, "telemetry-no-profile") == 0)
+        return Run_Telemetry_No_Profile();
+    if (strcmp(mode, "telemetry-negative") == 0)
+        return Run_Telemetry_Negative();
     return 1;
 }
