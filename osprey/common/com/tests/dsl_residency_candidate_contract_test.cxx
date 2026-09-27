@@ -25,7 +25,10 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
-#include "dsl_residency_candidate.h"
+#include "dsl_tensor_analysis_opt.h"
+#include "dsl_tensor_evolution_opt.h"
+#include "dsl_tensor_locality_opt.h"
+#include "dsl_residency_candidate_opt.h"
 #include "dsl_opcode.h"
 
 BOOL Run_vsaopt = FALSE;
@@ -58,6 +61,34 @@ typedef struct {
     DSL_TENSOR_LOCALITY_ANALYSIS *locality;
     DSL_RESIDENCY_ANALYSIS *residency;
 } AIO8_ANALYSIS;
+
+#define AIO8_RESIDENCY_COUNT(name)                                       \
+static UINT32 AIO8_residency_##name##_count                              \
+        (const DSL_RESIDENCY_ANALYSIS *analysis)                         \
+{                                                                        \
+    return DSL_residency_plan_ir_##name##_count                          \
+               (VHO_DSL_Residency_Get_IR(analysis));                     \
+}
+AIO8_RESIDENCY_COUNT(descriptor)
+AIO8_RESIDENCY_COUNT(site)
+AIO8_RESIDENCY_COUNT(alternative)
+#undef AIO8_RESIDENCY_COUNT
+
+#define AIO8_RESIDENCY_GET(name, id_type, record_type)                    \
+static BOOL AIO8_residency_get_##name                                    \
+        (const DSL_RESIDENCY_ANALYSIS *analysis, id_type id,              \
+         record_type *record)                                            \
+{                                                                        \
+    return DSL_residency_plan_ir_get_##name                              \
+               (VHO_DSL_Residency_Get_IR(analysis), id, record);          \
+}
+AIO8_RESIDENCY_GET(descriptor, DSL_RESIDENCY_DESCRIPTOR_ID,
+                   DSL_RESIDENCY_DESCRIPTOR_RECORD)
+AIO8_RESIDENCY_GET(site, DSL_RESIDENCY_SITE_ID,
+                   DSL_RESIDENCY_SITE_RECORD)
+AIO8_RESIDENCY_GET(alternative, DSL_RESIDENCY_ALTERNATIVE_ID,
+                   DSL_RESIDENCY_ALTERNATIVE_RECORD)
+#undef AIO8_RESIDENCY_GET
 
 static void
 Initialize_Test_Context(void)
@@ -236,7 +267,7 @@ Create_Snapshot (const AIO8_FIXTURE *fixture, AIO8_CONTROL_KIND kind)
 static void
 Destroy_Analysis (AIO8_ANALYSIS *analysis)
 {
-    DSL_residency_destroy(analysis->residency);
+    VHO_DSL_Residency_Destroy(analysis->residency);
     DSL_tensor_locality_destroy(analysis->locality);
     DSL_tensor_control_snapshot_destroy(analysis->snapshot);
     DSL_tensor_analysis_destroy(analysis->tensor);
@@ -249,41 +280,41 @@ Build_Analysis (const AIO8_FIXTURE *fixture, AIO8_CONTROL_KIND kind,
                 UINT32 profile_id, BOOL select_plans, FILE *trace,
                 AIO8_ANALYSIS *analysis)
 {
-    DSL_RESIDENCY_CONTROL control;
+    VHO_DSL_RESIDENCY_CONTROL control;
     memset(analysis, 0, sizeof(*analysis));
     analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots
              (analysis->graph, stderr))
         return FALSE;
     analysis->tensor = DSL_tensor_analysis_create
                            (fixture->pu, analysis->graph, stderr);
     if (analysis->tensor == NULL ||
-        !DSL_tensor_analysis_build(analysis->tensor, stderr))
+        !VHO_DSL_Tensor_Analysis_Build(analysis->tensor, stderr))
         return FALSE;
     analysis->snapshot = Create_Snapshot(fixture, kind);
     analysis->locality = DSL_tensor_locality_create
                              (fixture->pu, analysis->tensor,
                               analysis->snapshot, stderr);
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
-        !DSL_tensor_locality_build(analysis->locality, stderr))
+        !VHO_DSL_Tensor_Locality_Build(analysis->locality, stderr))
         return FALSE;
-    DSL_residency_control_init(&control);
+    VHO_DSL_Residency_Control_Init(&control);
     control.target_profile_id = profile_id;
     control.select_plans = select_plans;
     control.focus_value_id =
         DSL_Builder_Get_Value_Image_Id(fixture->values[2]);
-    analysis->residency = DSL_residency_create
+    analysis->residency = VHO_DSL_Residency_Create
                               (fixture->pu, analysis->graph,
                                analysis->tensor, analysis->locality,
                                &control, stderr);
     if (analysis->residency == NULL ||
-        !DSL_residency_build(analysis->residency, stderr) ||
-        !DSL_residency_verify(analysis->residency, stderr))
+        !VHO_DSL_Residency_Build(analysis->residency, stderr) ||
+        !VHO_DSL_Residency_Verify(analysis->residency, stderr))
         return FALSE;
     if (trace != NULL) {
         DSL_tensor_evolution_print(trace, analysis->graph);
-        DSL_residency_print(trace, analysis->residency);
+        VHO_DSL_Residency_Print(trace, analysis->residency);
     }
     return TRUE;
 }
@@ -294,12 +325,12 @@ Find_Alternative
          DSL_RESIDENCY_ALTERNATIVE_RECORD *alternative)
 {
     for (UINT32 id = 1;
-         id <= DSL_residency_alternative_count(analysis->residency); ++id) {
+         id <= AIO8_residency_alternative_count(analysis->residency); ++id) {
         DSL_RESIDENCY_ALTERNATIVE_RECORD candidate;
         DSL_RESIDENCY_DESCRIPTOR_RECORD descriptor;
-        if (!DSL_residency_get_alternative
+        if (!AIO8_residency_get_alternative
                  (analysis->residency, id, &candidate) ||
-            !DSL_residency_get_descriptor
+            !AIO8_residency_get_descriptor
                  (analysis->residency, candidate.descriptor_id,
                   &descriptor))
             return FALSE;
@@ -317,12 +348,12 @@ Check_Main_Contract (const AIO8_ANALYSIS *analysis)
 {
     DSL_RESIDENCY_SITE_RECORD site;
     DSL_RESIDENCY_ALTERNATIVE_RECORD alternative;
-    if (DSL_residency_site_count(analysis->residency) != 1 ||
-        DSL_residency_descriptor_count(analysis->residency) != 6 ||
-        DSL_residency_alternative_count(analysis->residency) != 6 ||
+    if (AIO8_residency_site_count(analysis->residency) != 1 ||
+        AIO8_residency_descriptor_count(analysis->residency) != 6 ||
+        AIO8_residency_alternative_count(analysis->residency) != 6 ||
         DSL_tensor_evolution_node_count(analysis->graph) != 10 ||
         DSL_tensor_evolution_edge_count(analysis->graph) != 6 ||
-        !DSL_residency_get_site(analysis->residency, 1, &site) ||
+        !AIO8_residency_get_site(analysis->residency, 1, &site) ||
         site.alternative_count != 6 || site.selected_plan_id != 7 ||
         !Find_Alternative
              (analysis, DSL_MEMORY_TIER_HBM, &alternative) ||
@@ -476,7 +507,7 @@ Run_Control(void)
 {
     AIO8_FIXTURE fixture;
     AIO8_ANALYSIS analysis;
-    DSL_RESIDENCY_CONTROL control;
+    VHO_DSL_RESIDENCY_CONTROL control;
     DSL_RESIDENCY_ANALYSIS *disabled;
     FILE *quiet = tmpfile();
     DSL_Builder_Begin_Program();
@@ -487,36 +518,36 @@ Run_Control(void)
     memset(&analysis, 0, sizeof(analysis));
     analysis.graph = DSL_tensor_evolution_create(fixture.pu, stderr);
     if (analysis.graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots(analysis.graph, stderr))
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(analysis.graph, stderr))
         return 1;
     analysis.tensor = DSL_tensor_analysis_create
                           (fixture.pu, analysis.graph, stderr);
     if (analysis.tensor == NULL ||
-        !DSL_tensor_analysis_build(analysis.tensor, stderr))
+        !VHO_DSL_Tensor_Analysis_Build(analysis.tensor, stderr))
         return 1;
     analysis.snapshot = Create_Snapshot(&fixture, AIO8_CONTROL_STRAIGHT);
     analysis.locality = DSL_tensor_locality_create
                             (fixture.pu, analysis.tensor,
                              analysis.snapshot, stderr);
     if (analysis.locality == NULL ||
-        !DSL_tensor_locality_build(analysis.locality, stderr))
+        !VHO_DSL_Tensor_Locality_Build(analysis.locality, stderr))
         return 1;
-    DSL_residency_control_init(&control);
+    VHO_DSL_Residency_Control_Init(&control);
     control.apply_transformation = 1;
-    if (DSL_residency_create
+    if (VHO_DSL_Residency_Create
             (fixture.pu, analysis.graph, analysis.tensor,
              analysis.locality, &control, quiet) != NULL)
         return 1;
     control.apply_transformation = 0;
     control.generate_candidates = 0;
-    disabled = DSL_residency_create
+    disabled = VHO_DSL_Residency_Create
                    (fixture.pu, analysis.graph, analysis.tensor,
                     analysis.locality, &control, stderr);
-    if (disabled == NULL || !DSL_residency_build(disabled, stderr) ||
-        !DSL_residency_verify(disabled, stderr) ||
-        DSL_residency_site_count(disabled) != 0)
+    if (disabled == NULL || !VHO_DSL_Residency_Build(disabled, stderr) ||
+        !VHO_DSL_Residency_Verify(disabled, stderr) ||
+        AIO8_residency_site_count(disabled) != 0)
         return 1;
-    DSL_residency_destroy(disabled);
+    VHO_DSL_Residency_Destroy(disabled);
     DSL_tensor_locality_destroy(analysis.locality);
     DSL_tensor_control_snapshot_destroy(analysis.snapshot);
     DSL_tensor_analysis_destroy(analysis.tensor);

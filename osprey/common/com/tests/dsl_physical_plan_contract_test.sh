@@ -85,7 +85,8 @@ cmp "$lower_b" "$lower_repeat_b"
 cmp "$lower_t" "$lower_repeat_t"
 diff -u "$before_t" "$lower_t" > "$lower_diff" || true
 
-grep -q "CommonPhysicalPlanIR:.*stage=G13.*implementations=4.*opt_level=3.*apply=no" "$analysis"
+grep -q "CommonPhysicalPlanIR:.*sites=1.*implementations=4" "$analysis"
+grep -q "VHOPhysicalPlanDecision:.*stage=G13.*implementations=4.*opt_level=3.*apply=no" "$analysis"
 grep -q "provider=nvidia_cublaslt.*state=selected" "$analysis"
 grep -q "provider=open64_direct.*fallback=0" "$analysis"
 grep -q "provider=open64_generated.*schedule=tiled_pipeline" "$analysis"

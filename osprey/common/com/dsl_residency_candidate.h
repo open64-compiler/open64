@@ -3,8 +3,7 @@
  */
 
 /*
- * AIO-8 PU-local, check-only memory residency alternatives. The contract does
- * not allocate target memory or rewrite executable WHIRL.
+ * Policy-free AIO-8 CommonResidencyPlanIR records and structural services.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO8-RESIDENCY.md.
  */
@@ -17,13 +16,10 @@
 #include "defs.h"
 #include "dsl_memory_hierarchy.h"
 #include "dsl_opt_plan.h"
-#include "dsl_tensor_analysis.h"
-#include "dsl_tensor_locality.h"
+#include "dsl_tensor_evolution.h"
 
-struct pu_info;
-struct DSL_RESIDENCY_ANALYSIS;
-
-typedef struct DSL_RESIDENCY_ANALYSIS DSL_RESIDENCY_ANALYSIS;
+struct DSL_RESIDENCY_PLAN_IR;
+typedef struct DSL_RESIDENCY_PLAN_IR DSL_RESIDENCY_PLAN_IR;
 typedef UINT32 DSL_RESIDENCY_DESCRIPTOR_ID;
 typedef UINT32 DSL_RESIDENCY_SITE_ID;
 typedef UINT32 DSL_RESIDENCY_ALTERNATIVE_ID;
@@ -65,23 +61,6 @@ enum {
     DSL_RESIDENCY_FLAG_CAPACITY_CHECKED = 0x00000004,
     DSL_RESIDENCY_FLAG_LIFETIME_CHECKED = 0x00000008
 };
-
-typedef struct {
-    UINT32 generate_candidates;
-    UINT32 select_plans;
-    UINT32 apply_transformation;
-    UINT32 target_profile_id;
-    DSL_IR_VALUE_ID focus_value_id;
-    UINT32 max_sites;
-    UINT32 max_alternatives_per_site;
-    UINT32 enable_system;
-    UINT32 enable_pinned_host;
-    UINT32 enable_hbm;
-    UINT32 enable_l2;
-    UINT32 enable_shared;
-    UINT32 enable_register;
-    UINT32 reserved;
-} DSL_RESIDENCY_CONTROL;
 
 typedef struct {
     DSL_RESIDENCY_DESCRIPTOR_ID id;
@@ -128,45 +107,46 @@ typedef struct {
     UINT32 reserved;
 } DSL_RESIDENCY_ALTERNATIVE_RECORD;
 
-extern void DSL_residency_control_init (DSL_RESIDENCY_CONTROL *control);
-extern DSL_RESIDENCY_ANALYSIS *DSL_residency_create
-                                (struct pu_info *pu,
-                                 DSL_TENSOR_EVOLUTION_GRAPH *graph,
-                                 const DSL_TENSOR_ANALYSIS *tensor_analysis,
-                                 const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
-                                 const DSL_RESIDENCY_CONTROL *control,
+typedef struct {
+    ST_IDX owner_pu_st;
+    const DSL_RESIDENCY_DESCRIPTOR_RECORD *descriptors;
+    UINT32 descriptor_count;
+    const DSL_RESIDENCY_SITE_RECORD *sites;
+    UINT32 site_count;
+    const DSL_RESIDENCY_ALTERNATIVE_RECORD *alternatives;
+    UINT32 alternative_count;
+} DSL_RESIDENCY_PLAN_IR_CREATE_INFO;
+
+extern DSL_RESIDENCY_PLAN_IR *DSL_residency_plan_ir_create
+                                (const DSL_RESIDENCY_PLAN_IR_CREATE_INFO *info,
                                  FILE *diagnostic);
-extern void DSL_residency_destroy (DSL_RESIDENCY_ANALYSIS *analysis);
-extern BOOL DSL_residency_build
-                                (DSL_RESIDENCY_ANALYSIS *analysis,
+extern void DSL_residency_plan_ir_destroy (DSL_RESIDENCY_PLAN_IR *ir);
+extern BOOL DSL_residency_plan_ir_verify
+                                (const DSL_RESIDENCY_PLAN_IR *ir,
                                  FILE *diagnostic);
-extern BOOL DSL_residency_verify
-                                (const DSL_RESIDENCY_ANALYSIS *analysis,
-                                 FILE *diagnostic);
-extern void DSL_residency_print
+extern void DSL_residency_plan_ir_print
                                 (FILE *file,
-                                 const DSL_RESIDENCY_ANALYSIS *analysis);
-extern UINT32 DSL_residency_descriptor_count
-                                (const DSL_RESIDENCY_ANALYSIS *analysis);
-extern UINT32 DSL_residency_site_count
-                                (const DSL_RESIDENCY_ANALYSIS *analysis);
-extern UINT32 DSL_residency_alternative_count
-                                (const DSL_RESIDENCY_ANALYSIS *analysis);
-extern BOOL DSL_residency_get_descriptor
-                                (const DSL_RESIDENCY_ANALYSIS *analysis,
+                                 const DSL_RESIDENCY_PLAN_IR *ir);
+extern ST_IDX DSL_residency_plan_ir_owner
+                                (const DSL_RESIDENCY_PLAN_IR *ir);
+extern UINT32 DSL_residency_plan_ir_descriptor_count
+                                (const DSL_RESIDENCY_PLAN_IR *ir);
+extern UINT32 DSL_residency_plan_ir_site_count
+                                (const DSL_RESIDENCY_PLAN_IR *ir);
+extern UINT32 DSL_residency_plan_ir_alternative_count
+                                (const DSL_RESIDENCY_PLAN_IR *ir);
+extern BOOL DSL_residency_plan_ir_get_descriptor
+                                (const DSL_RESIDENCY_PLAN_IR *ir,
                                  DSL_RESIDENCY_DESCRIPTOR_ID id,
                                  DSL_RESIDENCY_DESCRIPTOR_RECORD *record);
-extern BOOL DSL_residency_get_site
-                                (const DSL_RESIDENCY_ANALYSIS *analysis,
+extern BOOL DSL_residency_plan_ir_get_site
+                                (const DSL_RESIDENCY_PLAN_IR *ir,
                                  DSL_RESIDENCY_SITE_ID id,
                                  DSL_RESIDENCY_SITE_RECORD *record);
-extern BOOL DSL_residency_get_alternative
-                                (const DSL_RESIDENCY_ANALYSIS *analysis,
+extern BOOL DSL_residency_plan_ir_get_alternative
+                                (const DSL_RESIDENCY_PLAN_IR *ir,
                                  DSL_RESIDENCY_ALTERNATIVE_ID id,
                                  DSL_RESIDENCY_ALTERNATIVE_RECORD *record);
-extern const DSL_OPT_PLAN_CONTEXT *DSL_residency_get_plan_context
-                                (const DSL_RESIDENCY_ANALYSIS *analysis,
-                                 DSL_RESIDENCY_SITE_ID id);
 extern const char *DSL_residency_promotion_name (UINT32 policy);
 extern const char *DSL_residency_demotion_name (UINT32 policy);
 extern const char *DSL_residency_spill_name (UINT32 policy);

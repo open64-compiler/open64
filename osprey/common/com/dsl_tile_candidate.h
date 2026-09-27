@@ -3,8 +3,7 @@
  */
 
 /*
- * AIO-9 PU-local, check-only hierarchical tile-plan construction. The API
- * records runtime planning state and leaves executable and binary WHIRL intact.
+ * Policy-free AIO-9 CommonTilePlanIR records and services.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO9-HIERARCHICAL-TILING.md.
  */
@@ -15,16 +14,12 @@
 #include <stdio.h>
 
 #include "defs.h"
-#include "dsl_memory_hierarchy.h"
 #include "dsl_opt_plan.h"
-#include "dsl_residency_candidate.h"
-#include "dsl_tensor_analysis.h"
-#include "dsl_tensor_locality.h"
+#include "dsl_tensor_evolution.h"
 
-struct pu_info;
-struct DSL_TILE_ANALYSIS;
+struct DSL_TILE_PLAN_IR;
 
-typedef struct DSL_TILE_ANALYSIS DSL_TILE_ANALYSIS;
+typedef struct DSL_TILE_PLAN_IR DSL_TILE_PLAN_IR;
 typedef UINT32 DSL_TILE_SITE_ID;
 typedef UINT32 DSL_TILE_PLAN_ID;
 typedef UINT32 DSL_TILE_STAGE_ID;
@@ -92,21 +87,6 @@ enum {
     DSL_TILE_PLAN_FLAG_PREFETCH_HINT = 0x00000008,
     DSL_TILE_PLAN_FLAG_TMA_CANDIDATE = 0x00000010
 };
-
-typedef struct {
-    UINT32 generate_candidates;
-    UINT32 select_plans;
-    UINT32 apply_transformation;
-    UINT32 target_profile_id;
-    DSL_IR_VALUE_ID focus_value_id;
-    UINT32 maximum_phase;
-    UINT32 max_sites;
-    UINT32 max_plans_per_site;
-    UINT32 enable_cuda_64;
-    UINT32 enable_cuda_128;
-    UINT32 enable_blackwell_wide;
-    UINT32 reserved;
-} DSL_TILE_CONTROL;
 
 typedef struct {
     DSL_TILE_SITE_ID id;
@@ -182,43 +162,41 @@ typedef struct {
     UINT32 reserved;
 } DSL_TILE_STAGE_RECORD;
 
-extern void DSL_tile_control_init (DSL_TILE_CONTROL *control);
-extern DSL_TILE_ANALYSIS *DSL_tile_create
-                                (struct pu_info *pu,
-                                 DSL_TENSOR_EVOLUTION_GRAPH *graph,
-                                 const DSL_TENSOR_ANALYSIS *tensor_analysis,
-                                 const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
-                                 const DSL_RESIDENCY_ANALYSIS *residency,
-                                 const DSL_TILE_CONTROL *control,
+typedef struct {
+    ST_IDX owner_pu_st;
+    const DSL_TILE_SITE_RECORD *sites;
+    UINT32 site_count;
+    const DSL_TILE_PLAN_RECORD *plans;
+    UINT32 plan_count;
+    const DSL_TILE_STAGE_RECORD *stages;
+    UINT32 stage_count;
+} DSL_TILE_PLAN_IR_CREATE_INFO;
+
+extern DSL_TILE_PLAN_IR *DSL_tile_plan_ir_create
+                                (const DSL_TILE_PLAN_IR_CREATE_INFO *info,
                                  FILE *diagnostic);
-extern void DSL_tile_destroy (DSL_TILE_ANALYSIS *analysis);
-extern BOOL DSL_tile_build
-                                (DSL_TILE_ANALYSIS *analysis,
+extern void DSL_tile_plan_ir_destroy (DSL_TILE_PLAN_IR *ir);
+extern BOOL DSL_tile_plan_ir_verify
+                                (const DSL_TILE_PLAN_IR *ir,
                                  FILE *diagnostic);
-extern BOOL DSL_tile_verify
-                                (const DSL_TILE_ANALYSIS *analysis,
-                                 FILE *diagnostic);
-extern void DSL_tile_print
-                                (FILE *file,
-                                 const DSL_TILE_ANALYSIS *analysis);
-extern UINT32 DSL_tile_site_count (const DSL_TILE_ANALYSIS *analysis);
-extern UINT32 DSL_tile_plan_count (const DSL_TILE_ANALYSIS *analysis);
-extern UINT32 DSL_tile_stage_count (const DSL_TILE_ANALYSIS *analysis);
-extern BOOL DSL_tile_get_site
-                                (const DSL_TILE_ANALYSIS *analysis,
+extern void DSL_tile_plan_ir_print
+                                (FILE *file, const DSL_TILE_PLAN_IR *ir);
+extern ST_IDX DSL_tile_plan_ir_owner (const DSL_TILE_PLAN_IR *ir);
+extern UINT32 DSL_tile_plan_ir_site_count (const DSL_TILE_PLAN_IR *ir);
+extern UINT32 DSL_tile_plan_ir_plan_count (const DSL_TILE_PLAN_IR *ir);
+extern UINT32 DSL_tile_plan_ir_stage_count (const DSL_TILE_PLAN_IR *ir);
+extern BOOL DSL_tile_plan_ir_get_site
+                                (const DSL_TILE_PLAN_IR *ir,
                                  DSL_TILE_SITE_ID id,
                                  DSL_TILE_SITE_RECORD *record);
-extern BOOL DSL_tile_get_plan
-                                (const DSL_TILE_ANALYSIS *analysis,
+extern BOOL DSL_tile_plan_ir_get_plan
+                                (const DSL_TILE_PLAN_IR *ir,
                                  DSL_TILE_PLAN_ID id,
                                  DSL_TILE_PLAN_RECORD *record);
-extern BOOL DSL_tile_get_stage
-                                (const DSL_TILE_ANALYSIS *analysis,
+extern BOOL DSL_tile_plan_ir_get_stage
+                                (const DSL_TILE_PLAN_IR *ir,
                                  DSL_TILE_STAGE_ID id,
                                  DSL_TILE_STAGE_RECORD *record);
-extern const DSL_OPT_PLAN_CONTEXT *DSL_tile_get_plan_context
-                                (const DSL_TILE_ANALYSIS *analysis,
-                                 DSL_TILE_SITE_ID id);
 extern const char *DSL_tile_phase_name (UINT32 phase);
 extern const char *DSL_tile_level_name (UINT32 level);
 extern const char *DSL_tile_family_name (UINT32 family);

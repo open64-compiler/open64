@@ -15,7 +15,7 @@
 #include <stdio.h>
 
 #include "defs.h"
-#include "dsl_physical_plan.h"
+#include "dsl_physical_plan_opt.h"
 #include "dsl_runtime_variant.h"
 
 struct pu_info;

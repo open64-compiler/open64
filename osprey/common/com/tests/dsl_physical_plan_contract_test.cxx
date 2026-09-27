@@ -33,11 +33,15 @@
 #include "glob.h"
 #include "ir_bwrite.h"
 #include "dsl_builder.h"
+#include "dsl_tensor_analysis_opt.h"
+#include "dsl_tensor_evolution_opt.h"
+#include "dsl_tensor_locality_opt.h"
 #include "dsl_fetch_pipeline.h"
+#include "dsl_fetch_pipeline_opt.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_lower.h"
 #include "dsl_opcode.h"
-#include "dsl_physical_plan.h"
+#include "dsl_physical_plan_opt.h"
 #include "dsl_runtime_variant_opt.h"
 #include "open64_dsl_runtime_abi.h"
 
@@ -219,9 +223,9 @@ static void
 Destroy_Analysis (AIO11_ANALYSIS *analysis)
 {
     VHO_DSL_Runtime_Variant_Destroy(analysis->runtime_variant);
-    DSL_physical_plan_destroy(analysis->physical);
-    DSL_fetch_pipeline_destroy(analysis->pipeline);
-    DSL_tile_destroy(analysis->tile);
+    VHO_DSL_Physical_Plan_Destroy(analysis->physical);
+    VHO_DSL_Fetch_Pipeline_Destroy(analysis->pipeline);
+    VHO_DSL_Tile_Destroy(analysis->tile);
     DSL_tensor_locality_destroy(analysis->locality);
     DSL_tensor_control_snapshot_destroy(analysis->snapshot);
     DSL_tensor_analysis_destroy(analysis->tensor);
@@ -236,70 +240,70 @@ Build_Analysis
          UINT32 available_provider_mask, FILE *trace,
          AIO11_ANALYSIS *analysis)
 {
-    DSL_TILE_CONTROL tile_control;
-    DSL_FETCH_PIPELINE_CONTROL fetch_control;
-    DSL_PHYSICAL_PLAN_CONTROL physical_control;
+    VHO_DSL_TILE_CONTROL tile_control;
+    VHO_DSL_FETCH_PIPELINE_CONTROL fetch_control;
+    VHO_DSL_PHYSICAL_PLAN_CONTROL physical_control;
     memset(analysis, 0, sizeof(*analysis));
     analysis->graph = DSL_tensor_evolution_create(fixture->pu, stderr);
     if (analysis->graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots
              (analysis->graph, stderr))
         return FALSE;
     analysis->tensor = DSL_tensor_analysis_create
                            (fixture->pu, analysis->graph, stderr);
     if (analysis->tensor == NULL ||
-        !DSL_tensor_analysis_build(analysis->tensor, stderr))
+        !VHO_DSL_Tensor_Analysis_Build(analysis->tensor, stderr))
         return FALSE;
     analysis->snapshot = Create_Snapshot(fixture);
     analysis->locality = DSL_tensor_locality_create
                              (fixture->pu, analysis->tensor,
                               analysis->snapshot, stderr);
     if (analysis->snapshot == NULL || analysis->locality == NULL ||
-        !DSL_tensor_locality_build(analysis->locality, stderr))
+        !VHO_DSL_Tensor_Locality_Build(analysis->locality, stderr))
         return FALSE;
 
-    DSL_tile_control_init(&tile_control);
+    VHO_DSL_Tile_Control_Init(&tile_control);
     tile_control.target_profile_id = profile;
     tile_control.focus_value_id =
         DSL_Builder_Get_Value_Image_Id(fixture->values[2]);
-    analysis->tile = DSL_tile_create
+    analysis->tile = VHO_DSL_Tile_Create
                          (fixture->pu, analysis->graph, analysis->tensor,
                           analysis->locality, NULL, &tile_control, stderr);
     if (analysis->tile == NULL ||
-        !DSL_tile_build(analysis->tile, stderr) ||
-        !DSL_tile_verify(analysis->tile, stderr))
+        !VHO_DSL_Tile_Build(analysis->tile, stderr) ||
+        !VHO_DSL_Tile_Verify(analysis->tile, stderr))
         return FALSE;
 
-    DSL_fetch_pipeline_control_init(&fetch_control);
+    VHO_DSL_Fetch_Pipeline_Control_Init(&fetch_control);
     fetch_control.target_profile_id = profile;
     fetch_control.focus_value_id = tile_control.focus_value_id;
     fetch_control.prefetch_distance_hint = 1;
-    analysis->pipeline = DSL_fetch_pipeline_create
+    analysis->pipeline = VHO_DSL_Fetch_Pipeline_Create
                              (fixture->pu, analysis->graph,
                               analysis->locality, NULL, analysis->tile,
                               &fetch_control, stderr);
     if (analysis->pipeline == NULL ||
-        !DSL_fetch_pipeline_build(analysis->pipeline, stderr) ||
-        !DSL_fetch_pipeline_verify(analysis->pipeline, stderr))
+        !VHO_DSL_Fetch_Pipeline_Build(analysis->pipeline, stderr) ||
+        !VHO_DSL_Fetch_Pipeline_Verify(analysis->pipeline, stderr))
         return FALSE;
 
-    DSL_physical_plan_control_init(&physical_control);
+    VHO_DSL_Physical_Plan_Control_Init(&physical_control);
     physical_control.target_profile_id = profile;
     physical_control.focus_value_id = tile_control.focus_value_id;
     physical_control.optimization_level = optimization_level;
     physical_control.enabled_provider_mask = enabled_provider_mask;
     physical_control.available_provider_mask = available_provider_mask;
-    analysis->physical = DSL_physical_plan_create
+    analysis->physical = VHO_DSL_Physical_Plan_Create
                              (fixture->pu, analysis->graph, analysis->tile,
                               analysis->pipeline, &physical_control, stderr);
     if (analysis->physical == NULL ||
-        !DSL_physical_plan_build(analysis->physical, stderr) ||
-        !DSL_physical_plan_verify(analysis->physical, stderr))
+        !VHO_DSL_Physical_Plan_Build(analysis->physical, stderr) ||
+        !VHO_DSL_Physical_Plan_Verify(analysis->physical, stderr))
         return FALSE;
     if (trace != NULL) {
-        DSL_tile_print(trace, analysis->tile);
-        DSL_fetch_pipeline_print(trace, analysis->pipeline);
-        DSL_physical_plan_print(trace, analysis->physical);
+        VHO_DSL_Tile_Print(trace, analysis->tile);
+        VHO_DSL_Fetch_Pipeline_Print(trace, analysis->pipeline);
+        VHO_DSL_Physical_Plan_Print(trace, analysis->physical);
     }
     return TRUE;
 }
@@ -384,11 +388,13 @@ Check_Runtime_Variants (AIO11_ANALYSIS *analysis, FILE *trace)
         guard0.operand_ordinal != 0 || guard1.operand_ordinal != 1 ||
         guard0.required_value != 16 || guard1.required_value != 16 ||
         guard0.evaluation_cost != 2 || guard1.evaluation_cost != 2 ||
-        !DSL_physical_plan_get_implementation
-             (analysis->physical, baseline.physical_implementation_id,
+        !DSL_physical_plan_ir_get_implementation
+             (VHO_DSL_Physical_Plan_Get_IR(analysis->physical),
+              baseline.physical_implementation_id,
               &baseline_implementation) ||
-        !DSL_physical_plan_get_implementation
-             (analysis->physical, fast.physical_implementation_id,
+        !DSL_physical_plan_ir_get_implementation
+             (VHO_DSL_Physical_Plan_Get_IR(analysis->physical),
+              fast.physical_implementation_id,
               &fast_implementation) ||
         baseline_implementation.provider !=
             DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT ||
@@ -458,18 +464,20 @@ Check_Selection
          UINT32 expected_provider, UINT32 rejected_reason)
 {
     DSL_PHYSICAL_SITE_RECORD site;
-    if (DSL_physical_plan_site_count(analysis->physical) != 1 ||
-        DSL_physical_plan_implementation_count(analysis->physical) !=
+    const DSL_PHYSICAL_PLAN_IR *ir =
+        VHO_DSL_Physical_Plan_Get_IR(analysis->physical);
+    if (ir == NULL || DSL_physical_plan_ir_site_count(ir) != 1 ||
+        DSL_physical_plan_ir_implementation_count(ir) !=
             expected_count ||
-        !DSL_physical_plan_get_site(analysis->physical, 1, &site) ||
+        !DSL_physical_plan_ir_get_site(ir, 1, &site) ||
         site.implementation_count != expected_count ||
         site.selected_implementation_id == 0)
         return FALSE;
     UINT32 rejected = 0;
     for (UINT32 i = 0; i < site.implementation_count; ++i) {
         DSL_PHYSICAL_IMPLEMENTATION_RECORD implementation;
-        if (!DSL_physical_plan_get_implementation
-                 (analysis->physical,
+        if (!DSL_physical_plan_ir_get_implementation
+                 (ir,
                   site.first_implementation_id + i,
                   &implementation))
             return FALSE;
@@ -484,7 +492,36 @@ Check_Selection
             implementation.rejection_reason == rejected_reason)
             ++rejected;
     }
-    return rejected_reason == DSL_OPT_REJECT_NONE || rejected == 1;
+    if (rejected_reason != DSL_OPT_REJECT_NONE && rejected != 1)
+        return FALSE;
+
+    DSL_PHYSICAL_IMPLEMENTATION_RECORD implementations[16];
+    if (site.implementation_count > 16)
+        return FALSE;
+    for (UINT32 i = 0; i < site.implementation_count; ++i) {
+        if (!DSL_physical_plan_ir_get_implementation
+                 (ir, site.first_implementation_id + i,
+                  &implementations[i]))
+            return FALSE;
+    }
+    DSL_PHYSICAL_PLAN_IR_CREATE_INFO malformed;
+    memset(&malformed, 0, sizeof(malformed));
+    malformed.owner_pu_st = site.owner_pu_st;
+    malformed.sites = &site;
+    malformed.site_count = 1;
+    malformed.implementations = implementations;
+    malformed.implementation_count = site.implementation_count;
+    ++implementations[0].total_cost;
+    FILE *quiet = tmpfile();
+    DSL_PHYSICAL_PLAN_IR *malformed_ir = quiet == NULL ? NULL :
+        DSL_physical_plan_ir_create(&malformed, quiet);
+    if (quiet != NULL)
+        fclose(quiet);
+    if (malformed_ir != NULL) {
+        DSL_physical_plan_ir_destroy(malformed_ir);
+        return FALSE;
+    }
+    return quiet != NULL;
 }
 
 static BOOL
@@ -770,7 +807,7 @@ Run_Control(void)
 {
     AIO11_FIXTURE fixture;
     AIO11_ANALYSIS analysis;
-    DSL_PHYSICAL_PLAN_CONTROL control;
+    VHO_DSL_PHYSICAL_PLAN_CONTROL control;
     DSL_PHYSICAL_PLAN_ANALYSIS *disabled;
     FILE *quiet = tmpfile();
     UINT32 direct =
@@ -782,26 +819,27 @@ Run_Control(void)
              (&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 0,
               direct, direct, NULL, &analysis))
         return 1;
-    DSL_physical_plan_destroy(analysis.physical);
+    VHO_DSL_Physical_Plan_Destroy(analysis.physical);
     analysis.physical = NULL;
-    DSL_physical_plan_control_init(&control);
+    VHO_DSL_Physical_Plan_Control_Init(&control);
     control.apply_selected_plan = 1;
-    if (DSL_physical_plan_create
+    if (VHO_DSL_Physical_Plan_Create
             (fixture.pu, analysis.graph, analysis.tile, analysis.pipeline,
              &control, quiet) != NULL)
         return 1;
     control.apply_selected_plan = 0;
     control.generate_candidates = 0;
     control.select_plan = 0;
-    disabled = DSL_physical_plan_create
+    disabled = VHO_DSL_Physical_Plan_Create
                    (fixture.pu, analysis.graph, analysis.tile,
                     analysis.pipeline, &control, stderr);
     if (disabled == NULL ||
-        !DSL_physical_plan_build(disabled, stderr) ||
-        !DSL_physical_plan_verify(disabled, stderr) ||
-        DSL_physical_plan_site_count(disabled) != 0)
+        !VHO_DSL_Physical_Plan_Build(disabled, stderr) ||
+        !VHO_DSL_Physical_Plan_Verify(disabled, stderr) ||
+        DSL_physical_plan_ir_site_count
+            (VHO_DSL_Physical_Plan_Get_IR(disabled)) != 0)
         return 1;
-    DSL_physical_plan_destroy(disabled);
+    VHO_DSL_Physical_Plan_Destroy(disabled);
     Destroy_Analysis(&analysis);
     fclose(quiet);
     printf("AIO-11 control contract passed\n");

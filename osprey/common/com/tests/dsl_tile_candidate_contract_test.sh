@@ -39,7 +39,8 @@ for phase in $(seq 0 11); do
   "$ir_b2a" -st -src "$stage_b" "$stage_t"
   cmp "$before_b" "$stage_b"
   cmp "$before_t" "$stage_t"
-  grep -q "CommonTilePlanIR:.*target=nvidia_hopper.*stage=G${phase}.*sites=1.*apply=no" \
+  grep -q "CommonTilePlanIR:.*sites=1" "$stage_analysis"
+  grep -q "VHOTilePlanDecision:.*target=nvidia_hopper.*stage=G${phase}.*sites=1.*apply=no" \
     "$stage_analysis"
   grep -q "tile-stage.*stage=G0.*phase=P7.0" "$stage_analysis"
 done
@@ -67,14 +68,14 @@ OPEN64_AIO9_MODE=effect OPEN64_AIO9_ANALYSIS="$effect" \
   "$producer" >> "$validation" 2>&1
 OPEN64_AIO9_MODE=control "$producer" >> "$validation" 2>&1
 
-grep -q "target=nvidia_hopper.*plans=3.*stages=25" "$hopper"
+grep -q "VHOTilePlanDecision:.*target=nvidia_hopper.*plans=3.*stages=25" "$hopper"
 grep -q "family=cuda_64" "$hopper"
 grep -q "family=cuda_128" "$hopper"
 if grep -q "family=blackwell_wide" "$hopper"; then
   echo "error: Hopper plan contains Blackwell-only tile family" >&2
   exit 1
 fi
-grep -q "target=nvidia_blackwell.*plans=4.*stages=37" "$blackwell"
+grep -q "VHOTilePlanDecision:.*target=nvidia_blackwell.*plans=4.*stages=37" "$blackwell"
 grep -q "family=blackwell_wide" "$blackwell"
 grep -q "cta=\[128,256,32\]" "$blackwell"
 grep -q "legality=rejected reason=effect" "$effect"

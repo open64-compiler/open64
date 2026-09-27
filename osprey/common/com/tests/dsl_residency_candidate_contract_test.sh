@@ -64,7 +64,8 @@ cmp "$after_b" "$repeat_b"
 cmp "$after_t" "$repeat_t"
 cmp "$analysis" "$repeat_analysis"
 
-grep -q "CommonMemoryResidencyIR:.*profile=nvidia_hopper.*sites=1.*descriptors=6.*alternatives=6.*select=yes.*apply=no" "$analysis"
+grep -q "CommonResidencyPlanIR:.*sites=1.*descriptors=6.*alternatives=6" "$analysis"
+grep -q "VHODSLResidencyDecision:.*profile=nvidia_hopper.*sites=1.*descriptors=6.*alternatives=6.*select=yes.*apply=no" "$analysis"
 grep -q "MemoryHierarchyDescriptorIR: profile=2 name=nvidia_hopper tiers=6" "$analysis"
 grep -q "tier=hbm.*legality=proven reason=none" "$analysis"
 grep -q "tier=shared.*legality=proven reason=none" "$analysis"
@@ -80,7 +81,7 @@ grep -q "tier=l2.*required=67108864.*capacity=132120576.*legality=proven reason=
 grep -q "tier=register.*legality=rejected reason=descriptor" "$region_lifetime"
 grep -q "OPR_DSLMATMUL" "$after_t"
 grep -q "OPR_DSLRELU" "$after_t"
-if grep -q "CommonMemoryResidencyIR" "$after_t"; then
+if grep -q "CommonResidencyPlanIR\|VHODSLResidencyDecision" "$after_t"; then
   echo "error: runtime-only AIO-8 analysis leaked into binary WHIRL" >&2
   exit 1
 fi

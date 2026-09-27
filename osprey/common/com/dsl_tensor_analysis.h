@@ -3,8 +3,8 @@
  */
 
 /*
- * AIO-3 PU-local semantic tensor facts derived from logical DSL contracts.
- * The analysis reads managed IR but adds no persistent image state.
+ * Policy-free AIO-3 PU-local semantic tensor fact and use records.
+ * VHO derives their contents; common owns their structural contract.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO3-SEMANTIC-TENSOR.md.
  */
@@ -129,9 +129,6 @@ extern DSL_TENSOR_ANALYSIS *DSL_tensor_analysis_create
                                  const DSL_TENSOR_EVOLUTION_GRAPH *graph,
                                  FILE *diagnostic);
 extern void DSL_tensor_analysis_destroy (DSL_TENSOR_ANALYSIS *analysis);
-extern BOOL DSL_tensor_analysis_build
-                                (DSL_TENSOR_ANALYSIS *analysis,
-                                 FILE *diagnostic);
 extern BOOL DSL_tensor_analysis_verify
                                 (const DSL_TENSOR_ANALYSIS *analysis,
                                  FILE *diagnostic);

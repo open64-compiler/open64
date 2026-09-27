@@ -63,16 +63,17 @@ OPEN64_AIO10_MODE=unsafe OPEN64_AIO10_ANALYSIS="$unsafe" \
   "$producer" >> "$validation" 2>&1
 OPEN64_AIO10_MODE=control "$producer" >> "$validation" 2>&1
 
-grep -q "CommonFetchPlanIR/CommonPipelineIR:.*target=nvidia_hopper.*stage=G12.*sites=1.*plans=4.*fetches=8.*stages=7.*apply=no" "$stage_analysis"
+grep -q "CommonFetchPlanIR/CommonPipelineIR:.*sites=1.*plans=4.*fetches=8.*stages=7" "$stage_analysis"
+grep -q "VHOFetchPipelineDecision:.*target=nvidia_hopper.*stage=G12.*sites=1.*plans=4.*fetches=8.*stages=7.*apply=no" "$stage_analysis"
 grep -q "engine=demand.*buffers=1" "$stage_analysis"
 grep -q "engine=vector.*buffers=1" "$stage_analysis"
 grep -q "engine=async_copy.*buffers=2.*distance=1" "$stage_analysis"
 grep -q "engine=tma_like.*buffers=3.*distance=1" "$stage_analysis"
 grep -q "movement raw=.*hidden=.*unhidden=" "$stage_analysis"
 grep -q "kind=staged_buffer" "$stage_analysis"
-grep -q "target=nvidia_blackwell.*plans=4" "$blackwell"
+grep -q "VHOFetchPipelineDecision:.*target=nvidia_blackwell.*plans=4" "$blackwell"
 grep -q "movement\[4\].*engine=tma_like.*transaction=256.*stages=4" "$blackwell"
-grep -q "target=cpu_baseline.*plans=1.*fetches=2.*stages=1" "$cpu"
+grep -q "VHOFetchPipelineDecision:.*target=cpu_baseline.*plans=1.*fetches=2.*stages=1" "$cpu"
 if grep -q "engine=async_copy\|engine=tma_like" "$cpu"; then
   echo "error: CPU fallback contains unsupported async movement" >&2
   exit 1

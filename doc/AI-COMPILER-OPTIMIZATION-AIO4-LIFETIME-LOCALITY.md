@@ -81,6 +81,20 @@ Residency benefit is likewise a target-independent seed. AIO-4 may recognize
 that a short-distance, multiply used tensor is worth considering for
 residency, but AI-P6 owns memory-tier capacity and placement decisions.
 
+## Ownership Boundary
+
+`osprey/common/com/dsl_tensor_locality.{h,cxx}` owns copied control-snapshot
+records and TensorLocalityIR records with lifecycle, verification, access,
+stable names, and generic printing. It retains no CFG, SSA, or WOPT pointer.
+
+`osprey/be/opt/opt_dsl_locality.cxx` remains the owner of CFG-derived block and
+control-position capture because those facts require WOPT state.
+`osprey/be/vho/dsl_tensor_locality_opt.{h,cxx}` consumes the copied snapshot
+and common tensor facts to derive PU-local lifetimes, reuse distances, access
+patterns, byte estimates, critical-path seeds, alias state, and residency
+benefit through `VHO_DSL_Tensor_Locality_Build()`. It never traverses another
+PU; interprocedural locality requires explicit IPA summaries.
+
 ## Compatibility
 
 All AIO-4 records are runtime-only C++ analysis state. They do not change:

@@ -25,6 +25,9 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
+#include "dsl_tensor_analysis_opt.h"
+#include "dsl_tensor_evolution_opt.h"
+#include "dsl_tensor_locality_opt.h"
 #include "dsl_opcode.h"
 #include "dsl_opt_plan.h"
 #include "dsl_tensor_evolution.h"
@@ -368,7 +371,7 @@ Run_Image_Mode(BOOL build_plan)
         budget.max_candidates = 4;
         budget.max_plans = 4;
         if (graph == NULL ||
-            !DSL_tensor_evolution_build_semantic_roots(graph, stderr) ||
+            !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr) ||
             !Build_Plan_Fixture
                  (&fixture, graph, &budget, &plan_fixture, stderr) ||
             !Check_Main_Plan(&plan_fixture) ||
@@ -430,7 +433,7 @@ Run_Negative_Contract(void)
     budget.max_candidates = 4;
     budget.max_plans = 4;
     if (graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots(graph, stderr) ||
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr) ||
         !Build_Plan_Fixture
              (&fixture, graph, &budget, &plan_fixture, stderr))
         return 1;

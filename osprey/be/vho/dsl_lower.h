@@ -8,7 +8,7 @@
 #include <stdio.h>
 
 #include "defs.h"
-#include "dsl_physical_plan.h"
+#include "dsl_physical_plan_opt.h"
 
 class WN;
 struct pu_info;

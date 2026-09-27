@@ -25,6 +25,9 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
+#include "dsl_tensor_analysis_opt.h"
+#include "dsl_tensor_evolution_opt.h"
+#include "dsl_tensor_locality_opt.h"
 #include "dsl_opcode.h"
 #include "dsl_tensor_evolution.h"
 
@@ -209,8 +212,8 @@ Run_Image_Mode(BOOL build_graph)
     if (build_graph) {
         graph = DSL_tensor_evolution_create(fixture.pu, stderr);
         if (graph == NULL ||
-            !DSL_tensor_evolution_build_semantic_roots(graph, stderr) ||
-            !DSL_tensor_evolution_build_semantic_roots(graph, stderr) ||
+            !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr) ||
+            !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr) ||
             !DSL_tensor_evolution_verify(graph, stderr) ||
             DSL_tensor_evolution_node_count(graph) != 3 ||
             DSL_tensor_evolution_edge_count(graph) != 0 ||
@@ -248,7 +251,7 @@ Run_Image_Mode(BOOL build_graph)
         DSL_tensor_evolution_destroy(graph);
         graph = DSL_tensor_evolution_create(fixture.pu, stderr);
         if (graph == NULL ||
-            !DSL_tensor_evolution_build_semantic_roots(graph, stderr) ||
+            !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr) ||
             DSL_tensor_evolution_node_count(graph) != 3 ||
             DSL_tensor_evolution_edge_count(graph) != 0) {
             fprintf(stderr, "AIO-1 graph reset contract changed\n");
@@ -281,18 +284,18 @@ Run_Ownership_Contract(void)
         return 1;
     first_graph = DSL_tensor_evolution_create(first.pu, stderr);
     if (first_graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots(first_graph, stderr) ||
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(first_graph, stderr) ||
         DSL_tensor_evolution_node_count(first_graph) != 3)
         return 1;
 
     if (!Create_Fixture("aio1_second_pu", &second) || quiet == NULL ||
         DSL_tensor_evolution_create(first.pu, quiet) != NULL ||
-        DSL_tensor_evolution_build_semantic_roots(first_graph, quiet) ||
+        VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(first_graph, quiet) ||
         DSL_tensor_evolution_node_count(first_graph) != 3)
         return 1;
     second_graph = DSL_tensor_evolution_create(second.pu, stderr);
     if (second_graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots(second_graph, stderr) ||
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(second_graph, stderr) ||
         DSL_tensor_evolution_node_count(second_graph) != 3 ||
         DSL_tensor_evolution_verify(first_graph, quiet))
         return 1;

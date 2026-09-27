@@ -3,9 +3,7 @@
  */
 
 /*
- * AIO-10 PU-local, check-only fetch and async-pipeline planning. The analysis
- * consumes AIO-9 tile plans and records runtime-only movement alternatives;
- * it does not emit prefetch WNs, barriers, target instructions, or binary IR.
+ * Policy-free AIO-10 CommonFetchPlanIR/CommonPipelineIR records and services.
  * Design: doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md.
  */
 
@@ -15,16 +13,13 @@
 #include <stdio.h>
 
 #include "defs.h"
-#include "dsl_distributed_candidate.h"
 #include "dsl_memory_hierarchy.h"
 #include "dsl_opt_plan.h"
-#include "dsl_tensor_locality.h"
 #include "dsl_tile_candidate.h"
 
-struct pu_info;
-struct DSL_FETCH_PIPELINE_ANALYSIS;
+struct DSL_FETCH_PIPELINE_IR;
 
-typedef struct DSL_FETCH_PIPELINE_ANALYSIS DSL_FETCH_PIPELINE_ANALYSIS;
+typedef struct DSL_FETCH_PIPELINE_IR DSL_FETCH_PIPELINE_IR;
 typedef UINT32 DSL_FETCH_SITE_ID;
 typedef UINT32 DSL_FETCH_PLAN_ID;
 typedef UINT32 DSL_FETCH_RECORD_ID;
@@ -65,22 +60,6 @@ enum {
     DSL_FETCH_RECORD_FLAG_ASYNC = 0x00000002,
     DSL_FETCH_RECORD_FLAG_REQUIRES_BARRIER = 0x00000004
 };
-
-typedef struct {
-    UINT32 generate_candidates;
-    UINT32 select_plans;
-    UINT32 apply_transformation;
-    UINT32 target_profile_id;
-    DSL_IR_VALUE_ID focus_value_id;
-    UINT32 max_sites;
-    UINT32 max_plans_per_site;
-    UINT32 maximum_buffer_stages;
-    UINT32 prefetch_distance_hint;
-    UINT32 enable_vector;
-    UINT32 enable_async_copy;
-    UINT32 enable_multidimensional_async;
-    UINT32 reserved;
-} DSL_FETCH_PIPELINE_CONTROL;
 
 typedef struct {
     DSL_FETCH_SITE_ID id;
@@ -161,54 +140,53 @@ typedef struct {
     UINT32 reserved;
 } DSL_PIPELINE_STAGE_RECORD;
 
-extern void DSL_fetch_pipeline_control_init
-                                (DSL_FETCH_PIPELINE_CONTROL *control);
-extern DSL_FETCH_PIPELINE_ANALYSIS *DSL_fetch_pipeline_create
-                                (struct pu_info *pu,
-                                 DSL_TENSOR_EVOLUTION_GRAPH *graph,
-                                 const DSL_TENSOR_LOCALITY_ANALYSIS *locality,
-                                 const DSL_DISTRIBUTED_ANALYSIS *distributed,
-                                 const DSL_TILE_ANALYSIS *tile,
-                                 const DSL_FETCH_PIPELINE_CONTROL *control,
+typedef struct {
+    ST_IDX owner_pu_st;
+    const DSL_FETCH_SITE_RECORD *sites;
+    UINT32 site_count;
+    const DSL_FETCH_PLAN_RECORD *plans;
+    UINT32 plan_count;
+    const DSL_FETCH_RECORD *fetches;
+    UINT32 fetch_count;
+    const DSL_PIPELINE_STAGE_RECORD *stages;
+    UINT32 stage_count;
+} DSL_FETCH_PIPELINE_IR_CREATE_INFO;
+
+extern DSL_FETCH_PIPELINE_IR *DSL_fetch_pipeline_ir_create
+                                (const DSL_FETCH_PIPELINE_IR_CREATE_INFO *info,
                                  FILE *diagnostic);
-extern void DSL_fetch_pipeline_destroy
-                                (DSL_FETCH_PIPELINE_ANALYSIS *analysis);
-extern BOOL DSL_fetch_pipeline_build
-                                (DSL_FETCH_PIPELINE_ANALYSIS *analysis,
+extern void DSL_fetch_pipeline_ir_destroy (DSL_FETCH_PIPELINE_IR *ir);
+extern BOOL DSL_fetch_pipeline_ir_verify
+                                (const DSL_FETCH_PIPELINE_IR *ir,
                                  FILE *diagnostic);
-extern BOOL DSL_fetch_pipeline_verify
-                                (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
-                                 FILE *diagnostic);
-extern void DSL_fetch_pipeline_print
+extern void DSL_fetch_pipeline_ir_print
                                 (FILE *file,
-                                 const DSL_FETCH_PIPELINE_ANALYSIS *analysis);
-extern UINT32 DSL_fetch_pipeline_site_count
-                                (const DSL_FETCH_PIPELINE_ANALYSIS *analysis);
-extern UINT32 DSL_fetch_pipeline_plan_count
-                                (const DSL_FETCH_PIPELINE_ANALYSIS *analysis);
-extern UINT32 DSL_fetch_pipeline_fetch_count
-                                (const DSL_FETCH_PIPELINE_ANALYSIS *analysis);
-extern UINT32 DSL_fetch_pipeline_stage_count
-                                (const DSL_FETCH_PIPELINE_ANALYSIS *analysis);
-extern BOOL DSL_fetch_pipeline_get_site
-                                (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
+                                 const DSL_FETCH_PIPELINE_IR *ir);
+extern ST_IDX DSL_fetch_pipeline_ir_owner (const DSL_FETCH_PIPELINE_IR *ir);
+extern UINT32 DSL_fetch_pipeline_ir_site_count
+                                (const DSL_FETCH_PIPELINE_IR *ir);
+extern UINT32 DSL_fetch_pipeline_ir_plan_count
+                                (const DSL_FETCH_PIPELINE_IR *ir);
+extern UINT32 DSL_fetch_pipeline_ir_fetch_count
+                                (const DSL_FETCH_PIPELINE_IR *ir);
+extern UINT32 DSL_fetch_pipeline_ir_stage_count
+                                (const DSL_FETCH_PIPELINE_IR *ir);
+extern BOOL DSL_fetch_pipeline_ir_get_site
+                                (const DSL_FETCH_PIPELINE_IR *ir,
                                  DSL_FETCH_SITE_ID id,
                                  DSL_FETCH_SITE_RECORD *record);
-extern BOOL DSL_fetch_pipeline_get_plan
-                                (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
+extern BOOL DSL_fetch_pipeline_ir_get_plan
+                                (const DSL_FETCH_PIPELINE_IR *ir,
                                  DSL_FETCH_PLAN_ID id,
                                  DSL_FETCH_PLAN_RECORD *record);
-extern BOOL DSL_fetch_pipeline_get_fetch
-                                (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
+extern BOOL DSL_fetch_pipeline_ir_get_fetch
+                                (const DSL_FETCH_PIPELINE_IR *ir,
                                  DSL_FETCH_RECORD_ID id,
                                  DSL_FETCH_RECORD *record);
-extern BOOL DSL_fetch_pipeline_get_stage
-                                (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
+extern BOOL DSL_fetch_pipeline_ir_get_stage
+                                (const DSL_FETCH_PIPELINE_IR *ir,
                                  DSL_PIPELINE_STAGE_ID id,
                                  DSL_PIPELINE_STAGE_RECORD *record);
-extern const DSL_OPT_PLAN_CONTEXT *DSL_fetch_pipeline_get_plan_context
-                                (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
-                                 DSL_FETCH_SITE_ID id);
 extern const char *DSL_fetch_issue_point_name (UINT32 point);
 extern const char *DSL_fetch_barrier_name (UINT32 barrier);
 extern const char *DSL_fetch_wait_point_name (UINT32 point);

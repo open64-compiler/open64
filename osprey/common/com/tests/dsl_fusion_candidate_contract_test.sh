@@ -64,8 +64,9 @@ cmp "$after_b" "$repeat_b"
 cmp "$after_t" "$repeat_t"
 cmp "$analysis" "$repeat_analysis"
 
-grep -q "DSLFusionCandidates:.*sites=2.*semantic=yes.*generic=no.*select=yes.*apply=no" "$analysis"
-grep -q "DSLFusionCandidates:.*sites=1.*semantic=no.*generic=yes.*select=yes.*apply=no" "$analysis"
+grep -q "CommonFusionPlanIR:.*sites=2.*members=5.*boundaries=10" "$analysis"
+grep -q "VHODSLFusionDecision:.*sites=2.*semantic=yes.*generic=no.*select=yes.*apply=no" "$analysis"
+grep -q "VHODSLFusionDecision:.*sites=1.*semantic=no.*generic=yes.*select=yes.*apply=no" "$analysis"
 grep -q "pattern=matmul_bias_activation.*legality=proven" "$analysis"
 grep -q "pattern=matmul_bias_activation.*materializations=2 bytes=32" "$analysis"
 grep -q "pattern=residual_activation.*materializations=1 bytes=16" "$analysis"
@@ -73,12 +74,13 @@ grep -q "pattern=residual_activation.*selected=2" "$analysis"
 grep -q "pattern=generic_cluster.*legality=proven.*layout=unknown" "$analysis"
 grep -q "role=generic_contraction" "$analysis"
 grep -q "role=generic_pointwise" "$analysis"
-grep -q "DSLLogicalLayouts:" "$analysis"
+grep -q "CommonLogicalLayoutIR:" "$analysis"
+grep -q "VHODSLLogicalLayoutDecision:" "$analysis"
 grep -q "kind=alternative_cut" "$analysis"
 grep -q "OPR_DSLMATMUL" "$after_t"
 grep -q "OPR_DSLRESIDUALADD" "$after_t"
 grep -q "OPR_DSLRELU" "$after_t"
-if grep -q "DSLFusionCandidates" "$after_t"; then
+if grep -q "CommonFusionPlanIR\|VHODSLFusionDecision" "$after_t"; then
   echo "error: runtime-only AIO-5 candidates leaked into binary WHIRL" >&2
   exit 1
 fi

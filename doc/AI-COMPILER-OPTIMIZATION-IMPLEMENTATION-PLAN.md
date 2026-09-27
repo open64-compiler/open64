@@ -991,16 +991,30 @@ artifact.
     prospective boundary, and AIO-1 through AIO-11 require staged ownership
     cleanup as recorded in
     `AI-COMPILER-OPTIMIZATION-PHASE-OWNERSHIP-AUDIT.md`.
-20. [ ] Ownership M1: split AIO-11 physical implementation planning. Keep
+20. [x] Ownership M1: split AIO-11 physical implementation planning. Keep
     provider capability and physical-plan IR in common; move candidate
     discovery, capability/legality checks, costing, and selection into VHO.
-21. [ ] Ownership M2: move AIO-9 and AIO-10 tile-family and fetch/pipeline
+21. [x] Ownership M2: move AIO-9 and AIO-10 tile-family and fetch/pipeline
     decisions into VHO while preserving target-description and plan IR in
-    common and reserving canonical-loop realization for LNO.
-22. [ ] Ownership M3: move AIO-5 through AIO-8 candidate discovery, legality,
+    common and reserving canonical-loop realization for LNO. Common now owns
+    policy-free bulk-created tile/fetch/pipeline records and structural
+    services; VHO owns active-PU capture, legality, costs, selection, and
+    semantic verification. AIO-10 and AIO-11 consume the neutral IR handles.
+22. [x] Ownership M3: move AIO-5 through AIO-8 candidate discovery, legality,
     cost, and selection into VHO while preserving record schemas and traces.
-23. [ ] Ownership M4: move AIO-1, AIO-3, and AIO-4 PU fact capture into VHO;
+    Common now owns policy-free `FusionPlanIR`, `LogicalLayoutIR`,
+    `DistributedPlanIR`, and `ResidencyPlanIR` containers plus construction,
+    structural verification, access, and generic printing. VHO owns active-PU
+    fact capture, candidate formation, semantic/target/resource legality,
+    costs, selection, and semantic verification. AIO-9 through AIO-12 consume
+    the neutral common IR handles, preserving the phase ownership boundary.
+23. [x] Ownership M4: move AIO-1, AIO-3, and AIO-4 PU fact capture into VHO;
     keep graph/fact/snapshot/locality records and structural services common.
+    VHO now owns active-PU semantic-root scanning, semantic tensor fact/use
+    derivation, and tensor lifetime/locality derivation. Common retains graph,
+    fact, control-snapshot, and locality records with construction,
+    verification, access, and printing. WOPT continues to own CFG-derived
+    control-snapshot capture through its existing adapter.
 24. [ ] Ownership M5: after all common callers have moved, relocate AIO-2
     selection policy to the owning phase, split tests by owner, rerun retained
     artifact comparisons, and certify no binary WHIRL, mapped-image, runtime

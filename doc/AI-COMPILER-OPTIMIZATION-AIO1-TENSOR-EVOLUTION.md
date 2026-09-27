@@ -88,6 +88,18 @@ the owner, node and edge counts, node kind, value ID/name, canonical TY index,
 dtype, logical shape, semantic root, and flags. The graph is intentionally not
 printed by `ir_b2a`: AIO-1 is runtime-only and must not leak into binary WHIRL.
 
+## Ownership Boundary
+
+`osprey/common/com/dsl_tensor_evolution.{h,cxx}` owns graph records, explicit
+root and representation-node construction, verification, access, stable names,
+and generic printing. It does not scan the active DSL image to decide which
+values are roots.
+
+`osprey/be/vho/dsl_tensor_evolution_opt.{h,cxx}` owns that PU-local scan through
+`VHO_DSL_Tensor_Evolution_Build_Semantic_Roots()`. It selects live tensor
+values and calls the common explicit-root constructor. Cross-PU root discovery
+is not implicit; it belongs to a future IPA scope.
+
 ## Certification
 
 The focused test builds a fixed-shape `common.matmul`:

@@ -35,6 +35,17 @@ barriers, buffering depth, or overlap cost.
 
 ## Runtime Records
 
+`common/com/dsl_fetch_pipeline.{h,cxx}` owns the policy-free
+`CommonFetchPlanIR/CommonPipelineIR` records, bulk construction, structural
+verification, accessors, stable names, and generic printing. It does not
+inspect active WHIRL, generate movement plans, classify legality, estimate
+overlap, or select a plan.
+
+`be/vho/dsl_fetch_pipeline_opt.{h,cxx}` consumes the neutral
+`CommonTilePlanIR` and owns active-PU movement-plan generation, overlap and
+resource reasoning, costs, selection, and semantic verification. It
+materializes completed decisions through the common bulk constructor.
+
 Each fetch site references one selected AIO-9 tile plan. Its alternatives own:
 
 - two operand fetch records with exact value and tensor-type identity;

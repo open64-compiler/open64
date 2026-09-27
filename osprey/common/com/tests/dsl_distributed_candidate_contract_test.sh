@@ -52,7 +52,8 @@ cmp "$after_b" "$repeat_b"
 cmp "$after_t" "$repeat_t"
 cmp "$analysis" "$repeat_analysis"
 
-grep -q "DSLDistributedCandidates:.*sites=1.*descriptors=4.*aliases=4.*ranges=7.*epochs=1.*intents=4.*select=yes.*apply=no" "$analysis"
+grep -q "CommonDistributedPlanIR:.*sites=1.*descriptors=4.*ranges=7.*alternatives=4.*epochs=1.*intents=4" "$analysis"
+grep -q "VHODSLDistributedDecision:.*sites=1.*descriptors=4.*aliases=4.*ranges=7.*epochs=1.*intents=4.*select=yes.*apply=no" "$analysis"
 grep -q "placement=replicated sharding=replicated ownership=replicated" "$analysis"
 grep -q "placement=partitioned sharding=axis ownership=disjoint" "$analysis"
 grep -q "placement=partitioned sharding=partial_reduction ownership=reduced" "$analysis"
@@ -65,7 +66,7 @@ grep -q "selected=3" "$analysis"
 grep -q "kind=distributed" "$analysis"
 grep -q "OPR_DSLMATMUL" "$after_t"
 grep -q "OPR_DSLRELU" "$after_t"
-if grep -q "DSLDistributedCandidates" "$after_t"; then
+if grep -q "CommonDistributedPlanIR\|VHODSLDistributedDecision" "$after_t"; then
   echo "error: runtime-only AIO-7 analysis leaked into binary WHIRL" >&2
   exit 1
 fi

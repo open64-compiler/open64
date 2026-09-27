@@ -3,12 +3,9 @@
  */
 
 /*
- * AIO-11 PU-local physical implementation selection. The first slice compares
- * complete baseline, generated-kernel, and reviewed-provider plans without
- * rewriting executable or binary WHIRL during selection. Reviewed provider
- * lowering consumes this analysis one family at a time at the normal VHO DSL
- * lowering boundary. Design:
- * doc/AI-COMPILER-OPTIMIZATION-AIO11-PHYSICAL-PLAN.md.
+ * CommonPhysicalPlanIR records, provider capabilities, and policy-free IR
+ * services. Candidate discovery, costing, selection, and lowering live in
+ * be/vho. Design: doc/AI-COMPILER-OPTIMIZATION-AIO11-PHYSICAL-PLAN.md.
  */
 
 #ifndef dsl_physical_plan_INCLUDED
@@ -21,10 +18,9 @@
 #include "dsl_opt_plan.h"
 #include "dsl_tile_candidate.h"
 
-struct pu_info;
-struct DSL_PHYSICAL_PLAN_ANALYSIS;
+struct DSL_PHYSICAL_PLAN_IR;
 
-typedef struct DSL_PHYSICAL_PLAN_ANALYSIS DSL_PHYSICAL_PLAN_ANALYSIS;
+typedef struct DSL_PHYSICAL_PLAN_IR DSL_PHYSICAL_PLAN_IR;
 typedef UINT32 DSL_PHYSICAL_SITE_ID;
 typedef UINT32 DSL_PHYSICAL_IMPLEMENTATION_ID;
 typedef UINT32 DSL_PROVIDER_CAPABILITY_ID;
@@ -73,21 +69,6 @@ enum {
     DSL_PHYSICAL_IMPLEMENTATION_FLAG_PROVIDER_AVAILABLE = 0x00000008,
     DSL_PHYSICAL_IMPLEMENTATION_FLAG_SEMANTICS_PRESERVING = 0x00000010
 };
-
-typedef struct {
-    UINT32 generate_candidates;
-    UINT32 select_plan;
-    UINT32 apply_selected_plan;
-    UINT32 optimization_level;
-    UINT32 target_profile_id;
-    DSL_IR_VALUE_ID focus_value_id;
-    UINT32 enabled_provider_mask;
-    UINT32 available_provider_mask;
-    UINT32 max_sites;
-    UINT32 max_implementations_per_site;
-    UINT32 reserved0;
-    UINT32 reserved1;
-} DSL_PHYSICAL_PLAN_CONTROL;
 
 typedef struct {
     DSL_PROVIDER_CAPABILITY_ID id;
@@ -144,47 +125,42 @@ typedef struct {
     UINT32 reserved;
 } DSL_PHYSICAL_IMPLEMENTATION_RECORD;
 
-extern void DSL_physical_plan_control_init
-                                (DSL_PHYSICAL_PLAN_CONTROL *control);
-extern DSL_PHYSICAL_PLAN_ANALYSIS *DSL_physical_plan_create
-                                (struct pu_info *pu,
-                                 const DSL_TENSOR_EVOLUTION_GRAPH *graph,
-                                 const DSL_TILE_ANALYSIS *tile,
-                                 const DSL_FETCH_PIPELINE_ANALYSIS *pipeline,
-                                 const DSL_PHYSICAL_PLAN_CONTROL *control,
+typedef struct {
+    ST_IDX owner_pu_st;
+    const DSL_PHYSICAL_SITE_RECORD *sites;
+    UINT32 site_count;
+    const DSL_PHYSICAL_IMPLEMENTATION_RECORD *implementations;
+    UINT32 implementation_count;
+} DSL_PHYSICAL_PLAN_IR_CREATE_INFO;
+
+extern DSL_PHYSICAL_PLAN_IR *DSL_physical_plan_ir_create
+                                (const DSL_PHYSICAL_PLAN_IR_CREATE_INFO *info,
                                  FILE *diagnostic);
-extern void DSL_physical_plan_destroy
-                                (DSL_PHYSICAL_PLAN_ANALYSIS *analysis);
-extern BOOL DSL_physical_plan_build
-                                (DSL_PHYSICAL_PLAN_ANALYSIS *analysis,
+extern void DSL_physical_plan_ir_destroy (DSL_PHYSICAL_PLAN_IR *ir);
+extern BOOL DSL_physical_plan_ir_verify
+                                (const DSL_PHYSICAL_PLAN_IR *ir,
                                  FILE *diagnostic);
-extern BOOL DSL_physical_plan_verify
-                                (const DSL_PHYSICAL_PLAN_ANALYSIS *analysis,
-                                 FILE *diagnostic);
-extern void DSL_physical_plan_print
-                                (FILE *file,
-                                 const DSL_PHYSICAL_PLAN_ANALYSIS *analysis);
-extern UINT32 DSL_physical_plan_site_count
-                                (const DSL_PHYSICAL_PLAN_ANALYSIS *analysis);
-extern UINT32 DSL_physical_plan_implementation_count
-                                (const DSL_PHYSICAL_PLAN_ANALYSIS *analysis);
-extern BOOL DSL_physical_plan_get_site
-                                (const DSL_PHYSICAL_PLAN_ANALYSIS *analysis,
+extern void DSL_physical_plan_ir_print
+                                (FILE *file, const DSL_PHYSICAL_PLAN_IR *ir);
+extern ST_IDX DSL_physical_plan_ir_owner (const DSL_PHYSICAL_PLAN_IR *ir);
+extern UINT32 DSL_physical_plan_ir_site_count
+                                (const DSL_PHYSICAL_PLAN_IR *ir);
+extern UINT32 DSL_physical_plan_ir_implementation_count
+                                (const DSL_PHYSICAL_PLAN_IR *ir);
+extern BOOL DSL_physical_plan_ir_get_site
+                                (const DSL_PHYSICAL_PLAN_IR *ir,
                                  DSL_PHYSICAL_SITE_ID id,
                                  DSL_PHYSICAL_SITE_RECORD *record);
-extern BOOL DSL_physical_plan_get_implementation
-                                (const DSL_PHYSICAL_PLAN_ANALYSIS *analysis,
+extern BOOL DSL_physical_plan_ir_get_implementation
+                                (const DSL_PHYSICAL_PLAN_IR *ir,
                                  DSL_PHYSICAL_IMPLEMENTATION_ID id,
                                  DSL_PHYSICAL_IMPLEMENTATION_RECORD *record);
-extern BOOL DSL_physical_plan_find_selected
-                                (const DSL_PHYSICAL_PLAN_ANALYSIS *analysis,
+extern BOOL DSL_physical_plan_ir_find_selected
+                                (const DSL_PHYSICAL_PLAN_IR *ir,
                                  DSL_IR_NODE_ID semantic_node_id,
                                  DSL_PHYSICAL_SITE_RECORD *site,
                                  DSL_PHYSICAL_IMPLEMENTATION_RECORD
                                      *implementation);
-extern const DSL_OPT_PLAN_CONTEXT *DSL_physical_plan_get_plan_context
-                                (const DSL_PHYSICAL_PLAN_ANALYSIS *analysis,
-                                 DSL_PHYSICAL_SITE_ID id);
 extern UINT32 DSL_provider_capability_count (void);
 extern BOOL DSL_provider_capability_get
                                 (DSL_PROVIDER_CAPABILITY_ID id,

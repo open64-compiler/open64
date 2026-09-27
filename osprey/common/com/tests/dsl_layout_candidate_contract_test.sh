@@ -54,14 +54,15 @@ cmp "$after_b" "$repeat_b"
 cmp "$after_t" "$repeat_t"
 cmp "$analysis" "$repeat_analysis"
 
-grep -q "DSLLogicalLayouts:.*descriptors=2.*sites=1.*alternatives=2.*select=yes.*apply=no" "$analysis"
+grep -q "CommonLogicalLayoutIR:.*descriptors=2.*sites=1.*alternatives=2" "$analysis"
+grep -q "VHODSLLogicalLayoutDecision:.*descriptors=2.*sites=1.*alternatives=2.*select=yes.*apply=no" "$analysis"
 grep -q "descriptor 1 kind=permuted.*axes=\[1,0\]" "$analysis"
 grep -q "descriptor 2 kind=blocked.*blocks=\[0:8,1:8\]" "$analysis"
 grep -q "compatibility=proven conversion=known bytes=2048" "$analysis"
 grep -q "kind=logical_layout" "$analysis"
 grep -q "OPR_DSLMATMUL" "$after_t"
 grep -q "OPR_DSLRELU" "$after_t"
-if grep -q "DSLLogicalLayouts" "$after_t"; then
+if grep -q "CommonLogicalLayoutIR\|VHODSLLogicalLayoutDecision" "$after_t"; then
   echo "error: runtime-only AIO-6 layouts leaked into binary WHIRL" >&2
   exit 1
 fi

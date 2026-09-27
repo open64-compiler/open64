@@ -25,6 +25,9 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
+#include "dsl_tensor_analysis_opt.h"
+#include "dsl_tensor_evolution_opt.h"
+#include "dsl_tensor_locality_opt.h"
 #include "dsl_opcode.h"
 #include "dsl_tensor_analysis.h"
 #include "dsl_tensor_evolution.h"
@@ -287,19 +290,19 @@ Analyze
     DSL_TENSOR_CONTROL_SNAPSHOT *snapshot;
     DSL_TENSOR_LOCALITY_ANALYSIS *locality;
     if (graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots(graph, stderr))
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr))
         return FALSE;
     tensor_analysis = DSL_tensor_analysis_create
                           (fixture->pu, graph, stderr);
     if (tensor_analysis == NULL ||
-        !DSL_tensor_analysis_build(tensor_analysis, stderr))
+        !VHO_DSL_Tensor_Analysis_Build(tensor_analysis, stderr))
         return FALSE;
     snapshot = Create_Control_Snapshot(fixture, kind);
     locality = DSL_tensor_locality_create
                    (fixture->pu, tensor_analysis, snapshot, stderr);
     if (snapshot == NULL || locality == NULL ||
-        !DSL_tensor_locality_build(locality, stderr) ||
-        !DSL_tensor_locality_build(locality, stderr) ||
+        !VHO_DSL_Tensor_Locality_Build(locality, stderr) ||
+        !VHO_DSL_Tensor_Locality_Build(locality, stderr) ||
         !DSL_tensor_locality_verify(locality, stderr) ||
         DSL_tensor_locality_fact_count(locality) != 5 ||
         DSL_tensor_locality_use_count(locality) != 6 ||
@@ -441,17 +444,17 @@ Run_Unknown_And_PU_Scope(void)
 
     graph = DSL_tensor_evolution_create(pending.pu, stderr);
     if (graph == NULL ||
-        !DSL_tensor_evolution_build_semantic_roots(graph, stderr))
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(graph, stderr))
         return 1;
     tensor_analysis = DSL_tensor_analysis_create(pending.pu, graph, stderr);
     if (tensor_analysis == NULL ||
-        !DSL_tensor_analysis_build(tensor_analysis, quiet))
+        !VHO_DSL_Tensor_Analysis_Build(tensor_analysis, quiet))
         return 1;
     snapshot = Create_Control_Snapshot(&pending, AIO4_CONTROL_STRAIGHT);
     locality = DSL_tensor_locality_create
                    (pending.pu, tensor_analysis, snapshot, stderr);
     if (locality == NULL ||
-        !DSL_tensor_locality_build(locality, quiet) ||
+        !VHO_DSL_Tensor_Locality_Build(locality, quiet) ||
         !Create_Fixture("aio4_other_pu", "[2,4]", &other) ||
         DSL_tensor_locality_verify(locality, quiet) ||
         !DSL_Builder_Select_PU(pending.pu) ||

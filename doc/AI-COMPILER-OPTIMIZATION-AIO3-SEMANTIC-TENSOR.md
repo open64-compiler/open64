@@ -105,6 +105,18 @@ domain operation. Inspection therefore reports `cnn.conv2d.v2` and
 Promotion, implementation selection, and lowering may consume these facts
 later, but only after the owning domain gatekeeper has completed.
 
+## Ownership Boundary
+
+`osprey/common/com/dsl_tensor_analysis.{h,cxx}` owns TensorAnalysisIR fact/use
+records, lifecycle, verification, access, stable names, and generic printing.
+It does not walk PU values or classify operands.
+
+`osprey/be/vho/dsl_tensor_analysis_opt.{h,cxx}` owns active-PU fact capture
+through `VHO_DSL_Tensor_Analysis_Build()`: descriptor inspection, producer and
+consumer discovery, value/use roles, ownership, memory behavior, and
+completeness derivation. The result remains a common opaque analysis handle for
+downstream VHO consumers.
+
 ## Inspection And Certification
 
 `DSL_tensor_analysis_print()` emits deterministic per-PU fact and use traces.
