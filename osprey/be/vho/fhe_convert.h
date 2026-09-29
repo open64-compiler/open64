@@ -84,6 +84,8 @@ extern BOOL VHO_FHE_Convert_Checkpoint_Finalize
                                  FILE *diagnostic);
 extern BOOL VHO_FHE_Convert_Checkpoint_Publish_Artifacts
                                 (FILE *diagnostic);
+extern BOOL VHO_FHE_Convert_Checkpoint_Publish_Binary
+                                (FILE *diagnostic);
 extern void VHO_FHE_Convert_Checkpoint_Complete (void);
 extern void VHO_FHE_Convert_Checkpoint_Abort (void);
 extern BOOL VHO_FHE_Convert_Driver_Try

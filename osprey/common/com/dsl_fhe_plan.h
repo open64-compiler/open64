@@ -34,6 +34,13 @@
 #define DSL_FHE_CONTEXT_STATE_IMAGE_HEADER_SIZE  64
 #define DSL_FHE_CONTEXT_CKKS_STATE_RECORD_SIZE   88
 
+#define DSL_FHE_MATERIALIZATION_IMAGE_MAGIC        0x464d5431
+#define DSL_FHE_MATERIALIZATION_IMAGE_VERSION      1
+#define DSL_FHE_MATERIALIZATION_IMAGE_HEADER_SIZE  64
+#define DSL_FHE_MATERIALIZATION_OPERATION_SIZE     64
+#define DSL_FHE_MATERIALIZATION_OPERATIONS_PER_CONTEXT 6
+#define DSL_FHE_MATERIALIZATION_NEW_STATES_PER_CONTEXT 5
+
 #define DSL_FHE_WRAPPER_CNN_CONV2D \
     "fhe.cnn.conv2d"
 #define DSL_FHE_WRAPPER_CNN_RESIDUAL_ADD \
@@ -59,6 +66,7 @@ typedef UINT32 DSL_FHE_APPROX_STAGE_ID;
 typedef UINT32 DSL_FHE_APPROX_ASSOCIATION_ID;
 typedef UINT32 DSL_FHE_CONTEXT_RANGE_ID;
 typedef UINT32 DSL_FHE_CONTEXT_CKKS_STATE_ID;
+typedef UINT32 DSL_FHE_MATERIALIZATION_OPERATION_ID;
 
 #define DSL_FHE_CONVERSION_DISPOSITION_INVALID_ID 0
 #define DSL_FHE_APPROXIMATION_CONTRACT_INVALID_ID 0
@@ -68,6 +76,7 @@ typedef UINT32 DSL_FHE_CONTEXT_CKKS_STATE_ID;
 #define DSL_FHE_APPROX_ASSOCIATION_INVALID_ID       0
 #define DSL_FHE_CONTEXT_RANGE_INVALID_ID            0
 #define DSL_FHE_CONTEXT_CKKS_STATE_INVALID_ID        0
+#define DSL_FHE_MATERIALIZATION_OPERATION_INVALID_ID 0
 
 typedef enum {
     DSL_FHE_PLAN_RECORD_UNKNOWN = 0,
@@ -178,6 +187,18 @@ typedef enum {
 typedef enum {
     DSL_FHE_CONTEXT_STATE_CAP_CKKS_STATE = 0x00000001
 } DSL_FHE_CONTEXT_STATE_CAPABILITY;
+
+typedef enum {
+    DSL_FHE_MATERIALIZATION_CAP_CONTEXT_SCHEDULE = 0x00000001
+} DSL_FHE_MATERIALIZATION_CAPABILITY;
+
+typedef enum {
+    DSL_FHE_MATERIALIZATION_OPERATION_UNKNOWN = 0,
+    DSL_FHE_MATERIALIZATION_OPERATION_REFRESH = 1,
+    DSL_FHE_MATERIALIZATION_OPERATION_NORMALIZE = 2,
+    DSL_FHE_MATERIALIZATION_OPERATION_APPROX_STAGE = 3,
+    DSL_FHE_MATERIALIZATION_OPERATION_RECONSTRUCT_RELU = 4
+} DSL_FHE_MATERIALIZATION_OPERATION_KIND;
 
 typedef enum {
     DSL_FHE_DISPOSITION_FLAG_NONE = 0,
@@ -450,6 +471,49 @@ typedef struct {
     UINT32 reserved;
 } DSL_FHE_CONTEXT_CKKS_STATE_RECORD;
 
+typedef struct {
+    UINT32 magic;
+    UINT32 version;
+    UINT32 header_size;
+    UINT32 record_kind_count;
+    UINT32 capabilities;
+    UINT32 flags;
+    UINT32 operation_count;
+    UINT32 context_count;
+    UINT32 reserved0;
+    UINT32 reserved1;
+    UINT32 reserved2;
+    UINT32 reserved3;
+    UINT32 reserved4;
+    UINT32 reserved5;
+    UINT32 reserved6;
+    UINT32 reserved7;
+} DSL_FHE_MATERIALIZATION_IMAGE_HEADER;
+
+/*
+ * Provider-independent schedule evidence.  Intermediate CKKS payloads remain
+ * in the context-state table; these rows only bind the reviewed operation
+ * order and its exact range, stage, state, and TCON relationships.
+ */
+typedef struct {
+    DSL_FHE_MATERIALIZATION_OPERATION_ID id;
+    ST_IDX owner_pu_st;
+    DSL_IR_VALUE_ID source_relu_value_id;
+    DSL_PU_SOURCE_IDENTITY_ID context_pu_identity_id;
+    DSL_CALLSITE_METADATA_ID context_callsite_id;
+    UINT32 operation_kind;
+    UINT32 operation_ordinal;
+    DSL_FHE_COMPOSITE_PROFILE_ID profile_id;
+    DSL_FHE_APPROX_STAGE_ID stage_id;
+    DSL_FHE_CONTEXT_RANGE_ID range_id;
+    DSL_FHE_CONTEXT_CKKS_STATE_ID input_state_id;
+    DSL_FHE_CONTEXT_CKKS_STATE_ID output_state_id;
+    TCON_IDX parameter_tcon;
+    UINT32 flags;
+    UINT32 reserved0;
+    UINT32 reserved1;
+} DSL_FHE_MATERIALIZATION_OPERATION_RECORD;
+
 /* Producer-runtime inputs. No pointer in these records enters the IR image. */
 typedef struct {
     UINT32 disposition;
@@ -499,6 +563,7 @@ extern void DSL_FHE_Plan_Image_Get_Header
                                 (DSL_FHE_PLAN_IMAGE_HEADER *header);
 extern BOOL DSL_FHE_Plan_Image_Has_Records (void);
 extern BOOL DSL_FHE_Plan_Image_Validate (FILE *diagnostic);
+extern BOOL DSL_FHE_Plan_Image_Validate_Partial (FILE *diagnostic);
 extern BOOL DSL_FHE_Plan_Image_Load_Mapped (const void *section_base,
                                             UINT64 section_size,
                                             FILE *diagnostic);
@@ -687,5 +752,39 @@ extern BOOL DSL_FHE_Context_State_Find_Latest
                                  DSL_CALLSITE_METADATA_ID context_callsite_id,
                                  UINT32 state_role,
                                  DSL_FHE_CONTEXT_CKKS_STATE_RECORD *record);
+
+extern void DSL_FHE_Materialization_Image_Reset (void);
+extern void DSL_FHE_Materialization_Image_Get_Header
+                                (DSL_FHE_MATERIALIZATION_IMAGE_HEADER *header);
+extern BOOL DSL_FHE_Materialization_Image_Has_Records (void);
+extern BOOL DSL_FHE_Materialization_Image_Validate (FILE *diagnostic);
+extern BOOL DSL_FHE_Materialization_Image_Validate_Partial
+                                (FILE *diagnostic);
+extern BOOL DSL_FHE_Materialization_Image_Load_Mapped
+                                (const void *section_base,
+                                 UINT64 section_size,
+                                 FILE *diagnostic);
+extern void DSL_FHE_Materialization_Image_Print (FILE *file);
+
+extern DSL_FHE_MATERIALIZATION_OPERATION_ID
+    DSL_FHE_Materialization_Intern_Complete_Context
+                                (DSL_FHE_CONTEXT_RANGE_ID range_id,
+                                 const DSL_FHE_CONTEXT_CKKS_STATE_RECORD
+                                     *post_operation_states,
+                                 UINT32 post_operation_state_count);
+extern UINT32 DSL_FHE_Materialization_Operation_Count (void);
+extern BOOL DSL_FHE_Materialization_Get
+                                (DSL_FHE_MATERIALIZATION_OPERATION_ID id,
+                                 DSL_FHE_MATERIALIZATION_OPERATION_RECORD
+                                     *record);
+extern BOOL DSL_FHE_Materialization_Find
+                                (ST_IDX owner_pu_st,
+                                 DSL_IR_VALUE_ID source_relu_value_id,
+                                 DSL_PU_SOURCE_IDENTITY_ID
+                                     context_pu_identity_id,
+                                 DSL_CALLSITE_METADATA_ID context_callsite_id,
+                                 UINT32 operation_ordinal,
+                                 DSL_FHE_MATERIALIZATION_OPERATION_RECORD
+                                     *record);
 
 #endif /* dsl_fhe_plan_INCLUDED */

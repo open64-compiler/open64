@@ -324,7 +324,9 @@ BE_VHO_CXX_SRCS = \
   dsl_physical_plan_opt.cxx \
   dsl_runtime_variant_opt.cxx \
   dsl_telemetry_feedback_opt.cxx \
+  fhe_checkpoint.cxx     \
   fhe_convert.cxx        \
+  fhe_materialize.cxx    \
   fhe_semantic_convert.cxx \
   f90_lower.cxx           \
   f90_lower_dep.cxx     \

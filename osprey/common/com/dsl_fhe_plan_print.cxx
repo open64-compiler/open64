@@ -473,3 +473,45 @@ DSL_FHE_Context_State_Image_Print (FILE *file)
                     (record.pending_bootstrap_reason), record.flags);
     }
 }
+
+static const char *
+DSL_FHE_Materialization_Kind_Name (UINT32 kind)
+{
+    static const char *names[] = {
+        "unknown", "refresh", "normalize", "approx_stage",
+        "reconstruct_relu"
+    };
+    return DSL_FHE_Plan_Name
+               (kind, names, sizeof(names) / sizeof(names[0]));
+}
+
+void
+DSL_FHE_Materialization_Image_Print (FILE *file)
+{
+    if (file == NULL || !DSL_FHE_Materialization_Image_Has_Records())
+        return;
+    DSL_FHE_MATERIALIZATION_IMAGE_HEADER header;
+    DSL_FHE_Materialization_Image_Get_Header(&header);
+    fprintf(file, "\nFHE ReLU Materialization Image: version=%u "
+            "capabilities=0x%08x contexts=%u operations=%u\n",
+            header.version, header.capabilities, header.context_count,
+            header.operation_count);
+    fprintf(file, "FHE ReLU Context Operation Table:\n");
+    for (UINT32 i = 1; i <= header.operation_count; ++i) {
+        DSL_FHE_MATERIALIZATION_OPERATION_RECORD record;
+        DSL_FHE_Materialization_Get(i, &record);
+        fprintf(file, "  [%u] owner_pu=%s source=value%u(%s) "
+                "context_identity=%u callsite=%u ordinal=%u kind=%s "
+                "profile=%u stage=%u range=%u input_state=%u "
+                "output_state=%u parameter_tcon=%u flags=0x%x\n",
+                record.id, ST_name(St_Table[record.owner_pu_st]),
+                record.source_relu_value_id,
+                DSL_FHE_Plan_Value_Name(record.source_relu_value_id),
+                record.context_pu_identity_id, record.context_callsite_id,
+                record.operation_ordinal,
+                DSL_FHE_Materialization_Kind_Name(record.operation_kind),
+                record.profile_id, record.stage_id, record.range_id,
+                record.input_state_id, record.output_state_id,
+                (UINT32)record.parameter_tcon, record.flags);
+    }
+}

@@ -189,7 +189,9 @@ LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
 LDIRT += dsl_opt_contract_test dsl_opt_contract_test.o
 LDIRT += dsl_shape_refine_contract_test dsl_shape_refine_contract_test.o
 LDIRT += dsl_shape_refine.o
-LDIRT += fhe_convert_contract_test fhe_convert_contract_test.o fhe_convert.o
+LDIRT += fhe_convert_contract_test fhe_convert_contract_test.o \
+	fhe_checkpoint.o fhe_convert.o fhe_materialize.o
+LDIRT += fhe_materialize_contract_test fhe_materialize_contract_test.o
 LDIRT += fhe_semantic_convert_test fhe_semantic_convert_test.o
 LDIRT += fhe_semantic_convert.o
 LDIRT += dsl_wopt_bridge_test dsl_wopt_bridge_test.o
@@ -587,22 +589,40 @@ dsl_shape_refine_contract_test.o: \
 		$(BE_VHO_DIR)/tests/dsl_shape_refine_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-fhe_convert_contract_test: $(OBJECTS) controls.o fhe_convert.o \
+fhe_convert_contract_test: $(OBJECTS) controls.o fhe_checkpoint.o \
+		fhe_convert.o \
 		fhe_convert_contract_test.o
 	$(link.c++f) -o $@ fhe_convert_contract_test.o controls.o \
-		fhe_convert.o $(OBJECTS) $(LDFLAGS)
+		fhe_checkpoint.o fhe_convert.o $(OBJECTS) $(LDFLAGS)
+
+fhe_checkpoint.o: $(BE_VHO_DIR)/fhe_checkpoint.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 fhe_convert.o: $(BE_VHO_DIR)/fhe_convert.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+fhe_materialize.o: $(BE_VHO_DIR)/fhe_materialize.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 fhe_convert_contract_test.o: \
 	$(BE_VHO_DIR)/tests/fhe_convert_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-fhe_semantic_convert_test: $(OBJECTS) controls.o fhe_convert.o \
+fhe_materialize_contract_test: $(OBJECTS) controls.o fhe_checkpoint.o \
+		fhe_materialize.o fhe_materialize_contract_test.o
+	$(link.c++f) -o $@ fhe_materialize_contract_test.o controls.o \
+		fhe_checkpoint.o fhe_materialize.o $(OBJECTS) $(LDFLAGS)
+
+fhe_materialize_contract_test.o: \
+	$(BE_VHO_DIR)/tests/fhe_materialize_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+fhe_semantic_convert_test: $(OBJECTS) controls.o fhe_checkpoint.o \
+		fhe_convert.o \
 		fhe_semantic_convert.o fhe_semantic_convert_test.o
 	$(link.c++f) -o $@ fhe_semantic_convert_test.o controls.o \
-		fhe_convert.o fhe_semantic_convert.o $(OBJECTS) $(LDFLAGS)
+		fhe_checkpoint.o fhe_convert.o fhe_semantic_convert.o \
+		$(OBJECTS) $(LDFLAGS)
 
 fhe_semantic_convert.o: $(BE_VHO_DIR)/fhe_semantic_convert.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@

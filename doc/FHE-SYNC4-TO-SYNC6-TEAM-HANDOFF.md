@@ -125,6 +125,13 @@ common.relu(x)
 No refresh movement, merging, deduplication, or profitability decision is
 allowed at `-O0`.
 
+The accepted S4-1 contract is
+`doc/FHE-SYNC4-RELU-MATERIALIZATION-CONTRACT.md`. Main/common owns its fixed
+image, managed APIs, reader/writer, inspection, and driver/checkpoint hooks.
+The FHE-owned S4-2 static provider package is
+`doc/fhe-policy/sync4-relu/package-index.json`; native authenticated option
+transport and all-PU consumption depend on the S4-1 driver hook.
+
 ### Commit Plan
 
 | Commit | Coding scope | Required tests and evidence |
