@@ -71,7 +71,6 @@
 #endif /* ! defined(BUILD_OS_DARWIN) */
 #include <cmplrs/rcodes.h>
 #include <dirent.h>
-#include <errno.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
@@ -137,6 +136,7 @@
 #include "dsl_lower.h"
 #include "dsl_shape_refine.h"
 #include "fhe_convert.h"
+#include "fhe_materialize.h"
 #include "iter.h"		    /* PU iterator for loops */
 #include "dra_export.h"             /* for DRA routines */
 #include "ti_init.h"		    /* for targ_info */
@@ -426,11 +426,13 @@ static BOOL need_wopt_output = FALSE;
 static BOOL need_lno_output = FALSE;
 static BOOL need_ipl_output = FALSE;
 static BOOL need_fhe_checkpoint_output = FALSE;
+static BOOL need_fhe_materialization_output = FALSE;
 static Output_File *ir_output = 0;
 static char *fhe_checkpoint_temp_name = NULL;
 static UINT32 fhe_checkpoint_pu_count;
 static VHO_FHE_CONVERT_RESULT fhe_checkpoint_result;
-static BOOL fhe_checkpoint_published = FALSE;
+static UINT32 fhe_materialization_pu_count;
+static VHO_FHE_MATERIALIZE_RESULT fhe_materialization_result;
 
 // options stack for PU and region level pragmas
 static OPTIONS_STACK *Options_Stack;
@@ -460,8 +462,28 @@ FHE_Conversion_Checkpoint_Enabled (void)
          VHO_FHE_Conversion_Checkpoint_Output[0] != '\0';
 }
 
+static BOOL
+FHE_Materialization_Checkpoint_Enabled (void)
+{
+  return VHO_FHE_Materialization_Checkpoint_Output != NULL &&
+         VHO_FHE_Materialization_Checkpoint_Output[0] != '\0';
+}
+
+static BOOL
+FHE_Checkpoint_Enabled (void)
+{
+  return FHE_Conversion_Checkpoint_Enabled() ||
+         FHE_Materialization_Checkpoint_Enabled();
+}
+
+static BOOL
+FHE_Checkpoint_Output_Active (void)
+{
+  return need_fhe_checkpoint_output || need_fhe_materialization_output;
+}
+
 static void
-Close_FHE_Conversion_Checkpoint (void)
+Close_FHE_Checkpoint_Output (void)
 {
   if (ir_output != NULL) {
     ir_output = NULL;
@@ -475,8 +497,16 @@ Release_FHE_Conversion_Checkpoint (void)
   Register_Cleanup_Callback(NULL);
   free(fhe_checkpoint_temp_name);
   fhe_checkpoint_temp_name = NULL;
-  fhe_checkpoint_published = FALSE;
   need_fhe_checkpoint_output = FALSE;
+}
+
+static void
+Release_FHE_Materialization_Checkpoint (void)
+{
+  Register_Cleanup_Callback(NULL);
+  free(fhe_checkpoint_temp_name);
+  fhe_checkpoint_temp_name = NULL;
+  need_fhe_materialization_output = FALSE;
 }
 
 static void
@@ -486,47 +516,21 @@ Cleanup_FHE_Conversion_Checkpoint (void)
     return;
 
   Register_Cleanup_Callback(NULL);
-  Close_FHE_Conversion_Checkpoint();
-  if (fhe_checkpoint_temp_name != NULL)
-    remove(fhe_checkpoint_temp_name);
-  if (fhe_checkpoint_published &&
-      VHO_FHE_Conversion_Checkpoint_Output != NULL)
-    remove(VHO_FHE_Conversion_Checkpoint_Output);
+  Close_FHE_Checkpoint_Output();
   VHO_FHE_Convert_Checkpoint_Abort();
   Release_FHE_Conversion_Checkpoint();
 }
 
-static BOOL
-Publish_FHE_Conversion_Checkpoint (void)
+static void
+Cleanup_FHE_Materialization_Checkpoint (void)
 {
-  sigset_t all_signals;
-  sigset_t previous_signals;
-  if (sigfillset(&all_signals) != 0 ||
-      sigprocmask(SIG_BLOCK, &all_signals, &previous_signals) != 0)
-    return FALSE;
+  if (!need_fhe_materialization_output && fhe_checkpoint_temp_name == NULL)
+    return;
 
-  BOOL published = FALSE;
-  INT publish_error = 0;
-  if (link(fhe_checkpoint_temp_name,
-           VHO_FHE_Conversion_Checkpoint_Output) != 0) {
-    publish_error = errno;
-  }
-  else {
-    fhe_checkpoint_published = TRUE;
-    if (unlink(fhe_checkpoint_temp_name) != 0)
-      publish_error = errno;
-    else
-      published = TRUE;
-  }
-
-  INT restore_error = 0;
-  if (sigprocmask(SIG_SETMASK, &previous_signals, NULL) != 0)
-    restore_error = errno;
-  if (restore_error != 0)
-    errno = restore_error;
-  else if (!published)
-    errno = publish_error;
-  return published && restore_error == 0;
+  Register_Cleanup_Callback(NULL);
+  Close_FHE_Checkpoint_Output();
+  VHO_FHE_Materialize_Checkpoint_Abort();
+  Release_FHE_Materialization_Checkpoint();
 }
 
 static void
@@ -550,7 +554,6 @@ Open_FHE_Conversion_Checkpoint (void)
 
   VHO_FHE_Convert_Result_Init(&fhe_checkpoint_result);
   fhe_checkpoint_pu_count = 0;
-  fhe_checkpoint_published = FALSE;
   need_fhe_checkpoint_output = TRUE;
   Register_Cleanup_Callback(Cleanup_FHE_Conversion_Checkpoint);
   ir_output = Open_Output_Info(fhe_checkpoint_temp_name);
@@ -560,12 +563,47 @@ Open_FHE_Conversion_Checkpoint (void)
 }
 
 static void
+Open_FHE_Materialization_Checkpoint (void)
+{
+  const char *output = VHO_FHE_Materialization_Checkpoint_Output;
+  size_t length = strlen(output) + sizeof(".tmp");
+
+  fhe_checkpoint_temp_name = (char *)malloc(length);
+  FmtAssert(fhe_checkpoint_temp_name != NULL,
+            ("could not allocate FHE materialization pathname"));
+  snprintf(fhe_checkpoint_temp_name, length, "%s.tmp", output);
+  remove(fhe_checkpoint_temp_name);
+
+  if (!VHO_FHE_Materialize_Checkpoint_Begin
+           (fhe_checkpoint_temp_name, output, stderr)) {
+    free(fhe_checkpoint_temp_name);
+    fhe_checkpoint_temp_name = NULL;
+    FmtAssert(FALSE,
+              ("could not reserve FHE materialization output %s", output));
+  }
+
+  VHO_FHE_Materialize_Result_Init(&fhe_materialization_result);
+  fhe_materialization_pu_count = 0;
+  need_fhe_materialization_output = TRUE;
+  VHO_FHE_Enable_Materialization = TRUE;
+  Register_Cleanup_Callback(Cleanup_FHE_Materialization_Checkpoint);
+  ir_output = Open_Output_Info(fhe_checkpoint_temp_name);
+  FmtAssert(ir_output != NULL,
+            ("could not open FHE materialization output %s",
+             fhe_checkpoint_temp_name));
+}
+
+static void
 load_components (INT argc, char **argv)
 {
     INT phase_argc;
     char **phase_argv;
 
-    if (FHE_Conversion_Checkpoint_Enabled()) {
+    FmtAssert(!(FHE_Conversion_Checkpoint_Enabled() &&
+                FHE_Materialization_Checkpoint_Enabled()),
+              ("FHE conversion and materialization checkpoints are "
+               "mutually exclusive"));
+    if (FHE_Checkpoint_Enabled()) {
       Run_lno = Run_autopar = Run_Distr_Array = FALSE;
       Run_preopt = Run_wopt = Run_vsaopt = Run_ipsaopt = FALSE;
       Run_cg = Run_w2c = Run_w2f = Run_w2fc_early = Run_ipl = FALSE;
@@ -574,7 +612,7 @@ load_components (INT argc, char **argv)
     if (!(Run_lno || (Run_wopt || (Run_vsaopt || Run_ipsaopt))
 	  || Run_preopt || Run_cg || Run_w2c || Run_w2f
           || Run_w2fc_early || Run_ipl) &&
-        !FHE_Conversion_Checkpoint_Enabled())
+        !FHE_Checkpoint_Enabled())
       Run_cg = TRUE;		    /* if nothing is set, run CG */
 
     if (Run_cg || Run_lno || Run_autopar) {
@@ -721,7 +759,11 @@ Phase_Init (void)
         Write_BE_Maps = FALSE;
         Open_FHE_Conversion_Checkpoint();
     }
-    if (!need_fhe_checkpoint_output && need_lno_output) {
+    else if (FHE_Materialization_Checkpoint_Enabled()) {
+        Write_BE_Maps = FALSE;
+        Open_FHE_Materialization_Checkpoint();
+    }
+    if (!FHE_Checkpoint_Output_Active() && need_lno_output) {
 	Write_BE_Maps = TRUE;
 	// Output IR after preopt to .P file, and IR after LNO to .N file.
 	if (Run_lno)
@@ -729,18 +771,18 @@ Phase_Init (void)
 	else
 	    ir_output = Open_Output_Info(New_Extension(output_file_name,".P"));
     }
-    if (!need_fhe_checkpoint_output && need_wopt_output) {
+    if (!FHE_Checkpoint_Output_Active() && need_wopt_output) {
 	Write_ALIAS_CLASS_Map = TRUE;
 	Write_BE_Maps = TRUE;
 	ir_output = Open_Output_Info(New_Extension(output_file_name,".O"));
     }
-    if (!need_fhe_checkpoint_output && need_ipl_output) {
+    if (!FHE_Checkpoint_Output_Active() && need_ipl_output) {
 	Write_BE_Maps = FALSE;
 	ir_output = Open_Output_Info (Obj_File_Name ?
 				      Obj_File_Name :
 				      New_Extension(output_file_name, ".o"));
     }
-    if (!need_fhe_checkpoint_output && Emit_Global_Data) {
+    if (!FHE_Checkpoint_Output_Active() && Emit_Global_Data) {
 	Write_BE_Maps = FALSE;
 	ir_output = Open_Output_Info (Global_File_Name);
     }
@@ -1975,27 +2017,48 @@ Preprocess_PU (PU_Info *current_pu)
 
   if (!w2c_only) {
     VHO_FHE_CONVERT_RESULT convert_result;
-    Set_Error_Phase ( "FHE VHO Conversion" );
-    if (need_fhe_checkpoint_output) {
-      BOOL converted = VHO_FHE_Convert_Driver_Try
-                           (current_pu, &pu, &convert_result);
-      VHO_FHE_Convert_Result_Accumulate
-          (&fhe_checkpoint_result, &convert_result);
-      if (!converted) {
+    VHO_FHE_Convert_Result_Init(&convert_result);
+    if (need_fhe_materialization_output) {
+      VHO_FHE_MATERIALIZE_RESULT materialize_result;
+      Set_Error_Phase ( "FHE VHO Materialization" );
+      BOOL materialized = VHO_FHE_Materialize_Driver_Try
+                              (current_pu, &pu, &materialize_result);
+      VHO_FHE_Materialize_Result_Accumulate
+          (&fhe_materialization_result, &materialize_result);
+      if (!materialized) {
         fprintf(stderr,
-                "CFHE-CHECKPOINT-002: conversion failed before all-PU "
-                "checkpoint completion\n");
-        Cleanup_FHE_Conversion_Checkpoint();
-        FmtAssert(FALSE, ("FHE conversion checkpoint failed"));
+                "CFHEMAT-CHECKPOINT-002: materialization failed before "
+                "all-PU checkpoint completion\n");
+        Cleanup_FHE_Materialization_Checkpoint();
+        FmtAssert(FALSE, ("FHE materialization checkpoint failed"));
       }
-      ++fhe_checkpoint_pu_count;
+      ++fhe_materialization_pu_count;
+      Set_PU_Info_tree_ptr(current_pu, pu);
+      Check_for_IR_Dump(TP_GLOBOPT, pu, "FHE_MATERIALIZE");
     }
     else {
-      pu = VHO_FHE_Convert_Driver_With_Result
-               (current_pu, pu, &convert_result);
+      Set_Error_Phase ( "FHE VHO Conversion" );
+      if (need_fhe_checkpoint_output) {
+        BOOL converted = VHO_FHE_Convert_Driver_Try
+                             (current_pu, &pu, &convert_result);
+        VHO_FHE_Convert_Result_Accumulate
+            (&fhe_checkpoint_result, &convert_result);
+        if (!converted) {
+          fprintf(stderr,
+                  "CFHE-CHECKPOINT-002: conversion failed before all-PU "
+                  "checkpoint completion\n");
+          Cleanup_FHE_Conversion_Checkpoint();
+          FmtAssert(FALSE, ("FHE conversion checkpoint failed"));
+        }
+        ++fhe_checkpoint_pu_count;
+      }
+      else {
+        pu = VHO_FHE_Convert_Driver_With_Result
+                 (current_pu, pu, &convert_result);
+      }
+      Set_PU_Info_tree_ptr(current_pu, pu);
+      Check_for_IR_Dump(TP_GLOBOPT, pu, "FHE_CONVERT");
     }
-    Set_PU_Info_tree_ptr(current_pu, pu);
-    Check_for_IR_Dump(TP_GLOBOPT, pu, "FHE_CONVERT");
 
     if (convert_result.conversion_pass_count != 0) {
       FmtAssert(VHO_DSL_Shape_Refinement_Invalidate
@@ -2009,7 +2072,7 @@ Preprocess_PU (PU_Info *current_pu)
           (TP_GLOBOPT, pu, "DSL_SHAPE_REFINE_AFTER_FHE_CONVERT");
     }
 
-    if (need_fhe_checkpoint_output) {
+    if (FHE_Checkpoint_Output_Active()) {
       if (wopt_loaded)
         Create_Restricted_Map(MEM_pu_nz_pool_ptr);
       return pu;
@@ -2056,7 +2119,7 @@ Postprocess_PU (PU_Info *current_pu)
 
   Current_Map_Tab = PU_Info_maptab(current_pu);
  
-  if (!need_fhe_checkpoint_output) {
+  if (!FHE_Checkpoint_Output_Active()) {
     if (IPSA_insession && ! IPSA_insession()) REGION_Finalize();
     else REGION_Finalize_wo_delete();
   }
@@ -2137,7 +2200,7 @@ Preorder_Process_PUs (PU_Info *current_pu)
 
   Verify_SYMTAB (CURRENT_SYMTAB);
 
-  if (need_fhe_checkpoint_output) {
+  if (FHE_Checkpoint_Output_Active()) {
     Set_PU_Info_tree_ptr(current_pu, pu);
     Write_PU_Info(current_pu);
   }
@@ -2469,7 +2532,7 @@ main (INT argc, char **argv)
   }
   BOOL needs_lno = FILE_INFO_needs_lno (File_info);
 
-  if (needs_lno && !Run_ipl && !FHE_Conversion_Checkpoint_Enabled()) {
+  if (needs_lno && !Run_ipl && !FHE_Checkpoint_Enabled()) {
     Run_Distr_Array = TRUE;
     if (!Run_lno && !Run_autopar) {
       /* ipl is not running, and LNO has not been loaded */
@@ -2619,23 +2682,19 @@ main (INT argc, char **argv)
     }
 
     Write_Global_Info(pu_tree);
-    Close_FHE_Conversion_Checkpoint();
+    Close_FHE_Checkpoint_Output();
     if (!VHO_FHE_Convert_Checkpoint_Publish_Artifacts(stderr)) {
       Cleanup_FHE_Conversion_Checkpoint();
       FmtAssert(FALSE,
                 ("FHE conversion checkpoint auxiliary publication failed"));
     }
-    if (!Publish_FHE_Conversion_Checkpoint()) {
-      INT rename_error = errno;
+    if (!VHO_FHE_Convert_Checkpoint_Publish_Binary(stderr)) {
       Cleanup_FHE_Conversion_Checkpoint();
       FmtAssert(FALSE,
-                ("could not publish FHE conversion checkpoint %s without "
-                 "replacement: %s",
-                VHO_FHE_Conversion_Checkpoint_Output,
-                 strerror(rename_error)));
+                ("could not publish FHE conversion checkpoint %s",
+                 VHO_FHE_Conversion_Checkpoint_Output));
     }
     Register_Cleanup_Callback(NULL);
-    fhe_checkpoint_published = FALSE;
     VHO_FHE_Convert_Checkpoint_Complete();
     fprintf(stderr,
             "FHE conversion checkpoint: output=%s pu=%u "
@@ -2652,6 +2711,50 @@ main (INT argc, char **argv)
             fhe_checkpoint_result.approximation_contract_count,
             fhe_checkpoint_result.error_count);
     Release_FHE_Conversion_Checkpoint();
+  }
+  else if (need_fhe_materialization_output) {
+    BOOL valid = VHO_FHE_Materialize_Checkpoint_Validate
+                     (total_pu_count, fhe_materialization_pu_count,
+                      &fhe_materialization_result, stderr);
+    if (!valid) {
+      Cleanup_FHE_Materialization_Checkpoint();
+      FmtAssert(FALSE, ("FHE materialization checkpoint validation failed"));
+    }
+    if (!VHO_FHE_Materialize_Checkpoint_Finalize
+             (&fhe_materialization_result, stderr)) {
+      Cleanup_FHE_Materialization_Checkpoint();
+      FmtAssert(FALSE,
+                ("FHE materialization checkpoint finalization failed"));
+    }
+
+    Write_Global_Info(pu_tree);
+    Close_FHE_Checkpoint_Output();
+    if (!VHO_FHE_Materialize_Checkpoint_Publish_Artifacts(stderr)) {
+      Cleanup_FHE_Materialization_Checkpoint();
+      FmtAssert(FALSE,
+                ("FHE materialization auxiliary publication failed"));
+    }
+    if (!VHO_FHE_Materialize_Checkpoint_Publish_Binary(stderr)) {
+      Cleanup_FHE_Materialization_Checkpoint();
+      FmtAssert(FALSE,
+                ("could not publish FHE materialization checkpoint %s",
+                 VHO_FHE_Materialization_Checkpoint_Output));
+    }
+    Register_Cleanup_Callback(NULL);
+    VHO_FHE_Materialize_Checkpoint_Complete();
+    fprintf(stderr,
+            "FHE materialization checkpoint: output=%s pu=%u "
+            "semantic_gates=%u passes=%u contexts=%u operations=%u "
+            "refreshes=%u errors=%u\n",
+            VHO_FHE_Materialization_Checkpoint_Output,
+            fhe_materialization_pu_count,
+            fhe_materialization_result.semantic_gatekeeper_count,
+            fhe_materialization_result.materialization_pass_count,
+            fhe_materialization_result.context_count,
+            fhe_materialization_result.operation_count,
+            fhe_materialization_result.refresh_count,
+            fhe_materialization_result.error_count);
+    Release_FHE_Materialization_Checkpoint();
   }
   else if (need_wopt_output || need_lno_output || need_ipl_output) {
     Write_Global_Info (pu_tree);

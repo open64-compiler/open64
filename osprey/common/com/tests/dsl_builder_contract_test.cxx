@@ -7288,6 +7288,12 @@ Check_FHE_SYNC3_Plan_Image(void)
              DSL_FHE_Materialization_Intern_Complete_Context
                  (context_range_id, materialization_states, 5) == 0,
              "root materialization is atomic and unique");
+        FHE_SYNC3_CHECK
+            (DSL_FHE_Materialization_Image_Validate_Partial(stderr) &&
+             DSL_FHE_Plan_Image_Validate_Partial(stderr) &&
+             !DSL_FHE_Materialization_Image_Validate(NULL) &&
+             !DSL_FHE_Plan_Image_Validate(NULL),
+             "partial per-PU schedule defers exact context coverage");
 
         FHE_SYNC3_CHECK
             (DSL_FHE_Context_State_Get

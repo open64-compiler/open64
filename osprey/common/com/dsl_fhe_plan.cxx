@@ -746,6 +746,15 @@ DSL_FHE_Plan_Image_Validate (FILE *diagnostic)
            DSL_FHE_Materialization_Image_Validate(diagnostic);
 }
 
+BOOL
+DSL_FHE_Plan_Image_Validate_Partial (FILE *diagnostic)
+{
+    return DSL_FHE_Plan_View_Validate(NULL, diagnostic) &&
+           DSL_FHE_Approx_Profile_Cross_Validate(diagnostic) &&
+           DSL_FHE_Context_State_Image_Validate(diagnostic) &&
+           DSL_FHE_Materialization_Image_Validate_Partial(diagnostic);
+}
+
 static BOOL
 DSL_FHE_Plan_Add_Section_Size
         (UINT64 *size, UINT32 count, UINT32 record_size)
@@ -2321,7 +2330,8 @@ DSL_FHE_Materialization_Transitions_Valid
 
 static BOOL
 DSL_FHE_Materialization_View_Validate
-        (const DSL_FHE_MATERIALIZATION_IMAGE_VIEW *view, FILE *diagnostic)
+        (const DSL_FHE_MATERIALIZATION_IMAGE_VIEW *view,
+         BOOL require_complete_coverage, FILE *diagnostic)
 {
     DSL_FHE_MATERIALIZATION_IMAGE_HEADER header;
     if (view == NULL)
@@ -2384,12 +2394,24 @@ DSL_FHE_Materialization_View_Validate
             operations[record.operation_ordinal] = record;
             found[record.operation_ordinal] = TRUE;
         }
+        BOOL context_present = FALSE;
+        for (UINT32 ordinal = 0;
+             ordinal < DSL_FHE_MATERIALIZATION_OPERATIONS_PER_CONTEXT;
+             ++ordinal)
+            context_present = context_present || found[ordinal];
         for (UINT32 ordinal = 0;
              ordinal < DSL_FHE_MATERIALIZATION_OPERATIONS_PER_CONTEXT;
              ++ordinal) {
-            if (!found[ordinal])
+            if ((require_complete_coverage || context_present) &&
+                !found[ordinal])
                 return DSL_FHE_Materialization_Report
                            (diagnostic, "missing context operation", range_id);
+        }
+        if (!context_present)
+            continue;
+        for (UINT32 ordinal = 0;
+             ordinal < DSL_FHE_MATERIALIZATION_OPERATIONS_PER_CONTEXT;
+             ++ordinal) {
             if (ordinal != 0 && operations[ordinal].input_state_id !=
                                     operations[ordinal - 1].output_state_id)
                 return DSL_FHE_Materialization_Report
@@ -2399,7 +2421,8 @@ DSL_FHE_Materialization_View_Validate
             return DSL_FHE_Materialization_Report
                        (diagnostic, "invalid context transition", range_id);
     }
-    if (eligible_contexts != header.context_count)
+    if (require_complete_coverage &&
+        eligible_contexts != header.context_count)
         return DSL_FHE_Materialization_Report
                    (diagnostic, "context coverage mismatch", 0);
     return TRUE;
@@ -2445,7 +2468,15 @@ BOOL DSL_FHE_Materialization_Image_Has_Records (void)
 
 BOOL
 DSL_FHE_Materialization_Image_Validate (FILE *diagnostic)
-{ return DSL_FHE_Materialization_View_Validate(NULL, diagnostic); }
+{
+    return DSL_FHE_Materialization_View_Validate(NULL, TRUE, diagnostic);
+}
+
+BOOL
+DSL_FHE_Materialization_Image_Validate_Partial (FILE *diagnostic)
+{
+    return DSL_FHE_Materialization_View_Validate(NULL, FALSE, diagnostic);
+}
 
 BOOL
 DSL_FHE_Materialization_Image_Load_Mapped
@@ -2472,13 +2503,13 @@ DSL_FHE_Materialization_Image_Load_Mapped
     cursor += DSL_FHE_MATERIALIZATION_IMAGE_HEADER_SIZE;
     view.operations =
         (const DSL_FHE_MATERIALIZATION_OPERATION_RECORD *)cursor;
-    if (!DSL_FHE_Materialization_View_Validate(&view, diagnostic))
+    if (!DSL_FHE_Materialization_View_Validate(&view, TRUE, diagnostic))
         return FALSE;
     DSL_FHE_Materialization_Image_Reset();
     if (header->operation_count != 0)
         DSL_fhe_materialization_operation_table.Insert
             (view.operations, header->operation_count);
-    return DSL_FHE_Materialization_View_Validate(NULL, diagnostic);
+    return DSL_FHE_Materialization_View_Validate(NULL, TRUE, diagnostic);
 }
 
 UINT32 DSL_FHE_Materialization_Operation_Count (void)

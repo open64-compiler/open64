@@ -170,6 +170,16 @@ Prepare_Checkpoint_Artifact_Paths (void)
 }
 
 static BOOL
+Create_Checkpoint_Binary_Temporary (void)
+{
+    FILE *file = fopen(checkpoint_binary_temporary, "w");
+    if (file == NULL)
+        return FALSE;
+    fprintf(file, "binary checkpoint\n");
+    return fclose(file) == 0;
+}
+
+static BOOL
 Check_Checkpoint_Artifact_Lifecycle
         (const VHO_FHE_CONVERT_RESULT *aggregate)
 {
@@ -193,7 +203,9 @@ Check_Checkpoint_Artifact_Lifecycle
         checkpoint_finalizer_count != 1 ||
         VHO_FHE_Convert_Checkpoint_Artifact_Count() != 2 ||
         VHO_FHE_Convert_Checkpoint_Finalize(aggregate, NULL) ||
-        !VHO_FHE_Convert_Checkpoint_Publish_Artifacts(stderr))
+        !VHO_FHE_Convert_Checkpoint_Publish_Artifacts(stderr) ||
+        !Create_Checkpoint_Binary_Temporary() ||
+        !VHO_FHE_Convert_Checkpoint_Publish_Binary(stderr))
         return FALSE;
     for (UINT32 i = 0; i < 2; ++i) {
         if (access(checkpoint_temporary[i], F_OK) == 0 ||
@@ -209,6 +221,9 @@ Check_Checkpoint_Artifact_Lifecycle
             access(checkpoint_final[i], F_OK) == 0)
             return FALSE;
     }
+    if (access(checkpoint_binary_temporary, F_OK) == 0 ||
+        access(checkpoint_binary_final, F_OK) == 0)
+        return FALSE;
 
     checkpoint_finalizer_count = 0;
     checkpoint_completion_count = 0;
@@ -220,7 +235,9 @@ Check_Checkpoint_Artifact_Lifecycle
              (checkpoint_binary_temporary, checkpoint_binary_final,
               stderr) ||
         !VHO_FHE_Convert_Checkpoint_Finalize(aggregate, stderr) ||
-        !VHO_FHE_Convert_Checkpoint_Publish_Artifacts(stderr))
+        !VHO_FHE_Convert_Checkpoint_Publish_Artifacts(stderr) ||
+        !Create_Checkpoint_Binary_Temporary() ||
+        !VHO_FHE_Convert_Checkpoint_Publish_Binary(stderr))
         return FALSE;
     VHO_FHE_Convert_Checkpoint_Complete();
     if (checkpoint_finalizer_count != 1 ||
@@ -233,6 +250,10 @@ Check_Checkpoint_Artifact_Lifecycle
             return FALSE;
         remove(checkpoint_final[i]);
     }
+    if (access(checkpoint_binary_temporary, F_OK) == 0 ||
+        access(checkpoint_binary_final, F_OK) != 0)
+        return FALSE;
+    remove(checkpoint_binary_final);
 
     checkpoint_finalizer_count = 0;
     checkpoint_completion_count = 0;

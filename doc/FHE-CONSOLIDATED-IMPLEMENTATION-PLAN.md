@@ -540,6 +540,14 @@ schedule per context and does not encode a context-specific bound or level in a
 shared callee body. Physical call specialization and standard-WHIRL runtime
 calls remain SYNC-5 work.
 
+The main/common substrate now supplies the fixed materialization image,
+atomic context transaction, per-PU partial validation,
+`VHO_FHE_Materialize_Driver_Try()`, phase options, and the shared binary-last
+checkpoint service. FHE-owned code registers provider policy and semantic
+callbacks through that surface; it must not add raw driver, mapped-image, or
+table manipulation. Exact coverage remains a program-finalizer requirement,
+not a per-PU requirement.
+
 ### **SYNC-5: Middle-WHIRL And Mock Executable Gate**
 
 Required phase output:

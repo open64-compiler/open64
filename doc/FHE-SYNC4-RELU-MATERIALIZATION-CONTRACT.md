@@ -314,10 +314,26 @@ reader/writer, or ELF manipulation.
 The first infrastructure slice publishes
 `DSL_FHE_Materialization_Intern_Complete_Context()` as the atomic producer
 transaction and `DSL_FHE_Materialization_Find()` plus count/get services as
-the consumer surface. It completes items 1 through 4, 8, and 9 above. The
-per-PU materialization driver, phase options, and reusable checkpoint service
-in items 5 through 7 remain the next infrastructure slice; the image contract
-does not imply that those driver hooks already exist.
+the consumer surface. It completes items 1 through 4, 8, and 9 above.
+
+The second infrastructure slice publishes the remaining items 5 through 7:
+
+- `VHO_FHE_Materialize_Driver_Try()` and opaque registration/result APIs in
+  `osprey/be/vho/fhe_materialize.{h,cxx}`;
+- a generic binary-last transaction in
+  `osprey/be/vho/fhe_checkpoint.{h,cxx}`, with compatibility wrappers for the
+  existing conversion checkpoint;
+- `-FHE:materialize`, `-FHE:materialization_checkpoint`,
+  `-FHE:bootstrap`, `-FHE:provider_manifest`, and
+  `-FHE:provider_sha256`; and
+- `DSL_FHE_Plan_Image_Validate_Partial()` for per-PU construction, while
+  `DSL_FHE_Plan_Image_Validate()` retains exact program coverage at the final
+  checkpoint boundary.
+
+The driver processes materialization under the active PU's local symbol table,
+writes that PU before releasing its scope, and performs the registered
+program finalizer only after all PUs and complete managed-image validation.
+Conversion and materialization checkpoint modes are mutually exclusive.
 
 ## FHE-Owned Work
 
