@@ -235,10 +235,9 @@ Historical status: implementation merged through PR #102 at `8ba9ee31`; the
 subsequent corrective checkpoint fixed version-1 tensor-binding identity and
 failure-atomic rejected entry-value insertion before SYNC-3 implementation.
 Those corrections and their then-current acceptance are complete historical
-prerequisites, not changes still waiting to merge or be recertified. Because
-the complete retained evidence bytes are not presently accessible, current
-independent evidence verification is unverified; that evidence gap does not
-reopen the merged SYNC-1 implementation.
+prerequisites, not changes still waiting to merge. The 2026-09-29 current
+exact-snapshot SYNC-3 certification reopened the complete image through the
+current reader and verifier, so the consumed SYNC-1 substrate is current.
 
 Main task provides:
 
@@ -272,9 +271,8 @@ the subsequent corrective checkpoint resolved PU ownership, exact source
 provenance, fail-closed dependency and count/absence checks, and retained
 artifact requirements before SYNC-3 implementation. The corrected capture and
 its then-current acceptance are complete historical prerequisites, not work
-still waiting to merge or be recertified. Current independent evidence
-verification is unverified because the complete retained bytes are not
-presently accessible; this does not reopen the merged SYNC-2 implementation.
+still waiting to merge. The 2026-09-29 current exact-snapshot capture and
+separate-process reopen exercise the consumed SYNC-2 substrate.
 
 The first full trace exposed a PU-scope correctness gap in shared
 infrastructure: FHE entry values carried valid PU-relative `ST_IDX` values,
@@ -375,18 +373,15 @@ to the accepted Commit 19 tree at
 the feature.
 
 Historical verification status: a complete merged-tip run was recorded as
-Pass on 2026-09-14. It reported 13 physical Conv/BN definition rewrites, 21
-source-context folds, 42 converted tensors, 46 operator dispositions, 19
-authenticated ReLU ranges, and 19 matching context-specific CKKS states. These
-numbers were not rerun for this documentation revision.
+Pass on 2026-09-14.
 
-Current independent verification status: **unverified**. The retained artifact
-bytes referenced by the historical host-local `/private/tmp/...` path are not
-presently accessible, and their recorded hashes cannot substitute for the
-bytes. Before implementation in SYNC-4 consumes this checkpoint, the shepherd
-must publish an accessible immutable complete bundle or retain a new
-exact-snapshot rerun, and an independent reviewer must verify it. SYNC-4
-contract and design preparation may continue while this gate is open.
+Current independent verification status: **verified** by the 2026-09-29
+exact-snapshot run retained at
+`/private/tmp/open64-fhe-sync3-recertification-20260929/current-snapshot-certification`.
+It reproduced 13 physical Conv/BN definition rewrites, 21 source-context folds,
+42 converted tensors, 46 operator dispositions, 19 authenticated ReLU ranges,
+and 19 matching context-specific CKKS states. SYNC-4 may consume this focused
+planning checkpoint after the evidence update receives review.
 
 The exact ACE bytes were project-approved from empirical ANT ACE evidence and
 the coefficient profile is integrated. A pinned ACE-derived checkpoint and a

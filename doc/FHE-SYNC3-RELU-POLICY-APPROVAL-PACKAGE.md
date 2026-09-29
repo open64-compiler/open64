@@ -1,9 +1,8 @@
 # FHE SYNC-3 ReLU Composite-Policy Approval Package
 
-Status: Commit 17 policy tuple was approved and Commit 19 planning evidence was
-historically certified. The 2026-09-14 results below were not rerun in this
-documentation revision, and current independent SYNC-3 re-certification is
-**unverified** while the complete retained artifact bytes remain inaccessible.
+Status: Commit 17 policy tuple is approved. Commit 19 planning evidence was
+historically certified and passed a current exact-snapshot certification on
+2026-09-29 with the complete retained artifact family accessible.
 
 The sole highest FHE semantic authority is
 `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`, whose
@@ -161,8 +160,8 @@ not part of the digest protocol.
 | Artifact | SHA-256 |
 | --- | --- |
 | `doc/fhe-policy/sync3-relu/coefficient-manifest.json` | `75132d449852303ec3e44e86c8a5b5ffc196c0643cf7fadff453d797c2266931` |
-| `doc/fhe-policy/sync3-relu/range-manifest.json` | `55dcb4ec993a9f09901eaf61aa49dde8628e3eb032a24429a40715fc3fc4113c` |
-| `doc/fhe-policy/sync3-relu/accuracy-manifest.json` | `1fd33f514363cf5b1f4f092e5553cb4e77d0f03eff3bbed4852ca0a6ae32ea25` |
+| `doc/fhe-policy/sync3-relu/range-manifest.json` | `f9dbcb26f22a9fb12a3bfba046504ae2b88bea81449d10e16a2cb5432c579078` |
+| `doc/fhe-policy/sync3-relu/accuracy-manifest.json` | `1e6dbc64074c504749ce7854ae34524cb5c48a63218a0f0bae517043f3643760` |
 | `doc/fhe-policy/sync3-relu/ckks-schedule-manifest.json` | `27fe104aa5a159baefd0255c82e0c9193c1ecdf28b73f97e2f8830bb1444ae62` |
 
 `doc/fhe-policy/sync3-relu/package-index.json` binds those paths, hashes, gate

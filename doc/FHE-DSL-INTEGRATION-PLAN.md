@@ -30,14 +30,11 @@ optimization algorithm. MetaKernel, Fhelipe, ReSBM, HPOLY, and GPU providers
 must all fit behind the contracts defined here without changing the Python
 frontend boundary or the original application-level `.B` file.
 
-SYNC-3 implementation is merged through PR #131. The 2026-09-14 merged-tip Pass
-in `doc/FHE-SYNC3-COMMIT19-CERTIFICATION.md` is historical and was not rerun for
-this documentation revision. Because its host-local retained artifact bytes are
-currently inaccessible, independent re-certification is **unverified**. SYNC-4
-contract and design preparation may proceed, but SYNC-4 implementation must not
-consume SYNC-3 as verified input until an accessible immutable complete bundle
-is independently checked or an exact-snapshot certification is rerun and
-retained. Focused SYNC-3 is not v0.10 Architecture Phase 3 or M4 completion.
+SYNC-3 implementation is merged through PR #131. A current exact-snapshot
+certification passed on 2026-09-29 and retained the complete artifact family
+identified by `doc/FHE-SYNC3-COMMIT19-CERTIFICATION.md`. SYNC-4 may consume this
+verified focused planning input after review. Focused SYNC-3 is not v0.10
+Architecture Phase 3 or M4 completion.
 
 ## Normative Decisions
 

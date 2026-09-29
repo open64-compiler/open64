@@ -1,21 +1,21 @@
 # FHE SYNC-4 Through SYNC-6 Team Handoff
 
-Status: contract and design preparation may begin after this documentation PR
-merges. SYNC-4 implementation kickoff is blocked until current independent
-SYNC-3 re-certification succeeds with accessible retained artifact bytes.
+Status: the 2026-09-29 exact-snapshot SYNC-3 re-certification passed with an
+accessible complete retained artifact family. SYNC-4 implementation may begin
+after this documentation and evidence update is independently reviewed.
 
 Current machine-readable stage-entry gate:
 
 ```text
-SYNC3_CURRENT_VERIFICATION=UNVERIFIED
-SYNC4_CONSUMPTION_BASIS=STRICT_RECERTIFICATION_REQUIRED
-SYNC4_MAY_CONSUME_SYNC3=false
+SYNC3_CURRENT_VERIFICATION=VERIFIED_EXACT_SNAPSHOT
+SYNC4_CONSUMPTION_BASIS=VERIFIED_2026_09_29_EXACT_SNAPSHOT
+SYNC4_MAY_CONSUME_SYNC3=true
 ```
 
-These fields are the automation-facing state for this revision. An unverified
-status requires the consumption flag to remain false; a future exact-snapshot
-re-certification must update both fields atomically with its retained evidence
-and independent verdict.
+These fields are the automation-facing state for this revision. They are bound
+to the retained evidence and hashes in
+`doc/FHE-SYNC3-COMMIT19-CERTIFICATION.md`; changing that evidence requires a
+new atomic verification-state update.
 
 ## Purpose
 
@@ -81,12 +81,13 @@ This is conversion-planning evidence. It does not claim bootstrap
 materialization, standard-WHIRL runtime-call lowering, generated C, or
 `FHErt_ant` execution.
 
-The historical certification names a host-local `/private/tmp/...` directory
-that is unavailable to the current reviewer. It is not a current evidence
-locator, and its SHA-256 list cannot substitute for the artifact bytes. Current
-independent SYNC-3 re-certification is therefore **unverified**. An accessible
-immutable complete bundle or a newly retained exact-snapshot rerun must pass
-independent review before any SYNC-4 implementation consumes this checkpoint.
+The current exact-snapshot certification is retained at
+`/private/tmp/open64-fhe-sync3-recertification-20260929/current-snapshot-certification`.
+Its source `.B`, converted `.fhe.B`, source-interleaved `.T` files, converted
+payload, report, commands, diagnostics, negative logs, and `SHA256SUMS` passed
+the repository's independent verifier and atomic-publication checks. The
+source and parameter payload hashes match the approved model evidence; the
+range manifest is rebound to the current additive-metadata `.B` snapshot.
 
 The first executable provider is pinned ACE ANT `FHErt_ant` at commit
 `fb76131171b9f82aa6387f84dd73684fba5277e8`. OpenFHE remains a later optional
@@ -363,7 +364,9 @@ rg -q "fb76131171b9f82aa6387f84dd73684fba5277e8" \
   doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md
 rg -q "FHErt_ant" doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md
 rg -q "sync6-ace-ant-client-server-o0" doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md
-rg -q "SYNC4_CONSUMPTION_BASIS=STRICT_RECERTIFICATION_REQUIRED" \
+rg -q "SYNC4_CONSUMPTION_BASIS=VERIFIED_2026_09_29_EXACT_SNAPSHOT" \
+  doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md
+rg -q "SYNC4_MAY_CONSUME_SYNC3=true" \
   doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md
 rg -q "evaluation-only" doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md
 rg -q "supervised worker" doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md
@@ -390,12 +393,12 @@ test "$(rg -c 'Bootstrap\([^,]+,[^,]+, 17\)' "$generated")" = 1
 test "$(rg -c 'Bootstrap\([^,]+,[^,]+, 18\)' "$generated")" = 2
 ```
 
-The `/private/tmp/...` directory in the historical certification is not a
-current locator. The shepherd must publish or regenerate an accessible,
-immutable, content-addressed complete bundle and record its location in the
-kickoff issue. Run `sha256sum -c SHA256SUMS` from that directory and inspect
-`secure_resnet20.fhe.T` and the conversion report. The digest list in the
-historical document does not replace these bytes.
+The current evidence locator is
+`/private/tmp/open64-fhe-sync3-recertification-20260929/current-snapshot-certification`.
+Run `sha256sum -c SHA256SUMS` from that directory and inspect
+`secure_resnet20.fhe.T` and the conversion report before kickoff. If the bundle
+is moved, preserve the complete family and publish its new content-addressed
+location; a digest list without the bytes is not sufficient.
 
 ## First Kickoff Record
 
@@ -408,12 +411,12 @@ The kickoff issue or meeting note must contain:
 - S4-1 through S4-6 branch and PR sequence;
 - artifact roots and retention owner;
 - provider manifest owner and license reviewer;
-- explicit `SYNC4_CONSUMPTION_BASIS=STRICT_RECERTIFICATION_REQUIRED`;
+- explicit `SYNC4_CONSUMPTION_BASIS=VERIFIED_2026_09_29_EXACT_SNAPSHOT`;
 - complete SYNC-5 schedule/call-census/capability/key manifest ownership;
 - client, broker, supervised-worker, and no-secret-server owners;
 - declared option modes, numerical thresholds, and stop conditions; and
 - links to the SYNC-3 evidence bundle and the first S4-1 contract review.
 
-The team is ready to implement only after current SYNC-3 independent
-re-certification passes, this record is complete, and the S4-1 shared contract
+The team is ready to implement after this exact-snapshot evidence update is
+independently reviewed, this record is complete, and the S4-1 shared contract
 has an assigned main/common owner.

@@ -24,8 +24,9 @@ STATUS_DOCS = PRIMARY_SYNC3_DOCS + (
 
 HANDOFF_PATH = "doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md"
 HANDOFF_GATE_FIELDS = {
-    "SYNC3_CURRENT_VERIFICATION": "UNVERIFIED",
-    "SYNC4_MAY_CONSUME_SYNC3": "false",
+    "SYNC3_CURRENT_VERIFICATION": "VERIFIED_EXACT_SNAPSHOT",
+    "SYNC4_CONSUMPTION_BASIS": "VERIFIED_2026_09_29_EXACT_SNAPSHOT",
+    "SYNC4_MAY_CONSUME_SYNC3": "true",
 }
 
 OBSOLETE_TOP_LEVEL_STATUS = (
@@ -81,10 +82,10 @@ class FHESync3PlanConsistencyTest(unittest.TestCase):
             with self.subTest(document=relative_path):
                 status = preamble(read_document(relative_path)).lower()
                 self.assertIn("historical", status)
-                self.assertIn("unverified", status)
+                self.assertIn("exact-snapshot", status)
+                self.assertIn("2026-09-29", status)
                 self.assertTrue(
-                    "retained" in status
-                    and ("accessible" in status or "presently accessible" in status)
+                    "retained" in status or "complete artifact family" in status
                 )
 
     def test_obsolete_top_level_statuses_do_not_reappear(self) -> None:
@@ -96,18 +97,26 @@ class FHESync3PlanConsistencyTest(unittest.TestCase):
 
     def test_handoff_has_one_consistent_machine_readable_gate(self) -> None:
         document = read_document(HANDOFF_PATH)
+        gate = re.search(
+            r"Current machine-readable stage-entry gate:\s*```text\n"
+            r"(?P<body>.*?)```",
+            document,
+            flags=re.DOTALL,
+        )
+        self.assertIsNotNone(gate)
         parsed = {}
         for field, expected in HANDOFF_GATE_FIELDS.items():
-            self.assertEqual(document.count(field), 1)
             values = re.findall(
-                rf"^{re.escape(field)}=([^\s]+)$", document, flags=re.MULTILINE
+                rf"^{re.escape(field)}=([^\s]+)$",
+                gate.group("body"),
+                flags=re.MULTILINE,
             )
             self.assertEqual(values, [expected])
             parsed[field] = values[0]
 
         may_consume = parsed["SYNC4_MAY_CONSUME_SYNC3"]
         self.assertIn(may_consume, {"true", "false"})
-        if parsed["SYNC3_CURRENT_VERIFICATION"] != "VERIFIED":
+        if not parsed["SYNC3_CURRENT_VERIFICATION"].startswith("VERIFIED"):
             self.assertEqual(may_consume, "false")
 
 

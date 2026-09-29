@@ -1,9 +1,10 @@
-# FHE SYNC-3 Commit 19 Historical Certification Record
+# FHE SYNC-3 Commit 19 Certification Record
 
-Status: PR #131 is merged, and a complete certification was recorded as Pass at
-the exact merged `develop` tip on 2026-09-14. That is historical evidence.
-Current independent re-certification is **unverified** because the retained
-artifact bytes are not presently accessible.
+Status: PR #131 is merged. The historical 2026-09-14 certification remains
+recorded, and a new exact-snapshot certification passed on 2026-09-29 against
+the current integrated source tree. The complete current artifact family is
+retained and independently reopenable, so current SYNC-3 verification is
+**verified**.
 
 The sole highest FHE semantic authority is
 `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`, whose
@@ -26,8 +27,13 @@ the exact independently reviewed feature tree.
 
 ## Decision
 
-Historical merged-tip verdict on 2026-09-14: **Pass**. The tests and numerical
-results below were not rerun for this documentation revision.
+Current exact-snapshot verdict on 2026-09-29: **Pass**. The current frontend
+recapture, backend conversion checkpoint, separate-process `ir_b2a -st -src`
+reopen, independent verifier, and fail-closed negative suite all ran during
+this revision. The approved calibration values and accuracy results were not
+recomputed; their immutable evidence was rebound only to the semantically
+identical current `.B` snapshot whose source and parameter payload hashes match
+the approved inputs.
 
 The six-PU SecureResNet20 checkpoint publishes the converted side payload and
 conversion report as auxiliary artifacts, then publishes `.fhe.B` last as the
@@ -67,10 +73,10 @@ newline conversion, or platform-native line-ending substitution.
 | Artifact | SHA-256 |
 | --- | --- |
 | `doc/fhe-policy/sync3-relu/coefficient-manifest.json` | `75132d449852303ec3e44e86c8a5b5ffc196c0643cf7fadff453d797c2266931` |
-| `doc/fhe-policy/sync3-relu/range-manifest.json` | `55dcb4ec993a9f09901eaf61aa49dde8628e3eb032a24429a40715fc3fc4113c` |
-| `doc/fhe-policy/sync3-relu/accuracy-manifest.json` | `1fd33f514363cf5b1f4f092e5553cb4e77d0f03eff3bbed4852ca0a6ae32ea25` |
+| `doc/fhe-policy/sync3-relu/range-manifest.json` | `f9dbcb26f22a9fb12a3bfba046504ae2b88bea81449d10e16a2cb5432c579078` |
+| `doc/fhe-policy/sync3-relu/accuracy-manifest.json` | `1e6dbc64074c504749ce7854ae34524cb5c48a63218a0f0bae517043f3643760` |
 | `doc/fhe-policy/sync3-relu/ckks-schedule-manifest.json` | `27fe104aa5a159baefd0255c82e0c9193c1ecdf28b73f97e2f8830bb1444ae62` |
-| `doc/fhe-policy/sync3-relu/package-index.json` | `c1006e2c8b6b7c676f84fdd515d8cd81769e7504031ea5d0998e1b81d61578d4` |
+| `doc/fhe-policy/sync3-relu/package-index.json` | `161fa24568561d7b918529684f4daf0165c9646d840885e1afd244f8cf7b1d5a` |
 
 The model fixture is pinned to ANT ACE revision
 `fb76131171b9f82aa6387f84dd73684fba5277e8`. Its ONNX SHA-256 is
@@ -79,49 +85,58 @@ Original training provenance is unknown and is not claimed.
 
 ## Retained Evidence
 
-Historical host-local directory (not a current evidence locator):
-`/private/tmp/open64-fhe-sync3-final-closure-artifacts/sync3_commit19_merged_tip`
+Current host-visible exact-snapshot directory:
+`/private/tmp/open64-fhe-sync3-recertification-20260929/current-snapshot-certification`
 
-This directory is unavailable to the current reviewer. The hashes below are
-useful identities, but they cannot substitute for the artifact bytes. Current
-re-certification requires either an accessible immutable complete bundle or a
-new exact-snapshot run that retains the full evidence family.
+The directory contains the complete source and converted artifact families,
+commands, diagnostics, and `SHA256SUMS`. The original accepted checkpoint is
+retained beside it as
+`/private/tmp/open64-fhe-sync3-recertification-20260929/ace-resnet20-open64.pt`
+with SHA-256
+`75fb9294272845b19eaeea3e1ee644d289536ea6711b27ec9527e658f5d20ff5`.
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `secure_resnet20.B` | `24b26be80882b613e9d3c07b304775bdbdcb3a371d95204e1f7e955eab12257f` |
-| `secure_resnet20.T` | `52dd8acba26aec0fd853e231d923cf37886ca837f03d4633f9a39818466ab561` |
+| `secure_resnet20.B` | `0067b3255068bcbc6587cf98b3d57d6d08fd4a90a23f326bdc6e16e081156b9e` |
+| `secure_resnet20.T` | `c1c0169fb9e3472faa0204e1b7f88ba5d51802121351d26ac5748e513f0e7896` |
 | `secure_resnet20.safetensors` | `3ddba0cee92d2f7e975d59a6a05d03ccd0578d798adae0e812a5ec8fcd617701` |
-| `secure_resnet20.fhe.B` | `ffdb3e19d1b73e24c82c804d5277cf53ec891070445f93f2e005a7961153c4a0` |
-| `secure_resnet20.fhe.T` | `e752c8a141ed7ebdfada17439eafa5a5469c605ac7e23a54f8ae8806f53dfa56` |
+| `secure_resnet20.fhe.B` | `1772931c580b722092c2a184d6e1fa0aa0d864d275e830b622406513d95c31a1` |
+| `secure_resnet20.fhe.T` | `beea24052f8b0d89c3b9733c58fd79103c666f765887d8151a2d15aa458e08a1` |
 | `secure_resnet20.fhe.safetensors` | `045a3bf1ac9967bcc8e962ec198179549e6a8beba91ba96195bae1a0452d8ffe` |
-| `secure_resnet20.fhe.conversion-report.txt` | `737e985457e2eb5dcd5b209dad10e60fd21cf6a559d8af80f381a00b478861db` |
-| `secure_resnet20.fhe.vho.t` | `5d9691ee0c9e8e4c8f4140ee8ee3168912091f6422518f9e47d882869d23cead` |
-| `conversion.log` | `8f2cb8d4ab762f6e75e234e6228354a7166fedc73876563ce5f836a1db67e1b8` |
-| `independent-verifier.log` | `5f9376be1a6fe6980c763fd2d3765c88591e219426f70734152311b7768f6191` |
+| `secure_resnet20.fhe.conversion-report.txt` | `9a3f5bf2898a59a77008b5125a44a30ad26e593f46015bdc6d03c400e35e0997` |
+| `secure_resnet20.fhe.vho.t` | `a7c2c1ecf4bc57e8526b0960ce94f1b8dd052795f1cce52eb1e36aed19806665` |
+| `conversion.log` | `96f2db91e474b0a2baa235fb70d0155ce2704f826bdcbd37f2a8ff4bdf73a3ff` |
+| `independent-verifier.log` | `8c6cdf9dde40129e39abb6747afe50fe56b256188f4f009b06af696e8d43d736` |
 
-## Historical Validation
+## Validation
 
-- The linked native semantic test was recorded as passing.
-- The full native Python suite was recorded as passing 170 tests.
-- The optional capture lane was recorded as passing 56 tests.
-- Native ResNet and Llama prefill, decode, and multiple-PU lanes were recorded
-  as passing and
-  retain artifacts.
+- The linked native semantic test passed against the current integrated build.
+- The current full native Python suite passed all 207 tests.
+- The optional capture lane passed all 56 tests.
+- The focused policy, evidence, plan-consistency, and ABI suites passed all 52
+  tests.
+- The full Commit 19 checkpoint suite passed conversion, separate-process
+  `ir_b2a -st -src` reopen, independent verification, and every required
+  fail-closed negative.
+- Native ResNet and Llama prefill, decode, and multiple-PU lanes remain
+  supporting historical evidence; they were not rerun for this exact-snapshot
+  rebind.
 - The x86-64, MIPS, MIPS-SL, KEY-generic, Loongson, and baseline syntax/layout
-  matrix was recorded as passing.
-- A dependency-light SafeTensors oracle was recorded as authenticating the
+  matrix passed against the current integrated source.
+- The rebuilt `be.so` and `lw_inline` contain no `DSL_Builder_*` or `Json::`
+  symbols.
+- A dependency-light SafeTensors oracle authenticated the
   pinned checkpoint, source, binary WHIRL, and source payload hashes, then
-  recomputing all 42 folded tensors without calling production folding code.
-- Independent trace validation was recorded as proving the exact disposition,
+  recomputed all 42 folded tensors without calling production folding code.
+- Independent trace validation proved the exact disposition,
   stage, range, state, source, and report joins.
 - Missing manifest (`CFHECNN-RELU-003`), wrong exact-byte hash and malformed
   bounds (`CFHECNN-RELU-004`), unknown identity or a correctly hashed route
   inconsistent with its persisted callsite (`CFHECNN-RELU-005`), and stale
-  destination (`CFHE-CHECKPOINT-006`) were recorded as failing without final or
+  destination (`CFHE-CHECKPOINT-006`) failed without final or
   temporary output.
 - A topology-identical input paired with changed parameter-payload bytes was
-  recorded as failing natively under `CFHECNN-RELU-007` before conversion or
+  rejected natively under `CFHECNN-RELU-007` before conversion or
   publication.
 
 ## Historical Formal Acceptance
@@ -138,8 +153,6 @@ Merge mechanics: **Pass**. The merge parents are `864eb7cc` and `93d80a6b`,
 and the merge tree exactly equals the accepted Commit 19 tree.
 
 Integrated implementation state: Commit 19 remains merged through PR #131.
-Current verification state: **unverified**. SYNC-4 may use these records for
-contract and design preparation, but must not consume them as verified
-implementation input until the complete bytes are accessible and independently
-checked, or an exact-snapshot certification is rerun and retained. Focused
-SYNC-3 remains distinct from v0.10 Architecture Phase 3 and M4.
+Current verification state: **verified** by the retained 2026-09-29
+exact-snapshot certification. SYNC-4 may consume this focused planning input.
+Focused SYNC-3 remains distinct from v0.10 Architecture Phase 3 and M4.

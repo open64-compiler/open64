@@ -1,9 +1,8 @@
 # Open64 FHE SYNC-3 Native Planning-Image Contract
 
 Status: Stage 3 VHO phase and all-PU conversion-checkpoint substrate were
-implemented and merged through PR #131. A 2026-09-14 merged-tip Pass is retained
-as historical evidence; current independent re-certification is **unverified**
-because the retained artifact bytes are not presently accessible.
+implemented and merged through PR #131. The historical 2026-09-14 Pass is
+supplemented by a current exact-snapshot certification retained on 2026-09-29.
 
 Semantic authority:
 

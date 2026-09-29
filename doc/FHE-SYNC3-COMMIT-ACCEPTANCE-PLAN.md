@@ -1,9 +1,9 @@
 # FHE SYNC-3 Commit Implementation, Verification, and Acceptance Plan
 
 Status: historical execution and acceptance plan for the implementation merged
-through PR #131. Its recorded 2026-09-14 Pass is not a current re-certification.
-Current independent SYNC-3 verification is **unverified** until the complete
-retained bytes are accessible or the exact-snapshot suite is rerun.
+through PR #131. The recorded 2026-09-14 Pass is supplemented by a current
+exact-snapshot certification that passed on 2026-09-29 and retained the
+complete artifact family.
 
 Planning baseline: `ebc6e9a13cf92f41c40405461853d2f648954789`.
 
@@ -65,13 +65,14 @@ phase names in v0.10:
 
 ### Current verification state
 
-Commit 19 and PR #131 are implementation history. The test counts and numerical
-results below describe the recorded 2026-09-14 run and were not rerun for this
-documentation revision. Its `/private/tmp/...` evidence directory is a
-historical host-local path, not a current locator. Until a complete immutable
-bundle is made accessible or a new exact-snapshot run retains all required
-bytes, current independent re-certification is unverified and SYNC-4 may perform
-design preparation only. A list of SHA-256 values cannot replace the artifacts.
+Commit 19 and PR #131 are implementation history. The 2026-09-29
+exact-snapshot run retained all required bytes at
+`/private/tmp/open64-fhe-sync3-recertification-20260929/current-snapshot-certification`,
+reopened the artifact in a separate process, ran the independent verifier, and
+passed the positive and fail-closed checkpoint suite. The accepted numerical
+evidence was not recomputed; its model source and payload identities match the
+current snapshot, and its authenticated manifest now binds that snapshot's
+binary WHIRL hash.
 
 ### Commit-by-commit v0.10 traceability
 
@@ -268,7 +269,7 @@ results and do not satisfy the present independent evidence gate by themselves.
 | 14: semantic gatekeeper | Complete | Focused native tests and the six-PU merged-tip artifact pass source and converted-form gates; malformed inputs fail closed | Closed by PR #131 and merged-tip rerun |
 | 15: BatchNorm folding | Complete | The merged-tip artifact proves 13 physical definition retirements, 21 context folds, 42 converted tensors, dead BN ABI inputs, and independent payload equality | Closed by PR #131 and merged-tip rerun |
 | 16: operator dispositions | Complete | The merged-tip artifact records 46 source and 46 converted dispositions; 11 reusable ReLU definitions use the composite profile | Closed by PR #131 and merged-tip rerun |
-| 17: ReLU profile and CKKS planning | Complete for SYNC-3 | Exact ACE stages and hashes, 19 approved ranges, and 19 callee-tagged `POST_REFRESH.v1` rows reopen with levels 15/17/18, scale 56, two components, and precision 30 | Recorded closed in the 2026-09-14 run; current re-certification is unverified and SYNC-4 materialization remains mandatory |
+| 17: ReLU profile and CKKS planning | Complete for SYNC-3 | Exact ACE stages and hashes, 19 approved ranges, and 19 callee-tagged `POST_REFRESH.v1` rows reopen with levels 15/17/18, scale 56, two components, and precision 30 | Re-certified on 2026-09-29; SYNC-4 materialization remains mandatory |
 | 18: reports and diagnostics | Complete | Atomic payload/report publication and `CFHECNN-RELU-003/004/005/007` plus stale-output negatives are retained with no partial artifacts | Closed by PR #131 and merged-tip rerun |
 | 19: full ResNet-20 SYNC-3 evidence | Complete | Six-PU `.fhe.B` publishes last and independently reopens; clear accuracy 91.6%, polynomial 91.5%, degradation 0.1 points, agreement 99.9%, range violations 0 | Closed at merged develop `d424c00b` on 2026-09-14 |
 

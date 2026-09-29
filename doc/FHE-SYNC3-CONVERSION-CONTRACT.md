@@ -1,9 +1,9 @@
 # FHE SYNC-3 ResNet Conversion Contract
 
 Status: implemented and merged through PR #131. The Commit 19 and 2026-09-14
-merged-tip Pass remain historical records. Current independent
-re-certification is **unverified** because the retained artifact bytes are not
-presently accessible. This document does not allocate opcodes, edit shared
+merged-tip Pass remain historical records, and a current exact-snapshot
+certification passed on 2026-09-29 with the complete artifact family retained.
+This document does not allocate opcodes, edit shared
 common/com files, insert bootstrap boundaries, lower to SIHE/CKKS primitives,
 or lower to runtime calls.
 
@@ -158,12 +158,11 @@ secret-key material, ciphertext bytes, backend C++ object state, or physical
 
 ## BatchNorm-to-Conv Folding
 
-Historical certification status: PR #131 recorded the complete approved
-composite profile and the full SecureResNet checkpoint as passing with 13
-physical retirements, 21 context folds, 42 converted tensors, atomic auxiliary
-publication, and mapped-image reopen. Those results were not rerun here, and
-current independent verification is unverified only because the complete
-retained artifact bytes are not presently accessible. The earlier degree-3
+Certification status: PR #131 recorded the complete approved composite profile
+and full SecureResNet checkpoint as passing with 13 physical retirements, 21
+context folds, 42 converted tensors, atomic auxiliary publication, and
+mapped-image reopen. The current exact-snapshot suite reproduced those results
+on 2026-09-29 and retained the complete artifact family. The earlier degree-3
 decision in `FHE-RELU-DEGREE3-POLICY-DECISION.md` is superseded historical
 input; the accepted profile is governed by
 `FHE-SYNC3-RELU-POLICY-APPROVAL-PACKAGE.md`.
