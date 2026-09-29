@@ -574,6 +574,13 @@ coverage of the complete CNN signed-rotation set. SYNC-5 owns production of the
 complete deterministic correctness schedule and its operation, signed-rotation,
 and key-requirement manifest.
 
+The exact context-sensitive materialization proposal is
+`FHE-SYNC4-RELU-MATERIALIZATION-CONTRACT.md`. Eleven reusable physical ReLU
+definitions represent nineteen contexts, so S4 persists one six-operation
+schedule per context and does not encode a context-specific bound or level in a
+shared callee body. Physical call specialization and standard-WHIRL runtime
+calls remain SYNC-5 work.
+
 ### **SYNC-5: Middle-WHIRL And Mock Executable Gate**
 
 Required phase output:

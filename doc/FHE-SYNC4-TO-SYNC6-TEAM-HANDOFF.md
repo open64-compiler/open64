@@ -139,9 +139,11 @@ Publish a shared-file ownership table before any shared file is edited.
 
 ## SYNC-4: ReLU O0 Materialization
 
-Entry gate: contract and design work may proceed, but implementation and its
-dependent commit stack must wait until the current SYNC-3 verification gate in
-the Starting Boundary is closed.
+Entry gate: closed by the retained 2026-09-29 exact-snapshot SYNC-3
+certification. The exact S4-1 semantic proposal is
+`doc/FHE-SYNC4-RELU-MATERIALIZATION-CONTRACT.md`; main/common accepted its
+semantic direction. Shared physical image/API implementation remains pending
+before native dependent coding.
 
 ### Objective
 
@@ -177,6 +179,11 @@ transport and all-PU consumption depend on the S4-1 driver hook.
 | S4-6 Full certification | Run the six-PU artifact through materialization and retain before/after evidence | `.B/.T`, phase trace, disposition/state report, command log, diagnostics, SHA-256 manifest |
 
 Retain evidence under `artifacts/fhe/sync4-relu-o0/`.
+
+The FHE-owned S4-2 static provider package is
+`doc/fhe-policy/sync4-relu/package-index.json`. Native authenticated option
+transport and all-PU consumption remain dependent on the reviewed S4-1
+main/common hook.
 
 ### Exit Gate
 
