@@ -208,14 +208,19 @@ VHO_FHE_Convert_Checkpoint_Begin
          const char *final_binary_path,
          FILE *diagnostic)
 {
-    return VHO_FHE_checkpoint_finalizer != NULL &&
-           VHO_FHE_checkpoint_completion != NULL &&
-           VHO_FHE_Checkpoint_Register_Lifecycle
-               (VHO_FHE_Convert_Checkpoint_Finalizer_Adapter,
-                VHO_FHE_Convert_Checkpoint_Completion_Adapter) &&
-           VHO_FHE_Checkpoint_Begin
-               (temporary_binary_path, final_binary_path,
-                "CFHE-CHECKPOINT", diagnostic);
+    if (VHO_FHE_checkpoint_finalizer == NULL ||
+        VHO_FHE_checkpoint_completion == NULL ||
+        !VHO_FHE_Checkpoint_Register_Lifecycle
+             (VHO_FHE_Convert_Checkpoint_Finalizer_Adapter,
+              VHO_FHE_Convert_Checkpoint_Completion_Adapter))
+        return FALSE;
+    if (!VHO_FHE_Checkpoint_Begin
+             (temporary_binary_path, final_binary_path,
+              "CFHE-CHECKPOINT", diagnostic)) {
+        VHO_FHE_Checkpoint_Abort();
+        return FALSE;
+    }
+    return TRUE;
 }
 
 BOOL
