@@ -10,6 +10,13 @@ ownership, and plan-level profitability. This document turns that design into
 staged Open64 work with explicit ownership, compiler scope, review gates,
 artifacts, and pull-request boundaries.
 
+`OPEN64-AI-COMPILATION-AND-RUNTIME-ARCHITECTURE.md` is authoritative for the
+larger source-to-device lifecycle. This implementation plan stops at certified
+global plans, local kernel plans, package requirements, runtime variants, and
+telemetry contracts. Target device compilation, AOT/late/hybrid publication,
+module loading, serving integration, and provider execution consume these
+outputs through the umbrella architecture and their target-specific plans.
+
 The first implementation is deliberately narrow: one PU, one fixed-shape
 `common.matmul`, check-only analysis, and no binary WHIRL layout change. Later
 milestones expand the same services to CNN, Transformer, distributed
@@ -1058,6 +1065,10 @@ artifact.
 
 ## Related Documents
 
+- `OPEN64-AI-COMPILATION-AND-RUNTIME-ARCHITECTURE.md` - umbrella architecture
+  for frontend artifacts, optimization plans, target lowering, AOT and late
+  compilation, executable packages, runtime providers, serving adapters, and
+  telemetry attribution.
 - `AI_compiler_optimization_design_v0.1.md` - authoritative architecture.
 - `AI-COMPILER-OPTIMIZATION-AIO0-INVENTORY.md` - merged-source inventory,
   ownership matrix, gap analysis, and fixed-shape baseline evidence.
