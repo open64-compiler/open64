@@ -1,4 +1,7 @@
 import copy
+import json
+import math
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -27,6 +30,37 @@ def build(mode="auto", existing=None):
 
 
 class FHESync4ReluMaterializationTest(unittest.TestCase):
+    @staticmethod
+    def _coefficients():
+        manifest = json.loads(
+            (POLICY3 / "coefficient-manifest.json").read_text(encoding="utf-8")
+        )
+        return [
+            [struct.unpack(">d", bytes.fromhex(value))[0]
+             for value in stage["binary64_hex"]]
+            for stage in manifest["stages"]
+        ]
+
+    @staticmethod
+    def _direct_chebyshev(coefficients, value):
+        terms = [1.0]
+        if len(coefficients) > 1:
+            terms.append(value)
+        while len(terms) < len(coefficients):
+            terms.append(2.0 * value * terms[-1] - terms[-2])
+        return sum(coefficient * term
+                   for coefficient, term in zip(coefficients, terms))
+
+    @staticmethod
+    def _clenshaw_chebyshev(coefficients, value):
+        next_value = 0.0
+        next_next = 0.0
+        for coefficient in reversed(coefficients[1:]):
+            current = coefficient + 2.0 * value * next_value - next_next
+            next_next = next_value
+            next_value = current
+        return coefficients[0] + value * next_value - next_next
+
     def test_auto_materializes_all_contexts(self) -> None:
         schedule = build()
         self.assertEqual(schedule["context_count"], 19)
@@ -118,6 +152,24 @@ class FHESync4ReluMaterializationTest(unittest.TestCase):
         self.assertEqual(len(contexts), 3)
         self.assertEqual(len({item["context_callsite_id"] for item in contexts}), 3)
         self.assertGreater(len({item["positive_bound_b"] for item in contexts}), 1)
+
+    def test_composite_relu_matches_independent_clear_oracle(self) -> None:
+        stages = self._coefficients()
+        maximum_error = 0.0
+        for index in range(20001):
+            normalized = -1.0 + 2.0 * index / 20000.0
+            direct = normalized
+            clenshaw = normalized
+            for coefficients in stages:
+                direct = self._direct_chebyshev(coefficients, direct)
+                clenshaw = self._clenshaw_chebyshev(coefficients, clenshaw)
+            self.assertTrue(math.isfinite(clenshaw))
+            self.assertAlmostEqual(direct, clenshaw, delta=2.0e-12)
+            approximation = 0.5 * normalized * clenshaw + 0.5 * normalized
+            maximum_error = max(
+                maximum_error, abs(approximation - max(0.0, normalized))
+            )
+        self.assertLessEqual(maximum_error, 7.24e-4)
 
 
 if __name__ == "__main__":
