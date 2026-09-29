@@ -6,6 +6,13 @@ Scope: AI memory hierarchy optimization architecture, research opportunity mappi
 
 Status: v0.1 consolidates the latest phase-ordering discussion and the top three AI compiler research opportunity analysis. It distinguishes research-derived design inspiration from DSC design proposals so future revisions can add paper-specific details, measurements, and implementation decisions without blurring provenance.
 
+Architectural placement: this document owns optimization analysis, candidate
+construction, plan selection, and the AI-P0 through AI-P11 contracts. The
+complete source-to-device lifecycle, including target lowering, AOT and late
+compilation, executable packages, runtime providers, serving integration, and
+telemetry attribution, is defined by
+`OPEN64-AI-COMPILATION-AND-RUNTIME-ARCHITECTURE.md`.
+
 # 1 Executive Summary And Design Goals
 
 The design goal is to make AI compiler optimization compositional across semantic tensors, layouts, sharding, memory residency, tiling, asynchronous movement, scheduling, and runtime adaptation. The central architectural choice is to preserve tensor identity through a TensorEvolutionGraph while optimization candidates remain provisional until enough layout, placement, tiling, resource, and runtime-state information exists to make a profitability decision.
@@ -29,6 +36,30 @@ The recommended implementation priority is: first TensorEvolutionGraph, then can
 - Allow static compilation to generate certified runtime variants selected by guarded runtime policy.
 
 - Create a living skeleton that can absorb future paper reviews, measurements, and implementation notes.
+
+## 1.2 Position In The Complete Compilation Flow
+
+This optimization pipeline ends by producing certified global and local plans;
+it does not itself publish or load executable packages. AI-P9 selects the local
+physical realization, provider, package requirement, device ABI, workspace,
+and fallback. AI-P10 records legal runtime variants, guards, and deterministic
+selection order. The target backend, compiler driver, package publisher,
+runtime executor, and device provider subsequently materialize and execute
+those decisions under
+`OPEN64-AI-COMPILATION-AND-RUNTIME-ARCHITECTURE.md`.
+
+AOT, late, and hybrid compilation are package policies orthogonal to the
+optimization level. A late compiler may specialize a certified portable image
+for the installed device, but it must not change fusion, layout, tiling,
+communication, numerical, or ABI decisions outside the selected plan. AOT and
+late-compiled executions therefore share one `KernelInvocationPlanIR` and
+`KernelPackageDescriptorIR` contract while retaining distinct executable and
+toolchain identities.
+
+Provider-specific compilation and loading remain outside common optimization
+IR. The optimizer records stable capabilities, package requirements, and
+fallbacks; NVIDIA and TPU providers implement their own native and portable
+image mechanisms without exposing vendor runtime handles in WHIRL.
 
 # 2 Recommended AI Optimization Phase Ordering
 
