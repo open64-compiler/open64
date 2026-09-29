@@ -21,9 +21,10 @@ is the sole highest FHE semantic authority. The reviewed copy has SHA-256
 `0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
 This Markdown tracker may narrow architecture milestones into review
 checkpoints, but it may not override v0.10 semantics, boundaries, or completion
-criteria. In particular, focused C3 / SYNC-3 completion is not completion of
-v0.10 Architecture Phase 3 or focused milestone M4. C4 / SYNC-4 remains
-mandatory.
+criteria. In particular, focused C3 / SYNC-3 completion was not completion of
+v0.10 Architecture Phase 3 or focused milestone M4. C4 / SYNC-4 is now
+implementation-complete and locally certified; standard-WHIRL lowering and
+runtime execution remain governed by SYNC-5 and SYNC-6.
 
 The project-approved ACE override selects `FHErt_ant` for the first executable
 provider and changes only provider selection and provider API mapping. It does
@@ -525,14 +526,13 @@ common.relu(x)
                              source_activation=common.relu)
 ```
 
-The selected architecture candidate is
+The selected architecture profile is
 `ace.chebyshev.sign.7x15x13.depth11.v1`. Degree 3 is retained only as a future
-experimental low-depth profile. The existing v1 approximation row describes a
-single polynomial and is not sufficient to persist this composition; an
-append-only ordered-stage contract must be reviewed before enablement. Exact
-coefficient bytes, all 19 identity-bound normalization ranges, clear/model
-error, and CKKS depth/state remain certification gates, so full SecureResNet
-publication continues to fail closed with `CFHECNN-RELU-003` until they pass.
+experimental low-depth profile. The append-only composite-profile,
+context-state, and materialization images preserve the ordered composition.
+Exact coefficient bytes, all 19 identity-bound normalization ranges,
+clear/model error, and CKKS depth/state enter through the certified SYNC-3
+input and are revalidated by the SYNC-4 semantic consumer.
 
 Required tests:
 
@@ -574,12 +574,20 @@ coverage of the complete CNN signed-rotation set. SYNC-5 owns production of the
 complete deterministic correctness schedule and its operation, signed-rotation,
 and key-requirement manifest.
 
-The exact context-sensitive materialization proposal is
-`FHE-SYNC4-RELU-MATERIALIZATION-CONTRACT.md`. Eleven reusable physical ReLU
-definitions represent nineteen contexts, so S4 persists one six-operation
-schedule per context and does not encode a context-specific bound or level in a
-shared callee body. Physical call specialization and standard-WHIRL runtime
-calls remain SYNC-5 work.
+Implementation status: **S4-1 through S4-6 implementation-complete and locally
+certified on 2026-09-29.** The FHE semantic module authenticates the pinned ACE
+ANT subset, materializes one dense six-operation schedule for each of 19
+contexts, and enforces exact final coverage. The retained six-PU artifact at
+`/private/tmp/open64-fhe-sync4-final` reopens with `ir_b2a -st -src` and proves
+114 operations, 19 refreshes, and post-refresh levels `15:16,17:1,18:2`.
+`auto`, `on`, and complete `manual` pass; `off`, missing-manual, bad hash, and
+stale-output cases fail atomically. Independent recurrence-versus-Clenshaw and
+dense normalized-ReLU checks certify the three-stage numerical policy.
+
+This closes the SYNC-4 materialization-planning gate only. The output retains
+logical materialization rows and source `common.relu` evidence; SYNC-5 owns
+standard-WHIRL runtime-call lowering and the complete CNN schedule, and SYNC-6
+owns linked ACE execution.
 
 ### **SYNC-5: Middle-WHIRL And Mock Executable Gate**
 

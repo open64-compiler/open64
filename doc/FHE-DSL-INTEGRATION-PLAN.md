@@ -32,9 +32,9 @@ frontend boundary or the original application-level `.B` file.
 
 SYNC-3 implementation is merged through PR #131. A current exact-snapshot
 certification passed on 2026-09-29 and retained the complete artifact family
-identified by `doc/FHE-SYNC3-COMMIT19-CERTIFICATION.md`. SYNC-4 may consume this
-verified focused planning input after review. Focused SYNC-3 is not v0.10
-Architecture Phase 3 or M4 completion.
+identified by `doc/FHE-SYNC3-COMMIT19-CERTIFICATION.md`. SYNC-4 S4-1 through
+S4-6 are implementation-complete and locally certified against that exact
+input. Independent review and merge remain required before SYNC-5 begins.
 
 ## Normative Decisions
 
@@ -949,30 +949,23 @@ or v1 generated-C interfaces without a reviewed version transition.
 
 ## Immediate Action Queue
 
-No SYNC-4 implementation may consume SYNC-3 until item 1 passes. While it is
-open, work is limited to contract and design preparation.
+SYNC-3 and the local SYNC-4 materialization gate have passed. The next queue
+begins with independent SYNC-4 review and merged-tip recertification.
 
-1. Publish an accessible immutable complete SYNC-3 evidence bundle, or retain a
-   new complete exact-snapshot rerun, and obtain independent review of every
-   required artifact byte, command, toolchain identity, log, and negative
-   result.
-2. Merge the ACE runtime decision and team handoff, then record the exact
-   authority-document revisions used by the team.
-3. Assign the SYNC-4 shared-file owners and freeze bootstrap/composite
-   materialization contracts before implementation.
-4. Materialize and certify the 19 mandatory `-O0` refresh and approved
-   composite ReLU contexts.
-5. Freeze the full ResNet correctness schedule, operation/rotation/key census,
+1. Independently review the SYNC-4 code and complete retained family at
+   `/private/tmp/open64-fhe-sync4-final`, then merge and recertify the exact
+   merged tip.
+2. Freeze the full ResNet correctness schedule, operation/rotation/key census,
    `open64_fhe_runtime_abi.h` v1, and pass the standard-WHIRL, `whirl2c`, and
    complete mock-provider gate.
-6. Compare the exact pinned `ace-ant` capabilities, including evaluation-only
+3. Compare the exact pinned `ace-ant` capabilities, including evaluation-only
    public context/key/ciphertext import and ciphertext export, with the frozen
    SYNC-5 manifest. Block SYNC-6 if any required capability is absent.
-7. Build the ACE ANT broker/worker adapter behind the unchanged ABI and the
+4. Build the ACE ANT broker/worker adapter behind the unchanged ABI and the
    separate client/provisioner validation helper.
-8. Run focused ACE ANT operator diagnostics, then complete the ResNet-20
+5. Run focused ACE ANT operator diagnostics, then complete the ResNet-20
    `-O0` client/server process-boundary certification.
-9. Use `doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md` as the commit, test,
+6. Use `doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md` as the commit, test,
    retained-artifact, and kickoff checklist.
 
 ## Deferred Work

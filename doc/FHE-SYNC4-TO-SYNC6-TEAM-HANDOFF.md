@@ -1,8 +1,9 @@
 # FHE SYNC-4 Through SYNC-6 Team Handoff
 
-Status: the 2026-09-29 exact-snapshot SYNC-3 re-certification passed with an
-accessible complete retained artifact family. SYNC-4 implementation may begin
-after this documentation and evidence update is independently reviewed.
+Status: the 2026-09-29 exact-snapshot SYNC-3 re-certification passed, and
+SYNC-4 S4-1 through S4-6 are implementation-complete and locally certified.
+Independent review and merge close SYNC-4; the next implementation gate is
+SYNC-5 standard-WHIRL runtime-call lowering.
 
 Current machine-readable stage-entry gate:
 
@@ -10,6 +11,8 @@ Current machine-readable stage-entry gate:
 SYNC3_CURRENT_VERIFICATION=VERIFIED_EXACT_SNAPSHOT
 SYNC4_CONSUMPTION_BASIS=VERIFIED_2026_09_29_EXACT_SNAPSHOT
 SYNC4_MAY_CONSUME_SYNC3=true
+SYNC4_IMPLEMENTATION_STATUS=COMPLETE_LOCAL_CERTIFICATION
+SYNC5_MAY_BEGIN_AFTER_SYNC4_REVIEW=true
 ```
 
 These fields are the automation-facing state for this revision. They are bound
@@ -142,8 +145,8 @@ Publish a shared-file ownership table before any shared file is edited.
 Entry gate: closed by the retained 2026-09-29 exact-snapshot SYNC-3
 certification. The exact S4-1 semantic proposal is
 `doc/FHE-SYNC4-RELU-MATERIALIZATION-CONTRACT.md`; main/common accepted its
-semantic direction. Shared physical image/API implementation remains pending
-before native dependent coding.
+semantic direction. The shared physical image/API implementation and FHE
+semantic consumer are complete on the SYNC-4 branch.
 
 ### Objective
 
@@ -164,26 +167,32 @@ The accepted S4-1 contract is
 `doc/FHE-SYNC4-RELU-MATERIALIZATION-CONTRACT.md`. Main/common owns its fixed
 image, managed APIs, reader/writer, inspection, and driver/checkpoint hooks.
 The FHE-owned S4-2 static provider package is
-`doc/fhe-policy/sync4-relu/package-index.json`; native authenticated option
-transport and all-PU consumption depend on the S4-1 driver hook.
+`doc/fhe-policy/sync4-relu/package-index.json`; native exact-byte
+authentication and all-PU consumption use the S4-1 driver hook.
 
 ### Commit Plan
 
 | Commit | Coding scope | Required tests and evidence |
 | --- | --- | --- |
-| S4-1 Contract freeze | Publish exact bootstrap, composite-activation, state-transition, effect, diagnostic, and lowering contracts; name shared-file owners | Contract review; existing WHIRL reopen; unknown version/profile negatives |
-| S4-2 ReLU-subset capability gate | Define provider-independent capability consumption for only the materialized ReLU/bootstrap subset: target levels, slots, depth, normalization, and the arithmetic needed by the ordered 7/15/13 stages | Valid pinned subset manifest; bad revision/hash; missing bootstrap or stage primitive; unsupported level/slot/depth |
-| S4-3 Bootstrap materialization | Insert exactly one mandatory pre-ReLU refresh for every approved context under `auto|on`; preserve source position, reason, range, route, and state | Focused root/called contexts; exactly 19 boundaries; 16/1/2 target-level distribution; duplicate/missing state negatives |
-| S4-4 Composite approximation | Materialize normalization, ordered 7/15/13 stages, and reconstruction from approved TCON bytes and hashes | Stage order, coefficient hash, depth 11, scale/level, malformed manifest, and numerical oracle tests |
-| S4-5 Option modes and gate | Implement `bootstrap=auto|on|manual|off` and the post-pass semantic verifier | Positive auto/on/manual; missing manual boundary; off rejection; no surviving standalone live ReLU |
-| S4-6 Full certification | Run the six-PU artifact through materialization and retain before/after evidence | `.B/.T`, phase trace, disposition/state report, command log, diagnostics, SHA-256 manifest |
+| S4-1 Contract freeze | **Complete.** Publish exact bootstrap, composite-activation, state-transition, effect, diagnostic, and lowering contracts; name shared-file owners | Contract, mapped-image, malformed-image, old-reader, and reopen review passed |
+| S4-2 ReLU-subset capability gate | **Complete.** Authenticate the materialized ReLU/bootstrap subset: target levels, slots, depth, normalization, and ordered 7/15/13 arithmetic | Pinned subset and revision/hash/bootstrap/primitive/level/slot/depth negatives passed |
+| S4-3 Bootstrap materialization | **Complete.** Insert exactly one mandatory pre-ReLU refresh per approved context under `auto|on`; preserve reason, range, route, and state | Exactly 19 boundaries and `15:16,17:1,18:2` distribution reopen |
+| S4-4 Composite approximation | **Complete.** Materialize normalization, ordered 7/15/13 stages, and reconstruction from approved TCON bytes and hashes | Exactly 114 rows; stage/hash/depth/state checks and independent numerical oracle passed |
+| S4-5 Option modes and gate | **Complete.** Enforce `bootstrap=auto|on|manual|off` and exact final semantic verification | Auto/on/manual passed; missing-manual/off/hash failures published no partial output |
+| S4-6 Full certification | **Complete locally.** Run the six-PU artifact through materialization and retain before/after evidence | `.B/.T`, source, reports, phase trace, commands, diagnostics, and SHA-256 manifest retained for review |
 
 Retain evidence under `artifacts/fhe/sync4-relu-o0/`.
 
 The FHE-owned S4-2 static provider package is
 `doc/fhe-policy/sync4-relu/package-index.json`. Native authenticated option
-transport and all-PU consumption remain dependent on the reviewed S4-1
+transport and all-PU consumption are implemented through the reviewed S4-1
 main/common hook.
+
+SYNC-4 retained evidence is `/private/tmp/open64-fhe-sync4-final`. The
+independent certifier is
+`osprey/torch2whirl/python/tests/fhe_sync4_certification.py`. This evidence
+closes materialization planning, not standard-WHIRL runtime lowering or ACE
+execution.
 
 ### Exit Gate
 
@@ -334,12 +343,14 @@ Do not stack a dependent implementation on an unmerged shared-contract branch.
 3. Run the deployability check below and attach its output to the kickoff issue.
 4. Record the baseline commit and authority-document blob IDs.
 5. Assign every team role, reviewer, and shared file.
-6. Create a SYNC-4 board with one item for each S4 commit and explicit
-   dependency arrows.
-7. Open the S4-1 contract PR first. Do not begin dependent implementation until
-   its shared contracts are merged.
+6. Record S4-1 through S4-6 as locally complete and attach the retained
+   certification family to the independent review.
+7. After the reviewed SYNC-4 branch merges and merged-tip certification passes,
+   create the SYNC-5 board and open its standard-WHIRL/runtime-ABI contract PR
+   before dependent lowering implementation.
 8. Reserve host-visible artifact roots for positive and negative runs.
-9. Schedule independent review checkpoints after S4-2, S4-5, and S4-6.
+9. Schedule independent review checkpoints at the SYNC-5 mock-executable gate
+   and before SYNC-6 ACE provider execution.
 
 ## Deployability Check
 
@@ -357,6 +368,7 @@ doc/FHE-ACE-RTLIB-RUNTIME-DECISION.md
 doc/FHE-RUNTIME-C-ABI-V1-CONTRACT.md
 doc/FHE-SYNC3-COMMIT19-CERTIFICATION.md
 doc/FHE-SYNC3-CONTEXT-CKKS-STATE-CONTRACT.md
+doc/FHE-SYNC4-RELU-MATERIALIZATION-CONTRACT.md
 doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md
 "
 
@@ -374,6 +386,10 @@ rg -q "sync6-ace-ant-client-server-o0" doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md
 rg -q "SYNC4_CONSUMPTION_BASIS=VERIFIED_2026_09_29_EXACT_SNAPSHOT" \
   doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md
 rg -q "SYNC4_MAY_CONSUME_SYNC3=true" \
+  doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md
+rg -q "SYNC4_IMPLEMENTATION_STATUS=COMPLETE_LOCAL_CERTIFICATION" \
+  doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md
+rg -q "SYNC5_MAY_BEGIN_AFTER_SYNC4_REVIEW=true" \
   doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md
 rg -q "evaluation-only" doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md
 rg -q "supervised worker" doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md
@@ -415,15 +431,16 @@ The kickoff issue or meeting note must contain:
 - pinned ACE revision and checkout location;
 - named owners and independent reviewers;
 - shared-file ownership table;
-- S4-1 through S4-6 branch and PR sequence;
+- merged SYNC-4 revision and S4-1 through S4-6 certification evidence;
 - artifact roots and retention owner;
 - provider manifest owner and license reviewer;
 - explicit `SYNC4_CONSUMPTION_BASIS=VERIFIED_2026_09_29_EXACT_SNAPSHOT`;
 - complete SYNC-5 schedule/call-census/capability/key manifest ownership;
 - client, broker, supervised-worker, and no-secret-server owners;
 - declared option modes, numerical thresholds, and stop conditions; and
-- links to the SYNC-3 evidence bundle and the first S4-1 contract review.
+- links to the SYNC-3 and SYNC-4 evidence bundles and the first SYNC-5
+  contract review.
 
-The team is ready to implement after this exact-snapshot evidence update is
-independently reviewed, this record is complete, and the S4-1 shared contract
-has an assigned main/common owner.
+The team is ready to begin SYNC-5 after the SYNC-4 implementation and retained
+evidence are independently reviewed, merged-tip certification passes, and the
+SYNC-5 shared contracts have named owners.

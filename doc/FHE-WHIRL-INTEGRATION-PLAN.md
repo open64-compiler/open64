@@ -565,7 +565,7 @@ encoded as value-state versions.
 | SYNC-1: Native API and image contract freeze | Shared native contracts before frontend certification | FHE record layouts, builder API requests, malformed-record rules, printer spelling, and negative-test matrix are finalized against main-owned common/type, mapped-image, and gatekeeper hooks. |
 | SYNC-2: Frontend artifact certification | Complete ResNet-20 capture using merged opaque APIs | `artifacts/fhe/resnet20_capture/` retains source, weights, `.B`, `ir_b2a -st -src` `.T`, operator census, options, and gatekeeper log; every source ReLU is existing `common.relu`; Python invents no bootstrap or CKKS operators. |
 | SYNC-3: ResNet FHE conversion review | FHE gatekeeper and CNN-to-FHE conversion | **Implementation merged and current exact-snapshot verification passed on 2026-09-29.** The retained artifact proves callee-value identity, 13 definition/21 context folds, 42 converted tensors, 46 dispositions, the exact ACE coefficient profile, 19 authenticated ranges, and 19 context-specific `POST_REFRESH.v1` CKKS planning states. SYNC-4 may consume this focused planning input after review. |
-| SYNC-4: ReLU `-O0` baseline certification | Mandatory pre-ReLU refresh and composite polynomial approximation | Certify the selected ACE-compatible Chebyshev sign profile with ordered degrees `7 -> 15 -> 13`, depth 11, exact coefficient bytes/checksums, identity-bound normalization ranges, model accuracy, and CKKS state. Then `bootstrap=auto|on` inserts one required pre-ReLU boundary per surviving `common.relu`; `manual` requires explicit compatible boundaries; `off` rejects surviving ReLU; no `-O0` movement, merging, deduplication, or profitability placement occurs. |
+| SYNC-4: ReLU `-O0` baseline certification | Mandatory pre-ReLU refresh and composite polynomial approximation | **Implementation-complete and locally certified.** The ACE-compatible `7 -> 15 -> 13`, depth-11 profile materializes one dense six-operation schedule for each of 19 contexts. `auto|on` create the required boundary, complete `manual` validates without duplication, and `off` rejects surviving ReLU; no `-O0` movement, merging, deduplication, or profitability placement occurs. |
 | SYNC-5: Middle-WHIRL and mock executable gate | Standard WHIRL boundary and mock runtime | `secure_resnet20.mid.B` and `.T` contain only standard WHIRL calls, formals, symbols, initializers, status checks, and control flow; `whirl2c` emits C that compiles and links with the mock FHE C ABI. The deterministic full-model correctness schedule and runtime-call census publish the complete operation, signed-rotation, and key-requirement manifest that the mock consumes. |
 | SYNC-6: End-to-end `-O0` client/server acceptance | Complete ACE ANT ResNet path | Full ResNet-20 binary WHIRL lowers through the unchanged SYNC-5 calls, `whirl2c`, generated-C compilation, the Open64 ACE provider adapter, and pinned `FHErt_ant`; a secret-key-owning client provisions only versioned public context, required evaluation keys, and ciphertext input to a server with no key-generation/decryption/secret-key dependency, then decrypts the returned ciphertext for validation within budget. |
 | SYNC-7: Optimized-versus-`-O0` proof | ReSBM, boundary movement/fusion, HPOLY/HPAO | Every optimized transform has an independent option and proves source semantics, approximation error, CKKS scale/level legality, key availability, provenance, and tolerance against the retained `-O0` baseline. |
@@ -976,26 +976,17 @@ layer.
 
 ## Immediate Next Actions
 
-No SYNC-4 implementation may consume SYNC-3 until item 1 passes. While it is
-open, work is limited to contract and design preparation.
+SYNC-3 and the local SYNC-4 certification gates have passed. Independent review
+and merge of the SYNC-4 branch precede dependent SYNC-5 implementation.
 
-1. Publish an accessible immutable complete SYNC-3 evidence bundle, or retain a
-   new complete exact-snapshot rerun, and obtain independent review of every
-   required artifact byte, command, toolchain identity, log, and negative
-   result.
-2. Use `doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md` to record the active
-   authority revisions, named owners, reviewers, branches, and artifact roots.
-3. Freeze the SYNC-4 bootstrap and composite-activation materialization
-   contracts with exact main/common file ownership.
-4. Validate only the SYNC-4 ReLU/bootstrap subset against provider-independent
-   composite arithmetic, slots, bootstrap capability, and post-bootstrap
-   levels; do not claim the full CNN signed-rotation set at this checkpoint.
-5. Implement and certify the deterministic `-O0` ReLU materialization and
-   all four bootstrap option modes.
-6. At SYNC-5, freeze the deterministic correctness schedule and runtime-call
+1. Obtain independent review of the completed SYNC-4 code, retained artifact
+   family, commands, hashes, diagnostics, and numerical oracle evidence.
+2. Merge the reviewed SYNC-4 branch and rerun the retained certification from
+   the merged tip.
+3. At SYNC-5, freeze the deterministic correctness schedule and runtime-call
    census, publish the complete operation/signed-rotation/key-requirement
    manifest, and pass the standard-WHIRL, `whirl2c`, and mock-provider gate.
-7. Before SYNC-6 execution, compare the ACE capability manifest with that
+4. Before SYNC-6 execution, compare the ACE capability manifest with that
    complete SYNC-5 manifest. Integrate pinned `FHErt_ant` behind the unchanged
    ABI and run the separate client/server acceptance suite. If evaluation-only
    public-context/key/ciphertext import is unavailable, keep ACE selected but
