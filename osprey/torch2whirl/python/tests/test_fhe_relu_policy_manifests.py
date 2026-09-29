@@ -5,21 +5,98 @@ import copy
 import hashlib
 import json
 import struct
+import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import NamedTuple
 
 
 ROOT = Path(__file__).resolve().parents[4]
 MANIFEST_DIR = ROOT / "doc" / "fhe-policy" / "sync3-relu"
 
 
+class PolicyArtifactContract(NamedTuple):
+    path: str
+    status: str
+
+
+POLICY_ARTIFACT_CONTRACTS = {
+    "coefficient_provenance": PolicyArtifactContract(
+        "doc/fhe-policy/sync3-relu/coefficient-manifest.json",
+        "approved_empirical_ace",
+    ),
+    "identity_bound_ranges": PolicyArtifactContract(
+        "doc/fhe-policy/sync3-relu/range-manifest.json",
+        "approved",
+    ),
+    "accuracy": PolicyArtifactContract(
+        "doc/fhe-policy/sync3-relu/accuracy-manifest.json",
+        "approved",
+    ),
+    "ckks_state_proof": PolicyArtifactContract(
+        "doc/fhe-policy/sync3-relu/ckks-schedule-manifest.json",
+        "approved_static_compiler_schedule",
+    ),
+}
+
+
 class ManifestError(ValueError):
     pass
 
 
+def read_canonical_json_bytes(path: Path) -> bytes:
+    raw = path.read_bytes()
+    try:
+        raw.decode("ascii")
+    except UnicodeDecodeError as error:
+        raise ManifestError(f"{path.name} must contain ASCII bytes") from error
+    if b"\r" in raw:
+        raise ManifestError(f"{path.name} must use LF line endings")
+    if not raw.endswith(b"\n"):
+        raise ManifestError(f"{path.name} must have one terminal LF")
+    if len(raw) == 1 or raw[-2:] == b"\n\n" or raw[-2:-1] in b" \t\v\f":
+        raise ManifestError(
+            f"{path.name} must have exactly one terminal LF after JSON content"
+        )
+    return raw
+
+
 def load_manifest(name: str) -> dict:
-    with (MANIFEST_DIR / name).open("r", encoding="ascii") as stream:
-        return json.load(stream)
+    raw = read_canonical_json_bytes(MANIFEST_DIR / name)
+    return json.loads(raw.decode("ascii"))
+
+
+def load_policy_manifest(gate: str) -> dict:
+    contract = POLICY_ARTIFACT_CONTRACTS[gate]
+    raw = read_canonical_json_bytes(resolve_repo_artifact_path(contract.path))
+    return json.loads(raw.decode("ascii"))
+
+
+def resolve_repo_artifact_path(relative_path: object, root: Path = ROOT) -> Path:
+    if not isinstance(relative_path, str) or not relative_path:
+        raise ManifestError("policy package artifact path must be relative")
+    posix_path = PurePosixPath(relative_path)
+    windows_path = PureWindowsPath(relative_path)
+    if posix_path.is_absolute() or windows_path.is_absolute():
+        raise ManifestError("policy package artifact path must be relative")
+    if "\\" in relative_path or ".." in posix_path.parts:
+        raise ManifestError("policy package artifact path may not escape the repository")
+
+    root_path = root.resolve(strict=True)
+    candidate = root_path.joinpath(*posix_path.parts)
+    try:
+        resolved = candidate.resolve(strict=True)
+    except OSError as error:
+        raise ManifestError("policy package artifact is missing") from error
+    try:
+        resolved.relative_to(root_path)
+    except ValueError as error:
+        raise ManifestError(
+            "policy package artifact path may not escape the repository"
+        ) from error
+    if not resolved.is_file():
+        raise ManifestError("policy package artifact is missing")
+    return resolved
 
 
 def require_sha256(value: object, field: str) -> None:
@@ -258,15 +335,50 @@ def validate_package_index(manifest: dict) -> None:
     if manifest.get("schema") != "open64.fhe.relu.policy-package.v1":
         raise ManifestError("unknown policy package schema")
     artifacts = manifest.get("artifacts")
-    if not isinstance(artifacts, list) or len(artifacts) != 4:
+    if not isinstance(artifacts, list) or len(artifacts) != len(
+        POLICY_ARTIFACT_CONTRACTS
+    ):
         raise ManifestError("policy package must contain all four gates")
+    seen_gates = set()
+    seen_paths = set()
     for artifact in artifacts:
-        path = ROOT / artifact.get("path", "")
-        if not path.is_file():
-            raise ManifestError("policy package artifact is missing")
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if not isinstance(artifact, dict):
+            raise ManifestError("policy package artifact entry must be an object")
+        gate = artifact.get("gate")
+        relative_path = artifact.get("path")
+        if not isinstance(gate, str):
+            raise ManifestError("policy package artifact gate must be a string")
+        if not isinstance(relative_path, str):
+            raise ManifestError("policy package artifact path must be relative")
+        if gate in seen_gates:
+            raise ManifestError("policy package contains a duplicate gate")
+        if relative_path in seen_paths:
+            raise ManifestError("policy package contains a duplicate artifact path")
+        seen_gates.add(gate)
+        seen_paths.add(relative_path)
+
+        path = resolve_repo_artifact_path(relative_path)
+        contract = POLICY_ARTIFACT_CONTRACTS.get(gate)
+        if contract is None:
+            raise ManifestError("policy package contains an unknown gate")
+        if relative_path != contract.path:
+            raise ManifestError("policy package gate has the wrong artifact path")
+        if artifact.get("status") != contract.status:
+            raise ManifestError("policy package gate has the wrong expected status")
+
+        raw = read_canonical_json_bytes(path)
+        digest = hashlib.sha256(raw).hexdigest()
         if digest != artifact.get("sha256"):
             raise ManifestError("policy package artifact checksum mismatch")
+        artifact_manifest = json.loads(raw.decode("ascii"))
+        if artifact_manifest.get("status") != contract.status:
+            raise ManifestError("policy package artifact has the wrong status")
+    if seen_gates != set(POLICY_ARTIFACT_CONTRACTS):
+        raise ManifestError("policy package gate set is incomplete")
+    if seen_paths != {
+        contract.path for contract in POLICY_ARTIFACT_CONTRACTS.values()
+    }:
+        raise ManifestError("policy package artifact path set is incomplete")
     enablement = manifest.get("enablement", {})
     if enablement.get("allowed") is not False:
         raise ManifestError("incomplete policy package must fail closed")
@@ -276,10 +388,10 @@ def validate_package_index(manifest: dict) -> None:
 
 class FHEReluPolicyManifestTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.coefficients = load_manifest("coefficient-manifest.json")
-        self.ranges = load_manifest("range-manifest.json")
-        self.accuracy = load_manifest("accuracy-manifest.json")
-        self.ckks = load_manifest("ckks-schedule-manifest.json")
+        self.coefficients = load_policy_manifest("coefficient_provenance")
+        self.ranges = load_policy_manifest("identity_bound_ranges")
+        self.accuracy = load_policy_manifest("accuracy")
+        self.ckks = load_policy_manifest("ckks_state_proof")
         self.package = load_manifest("package-index.json")
 
     def test_review_package_is_structurally_valid(self) -> None:
@@ -348,6 +460,83 @@ class FHEReluPolicyManifestTest(unittest.TestCase):
         malformed["artifacts"][0]["sha256"] = "0" * 64
         with self.assertRaises(ManifestError):
             validate_package_index(malformed)
+
+    def test_package_cannot_point_all_gates_at_one_file(self) -> None:
+        malformed = copy.deepcopy(self.package)
+        repeated_path = malformed["artifacts"][0]["path"]
+        for artifact in malformed["artifacts"]:
+            artifact["path"] = repeated_path
+        with self.assertRaisesRegex(ManifestError, "duplicate artifact path"):
+            validate_package_index(malformed)
+
+    def test_duplicate_package_artifact_path_is_rejected(self) -> None:
+        malformed = copy.deepcopy(self.package)
+        malformed["artifacts"][1]["path"] = malformed["artifacts"][0]["path"]
+        with self.assertRaisesRegex(ManifestError, "duplicate artifact path"):
+            validate_package_index(malformed)
+
+    def test_duplicate_package_gate_is_rejected(self) -> None:
+        malformed = copy.deepcopy(self.package)
+        malformed["artifacts"][1]["gate"] = malformed["artifacts"][0]["gate"]
+        with self.assertRaisesRegex(ManifestError, "duplicate gate"):
+            validate_package_index(malformed)
+
+    def test_wrong_package_gate_path_pair_is_rejected(self) -> None:
+        malformed = copy.deepcopy(self.package)
+        malformed["artifacts"][0]["path"], malformed["artifacts"][1]["path"] = (
+            malformed["artifacts"][1]["path"],
+            malformed["artifacts"][0]["path"],
+        )
+        with self.assertRaisesRegex(ManifestError, "wrong artifact path"):
+            validate_package_index(malformed)
+
+    def test_wrong_package_gate_status_is_rejected(self) -> None:
+        malformed = copy.deepcopy(self.package)
+        malformed["artifacts"][0]["status"] = "approved"
+        with self.assertRaisesRegex(ManifestError, "wrong expected status"):
+            validate_package_index(malformed)
+
+    def test_absolute_and_traversing_package_paths_are_rejected(self) -> None:
+        paths = (
+            str((MANIFEST_DIR / "coefficient-manifest.json").resolve()),
+            "doc/fhe-policy/sync3-relu/../sync3-relu/coefficient-manifest.json",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                malformed = copy.deepcopy(self.package)
+                malformed["artifacts"][0]["path"] = path
+                with self.assertRaisesRegex(
+                    ManifestError, "relative|may not escape"
+                ):
+                    validate_package_index(malformed)
+
+    def test_crlf_manifest_bytes_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "manifest.json"
+            path.write_bytes(b'{\r\n  "schema": "test"\r\n}\r\n')
+            with self.assertRaisesRegex(ManifestError, "LF line endings"):
+                read_canonical_json_bytes(path)
+
+    def test_manifest_without_terminal_lf_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "manifest.json"
+            path.write_bytes(b'{\n  "schema": "test"\n}')
+            with self.assertRaisesRegex(ManifestError, "one terminal LF"):
+                read_canonical_json_bytes(path)
+
+    def test_manifest_with_extra_terminal_lf_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "manifest.json"
+            path.write_bytes(b'{\n  "schema": "test"\n}\n\n')
+            with self.assertRaisesRegex(ManifestError, "exactly one terminal LF"):
+                read_canonical_json_bytes(path)
+
+    def test_non_ascii_manifest_bytes_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "manifest.json"
+            path.write_bytes(b'{\n  "value": "\xc3\xa9"\n}\n')
+            with self.assertRaisesRegex(ManifestError, "ASCII bytes"):
+                read_canonical_json_bytes(path)
 
 
 if __name__ == "__main__":

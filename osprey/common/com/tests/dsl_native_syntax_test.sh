@@ -66,6 +66,7 @@ sources=(
   "osprey/be/vho/fhe_convert.cxx"
   "osprey/be/vho/fhe_materialize.cxx"
   "osprey/be/vho/fhe_semantic_convert.cxx"
+  "osprey/be/vho/fhe_semantic_materialize.cxx"
   "osprey/be/vho/tests/dsl_lower_contract_test.cxx"
   "osprey/be/vho/tests/dsl_opt_contract_test.cxx"
   "osprey/be/vho/tests/dsl_shape_refine_contract_test.cxx"

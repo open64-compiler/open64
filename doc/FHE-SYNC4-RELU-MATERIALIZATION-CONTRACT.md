@@ -1,10 +1,10 @@
 # FHE SYNC-4 ReLU Materialization Contract
 
-Status: S4-1 semantic contract accepted by FHE and main/common review. The
-main/common implementation candidate assigns the optional section described
-below and provides its fixed records, managed APIs, reader/writer, printer,
-and focused roundtrip tests. SYNC-3 exact-snapshot certification passed on
-2026-09-29. This document does not allocate a new DSL logical operator.
+Status: S4-1 through S4-6 are implementation-complete and locally certified on
+2026-09-29. The main/common image/API contract, FHE semantic consumer, all four
+bootstrap modes, independent artifact verifier, and six-PU retained evidence
+are present. Independent review and merge remain the stage-close governance
+step. This document does not allocate a new DSL logical operator.
 
 ## Purpose
 
@@ -380,3 +380,27 @@ materialization rows do not duplicate source locations.
   no ReLU is standalone from a complete context schedule.
 - S4-6: the six-PU materialized checkpoint and complete retained evidence
   family pass independent review.
+
+Completion evidence:
+
+- S4-1: the fixed image, atomic complete-context transaction, partial per-PU
+  validation, exact final validation, mapped reader/writer/printer, and
+  materialization checkpoint driver are implemented;
+- S4-2: exact-byte SHA-256 authentication admits the pinned ACE ANT
+  ReLU/bootstrap subset and rejects malformed, mismatched, or insufficient
+  capability manifests;
+- S4-3: the six-PU checkpoint contains exactly 19 refresh operations with
+  target levels distributed `15:16,17:1,18:2`;
+- S4-4: all 19 contexts contain the dense six-operation sequence `refresh`,
+  `normalize`, stages `7`, `15`, `13`, and `reconstruct_relu`; direct
+  Chebyshev recurrence and Clenshaw evaluation agree within `2e-12`, and the
+  20,001-point normalized ReLU oracle has maximum error at most `7.24e-4`;
+- S4-5: `auto`, `on`, and complete `manual` pass; `off`, missing-manual, and
+  bad provider hash fail with stable diagnostics and no published artifact;
+- S4-6: the exact six-PU input publishes `.B` last, reopens in a separate
+  `ir_b2a -st -src` process, and passes the independent artifact certifier.
+
+The retained local evidence is `/private/tmp/open64-fhe-sync4-final`. This
+checkpoint materializes an inspectable provider-independent correctness
+schedule. It does not lower the schedule to standard-WHIRL runtime calls or
+claim `FHErt_ant` execution; those are SYNC-5 and SYNC-6 gates.
