@@ -136,6 +136,7 @@ extern INT WN_get_dsl_fhe_image (void *handle);
 extern INT WN_get_dsl_fhe_plan_image (void *handle);
 extern INT WN_get_dsl_fhe_approx_profile_image (void *handle);
 extern INT WN_get_dsl_fhe_context_state_image (void *handle);
+extern INT WN_get_dsl_fhe_materialization_image (void *handle);
 
 
 extern INT WN_get_dst (void *handle);

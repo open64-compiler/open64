@@ -32,6 +32,8 @@ typedef SEGMENTED_ARRAY<DSL_FHE_CONTEXT_RANGE_RECORD>
     DSL_FHE_CONTEXT_RANGE_TABLE;
 typedef SEGMENTED_ARRAY<DSL_FHE_CONTEXT_CKKS_STATE_RECORD>
     DSL_FHE_CONTEXT_CKKS_STATE_TABLE;
+typedef SEGMENTED_ARRAY<DSL_FHE_MATERIALIZATION_OPERATION_RECORD>
+    DSL_FHE_MATERIALIZATION_OPERATION_TABLE;
 
 static DSL_FHE_DISPOSITION_TABLE DSL_fhe_disposition_table;
 static DSL_FHE_APPROXIMATION_TABLE DSL_fhe_approximation_table;
@@ -42,6 +44,8 @@ static DSL_FHE_APPROX_STAGE_TABLE DSL_fhe_approx_stage_table;
 static DSL_FHE_APPROX_ASSOCIATION_TABLE DSL_fhe_approx_association_table;
 static DSL_FHE_CONTEXT_RANGE_TABLE DSL_fhe_context_range_table;
 static DSL_FHE_CONTEXT_CKKS_STATE_TABLE DSL_fhe_context_ckks_state_table;
+static DSL_FHE_MATERIALIZATION_OPERATION_TABLE
+    DSL_fhe_materialization_operation_table;
 
 static BOOL DSL_FHE_Approx_Profile_Cross_Validate (FILE *diagnostic);
 
@@ -65,6 +69,11 @@ typedef struct {
     const DSL_FHE_CONTEXT_STATE_IMAGE_HEADER *header;
     const DSL_FHE_CONTEXT_CKKS_STATE_RECORD *states;
 } DSL_FHE_CONTEXT_STATE_IMAGE_VIEW;
+
+typedef struct {
+    const DSL_FHE_MATERIALIZATION_IMAGE_HEADER *header;
+    const DSL_FHE_MATERIALIZATION_OPERATION_RECORD *operations;
+} DSL_FHE_MATERIALIZATION_IMAGE_VIEW;
 
 typedef char DSL_FHE_Plan_TY_IDX_Width_Check
     [sizeof(TY_IDX) == 4 ? 1 : -1];
@@ -110,6 +119,12 @@ typedef char DSL_FHE_Context_State_Header_Size_Check
 typedef char DSL_FHE_Context_CKKS_State_Size_Check
     [sizeof(DSL_FHE_CONTEXT_CKKS_STATE_RECORD) ==
         DSL_FHE_CONTEXT_CKKS_STATE_RECORD_SIZE ? 1 : -1];
+typedef char DSL_FHE_Materialization_Header_Size_Check
+    [sizeof(DSL_FHE_MATERIALIZATION_IMAGE_HEADER) ==
+        DSL_FHE_MATERIALIZATION_IMAGE_HEADER_SIZE ? 1 : -1];
+typedef char DSL_FHE_Materialization_Operation_Size_Check
+    [sizeof(DSL_FHE_MATERIALIZATION_OPERATION_RECORD) ==
+        DSL_FHE_MATERIALIZATION_OPERATION_SIZE ? 1 : -1];
 
 template <typename RECORD>
 static void
@@ -587,6 +602,7 @@ DSL_FHE_Plan_Image_Reset (void)
     DSL_fhe_bn_fold_table.Delete_down_to(0);
     DSL_FHE_Approx_Profile_Image_Reset();
     DSL_FHE_Context_State_Image_Reset();
+    DSL_FHE_Materialization_Image_Reset();
 }
 
 void
@@ -726,7 +742,8 @@ DSL_FHE_Plan_Image_Validate (FILE *diagnostic)
 {
     return DSL_FHE_Plan_View_Validate(NULL, diagnostic) &&
            DSL_FHE_Approx_Profile_Cross_Validate(diagnostic) &&
-           DSL_FHE_Context_State_Image_Validate(diagnostic);
+           DSL_FHE_Context_State_Image_Validate(diagnostic) &&
+           DSL_FHE_Materialization_Image_Validate(diagnostic);
 }
 
 static BOOL
@@ -2087,4 +2104,553 @@ DSL_FHE_Context_State_Find_Latest
             latest = i + 1;
     }
     return latest != 0 && DSL_FHE_Context_State_Get(latest, record);
+}
+
+static BOOL
+DSL_FHE_Materialization_Report
+        (FILE *diagnostic, const char *message, UINT32 id)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "FHE materialization image error: %s id=%u\n",
+                message, id);
+    return FALSE;
+}
+
+static UINT32
+DSL_FHE_Materialization_View_Count
+        (const DSL_FHE_MATERIALIZATION_IMAGE_VIEW *view)
+{
+    return view == NULL ? DSL_fhe_materialization_operation_table.Size() :
+                          view->header->operation_count;
+}
+
+static const DSL_FHE_MATERIALIZATION_OPERATION_RECORD &
+DSL_FHE_Materialization_View_Record
+        (const DSL_FHE_MATERIALIZATION_IMAGE_VIEW *view, UINT32 ordinal)
+{
+    return view == NULL ? DSL_fhe_materialization_operation_table[ordinal] :
+                          view->operations[ordinal];
+}
+
+static BOOL
+DSL_FHE_Materialization_Context_Eligible
+        (const DSL_FHE_CONTEXT_RANGE_RECORD &range)
+{
+    if ((range.flags & DSL_FHE_CONTEXT_RANGE_IDENTITY_IS_CALLEE) == 0)
+        return FALSE;
+    UINT32 matches = 0;
+    for (UINT32 i = 0; i < DSL_fhe_approx_association_table.Size(); ++i) {
+        const DSL_FHE_APPROX_ASSOCIATION_RECORD &association =
+            DSL_fhe_approx_association_table[i];
+        if (association.profile_id != range.profile_id ||
+            association.source_relu_value_id != range.source_relu_value_id)
+            continue;
+        DSL_FHE_CONVERSION_DISPOSITION_RECORD disposition;
+        if (!DSL_FHE_Plan_Get_Conversion_Disposition
+                (association.disposition_id, &disposition) ||
+            disposition.disposition !=
+                DSL_FHE_DISPOSITION_REQUIRE_COMPOSITE_APPROXIMATION ||
+            disposition.owner_pu_st != range.owner_pu_st)
+            return FALSE;
+        ++matches;
+    }
+    return matches == 1;
+}
+
+static BOOL
+DSL_FHE_Materialization_State_Matches_Context
+        (const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &state,
+         const DSL_FHE_CONTEXT_RANGE_RECORD &range)
+{
+    return state.owner_pu_st == range.owner_pu_st &&
+           state.source_value_id == range.source_relu_value_id &&
+           state.context_pu_identity_id == range.context_pu_identity_id &&
+           state.context_callsite_id == range.context_callsite_id;
+}
+
+static UINT32
+DSL_FHE_Materialization_Expected_Kind (UINT32 ordinal)
+{
+    switch (ordinal) {
+    case 0:
+        return DSL_FHE_MATERIALIZATION_OPERATION_REFRESH;
+    case 1:
+        return DSL_FHE_MATERIALIZATION_OPERATION_NORMALIZE;
+    case 2:
+    case 3:
+    case 4:
+        return DSL_FHE_MATERIALIZATION_OPERATION_APPROX_STAGE;
+    case 5:
+        return DSL_FHE_MATERIALIZATION_OPERATION_RECONSTRUCT_RELU;
+    default:
+        return DSL_FHE_MATERIALIZATION_OPERATION_UNKNOWN;
+    }
+}
+
+static BOOL
+DSL_FHE_Materialization_Operation_Basic_Valid
+        (const DSL_FHE_MATERIALIZATION_OPERATION_RECORD &record)
+{
+    DSL_FHE_CONTEXT_RANGE_RECORD range;
+    DSL_FHE_COMPOSITE_PROFILE_RECORD profile;
+    DSL_FHE_CONTEXT_CKKS_STATE_RECORD output_state;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD encryption;
+    UINT32 expected_role;
+    UINT32 expected_version;
+
+    if (record.operation_ordinal >=
+            DSL_FHE_MATERIALIZATION_OPERATIONS_PER_CONTEXT ||
+        record.operation_kind !=
+            DSL_FHE_Materialization_Expected_Kind(record.operation_ordinal) ||
+        record.flags != 0 || record.reserved0 != 0 ||
+        record.reserved1 != 0 ||
+        !DSL_FHE_Context_Range_Get(record.range_id, &range) ||
+        !DSL_FHE_Materialization_Context_Eligible(range) ||
+        record.owner_pu_st != range.owner_pu_st ||
+        record.source_relu_value_id != range.source_relu_value_id ||
+        record.context_pu_identity_id != range.context_pu_identity_id ||
+        record.context_callsite_id != range.context_callsite_id ||
+        record.profile_id != range.profile_id ||
+        !DSL_FHE_Approx_Profile_Get(record.profile_id, &profile) ||
+        !DSL_FHE_Context_State_Get(record.output_state_id, &output_state) ||
+        !DSL_FHE_Materialization_State_Matches_Context(output_state, range) ||
+        !DSL_FHE_Get_Encryption_Descriptor
+            (output_state.encryption_descriptor_id, &encryption) ||
+        encryption.config_id != profile.config_id)
+        return FALSE;
+
+    if (record.operation_ordinal == 0) {
+        expected_role = DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH;
+        expected_version = 1;
+        if (record.input_state_id != 0 || record.stage_id != 0 ||
+            record.parameter_tcon != TCON_IDX_ZERO)
+            return FALSE;
+    } else {
+        DSL_FHE_CONTEXT_CKKS_STATE_RECORD input_state;
+        if (!DSL_FHE_Context_State_Get
+                (record.input_state_id, &input_state) ||
+            !DSL_FHE_Materialization_State_Matches_Context
+                (input_state, range))
+            return FALSE;
+        expected_role = record.operation_ordinal == 5 ?
+                            DSL_FHE_CONTEXT_STATE_ROLE_RESULT :
+                            DSL_FHE_CONTEXT_STATE_ROLE_POST_OPERATION;
+        expected_version = record.operation_ordinal == 5 ? 1 :
+                               record.operation_ordinal;
+    }
+    if (output_state.state_role != expected_role ||
+        output_state.state_version != expected_version)
+        return FALSE;
+
+    if (record.operation_ordinal == 1)
+        return record.stage_id == 0 &&
+               record.parameter_tcon == range.positive_bound_tcon;
+    if (record.operation_ordinal >= 2 && record.operation_ordinal <= 4) {
+        DSL_FHE_APPROX_STAGE_RECORD stage;
+        return DSL_FHE_Approx_Stage_Get(record.stage_id, &stage) &&
+               stage.profile_id == record.profile_id &&
+               stage.stage_ordinal == record.operation_ordinal - 2 &&
+               record.parameter_tcon == stage.coefficient_tensor_tcon;
+    }
+    if (record.operation_ordinal == 5)
+        return record.stage_id == 0 &&
+               record.parameter_tcon == TCON_IDX_ZERO;
+    return TRUE;
+}
+
+static BOOL
+DSL_FHE_Materialization_Same_Context
+        (const DSL_FHE_MATERIALIZATION_OPERATION_RECORD &left,
+         const DSL_FHE_MATERIALIZATION_OPERATION_RECORD &right)
+{
+    return left.owner_pu_st == right.owner_pu_st &&
+           left.source_relu_value_id == right.source_relu_value_id &&
+           left.context_pu_identity_id == right.context_pu_identity_id &&
+           left.context_callsite_id == right.context_callsite_id &&
+           left.range_id == right.range_id;
+}
+
+static BOOL
+DSL_FHE_Materialization_Transitions_Valid
+        (const DSL_FHE_MATERIALIZATION_OPERATION_RECORD operations[6])
+{
+    DSL_FHE_CONTEXT_CKKS_STATE_RECORD states[6];
+    for (UINT32 ordinal = 0;
+         ordinal < DSL_FHE_MATERIALIZATION_OPERATIONS_PER_CONTEXT;
+         ++ordinal) {
+        if (!DSL_FHE_Context_State_Get
+                (operations[ordinal].output_state_id, &states[ordinal]))
+            return FALSE;
+    }
+    if ((states[0].pending_actions & DSL_FHE_CKKS_PENDING_BOOTSTRAP) == 0 ||
+        states[0].pending_bootstrap_reason !=
+            DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH ||
+        states[0].level < 0 || states[0].scale_bits < 0 ||
+        states[0].component_count <= 0 || states[0].precision_bits <= 0)
+        return FALSE;
+
+    for (UINT32 ordinal = 1;
+         ordinal < DSL_FHE_MATERIALIZATION_OPERATIONS_PER_CONTEXT;
+         ++ordinal) {
+        const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &input =
+            states[ordinal - 1];
+        const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &output = states[ordinal];
+        INT32 expected_level = input.level;
+        if (output.encryption_descriptor_id !=
+                states[0].encryption_descriptor_id ||
+            output.scale_bits != input.scale_bits ||
+            output.slot_count != input.slot_count)
+            return FALSE;
+        if (ordinal >= 2 && ordinal <= 4) {
+            DSL_FHE_APPROX_STAGE_RECORD stage;
+            if (!DSL_FHE_Approx_Stage_Get
+                    (operations[ordinal].stage_id, &stage))
+                return FALSE;
+            expected_level -= stage.level_consumption;
+            if (output.precision_bits < stage.minimum_precision_bits ||
+                (stage.output_component_policy ==
+                     DSL_FHE_APPROX_COMPONENT_RELINEARIZED_TWO &&
+                 output.component_count != 2))
+                return FALSE;
+        }
+        if (output.level != expected_level)
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL
+DSL_FHE_Materialization_View_Validate
+        (const DSL_FHE_MATERIALIZATION_IMAGE_VIEW *view, FILE *diagnostic)
+{
+    DSL_FHE_MATERIALIZATION_IMAGE_HEADER header;
+    if (view == NULL)
+        DSL_FHE_Materialization_Image_Get_Header(&header);
+    else
+        header = *view->header;
+    if (header.magic != DSL_FHE_MATERIALIZATION_IMAGE_MAGIC ||
+        header.version != DSL_FHE_MATERIALIZATION_IMAGE_VERSION ||
+        header.header_size != DSL_FHE_MATERIALIZATION_IMAGE_HEADER_SIZE ||
+        header.record_kind_count != 1 ||
+        header.capabilities !=
+            DSL_FHE_MATERIALIZATION_CAP_CONTEXT_SCHEDULE ||
+        header.flags != 0 || header.reserved0 != 0 ||
+        header.reserved1 != 0 || header.reserved2 != 0 ||
+        header.reserved3 != 0 || header.reserved4 != 0 ||
+        header.reserved5 != 0 || header.reserved6 != 0 ||
+        header.reserved7 != 0 ||
+        header.operation_count != header.context_count *
+            DSL_FHE_MATERIALIZATION_OPERATIONS_PER_CONTEXT)
+        return DSL_FHE_Materialization_Report
+                   (diagnostic, "invalid header", 0);
+
+    const UINT32 count = DSL_FHE_Materialization_View_Count(view);
+    if (count == 0)
+        return header.context_count == 0;
+    for (UINT32 i = 0; i < count; ++i) {
+        const DSL_FHE_MATERIALIZATION_OPERATION_RECORD &record =
+            DSL_FHE_Materialization_View_Record(view, i);
+        if (record.id != i + 1 ||
+            !DSL_FHE_Materialization_Operation_Basic_Valid(record))
+            return DSL_FHE_Materialization_Report
+                       (diagnostic, "invalid operation", i + 1);
+        for (UINT32 j = 0; j < i; ++j) {
+            const DSL_FHE_MATERIALIZATION_OPERATION_RECORD &prior =
+                DSL_FHE_Materialization_View_Record(view, j);
+            if (DSL_FHE_Materialization_Same_Context(prior, record) &&
+                prior.operation_ordinal == record.operation_ordinal)
+                return DSL_FHE_Materialization_Report
+                           (diagnostic, "duplicate context operation", i + 1);
+        }
+    }
+
+    UINT32 eligible_contexts = 0;
+    for (UINT32 range_id = 1;
+         range_id <= DSL_FHE_Context_Range_Count(); ++range_id) {
+        DSL_FHE_CONTEXT_RANGE_RECORD range;
+        if (!DSL_FHE_Context_Range_Get(range_id, &range))
+            return DSL_FHE_Materialization_Report
+                       (diagnostic, "invalid context range", range_id);
+        if (!DSL_FHE_Materialization_Context_Eligible(range))
+            continue;
+        ++eligible_contexts;
+        DSL_FHE_MATERIALIZATION_OPERATION_RECORD operations[6];
+        BOOL found[6] = { FALSE, FALSE, FALSE, FALSE, FALSE, FALSE };
+        for (UINT32 i = 0; i < count; ++i) {
+            const DSL_FHE_MATERIALIZATION_OPERATION_RECORD &record =
+                DSL_FHE_Materialization_View_Record(view, i);
+            if (record.range_id != range_id)
+                continue;
+            operations[record.operation_ordinal] = record;
+            found[record.operation_ordinal] = TRUE;
+        }
+        for (UINT32 ordinal = 0;
+             ordinal < DSL_FHE_MATERIALIZATION_OPERATIONS_PER_CONTEXT;
+             ++ordinal) {
+            if (!found[ordinal])
+                return DSL_FHE_Materialization_Report
+                           (diagnostic, "missing context operation", range_id);
+            if (ordinal != 0 && operations[ordinal].input_state_id !=
+                                    operations[ordinal - 1].output_state_id)
+                return DSL_FHE_Materialization_Report
+                           (diagnostic, "disconnected state chain", range_id);
+        }
+        if (!DSL_FHE_Materialization_Transitions_Valid(operations))
+            return DSL_FHE_Materialization_Report
+                       (diagnostic, "invalid context transition", range_id);
+    }
+    if (eligible_contexts != header.context_count)
+        return DSL_FHE_Materialization_Report
+                   (diagnostic, "context coverage mismatch", 0);
+    return TRUE;
+}
+
+void
+DSL_FHE_Materialization_Image_Reset (void)
+{
+    DSL_fhe_materialization_operation_table.Delete_down_to(0);
+}
+
+void
+DSL_FHE_Materialization_Image_Get_Header
+        (DSL_FHE_MATERIALIZATION_IMAGE_HEADER *header)
+{
+    if (header == NULL)
+        return;
+    memset(header, 0, sizeof(*header));
+    header->magic = DSL_FHE_MATERIALIZATION_IMAGE_MAGIC;
+    header->version = DSL_FHE_MATERIALIZATION_IMAGE_VERSION;
+    header->header_size = DSL_FHE_MATERIALIZATION_IMAGE_HEADER_SIZE;
+    header->record_kind_count = 1;
+    header->capabilities = DSL_FHE_MATERIALIZATION_CAP_CONTEXT_SCHEDULE;
+    header->operation_count = DSL_fhe_materialization_operation_table.Size();
+    for (UINT32 i = 0;
+         i < DSL_fhe_materialization_operation_table.Size(); ++i) {
+        BOOL first = TRUE;
+        for (UINT32 j = 0; j < i; ++j) {
+            if (DSL_FHE_Materialization_Same_Context
+                    (DSL_fhe_materialization_operation_table[j],
+                     DSL_fhe_materialization_operation_table[i])) {
+                first = FALSE;
+                break;
+            }
+        }
+        if (first)
+            ++header->context_count;
+    }
+}
+
+BOOL DSL_FHE_Materialization_Image_Has_Records (void)
+{ return DSL_fhe_materialization_operation_table.Size() != 0; }
+
+BOOL
+DSL_FHE_Materialization_Image_Validate (FILE *diagnostic)
+{ return DSL_FHE_Materialization_View_Validate(NULL, diagnostic); }
+
+BOOL
+DSL_FHE_Materialization_Image_Load_Mapped
+        (const void *section_base, UINT64 section_size, FILE *diagnostic)
+{
+    if (section_base == NULL ||
+        section_size < DSL_FHE_MATERIALIZATION_IMAGE_HEADER_SIZE)
+        return FALSE;
+    const unsigned char *cursor =
+        (const unsigned char *)section_base;
+    const DSL_FHE_MATERIALIZATION_IMAGE_HEADER *header =
+        (const DSL_FHE_MATERIALIZATION_IMAGE_HEADER *)cursor;
+    UINT64 expected_size = DSL_FHE_MATERIALIZATION_IMAGE_HEADER_SIZE;
+    if (header->operation_count >
+            (~(UINT64)0 - expected_size) /
+                DSL_FHE_MATERIALIZATION_OPERATION_SIZE)
+        return FALSE;
+    expected_size += (UINT64)header->operation_count *
+                     DSL_FHE_MATERIALIZATION_OPERATION_SIZE;
+    if (expected_size != section_size)
+        return FALSE;
+    DSL_FHE_MATERIALIZATION_IMAGE_VIEW view;
+    view.header = header;
+    cursor += DSL_FHE_MATERIALIZATION_IMAGE_HEADER_SIZE;
+    view.operations =
+        (const DSL_FHE_MATERIALIZATION_OPERATION_RECORD *)cursor;
+    if (!DSL_FHE_Materialization_View_Validate(&view, diagnostic))
+        return FALSE;
+    DSL_FHE_Materialization_Image_Reset();
+    if (header->operation_count != 0)
+        DSL_fhe_materialization_operation_table.Insert
+            (view.operations, header->operation_count);
+    return DSL_FHE_Materialization_View_Validate(NULL, diagnostic);
+}
+
+UINT32 DSL_FHE_Materialization_Operation_Count (void)
+{ return DSL_fhe_materialization_operation_table.Size(); }
+
+BOOL
+DSL_FHE_Materialization_Get
+        (DSL_FHE_MATERIALIZATION_OPERATION_ID id,
+         DSL_FHE_MATERIALIZATION_OPERATION_RECORD *record)
+{
+    return DSL_FHE_Plan_Table_Get
+               (DSL_fhe_materialization_operation_table, id, record);
+}
+
+BOOL
+DSL_FHE_Materialization_Find
+        (ST_IDX owner_pu_st, DSL_IR_VALUE_ID source_relu_value_id,
+         DSL_PU_SOURCE_IDENTITY_ID context_pu_identity_id,
+         DSL_CALLSITE_METADATA_ID context_callsite_id,
+         UINT32 operation_ordinal,
+         DSL_FHE_MATERIALIZATION_OPERATION_RECORD *record)
+{
+    for (UINT32 i = 0;
+         i < DSL_fhe_materialization_operation_table.Size(); ++i) {
+        const DSL_FHE_MATERIALIZATION_OPERATION_RECORD &operation =
+            DSL_fhe_materialization_operation_table[i];
+        if (operation.owner_pu_st == owner_pu_st &&
+            operation.source_relu_value_id == source_relu_value_id &&
+            operation.context_pu_identity_id == context_pu_identity_id &&
+            operation.context_callsite_id == context_callsite_id &&
+            operation.operation_ordinal == operation_ordinal)
+            return DSL_FHE_Materialization_Get(i + 1, record);
+    }
+    return FALSE;
+}
+
+static BOOL
+DSL_FHE_Materialization_New_State_Valid
+        (const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &state,
+         const DSL_FHE_CONTEXT_RANGE_RECORD &range,
+         UINT32 role, UINT32 version,
+         DSL_FHE_ENCRYPTION_DESCRIPTOR_ID encryption_descriptor_id)
+{
+    if (state.id != 0 || state.state_role != role ||
+        state.state_version != version ||
+        state.encryption_descriptor_id != encryption_descriptor_id ||
+        !DSL_FHE_Materialization_State_Matches_Context(state, range) ||
+        !DSL_FHE_Context_State_Basic_Valid(state))
+        return FALSE;
+    DSL_FHE_CONTEXT_CKKS_STATE_RECORD prior;
+    return !DSL_FHE_Context_State_Find
+                (state.owner_pu_st, state.source_value_id,
+                 state.context_pu_identity_id, state.context_callsite_id,
+                 role, version, &prior);
+}
+
+DSL_FHE_MATERIALIZATION_OPERATION_ID
+DSL_FHE_Materialization_Intern_Complete_Context
+        (DSL_FHE_CONTEXT_RANGE_ID range_id,
+         const DSL_FHE_CONTEXT_CKKS_STATE_RECORD *post_operation_states,
+         UINT32 post_operation_state_count)
+{
+    DSL_FHE_CONTEXT_RANGE_RECORD range;
+    DSL_FHE_COMPOSITE_PROFILE_RECORD profile;
+    DSL_FHE_CONTEXT_CKKS_STATE_RECORD refresh;
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD encryption;
+    DSL_FHE_APPROX_STAGE_RECORD stages[3];
+    if (post_operation_states == NULL ||
+        post_operation_state_count !=
+            DSL_FHE_MATERIALIZATION_NEW_STATES_PER_CONTEXT ||
+        !DSL_FHE_Context_Range_Get(range_id, &range) ||
+        !DSL_FHE_Materialization_Context_Eligible(range) ||
+        !DSL_FHE_Approx_Profile_Get(range.profile_id, &profile) ||
+        !DSL_FHE_Context_State_Find
+            (range.owner_pu_st, range.source_relu_value_id,
+             range.context_pu_identity_id, range.context_callsite_id,
+             DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH, 1, &refresh) ||
+        !DSL_FHE_Get_Encryption_Descriptor
+            (refresh.encryption_descriptor_id, &encryption) ||
+        encryption.config_id != profile.config_id)
+        return DSL_FHE_MATERIALIZATION_OPERATION_INVALID_ID;
+    for (UINT32 i = 0; i < 3; ++i) {
+        if (!DSL_FHE_Approx_Stage_Find(range.profile_id, i, &stages[i]))
+            return DSL_FHE_MATERIALIZATION_OPERATION_INVALID_ID;
+    }
+    for (UINT32 i = 0;
+         i < DSL_fhe_materialization_operation_table.Size(); ++i) {
+        if (DSL_fhe_materialization_operation_table[i].range_id == range_id)
+            return DSL_FHE_MATERIALIZATION_OPERATION_INVALID_ID;
+    }
+
+    const UINT32 roles[5] = {
+        DSL_FHE_CONTEXT_STATE_ROLE_POST_OPERATION,
+        DSL_FHE_CONTEXT_STATE_ROLE_POST_OPERATION,
+        DSL_FHE_CONTEXT_STATE_ROLE_POST_OPERATION,
+        DSL_FHE_CONTEXT_STATE_ROLE_POST_OPERATION,
+        DSL_FHE_CONTEXT_STATE_ROLE_RESULT
+    };
+    const UINT32 versions[5] = { 1, 2, 3, 4, 1 };
+    for (UINT32 i = 0; i < 5; ++i) {
+        if (!DSL_FHE_Materialization_New_State_Valid
+                (post_operation_states[i], range, roles[i], versions[i],
+                 refresh.encryption_descriptor_id))
+            return DSL_FHE_MATERIALIZATION_OPERATION_INVALID_ID;
+    }
+
+    const DSL_FHE_CONTEXT_CKKS_STATE_RECORD *prior = &refresh;
+    for (UINT32 i = 0; i < 5; ++i) {
+        const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &next =
+            post_operation_states[i];
+        INT32 expected_level = prior->level;
+        if (i >= 1 && i <= 3)
+            expected_level -= stages[i - 1].level_consumption;
+        if (next.level != expected_level ||
+            next.scale_bits != prior->scale_bits ||
+            next.slot_count != prior->slot_count)
+            return DSL_FHE_MATERIALIZATION_OPERATION_INVALID_ID;
+        if (i >= 1 && i <= 3) {
+            const DSL_FHE_APPROX_STAGE_RECORD &stage = stages[i - 1];
+            if (next.precision_bits < stage.minimum_precision_bits ||
+                (stage.output_component_policy ==
+                     DSL_FHE_APPROX_COMPONENT_RELINEARIZED_TWO &&
+                 next.component_count != 2))
+                return DSL_FHE_MATERIALIZATION_OPERATION_INVALID_ID;
+        }
+        prior = &next;
+    }
+
+    const UINT32 old_state_count = DSL_fhe_context_ckks_state_table.Size();
+    const UINT32 old_operation_count =
+        DSL_fhe_materialization_operation_table.Size();
+    DSL_FHE_CONTEXT_CKKS_STATE_ID state_ids[6];
+    state_ids[0] = refresh.id;
+    for (UINT32 i = 0; i < 5; ++i) {
+        DSL_FHE_CONTEXT_CKKS_STATE_RECORD copy =
+            post_operation_states[i];
+        UINT32 index = DSL_fhe_context_ckks_state_table.Insert(copy);
+        DSL_fhe_context_ckks_state_table[index].id = index + 1;
+        state_ids[i + 1] = index + 1;
+    }
+
+    for (UINT32 ordinal = 0;
+         ordinal < DSL_FHE_MATERIALIZATION_OPERATIONS_PER_CONTEXT;
+         ++ordinal) {
+        DSL_FHE_MATERIALIZATION_OPERATION_RECORD operation;
+        memset(&operation, 0, sizeof(operation));
+        operation.id = DSL_fhe_materialization_operation_table.Size() + 1;
+        operation.owner_pu_st = range.owner_pu_st;
+        operation.source_relu_value_id = range.source_relu_value_id;
+        operation.context_pu_identity_id = range.context_pu_identity_id;
+        operation.context_callsite_id = range.context_callsite_id;
+        operation.operation_kind =
+            DSL_FHE_Materialization_Expected_Kind(ordinal);
+        operation.operation_ordinal = ordinal;
+        operation.profile_id = range.profile_id;
+        operation.range_id = range.id;
+        operation.input_state_id = ordinal == 0 ? 0 : state_ids[ordinal - 1];
+        operation.output_state_id = state_ids[ordinal];
+        if (ordinal == 1)
+            operation.parameter_tcon = range.positive_bound_tcon;
+        else if (ordinal >= 2 && ordinal <= 4) {
+            operation.stage_id = stages[ordinal - 2].id;
+            operation.parameter_tcon =
+                stages[ordinal - 2].coefficient_tensor_tcon;
+        }
+        if (!DSL_FHE_Materialization_Operation_Basic_Valid(operation)) {
+            DSL_fhe_context_ckks_state_table.Delete_down_to(old_state_count);
+            DSL_fhe_materialization_operation_table.Delete_down_to
+                (old_operation_count);
+            return DSL_FHE_MATERIALIZATION_OPERATION_INVALID_ID;
+        }
+        DSL_fhe_materialization_operation_table.Insert(operation);
+    }
+    return old_operation_count + 1;
 }

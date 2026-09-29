@@ -89,6 +89,7 @@
 #define WT_DSL_PU_INTERFACE_IMAGE 0x26
 #define WT_DSL_FHE_APPROX_PROFILE 0x27
 #define WT_DSL_FHE_CONTEXT_STATE 0x28
+#define WT_DSL_FHE_MATERIALIZATION 0x29
 
 /*
  * Special WHIRL section names.
@@ -111,6 +112,8 @@
 #define MIPS_WHIRL_DSL_PU_INTERFACE_IMAGE ".WHIRL.dsl_pu_interface"
 #define MIPS_WHIRL_DSL_FHE_APPROX_PROFILE ".WHIRL.dsl_fhe_approx_profile"
 #define MIPS_WHIRL_DSL_FHE_CONTEXT_STATE ".WHIRL.dsl_fhe_context_state"
+#define MIPS_WHIRL_DSL_FHE_MATERIALIZATION \
+        ".WHIRL.dsl_fhe_materialization"
 #if defined(TARG_SL)
 #define MIPS_WHIRL_CALLGRAPH    ".WHIRL.callgraph"
 #endif

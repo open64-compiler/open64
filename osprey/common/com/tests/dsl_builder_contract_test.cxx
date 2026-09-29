@@ -6128,6 +6128,24 @@ Check_External_Tensor_Materialization(void)
 }
 
 static int
+Initialize_FHE_Materialization_State
+        (DSL_FHE_CONTEXT_CKKS_STATE_RECORD *state,
+         const DSL_FHE_CONTEXT_CKKS_STATE_RECORD *refresh,
+         UINT32 role, UINT32 version, INT32 level)
+{
+    if (state == NULL || refresh == NULL)
+        return 0;
+    *state = *refresh;
+    state->id = 0;
+    state->state_role = role;
+    state->state_version = version;
+    state->level = level;
+    state->pending_actions = DSL_FHE_CKKS_PENDING_NONE;
+    state->pending_bootstrap_reason = DSL_FHE_BOOTSTRAP_REASON_NONE;
+    return 1;
+}
+
+static int
 Check_FHE_SYNC3_Plan_Image(void)
 {
     const char *artifact = getenv("OPEN64_DSL_FHE_SYNC3_ARTIFACT");
@@ -6192,6 +6210,9 @@ Check_FHE_SYNC3_Plan_Image(void)
     DSL_FHE_CONTEXT_RANGE_RECORD context_range;
     DSL_FHE_CONTEXT_STATE_IMAGE_HEADER context_state_header;
     DSL_FHE_CONTEXT_CKKS_STATE_RECORD context_state;
+    DSL_FHE_MATERIALIZATION_IMAGE_HEADER materialization_header;
+    DSL_FHE_MATERIALIZATION_OPERATION_RECORD materialization_operation;
+    DSL_FHE_CONTEXT_CKKS_STATE_RECORD materialization_states[5];
     DSL_TENSOR_TCON_CREATE_INFO tcon_info;
     DSL_FHE_APPROXIMATION_CONTRACT_ID approximation_id;
     DSL_FHE_CKKS_VALUE_STATE_ID conv_state_id;
@@ -6256,7 +6277,9 @@ Check_FHE_SYNC3_Plan_Image(void)
          sizeof(DSL_FHE_APPROX_ASSOCIATION_RECORD) == 32 &&
          sizeof(DSL_FHE_CONTEXT_RANGE_RECORD) == 64 &&
          sizeof(DSL_FHE_CONTEXT_STATE_IMAGE_HEADER) == 64 &&
-         sizeof(DSL_FHE_CONTEXT_CKKS_STATE_RECORD) == 88,
+         sizeof(DSL_FHE_CONTEXT_CKKS_STATE_RECORD) == 88 &&
+         sizeof(DSL_FHE_MATERIALIZATION_IMAGE_HEADER) == 64 &&
+         sizeof(DSL_FHE_MATERIALIZATION_OPERATION_RECORD) == 64,
          "fixed record sizes");
     if (!DSL_Builder_Begin_Program())
         return 1;
@@ -7223,6 +7246,221 @@ Check_FHE_SYNC3_Plan_Image(void)
          "mapped context state copied and cross-validated");
     delete [] context_state_image_bytes;
 
+    if (getenv("OPEN64_DSL_FHE_SYNC4_MATERIALIZATION") != NULL) {
+        DSL_FHE_CONTEXT_CKKS_STATE_RECORD refresh_state;
+        const UINT32 state_roles[5] = {
+            DSL_FHE_CONTEXT_STATE_ROLE_POST_OPERATION,
+            DSL_FHE_CONTEXT_STATE_ROLE_POST_OPERATION,
+            DSL_FHE_CONTEXT_STATE_ROLE_POST_OPERATION,
+            DSL_FHE_CONTEXT_STATE_ROLE_POST_OPERATION,
+            DSL_FHE_CONTEXT_STATE_ROLE_RESULT
+        };
+        const UINT32 state_versions[5] = { 1, 2, 3, 4, 1 };
+        const INT32 root_levels[5] = { 15, 12, 8, 4, 4 };
+        const INT32 called_levels[5] = { 18, 15, 11, 7, 7 };
+
+        FHE_SYNC3_CHECK
+            (DSL_FHE_Context_State_Get(context_state_id, &refresh_state),
+             "root refresh state for materialization");
+        for (UINT32 i = 0; i < 5; ++i)
+            Initialize_FHE_Materialization_State
+                (&materialization_states[i], &refresh_state,
+                 state_roles[i], state_versions[i], root_levels[i]);
+
+        UINT32 saved_state_count = DSL_FHE_Context_State_Count();
+        UINT32 saved_operation_count =
+            DSL_FHE_Materialization_Operation_Count();
+        ++materialization_states[2].level;
+        FHE_SYNC3_CHECK
+            (DSL_FHE_Materialization_Intern_Complete_Context
+                 (context_range_id, materialization_states, 5) == 0 &&
+             DSL_FHE_Context_State_Count() == saved_state_count &&
+             DSL_FHE_Materialization_Operation_Count() ==
+                 saved_operation_count,
+             "bad state chain rejects without table mutation");
+        --materialization_states[2].level;
+
+        DSL_FHE_MATERIALIZATION_OPERATION_ID root_first =
+            DSL_FHE_Materialization_Intern_Complete_Context
+                (context_range_id, materialization_states, 5);
+        FHE_SYNC3_CHECK
+            (root_first == 1 &&
+             DSL_FHE_Materialization_Intern_Complete_Context
+                 (context_range_id, materialization_states, 5) == 0,
+             "root materialization is atomic and unique");
+
+        FHE_SYNC3_CHECK
+            (DSL_FHE_Context_State_Get
+                 (called_context_state_id, &refresh_state),
+             "called refresh state for materialization");
+        for (UINT32 i = 0; i < 5; ++i)
+            Initialize_FHE_Materialization_State
+                (&materialization_states[i], &refresh_state,
+                 state_roles[i], state_versions[i], called_levels[i]);
+        DSL_FHE_MATERIALIZATION_OPERATION_ID called_first =
+            DSL_FHE_Materialization_Intern_Complete_Context
+                (called_context_range_id, materialization_states, 5);
+        DSL_FHE_Materialization_Image_Get_Header
+            (&materialization_header);
+        FHE_SYNC3_CHECK
+            (called_first == 7 &&
+             materialization_header.context_count == 2 &&
+             materialization_header.operation_count == 12 &&
+             DSL_FHE_Context_State_Count() == 13 &&
+             DSL_FHE_Materialization_Find
+                 (PU_Info_proc_sym(pu), composite_relu_value.id,
+                  pu_identity.id, called_context.id, 4,
+                  &materialization_operation) &&
+             materialization_operation.operation_kind ==
+                 DSL_FHE_MATERIALIZATION_OPERATION_APPROX_STAGE &&
+             DSL_FHE_Materialization_Image_Validate(stderr) &&
+             DSL_FHE_Plan_Image_Validate(stderr),
+             "complete root and called materialization schedules");
+
+        UINT64 materialization_image_size =
+            DSL_FHE_MATERIALIZATION_IMAGE_HEADER_SIZE +
+            (UINT64)materialization_header.operation_count *
+                DSL_FHE_MATERIALIZATION_OPERATION_SIZE;
+        unsigned char *materialization_image_bytes =
+            new unsigned char[materialization_image_size];
+        memcpy(materialization_image_bytes, &materialization_header,
+               sizeof(materialization_header));
+        unsigned char *materialization_cursor =
+            materialization_image_bytes +
+            DSL_FHE_MATERIALIZATION_IMAGE_HEADER_SIZE;
+        for (UINT32 i = 1;
+             i <= materialization_header.operation_count; ++i) {
+            DSL_FHE_Materialization_Get(i, &materialization_operation);
+            memcpy(materialization_cursor, &materialization_operation,
+                   sizeof(materialization_operation));
+            materialization_cursor += sizeof(materialization_operation);
+        }
+        FHE_SYNC3_CHECK
+            (!DSL_FHE_Materialization_Image_Load_Mapped
+                 (materialization_image_bytes,
+                  materialization_image_size - 1, NULL) &&
+             !DSL_FHE_Materialization_Image_Load_Mapped
+                 (materialization_image_bytes,
+                  materialization_image_size + 1, NULL),
+             "materialization truncated and trailing images rejected");
+        DSL_FHE_MATERIALIZATION_IMAGE_HEADER *mapped_materialization_header =
+            (DSL_FHE_MATERIALIZATION_IMAGE_HEADER *)
+                materialization_image_bytes;
+        mapped_materialization_header->reserved0 = 1;
+        FHE_SYNC3_CHECK
+            (!DSL_FHE_Materialization_Image_Load_Mapped
+                 (materialization_image_bytes,
+                  materialization_image_size, NULL),
+             "materialization reserved header field rejected");
+        mapped_materialization_header->reserved0 = 0;
+        UINT32 saved_materialization_context_count =
+            mapped_materialization_header->context_count;
+        mapped_materialization_header->context_count = 1;
+        FHE_SYNC3_CHECK
+            (!DSL_FHE_Materialization_Image_Load_Mapped
+                 (materialization_image_bytes,
+                  materialization_image_size, NULL),
+             "materialization context count mismatch rejected");
+        mapped_materialization_header->context_count =
+            saved_materialization_context_count;
+        DSL_FHE_MATERIALIZATION_OPERATION_RECORD *mapped_operations =
+            (DSL_FHE_MATERIALIZATION_OPERATION_RECORD *)
+                (materialization_image_bytes +
+                 DSL_FHE_MATERIALIZATION_IMAGE_HEADER_SIZE);
+        UINT32 saved_materialization_kind =
+            mapped_operations[0].operation_kind;
+        mapped_operations[0].operation_kind =
+            DSL_FHE_MATERIALIZATION_OPERATION_UNKNOWN;
+        FHE_SYNC3_CHECK
+            (!DSL_FHE_Materialization_Image_Load_Mapped
+                 (materialization_image_bytes,
+                  materialization_image_size, NULL) &&
+             DSL_FHE_Materialization_Operation_Count() == 12,
+             "malformed materialization leaves managed table unchanged");
+        mapped_operations[0].operation_kind = saved_materialization_kind;
+        DSL_FHE_CONTEXT_CKKS_STATE_ID saved_input_state =
+            mapped_operations[2].input_state_id;
+        mapped_operations[2].input_state_id =
+            mapped_operations[2].output_state_id;
+        FHE_SYNC3_CHECK
+            (!DSL_FHE_Materialization_Image_Load_Mapped
+                 (materialization_image_bytes,
+                  materialization_image_size, NULL),
+             "broken materialization state chain rejected");
+        mapped_operations[2].input_state_id = saved_input_state;
+
+        DSL_FHE_Context_State_Image_Get_Header(&context_state_header);
+        UINT64 materialized_state_image_size =
+            DSL_FHE_CONTEXT_STATE_IMAGE_HEADER_SIZE +
+            (UINT64)context_state_header.context_ckks_state_count *
+                DSL_FHE_CONTEXT_CKKS_STATE_RECORD_SIZE;
+        unsigned char *materialized_state_image_bytes =
+            new unsigned char[materialized_state_image_size];
+        memcpy(materialized_state_image_bytes, &context_state_header,
+               sizeof(context_state_header));
+        unsigned char *materialized_state_cursor =
+            materialized_state_image_bytes +
+            DSL_FHE_CONTEXT_STATE_IMAGE_HEADER_SIZE;
+        for (UINT32 i = 1;
+             i <= context_state_header.context_ckks_state_count; ++i) {
+            DSL_FHE_Context_State_Get(i, &context_state);
+            memcpy(materialized_state_cursor, &context_state,
+                   sizeof(context_state));
+            materialized_state_cursor += sizeof(context_state);
+        }
+        DSL_FHE_CONTEXT_CKKS_STATE_RECORD *mapped_materialized_states =
+            (DSL_FHE_CONTEXT_CKKS_STATE_RECORD *)
+                (materialized_state_image_bytes +
+                 DSL_FHE_CONTEXT_STATE_IMAGE_HEADER_SIZE);
+        INT32 saved_stage_level = mapped_materialized_states[4].level;
+        ++mapped_materialized_states[4].level;
+        FHE_SYNC3_CHECK
+            (DSL_FHE_Context_State_Image_Load_Mapped
+                 (materialized_state_image_bytes,
+                  materialized_state_image_size, NULL) &&
+             !DSL_FHE_Materialization_Image_Validate(NULL) &&
+             !DSL_FHE_Materialization_Image_Load_Mapped
+                 (materialization_image_bytes,
+                  materialization_image_size, NULL),
+             "mapped stage level must match profile consumption");
+        mapped_materialized_states[4].level = saved_stage_level;
+        UINT32 saved_refresh_pending =
+            mapped_materialized_states[0].pending_actions;
+        UINT32 saved_refresh_reason =
+            mapped_materialized_states[0].pending_bootstrap_reason;
+        mapped_materialized_states[0].pending_actions = 0;
+        mapped_materialized_states[0].pending_bootstrap_reason =
+            DSL_FHE_BOOTSTRAP_REASON_NONE;
+        FHE_SYNC3_CHECK
+            (DSL_FHE_Context_State_Image_Load_Mapped
+                 (materialized_state_image_bytes,
+                  materialized_state_image_size, NULL) &&
+             !DSL_FHE_Materialization_Image_Validate(NULL),
+             "mapped refresh requires pending pre-ReLU bootstrap");
+        mapped_materialized_states[0].pending_actions =
+            saved_refresh_pending;
+        mapped_materialized_states[0].pending_bootstrap_reason =
+            saved_refresh_reason;
+        FHE_SYNC3_CHECK
+            (DSL_FHE_Context_State_Image_Load_Mapped
+                 (materialized_state_image_bytes,
+                  materialized_state_image_size, stderr) &&
+             DSL_FHE_Materialization_Image_Validate(stderr),
+             "mapped materialization state transitions restored");
+        delete [] materialized_state_image_bytes;
+
+        DSL_FHE_Materialization_Image_Reset();
+        FHE_SYNC3_CHECK
+            (!DSL_FHE_Materialization_Image_Has_Records() &&
+             DSL_FHE_Materialization_Image_Load_Mapped
+                 (materialization_image_bytes,
+                  materialization_image_size, stderr) &&
+             DSL_FHE_Materialization_Operation_Count() == 12 &&
+             DSL_FHE_Materialization_Image_Validate(stderr),
+             "mapped materialization image copied and cross-validated");
+        delete [] materialization_image_bytes;
+    }
+
     char diagnostic[4096];
     memset(&verify, 0, sizeof(verify));
     memset(diagnostic, 0, sizeof(diagnostic));
@@ -7258,6 +7496,7 @@ Check_FHE_SYNC3_Plan_Image(void)
         (!DSL_FHE_Plan_Image_Has_Records() &&
          !DSL_FHE_Approx_Profile_Image_Has_Records() &&
          !DSL_FHE_Context_State_Image_Has_Records() &&
+         !DSL_FHE_Materialization_Image_Has_Records() &&
          DSL_FHE_Plan_Conversion_Disposition_Count() == 0 &&
          DSL_FHE_Plan_Image_Validate(NULL),
          "planning image reset");
