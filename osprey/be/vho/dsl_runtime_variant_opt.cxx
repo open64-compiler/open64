@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "dsl_runtime_variant_opt.h"
+#include "dsl_opt_plan_opt.h"
 #include "dsl_opcode.h"
 #include "pu_info.h"
 #include "symtab.h"
@@ -308,7 +309,7 @@ DSL_Runtime_Select
          DSL_RUNTIME_VARIANT_SITE_RECORD *site, FILE *diagnostic)
 {
     DSL_OPT_SELECTION_RESULT result;
-    if (!DSL_opt_plan_select
+    if (!VHO_DSL_Opt_Plan_Select
              (analysis->plan_contexts.back(),
               analysis->control.target_profile_id, &result, diagnostic))
         return FALSE;
@@ -888,4 +889,11 @@ VHO_DSL_Runtime_Variant_Get_Plan_Context
     return analysis == NULL || site_id == 0 ||
            site_id > analysis->plan_contexts.size() ? NULL :
            analysis->plan_contexts[site_id - 1];
+}
+
+const DSL_TENSOR_EVOLUTION_GRAPH *
+VHO_DSL_Runtime_Variant_Get_Evolution_Graph
+        (const DSL_RUNTIME_VARIANT_ANALYSIS *analysis)
+{
+    return analysis == NULL ? NULL : analysis->graph;
 }

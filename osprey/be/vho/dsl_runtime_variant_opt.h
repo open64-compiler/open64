@@ -94,5 +94,8 @@ extern const DSL_RUNTIME_VARIANT_IR *VHO_DSL_Runtime_Variant_Get_IR
 extern const DSL_OPT_PLAN_CONTEXT *VHO_DSL_Runtime_Variant_Get_Plan_Context
                                 (const DSL_RUNTIME_VARIANT_ANALYSIS *analysis,
                                  DSL_RUNTIME_VARIANT_SITE_ID site_id);
+extern const DSL_TENSOR_EVOLUTION_GRAPH *
+VHO_DSL_Runtime_Variant_Get_Evolution_Graph
+                                (const DSL_RUNTIME_VARIANT_ANALYSIS *analysis);
 
 #endif /* dsl_runtime_variant_opt_INCLUDED */

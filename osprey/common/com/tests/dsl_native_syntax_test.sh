@@ -48,6 +48,7 @@ sources=(
   "osprey/be/opt/tests/dsl_wopt_semantic_info_test.cxx"
   "osprey/be/vho/dsl_lower.cxx"
   "osprey/be/vho/dsl_opt.cxx"
+  "osprey/be/vho/dsl_opt_plan_opt.cxx"
   "osprey/be/vho/dsl_tensor_evolution_opt.cxx"
   "osprey/be/vho/dsl_tensor_analysis_opt.cxx"
   "osprey/be/vho/dsl_tensor_locality_opt.cxx"
@@ -59,6 +60,7 @@ sources=(
   "osprey/be/vho/dsl_fetch_pipeline_opt.cxx"
   "osprey/be/vho/dsl_physical_plan_opt.cxx"
   "osprey/be/vho/dsl_runtime_variant_opt.cxx"
+  "osprey/be/vho/dsl_telemetry_feedback_opt.cxx"
   "osprey/be/vho/dsl_shape_refine.cxx"
   "osprey/be/vho/fhe_convert.cxx"
   "osprey/be/vho/fhe_semantic_convert.cxx"
@@ -85,6 +87,7 @@ sources=(
   "osprey/common/com/dsl_fetch_pipeline.cxx"
   "osprey/common/com/dsl_physical_plan.cxx"
   "osprey/common/com/dsl_runtime_variant.cxx"
+  "osprey/common/com/dsl_telemetry_profile.cxx"
   "osprey/common/com/dsl_shape.cxx"
   "osprey/common/com/dsl_tensor_analysis.cxx"
   "osprey/common/com/dsl_tensor_locality.cxx"
@@ -163,6 +166,9 @@ if [[ -n "${OPEN64_AIO11_TEST:-}" ]]; then
 fi
 if [[ -n "${OPEN64_AIO12_TEST:-}" ]]; then
   "$script_dir/dsl_runtime_variant_contract_test.sh"
+fi
+if [[ -n "${OPEN64_AIO13_TEST:-}" ]]; then
+  "$script_dir/dsl_telemetry_feedback_contract_test.sh"
 fi
 "$script_dir/dsl_operator_layout_test.sh"
 bash "$repo_root/osprey/be/opt/tests/dsl_wopt_semantic_info_test.sh"

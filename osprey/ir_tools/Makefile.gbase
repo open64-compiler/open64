@@ -154,6 +154,7 @@ BE_COM_DIR= $(BUILD_TOT)/be/com
 BE_VHO_DIR= $(BUILD_TOT)/be/vho
 DSL_FACT_CAPTURE_OPT_OBJS= dsl_tensor_evolution_opt.o \
 	dsl_tensor_analysis_opt.o dsl_tensor_locality_opt.o
+DSL_SELECTION_OPT_OBJS= dsl_opt_plan_opt.o
 BE_OPT_DIR= $(BUILD_TOT)/be/opt
 
 LDIRT = $(TARGETS)
@@ -161,6 +162,7 @@ LDIRT += dsl_builder_contract_test dsl_builder_contract_test.o
 LDIRT += dsl_tensor_evolution_contract_test \
 	dsl_tensor_evolution_contract_test.o
 LDIRT += dsl_opt_plan_contract_test dsl_opt_plan_contract_test.o
+LDIRT += dsl_opt_plan_opt.o
 LDIRT += dsl_tensor_analysis_contract_test \
 	dsl_tensor_analysis_contract_test.o
 LDIRT += dsl_tensor_locality_contract_test \
@@ -180,6 +182,7 @@ LDIRT += dsl_fetch_pipeline_contract_test \
 LDIRT += dsl_physical_plan_contract_test \
 	dsl_physical_plan_contract_test.o
 LDIRT += dsl_runtime_variant_opt.o
+LDIRT += dsl_telemetry_feedback_opt.o
 LDIRT += dsl_physical_plan_opt.o
 LDIRT += dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
@@ -240,6 +243,7 @@ COMMON_COM_CXX_SRC =	\
 	dsl_fetch_pipeline.cxx \
 	dsl_physical_plan.cxx \
 	dsl_runtime_variant.cxx \
+	dsl_telemetry_profile.cxx \
 	dsl_shape.cxx	\
 	dsl_tensor_analysis.cxx \
 	dsl_tensor_locality.cxx \
@@ -360,9 +364,11 @@ dsl_tensor_evolution_contract_test.o: \
 
 dsl_opt_plan_contract_test: $(OBJECTS) controls.o \
 		dsl_tensor_evolution_opt.o \
+		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_opt_plan_contract_test.o
 	$(link.c++f) -o $@ dsl_opt_plan_contract_test.o controls.o \
 		dsl_tensor_evolution_opt.o \
+		$(DSL_SELECTION_OPT_OBJS) \
 		$(OBJECTS) $(LDFLAGS)
 
 dsl_opt_plan_contract_test.o: \
@@ -393,10 +399,12 @@ dsl_tensor_locality_contract_test.o: \
 
 dsl_fusion_candidate_contract_test: $(OBJECTS) controls.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
+		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_layout_candidate_opt.o dsl_fusion_candidate_opt.o \
 		dsl_fusion_candidate_contract_test.o
 	$(link.c++f) -o $@ dsl_fusion_candidate_contract_test.o controls.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
+		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_layout_candidate_opt.o dsl_fusion_candidate_opt.o \
 		$(OBJECTS) $(LDFLAGS)
 
@@ -406,9 +414,11 @@ dsl_fusion_candidate_contract_test.o: \
 
 dsl_layout_candidate_contract_test: $(OBJECTS) controls.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
+		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_layout_candidate_opt.o dsl_layout_candidate_contract_test.o
 	$(link.c++f) -o $@ dsl_layout_candidate_contract_test.o controls.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
+		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_layout_candidate_opt.o \
 		$(OBJECTS) $(LDFLAGS)
 
@@ -418,10 +428,12 @@ dsl_layout_candidate_contract_test.o: \
 
 dsl_distributed_candidate_contract_test: $(OBJECTS) controls.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
+		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_distributed_candidate_opt.o \
 		dsl_distributed_candidate_contract_test.o
 	$(link.c++f) -o $@ dsl_distributed_candidate_contract_test.o controls.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
+		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_distributed_candidate_opt.o \
 		$(OBJECTS) $(LDFLAGS)
 
@@ -431,9 +443,11 @@ dsl_distributed_candidate_contract_test.o: \
 
 dsl_residency_candidate_contract_test: $(OBJECTS) controls.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
+		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_residency_candidate_opt.o dsl_residency_candidate_contract_test.o
 	$(link.c++f) -o $@ dsl_residency_candidate_contract_test.o controls.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
+		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_residency_candidate_opt.o \
 		$(OBJECTS) $(LDFLAGS)
 
@@ -443,10 +457,12 @@ dsl_residency_candidate_contract_test.o: \
 
 dsl_tile_candidate_contract_test: $(OBJECTS) controls.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
+		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_residency_candidate_opt.o dsl_tile_candidate_opt.o \
 		dsl_tile_candidate_contract_test.o
 	$(link.c++f) -o $@ dsl_tile_candidate_contract_test.o controls.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
+		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_residency_candidate_opt.o dsl_tile_candidate_opt.o \
 		$(OBJECTS) $(LDFLAGS)
 
@@ -456,11 +472,13 @@ dsl_tile_candidate_contract_test.o: \
 
 dsl_fetch_pipeline_contract_test: $(OBJECTS) controls.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
+		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_distributed_candidate_opt.o dsl_residency_candidate_opt.o \
 		dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o \
 		dsl_fetch_pipeline_contract_test.o
 	$(link.c++f) -o $@ dsl_fetch_pipeline_contract_test.o controls.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
+		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_distributed_candidate_opt.o dsl_residency_candidate_opt.o \
 		dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o \
 		$(OBJECTS) $(LDFLAGS)
@@ -471,7 +489,9 @@ dsl_fetch_pipeline_contract_test.o: \
 
 dsl_physical_plan_contract_test: $(OBJECTS) controls.o dsl_lower.o \
 		dsl_opt.o dsl_shape_refine.o dsl_runtime_variant_opt.o \
+		dsl_telemetry_feedback_opt.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
+		$(DSL_SELECTION_OPT_OBJS) \
 		dsl_distributed_candidate_opt.o dsl_residency_candidate_opt.o \
 		dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o \
 		dsl_physical_plan_opt.o \
@@ -479,7 +499,9 @@ dsl_physical_plan_contract_test: $(OBJECTS) controls.o dsl_lower.o \
 	$(link.c++f) -o $@ dsl_physical_plan_contract_test.o controls.o \
 		dsl_lower.o dsl_opt.o dsl_shape_refine.o \
 		$(DSL_FACT_CAPTURE_OPT_OBJS) \
-		dsl_runtime_variant_opt.o dsl_distributed_candidate_opt.o \
+		$(DSL_SELECTION_OPT_OBJS) \
+		dsl_runtime_variant_opt.o dsl_telemetry_feedback_opt.o \
+		dsl_distributed_candidate_opt.o \
 		dsl_residency_candidate_opt.o dsl_tile_candidate_opt.o \
 		dsl_fetch_pipeline_opt.o dsl_physical_plan_opt.o \
 		$(OBJECTS) $(LDFLAGS)
@@ -503,7 +525,14 @@ dsl_lower.o: $(BE_VHO_DIR)/dsl_lower.cxx
 dsl_opt.o: $(BE_VHO_DIR)/dsl_opt.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
+dsl_opt_plan_opt.o: $(BE_VHO_DIR)/dsl_opt_plan_opt.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
 dsl_runtime_variant_opt.o: $(BE_VHO_DIR)/dsl_runtime_variant_opt.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_telemetry_feedback_opt.o: \
+		$(BE_VHO_DIR)/dsl_telemetry_feedback_opt.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_physical_plan_opt.o: $(BE_VHO_DIR)/dsl_physical_plan_opt.cxx

@@ -44,7 +44,7 @@ The following must not remain in common:
 | --- | --- | --- | --- |
 | AIO-0 | Documentation and baseline artifacts | Conforms | No optimization implementation exists. Keep inventory and evidence in documentation/tests. |
 | AIO-1 | `dsl_tensor_evolution` plus `dsl_tensor_evolution_opt` | Conforms after Ownership M4 | Common owns graph records, explicit add APIs, verification, access, and printing. VHO scans the active DSL image and decides which live tensor values become semantic roots. Later representation add calls continue to receive phase-decided content. |
-| AIO-2 | `dsl_opt_plan` | Needs split | Common may retain candidate/cost/plan records and construction. `DSL_opt_plan_select()` is an optimization decision and must move to a VHO/OPT selection service. Selection verification may structurally check a recorded result but must not choose it. |
+| AIO-2 | `dsl_opt_plan`, `dsl_opt_plan_opt` | Conforming | Common owns candidate/cost/plan/member/recorded-selection IR and structural services. VHO owns target filtering, cost comparison, deterministic tie-breaking, and selection through `VHO_DSL_Opt_Plan_Select()`. |
 | AIO-3 | `dsl_tensor_analysis` plus `dsl_tensor_analysis_opt` | Conforms after Ownership M4 | Common owns tensor fact/use records, construction, verification, access, and printing. VHO scans PU values, nodes, operands, descriptors, and operator contracts to derive fact contents. |
 | AIO-4 | `dsl_tensor_locality` plus `dsl_tensor_locality_opt` and `opt_dsl_locality` | Conforms after Ownership M4 | Common owns control-snapshot and locality records with construction, verification, access, and printing. WOPT owns CFG-derived control-position capture. VHO owns lifetime, reuse-distance, access, byte-cost, critical-path, and locality derivation from the copied snapshot and tensor facts. |
 | AIO-5 | `dsl_fusion_candidate` plus `dsl_fusion_candidate_opt` | Conforms after Ownership M3 | Common owns policy-free fusion candidate/member/boundary records, bulk construction, structural verification, access, and generic printing. VHO owns pattern matching, boundary discovery, semantic legality, cost construction, selection, and semantic verification. WOPT may later own CFG/SSA-enabled fusion support through a separate phase adapter. |
@@ -55,7 +55,7 @@ The following must not remain in common:
 | AIO-10 | `dsl_fetch_pipeline` plus `dsl_fetch_pipeline_opt` | Conforms after Ownership M2 | Common owns fetch/pipeline records, bulk construction, structural verification, access, stable names, and generic printing. VHO consumes `CommonTilePlanIR` and owns movement-plan generation, overlap estimates, barrier/resource legality, costs, selection, and semantic verification. |
 | AIO-11 | `dsl_physical_plan` plus `dsl_physical_plan_opt` | Conforms after Ownership M1 | Common owns provider capability and CommonPhysicalPlanIR records, bulk construction, structural verification, access, and generic printing. VHO owns provider candidate discovery, capability/legality checks, cost construction, implementation selection, semantic verification, and executable lowering. |
 | AIO-12 | `dsl_runtime_variant` plus `dsl_runtime_variant_opt` | Conforms after ownership correction | Common owns RuntimeVariantIR creation and structural services. VHO owns fact capture, capability checks, candidate/cost construction, selection, semantic verification, and guard evaluation. |
-| AIO-13 | Not implemented | Boundary specified | Telemetry records and generic construction may be common. Feedback collection, profile interpretation, cost-model updates, and re-selection belong to the consuming phase; cross-PU aggregation requires explicit IPA/runtime design. |
+| AIO-13 | `dsl_telemetry_profile` plus `dsl_telemetry_feedback_opt` | Conforming | Common owns flat immutable telemetry records, construction, structural verification, access, and printing. VHO owns PU-local freshness checks, profile interpretation, measured-cost construction, and future-plan recommendation. Cross-PU aggregation requires explicit IPA/runtime design. |
 
 ## Test Ownership
 
@@ -125,11 +125,20 @@ and normalized `ir_b2a -st -src` traces match Ownership M3 evidence.
 
 ### Ownership M5: Selection Core And Certification
 
-After no common caller remains, move `DSL_opt_plan_select()` policy to a
-phase-owned selection API while preserving candidate, cost, plan, and
-recorded-selection IR. Then:
+Completed. `dsl_opt_plan_opt` now owns AIO-2 target filtering, complete-cost
+comparison, stable tie-breaking, and plan selection. All production callers
+are VHO-owned and call `VHO_DSL_Opt_Plan_Select()`. Common retains candidate,
+cost, plan, membership, and recorded-selection IR. Its recorder validates
+structural counts and that the recorded plan is selectable, but deliberately
+does not compare costs or choose a winner. The retired
+`DSL_opt_plan_select()` entry point has no remaining caller or definition.
 
-For every migrated milestone:
+Certification preserves the candidate, cost, plan, and selection traces and
+proves that this source-ownership migration changes neither executable WHIRL
+nor mapped-image behavior. Backend rebuild and symbol checks cover `be.so`,
+`be`, and `lw_inline`.
+
+The ownership migration used the following checklist for every milestone:
 
 1. compare before/after selected records and optimization traces;
 2. prove `.B` and `ir_b2a -st -src` compatibility where the phase is

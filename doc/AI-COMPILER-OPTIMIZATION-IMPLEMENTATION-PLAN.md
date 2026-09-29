@@ -824,6 +824,14 @@ PR boundary: generic guard/variant contract before AI serving-state extensions.
 
 ### AIO-13: AI-P11 Telemetry And Feedback
 
+Status: the first PU-local, runtime-only G16 slice is implemented for the
+certified AIO-12 rank-2 F4 `common.matmul.v1` variant family. Common owns flat
+immutable TelemetryProfileIR records and structural services. VHO owns the
+freshness join, interpretation, measured-cost construction, and future-plan
+recommendation. The slice reuses Open64's `PROFILE_PHASE_BEFORE_VHO` identity
+without changing the existing `.fb` format. It is check-only and leaves source
+legality, source plan selection, executable WHIRL, and binary WHIRL unchanged.
+
 Actions:
 
 1. Define measured latency, occupancy, memory traffic, communication, overlap,
@@ -841,6 +849,20 @@ Acceptance:
 - profile-guided and non-profile builds remain independently reproducible.
 
 PR boundary: instrumentation, profile transport, then cost-model consumption.
+
+Implemented first-slice boundary:
+
+- complete latency, occupancy, traffic, communication, overlap, cache, launch,
+  guard-hit, and selected-variant records;
+- schema, generation, target, owner, plan, and exact variant-identity checks;
+- deterministic no-profile behavior;
+- separate telemetry-backed OptimizationPlanIR cost view using the standard
+  VHO selector;
+- feedback may change future profitability but cannot change legality;
+- repeated G16 traces and byte-identical `.B`/`ir_b2a -st -src` evidence.
+
+Deferred transport work remains a separate versioned milestone because the
+existing Open64 `.fb` record layout has no accelerator telemetry family.
 
 ## First Vertical Slice
 
@@ -987,9 +1009,9 @@ artifact.
     the direct implementation as an unconditional fallback, accounts for the
     guard cost through AIO-2, and leaves binary WHIRL byte-identical.
 19. [x] Audit AIO-0 through AIO-13 against the common/phase ownership rule.
-    AIO-0 conforms, AIO-12 conforms after its common/VHO split, AIO-13 has a
-    prospective boundary, and AIO-1 through AIO-11 require staged ownership
-    cleanup as recorded in
+    AIO-0 conforms, AIO-12 conforms after its common/VHO split, AIO-13
+    conforms through its common TelemetryProfileIR and PU-local VHO consumer,
+    and AIO-1 through AIO-11 require staged ownership cleanup as recorded in
     `AI-COMPILER-OPTIMIZATION-PHASE-OWNERSHIP-AUDIT.md`.
 20. [x] Ownership M1: split AIO-11 physical implementation planning. Keep
     provider capability and physical-plan IR in common; move candidate
@@ -1015,10 +1037,24 @@ artifact.
     fact, control-snapshot, and locality records with construction,
     verification, access, and printing. WOPT continues to own CFG-derived
     control-snapshot capture through its existing adapter.
-24. [ ] Ownership M5: after all common callers have moved, relocate AIO-2
-    selection policy to the owning phase, split tests by owner, rerun retained
-    artifact comparisons, and certify no binary WHIRL, mapped-image, runtime
-    ABI, or backend shared-library dependency regression.
+24. [x] Ownership M5: relocate AIO-2 selection policy to VHO after all
+    production callers have moved. Common retains candidate, cost, plan,
+    membership, and recorded-selection IR with policy-free construction,
+    structural verification, access, and printing. VHO owns legal-plan cost
+    comparison, target filtering, deterministic tie-breaking, and selection.
+    Linked tests use the VHO selector and certify unchanged selected records,
+    runtime traces, binary WHIRL, mapped-image behavior, runtime ABI, and
+    backend shared-library dependency closure.
+25. [x] Execute the first AIO-13 telemetry-feedback slice. Define complete
+    immutable accelerator telemetry records in common, perform exact PU/target/
+    generation/plan/variant freshness joins in VHO, construct a separate
+    measured OptimizationPlanIR cost view, and recommend a future variant
+    without changing legality, the current selection, executable WHIRL, or
+    binary WHIRL. G16 certification covers deterministic profile/no-profile
+    behavior, malformed and stale evidence, repeated traces, byte-identical
+    `.B` and `ir_b2a -st -src` output, and backend link closure. Runtime
+    instrumentation and reviewed durable profile transport remain a later
+    versioned milestone.
 
 ## Related Documents
 
@@ -1053,6 +1089,9 @@ artifact.
 - `AI-COMPILER-OPTIMIZATION-AIO12-RUNTIME-VARIANT.md` - certified PU-local
   variants, runtime guards, guard cost, conservative fallback, runtime
   evaluation, compatibility, and G15 certification.
+- `AI-COMPILER-OPTIMIZATION-AIO13-TELEMETRY-FEEDBACK.md` - PU-local telemetry
+  schema, Open64 feedback continuity, stale-profile handling, measured-cost
+  refinement, no-profile behavior, and G16 certification.
 - `AI-COMPILER-OPTIMIZATION-PHASE-OWNERSHIP-AUDIT.md` - AIO-0 through AIO-13
   conformance matrix and staged common/VHO/WOPT/LNO/IPA ownership migration.
 - `AI-COMPILER-OPTIMIZATION-AIO5-FUSION-CANDIDATES.md` - initial fusion

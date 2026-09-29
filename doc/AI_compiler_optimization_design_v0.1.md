@@ -520,6 +520,85 @@ evaluation reside in VHO. This separation is normative for all AI optimization
 IR families: common represents decisions; the phase owning the compilation
 scope makes them.
 
+## 3.8 AI-P11 Telemetry And Feedback Rationale
+
+### 3.8.1 Optimization Problem
+
+Static legality and target cost models cannot establish the realized behavior
+of a certified runtime variant on a deployed workload. Actual latency,
+occupancy, traffic, communication, overlap, cache behavior, launch overhead,
+and guard hit rate depend on runtime shapes, placement, contention, and target
+state. AI-P11 records those observations and converts fresh measurements into
+a separate cost view for future compilation or policy tuning.
+
+Telemetry is evidence about profitability, not a new source of semantic
+legality. A measured fast result cannot legalize an otherwise rejected plan,
+remove its guards, or change the meaning of a previously certified plan.
+
+### 3.8.2 Inputs And Performance Mechanisms
+
+AI-P11 consumes certified RuntimeVariantIR and OptimizationPlanIR identities
+plus immutable runtime measurements for the same PU, target, generation,
+runtime site, plan, and exact variant identity. The initial profile records:
+
+- end-to-end latency and launch time;
+- achieved occupancy;
+- memory read and write traffic;
+- communication and overlapped communication time;
+- cache hit and miss counts;
+- selected-variant frequency and guard hit rate.
+
+These facts reveal when analytical ranking differs from deployed behavior. For
+example, a target-library variant can lose to the direct baseline because its
+launch overhead, guard misses, traffic, or poor occupancy exceeds its predicted
+compute advantage. Conversely, stable measured improvement can justify
+recommending a different already-legal variant in a later compilation.
+
+### 3.8.3 Freshness, Legality, And Fallback
+
+Profile use is fail-closed. The compiler verifies schema, owner PU, target,
+generation, instrumentation phase, record completeness, plan identity, and
+stable runtime-variant identity before consuming a measurement. Stale,
+incomplete, or mismatched evidence is rejected rather than partially joined.
+
+No profile is a normal deterministic mode. The compiler retains the static
+selection and does not synthesize measurements. When a profile is accepted,
+the feedback phase copies the existing candidate legality into a new measured
+OptimizationPlanIR cost view and invokes the standard VHO selector. The source
+plan, current executable variant, and binary WHIRL remain unchanged in the
+first check-only slice.
+
+### 3.8.4 Cost Interpretation And Uncertainty
+
+Average measured end-to-end latency is the first comparable cost. Raw launch,
+communication, overlap, memory, cache, and occupancy fields remain separately
+inspectable and are not summed again into latency. Later versions may add
+confidence decay, distributions, outlier policy, weighted profile merging, and
+guard-order tuning, but those policies must be explicit and reproducible.
+
+Measured evidence may change profitability while legality remains invariant.
+If profile confidence or freshness is insufficient, the certified static plan
+is the fallback.
+
+### 3.8.5 Scope, Ownership, And Review Evidence
+
+Ordinary AI-P11 analysis is PU-scoped because the backend driver owns one PU
+and its local symbol table at a time. Cross-PU aggregation requires explicit
+IPA or runtime coordination and is not inferred automatically.
+
+`common/com` owns the flat TelemetryProfileIR record contract, construction,
+structural verification, access, and generic printing. VHO owns the active-PU
+join, freshness policy, interpretation, measured-cost construction, and future
+recommendation. Runtime instrumentation and durable profile transport are
+separate reviewed interfaces; the first slice does not change the existing
+Open64 `.fb` layout or binary WHIRL.
+
+Certification retains deterministic profile/no-profile traces, byte-identical
+before/after `.B` files and `ir_b2a -st -src` output, stale-profile negatives,
+and explicit evidence that profitability can change while legality and current
+WHIRL do not. The focused contract is documented in
+`AI-COMPILER-OPTIMIZATION-AIO13-TELEMETRY-FEEDBACK.md`.
+
 # 4 Top Three AI Compiler Research Opportunities
 
 The prior research opportunity analysis identified three architectural opportunities. They are not independent late passes. Each one spans the phase pipeline and requires persistent IR structures.
