@@ -1,0 +1,17 @@
+{
+  "schema": "open64.fhe.sync4.relu-policy-package.v1",
+  "status": "s4_2_static_subset_ready",
+  "artifacts": [
+    {
+      "gate": "ace_ant_relu_subset_capability",
+      "path": "doc/fhe-policy/sync4-relu/ace-ant-subset-capability.json",
+      "sha256": "5c7c072b90c1461cb5278b2beb38fdad1713815dc048e68cef8dd94d99731b58",
+      "status": "approved_static_subset_evidence"
+    }
+  ],
+  "limitations": [
+    "Native backend path/SHA transport and all-PU consumption require the reviewed main/common S4-1 hook.",
+    "This package does not certify the complete CNN operation/rotation/key schedule.",
+    "This package does not certify generated C, runtime linking, ciphertext execution, or the SYNC-6 client/server boundary."
+  ]
+}
