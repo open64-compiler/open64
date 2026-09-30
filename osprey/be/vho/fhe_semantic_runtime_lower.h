@@ -99,6 +99,11 @@ extern BOOL VHO_FHE_Runtime_Build_Operation_Sequence
                                  void *failure_context,
                                  FILE *diagnostic,
                                  VHO_FHE_RUNTIME_CALL_SEQUENCE *sequence);
+extern BOOL VHO_FHE_Runtime_Build_Identity_Sequence
+                                (struct pu_info *pu_info,
+                                 DSL_IR_VALUE_ID input_value_id,
+                                 FILE *diagnostic,
+                                 VHO_FHE_RUNTIME_CALL_SEQUENCE *sequence);
 extern BOOL VHO_FHE_Runtime_Build_Relu_Sequence
                                 (struct pu_info *pu_info,
                                  DSL_IR_VALUE_ID anchor_value_id,

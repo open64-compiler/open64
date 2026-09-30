@@ -732,6 +732,7 @@ Build_And_Lower_Resolved_Relu_Sequence
     VHO_FHE_RUNTIME_HANDLE_BINDING model;
     VHO_FHE_RUNTIME_HANDLE_BINDING projected_anchor;
     VHO_FHE_RUNTIME_HANDLE_BINDING projected_relu;
+    VHO_FHE_RUNTIME_HANDLE_BINDING rejected_binding;
     if (!VHO_FHE_Runtime_Resolve_Role_Handle
              (pu, "fhe.model", stderr, &model) ||
         !VHO_FHE_Runtime_Resolve_Value_Handle
@@ -744,9 +745,9 @@ Build_And_Lower_Resolved_Relu_Sequence
         projected_anchor.handle_ty != ciphertext_ty ||
         projected_relu.handle_ty != ciphertext_ty ||
         VHO_FHE_Runtime_Resolve_Role_Handle
-            (pu, "fhe.missing", NULL, &model) ||
+            (pu, "fhe.missing", NULL, &rejected_binding) ||
         VHO_FHE_Runtime_Resolve_Value_Handle
-            (pu, DSL_IR_VALUE_INVALID_ID, NULL, &projected_anchor))
+            (pu, DSL_IR_VALUE_INVALID_ID, NULL, &rejected_binding))
     {
         fprintf(stderr, "runtime handle resolution evidence changed\n");
         return FALSE;
@@ -844,6 +845,26 @@ Build_And_Lower_Resolved_Relu_Sequence
         fprintf(stderr, "specialized ReLU operation was admitted generically\n");
         return FALSE;
     }
+
+    VHO_FHE_RUNTIME_CALL_SEQUENCE identity_sequence;
+    WN *identity_result = NULL;
+    if (!VHO_FHE_Runtime_Build_Identity_Sequence
+             (pu, value_requests[0].source_value_id, stderr,
+              &identity_sequence) ||
+        identity_sequence.block == NULL ||
+        identity_sequence.output_st != projected_anchor.handle_st ||
+        identity_sequence.standard_call_count != 0 ||
+        identity_sequence.output_handle_count != 0 ||
+        identity_sequence.status_check_count != 0 ||
+        !VHO_FHE_Runtime_Finalize_Projected_Output
+             (&projected_relu, Test_Source_Position(), &identity_sequence,
+              &identity_result) ||
+        identity_result == NULL || WN_first(identity_sequence.block) !=
+            identity_result || WN_next(identity_result) != NULL) {
+        fprintf(stderr, "runtime identity sequence changed\n");
+        return FALSE;
+    }
+    WN_DELETE_Tree(identity_sequence.block);
 
     VHO_FHE_RUNTIME_CALL_SEQUENCE sequence;
     if (!VHO_FHE_Runtime_Build_Relu_Sequence

@@ -756,6 +756,24 @@ VHO_FHE_Runtime_Build_Operation_Sequence
 }
 
 BOOL
+VHO_FHE_Runtime_Build_Identity_Sequence
+        (struct pu_info *pu_info, DSL_IR_VALUE_ID input_value_id,
+         FILE *diagnostic, VHO_FHE_RUNTIME_CALL_SEQUENCE *sequence)
+{
+    VHO_FHE_Runtime_Call_Sequence_Init(sequence);
+    if (sequence == NULL)
+        return VHO_FHE_Runtime_Semantic_Report
+                   (diagnostic, "identity sequence result is unavailable");
+    VHO_FHE_RUNTIME_HANDLE_BINDING input;
+    if (!VHO_FHE_Runtime_Resolve_Value_Handle
+             (pu_info, input_value_id, diagnostic, &input))
+        return FALSE;
+    sequence->block = WN_CreateBlock();
+    sequence->output_st = input.handle_st;
+    return TRUE;
+}
+
+BOOL
 VHO_FHE_Runtime_Build_Relu_Sequence
         (struct pu_info *pu_info, DSL_IR_VALUE_ID anchor_value_id,
          UINT32 first_static_ordinal, SRCPOS source_position,

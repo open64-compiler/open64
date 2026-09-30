@@ -495,3 +495,10 @@ linked fixture exercises every admitted kind and its exact selector kind,
 static ordinal, function symbol, output type, status check, and unsupported-
 kind rejection. Production callback registration and source-node-to-static-
 ordinal mapping remain the next S5-2c boundary.
+
+`common.output_logits` is deliberately outside the evaluation census. Its
+lowering uses a zero-call identity block whose sole final store copies the
+input ciphertext handle to the exact projected output handle. It does not
+invent an ABI entry point, descriptor selector, output allocation, or status
+check. The same atomic native-value transaction removes its executable DSL
+definition while retaining lowered logical provenance.
