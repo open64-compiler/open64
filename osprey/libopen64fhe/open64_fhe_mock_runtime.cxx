@@ -67,6 +67,8 @@ struct open64_fhe_model_package_v1_s {
   open64_fhe_broker_v1_t broker;
   uint8_t model_identity_sha256[32];
   uint8_t config_identity_sha256[32];
+  std::vector<open64_fhe_operation_desc_v1> descriptors;
+  std::vector<std::vector<uint8_t> > descriptor_payloads;
 };
 
 struct open64_fhe_model_v1_s {
@@ -77,6 +79,8 @@ struct open64_fhe_model_v1_s {
   bool assets_sealed;
   bool inference_started;
   uint32_t sequence_cursor;
+  const open64_fhe_operation_desc_v1 *reserved_descriptor;
+  open64_fhe_ciphertext_v1_t reserved_anchor;
   open64_fhe_context_v1_t context;
   open64_fhe_keyset_v1_t keyset;
   open64_fhe_model_package_v1_t package;
@@ -850,6 +854,58 @@ open64_fhe_model_package_release_v1(
 }
 
 extern "C" open64_fhe_status_v1
+open64_fhe_mock_model_package_set_schedule_v1(
+    open64_fhe_model_package_v1_t package,
+    const open64_fhe_operation_desc_v1 *descriptors,
+    uint32_t descriptor_count)
+{
+  if (descriptors == NULL || descriptor_count != 147)
+    return OPEN64_FHE_STATUS_INVALID_ARGUMENT;
+  try {
+    std::lock_guard<std::mutex> lock(open64_fhe_mock_mutex);
+    if (!open64_fhe_mock_package_live(package))
+      return OPEN64_FHE_STATUS_INVALID_HANDLE;
+    if (package->dependent_count != 0 || !package->descriptors.empty())
+      return OPEN64_FHE_STATUS_BUSY;
+    std::vector<open64_fhe_operation_desc_v1> descriptor_copies;
+    std::vector<std::vector<uint8_t> > payload_copies;
+    descriptor_copies.reserve(descriptor_count);
+    payload_copies.reserve(descriptor_count);
+    for (uint32_t i = 0; i < descriptor_count; ++i) {
+      const open64_fhe_operation_desc_v1 &descriptor = descriptors[i];
+      if (descriptor.abi_version != OPEN64_FHE_ABI_VERSION_V1 ||
+          descriptor.struct_size != sizeof(descriptor) ||
+          descriptor.sequence_index != i || descriptor.operation_kind == 0 ||
+          descriptor.operation_kind > OPEN64_FHE_OP_LINEAR_PLAIN ||
+          descriptor.input_count == 0 || descriptor.input_count > 2 ||
+          descriptor.reserved != 0 ||
+          (descriptor.payload == NULL && descriptor.payload_size != 0) ||
+          descriptor.payload_size > size_t(-1))
+        return OPEN64_FHE_STATUS_MODEL_PACKAGE_INVALID;
+      descriptor_copies.push_back(descriptor);
+      const uint8_t *payload =
+          static_cast<const uint8_t *>(descriptor.payload);
+      if (descriptor.payload_size == 0)
+        payload_copies.push_back(std::vector<uint8_t>());
+      else
+        payload_copies.push_back(std::vector<uint8_t>(
+            payload, payload + descriptor.payload_size));
+    }
+    for (uint32_t i = 0; i < descriptor_count; ++i) {
+      descriptor_copies[i].payload = payload_copies[i].empty()
+          ? NULL : payload_copies[i].data();
+    }
+    package->descriptors.swap(descriptor_copies);
+    package->descriptor_payloads.swap(payload_copies);
+    return OPEN64_FHE_STATUS_OK;
+  } catch (const std::bad_alloc &) {
+    return OPEN64_FHE_STATUS_OUT_OF_MEMORY;
+  } catch (...) {
+    return OPEN64_FHE_STATUS_INTERNAL_ERROR;
+  }
+}
+
+extern "C" open64_fhe_status_v1
 open64_fhe_model_create_v1(
     open64_fhe_context_v1_t context,
     open64_fhe_keyset_v1_t keyset,
@@ -876,6 +932,8 @@ open64_fhe_model_create_v1(
     if (!open64_fhe_mock_digest_equal(package->config_identity_sha256,
                                       context->config_identity_sha256))
       return OPEN64_FHE_STATUS_MODEL_REQUIREMENT_MISMATCH;
+    if (package->descriptors.size() != 147)
+      return OPEN64_FHE_STATUS_MODEL_PACKAGE_INVALID;
     const uint32_t required_keys = OPEN64_FHE_KEY_CLASS_PUBLIC |
         OPEN64_FHE_KEY_CLASS_EVALUATION |
         OPEN64_FHE_KEY_CLASS_RELINEARIZATION |
@@ -894,6 +952,8 @@ open64_fhe_model_create_v1(
     model->assets_sealed = false;
     model->inference_started = false;
     model->sequence_cursor = 0;
+    model->reserved_descriptor = NULL;
+    model->reserved_anchor = NULL;
     model->context = context;
     model->keyset = keyset;
     model->package = package;
@@ -1208,12 +1268,64 @@ open64_fhe_ciphertext_release_v1(open64_fhe_ciphertext_v1_t *ciphertext)
     if (ciphertext == NULL || !open64_fhe_mock_ciphertext_live(*ciphertext))
       return OPEN64_FHE_STATUS_INVALID_HANDLE;
     open64_fhe_model_v1_t model = (*ciphertext)->model;
+    if (model->reserved_anchor == *ciphertext)
+      return OPEN64_FHE_STATUS_BUSY;
     if (--(*ciphertext)->reference_count == 0) {
       (*ciphertext)->state = OPEN64_FHE_MOCK_TOKEN_CONSUMED;
       (*ciphertext)->model = NULL;
       --model->child_count;
     }
     *ciphertext = NULL;
+    return OPEN64_FHE_STATUS_OK;
+  } catch (...) {
+    return OPEN64_FHE_STATUS_INTERNAL_ERROR;
+  }
+}
+
+extern "C" open64_fhe_status_v1
+open64_fhe_operation_desc_select_v1(
+    open64_fhe_model_v1_t model,
+    open64_fhe_ciphertext_v1_t anchor,
+    uint32_t static_ordinal,
+    uint32_t operation_kind,
+    const open64_fhe_operation_desc_v1 **out_desc)
+{
+  if (out_desc == NULL)
+    return OPEN64_FHE_STATUS_INVALID_ARGUMENT;
+  *out_desc = NULL;
+  try {
+    std::lock_guard<std::mutex> lock(open64_fhe_mock_mutex);
+    if (!open64_fhe_mock_model_live(model) ||
+        !open64_fhe_mock_ciphertext_live(anchor))
+      return OPEN64_FHE_STATUS_INVALID_HANDLE;
+    if (anchor->model != model)
+      return OPEN64_FHE_STATUS_TRUST_DOMAIN_MISMATCH;
+    if (!model->inference_started ||
+        model->sequence_cursor >= model->package->descriptors.size())
+      return OPEN64_FHE_STATUS_CALL_ORDER_MISMATCH;
+    if (model->reserved_descriptor != NULL)
+      return OPEN64_FHE_STATUS_CALL_ORDER_MISMATCH;
+    const open64_fhe_operation_desc_v1 *descriptor =
+        &model->package->descriptors[model->sequence_cursor];
+    if (descriptor->sequence_index != model->sequence_cursor ||
+        descriptor->operation_ordinal != static_ordinal ||
+        descriptor->operation_kind != operation_kind ||
+        !open64_fhe_mock_digest_equal(
+            descriptor->config_identity_sha256,
+            model->context->config_identity_sha256) ||
+        !open64_fhe_mock_digest_equal(
+            descriptor->input_value_identity_sha256[0],
+            anchor->value_identity_sha256) ||
+        !open64_fhe_mock_digest_equal(
+            descriptor->input_tensor_identity_sha256[0],
+            anchor->tensor_identity_sha256) ||
+        !open64_fhe_mock_digest_equal(
+            descriptor->input_layout_identity_sha256[0],
+            anchor->layout_identity_sha256))
+      return OPEN64_FHE_STATUS_CALL_ORDER_MISMATCH;
+    model->reserved_descriptor = descriptor;
+    model->reserved_anchor = anchor;
+    *out_desc = descriptor;
     return OPEN64_FHE_STATUS_OK;
   } catch (...) {
     return OPEN64_FHE_STATUS_INTERNAL_ERROR;
@@ -1231,9 +1343,7 @@ open64_fhe_mock_evaluate(
     const open64_fhe_operation_desc_v1 *desc,
     open64_fhe_ciphertext_v1_t *out_result)
 {
-  if (desc == NULL || out_result == NULL ||
-      desc->abi_version != OPEN64_FHE_ABI_VERSION_V1 ||
-      desc->struct_size != sizeof(*desc) || desc->reserved != 0)
+  if (desc == NULL || out_result == NULL)
     return OPEN64_FHE_STATUS_INVALID_ARGUMENT;
   if (*out_result != NULL) {
     if ((void *)*out_result == (void *)input0 ||
@@ -1253,17 +1363,23 @@ open64_fhe_mock_evaluate(
       (plain0 != NULL && plain0->model != model) ||
       (plain1 != NULL && plain1->model != model))
     return OPEN64_FHE_STATUS_TRUST_DOMAIN_MISMATCH;
+  if (model->reserved_descriptor != desc || model->reserved_anchor != input0)
+    return OPEN64_FHE_STATUS_CALL_ORDER_MISMATCH;
+  if (desc->abi_version != OPEN64_FHE_ABI_VERSION_V1 ||
+      desc->struct_size != sizeof(*desc) || desc->reserved != 0)
+    return OPEN64_FHE_STATUS_INVALID_ARGUMENT;
   if (desc->operation_kind != expected_kind ||
       desc->sequence_index != model->sequence_cursor ||
       desc->input_count != (input1 == NULL ? 1u : 2u))
     return OPEN64_FHE_STATUS_CALL_ORDER_MISMATCH;
-  if (!open64_fhe_mock_digest_equal(desc->config_identity_sha256,
-                                    model->context->config_identity_sha256) ||
-      !open64_fhe_mock_digest_equal(desc->input_value_identity_sha256[0],
+  if (!open64_fhe_mock_digest_equal(desc->input_value_identity_sha256[0],
                                     input0->value_identity_sha256) ||
       (input1 != NULL && !open64_fhe_mock_digest_equal(
            desc->input_value_identity_sha256[1],
-           input1->value_identity_sha256)) ||
+           input1->value_identity_sha256)))
+    return OPEN64_FHE_STATUS_CALL_ORDER_MISMATCH;
+  if (!open64_fhe_mock_digest_equal(desc->config_identity_sha256,
+                                    model->context->config_identity_sha256) ||
       !open64_fhe_mock_digest_equal(desc->input_tensor_identity_sha256[0],
                                     input0->tensor_identity_sha256) ||
       !open64_fhe_mock_digest_equal(desc->input_layout_identity_sha256[0],
@@ -1294,6 +1410,8 @@ open64_fhe_mock_evaluate(
       model, desc->output_value_identity_sha256,
       desc->output_tensor_identity_sha256,
       desc->output_layout_identity_sha256, level, 56, 2, out_result);
+  model->reserved_descriptor = NULL;
+  model->reserved_anchor = NULL;
   if (status == OPEN64_FHE_STATUS_OK)
     ++model->sequence_cursor;
   return status;

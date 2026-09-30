@@ -2,6 +2,7 @@
 #include "open64_fhe_mock_sha256.h"
 
 #include <stdint.h>
+#include <set>
 #include <string.h>
 #include <vector>
 
@@ -54,6 +55,7 @@ KeysetEnvelope(const uint8_t provider[32], const uint8_t config[32])
 
 static void
 InitializeDescriptor(open64_fhe_operation_desc_v1 *desc, uint32_t sequence,
+                     uint32_t static_ordinal, uint32_t visit_index,
                      uint32_t kind, const uint8_t config[32],
                      const uint8_t input_value[32],
                      const uint8_t input_tensor[32],
@@ -64,8 +66,8 @@ InitializeDescriptor(open64_fhe_operation_desc_v1 *desc, uint32_t sequence,
   desc->struct_size = sizeof(*desc);
   desc->sequence_index = sequence;
   desc->operation_kind = kind;
-  desc->operation_ordinal = sequence;
-  desc->visit_index = 0;
+  desc->operation_ordinal = static_ordinal;
+  desc->visit_index = visit_index;
   desc->input_count = kind == OPEN64_FHE_OP_RESIDUAL_ADD ||
                       kind == OPEN64_FHE_OP_RELU_RECONSTRUCT ? 2 : 1;
   Fill(desc->semantic_event_id, uint8_t(1 + sequence % 251));
@@ -87,6 +89,32 @@ InitializeDescriptor(open64_fhe_operation_desc_v1 *desc, uint32_t sequence,
   Fill(desc->output_layout_identity_sha256,
        uint8_t(6 + sequence % 251));
   open64_fhe_mock_sha256(NULL, 0, desc->payload_sha256);
+}
+
+static uint32_t
+StaticOrdinal(uint32_t sequence)
+{
+  if (sequence < 21)
+    return sequence % 13;
+  if (sequence < 30)
+    return 13 + (sequence - 21) % 5;
+  if (sequence < 144) {
+    uint32_t relu_event = sequence - 30;
+    return 18 + ((relu_event / 6) % 11) * 6 + relu_event % 6;
+  }
+  return 84 + sequence - 144;
+}
+
+static uint32_t
+VisitIndex(uint32_t sequence)
+{
+  if (sequence < 21)
+    return sequence / 13;
+  if (sequence < 30)
+    return (sequence - 21) / 5;
+  if (sequence < 144)
+    return ((sequence - 30) / 6) / 11;
+  return 0;
 }
 
 static open64_fhe_status_v1
@@ -164,9 +192,13 @@ main()
   open64_fhe_keyset_v1_t keyset = NULL;
   open64_fhe_model_package_v1_t package = NULL;
   open64_fhe_model_v1_t model = NULL;
+  open64_fhe_model_v1_t second_model = NULL;
   open64_fhe_plain_tensor_v1_t weight = NULL;
   open64_fhe_plain_tensor_v1_t bias = NULL;
+  open64_fhe_plain_tensor_v1_t second_weight = NULL;
+  open64_fhe_plain_tensor_v1_t second_bias = NULL;
   open64_fhe_ciphertext_v1_t current = NULL;
+  open64_fhe_ciphertext_v1_t second_current = NULL;
 
   if (!Ok(open64_fhe_mock_host_bootstrap_create_v1(deployment, &host)))
     return 1;
@@ -199,29 +231,7 @@ main()
       !Ok(open64_fhe_keyset_import_v1(
           context, keyset_envelope.data(), keyset_envelope.size(), &keyset)) ||
       !Ok(open64_fhe_model_package_import_v1(
-          broker, package_envelope.data(), package_envelope.size(), &package)) ||
-      !Ok(open64_fhe_model_create_v1(context, keyset, package, &model)) ||
-      !Ok(open64_fhe_plain_tensor_import_v1(
-          model, weight_envelope.data(), weight_envelope.size(), &weight)) ||
-      !Ok(open64_fhe_plain_tensor_import_v1(
-          model, bias_envelope.data(), bias_envelope.size(), &bias)))
-    return 1;
-
-  open64_fhe_import_binding_v1 import_binding = {};
-  import_binding.abi_version = OPEN64_FHE_ABI_VERSION_V1;
-  import_binding.struct_size = sizeof(import_binding);
-  Fill(import_binding.authenticated_principal_sha256, 7);
-  Fill(import_binding.session_identity_sha256, 8);
-  Fill(import_binding.request_nonce, 9);
-  memcpy(import_binding.expected_envelope_sha256,
-         input_envelope.data() + 128, 32);
-  memcpy(import_binding.model_identity_sha256,
-         package_envelope.data() + 128, 32);
-  Fill(import_binding.auth_key_id_sha256, 10);
-  Fill(import_binding.auth_tag_hmac_sha256, 11);
-  if (!Ok(open64_fhe_ciphertext_import_v1(
-          model, &import_binding, input_envelope.data(), input_envelope.size(),
-          &current)))
+          broker, package_envelope.data(), package_envelope.size(), &package)))
     return 1;
 
   uint32_t kinds[147];
@@ -250,25 +260,139 @@ main()
   memcpy(value_identity, input_envelope.data() + 128, 32);
   memcpy(tensor_identity, value_identity, 32);
   memcpy(layout_identity, value_identity, 32);
+  std::vector<open64_fhe_operation_desc_v1> descriptors(count);
   for (uint32_t sequence = 0; sequence < count; ++sequence) {
-    open64_fhe_operation_desc_v1 desc;
-    InitializeDescriptor(&desc, sequence, kinds[sequence], config,
-                         value_identity, tensor_identity, layout_identity);
+    InitializeDescriptor(&descriptors[sequence], sequence,
+                         StaticOrdinal(sequence), VisitIndex(sequence),
+                         kinds[sequence], config, value_identity,
+                         tensor_identity, layout_identity);
+    memcpy(value_identity,
+           descriptors[sequence].output_value_identity_sha256, 32);
+    memcpy(tensor_identity,
+           descriptors[sequence].output_tensor_identity_sha256, 32);
+    memcpy(layout_identity,
+           descriptors[sequence].output_layout_identity_sha256, 32);
+  }
+  if (open64_fhe_mock_model_package_set_schedule_v1(
+          package, descriptors.data(), descriptors.size() - 1) !=
+          OPEN64_FHE_STATUS_INVALID_ARGUMENT ||
+      !Ok(open64_fhe_mock_model_package_set_schedule_v1(
+          package, descriptors.data(), descriptors.size())) ||
+      open64_fhe_mock_model_package_set_schedule_v1(
+          package, descriptors.data(), descriptors.size()) !=
+          OPEN64_FHE_STATUS_BUSY ||
+      !Ok(open64_fhe_model_create_v1(context, keyset, package, &model)) ||
+      !Ok(open64_fhe_model_create_v1(
+          context, keyset, package, &second_model)) ||
+      !Ok(open64_fhe_plain_tensor_import_v1(
+          model, weight_envelope.data(), weight_envelope.size(), &weight)) ||
+      !Ok(open64_fhe_plain_tensor_import_v1(
+          model, bias_envelope.data(), bias_envelope.size(), &bias)) ||
+      !Ok(open64_fhe_plain_tensor_import_v1(
+          second_model, weight_envelope.data(), weight_envelope.size(),
+          &second_weight)) ||
+      !Ok(open64_fhe_plain_tensor_import_v1(
+          second_model, bias_envelope.data(), bias_envelope.size(),
+          &second_bias)))
+    return 1;
+
+  open64_fhe_import_binding_v1 import_binding = {};
+  import_binding.abi_version = OPEN64_FHE_ABI_VERSION_V1;
+  import_binding.struct_size = sizeof(import_binding);
+  Fill(import_binding.authenticated_principal_sha256, 7);
+  Fill(import_binding.session_identity_sha256, 8);
+  Fill(import_binding.request_nonce, 9);
+  memcpy(import_binding.expected_envelope_sha256,
+         input_envelope.data() + 128, 32);
+  memcpy(import_binding.model_identity_sha256,
+         package_envelope.data() + 128, 32);
+  Fill(import_binding.auth_key_id_sha256, 10);
+  Fill(import_binding.auth_tag_hmac_sha256, 11);
+  if (!Ok(open64_fhe_ciphertext_import_v1(
+          model, &import_binding, input_envelope.data(), input_envelope.size(),
+          &current)) ||
+      !Ok(open64_fhe_ciphertext_import_v1(
+          second_model, &import_binding, input_envelope.data(),
+          input_envelope.size(), &second_current)))
+    return 1;
+
+  std::set<uint32_t> static_ordinals;
+  uint32_t reused_static_count = 0;
+  for (uint32_t sequence = 0; sequence < count; ++sequence) {
+    if (!static_ordinals.insert(StaticOrdinal(sequence)).second)
+      ++reused_static_count;
+  }
+  if (static_ordinals.size() != 87 || reused_static_count != 60)
+    return 1;
+
+  memcpy(value_identity, input_envelope.data() + 128, 32);
+  memcpy(tensor_identity, value_identity, 32);
+  memcpy(layout_identity, value_identity, 32);
+  for (uint32_t sequence = 0; sequence < count; ++sequence) {
+    const open64_fhe_operation_desc_v1 *selected = NULL;
     open64_fhe_ciphertext_v1_t output = NULL;
     if (sequence == 0) {
-      ++desc.sequence_index;
-      if (Evaluate(kinds[sequence], model, current, weight, bias,
-                   &desc, &output) != OPEN64_FHE_STATUS_CALL_ORDER_MISMATCH ||
-          output != NULL)
+      if (open64_fhe_operation_desc_select_v1(
+              model, current, StaticOrdinal(sequence), kinds[sequence],
+              NULL) != OPEN64_FHE_STATUS_INVALID_ARGUMENT)
         return 1;
-      --desc.sequence_index;
+      selected = reinterpret_cast<const open64_fhe_operation_desc_v1 *>(
+          uintptr_t(1));
+      if (open64_fhe_operation_desc_select_v1(
+              model, second_current, StaticOrdinal(sequence),
+              kinds[sequence], &selected) !=
+              OPEN64_FHE_STATUS_TRUST_DOMAIN_MISMATCH || selected != NULL)
+        return 1;
+      selected = reinterpret_cast<const open64_fhe_operation_desc_v1 *>(
+          uintptr_t(1));
+      if (open64_fhe_operation_desc_select_v1(
+              model, current, StaticOrdinal(sequence) + 1,
+              kinds[sequence], &selected) !=
+              OPEN64_FHE_STATUS_CALL_ORDER_MISMATCH || selected != NULL)
+        return 1;
     }
-    if (!Ok(Evaluate(kinds[sequence], model, current, weight, bias,
-                     &desc, &output)) || output == NULL)
+    if (!Ok(open64_fhe_operation_desc_select_v1(
+            model, current, StaticOrdinal(sequence), kinds[sequence],
+            &selected)) || selected == NULL)
       return 1;
-    memcpy(value_identity, desc.output_value_identity_sha256, 32);
-    memcpy(tensor_identity, desc.output_tensor_identity_sha256, 32);
-    memcpy(layout_identity, desc.output_layout_identity_sha256, 32);
+    if (sequence == 0) {
+      const open64_fhe_operation_desc_v1 *second_selected = NULL;
+      open64_fhe_ciphertext_v1_t second_output = NULL;
+      if (!Ok(open64_fhe_operation_desc_select_v1(
+              second_model, second_current, StaticOrdinal(sequence),
+              kinds[sequence], &second_selected)) ||
+          second_selected == NULL || second_selected != selected ||
+          !Ok(Evaluate(kinds[sequence], second_model, second_current,
+                       second_weight, second_bias, second_selected,
+                       &second_output)) || second_output == NULL ||
+          !Ok(open64_fhe_ciphertext_release_v1(&second_current)) ||
+          !Ok(open64_fhe_ciphertext_release_v1(&second_output)) ||
+          !Ok(open64_fhe_plain_tensor_release_v1(&second_bias)) ||
+          !Ok(open64_fhe_plain_tensor_release_v1(&second_weight)) ||
+          !Ok(open64_fhe_model_destroy_v1(&second_model)))
+        return 1;
+    }
+    const open64_fhe_operation_desc_v1 *duplicate = selected;
+    if (open64_fhe_operation_desc_select_v1(
+            model, current, StaticOrdinal(sequence), kinds[sequence],
+            &duplicate) != OPEN64_FHE_STATUS_CALL_ORDER_MISMATCH ||
+        duplicate != NULL)
+      return 1;
+    open64_fhe_ciphertext_v1_t retained_current = current;
+    if (open64_fhe_ciphertext_release_v1(&retained_current) !=
+            OPEN64_FHE_STATUS_BUSY || retained_current != current)
+      return 1;
+    open64_fhe_operation_desc_v1 wrong = *selected;
+    if (Evaluate(kinds[sequence], model, current, weight, bias,
+                 &wrong, &output) != OPEN64_FHE_STATUS_CALL_ORDER_MISMATCH ||
+        output != NULL)
+      return 1;
+    if (!Ok(Evaluate(kinds[sequence], model, current, weight, bias,
+                     selected, &output)) || output == NULL)
+      return 1;
+    memcpy(value_identity, selected->output_value_identity_sha256, 32);
+    memcpy(tensor_identity, selected->output_tensor_identity_sha256, 32);
+    memcpy(layout_identity, selected->output_layout_identity_sha256, 32);
     if (!Ok(open64_fhe_ciphertext_release_v1(&current)))
       return 1;
     current = output;

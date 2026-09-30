@@ -36,6 +36,11 @@ open64_fhe_status_v1 open64_fhe_mock_seal_envelope_v1(
     uint64_t envelope_capacity,
     uint64_t *out_envelope_size);
 
+open64_fhe_status_v1 open64_fhe_mock_model_package_set_schedule_v1(
+    open64_fhe_model_package_v1_t package,
+    const open64_fhe_operation_desc_v1 *descriptors,
+    uint32_t descriptor_count);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

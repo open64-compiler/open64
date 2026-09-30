@@ -20,6 +20,12 @@ typedef open64_fhe_status_v1 (*conv2d_signature)(
     open64_fhe_plain_tensor_v1_t,
     const open64_fhe_operation_desc_v1 *,
     open64_fhe_ciphertext_v1_t *);
+typedef open64_fhe_status_v1 (*descriptor_select_signature)(
+    open64_fhe_model_v1_t,
+    open64_fhe_ciphertext_v1_t,
+    uint32_t,
+    uint32_t,
+    const open64_fhe_operation_desc_v1 **);
 typedef open64_fhe_status_v1 (*reconstruct_signature)(
     open64_fhe_model_v1_t,
     open64_fhe_ciphertext_v1_t,
@@ -38,6 +44,9 @@ typedef open64_fhe_status_v1 (*export_signature)(
 static_assert(std::is_same<decltype(&open64_fhe_conv2d_plain_v1),
                            conv2d_signature>::value,
               "conv2d signature drifted");
+static_assert(std::is_same<decltype(&open64_fhe_operation_desc_select_v1),
+                           descriptor_select_signature>::value,
+              "descriptor selector signature drifted");
 static_assert(std::is_same<decltype(&open64_fhe_relu_reconstruct_v1),
                            reconstruct_signature>::value,
               "ReLU reconstruction signature drifted");

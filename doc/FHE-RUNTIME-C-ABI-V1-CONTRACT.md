@@ -97,7 +97,9 @@ Within one inference, the call order is:
    tensor, then binds every non-argument model asset; these are lifecycle/
    transport events;
 2. import the ciphertext input, creating an inference-session cursor at zero;
-3. execute all 147 evaluation calls in persisted semantic schedule order;
+3. immediately before each evaluation call, select and reserve its immutable
+   descriptor through the model and operand-zero ciphertext session, then
+   execute all 147 evaluation calls in persisted semantic schedule order;
 4. for each ReLU source context, call bootstrap, normalization, polynomial
    stages 0, 1, and 2, then reconstruction without interleaving another
    operation on that value;
@@ -558,6 +560,10 @@ static counts are grouped from distinct `(static_ordinal,abi_symbol)` pairs and
 dynamic counts from all 147 events; both must match the fixed tuples, and
 `schedule_sha256` must match the complete schedule entry bytes. Weight consumer
 references must be the inverse of descriptor weight/bias/asset joins.
+Descriptor selection is a control call and is excluded from those evaluation
+totals. Its independently checked census is nevertheless exactly 87 static
+callsites and 147 execution-weighted calls, one immediately preceding each
+evaluation event.
 
 Every dynamic descriptor identity selects exactly one rotation record and one
 key-requirement record. Their `descriptor_sha256` values match, and the common
@@ -689,6 +695,13 @@ open64_fhe_status_v1 open64_fhe_ciphertext_retain_v1(
 
 open64_fhe_status_v1 open64_fhe_ciphertext_release_v1(
     open64_fhe_ciphertext_v1_t *ciphertext);
+
+open64_fhe_status_v1 open64_fhe_operation_desc_select_v1(
+    open64_fhe_model_v1_t model,
+    open64_fhe_ciphertext_v1_t anchor,
+    uint32_t static_ordinal,
+    uint32_t operation_kind,
+    const open64_fhe_operation_desc_v1 **out_desc);
 
 open64_fhe_status_v1 open64_fhe_conv2d_plain_v1(
     open64_fhe_model_v1_t model,
@@ -931,6 +944,29 @@ cursor by one. `CALL_ORDER_MISMATCH`, any other recoverable error, and a fatal
 provider event leave it unchanged. The runtime rejects cross-session operands;
 export is valid only after cursor 147. Destroy during queued or running work
 returns `BUSY`. Handles from different contexts are never interoperable.
+
+`open64_fhe_operation_desc_select_v1` is the only generated-C path from a
+shared static callsite to an execution-expanded descriptor. `anchor` is ABI
+operand zero for the selected event. The selector validates the live model and
+anchor session, current cursor event, static ordinal, operation kind, model and
+configuration identity, anchor value/tensor/layout identity, and the event's
+context-specific CKKS state. It initializes `*out_desc` to NULL before lower-
+priority checks and, on success, returns a borrowed pointer to the immutable
+model-package-owned descriptor and reserves that event. The pointer and payload
+remain valid until model destruction; generated C must not retain them beyond
+the immediately following evaluation call.
+
+One session has at most one reservation. A second selector or an evaluation
+with the wrong descriptor pointer, operation, or operands returns recoverable
+`CALL_ORDER_MISMATCH` without changing the reservation or cursor. An exact
+evaluation that reaches a recoverable provider failure clears the reservation,
+leaves the cursor unchanged, and publishes no output; deterministic retry must
+select again. Successful output publication clears the reservation and advances
+the cursor once. Fatal provider termination clears the reservation and poisons
+the owning context under the existing rules. Releasing the reserved anchor or
+destroying its model/session/context returns `BUSY`. Different inference
+sessions have independent cursors and reservations; no compiler-generated
+global or static visit counter participates in selection.
 
 ## Versioned Import And Export Envelope
 

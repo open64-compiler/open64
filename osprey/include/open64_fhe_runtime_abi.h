@@ -278,6 +278,13 @@ open64_fhe_status_v1 open64_fhe_ciphertext_retain_v1(
 open64_fhe_status_v1 open64_fhe_ciphertext_release_v1(
     open64_fhe_ciphertext_v1_t *ciphertext);
 
+open64_fhe_status_v1 open64_fhe_operation_desc_select_v1(
+    open64_fhe_model_v1_t model,
+    open64_fhe_ciphertext_v1_t anchor,
+    uint32_t static_ordinal,
+    uint32_t operation_kind,
+    const open64_fhe_operation_desc_v1 **out_desc);
+
 open64_fhe_status_v1 open64_fhe_conv2d_plain_v1(
     open64_fhe_model_v1_t model,
     open64_fhe_ciphertext_v1_t input,
