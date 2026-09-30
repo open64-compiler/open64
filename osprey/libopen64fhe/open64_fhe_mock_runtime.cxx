@@ -53,6 +53,13 @@ struct open64_fhe_context_v1_s {
   uint8_t config_identity_sha256[32];
 };
 
+struct open64_fhe_keyset_v1_s {
+  uint64_t generation;
+  uint32_t state;
+  uint32_t key_class_mask;
+  open64_fhe_context_v1_t context;
+};
+
 static uint64_t open64_fhe_mock_next_generation = 1;
 static std::mutex open64_fhe_mock_mutex;
 static std::set<open64_fhe_host_bootstrap_v1_t> open64_fhe_mock_hosts;
@@ -60,6 +67,7 @@ static std::set<open64_fhe_launcher_capability_v1_t>
     open64_fhe_mock_capabilities;
 static std::set<open64_fhe_broker_v1_t> open64_fhe_mock_brokers;
 static std::set<open64_fhe_context_v1_t> open64_fhe_mock_contexts;
+static std::set<open64_fhe_keyset_v1_t> open64_fhe_mock_keysets;
 
 static const uint8_t open64_fhe_mock_envelope_magic[8] = {
   0x4f, 0x36, 0x34, 0x46, 0x48, 0x45, 0x31, 0x00
@@ -123,9 +131,10 @@ open64_fhe_mock_digest_equal(const uint8_t *left, const uint8_t *right)
 }
 
 static open64_fhe_status_v1
-open64_fhe_mock_read_envelope(const void *envelope,
-                              uint64_t envelope_size,
-                              OPEN64_FHE_MOCK_ENVELOPE_VIEW *view)
+open64_fhe_mock_read_envelope_header(
+    const void *envelope,
+    uint64_t envelope_size,
+    OPEN64_FHE_MOCK_ENVELOPE_VIEW *view)
 {
   if (envelope == NULL || view == NULL ||
       envelope_size < OPEN64_FHE_ENVELOPE_HEADER_SIZE_V1 ||
@@ -141,8 +150,24 @@ open64_fhe_mock_read_envelope(const void *envelope,
   uint64_t payload_size = open64_fhe_mock_load_le64(bytes + 88);
   if (payload_size != envelope_size - OPEN64_FHE_ENVELOPE_HEADER_SIZE_V1)
     return OPEN64_FHE_STATUS_ENVELOPE_INVALID;
+  view->kind = open64_fhe_mock_load_le32(bytes + 16);
+  view->key_class_mask = open64_fhe_mock_load_le32(bytes + 20);
+  view->provider_identity_sha256 = bytes + 24;
+  view->config_identity_sha256 = bytes + 56;
+  view->payload = bytes + OPEN64_FHE_ENVELOPE_HEADER_SIZE_V1;
+  view->payload_size = payload_size;
+  return OPEN64_FHE_STATUS_OK;
+}
+
+static open64_fhe_status_v1
+open64_fhe_mock_verify_envelope_integrity(
+    const void *envelope,
+    uint64_t envelope_size,
+    OPEN64_FHE_MOCK_ENVELOPE_VIEW *view)
+{
+  const uint8_t *bytes = static_cast<const uint8_t *>(envelope);
   std::array<uint8_t, 32> payload_digest = open64_fhe_mock_digest(
-      bytes + OPEN64_FHE_ENVELOPE_HEADER_SIZE_V1, size_t(payload_size));
+      view->payload, size_t(view->payload_size));
   if (!open64_fhe_mock_digest_equal(payload_digest.data(), bytes + 96))
     return OPEN64_FHE_STATUS_INTEGRITY_ERROR;
   std::vector<uint8_t> authenticated(bytes, bytes + envelope_size);
@@ -151,14 +176,21 @@ open64_fhe_mock_read_envelope(const void *envelope,
       authenticated.data(), authenticated.size());
   if (!open64_fhe_mock_digest_equal(envelope_digest.data(), bytes + 128))
     return OPEN64_FHE_STATUS_INTEGRITY_ERROR;
-  view->kind = open64_fhe_mock_load_le32(bytes + 16);
-  view->key_class_mask = open64_fhe_mock_load_le32(bytes + 20);
-  view->provider_identity_sha256 = bytes + 24;
-  view->config_identity_sha256 = bytes + 56;
-  view->payload = bytes + OPEN64_FHE_ENVELOPE_HEADER_SIZE_V1;
-  view->payload_size = payload_size;
   view->envelope_sha256 = envelope_digest;
   return OPEN64_FHE_STATUS_OK;
+}
+
+static open64_fhe_status_v1
+open64_fhe_mock_read_envelope(const void *envelope,
+                              uint64_t envelope_size,
+                              OPEN64_FHE_MOCK_ENVELOPE_VIEW *view)
+{
+  open64_fhe_status_v1 status = open64_fhe_mock_read_envelope_header(
+      envelope, envelope_size, view);
+  if (status != OPEN64_FHE_STATUS_OK)
+    return status;
+  return open64_fhe_mock_verify_envelope_integrity(
+      envelope, envelope_size, view);
 }
 
 static bool
@@ -200,6 +232,13 @@ open64_fhe_mock_context_live(open64_fhe_context_v1_t context)
 {
   return context != NULL && open64_fhe_mock_contexts.count(context) == 1 &&
          context->state == OPEN64_FHE_MOCK_TOKEN_LIVE;
+}
+
+static bool
+open64_fhe_mock_keyset_live(open64_fhe_keyset_v1_t keyset)
+{
+  return keyset != NULL && open64_fhe_mock_keysets.count(keyset) == 1 &&
+         keyset->state == OPEN64_FHE_MOCK_TOKEN_LIVE;
 }
 
 extern "C" open64_fhe_status_v1
@@ -544,6 +583,95 @@ open64_fhe_context_destroy_v1(open64_fhe_context_v1_t *context)
     memset((*context)->config_identity_sha256, 0, 32);
     --broker->child_count;
     *context = NULL;
+    return OPEN64_FHE_STATUS_OK;
+  } catch (...) {
+    return OPEN64_FHE_STATUS_INTERNAL_ERROR;
+  }
+}
+
+extern "C" open64_fhe_status_v1
+open64_fhe_keyset_import_v1(
+    open64_fhe_context_v1_t context,
+    const void *evaluation_keyset_envelope,
+    uint64_t envelope_size,
+    open64_fhe_keyset_v1_t *out_keyset)
+{
+  if (out_keyset == NULL || *out_keyset != NULL)
+    return OPEN64_FHE_STATUS_INVALID_ARGUMENT;
+  try {
+    std::lock_guard<std::mutex> lock(open64_fhe_mock_mutex);
+    if (!open64_fhe_mock_context_live(context))
+      return OPEN64_FHE_STATUS_INVALID_HANDLE;
+    OPEN64_FHE_MOCK_ENVELOPE_VIEW view;
+    open64_fhe_status_v1 status = open64_fhe_mock_read_envelope_header(
+        evaluation_keyset_envelope, envelope_size, &view);
+    if (status != OPEN64_FHE_STATUS_OK)
+      return status;
+    if ((view.key_class_mask & OPEN64_FHE_KEY_CLASS_SECRET) != 0)
+      return OPEN64_FHE_STATUS_SECRET_KEY_FORBIDDEN;
+    status = open64_fhe_mock_verify_envelope_integrity(
+        evaluation_keyset_envelope, envelope_size, &view);
+    if (status != OPEN64_FHE_STATUS_OK)
+      return status;
+    open64_fhe_broker_v1_t broker = context->broker;
+    if (broker->trusted_envelopes.count(view.envelope_sha256) != 1)
+      return OPEN64_FHE_STATUS_TRUST_FAILURE;
+    if (view.kind != OPEN64_FHE_ENVELOPE_KIND_KEYSET)
+      return OPEN64_FHE_STATUS_KIND_MISMATCH;
+    const uint32_t allowed_keys = OPEN64_FHE_KEY_CLASS_PUBLIC |
+        OPEN64_FHE_KEY_CLASS_EVALUATION |
+        OPEN64_FHE_KEY_CLASS_RELINEARIZATION |
+        OPEN64_FHE_KEY_CLASS_ROTATION |
+        OPEN64_FHE_KEY_CLASS_BOOTSTRAP;
+    if (view.key_class_mask == 0 ||
+        (view.key_class_mask & ~allowed_keys) != 0)
+      return OPEN64_FHE_STATUS_KEY_CLASS_MISMATCH;
+    if (!open64_fhe_mock_digest_equal(
+            view.provider_identity_sha256,
+            context->provider_identity_sha256))
+      return OPEN64_FHE_STATUS_PROVIDER_MISMATCH;
+    if (!open64_fhe_mock_digest_equal(
+            view.config_identity_sha256,
+            context->config_identity_sha256))
+      return OPEN64_FHE_STATUS_CONFIG_MISMATCH;
+
+    open64_fhe_keyset_v1_t keyset =
+        new (std::nothrow) open64_fhe_keyset_v1_s;
+    if (keyset == NULL)
+      return OPEN64_FHE_STATUS_OUT_OF_MEMORY;
+    keyset->generation = open64_fhe_mock_next_generation++;
+    keyset->state = OPEN64_FHE_MOCK_TOKEN_LIVE;
+    keyset->key_class_mask = view.key_class_mask;
+    keyset->context = context;
+    try {
+      open64_fhe_mock_keysets.insert(keyset);
+    } catch (...) {
+      delete keyset;
+      throw;
+    }
+    ++context->child_count;
+    *out_keyset = keyset;
+    return OPEN64_FHE_STATUS_OK;
+  } catch (const std::bad_alloc &) {
+    return OPEN64_FHE_STATUS_OUT_OF_MEMORY;
+  } catch (...) {
+    return OPEN64_FHE_STATUS_INTERNAL_ERROR;
+  }
+}
+
+extern "C" open64_fhe_status_v1
+open64_fhe_keyset_release_v1(open64_fhe_keyset_v1_t *keyset)
+{
+  try {
+    std::lock_guard<std::mutex> lock(open64_fhe_mock_mutex);
+    if (keyset == NULL || !open64_fhe_mock_keyset_live(*keyset))
+      return OPEN64_FHE_STATUS_INVALID_HANDLE;
+    open64_fhe_context_v1_t context = (*keyset)->context;
+    (*keyset)->state = OPEN64_FHE_MOCK_TOKEN_CONSUMED;
+    (*keyset)->key_class_mask = 0;
+    (*keyset)->context = NULL;
+    --context->child_count;
+    *keyset = NULL;
     return OPEN64_FHE_STATUS_OK;
   } catch (...) {
     return OPEN64_FHE_STATUS_INTERNAL_ERROR;

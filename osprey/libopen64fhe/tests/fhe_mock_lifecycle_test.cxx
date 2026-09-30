@@ -46,6 +46,8 @@ main()
   std::vector<uint8_t> wrong_kind_envelope(context_envelope_size);
   std::vector<uint8_t> wrong_provider_envelope(context_envelope_size);
   std::vector<uint8_t> wrong_config_envelope(context_envelope_size);
+  std::vector<uint8_t> keyset_envelope(context_envelope_size);
+  std::vector<uint8_t> secret_keyset_envelope(context_envelope_size);
   uint64_t actual_size = 0;
   open64_fhe_host_bootstrap_v1_t host = NULL;
   open64_fhe_launcher_capability_v1_t capability = NULL;
@@ -83,6 +85,24 @@ main()
                   provider, other_config, context_payload,
                   sizeof(context_payload), wrong_config_envelope.data(),
                   wrong_config_envelope.size(), &actual_size),
+              OPEN64_FHE_STATUS_OK) ||
+      Require(open64_fhe_mock_seal_envelope_v1(
+                  OPEN64_FHE_ENVELOPE_KIND_KEYSET,
+                  OPEN64_FHE_KEY_CLASS_PUBLIC |
+                      OPEN64_FHE_KEY_CLASS_EVALUATION |
+                      OPEN64_FHE_KEY_CLASS_RELINEARIZATION |
+                      OPEN64_FHE_KEY_CLASS_ROTATION |
+                      OPEN64_FHE_KEY_CLASS_BOOTSTRAP,
+                  provider, config, context_payload, sizeof(context_payload),
+                  keyset_envelope.data(), keyset_envelope.size(),
+                  &actual_size),
+              OPEN64_FHE_STATUS_OK) ||
+      Require(open64_fhe_mock_seal_envelope_v1(
+                  OPEN64_FHE_ENVELOPE_KIND_KEYSET,
+                  OPEN64_FHE_KEY_CLASS_SECRET,
+                  provider, config, context_payload, sizeof(context_payload),
+                  secret_keyset_envelope.data(),
+                  secret_keyset_envelope.size(), &actual_size),
               OPEN64_FHE_STATUS_OK))
     return 1;
 
@@ -102,6 +122,9 @@ main()
       Require(open64_fhe_mock_host_trust_envelope_v1(
                   host, wrong_config_envelope.data(),
                   wrong_config_envelope.size()),
+              OPEN64_FHE_STATUS_OK) ||
+      Require(open64_fhe_mock_host_trust_envelope_v1(
+                  host, keyset_envelope.data(), keyset_envelope.size()),
               OPEN64_FHE_STATUS_OK) ||
       Require(open64_fhe_launcher_capability_acquire_v1(host, &capability),
               OPEN64_FHE_STATUS_OK) ||
@@ -167,6 +190,7 @@ main()
       context != NULL)
     return 1;
 
+  open64_fhe_keyset_v1_t keyset = NULL;
   if (Require(open64_fhe_context_import_v1(
                   broker, &context_desc, wrong_kind_envelope.data(),
                   wrong_kind_envelope.size(), &context),
@@ -190,6 +214,34 @@ main()
       Require(open64_fhe_broker_destroy_v1(&broker),
               OPEN64_FHE_STATUS_BUSY) ||
       broker == NULL ||
+      Require(open64_fhe_keyset_import_v1(
+                  context, secret_keyset_envelope.data(),
+                  secret_keyset_envelope.size(), &keyset),
+              OPEN64_FHE_STATUS_SECRET_KEY_FORBIDDEN) ||
+      keyset != NULL)
+    return 1;
+
+  secret_keyset_envelope.back() ^= 1;
+  if (Require(open64_fhe_keyset_import_v1(
+                  context, secret_keyset_envelope.data(),
+                  secret_keyset_envelope.size(), &keyset),
+              OPEN64_FHE_STATUS_SECRET_KEY_FORBIDDEN) ||
+      Require(open64_fhe_keyset_import_v1(
+                  context, context_envelope.data(), context_envelope.size(),
+                  &keyset),
+              OPEN64_FHE_STATUS_KIND_MISMATCH) ||
+      Require(open64_fhe_keyset_import_v1(
+                  context, keyset_envelope.data(), keyset_envelope.size(),
+                  &keyset),
+              OPEN64_FHE_STATUS_OK) ||
+      keyset == NULL ||
+      Require(open64_fhe_context_destroy_v1(&context),
+              OPEN64_FHE_STATUS_BUSY) ||
+      context == NULL ||
+      Require(open64_fhe_keyset_release_v1(&keyset),
+              OPEN64_FHE_STATUS_OK) ||
+      Require(open64_fhe_keyset_release_v1(&keyset),
+              OPEN64_FHE_STATUS_INVALID_HANDLE) ||
       Require(open64_fhe_context_destroy_v1(&context),
               OPEN64_FHE_STATUS_OK) ||
       Require(open64_fhe_context_destroy_v1(&context),
