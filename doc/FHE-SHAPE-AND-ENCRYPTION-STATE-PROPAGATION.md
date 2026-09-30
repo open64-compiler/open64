@@ -360,6 +360,95 @@ that evidence to materialize bootstrap, normalization, the ordered stages, and
 ReLU reconstruction. A single cubic remains experimental and cannot substitute
 for the accepted profile.
 
+## Runtime-Interface Projection
+
+Shape and encryption-state propagation establish semantic truth; they do not
+change the physical ABI by themselves.  After both analyses accept a value,
+SYNC-5 projects that value into the exact opaque runtime handle required by its
+verified value class.  This is a lowering relation, not tensor-type
+canonicalization:
+
+```text
+(context identity, owner PU, source DSL_IR_VALUE_ID)
+  -> canonical tensor TY and TensorDescriptorIR
+  -> accepted shape fact
+  -> accepted FHE value class and CKKS state
+  -> exact runtime role and handle TY
+  -> owner-local standard-WHIRL handle ST
+```
+
+The canonical tensor value remains the durable source-semantic identity.  The
+runtime handle is a separate executable projection.  In particular, the
+compiler must never overwrite or reinterpret the canonical tensor `TY_IDX` as
+`void *`, a ciphertext handle, or a plaintext-tensor handle.  Doing so would
+erase shape/layout identity, collapse semantically different plaintext and
+ciphertext values, and break FHE-plan, source, call-ABI, and provenance joins.
+
+The first runtime-role mapping is:
+
+| Accepted semantic value | Exact runtime projection |
+| --- | --- |
+| Encrypted activation, residual, pooled value, flattened value, or logits | `open64_fhe_ciphertext_v1_t` |
+| Folded convolution/linear weight or bias | `open64_fhe_plain_tensor_v1_t` |
+| Composite-ReLU coefficient tensor | `open64_fhe_plain_tensor_v1_t` |
+| PU input carrying ciphertext | Borrowed handle value of the exact ciphertext-handle TY |
+| PU hidden result carrying ciphertext | Caller-owned null-initialized ciphertext handle passed by pointer-to-handle |
+| Broker, context, keyset, package, or model lifecycle object | Runtime-only exact opaque handle; no tensor identity is invented |
+| Descriptor, range, schedule, or provenance record | No runtime value handle |
+
+Equal pointer width is not type equality.  The standard-call boundary requires
+the exact interned handle TY selected for each value.  A plaintext tensor
+handle cannot satisfy a ciphertext formal merely because both lower to one
+machine pointer.
+
+### Program-level projection transaction
+
+The generic runtime-interface service owns representation changes while the
+FHE pass owns semantic selection.  The FHE pass supplies a complete stable-ID
+plan containing owner PU, source value, binding kind, formal/call ordinals,
+and exact handle TY.  Generic infrastructure then:
+
+1. globally preflights all source values, PU interfaces, callsites, exact
+   source TYs, handle TYs, source positions, and caller/callee relationships;
+2. applies one active-PU slice under normal driver and local-symtab ownership;
+3. creates source-linked handle formals and owner-local handle symbols;
+4. rebuilds function prototypes, `FUNC_ENTRY`, caller parameters, hidden-result
+   parameters, and return stores with exact projected TY agreement;
+5. records an owner-qualified source-value-to-handle relation without changing
+   the canonical DSL value, ST, TY, PU-interface, or call-ABI rows; and
+6. performs an all-PU cross-check before binary-last `.mid.B` publication.
+
+Input handles cross PU boundaries by borrowed value.  Hidden result handles use
+pointer-to-handle parameters and caller-owned null-initialized locals.  Local
+evaluation results are distinct owning handles.  Original tensor symbols may
+remain as non-executable provenance, but no executable WN may reference them
+after projection and semantic runtime-call lowering.
+
+The transaction is no-mutation-on-preflight-failure for each active PU.  A
+failure after an earlier PU was applied is terminal for the checkpoint: the
+compiler aborts the in-memory run and publishes neither `.mid.B` nor auxiliary
+artifacts.  It does not claim cross-PU rollback.
+
+### Propagation-to-projection gate
+
+Projection is legal only when all of the following hold:
+
+- source and converted shape gates are successful;
+- every live operand/result has one accepted value class and compatible
+  encryption descriptor;
+- every encrypted contextual value has a concrete level, scale, component,
+  precision, slot/layout, and pending-action disposition;
+- every caller actual joins to the exact callee formal value and projected TY;
+- every pending refresh/rescale/relinearization action has an owning
+  materialized or lowering operation; and
+- retired values and verified dead ABI inputs are excluded from executable
+  projection while remaining inspectable.
+
+Stable diagnostics reserve `CFHEPROP-*` for FHE state propagation and
+`CFHEIFACE-*` for runtime-interface projection.  A missing, unknown,
+conflicting, or pending state fails before any standard runtime call is
+committed.
+
 ## Integrated `-O0` Execution Order
 
 ```text
@@ -375,9 +464,11 @@ binary very-high-level WHIRL
   -> SYNC-3 converted .fhe.B, side payload, report, and .fhe.T
   -> SYNC-4 bootstrap plus approved ReLU polynomial materialization
   -> SIHE/CKKS lowering
+  -> propagation-to-projection gate
+  -> owner-safe runtime-interface projection
   -> standard middle-WHIRL runtime calls
   -> whirl2c
-  -> OpenFHE-linked executable
+  -> mock-linked executable, then the unchanged ACE-provider boundary
 ```
 
 Shape propagation is introduced before CKKS planning because packing and
@@ -394,17 +485,21 @@ afterward because its facts are representation- and value-specific.
 | BN folding | 13 physical Conv/BN definitions and 21 call contexts; distinct folded payload values per context; source payload remains immutable. |
 | Retirement | No live BN computation or BN-only formal use; retired rows remain traceable and are excluded from executable accounting. |
 | CKKS state | Class, descriptor, layout, level, scale, alignment, rotations, pending actions, state versions, and source-to-result provenance. |
+| Runtime projection | Ciphertext versus plaintext exact handle TY, input-by-value, hidden-result pointer-to-handle, caller/callee agreement, source positions, local ST collision safety, and absence of executable references to canonical tensor symbols. |
+| Projection failure | Missing/pending propagation fact, wrong handle class, wrong owner, wrong formal/call ordinal, partial-PU failure, and all-PU final-validation failure publish no `.mid.B` or auxiliary artifact. |
 | Compatibility | Old optional-section absence, mapped reopen, malformed rows, independent `ir_b2a -st -src`, and no binary WHIRL revision change. |
 | Publication | Converted side payload, report, and `.fhe.B` publish atomically; induced failure leaves no valid partial artifact. |
 
 ## Ownership and Staging
 
 - Main/common owns generic value identity, call ABI, PU-interface records,
-  tensor shape propagation services, mapped-image compatibility, and generic
+  tensor shape propagation services, runtime-interface representation and
+  active-PU migration services, mapped-image compatibility, and generic
   validation/printing hooks.
 - The FHE task owns encryption-state semantics, FHE transfer rules, BatchNorm
   fold consumption, packing/metakernel planning, approximation obligations,
-  reports, diagnostics, and FHE-specific tests.
+  exact runtime-role selection, standard-call schedule selection, reports,
+  diagnostics, and FHE-specific tests.
 - Shared opcode/type allocation, canonical type encoding, binary WHIRL layout,
   and common/com implementation remain main-owned and require their normal
   reviewed contract checkpoints.

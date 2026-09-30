@@ -107,6 +107,46 @@ convolution and Transformer attention may both lower to tensor contractions,
 but they must remain visible as domain operations until their padding, layout,
 mask, position, runtime-state, and ABI contracts have been verified.
 
+### Semantic propagation and runtime representation
+
+Canonical tensor identity, value-specific runtime state, and lowered ABI
+representation are three different compiler concepts and must remain
+separate:
+
+```text
+canonical TY_IDX / TensorDescriptorIR
+  -> contextual shape fact
+  -> domain-specific value state
+  -> exact lowered runtime representation
+```
+
+Generic shape propagation refines and verifies tensor geometry by stable DSL
+value, PU, REGION, and call identity. Domain analyses may then attach
+value-specific state such as FHE plaintext/ciphertext class, packing, level,
+scale, components, precision, or pending refresh actions. These contextual
+facts do not participate in canonical tensor type equivalence.
+
+Only after those analyses accept a value may a lowering pass project it to a
+runtime representation. A runtime projection relates the unchanged source
+value and canonical tensor TY to a distinct owner-local ABI symbol and exact
+ABI TY. It does not mutate the canonical tensor TY into a pointer or opaque
+handle. Equal machine representation is not semantic type equality: an FHE
+ciphertext handle and plaintext-tensor handle are distinct exact ABI types even
+when both occupy one pointer.
+
+For interprocedural lowering, the projection must be owner-qualified and
+context-safe. It must rebuild function prototypes, input formals, hidden result
+formals, caller actuals/results, and return stores as one validated program
+relation while preserving the original DSL value, PU-interface, call-ABI,
+source, and TensorDescriptorIR records as non-executable provenance. A failed
+multi-PU migration is terminal for artifact publication; it must not emit a
+partially projected binary.
+
+This rule generalizes beyond FHE: domain state propagation decides whether a
+runtime representation is legal, while a separate generic projection service
+performs the representation change. Analyses must never use ABI retyping as a
+substitute for semantic propagation.
+
 ## Continuous IR Tool Compatibility
 
 Every stage must keep `osprey/ir_tools/ir_a2b.cxx` working.  This source covers

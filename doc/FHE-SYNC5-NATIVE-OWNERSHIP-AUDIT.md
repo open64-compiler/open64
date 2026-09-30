@@ -382,6 +382,38 @@ share the same merged materialization-image and semantic baseline.  SYNC-5
 keeps its runtime-lowering infrastructure and FHE semantic implementation in
 coordinated but independently reviewable commits.
 
+### Propagation and runtime-interface dependency
+
+The semantic runtime lowerer must not repair tensor/runtime type differences by
+changing canonical tensor `TY_IDX` values. Before it emits a standard call, it
+consumes successful generic shape and FHE encryption-state propagation and
+selects one exact runtime role for every live value. Generic runtime-interface
+infrastructure then records and applies the owner-qualified projection from the
+unchanged DSL value and tensor TY to an exact ciphertext- or plaintext-handle
+TY/ST.
+
+The required order is:
+
+```text
+shape certification
+  -> context-sensitive FHE state certification
+  -> exact runtime-role selection
+  -> program-level PU/call interface projection
+  -> standard-call emission
+  -> final unlowered-node and semantic census gate
+```
+
+Input handles cross a PU boundary by borrowed value. Hidden result handles are
+caller-owned null-initialized locals passed through exact pointer-to-handle
+formals. Canonical tensor values, PU-interface rows, call-ABI rows, source
+positions, TensorDescriptorIR, and FHE planning records remain inspectable
+provenance and are not retyped. A migration failure is terminal for the
+checkpoint and publishes no `.mid.B` or auxiliary artifact.
+
+The detailed analysis, role mapping, transaction contract, diagnostics, and
+negative-test matrix are in
+`doc/FHE-SHAPE-AND-ENCRYPTION-STATE-PROPAGATION.md`.
+
 ## First Main-Owned Batch
 
 The first main-owned coding batch now provides:
