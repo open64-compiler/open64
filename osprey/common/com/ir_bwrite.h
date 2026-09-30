@@ -116,6 +116,7 @@ extern void WN_write_dsl_effect_image (Output_File *fl);
 extern void WN_write_dsl_callsite_image (Output_File *fl);
 extern void WN_write_dsl_call_abi_image (Output_File *fl);
 extern void WN_write_dsl_pu_interface_image (Output_File *fl);
+extern void WN_write_dsl_runtime_interface_image (Output_File *fl);
 extern void WN_write_dsl_fhe_image (Output_File *fl);
 extern void WN_write_dsl_fhe_plan_image (Output_File *fl);
 extern void WN_write_dsl_fhe_approx_profile_image (Output_File *fl);

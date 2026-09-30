@@ -604,6 +604,15 @@ fhe_convert.o: $(BE_VHO_DIR)/fhe_convert.cxx
 fhe_materialize.o: $(BE_VHO_DIR)/fhe_materialize.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
+fhe_runtime_lower.o: $(BE_VHO_DIR)/fhe_runtime_lower.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+fhe_standard_whirl.o: $(BE_VHO_DIR)/fhe_standard_whirl.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+fhe_unlowered_gate.o: $(BE_VHO_DIR)/fhe_unlowered_gate.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
 fhe_convert_contract_test.o: \
 	$(BE_VHO_DIR)/tests/fhe_convert_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
@@ -615,6 +624,17 @@ fhe_materialize_contract_test: $(OBJECTS) controls.o fhe_checkpoint.o \
 
 fhe_materialize_contract_test.o: \
 	$(BE_VHO_DIR)/tests/fhe_materialize_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+fhe_runtime_lower_contract_test: $(OBJECTS) controls.o fhe_checkpoint.o \
+		fhe_runtime_lower.o fhe_standard_whirl.o fhe_unlowered_gate.o \
+		fhe_runtime_lower_contract_test.o
+	$(link.c++f) -o $@ fhe_runtime_lower_contract_test.o controls.o \
+		fhe_checkpoint.o fhe_runtime_lower.o fhe_standard_whirl.o \
+		fhe_unlowered_gate.o $(OBJECTS) $(LDFLAGS)
+
+fhe_runtime_lower_contract_test.o: \
+	$(BE_VHO_DIR)/tests/fhe_runtime_lower_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 fhe_semantic_convert_test: $(OBJECTS) controls.o fhe_checkpoint.o \

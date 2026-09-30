@@ -967,6 +967,37 @@ WN_write_dsl_pu_interface_image (Output_File *fl)
 }
 
 void
+WN_write_dsl_runtime_interface_image (Output_File *fl)
+{
+    if (!DSL_Runtime_Interface_Image_Has_Records())
+        return;
+    FmtAssert(DSL_Runtime_Interface_Image_Validate(stderr),
+              ("invalid DSL runtime interface table"));
+    Section *cur_section = get_section
+                               (WT_DSL_RUNTIME_INTERFACE,
+                                MIPS_WHIRL_DSL_RUNTIME_INTERFACE, fl);
+    fl->file_size = ir_b_align(fl->file_size, sizeof(mINT64), 0);
+    cur_section->shdr.sh_offset = fl->file_size;
+    DSL_RUNTIME_INTERFACE_IMAGE_HEADER header;
+    DSL_Runtime_Interface_Image_Get_Header(&header);
+    ir_b_save_buf(&header, sizeof(header), sizeof(mINT64), 0, fl);
+    for (UINT32 i = 1; i <= header.value_projection_count; ++i) {
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD record;
+        FmtAssert(DSL_Runtime_Interface_Image_Get_Value(i, &record),
+                  ("missing DSL runtime value projection %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.call_projection_count; ++i) {
+        DSL_RUNTIME_CALL_PROJECTION_RECORD record;
+        FmtAssert(DSL_Runtime_Interface_Image_Get_Call(i, &record),
+                  ("missing DSL runtime call projection %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    cur_section->shdr.sh_size = fl->file_size - cur_section->shdr.sh_offset;
+    cur_section->shdr.sh_addralign = sizeof(mINT64);
+}
+
+void
 WN_write_dsl_fhe_image (Output_File *fl)
 {
     if (!DSL_FHE_Image_Has_Records())
@@ -1995,6 +2026,7 @@ Write_Global_Info (PU_Info *pu_tree)
     WN_write_dsl_callsite_image(ir_output);
     WN_write_dsl_pu_interface_image(ir_output);
     WN_write_dsl_call_abi_image(ir_output);
+    WN_write_dsl_runtime_interface_image(ir_output);
     WN_write_dsl_fhe_image(ir_output);
     WN_write_dsl_fhe_plan_image(ir_output);
     WN_write_dsl_fhe_approx_profile_image(ir_output);
