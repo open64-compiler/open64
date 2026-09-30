@@ -13,6 +13,10 @@
 
 extern BOOL DSL_Runtime_Interface_Value_Record_Contract_Valid
                                 (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *);
+extern BOOL DSL_Program_Interface_Pointer_TY_Contract_Valid (TY_IDX);
+extern BOOL DSL_Program_Interface_Runtime_Input_Contract_Valid
+                                (const DSL_RUNTIME_INPUT_RECORD *);
+extern void DSL_Program_Interface_Reset_Prepared_Plan (void);
 
 typedef struct wn_map_tab WN_MAP_TAB;
 extern WN_MAP_TAB *Current_Map_Tab;
@@ -38,6 +42,15 @@ typedef SEGMENTED_ARRAY<DSL_RUNTIME_VALUE_PROJECTION_RECORD>
     DSL_RUNTIME_VALUE_PROJECTION_TABLE;
 typedef SEGMENTED_ARRAY<DSL_RUNTIME_CALL_PROJECTION_RECORD>
     DSL_RUNTIME_CALL_PROJECTION_TABLE;
+typedef SEGMENTED_ARRAY<DSL_RETIRED_FORMAL_RECORD>
+    DSL_RETIRED_FORMAL_TABLE;
+typedef SEGMENTED_ARRAY<DSL_RETIRED_CALL_ARGUMENT_RECORD>
+    DSL_RETIRED_CALL_ARGUMENT_TABLE;
+typedef SEGMENTED_ARRAY<DSL_RUNTIME_INPUT_RECORD> DSL_RUNTIME_INPUT_TABLE;
+typedef SEGMENTED_ARRAY<DSL_RUNTIME_INPUT_BINDING_RECORD>
+    DSL_RUNTIME_INPUT_BINDING_TABLE;
+typedef SEGMENTED_ARRAY<DSL_RUNTIME_INPUT_CALL_RECORD>
+    DSL_RUNTIME_INPUT_CALL_TABLE;
 
 static DSL_IR_OPCODE_DESCRIPTOR_TABLE DSL_ir_opcode_descriptor_table;
 static DSL_IR_NODE_TABLE DSL_ir_node_table;
@@ -52,6 +65,11 @@ static DSL_CALL_ARGUMENT_TABLE DSL_call_argument_table;
 static DSL_PU_FORMAL_TABLE DSL_pu_formal_table;
 static DSL_RUNTIME_VALUE_PROJECTION_TABLE DSL_runtime_value_projection_table;
 static DSL_RUNTIME_CALL_PROJECTION_TABLE DSL_runtime_call_projection_table;
+static DSL_RETIRED_FORMAL_TABLE DSL_retired_formal_table;
+static DSL_RETIRED_CALL_ARGUMENT_TABLE DSL_retired_call_argument_table;
+static DSL_RUNTIME_INPUT_TABLE DSL_runtime_input_table;
+static DSL_RUNTIME_INPUT_BINDING_TABLE DSL_runtime_input_binding_table;
+static DSL_RUNTIME_INPUT_CALL_TABLE DSL_runtime_input_call_table;
 
 typedef struct {
     ST_IDX owner_pu_st;
@@ -119,6 +137,24 @@ typedef char DSL_Runtime_Value_Projection_Size_Check
 typedef char DSL_Runtime_Call_Projection_Size_Check
     [sizeof(DSL_RUNTIME_CALL_PROJECTION_RECORD) ==
         DSL_RUNTIME_CALL_PROJECTION_RECORD_SIZE ? 1 : -1];
+typedef char DSL_Program_Interface_Header_Size_Check
+    [sizeof(DSL_PROGRAM_INTERFACE_IMAGE_HEADER) ==
+        DSL_PROGRAM_INTERFACE_IMAGE_HEADER_SIZE ? 1 : -1];
+typedef char DSL_Retired_Formal_Size_Check
+    [sizeof(DSL_RETIRED_FORMAL_RECORD) ==
+        DSL_RETIRED_FORMAL_RECORD_SIZE ? 1 : -1];
+typedef char DSL_Retired_Call_Argument_Size_Check
+    [sizeof(DSL_RETIRED_CALL_ARGUMENT_RECORD) ==
+        DSL_RETIRED_CALL_ARGUMENT_RECORD_SIZE ? 1 : -1];
+typedef char DSL_Runtime_Input_Size_Check
+    [sizeof(DSL_RUNTIME_INPUT_RECORD) ==
+        DSL_RUNTIME_INPUT_RECORD_SIZE ? 1 : -1];
+typedef char DSL_Runtime_Input_Binding_Size_Check
+    [sizeof(DSL_RUNTIME_INPUT_BINDING_RECORD) ==
+        DSL_RUNTIME_INPUT_BINDING_RECORD_SIZE ? 1 : -1];
+typedef char DSL_Runtime_Input_Call_Size_Check
+    [sizeof(DSL_RUNTIME_INPUT_CALL_RECORD) ==
+        DSL_RUNTIME_INPUT_CALL_RECORD_SIZE ? 1 : -1];
 
 template <typename RECORD>
 static void
@@ -154,6 +190,7 @@ DSL_IR_Image_Reset (void)
     DSL_Call_ABI_Image_Reset();
     DSL_PU_Interface_Image_Reset();
     DSL_Runtime_Interface_Image_Reset();
+    DSL_Program_Interface_Image_Reset();
 }
 
 static BOOL
@@ -334,6 +371,24 @@ DSL_Call_Image_Get_Call_WN (DSL_CALLSITE_METADATA_ID id)
             return DSL_callsite_runtime_associations[i].call;
     }
     return NULL;
+}
+
+BOOL
+DSL_Call_Image_Replace_Call_WN
+        (DSL_CALLSITE_METADATA_ID id, const WN *expected, WN *replacement)
+{
+    if (id == DSL_CALLSITE_METADATA_INVALID_ID || expected == NULL ||
+        replacement == NULL)
+        return FALSE;
+    for (UINT32 i = 0; i < DSL_callsite_runtime_associations.size(); ++i) {
+        DSL_CALLSITE_RUNTIME_ASSOCIATION &association =
+            DSL_callsite_runtime_associations[i];
+        if (association.id == id && association.call == expected) {
+            association.call = replacement;
+            return TRUE;
+        }
+    }
+    return FALSE;
 }
 
 UINT32 DSL_Call_Image_PU_Identity_Count (void)
@@ -803,7 +858,10 @@ DSL_Runtime_Interface_View_Validate
         (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *values,
          UINT32 value_count,
          const DSL_RUNTIME_CALL_PROJECTION_RECORD *calls,
-         UINT32 call_count, FILE *diagnostic)
+         UINT32 call_count,
+         const DSL_RETIRED_FORMAL_RECORD *retired_formals,
+         UINT32 retired_formal_count, BOOL use_retired_view,
+         FILE *diagnostic)
 {
     for (UINT32 i = 0; i < value_count; ++i) {
         const DSL_RUNTIME_VALUE_PROJECTION_RECORD &record = values[i];
@@ -830,6 +888,22 @@ DSL_Runtime_Interface_View_Validate
              formal.formal_value_id != record.source_value_id ||
              formal.formal_st != record.source_st ||
              formal.formal_ty != record.source_ty))
+            return DSL_Runtime_Interface_Report
+                       (diagnostic, "formal provenance mismatch", i + 1);
+        BOOL retired = FALSE;
+        if (is_formal && use_retired_view) {
+            for (UINT32 retired_id = 0;
+                 retired_id < retired_formal_count; ++retired_id) {
+                if (retired_formals[retired_id].pu_formal_id == formal.id) {
+                    retired = TRUE;
+                    break;
+                }
+            }
+        } else if (is_formal) {
+            retired = DSL_Program_Interface_Image_Find_Retired_Formal
+                          (formal.id, NULL);
+        }
+        if (retired)
             return DSL_Runtime_Interface_Report
                        (diagnostic, "formal provenance mismatch", i + 1);
         for (UINT32 j = 0; j < i; ++j) {
@@ -919,6 +993,22 @@ DSL_Runtime_Interface_View_Validate
                            (diagnostic, "missing formal", formal_id);
             if (formal.owner_pu_st != callsite.callee_pu_st)
                 continue;
+            BOOL retired = FALSE;
+            if (use_retired_view) {
+                for (UINT32 retired_id = 0;
+                     retired_id < retired_formal_count; ++retired_id) {
+                    if (retired_formals[retired_id].pu_formal_id ==
+                        formal.id) {
+                        retired = TRUE;
+                        break;
+                    }
+                }
+            } else {
+                retired = DSL_Program_Interface_Image_Find_Retired_Formal
+                              (formal.id, NULL);
+            }
+            if (retired)
+                continue;
             const DSL_RUNTIME_VALUE_PROJECTION_RECORD *projection =
                 DSL_Runtime_Interface_Find_Value_In_View
                     (values, value_count, formal.owner_pu_st,
@@ -965,6 +1055,12 @@ DSL_Runtime_Interface_View_Validate
     return TRUE;
 }
 
+static BOOL DSL_Program_Interface_Validate_Runtime_View
+        (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *values,
+         UINT32 value_count,
+         const DSL_RUNTIME_CALL_PROJECTION_RECORD *calls,
+         UINT32 call_count, FILE *diagnostic);
+
 void
 DSL_Runtime_Interface_Image_Get_Header
         (DSL_RUNTIME_INTERFACE_IMAGE_HEADER *header)
@@ -1005,7 +1101,8 @@ DSL_Runtime_Interface_Image_Validate (FILE *diagnostic)
         calls.push_back(DSL_runtime_call_projection_table[i]);
     return DSL_Runtime_Interface_View_Validate
                (values.empty() ? NULL : &values[0], values.size(),
-                calls.empty() ? NULL : &calls[0], calls.size(), diagnostic);
+                calls.empty() ? NULL : &calls[0], calls.size(), NULL, 0,
+                FALSE, diagnostic);
 }
 
 UINT32
@@ -1096,11 +1193,20 @@ DSL_Runtime_Interface_Image_Add_Call
     return index + 1;
 }
 
-BOOL
-DSL_Runtime_Interface_Image_Load_Mapped
-        (const void *section_base, UINT64 section_size, FILE *diagnostic)
+struct DSL_RUNTIME_INTERFACE_MAPPED_VIEW {
+    const DSL_RUNTIME_INTERFACE_IMAGE_HEADER *header;
+    const DSL_RUNTIME_VALUE_PROJECTION_RECORD *values;
+    const DSL_RUNTIME_CALL_PROJECTION_RECORD *calls;
+};
+
+static BOOL
+DSL_Runtime_Interface_Mapped_View_Parse
+        (const void *section_base, UINT64 section_size,
+         const DSL_RETIRED_FORMAL_RECORD *retired_formals,
+         UINT32 retired_formal_count, BOOL use_retired_view,
+         DSL_RUNTIME_INTERFACE_MAPPED_VIEW *view, FILE *diagnostic)
 {
-    if (section_base == NULL ||
+    if (view == NULL || section_base == NULL ||
         section_size < DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE)
         return DSL_Runtime_Interface_Report
                    (diagnostic, "section is truncated", 0);
@@ -1134,16 +1240,994 @@ DSL_Runtime_Interface_Image_Load_Mapped
         (const DSL_RUNTIME_CALL_PROJECTION_RECORD *)cursor;
     if (!DSL_Runtime_Interface_View_Validate
              (values, header->value_projection_count, calls,
-              header->call_projection_count, diagnostic))
+              header->call_projection_count, retired_formals,
+              retired_formal_count, use_retired_view, diagnostic))
         return FALSE;
+    view->header = header;
+    view->values = values;
+    view->calls = calls;
+    return TRUE;
+}
 
+static void
+DSL_Runtime_Interface_Mapped_View_Commit
+        (const DSL_RUNTIME_INTERFACE_MAPPED_VIEW &view)
+{
     DSL_Runtime_Interface_Image_Reset();
-    if (header->value_projection_count != 0)
+    if (view.header->value_projection_count != 0)
         DSL_runtime_value_projection_table.Insert
-            (values, header->value_projection_count);
-    if (header->call_projection_count != 0)
+            (view.values, view.header->value_projection_count);
+    if (view.header->call_projection_count != 0)
         DSL_runtime_call_projection_table.Insert
-            (calls, header->call_projection_count);
+            (view.calls, view.header->call_projection_count);
+}
+
+BOOL
+DSL_Runtime_Interface_Image_Load_Mapped
+        (const void *section_base, UINT64 section_size, FILE *diagnostic)
+{
+    DSL_RUNTIME_INTERFACE_MAPPED_VIEW view;
+    if (!DSL_Runtime_Interface_Mapped_View_Parse
+             (section_base, section_size, NULL, 0, FALSE, &view,
+              diagnostic))
+        return FALSE;
+    if (DSL_Program_Interface_Image_Has_Records() &&
+        !DSL_Program_Interface_Validate_Runtime_View
+             (view.values, view.header->value_projection_count, view.calls,
+              view.header->call_projection_count, diagnostic))
+        return FALSE;
+    DSL_Runtime_Interface_Mapped_View_Commit(view);
+    return TRUE;
+}
+
+static BOOL
+DSL_Program_Interface_Report
+        (FILE *diagnostic, const char *message, UINT32 id)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "DSL program interface image error: %s id=%u\n",
+                message, id);
+    return FALSE;
+}
+
+static BOOL
+DSL_Program_Interface_PU_Valid (ST_IDX owner_pu_st)
+{
+    DSL_PU_SOURCE_IDENTITY_RECORD identity;
+    return owner_pu_st != ST_IDX_ZERO &&
+           DSL_Call_Image_Find_PU_Identity(owner_pu_st, &identity);
+}
+
+static const DSL_RETIRED_FORMAL_RECORD *
+DSL_Program_Interface_Find_Retired_Formal_In_View
+        (const DSL_RETIRED_FORMAL_RECORD *records, UINT32 count,
+         DSL_PU_FORMAL_ID formal_id)
+{
+    for (UINT32 i = 0; i < count; ++i) {
+        if (records[i].pu_formal_id == formal_id)
+            return &records[i];
+    }
+    return NULL;
+}
+
+static const DSL_RETIRED_CALL_ARGUMENT_RECORD *
+DSL_Program_Interface_Find_Retired_Call_In_View
+        (const DSL_RETIRED_CALL_ARGUMENT_RECORD *records, UINT32 count,
+         DSL_CALL_ARGUMENT_ID argument_id)
+{
+    for (UINT32 i = 0; i < count; ++i) {
+        if (records[i].call_argument_id == argument_id)
+            return &records[i];
+    }
+    return NULL;
+}
+
+static const DSL_RUNTIME_INPUT_BINDING_RECORD *
+DSL_Program_Interface_Find_Binding_In_View
+        (const DSL_RUNTIME_INPUT_BINDING_RECORD *records, UINT32 count,
+         ST_IDX owner_pu_st, UINT32 final_formal_ordinal)
+{
+    for (UINT32 i = 0; i < count; ++i) {
+        if (records[i].owner_pu_st == owner_pu_st &&
+            records[i].final_formal_ordinal == final_formal_ordinal)
+            return &records[i];
+    }
+    return NULL;
+}
+
+static const DSL_RUNTIME_VALUE_PROJECTION_RECORD *
+DSL_Program_Interface_Find_Projection_In_View
+        (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *records, UINT32 count,
+         ST_IDX owner_pu_st, DSL_IR_VALUE_ID source_value_id)
+{
+    for (UINT32 i = 0; i < count; ++i) {
+        if (records[i].owner_pu_st == owner_pu_st &&
+            records[i].source_value_id == source_value_id)
+            return &records[i];
+    }
+    return NULL;
+}
+
+static const DSL_RUNTIME_CALL_PROJECTION_RECORD *
+DSL_Program_Interface_Find_Call_Projection_In_View
+        (const DSL_RUNTIME_CALL_PROJECTION_RECORD *records, UINT32 count,
+         DSL_CALLSITE_METADATA_ID callsite_id, UINT32 actual_ordinal)
+{
+    for (UINT32 i = 0; i < count; ++i) {
+        if (records[i].callsite_id == callsite_id &&
+            records[i].actual_ordinal == actual_ordinal)
+            return &records[i];
+    }
+    return NULL;
+}
+
+static UINT32
+DSL_Program_Interface_Live_Formal_Count
+        (const DSL_RETIRED_FORMAL_RECORD *records, UINT32 count,
+         ST_IDX owner_pu_st)
+{
+    UINT32 formals = 0;
+    UINT32 retired = 0;
+    for (UINT32 i = 1; i <= DSL_PU_Interface_Image_Formal_Count(); ++i) {
+        DSL_PU_FORMAL_RECORD formal;
+        if (DSL_PU_Interface_Image_Get_Formal(i, &formal) &&
+            formal.owner_pu_st == owner_pu_st)
+            ++formals;
+    }
+    for (UINT32 i = 0; i < count; ++i) {
+        if (records[i].owner_pu_st == owner_pu_st)
+            ++retired;
+    }
+    return formals >= retired ? formals - retired : 0;
+}
+
+static BOOL
+DSL_Program_Interface_Binding_Less
+        (const DSL_RUNTIME_INPUT_BINDING_RECORD &left,
+         const DSL_RUNTIME_INPUT_BINDING_RECORD &right,
+         const DSL_RUNTIME_INPUT_RECORD *inputs, UINT32 input_count)
+{
+    if (left.binding_kind != right.binding_kind)
+        return left.binding_kind < right.binding_kind;
+    INT role_order = strcmp(Index_To_Str(left.semantic_role),
+                            Index_To_Str(right.semantic_role));
+    if (role_order != 0)
+        return role_order < 0;
+    const DSL_RUNTIME_INPUT_RECORD *left_input =
+        left.runtime_input_id == 0 || left.runtime_input_id > input_count ?
+            NULL : &inputs[left.runtime_input_id - 1];
+    const DSL_RUNTIME_INPUT_RECORD *right_input =
+        right.runtime_input_id == 0 || right.runtime_input_id > input_count ?
+            NULL : &inputs[right.runtime_input_id - 1];
+    if (left_input == NULL || right_input == NULL)
+        return left.runtime_input_id < right.runtime_input_id;
+    if (left_input->source_owner_pu_st != right_input->source_owner_pu_st)
+        return left_input->source_owner_pu_st <
+               right_input->source_owner_pu_st;
+    if (left_input->source_value_id != right_input->source_value_id)
+        return left_input->source_value_id < right_input->source_value_id;
+    return left.runtime_input_id < right.runtime_input_id;
+}
+
+static BOOL
+DSL_Program_Interface_View_Validate
+        (const DSL_RETIRED_FORMAL_RECORD *retired_formals,
+         UINT32 retired_formal_count,
+         const DSL_RETIRED_CALL_ARGUMENT_RECORD *retired_calls,
+         UINT32 retired_call_count,
+         const DSL_RUNTIME_INPUT_RECORD *inputs, UINT32 input_count,
+         const DSL_RUNTIME_INPUT_BINDING_RECORD *bindings,
+         UINT32 binding_count,
+         const DSL_RUNTIME_INPUT_CALL_RECORD *calls, UINT32 call_count,
+         const DSL_RUNTIME_VALUE_PROJECTION_RECORD *projections,
+         UINT32 projection_count,
+         const DSL_RUNTIME_CALL_PROJECTION_RECORD *call_projections,
+         UINT32 call_projection_count,
+         BOOL validate_runtime_projections, FILE *diagnostic)
+{
+    for (UINT32 i = 0; i < retired_formal_count; ++i) {
+        const DSL_RETIRED_FORMAL_RECORD &record = retired_formals[i];
+        DSL_PU_FORMAL_RECORD formal;
+        if (record.id != i + 1 ||
+            !DSL_PU_Interface_Image_Get_Formal(record.pu_formal_id,
+                                               &formal) ||
+            formal.owner_pu_st != record.owner_pu_st ||
+            formal.formal_value_id != record.formal_value_id ||
+            formal.formal_st != record.formal_st ||
+            formal.formal_ty != record.formal_ty ||
+            formal.formal_ordinal != record.old_formal_ordinal ||
+            record.retirement_reason !=
+                DSL_INTERFACE_RETIREMENT_VERIFIED_DEAD_INPUT ||
+            !DSL_IR_Image_String_Id_Valid(record.semantic_role, TRUE) ||
+            record.flags != 0 || record.reserved != 0)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "invalid retired formal", i + 1);
+        for (UINT32 j = 0; j < i; ++j) {
+            if (retired_formals[j].pu_formal_id == record.pu_formal_id)
+                return DSL_Program_Interface_Report
+                           (diagnostic, "duplicate retired formal", i + 1);
+        }
+    }
+
+    for (UINT32 i = 0; i < retired_call_count; ++i) {
+        const DSL_RETIRED_CALL_ARGUMENT_RECORD &record = retired_calls[i];
+        DSL_CALL_ARGUMENT_RECORD argument;
+        if (record.id != i + 1 ||
+            !DSL_Call_ABI_Image_Get_Argument(record.call_argument_id,
+                                             &argument) ||
+            argument.callsite_id != record.callsite_id ||
+            argument.argument_value_id != record.argument_value_id ||
+            argument.actual_ordinal != record.old_actual_ordinal ||
+            argument.callee_formal_ordinal !=
+                record.old_callee_formal_ordinal ||
+            record.retirement_reason !=
+                DSL_INTERFACE_RETIREMENT_VERIFIED_DEAD_INPUT ||
+            !DSL_IR_Image_String_Id_Valid(record.semantic_role, TRUE) ||
+            record.flags != 0 || record.reserved[0] != 0 ||
+            record.reserved[1] != 0)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "invalid retired call argument", i + 1);
+        for (UINT32 j = 0; j < i; ++j) {
+            if (retired_calls[j].call_argument_id == record.call_argument_id)
+                return DSL_Program_Interface_Report
+                           (diagnostic, "duplicate retired call", i + 1);
+        }
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        DSL_PU_FORMAL_RECORD formal;
+        if (!DSL_Call_Image_Get_Callsite(record.callsite_id, &callsite) ||
+            !DSL_PU_Interface_Image_Find_Formal
+                (callsite.callee_pu_st, record.old_callee_formal_ordinal,
+                 &formal) ||
+            DSL_Program_Interface_Find_Retired_Formal_In_View
+                (retired_formals, retired_formal_count, formal.id) == NULL)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "retired call has live formal", i + 1);
+    }
+
+    for (UINT32 i = 0; i < retired_formal_count; ++i) {
+        UINT32 incoming = 0;
+        UINT32 retired = 0;
+        for (UINT32 j = 1; j <= DSL_Call_ABI_Image_Argument_Count(); ++j) {
+            DSL_CALL_ARGUMENT_RECORD argument;
+            DSL_CALLSITE_METADATA_RECORD callsite;
+            if (!DSL_Call_ABI_Image_Get_Argument(j, &argument) ||
+                !DSL_Call_Image_Get_Callsite(argument.callsite_id, &callsite))
+                return DSL_Program_Interface_Report
+                           (diagnostic, "missing canonical call", j);
+            if (callsite.callee_pu_st == retired_formals[i].owner_pu_st &&
+                argument.callee_formal_ordinal ==
+                    retired_formals[i].old_formal_ordinal) {
+                ++incoming;
+                if (DSL_Program_Interface_Find_Retired_Call_In_View
+                        (retired_calls, retired_call_count, argument.id) !=
+                    NULL)
+                    ++retired;
+            }
+        }
+        if (incoming != retired)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "incomplete retired call coverage", i + 1);
+    }
+
+    for (UINT32 i = 1;
+         validate_runtime_projections &&
+         i <= DSL_PU_Interface_Image_Formal_Count(); ++i) {
+        DSL_PU_FORMAL_RECORD formal;
+        if (!DSL_PU_Interface_Image_Get_Formal(i, &formal))
+            return DSL_Program_Interface_Report
+                       (diagnostic, "missing canonical formal", i);
+        BOOL retired = DSL_Program_Interface_Find_Retired_Formal_In_View
+                           (retired_formals, retired_formal_count,
+                            formal.id) != NULL;
+        BOOL projected = DSL_Program_Interface_Find_Projection_In_View
+                             (projections, projection_count,
+                              formal.owner_pu_st, formal.formal_value_id) !=
+                         NULL;
+        if (retired == projected)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "formal is not exclusively retired or "
+                                    "projected", i);
+    }
+
+    for (UINT32 i = 1;
+         validate_runtime_projections &&
+         i <= DSL_Call_ABI_Image_Argument_Count(); ++i) {
+        DSL_CALL_ARGUMENT_RECORD argument;
+        if (!DSL_Call_ABI_Image_Get_Argument(i, &argument))
+            return DSL_Program_Interface_Report
+                       (diagnostic, "missing canonical call argument", i);
+        BOOL retired = DSL_Program_Interface_Find_Retired_Call_In_View
+                           (retired_calls, retired_call_count,
+                            argument.id) != NULL;
+        BOOL projected =
+            DSL_Program_Interface_Find_Call_Projection_In_View
+                (call_projections, call_projection_count,
+                 argument.callsite_id, argument.actual_ordinal) != NULL;
+        if (retired == projected)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "call argument is not exclusively retired "
+                                    "or projected", i);
+    }
+
+    for (UINT32 i = 0; i < input_count; ++i) {
+        const DSL_RUNTIME_INPUT_RECORD &record = inputs[i];
+        if (record.id != i + 1 ||
+            !DSL_Program_Interface_Runtime_Input_Contract_Valid(&record) ||
+            !DSL_Program_Interface_Pointer_TY_Contract_Valid
+                (record.handle_ty) ||
+            !DSL_IR_Image_String_Id_Valid(record.stable_role, TRUE) ||
+            record.flags != 0)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "invalid runtime input", i + 1);
+        for (UINT32 j = 0; j < 5; ++j) {
+            if (record.reserved[j] != 0)
+                return DSL_Program_Interface_Report
+                           (diagnostic, "invalid runtime input", i + 1);
+        }
+        for (UINT32 j = 0; j < i; ++j) {
+            BOOL duplicate_source =
+                record.input_kind ==
+                    DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR &&
+                inputs[j].input_kind == record.input_kind &&
+                inputs[j].source_owner_pu_st == record.source_owner_pu_st &&
+                inputs[j].source_value_id == record.source_value_id;
+            BOOL duplicate_role =
+                record.input_kind !=
+                    DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR &&
+                inputs[j].input_kind !=
+                    DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR &&
+                inputs[j].stable_role == record.stable_role;
+            if (duplicate_source || duplicate_role)
+                return DSL_Program_Interface_Report
+                           (diagnostic, "duplicate runtime input", i + 1);
+        }
+    }
+
+    for (UINT32 i = 0; i < binding_count; ++i) {
+        const DSL_RUNTIME_INPUT_BINDING_RECORD &record = bindings[i];
+        BOOL root = record.binding_kind ==
+                        DSL_RUNTIME_INPUT_BINDING_ROOT_PROMOTED_SOURCE ||
+                    record.binding_kind ==
+                        DSL_RUNTIME_INPUT_BINDING_ROOT_RESOURCE;
+        const DSL_RUNTIME_INPUT_RECORD *input =
+            record.runtime_input_id == 0 ||
+            record.runtime_input_id > input_count ? NULL :
+            &inputs[record.runtime_input_id - 1];
+        if (record.id != i + 1)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "invalid runtime binding id", i + 1);
+        if (!DSL_Program_Interface_PU_Valid(record.owner_pu_st))
+            return DSL_Program_Interface_Report
+                       (diagnostic, "invalid runtime binding owner", i + 1);
+        if (record.handle_st == ST_IDX_ZERO ||
+            !DSL_Program_Interface_Pointer_TY_Contract_Valid
+                (record.handle_ty))
+            return DSL_Program_Interface_Report
+                       (diagnostic, "invalid runtime binding handle", i + 1);
+        if (record.final_formal_ordinal ==
+                DSL_RUNTIME_INTERFACE_INVALID_ORDINAL ||
+            record.binding_kind <
+                DSL_RUNTIME_INPUT_BINDING_ROOT_PROMOTED_SOURCE ||
+            record.binding_kind >
+                DSL_RUNTIME_INPUT_BINDING_THREADED_FORMAL)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "invalid runtime binding position", i + 1);
+        if ((root &&
+             (input == NULL || input->handle_ty != record.handle_ty ||
+              input->stable_role != record.semantic_role ||
+              (record.binding_kind ==
+                   DSL_RUNTIME_INPUT_BINDING_ROOT_PROMOTED_SOURCE) !=
+                  (input->input_kind ==
+                   DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR))) ||
+            (!root && record.runtime_input_id != 0))
+            return DSL_Program_Interface_Report
+                       (diagnostic, "invalid runtime binding input", i + 1);
+        if (!DSL_IR_Image_String_Id_Valid(record.semantic_role, TRUE) ||
+            record.flags != 0 || record.reserved[0] != 0 ||
+            record.reserved[1] != 0)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "invalid runtime binding fields", i + 1);
+        if (root) {
+            for (UINT32 j = 1; j <= DSL_Call_Image_Callsite_Count(); ++j) {
+                DSL_CALLSITE_METADATA_RECORD callsite;
+                if (!DSL_Call_Image_Get_Callsite(j, &callsite))
+                    return DSL_Program_Interface_Report
+                               (diagnostic, "missing callsite", j);
+                if (callsite.callee_pu_st == record.owner_pu_st)
+                    return DSL_Program_Interface_Report
+                               (diagnostic,
+                                "root binding owner has incoming call", i + 1);
+            }
+        }
+        UINT32 live_formals = DSL_Program_Interface_Live_Formal_Count
+                                  (retired_formals, retired_formal_count,
+                                   record.owner_pu_st);
+        if (record.final_formal_ordinal < live_formals)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "binding overlaps canonical formal", i + 1);
+        for (UINT32 j = 0; j < i; ++j) {
+            if (bindings[j].owner_pu_st == record.owner_pu_st &&
+                (bindings[j].final_formal_ordinal ==
+                     record.final_formal_ordinal ||
+                 bindings[j].semantic_role == record.semantic_role ||
+                 bindings[j].handle_st == record.handle_st))
+                return DSL_Program_Interface_Report
+                           (diagnostic, "duplicate runtime binding", i + 1);
+        }
+    }
+
+    for (UINT32 i = 0; i < binding_count; ++i) {
+        const DSL_RUNTIME_INPUT_BINDING_RECORD &record = bindings[i];
+        UINT32 live_formals = DSL_Program_Interface_Live_Formal_Count
+                                  (retired_formals, retired_formal_count,
+                                   record.owner_pu_st);
+        UINT32 prior = 0;
+        for (UINT32 j = 0; j < binding_count; ++j) {
+            if (bindings[j].owner_pu_st == record.owner_pu_st &&
+                DSL_Program_Interface_Binding_Less
+                    (bindings[j], record, inputs, input_count))
+                ++prior;
+        }
+        if (record.final_formal_ordinal != live_formals + prior)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "noncanonical binding order", i + 1);
+    }
+
+    for (UINT32 i = 0; i < call_count; ++i) {
+        const DSL_RUNTIME_INPUT_CALL_RECORD &record = calls[i];
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        const DSL_RUNTIME_INPUT_BINDING_RECORD *caller =
+            DSL_Program_Interface_Find_Binding_In_View
+                (bindings, binding_count, record.caller_owner_pu_st,
+                 record.caller_final_formal_ordinal);
+        const DSL_RUNTIME_INPUT_BINDING_RECORD *callee =
+            DSL_Program_Interface_Find_Binding_In_View
+                (bindings, binding_count, record.callee_owner_pu_st,
+                 record.callee_final_formal_ordinal);
+        if (record.id != i + 1 ||
+            !DSL_Call_Image_Get_Callsite(record.callsite_id, &callsite) ||
+            callsite.owner_pu_st != record.caller_owner_pu_st ||
+            callsite.callee_pu_st != record.callee_owner_pu_st ||
+            caller == NULL || callee == NULL ||
+            callee->binding_kind !=
+                DSL_RUNTIME_INPUT_BINDING_THREADED_FORMAL ||
+            caller->handle_ty != record.handle_ty ||
+            callee->handle_ty != record.handle_ty ||
+            callee->semantic_role != record.semantic_role ||
+            record.final_actual_ordinal !=
+                record.final_callee_formal_ordinal ||
+            record.final_callee_formal_ordinal !=
+                callee->final_formal_ordinal ||
+            record.flags != 0)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "invalid runtime input call", i + 1);
+        for (UINT32 j = 0; j < i; ++j) {
+            if (calls[j].callsite_id == record.callsite_id &&
+                calls[j].final_actual_ordinal ==
+                    record.final_actual_ordinal)
+                return DSL_Program_Interface_Report
+                           (diagnostic, "duplicate runtime input call", i + 1);
+        }
+    }
+
+    for (UINT32 i = 0; i < input_count; ++i) {
+        UINT32 roots = 0;
+        for (UINT32 j = 0; j < binding_count; ++j) {
+            if (bindings[j].runtime_input_id == inputs[i].id)
+                ++roots;
+        }
+        if (roots != 1)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "runtime input root coverage", i + 1);
+    }
+
+    std::vector<std::vector<BOOL> > edges
+        (binding_count, std::vector<BOOL>(binding_count, FALSE));
+    for (UINT32 i = 0; i < call_count; ++i) {
+        const DSL_RUNTIME_INPUT_BINDING_RECORD *caller =
+            DSL_Program_Interface_Find_Binding_In_View
+                (bindings, binding_count, calls[i].caller_owner_pu_st,
+                 calls[i].caller_final_formal_ordinal);
+        const DSL_RUNTIME_INPUT_BINDING_RECORD *callee =
+            DSL_Program_Interface_Find_Binding_In_View
+                (bindings, binding_count, calls[i].callee_owner_pu_st,
+                 calls[i].callee_final_formal_ordinal);
+        edges[caller->id - 1][callee->id - 1] = TRUE;
+    }
+    for (UINT32 k = 0; k < binding_count; ++k)
+        for (UINT32 i = 0; i < binding_count; ++i)
+            for (UINT32 j = 0; j < binding_count; ++j)
+                edges[i][j] = edges[i][j] ||
+                              (edges[i][k] && edges[k][j]);
+    for (UINT32 i = 0; i < binding_count; ++i) {
+        if (edges[i][i])
+            return DSL_Program_Interface_Report
+                       (diagnostic, "cyclic runtime input flow", i + 1);
+        BOOL reachable = FALSE;
+        for (UINT32 root = 0; root < binding_count; ++root) {
+            if (bindings[root].binding_kind !=
+                    DSL_RUNTIME_INPUT_BINDING_THREADED_FORMAL &&
+                (root == i || edges[root][i])) {
+                reachable = TRUE;
+                break;
+            }
+        }
+        if (!reachable)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "uninitialized runtime binding", i + 1);
+    }
+
+    for (UINT32 i = 0; i < binding_count; ++i) {
+        if (bindings[i].binding_kind !=
+            DSL_RUNTIME_INPUT_BINDING_THREADED_FORMAL)
+            continue;
+        UINT32 incoming_calls = 0;
+        UINT32 represented_calls = 0;
+        for (UINT32 j = 1; j <= DSL_Call_Image_Callsite_Count(); ++j) {
+            DSL_CALLSITE_METADATA_RECORD callsite;
+            if (!DSL_Call_Image_Get_Callsite(j, &callsite))
+                return DSL_Program_Interface_Report
+                           (diagnostic, "missing callsite", j);
+            if (callsite.callee_pu_st == bindings[i].owner_pu_st) {
+                ++incoming_calls;
+                for (UINT32 k = 0; k < call_count; ++k) {
+                    if (calls[k].callsite_id == callsite.id &&
+                        calls[k].callee_owner_pu_st ==
+                            bindings[i].owner_pu_st &&
+                        calls[k].callee_final_formal_ordinal ==
+                            bindings[i].final_formal_ordinal)
+                        ++represented_calls;
+                }
+            }
+        }
+        if (incoming_calls != represented_calls)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "incomplete threaded binding", i + 1);
+    }
+    return TRUE;
+}
+
+void
+DSL_Program_Interface_Image_Get_Header
+        (DSL_PROGRAM_INTERFACE_IMAGE_HEADER *header)
+{
+    if (header == NULL)
+        return;
+    memset(header, 0, sizeof(*header));
+    header->magic = DSL_PROGRAM_INTERFACE_IMAGE_MAGIC;
+    header->version = DSL_PROGRAM_INTERFACE_IMAGE_VERSION;
+    header->retired_formal_count = DSL_retired_formal_table.Size();
+    header->retired_call_argument_count =
+        DSL_retired_call_argument_table.Size();
+    header->runtime_input_count = DSL_runtime_input_table.Size();
+    header->runtime_input_binding_count =
+        DSL_runtime_input_binding_table.Size();
+    header->runtime_input_call_count = DSL_runtime_input_call_table.Size();
+}
+
+void
+DSL_Program_Interface_Image_Reset (void)
+{
+    DSL_retired_formal_table.Delete_down_to(0);
+    DSL_retired_call_argument_table.Delete_down_to(0);
+    DSL_runtime_input_table.Delete_down_to(0);
+    DSL_runtime_input_binding_table.Delete_down_to(0);
+    DSL_runtime_input_call_table.Delete_down_to(0);
+    DSL_Program_Interface_Reset_Prepared_Plan();
+}
+
+BOOL
+DSL_Program_Interface_Image_Has_Records (void)
+{
+    return DSL_retired_formal_table.Size() != 0 ||
+           DSL_retired_call_argument_table.Size() != 0 ||
+           DSL_runtime_input_table.Size() != 0 ||
+           DSL_runtime_input_binding_table.Size() != 0 ||
+           DSL_runtime_input_call_table.Size() != 0;
+}
+
+BOOL
+DSL_Program_Interface_Image_Validate (FILE *diagnostic)
+{
+    std::vector<DSL_RETIRED_FORMAL_RECORD> retired_formals;
+    std::vector<DSL_RETIRED_CALL_ARGUMENT_RECORD> retired_calls;
+    std::vector<DSL_RUNTIME_INPUT_RECORD> inputs;
+    std::vector<DSL_RUNTIME_INPUT_BINDING_RECORD> bindings;
+    std::vector<DSL_RUNTIME_INPUT_CALL_RECORD> calls;
+    std::vector<DSL_RUNTIME_VALUE_PROJECTION_RECORD> projections;
+    std::vector<DSL_RUNTIME_CALL_PROJECTION_RECORD> call_projections;
+    for (UINT32 i = 0; i < DSL_retired_formal_table.Size(); ++i)
+        retired_formals.push_back(DSL_retired_formal_table[i]);
+    for (UINT32 i = 0; i < DSL_retired_call_argument_table.Size(); ++i)
+        retired_calls.push_back(DSL_retired_call_argument_table[i]);
+    for (UINT32 i = 0; i < DSL_runtime_input_table.Size(); ++i)
+        inputs.push_back(DSL_runtime_input_table[i]);
+    for (UINT32 i = 0; i < DSL_runtime_input_binding_table.Size(); ++i)
+        bindings.push_back(DSL_runtime_input_binding_table[i]);
+    for (UINT32 i = 0; i < DSL_runtime_input_call_table.Size(); ++i)
+        calls.push_back(DSL_runtime_input_call_table[i]);
+    for (UINT32 i = 0; i < DSL_runtime_value_projection_table.Size(); ++i)
+        projections.push_back(DSL_runtime_value_projection_table[i]);
+    for (UINT32 i = 0; i < DSL_runtime_call_projection_table.Size(); ++i)
+        call_projections.push_back(DSL_runtime_call_projection_table[i]);
+    return DSL_Program_Interface_View_Validate
+        (retired_formals.empty() ? NULL : &retired_formals[0],
+         retired_formals.size(),
+         retired_calls.empty() ? NULL : &retired_calls[0],
+         retired_calls.size(), inputs.empty() ? NULL : &inputs[0],
+         inputs.size(), bindings.empty() ? NULL : &bindings[0],
+         bindings.size(), calls.empty() ? NULL : &calls[0], calls.size(),
+         projections.empty() ? NULL : &projections[0], projections.size(),
+         call_projections.empty() ? NULL : &call_projections[0],
+         call_projections.size(),
+         TRUE, diagnostic);
+}
+
+static BOOL
+DSL_Program_Interface_Validate_Runtime_View
+        (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *projections,
+         UINT32 projection_count,
+         const DSL_RUNTIME_CALL_PROJECTION_RECORD *call_projections,
+         UINT32 call_projection_count, FILE *diagnostic)
+{
+    std::vector<DSL_RETIRED_FORMAL_RECORD> retired_formals;
+    std::vector<DSL_RETIRED_CALL_ARGUMENT_RECORD> retired_calls;
+    std::vector<DSL_RUNTIME_INPUT_RECORD> inputs;
+    std::vector<DSL_RUNTIME_INPUT_BINDING_RECORD> bindings;
+    std::vector<DSL_RUNTIME_INPUT_CALL_RECORD> calls;
+    for (UINT32 i = 0; i < DSL_retired_formal_table.Size(); ++i)
+        retired_formals.push_back(DSL_retired_formal_table[i]);
+    for (UINT32 i = 0; i < DSL_retired_call_argument_table.Size(); ++i)
+        retired_calls.push_back(DSL_retired_call_argument_table[i]);
+    for (UINT32 i = 0; i < DSL_runtime_input_table.Size(); ++i)
+        inputs.push_back(DSL_runtime_input_table[i]);
+    for (UINT32 i = 0; i < DSL_runtime_input_binding_table.Size(); ++i)
+        bindings.push_back(DSL_runtime_input_binding_table[i]);
+    for (UINT32 i = 0; i < DSL_runtime_input_call_table.Size(); ++i)
+        calls.push_back(DSL_runtime_input_call_table[i]);
+    return DSL_Program_Interface_View_Validate
+        (retired_formals.empty() ? NULL : &retired_formals[0],
+         retired_formals.size(),
+         retired_calls.empty() ? NULL : &retired_calls[0],
+         retired_calls.size(), inputs.empty() ? NULL : &inputs[0],
+         inputs.size(), bindings.empty() ? NULL : &bindings[0],
+         bindings.size(), calls.empty() ? NULL : &calls[0], calls.size(),
+         projections, projection_count, call_projections,
+         call_projection_count, TRUE, diagnostic);
+}
+
+#define DSL_PROGRAM_INTERFACE_COUNT_GETTER(name, table) \
+UINT32 name (void) { return table.Size(); }
+
+DSL_PROGRAM_INTERFACE_COUNT_GETTER
+    (DSL_Program_Interface_Image_Retired_Formal_Count,
+     DSL_retired_formal_table)
+DSL_PROGRAM_INTERFACE_COUNT_GETTER
+    (DSL_Program_Interface_Image_Retired_Call_Count,
+     DSL_retired_call_argument_table)
+DSL_PROGRAM_INTERFACE_COUNT_GETTER
+    (DSL_Program_Interface_Image_Runtime_Input_Count,
+     DSL_runtime_input_table)
+DSL_PROGRAM_INTERFACE_COUNT_GETTER
+    (DSL_Program_Interface_Image_Runtime_Binding_Count,
+     DSL_runtime_input_binding_table)
+DSL_PROGRAM_INTERFACE_COUNT_GETTER
+    (DSL_Program_Interface_Image_Runtime_Call_Count,
+     DSL_runtime_input_call_table)
+
+#undef DSL_PROGRAM_INTERFACE_COUNT_GETTER
+
+BOOL
+DSL_Program_Interface_Image_Get_Retired_Formal
+        (DSL_RETIRED_FORMAL_ID id, DSL_RETIRED_FORMAL_RECORD *record)
+{
+    return DSL_IR_Table_Get(DSL_retired_formal_table, id, record);
+}
+
+BOOL
+DSL_Program_Interface_Image_Get_Retired_Call
+        (DSL_RETIRED_CALL_ARGUMENT_ID id,
+         DSL_RETIRED_CALL_ARGUMENT_RECORD *record)
+{
+    return DSL_IR_Table_Get(DSL_retired_call_argument_table, id, record);
+}
+
+BOOL
+DSL_Program_Interface_Image_Get_Runtime_Input
+        (DSL_RUNTIME_INPUT_ID id, DSL_RUNTIME_INPUT_RECORD *record)
+{
+    return DSL_IR_Table_Get(DSL_runtime_input_table, id, record);
+}
+
+BOOL
+DSL_Program_Interface_Image_Get_Runtime_Binding
+        (DSL_RUNTIME_INPUT_BINDING_ID id,
+         DSL_RUNTIME_INPUT_BINDING_RECORD *record)
+{
+    return DSL_IR_Table_Get(DSL_runtime_input_binding_table, id, record);
+}
+
+BOOL
+DSL_Program_Interface_Image_Get_Runtime_Call
+        (DSL_RUNTIME_INPUT_CALL_ID id, DSL_RUNTIME_INPUT_CALL_RECORD *record)
+{
+    return DSL_IR_Table_Get(DSL_runtime_input_call_table, id, record);
+}
+
+BOOL
+DSL_Program_Interface_Image_Find_Retired_Formal
+        (DSL_PU_FORMAL_ID pu_formal_id, DSL_RETIRED_FORMAL_RECORD *record)
+{
+    const DSL_RETIRED_FORMAL_RECORD *found =
+        DSL_Program_Interface_Find_Retired_Formal_In_View
+            (DSL_retired_formal_table.Size() == 0 ? NULL :
+                 &DSL_retired_formal_table[0],
+             DSL_retired_formal_table.Size(), pu_formal_id);
+    if (found != NULL && record != NULL)
+        *record = *found;
+    return found != NULL;
+}
+
+BOOL
+DSL_Program_Interface_Image_Find_Retired_Call
+        (DSL_CALL_ARGUMENT_ID call_argument_id,
+         DSL_RETIRED_CALL_ARGUMENT_RECORD *record)
+{
+    const DSL_RETIRED_CALL_ARGUMENT_RECORD *found =
+        DSL_Program_Interface_Find_Retired_Call_In_View
+            (DSL_retired_call_argument_table.Size() == 0 ? NULL :
+                 &DSL_retired_call_argument_table[0],
+             DSL_retired_call_argument_table.Size(), call_argument_id);
+    if (found != NULL && record != NULL)
+        *record = *found;
+    return found != NULL;
+}
+
+BOOL
+DSL_Program_Interface_Image_Find_Runtime_Binding
+        (ST_IDX owner_pu_st, UINT32 final_formal_ordinal,
+         DSL_RUNTIME_INPUT_BINDING_RECORD *record)
+{
+    const DSL_RUNTIME_INPUT_BINDING_RECORD *found =
+        DSL_Program_Interface_Find_Binding_In_View
+            (DSL_runtime_input_binding_table.Size() == 0 ? NULL :
+                 &DSL_runtime_input_binding_table[0],
+             DSL_runtime_input_binding_table.Size(), owner_pu_st,
+             final_formal_ordinal);
+    if (found != NULL && record != NULL)
+        *record = *found;
+    return found != NULL;
+}
+
+DSL_RETIRED_FORMAL_ID
+DSL_Program_Interface_Image_Add_Retired_Formal
+        (const DSL_RETIRED_FORMAL_RECORD *record)
+{
+    if (record == NULL)
+        return DSL_RETIRED_FORMAL_INVALID_ID;
+    UINT32 index = DSL_retired_formal_table.Insert(*record);
+    DSL_retired_formal_table[index].id = index + 1;
+    return index + 1;
+}
+
+DSL_RETIRED_CALL_ARGUMENT_ID
+DSL_Program_Interface_Image_Add_Retired_Call
+        (const DSL_RETIRED_CALL_ARGUMENT_RECORD *record)
+{
+    if (record == NULL)
+        return DSL_RETIRED_CALL_ARGUMENT_INVALID_ID;
+    UINT32 index = DSL_retired_call_argument_table.Insert(*record);
+    DSL_retired_call_argument_table[index].id = index + 1;
+    return index + 1;
+}
+
+DSL_RUNTIME_INPUT_ID
+DSL_Program_Interface_Image_Add_Runtime_Input
+        (const DSL_RUNTIME_INPUT_RECORD *record)
+{
+    if (record == NULL)
+        return DSL_RUNTIME_INPUT_INVALID_ID;
+    UINT32 index = DSL_runtime_input_table.Insert(*record);
+    DSL_runtime_input_table[index].id = index + 1;
+    return index + 1;
+}
+
+DSL_RUNTIME_INPUT_BINDING_ID
+DSL_Program_Interface_Image_Add_Runtime_Binding
+        (const DSL_RUNTIME_INPUT_BINDING_RECORD *record)
+{
+    if (record == NULL)
+        return DSL_RUNTIME_INPUT_BINDING_INVALID_ID;
+    UINT32 index = DSL_runtime_input_binding_table.Insert(*record);
+    DSL_runtime_input_binding_table[index].id = index + 1;
+    return index + 1;
+}
+
+DSL_RUNTIME_INPUT_CALL_ID
+DSL_Program_Interface_Image_Add_Runtime_Call
+        (const DSL_RUNTIME_INPUT_CALL_RECORD *record)
+{
+    if (record == NULL)
+        return DSL_RUNTIME_INPUT_CALL_INVALID_ID;
+    UINT32 index = DSL_runtime_input_call_table.Insert(*record);
+    DSL_runtime_input_call_table[index].id = index + 1;
+    return index + 1;
+}
+
+struct DSL_PROGRAM_INTERFACE_MAPPED_VIEW {
+    const DSL_PROGRAM_INTERFACE_IMAGE_HEADER *header;
+    const DSL_RETIRED_FORMAL_RECORD *retired_formals;
+    const DSL_RETIRED_CALL_ARGUMENT_RECORD *retired_calls;
+    const DSL_RUNTIME_INPUT_RECORD *inputs;
+    const DSL_RUNTIME_INPUT_BINDING_RECORD *bindings;
+    const DSL_RUNTIME_INPUT_CALL_RECORD *calls;
+};
+
+static BOOL
+DSL_Program_Interface_Mapped_View_Parse
+        (const void *section_base, UINT64 section_size,
+         DSL_PROGRAM_INTERFACE_MAPPED_VIEW *view, FILE *diagnostic)
+{
+    if (view == NULL || section_base == NULL ||
+        section_size < DSL_PROGRAM_INTERFACE_IMAGE_HEADER_SIZE)
+        return DSL_Program_Interface_Report
+                   (diagnostic, "section is truncated", 0);
+    const DSL_PROGRAM_INTERFACE_IMAGE_HEADER *header =
+        (const DSL_PROGRAM_INTERFACE_IMAGE_HEADER *)section_base;
+    if (header->magic != DSL_PROGRAM_INTERFACE_IMAGE_MAGIC ||
+        header->version != DSL_PROGRAM_INTERFACE_IMAGE_VERSION ||
+        header->flags != 0)
+        return DSL_Program_Interface_Report(diagnostic, "invalid header", 0);
+    for (UINT32 i = 0; i < 8; ++i) {
+        if (header->reserved[i] != 0)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "invalid header", 0);
+    }
+
+    UINT64 remaining = section_size -
+                       DSL_PROGRAM_INTERFACE_IMAGE_HEADER_SIZE;
+#define DSL_PROGRAM_INTERFACE_TAKE(count, size) \
+    if ((count) > remaining / (size)) \
+        return DSL_Program_Interface_Report \
+                   (diagnostic, "invalid header", 0); \
+    remaining -= (UINT64)(count) * (size)
+    DSL_PROGRAM_INTERFACE_TAKE
+        (header->retired_formal_count, DSL_RETIRED_FORMAL_RECORD_SIZE);
+    DSL_PROGRAM_INTERFACE_TAKE
+        (header->retired_call_argument_count,
+         DSL_RETIRED_CALL_ARGUMENT_RECORD_SIZE);
+    DSL_PROGRAM_INTERFACE_TAKE
+        (header->runtime_input_count, DSL_RUNTIME_INPUT_RECORD_SIZE);
+    DSL_PROGRAM_INTERFACE_TAKE
+        (header->runtime_input_binding_count,
+         DSL_RUNTIME_INPUT_BINDING_RECORD_SIZE);
+    DSL_PROGRAM_INTERFACE_TAKE
+        (header->runtime_input_call_count, DSL_RUNTIME_INPUT_CALL_RECORD_SIZE);
+#undef DSL_PROGRAM_INTERFACE_TAKE
+    if (remaining != 0)
+        return DSL_Program_Interface_Report(diagnostic, "invalid header", 0);
+
+    const char *cursor = (const char *)section_base +
+                         DSL_PROGRAM_INTERFACE_IMAGE_HEADER_SIZE;
+    const DSL_RETIRED_FORMAL_RECORD *retired_formals =
+        (const DSL_RETIRED_FORMAL_RECORD *)cursor;
+    cursor += (UINT64)header->retired_formal_count *
+              DSL_RETIRED_FORMAL_RECORD_SIZE;
+    const DSL_RETIRED_CALL_ARGUMENT_RECORD *retired_calls =
+        (const DSL_RETIRED_CALL_ARGUMENT_RECORD *)cursor;
+    cursor += (UINT64)header->retired_call_argument_count *
+              DSL_RETIRED_CALL_ARGUMENT_RECORD_SIZE;
+    const DSL_RUNTIME_INPUT_RECORD *inputs =
+        (const DSL_RUNTIME_INPUT_RECORD *)cursor;
+    cursor += (UINT64)header->runtime_input_count *
+              DSL_RUNTIME_INPUT_RECORD_SIZE;
+    const DSL_RUNTIME_INPUT_BINDING_RECORD *bindings =
+        (const DSL_RUNTIME_INPUT_BINDING_RECORD *)cursor;
+    cursor += (UINT64)header->runtime_input_binding_count *
+              DSL_RUNTIME_INPUT_BINDING_RECORD_SIZE;
+    const DSL_RUNTIME_INPUT_CALL_RECORD *calls =
+        (const DSL_RUNTIME_INPUT_CALL_RECORD *)cursor;
+
+    if (!DSL_Program_Interface_View_Validate
+             (retired_formals, header->retired_formal_count,
+              retired_calls, header->retired_call_argument_count,
+              inputs, header->runtime_input_count,
+              bindings, header->runtime_input_binding_count,
+              calls, header->runtime_input_call_count,
+              NULL, 0, NULL, 0, FALSE, diagnostic))
+        return FALSE;
+    view->header = header;
+    view->retired_formals = retired_formals;
+    view->retired_calls = retired_calls;
+    view->inputs = inputs;
+    view->bindings = bindings;
+    view->calls = calls;
+    return TRUE;
+}
+
+static void
+DSL_Program_Interface_Mapped_View_Commit
+        (const DSL_PROGRAM_INTERFACE_MAPPED_VIEW &view)
+{
+    DSL_Program_Interface_Image_Reset();
+    if (view.header->retired_formal_count != 0)
+        DSL_retired_formal_table.Insert
+            (view.retired_formals, view.header->retired_formal_count);
+    if (view.header->retired_call_argument_count != 0)
+        DSL_retired_call_argument_table.Insert
+            (view.retired_calls,
+             view.header->retired_call_argument_count);
+    if (view.header->runtime_input_count != 0)
+        DSL_runtime_input_table.Insert
+            (view.inputs, view.header->runtime_input_count);
+    if (view.header->runtime_input_binding_count != 0)
+        DSL_runtime_input_binding_table.Insert
+            (view.bindings, view.header->runtime_input_binding_count);
+    if (view.header->runtime_input_call_count != 0)
+        DSL_runtime_input_call_table.Insert
+            (view.calls, view.header->runtime_input_call_count);
+}
+
+BOOL
+DSL_Program_Interface_Image_Load_Mapped
+        (const void *section_base, UINT64 section_size, FILE *diagnostic)
+{
+    DSL_PROGRAM_INTERFACE_MAPPED_VIEW view;
+    if (!DSL_Program_Interface_Mapped_View_Parse
+             (section_base, section_size, &view, diagnostic))
+        return FALSE;
+    DSL_Program_Interface_Mapped_View_Commit(view);
+    return TRUE;
+}
+
+BOOL
+DSL_Program_Runtime_Interface_Images_Load_Mapped
+        (const void *program_section_base, UINT64 program_section_size,
+         const void *runtime_section_base, UINT64 runtime_section_size,
+         FILE *diagnostic)
+{
+    BOOL has_program = program_section_base != NULL;
+    BOOL has_runtime = runtime_section_base != NULL;
+    DSL_PROGRAM_INTERFACE_MAPPED_VIEW program_view;
+    DSL_RUNTIME_INTERFACE_MAPPED_VIEW runtime_view;
+    if (has_program &&
+        !DSL_Program_Interface_Mapped_View_Parse
+             (program_section_base, program_section_size, &program_view,
+              diagnostic))
+        return FALSE;
+    if (has_runtime &&
+        !DSL_Runtime_Interface_Mapped_View_Parse
+             (runtime_section_base, runtime_section_size,
+              has_program ? program_view.retired_formals : NULL,
+              has_program ? program_view.header->retired_formal_count : 0,
+              has_program, &runtime_view, diagnostic))
+        return FALSE;
+    if (has_program &&
+        !DSL_Program_Interface_View_Validate
+             (program_view.retired_formals,
+              program_view.header->retired_formal_count,
+              program_view.retired_calls,
+              program_view.header->retired_call_argument_count,
+              program_view.inputs,
+              program_view.header->runtime_input_count,
+              program_view.bindings,
+              program_view.header->runtime_input_binding_count,
+              program_view.calls,
+              program_view.header->runtime_input_call_count,
+              has_runtime ? runtime_view.values : NULL,
+              has_runtime ? runtime_view.header->value_projection_count : 0,
+              has_runtime ? runtime_view.calls : NULL,
+              has_runtime ? runtime_view.header->call_projection_count : 0,
+              TRUE, diagnostic))
+        return FALSE;
+    if (has_program)
+        DSL_Program_Interface_Mapped_View_Commit(program_view);
+    else
+        DSL_Program_Interface_Image_Reset();
+    if (has_runtime)
+        DSL_Runtime_Interface_Mapped_View_Commit(runtime_view);
+    else
+        DSL_Runtime_Interface_Image_Reset();
     return TRUE;
 }
 

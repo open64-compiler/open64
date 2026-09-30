@@ -529,8 +529,43 @@ WN_get_dsl_runtime_interface_image (void *handle)
         return 0;
     }
     const void *section_base = (const char *)handle + shdr.offset;
-    return DSL_Runtime_Interface_Image_Load_Mapped
+    if (!DSL_Runtime_Interface_Image_Load_Mapped
+             (section_base, shdr.size, stderr))
+        return -1;
+    return 0;
+}
+
+INT
+WN_get_dsl_program_interface_image (void *handle)
+{
+    OFFSET_AND_SIZE shdr = get_section
+                               (handle, SHT_MIPS_WHIRL,
+                                WT_DSL_PROGRAM_INTERFACE);
+    if (shdr.offset == 0) {
+        DSL_Program_Interface_Image_Reset();
+        return 0;
+    }
+    const void *section_base = (const char *)handle + shdr.offset;
+    return DSL_Program_Interface_Image_Load_Mapped
                (section_base, shdr.size, stderr) ? 0 : -1;
+}
+
+INT
+WN_get_dsl_program_runtime_interface_images (void *handle)
+{
+    OFFSET_AND_SIZE program = get_section
+                                  (handle, SHT_MIPS_WHIRL,
+                                   WT_DSL_PROGRAM_INTERFACE);
+    OFFSET_AND_SIZE runtime = get_section
+                                  (handle, SHT_MIPS_WHIRL,
+                                   WT_DSL_RUNTIME_INTERFACE);
+    const void *program_base = program.offset == 0 ? NULL :
+        (const char *)handle + program.offset;
+    const void *runtime_base = runtime.offset == 0 ? NULL :
+        (const char *)handle + runtime.offset;
+    return DSL_Program_Runtime_Interface_Images_Load_Mapped
+               (program_base, program.size, runtime_base, runtime.size,
+                stderr) ? 0 : -1;
 }
 
 INT
@@ -1768,8 +1803,8 @@ Read_Global_Info (INT32 *p_num_PUs)
     if (WN_get_dsl_call_abi_image(global_fhandle) == -1) {
         ErrMsg (EC_IR_Scn_Read, "DSL call ABI image", global_ir_file);
     }
-    if (WN_get_dsl_runtime_interface_image(global_fhandle) == -1) {
-        ErrMsg (EC_IR_Scn_Read, "DSL runtime interface image",
+    if (WN_get_dsl_program_runtime_interface_images(global_fhandle) == -1) {
+        ErrMsg (EC_IR_Scn_Read, "DSL program/runtime interface image",
                 global_ir_file);
     }
     if (WN_get_dsl_fhe_image(global_fhandle) == -1) {
@@ -1885,6 +1920,9 @@ Read_Local_Info (MEM_POOL *pool, PU_Info *pu)
         ErrMsg (EC_IR_Scn_Read, "DSL PU interface", local_ir_file);
     if (!DSL_Call_ABI_Image_Validate_PU(pu, stderr))
         ErrMsg (EC_IR_Scn_Read, "DSL call ABI", local_ir_file);
+    if (DSL_Program_Interface_Image_Has_Records() &&
+        !DSL_Program_Interface_Validate_PU(pu, stderr))
+        ErrMsg (EC_IR_Scn_Read, "DSL program interface", local_ir_file);
 
     if (PU_Info_state(pu, WT_REGIONS) == Subsect_Exists) {
         OFFSET_AND_SIZE pu_section = get_section

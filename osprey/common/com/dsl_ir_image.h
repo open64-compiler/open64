@@ -67,6 +67,15 @@ typedef INT32 WN_MAP;
 #define DSL_RUNTIME_VALUE_PROJECTION_RECORD_SIZE 48
 #define DSL_RUNTIME_CALL_PROJECTION_RECORD_SIZE  40
 
+#define DSL_PROGRAM_INTERFACE_IMAGE_MAGIC       0x44535047
+#define DSL_PROGRAM_INTERFACE_IMAGE_VERSION     1
+#define DSL_PROGRAM_INTERFACE_IMAGE_HEADER_SIZE 64
+#define DSL_RETIRED_FORMAL_RECORD_SIZE           48
+#define DSL_RETIRED_CALL_ARGUMENT_RECORD_SIZE    48
+#define DSL_RUNTIME_INPUT_RECORD_SIZE            64
+#define DSL_RUNTIME_INPUT_BINDING_RECORD_SIZE    48
+#define DSL_RUNTIME_INPUT_CALL_RECORD_SIZE       48
+
 #define DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID 0
 #define DSL_IR_NODE_INVALID_ID              0
 #define DSL_IR_ATTRIBUTE_INVALID_ID         0
@@ -86,6 +95,11 @@ typedef UINT32 DSL_CALL_ARGUMENT_ID;
 typedef UINT32 DSL_PU_FORMAL_ID;
 typedef UINT32 DSL_RUNTIME_VALUE_PROJECTION_ID;
 typedef UINT32 DSL_RUNTIME_CALL_PROJECTION_ID;
+typedef UINT32 DSL_RETIRED_FORMAL_ID;
+typedef UINT32 DSL_RETIRED_CALL_ARGUMENT_ID;
+typedef UINT32 DSL_RUNTIME_INPUT_ID;
+typedef UINT32 DSL_RUNTIME_INPUT_BINDING_ID;
+typedef UINT32 DSL_RUNTIME_INPUT_CALL_ID;
 
 #define DSL_STATE_OBJECT_INVALID_ID 0
 #define DSL_STATE_EFFECT_INVALID_ID 0
@@ -98,6 +112,11 @@ typedef UINT32 DSL_RUNTIME_CALL_PROJECTION_ID;
 #define DSL_RUNTIME_VALUE_PROJECTION_INVALID_ID 0
 #define DSL_RUNTIME_CALL_PROJECTION_INVALID_ID 0
 #define DSL_RUNTIME_INTERFACE_INVALID_ORDINAL ((UINT32)-1)
+#define DSL_RETIRED_FORMAL_INVALID_ID 0
+#define DSL_RETIRED_CALL_ARGUMENT_INVALID_ID 0
+#define DSL_RUNTIME_INPUT_INVALID_ID 0
+#define DSL_RUNTIME_INPUT_BINDING_INVALID_ID 0
+#define DSL_RUNTIME_INPUT_CALL_INVALID_ID 0
 
 typedef struct {
     UINT32 magic;
@@ -222,6 +241,105 @@ typedef struct {
     UINT32 reserved;
 } DSL_RUNTIME_CALL_PROJECTION_RECORD;
 
+typedef enum {
+    DSL_INTERFACE_RETIREMENT_UNKNOWN = 0,
+    DSL_INTERFACE_RETIREMENT_VERIFIED_DEAD_INPUT = 1
+} DSL_INTERFACE_RETIREMENT_REASON;
+
+typedef enum {
+    DSL_RUNTIME_INPUT_UNKNOWN = 0,
+    DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR = 1,
+    DSL_RUNTIME_INPUT_OPAQUE_RESOURCE = 2,
+    DSL_RUNTIME_INPUT_TENSOR_TCON_RESOURCE = 3
+} DSL_RUNTIME_INPUT_KIND;
+
+typedef enum {
+    DSL_RUNTIME_INPUT_BINDING_UNKNOWN = 0,
+    DSL_RUNTIME_INPUT_BINDING_ROOT_PROMOTED_SOURCE = 1,
+    DSL_RUNTIME_INPUT_BINDING_ROOT_RESOURCE = 2,
+    DSL_RUNTIME_INPUT_BINDING_THREADED_FORMAL = 3
+} DSL_RUNTIME_INPUT_BINDING_KIND;
+
+typedef struct {
+    UINT32 magic;
+    UINT32 version;
+    UINT32 retired_formal_count;
+    UINT32 retired_call_argument_count;
+    UINT32 runtime_input_count;
+    UINT32 runtime_input_binding_count;
+    UINT32 runtime_input_call_count;
+    UINT32 flags;
+    UINT32 reserved[8];
+} DSL_PROGRAM_INTERFACE_IMAGE_HEADER;
+
+typedef struct {
+    DSL_RETIRED_FORMAL_ID id;
+    DSL_PU_FORMAL_ID pu_formal_id;
+    ST_IDX owner_pu_st;
+    DSL_IR_VALUE_ID formal_value_id;
+    ST_IDX formal_st;
+    TY_IDX formal_ty;
+    UINT32 old_formal_ordinal;
+    UINT32 retirement_reason;
+    STR_IDX semantic_role;
+    UINT32 flags;
+    UINT32 reserved;
+} DSL_RETIRED_FORMAL_RECORD;
+
+typedef struct {
+    DSL_RETIRED_CALL_ARGUMENT_ID id;
+    DSL_CALL_ARGUMENT_ID call_argument_id;
+    DSL_CALLSITE_METADATA_ID callsite_id;
+    DSL_IR_VALUE_ID argument_value_id;
+    UINT32 old_actual_ordinal;
+    UINT32 old_callee_formal_ordinal;
+    UINT32 retirement_reason;
+    UINT32 flags;
+    STR_IDX semantic_role;
+    UINT32 reserved[2];
+} DSL_RETIRED_CALL_ARGUMENT_RECORD;
+
+typedef struct {
+    DSL_RUNTIME_INPUT_ID id;
+    UINT32 input_kind;
+    ST_IDX source_owner_pu_st;
+    DSL_IR_VALUE_ID source_value_id;
+    ST_IDX source_st;
+    TY_IDX source_ty;
+    TCON_IDX source_tcon;
+    UINT32 flags;
+    STR_IDX stable_role;
+    TY_IDX handle_ty;
+    UINT32 reserved[5];
+} DSL_RUNTIME_INPUT_RECORD;
+
+typedef struct {
+    DSL_RUNTIME_INPUT_BINDING_ID id;
+    ST_IDX owner_pu_st;
+    DSL_RUNTIME_INPUT_ID runtime_input_id;
+    ST_IDX handle_st;
+    TY_IDX handle_ty;
+    UINT32 final_formal_ordinal;
+    UINT32 binding_kind;
+    UINT32 flags;
+    STR_IDX semantic_role;
+    UINT32 reserved[2];
+} DSL_RUNTIME_INPUT_BINDING_RECORD;
+
+typedef struct {
+    DSL_RUNTIME_INPUT_CALL_ID id;
+    DSL_CALLSITE_METADATA_ID callsite_id;
+    ST_IDX caller_owner_pu_st;
+    UINT32 caller_final_formal_ordinal;
+    ST_IDX callee_owner_pu_st;
+    UINT32 callee_final_formal_ordinal;
+    UINT32 final_actual_ordinal;
+    UINT32 final_callee_formal_ordinal;
+    TY_IDX handle_ty;
+    UINT32 flags;
+    STR_IDX semantic_role;
+} DSL_RUNTIME_INPUT_CALL_RECORD;
+
 typedef struct {
     ST_IDX owner_pu_st;
     DSL_IR_VALUE_ID source_value_id;
@@ -255,6 +373,67 @@ typedef struct {
     UINT32 rewritten_call_count;
     UINT32 rewritten_return_count;
 } DSL_RUNTIME_INTERFACE_RESULT;
+
+#define DSL_PROGRAM_INTERFACE_INVALID_REQUEST_INDEX ((UINT32)-1)
+
+typedef struct {
+    DSL_PU_FORMAL_ID pu_formal_id;
+    const char *semantic_role;
+} DSL_RETIRED_FORMAL_REQUEST;
+
+typedef struct {
+    DSL_CALL_ARGUMENT_ID call_argument_id;
+    const char *semantic_role;
+} DSL_RETIRED_CALL_ARGUMENT_REQUEST;
+
+typedef struct {
+    UINT32 input_kind;
+    ST_IDX source_owner_pu_st;
+    DSL_IR_VALUE_ID source_value_id;
+    TY_IDX source_ty;
+    TCON_IDX source_tcon;
+    const char *stable_role;
+    TY_IDX handle_ty;
+} DSL_RUNTIME_INPUT_REQUEST;
+
+typedef struct {
+    ST_IDX owner_pu_st;
+    UINT32 runtime_input_index;
+    TY_IDX handle_ty;
+    UINT32 binding_kind;
+    const char *semantic_role;
+    SRCPOS source_position;
+} DSL_RUNTIME_INPUT_BINDING_REQUEST;
+
+typedef struct {
+    DSL_CALLSITE_METADATA_ID callsite_id;
+    UINT32 caller_binding_index;
+    UINT32 callee_binding_index;
+} DSL_RUNTIME_INPUT_CALL_REQUEST;
+
+typedef struct {
+    const DSL_RETIRED_FORMAL_REQUEST *retired_formals;
+    UINT32 retired_formal_count;
+    const DSL_RETIRED_CALL_ARGUMENT_REQUEST *retired_call_arguments;
+    UINT32 retired_call_argument_count;
+    const DSL_RUNTIME_INPUT_REQUEST *runtime_inputs;
+    UINT32 runtime_input_count;
+    const DSL_RUNTIME_INPUT_BINDING_REQUEST *runtime_input_bindings;
+    UINT32 runtime_input_binding_count;
+    const DSL_RUNTIME_INPUT_CALL_REQUEST *runtime_input_calls;
+    UINT32 runtime_input_call_count;
+} DSL_PROGRAM_INTERFACE_PLAN;
+
+typedef struct {
+    UINT32 retired_formal_count;
+    UINT32 retired_call_argument_count;
+    UINT32 runtime_input_count;
+    UINT32 runtime_binding_count;
+    UINT32 runtime_call_count;
+    UINT32 canonical_projection_count;
+    UINT32 rewritten_call_count;
+    UINT32 rewritten_return_count;
+} DSL_PROGRAM_INTERFACE_RESULT;
 
 typedef enum {
     DSL_IR_IMAGE_RECORD_UNKNOWN = 0,
@@ -709,6 +888,79 @@ extern BOOL DSL_Runtime_Interface_Apply_PU
                                  DSL_RUNTIME_INTERFACE_RESULT *result);
 extern BOOL DSL_Runtime_Interface_Validate_PU
                                 (PU_Info *pu, FILE *diagnostic);
+
+/*
+ * Program-interface evolution is committed only through this combined
+ * transaction.  The plan uses global identities; local ST/WN interpretation
+ * occurs only while the owning PU is active.
+ */
+extern BOOL DSL_Program_Interface_Plan_Validate
+                                (const DSL_PROGRAM_INTERFACE_PLAN *program_plan,
+                                 const DSL_RUNTIME_INTERFACE_PLAN *runtime_plan,
+                                 FILE *diagnostic);
+extern void DSL_Program_Interface_Result_Init
+                                (DSL_PROGRAM_INTERFACE_RESULT *result);
+extern BOOL DSL_Program_Interface_Apply_PU
+                                (PU_Info *pu,
+                                 const DSL_PROGRAM_INTERFACE_PLAN *program_plan,
+                                 const DSL_RUNTIME_INTERFACE_PLAN *runtime_plan,
+                                 FILE *diagnostic,
+                                 DSL_PROGRAM_INTERFACE_RESULT *result);
+extern BOOL DSL_Program_Interface_Validate_PU
+                                (PU_Info *pu, FILE *diagnostic);
+extern BOOL DSL_Program_Interface_Validate_Lowered_PU
+                                (PU_Info *pu, FILE *diagnostic);
+
+/*
+ * Program-interface evolution preserves canonical v1 provenance while
+ * recording effective ABI retirement and explicit runtime-input flow.
+ * Mutation is available only through the combined transaction service.
+ */
+extern void DSL_Program_Interface_Image_Get_Header
+                                (DSL_PROGRAM_INTERFACE_IMAGE_HEADER *header);
+extern void DSL_Program_Interface_Image_Reset (void);
+extern BOOL DSL_Program_Interface_Image_Has_Records (void);
+extern BOOL DSL_Program_Interface_Image_Validate (FILE *diagnostic);
+extern BOOL DSL_Program_Interface_Image_Load_Mapped
+                                (const void *section_base,
+                                 UINT64 section_size,
+                                 FILE *diagnostic);
+extern BOOL DSL_Program_Runtime_Interface_Images_Load_Mapped
+                                (const void *program_section_base,
+                                 UINT64 program_section_size,
+                                 const void *runtime_section_base,
+                                 UINT64 runtime_section_size,
+                                 FILE *diagnostic);
+extern UINT32 DSL_Program_Interface_Image_Retired_Formal_Count (void);
+extern UINT32 DSL_Program_Interface_Image_Retired_Call_Count (void);
+extern UINT32 DSL_Program_Interface_Image_Runtime_Input_Count (void);
+extern UINT32 DSL_Program_Interface_Image_Runtime_Binding_Count (void);
+extern UINT32 DSL_Program_Interface_Image_Runtime_Call_Count (void);
+extern BOOL DSL_Program_Interface_Image_Get_Retired_Formal
+                                (DSL_RETIRED_FORMAL_ID id,
+                                 DSL_RETIRED_FORMAL_RECORD *record);
+extern BOOL DSL_Program_Interface_Image_Get_Retired_Call
+                                (DSL_RETIRED_CALL_ARGUMENT_ID id,
+                                 DSL_RETIRED_CALL_ARGUMENT_RECORD *record);
+extern BOOL DSL_Program_Interface_Image_Get_Runtime_Input
+                                (DSL_RUNTIME_INPUT_ID id,
+                                 DSL_RUNTIME_INPUT_RECORD *record);
+extern BOOL DSL_Program_Interface_Image_Get_Runtime_Binding
+                                (DSL_RUNTIME_INPUT_BINDING_ID id,
+                                 DSL_RUNTIME_INPUT_BINDING_RECORD *record);
+extern BOOL DSL_Program_Interface_Image_Get_Runtime_Call
+                                (DSL_RUNTIME_INPUT_CALL_ID id,
+                                 DSL_RUNTIME_INPUT_CALL_RECORD *record);
+extern BOOL DSL_Program_Interface_Image_Find_Retired_Formal
+                                (DSL_PU_FORMAL_ID pu_formal_id,
+                                 DSL_RETIRED_FORMAL_RECORD *record);
+extern BOOL DSL_Program_Interface_Image_Find_Retired_Call
+                                (DSL_CALL_ARGUMENT_ID call_argument_id,
+                                 DSL_RETIRED_CALL_ARGUMENT_RECORD *record);
+extern BOOL DSL_Program_Interface_Image_Find_Runtime_Binding
+                                (ST_IDX owner_pu_st,
+                                 UINT32 final_formal_ordinal,
+                                 DSL_RUNTIME_INPUT_BINDING_RECORD *record);
 
 extern void DSL_Effect_Image_Get_Header (DSL_EFFECT_IMAGE_HEADER *header);
 extern void DSL_Effect_Image_Reset (void);
