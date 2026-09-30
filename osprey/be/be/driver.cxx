@@ -137,6 +137,8 @@
 #include "dsl_shape_refine.h"
 #include "fhe_convert.h"
 #include "fhe_materialize.h"
+#include "fhe_runtime_lower.h"
+#include "fhe_unlowered_gate.h"
 #include "iter.h"		    /* PU iterator for loops */
 #include "dra_export.h"             /* for DRA routines */
 #include "ti_init.h"		    /* for targ_info */
@@ -427,12 +429,15 @@ static BOOL need_lno_output = FALSE;
 static BOOL need_ipl_output = FALSE;
 static BOOL need_fhe_checkpoint_output = FALSE;
 static BOOL need_fhe_materialization_output = FALSE;
+static BOOL need_fhe_runtime_lower_output = FALSE;
 static Output_File *ir_output = 0;
 static char *fhe_checkpoint_temp_name = NULL;
 static UINT32 fhe_checkpoint_pu_count;
 static VHO_FHE_CONVERT_RESULT fhe_checkpoint_result;
 static UINT32 fhe_materialization_pu_count;
 static VHO_FHE_MATERIALIZE_RESULT fhe_materialization_result;
+static UINT32 fhe_runtime_lower_pu_count;
+static VHO_FHE_RUNTIME_LOWER_RESULT fhe_runtime_lower_result;
 
 // options stack for PU and region level pragmas
 static OPTIONS_STACK *Options_Stack;
@@ -470,16 +475,25 @@ FHE_Materialization_Checkpoint_Enabled (void)
 }
 
 static BOOL
+FHE_Runtime_Lowering_Checkpoint_Enabled (void)
+{
+  return VHO_FHE_Runtime_Lowering_Checkpoint_Output != NULL &&
+         VHO_FHE_Runtime_Lowering_Checkpoint_Output[0] != '\0';
+}
+
+static BOOL
 FHE_Checkpoint_Enabled (void)
 {
   return FHE_Conversion_Checkpoint_Enabled() ||
-         FHE_Materialization_Checkpoint_Enabled();
+         FHE_Materialization_Checkpoint_Enabled() ||
+         FHE_Runtime_Lowering_Checkpoint_Enabled();
 }
 
 static BOOL
 FHE_Checkpoint_Output_Active (void)
 {
-  return need_fhe_checkpoint_output || need_fhe_materialization_output;
+  return need_fhe_checkpoint_output || need_fhe_materialization_output ||
+         need_fhe_runtime_lower_output;
 }
 
 static void
@@ -510,6 +524,15 @@ Release_FHE_Materialization_Checkpoint (void)
 }
 
 static void
+Release_FHE_Runtime_Lowering_Checkpoint (void)
+{
+  Register_Cleanup_Callback(NULL);
+  free(fhe_checkpoint_temp_name);
+  fhe_checkpoint_temp_name = NULL;
+  need_fhe_runtime_lower_output = FALSE;
+}
+
+static void
 Cleanup_FHE_Conversion_Checkpoint (void)
 {
   if (!need_fhe_checkpoint_output && fhe_checkpoint_temp_name == NULL)
@@ -531,6 +554,18 @@ Cleanup_FHE_Materialization_Checkpoint (void)
   Close_FHE_Checkpoint_Output();
   VHO_FHE_Materialize_Checkpoint_Abort();
   Release_FHE_Materialization_Checkpoint();
+}
+
+static void
+Cleanup_FHE_Runtime_Lowering_Checkpoint (void)
+{
+  if (!need_fhe_runtime_lower_output && fhe_checkpoint_temp_name == NULL)
+    return;
+
+  Register_Cleanup_Callback(NULL);
+  Close_FHE_Checkpoint_Output();
+  VHO_FHE_Runtime_Lower_Checkpoint_Abort();
+  Release_FHE_Runtime_Lowering_Checkpoint();
 }
 
 static void
@@ -594,15 +629,49 @@ Open_FHE_Materialization_Checkpoint (void)
 }
 
 static void
+Open_FHE_Runtime_Lowering_Checkpoint (void)
+{
+  const char *output = VHO_FHE_Runtime_Lowering_Checkpoint_Output;
+  size_t length = strlen(output) + sizeof(".tmp");
+
+  fhe_checkpoint_temp_name = (char *)malloc(length);
+  FmtAssert(fhe_checkpoint_temp_name != NULL,
+            ("could not allocate FHE runtime-lowering pathname"));
+  snprintf(fhe_checkpoint_temp_name, length, "%s.tmp", output);
+  remove(fhe_checkpoint_temp_name);
+
+  if (!VHO_FHE_Runtime_Lower_Checkpoint_Begin
+           (fhe_checkpoint_temp_name, output, stderr)) {
+    free(fhe_checkpoint_temp_name);
+    fhe_checkpoint_temp_name = NULL;
+    FmtAssert(FALSE,
+              ("could not reserve FHE runtime-lowering output %s", output));
+  }
+
+  VHO_FHE_Runtime_Lower_Result_Init(&fhe_runtime_lower_result);
+  fhe_runtime_lower_pu_count = 0;
+  need_fhe_runtime_lower_output = TRUE;
+  VHO_FHE_Enable_Runtime_Lowering = TRUE;
+  Register_Cleanup_Callback(Cleanup_FHE_Runtime_Lowering_Checkpoint);
+  ir_output = Open_Output_Info(fhe_checkpoint_temp_name);
+  FmtAssert(ir_output != NULL,
+            ("could not open FHE runtime-lowering output %s",
+             fhe_checkpoint_temp_name));
+}
+
+static void
 load_components (INT argc, char **argv)
 {
     INT phase_argc;
     char **phase_argv;
 
-    FmtAssert(!(FHE_Conversion_Checkpoint_Enabled() &&
-                FHE_Materialization_Checkpoint_Enabled()),
-              ("FHE conversion and materialization checkpoints are "
-               "mutually exclusive"));
+    UINT32 fhe_checkpoint_count =
+        (FHE_Conversion_Checkpoint_Enabled() ? 1 : 0) +
+        (FHE_Materialization_Checkpoint_Enabled() ? 1 : 0) +
+        (FHE_Runtime_Lowering_Checkpoint_Enabled() ? 1 : 0);
+    FmtAssert(fhe_checkpoint_count <= 1,
+              ("FHE conversion, materialization, and runtime-lowering "
+               "checkpoints are mutually exclusive"));
     if (FHE_Checkpoint_Enabled()) {
       Run_lno = Run_autopar = Run_Distr_Array = FALSE;
       Run_preopt = Run_wopt = Run_vsaopt = Run_ipsaopt = FALSE;
@@ -762,6 +831,10 @@ Phase_Init (void)
     else if (FHE_Materialization_Checkpoint_Enabled()) {
         Write_BE_Maps = FALSE;
         Open_FHE_Materialization_Checkpoint();
+    }
+    else if (FHE_Runtime_Lowering_Checkpoint_Enabled()) {
+        Write_BE_Maps = FALSE;
+        Open_FHE_Runtime_Lowering_Checkpoint();
     }
     if (!FHE_Checkpoint_Output_Active() && need_lno_output) {
 	Write_BE_Maps = TRUE;
@@ -1157,11 +1230,15 @@ Post_LNO_Processing (PU_Info *current_pu, WN *pu)
     /* Only run w2c and w2f on top-level PUs, unless otherwise requested.
      */
     if (Run_w2c && !Run_w2fc_early) {
-	if (W2C_Should_Emit_Nested_PUs() || is_user_visible_pu) {
-	    if (Cur_PU_Feedback)
-		W2C_Set_Frequency_Map(WN_MAP_FEEDBACK);
-	    W2C_Outfile_Translate_Pu(pu, TRUE/*emit_global_decls*/);
-	}
+        if (W2C_Should_Emit_Nested_PUs() || is_user_visible_pu) {
+            VHO_FHE_UNLOWERED_GATE_RESULT gate_result;
+            FmtAssert(VHO_FHE_Unlowered_Gate_Program_Unit
+                          (current_pu, pu, stderr, &gate_result),
+                      ("unlowered DSL/FHE node reached whirl2c"));
+            if (Cur_PU_Feedback)
+                W2C_Set_Frequency_Map(WN_MAP_FEEDBACK);
+            W2C_Outfile_Translate_Pu(pu, TRUE/*emit_global_decls*/);
+        }
     }
     if (Run_w2f && !Run_w2fc_early) {
 	if (W2F_Should_Emit_Nested_PUs() || is_user_visible_pu) {
@@ -2018,7 +2095,28 @@ Preprocess_PU (PU_Info *current_pu)
   if (!w2c_only) {
     VHO_FHE_CONVERT_RESULT convert_result;
     VHO_FHE_Convert_Result_Init(&convert_result);
-    if (need_fhe_materialization_output) {
+    if (VHO_FHE_Enable_Runtime_Lowering) {
+      VHO_FHE_RUNTIME_LOWER_RESULT runtime_result;
+      Set_Error_Phase ( "FHE Runtime-Call Lowering" );
+      BOOL lowered = VHO_FHE_Runtime_Lower_Driver_Try
+                         (current_pu, &pu, &runtime_result);
+      if (need_fhe_runtime_lower_output)
+        VHO_FHE_Runtime_Lower_Result_Accumulate
+            (&fhe_runtime_lower_result, &runtime_result);
+      if (!lowered) {
+        fprintf(stderr,
+                "CFHELOWER-CHECKPOINT-002: runtime lowering failed before "
+                "all-PU checkpoint completion\n");
+        if (need_fhe_runtime_lower_output)
+          Cleanup_FHE_Runtime_Lowering_Checkpoint();
+        FmtAssert(FALSE, ("FHE runtime-call lowering failed"));
+      }
+      if (need_fhe_runtime_lower_output)
+        ++fhe_runtime_lower_pu_count;
+      Set_PU_Info_tree_ptr(current_pu, pu);
+      Check_for_IR_Dump(TP_GLOBOPT, pu, "FHE_RUNTIME_LOWER");
+    }
+    else if (need_fhe_materialization_output) {
       VHO_FHE_MATERIALIZE_RESULT materialize_result;
       Set_Error_Phase ( "FHE VHO Materialization" );
       BOOL materialized = VHO_FHE_Materialize_Driver_Try
@@ -2078,8 +2176,10 @@ Preprocess_PU (PU_Info *current_pu)
       return pu;
     }
 
-    Set_Error_Phase ( "DSL VHO Processing" );
-    pu = VHO_DSL_Lower_Driver (current_pu, pu);
+    if (!VHO_FHE_Enable_Runtime_Lowering) {
+      Set_Error_Phase ( "DSL VHO Processing" );
+      pu = VHO_DSL_Lower_Driver (current_pu, pu);
+    }
   }
 
   Set_Error_Phase ( "Language VHO Processing" );
@@ -2755,6 +2855,51 @@ main (INT argc, char **argv)
             fhe_materialization_result.refresh_count,
             fhe_materialization_result.error_count);
     Release_FHE_Materialization_Checkpoint();
+  }
+  else if (need_fhe_runtime_lower_output) {
+    BOOL valid = VHO_FHE_Runtime_Lower_Checkpoint_Validate
+                     (total_pu_count, fhe_runtime_lower_pu_count,
+                      &fhe_runtime_lower_result, stderr);
+    if (!valid) {
+      Cleanup_FHE_Runtime_Lowering_Checkpoint();
+      FmtAssert(FALSE,
+                ("FHE runtime-lowering checkpoint validation failed"));
+    }
+    if (!VHO_FHE_Runtime_Lower_Checkpoint_Finalize
+             (&fhe_runtime_lower_result, stderr)) {
+      Cleanup_FHE_Runtime_Lowering_Checkpoint();
+      FmtAssert(FALSE,
+                ("FHE runtime-lowering checkpoint finalization failed"));
+    }
+
+    Write_Global_Info(pu_tree);
+    Close_FHE_Checkpoint_Output();
+    if (!VHO_FHE_Runtime_Lower_Checkpoint_Publish_Artifacts(stderr)) {
+      Cleanup_FHE_Runtime_Lowering_Checkpoint();
+      FmtAssert(FALSE,
+                ("FHE runtime-lowering auxiliary publication failed"));
+    }
+    if (!VHO_FHE_Runtime_Lower_Checkpoint_Publish_Binary(stderr)) {
+      Cleanup_FHE_Runtime_Lowering_Checkpoint();
+      FmtAssert(FALSE,
+                ("could not publish FHE runtime-lowering checkpoint %s",
+                 VHO_FHE_Runtime_Lowering_Checkpoint_Output));
+    }
+    Register_Cleanup_Callback(NULL);
+    VHO_FHE_Runtime_Lower_Checkpoint_Complete();
+    fprintf(stderr,
+            "FHE runtime-lowering checkpoint: output=%s pu=%u "
+            "semantic_gates=%u passes=%u calls=%u outputs=%u "
+            "status_checks=%u errors=%u\n",
+            VHO_FHE_Runtime_Lowering_Checkpoint_Output,
+            fhe_runtime_lower_pu_count,
+            fhe_runtime_lower_result.semantic_gatekeeper_count,
+            fhe_runtime_lower_result.runtime_lowering_pass_count,
+            fhe_runtime_lower_result.standard_call_count,
+            fhe_runtime_lower_result.output_handle_count,
+            fhe_runtime_lower_result.status_check_count,
+            fhe_runtime_lower_result.error_count);
+    Release_FHE_Runtime_Lowering_Checkpoint();
   }
   else if (need_wopt_output || need_lno_output || need_ipl_output) {
     Write_Global_Info (pu_tree);

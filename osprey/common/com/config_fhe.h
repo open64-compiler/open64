@@ -22,5 +22,8 @@ extern char *VHO_FHE_Materialization_Checkpoint_Output;
 extern char *VHO_FHE_Bootstrap_Mode;
 extern char *VHO_FHE_Provider_Manifest_Path;
 extern char *VHO_FHE_Provider_Manifest_SHA256;
+extern BOOL VHO_FHE_Enable_Runtime_Lowering;
+extern BOOL VHO_FHE_Enable_Runtime_Lowering_Set;
+extern char *VHO_FHE_Runtime_Lowering_Checkpoint_Output;
 
 #endif /* config_fhe_INCLUDED */

@@ -327,6 +327,9 @@ BE_VHO_CXX_SRCS = \
   fhe_checkpoint.cxx     \
   fhe_convert.cxx        \
   fhe_materialize.cxx    \
+  fhe_runtime_lower.cxx  \
+  fhe_standard_whirl.cxx \
+  fhe_unlowered_gate.cxx \
   fhe_semantic_convert.cxx \
   fhe_semantic_materialize.cxx \
   f90_lower.cxx           \

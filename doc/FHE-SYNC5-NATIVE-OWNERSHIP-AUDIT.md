@@ -1,6 +1,7 @@
 # FHE SYNC-5 Native Infrastructure Ownership Audit
 
-Status: proposed ownership and staging contract for SYNC-5
+Status: main-owned native infrastructure implemented; FHE semantic binding and
+end-to-end `.mid.B` certification remain pending
 
 ## Purpose
 
@@ -9,7 +10,8 @@ WHIRL calls, symbols, result stores, status checks, and control flow.  The
 resulting `application.mid.B` must be consumable by the existing binary WHIRL
 reader and by an otherwise unchanged `whirl2c`.
 
-This audit reserves shared files and APIs before implementation.  It does not
+This audit records the shared ownership boundary and the first implemented
+main-owned infrastructure batch.  It does not
 define the public FHE runtime ABI, generate the 87-static/147-dynamic call
 schedule, implement the mock runtime, or select provider operations.  Those
 remain FHE-owned work under `FHE-RUNTIME-C-ABI-V1-CONTRACT.md` and S5-1 through
@@ -36,8 +38,8 @@ The first SYNC-5 slice needs no new WHIRL operator, opcode, TY kind, or binary
 section merely to construct standard calls.  The implementation must use the
 existing Open64 mechanisms:
 
-- `Make_Function_Type`, `New_TYLIST`, and `Set_TYLIST_type` for exact C
-  function prototypes;
+- `New_TY`, `New_TYLIST`, `Set_TYLIST_type`, and `TY_is_unique` for exact,
+  interned C function prototypes;
 - `New_ST`, `ST_Init`, `Gen_Intrinsic_Function`, and `Set_ST_Srcpos` for
   external runtime symbols and source-bearing temporaries;
 - `WN_Call`, `WN_CreateParm`, `WN_Lda`, `WN_CreateLdid`, `WN_CreateStid`, and
@@ -113,11 +115,11 @@ FHE-owned code consumes the main callback and standard-WHIRL construction
 interfaces.  It must not edit the shared driver, checkpoint lifecycle,
 `whirl2c`, mapped-image reader/writer, or generic WN/ST construction code.
 
-## Proposed Main Interfaces
+## Implemented Main Interfaces
 
 ### Per-PU Runtime-Lowering Driver
 
-`fhe_runtime_lower.h` should publish opaque callback types and a result record
+`fhe_runtime_lower.h` publishes opaque callback types and a result record
 following the existing conversion and materialization drivers:
 
 ```text
@@ -130,13 +132,22 @@ VHO_FHE_Runtime_Lower_Result_Accumulate(...)
 VHO_FHE_Runtime_Lower_Checkpoint_Validate(...)
 ```
 
-The options passed to callbacks contain only reviewed phase controls and
-authenticated manifest paths/digests.  They do not expose checkpoint driver
-state or frontend handles.
+The options passed to callbacks contain only reviewed phase controls,
+authenticated manifest paths/digests, and the stable final checkpoint output
+path used to derive same-directory schedule/census/rotation/key artifacts.
+They do not expose mutable checkpoint driver state or frontend handles.  The
+same option strings remain valid and identical across every per-PU callback.
+
+The phase is controlled by `-FHE:runtime_lower` and the all-PU checkpoint by
+`-FHE:runtime_checkpoint=<application.mid.B>`.  Conversion, materialization,
+and runtime-lowering checkpoints are mutually exclusive.  Selecting the
+runtime checkpoint enables the runtime-lowering phase and uses the existing
+binary-last transaction for the final `.mid.B` and any registered auxiliary
+artifacts.
 
 ### Standard-Call Construction
 
-`fhe_standard_whirl.h` should describe, without FHE operator enums:
+`fhe_standard_whirl.h` describes, without FHE operator enums:
 
 - an external C symbol name and exact return/parameter TY list;
 - ordered parameters with by-value, read-only borrowed pointer, mutable
@@ -144,7 +155,8 @@ state or frontend handles.
 - source position and standard call-effect flags;
 - an optional local output-handle symbol;
 - scalar status capture from `Return_Val_Preg`; and
-- a caller-selected failure action represented as ordinary WHIRL.
+- a caller-selected failure builder that receives the created status and
+  output ST identities and returns ordinary WHIRL.
 
 The builder returns a detached standard-WHIRL block plus created ST identities.
 It preflights every fallible semantic, type, argument, output, and
@@ -171,16 +183,31 @@ borrow/ownership contract.  A call is not committed until its exact prototype,
 arguments, output slot, status capture, failure block, and source positions
 all validate.
 
+Opaque handles use real WHIRL pointer TYs.  An input handle is a typed pointer
+value; an output handle is a caller-owned pointer local passed through a typed
+pointer-to-pointer output parameter.  Every input supplies an explicit
+`actual_ty` and construction requires exact TY identity with the formal, not
+only equal machine types.  Every output local is initialized to NULL before
+its call.  The failure builder may load the captured status and output local,
+which still contains NULL if the provider returns failure without publishing
+an output.
+
+Repeated use of the same exact function prototype goes through `TY_is_unique`,
+allowing the same external function symbol to be reused.  A pre-existing
+same-name function with a conflicting prototype is rejected rather than
+creating a second external declaration.  The initial API permits at most one
+output slot per call; expansion requires a reviewed API revision and focused
+ABI tests.
+
 ### Final Unlowered Gate
 
-`fhe_unlowered_gate.h` should provide a PU-local structural verifier and a
+`fhe_unlowered_gate.h` provides a PU-local structural verifier and a
 registered FHE semantic verifier.  Before `.mid.B` publication and immediately
 before `W2C_Outfile_Translate_Pu`, it must reject:
 
 - any executable native `OPR_DSL` carrier, including a surviving common or CNN
   operation that the FHE schedule should have consumed;
-- any executable transitional `OPR_XPRAGMA`, `OPR_EVAL`, or annotated-comment
-  DSL carrier;
+- any executable transitional `OPR_XPRAGMA` or `OPR_EVAL` DSL carrier;
 - any live FHE, SIHE, CKKS, HPOLY, or materialization logical operation;
 - any unconsumed managed REGION that still represents FHE execution;
 - malformed call prototypes, parameters, status capture, output ownership, or
@@ -248,35 +275,37 @@ contract.
 Generated-C compilation/link orchestration belongs to the FHE/mock test lane,
 not to `whirl2c` syntax handling.
 
-## Staging And Publication Order
+## Dependency State
 
-Before SYNC-5 implementation is shared, the two certified SYNC-4 branches must
-be published in dependency order:
-
-1. publish and merge `codex/fhe-sync4-materialization-infra`;
-2. rebase `codex/fhe-sync4-materialization` onto the resulting `develop`,
-   dropping its duplicate infrastructure commits;
-3. publish and merge the remaining FHE semantic implementation and
-   certification commits; and
-4. rebase the main and FHE SYNC-5 branches onto that common merged base.
-
-Do not mix SYNC-5 source changes into either SYNC-4 PR.  This preserves the
-reviewed staging history and makes the `.WHIRL.dsl_fhe_materialization`
-contract independently reviewable.
+PR #152 completed the certified SYNC-4 materialization prerequisite before
+this implementation batch began.  The main and FHE SYNC-5 branches therefore
+share the same merged materialization-image and semantic baseline.  SYNC-5
+keeps its runtime-lowering infrastructure and FHE semantic implementation in
+coordinated but independently reviewable commits.
 
 ## First Main-Owned Batch
 
-After the publication prerequisite, the first main-owned coding batch should:
+The first main-owned coding batch now provides:
 
-1. add the callback-only per-PU runtime-lowering framework;
-2. add detached standard-call/status/output/control-flow construction with a
+1. the callback-only per-PU runtime-lowering framework;
+2. detached standard-call/status/output/control-flow construction with a
    two-call focused test;
-3. add the structural unlowered-node gate and one negative for each logical
-   layer;
-4. add an all-PU `.mid.B` checkpoint using the existing generic checkpoint;
-5. invoke the gate before the existing `whirl2c` translation call; and
-6. prove that `whirl2c` itself needs no source change.
+3. the structural unlowered-node gate and a native-carrier negative;
+4. an all-PU `.mid.B` checkpoint using the existing generic checkpoint;
+5. gate invocation before the existing `whirl2c` translation call; and
+6. proof by build and source isolation that `whirl2c` itself needs no source
+   change.
+
+The focused linked test also proves exact prototype construction, source
+positions, return-status capture, checked failure control flow, pointer output
+slots initialized to NULL, exact actual/formal TY checks, wrong-pointee and
+same-name/prototype-conflict rejection, failure-path access to captured locals,
+function TY/ST reuse, stable checkpoint-path delivery across PUs,
+disabled-phase behavior, callback registration, result aggregation, and
+rejection of an executable native DSL carrier.
 
 The FHE workstream may implement ABI v1 headers, mock behavior, and schedule
-producers concurrently, but it should not bind its semantic lowerer until the
-main interfaces above are reviewed and merged.
+producers concurrently.  Its next coordinated step is to bind the semantic
+runtime lowerer to these interfaces, register the final semantic verifier, and
+certify the exact 87-static/147-dynamic schedule through `.mid.B`,
+`ir_b2a -st -src`, unchanged `whirl2c`, and mock-runtime execution.

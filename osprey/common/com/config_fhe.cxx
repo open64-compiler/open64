@@ -24,6 +24,9 @@ char *VHO_FHE_Materialization_Checkpoint_Output = NULL;
 char *VHO_FHE_Bootstrap_Mode = (char *)"auto";
 char *VHO_FHE_Provider_Manifest_Path = NULL;
 char *VHO_FHE_Provider_Manifest_SHA256 = NULL;
+BOOL VHO_FHE_Enable_Runtime_Lowering = FALSE;
+BOOL VHO_FHE_Enable_Runtime_Lowering_Set = FALSE;
+char *VHO_FHE_Runtime_Lowering_Checkpoint_Output = NULL;
 
 static OPTION_DESC Options_FHE[] = {
   { OVK_BOOL, OV_VISIBLE, TRUE, "convert", "convert",
@@ -59,5 +62,11 @@ static OPTION_DESC Options_FHE[] = {
     0, 0, 0, &VHO_FHE_Provider_Manifest_Path, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "provider_sha256", "provider_sha256",
     0, 0, 0, &VHO_FHE_Provider_Manifest_SHA256, NULL },
+  { OVK_BOOL, OV_VISIBLE, TRUE, "runtime_lower", "runtime_lower",
+    FALSE, 0, 0, &VHO_FHE_Enable_Runtime_Lowering,
+    &VHO_FHE_Enable_Runtime_Lowering_Set },
+  { OVK_NAME, OV_VISIBLE, FALSE, "runtime_checkpoint",
+    "runtime_checkpoint",
+    0, 0, 0, &VHO_FHE_Runtime_Lowering_Checkpoint_Output, NULL },
   { OVK_COUNT }
 };
