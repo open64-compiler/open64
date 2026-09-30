@@ -1982,6 +1982,25 @@ full-sequence causal prompt evaluation with no KV cache.
    API contract is in
    `doc/FHE-SYNC-C-COMPOSITE-APPROXIMATION-CONTRACT.md`.
 
+44. [x] Publish the atomic native-DSL to standard-WHIRL transaction.
+
+   Add one generic active-PU transaction that preflights a complete lowering
+   request array before replacing executable native DSL definitions. Computed
+   values splice detached standard-WHIRL blocks ending in exactly one result
+   `STID` to an existing runtime projection handle. Entry-owned external tensor
+   constants use source elision backed by an exact root-promoted runtime input
+   and binding. Domain passes continue to own operation selection, standard
+   call construction, runtime ABI policy, and unlowered-node diagnostics.
+
+   Preserve logical node/value rows as immutable provenance and assign their
+   existing flag words the append-only `LOWERED` state. Do not add a section,
+   row, opcode, TY encoding, or image revision. New readers validate exactly
+   one tagged runtime relation for every lowered value and exclude lowered
+   nodes from executable counts; previous readers fail closed on the formerly
+   reserved flag. Print stable relation evidence through `ir_b2a -st -src`.
+   The exact API, compatibility, ownership, and certification rules are in
+   `doc/FHE-SYNC5-STANDARD-WHIRL-LOWERING-CONTRACT.md`.
+
 ### Deferred work TODO
 
 Deferred work remains tracked but does not block the active native DSL bring-up

@@ -944,6 +944,10 @@ DSL_Gatekeeper_Verify_PU_Mode
         valid = FALSE;
         ++context.result.error_count;
     }
+    if (!DSL_IR_Image_Validate_Lowered_Relations(diagnostic)) {
+        valid = FALSE;
+        ++context.result.error_count;
+    }
     if (pu == NULL || PU_Info_state(pu, WT_TREE) != Subsect_InMem ||
         PU_Info_tree_ptr(pu) == NULL)
         valid = DSL_Gatekeeper_Report
@@ -1015,6 +1019,10 @@ DSL_Gatekeeper_Verify_Program_Mode
         ++context.result.error_count;
     }
     if (!DSL_Call_ABI_Image_Validate(diagnostic)) {
+        valid = FALSE;
+        ++context.result.error_count;
+    }
+    if (!DSL_IR_Image_Validate_Lowered_Relations(diagnostic)) {
         valid = FALSE;
         ++context.result.error_count;
     }

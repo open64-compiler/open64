@@ -4626,6 +4626,8 @@ Write_Runtime_Interface_Artifact
     if (Open_Output_Info(Irb_File_Name) == NULL)
         return FALSE;
     for (UINT32 i = 0; i < 2; ++i) {
+        if (program_units[i] == NULL)
+            continue;
         if (!DSL_Builder_Select_PU(program_units[i])) {
             Close_Output_Info();
             return FALSE;
@@ -9222,6 +9224,695 @@ Find_STID_In_Block (WN *block, ST_IDX st)
     return NULL;
 }
 
+static WN *
+Find_STID_And_Block (WN *tree, ST_IDX st, WN **containing_block)
+{
+    if (tree == NULL)
+        return NULL;
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (WN *statement = WN_first(tree); statement != NULL;
+             statement = WN_next(statement)) {
+            if (WN_operator(statement) == OPR_STID &&
+                WN_st_idx(statement) == st) {
+                if (containing_block != NULL)
+                    *containing_block = tree;
+                return statement;
+            }
+            WN *found = Find_STID_And_Block
+                            (statement, st, containing_block);
+            if (found != NULL)
+                return found;
+        }
+        return NULL;
+    }
+    for (INT32 i = 0; i < WN_kid_count(tree); ++i) {
+        WN *found = Find_STID_And_Block
+                        (WN_kid(tree, i), st, containing_block);
+        if (found != NULL)
+            return found;
+    }
+    return NULL;
+}
+
+static unsigned char *Capture_DSL_IR_Image (UINT64 *image_size);
+
+static unsigned char *
+Capture_Runtime_Interface_Image (UINT64 *image_size)
+{
+    DSL_RUNTIME_INTERFACE_IMAGE_HEADER header;
+    DSL_Runtime_Interface_Image_Get_Header(&header);
+    UINT64 size = DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE +
+        (UINT64)header.value_projection_count *
+            DSL_RUNTIME_VALUE_PROJECTION_RECORD_SIZE +
+        (UINT64)header.call_projection_count *
+            DSL_RUNTIME_CALL_PROJECTION_RECORD_SIZE;
+    unsigned char *bytes = new unsigned char[size];
+    memcpy(bytes, &header, sizeof(header));
+    unsigned char *cursor =
+        bytes + DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE;
+    for (UINT32 i = 1; i <= header.value_projection_count; ++i) {
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD record;
+        DSL_Runtime_Interface_Image_Get_Value(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += DSL_RUNTIME_VALUE_PROJECTION_RECORD_SIZE;
+    }
+    for (UINT32 i = 1; i <= header.call_projection_count; ++i) {
+        DSL_RUNTIME_CALL_PROJECTION_RECORD record;
+        DSL_Runtime_Interface_Image_Get_Call(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += DSL_RUNTIME_CALL_PROJECTION_RECORD_SIZE;
+    }
+    *image_size = size;
+    return bytes;
+}
+
+static unsigned char *
+Capture_Program_Interface_Image (UINT64 *image_size)
+{
+    DSL_PROGRAM_INTERFACE_IMAGE_HEADER header;
+    DSL_Program_Interface_Image_Get_Header(&header);
+    UINT64 size = DSL_PROGRAM_INTERFACE_IMAGE_HEADER_SIZE +
+        (UINT64)header.retired_formal_count *
+            DSL_RETIRED_FORMAL_RECORD_SIZE +
+        (UINT64)header.retired_call_argument_count *
+            DSL_RETIRED_CALL_ARGUMENT_RECORD_SIZE +
+        (UINT64)header.runtime_input_count *
+            DSL_RUNTIME_INPUT_RECORD_SIZE +
+        (UINT64)header.runtime_input_binding_count *
+            DSL_RUNTIME_INPUT_BINDING_RECORD_SIZE +
+        (UINT64)header.runtime_input_call_count *
+            DSL_RUNTIME_INPUT_CALL_RECORD_SIZE;
+    unsigned char *bytes = new unsigned char[size];
+    memcpy(bytes, &header, sizeof(header));
+    unsigned char *cursor =
+        bytes + DSL_PROGRAM_INTERFACE_IMAGE_HEADER_SIZE;
+    for (UINT32 i = 1; i <= header.retired_formal_count; ++i) {
+        DSL_RETIRED_FORMAL_RECORD record;
+        DSL_Program_Interface_Image_Get_Retired_Formal(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += DSL_RETIRED_FORMAL_RECORD_SIZE;
+    }
+    for (UINT32 i = 1; i <= header.retired_call_argument_count; ++i) {
+        DSL_RETIRED_CALL_ARGUMENT_RECORD record;
+        DSL_Program_Interface_Image_Get_Retired_Call(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += DSL_RETIRED_CALL_ARGUMENT_RECORD_SIZE;
+    }
+    for (UINT32 i = 1; i <= header.runtime_input_count; ++i) {
+        DSL_RUNTIME_INPUT_RECORD record;
+        DSL_Program_Interface_Image_Get_Runtime_Input(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += DSL_RUNTIME_INPUT_RECORD_SIZE;
+    }
+    for (UINT32 i = 1; i <= header.runtime_input_binding_count; ++i) {
+        DSL_RUNTIME_INPUT_BINDING_RECORD record;
+        DSL_Program_Interface_Image_Get_Runtime_Binding(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += DSL_RUNTIME_INPUT_BINDING_RECORD_SIZE;
+    }
+    for (UINT32 i = 1; i <= header.runtime_input_call_count; ++i) {
+        DSL_RUNTIME_INPUT_CALL_RECORD record;
+        DSL_Program_Interface_Image_Get_Runtime_Call(i, &record);
+        memcpy(cursor, &record, sizeof(record));
+        cursor += DSL_RUNTIME_INPUT_CALL_RECORD_SIZE;
+    }
+    *image_size = size;
+    return bytes;
+}
+
+static int
+Check_Native_To_Standard_Lowering(void)
+{
+    const char *artifact = getenv("OPEN64_DSL_STANDARD_LOWER_ARTIFACT");
+    DSL_BUILDER_TENSOR_TYPE_CORE type_core;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_PU_SOURCE_IDENTITY identity;
+    DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE external_reference;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_VALUE external[2];
+    DSL_BUILDER_VALUE seed;
+    DSL_BUILDER_VALUE computed[2];
+    DSL_BUILDER_VALUE kids[2];
+    DSL_RUNTIME_VALUE_PROJECTION_REQUEST projection_requests[2];
+    DSL_RUNTIME_INTERFACE_PLAN runtime_plan;
+    DSL_RUNTIME_INPUT_REQUEST inputs[2];
+    DSL_RUNTIME_INPUT_BINDING_REQUEST bindings[2];
+    DSL_PROGRAM_INTERFACE_PLAN program_plan;
+    DSL_PROGRAM_INTERFACE_RESULT interface_result;
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD projections[2];
+    DSL_RUNTIME_INPUT_RECORD input_records[2];
+    DSL_RUNTIME_INPUT_BINDING_RECORD binding_records[2];
+    DSL_IR_NATIVE_VALUE_LOWER_REQUEST requests[4];
+    DSL_IR_NATIVE_VALUE_LOWER_RESULT results[4];
+    DSL_TENSOR_TCON_CREATE_INFO tcon_info;
+    TCON_IDX external_tcon[2];
+    TY_IDX tensor_ty[2];
+    TY_IDX handle_ty;
+    WN *body;
+    WN *definitions[4];
+    WN *containing_blocks[4];
+    WN *standard_block[2];
+    WN *handle_definition[2];
+    int failed = 0;
+#define STANDARD_LOWER_CHECK(condition, message) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "standard lowering check failed: %s\n", \
+                    message); \
+            failed = 1; \
+        } \
+    } while (0)
+
+    if (artifact == NULL || artifact[0] == '\0') {
+        fprintf(stderr, "standard lowering artifact path is required\n");
+        return 1;
+    }
+    STANDARD_LOWER_CHECK(DSL_Builder_Begin_Program(),
+                         "program initialization");
+    DSL_Opcode_Register_Common_Substrate();
+    memset(&type_core, 0, sizeof(type_core));
+    type_core.kind = "tensor";
+    type_core.dtype = "float32";
+    type_core.rank = 4;
+    type_core.logical_shape = "[1,1,2,2]";
+    tensor_ty[0] = DSL_Builder_Create_Tensor_Type_Core
+                       ("standard_lower_weight", MTYPE_To_TY(MTYPE_F4),
+                        &type_core);
+    TY_tensor_bind_attribute
+        (tensor_ty[0], TY_TENSOR_SCHEMA_LAYOUT, "row_major");
+    TY_tensor_bind_attribute
+        (tensor_ty[0], TY_TENSOR_SCHEMA_PLACEMENT, "side_file");
+    TY_tensor_bind_attribute
+        (tensor_ty[0], TY_TENSOR_SCHEMA_MEMORY, "external_data");
+    STANDARD_LOWER_CHECK(TY_tensor_seal(tensor_ty[0]),
+                         "rank-4 tensor descriptor");
+    type_core.rank = 1;
+    type_core.logical_shape = "[4]";
+    tensor_ty[1] = DSL_Builder_Create_Tensor_Type_Core
+                       ("standard_lower_bias", MTYPE_To_TY(MTYPE_F4),
+                        &type_core);
+    TY_tensor_bind_attribute
+        (tensor_ty[1], TY_TENSOR_SCHEMA_LAYOUT, "row_major");
+    TY_tensor_bind_attribute
+        (tensor_ty[1], TY_TENSOR_SCHEMA_PLACEMENT, "side_file");
+    TY_tensor_bind_attribute
+        (tensor_ty[1], TY_TENSOR_SCHEMA_MEMORY, "external_data");
+    STANDARD_LOWER_CHECK(TY_tensor_seal(tensor_ty[1]),
+                         "rank-1 tensor descriptor");
+    handle_ty = Create_Runtime_Interface_Handle_TY
+                    ("standard_lower_ciphertext_v1");
+
+    memset(&tcon_info, 0, sizeof(tcon_info));
+    tcon_info.element_mtype = MTYPE_F4;
+    tcon_info.element_count = 4;
+    tcon_info.logical_bytes = 16;
+    tcon_info.required_alignment = 16;
+    tcon_info.element_size = 4;
+    tcon_info.side_path = "standard_lower.safetensors";
+    tcon_info.side_path_length = strlen(tcon_info.side_path);
+    tcon_info.byte_length = 16;
+    for (UINT32 i = 0; i < 2; ++i) {
+        tcon_info.descriptor_ty = tensor_ty[i];
+        tcon_info.checksum_hi = 0x34567890 + i;
+        tcon_info.checksum_lo = 0xbcdef012 + i;
+        STANDARD_LOWER_CHECK
+            (DSL_Tensor_TCON_Create_Side_File_Dense
+                 (&tcon_info, &external_tcon[i], NULL),
+             "external tensor TCON");
+    }
+
+    pu = DSL_Builder_Create_Minimal_PU("standard_lower_root");
+    UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "StandardLowerRoot.forward";
+    identity.defining_module = "dsl_builder_contract_test";
+    identity.defining_file = __FILE__;
+    identity.defining_line = __LINE__;
+    STANDARD_LOWER_CHECK
+        (pu != NULL && file_id != 0 &&
+         DSL_Builder_Set_PU_Source_Identity(pu, &identity),
+         "root PU identity");
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = __LINE__ + 1;
+    position.statement_begin = 1;
+    memset(&external_reference, 0, sizeof(external_reference));
+    external_reference.storage_format = "safetensors";
+    external_reference.side_file = "standard_lower.safetensors";
+    external_reference.byte_length = 16;
+    external_reference.checksum =
+        "123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0";
+    external_reference.tensor_key = "weight";
+    external[0] = DSL_Builder_Create_External_Tensor_Constant
+                      ("standard_weight", tensor_ty[0], &external_reference);
+    external_reference.tensor_key = "bias";
+    external[1] = DSL_Builder_Create_External_Tensor_Constant
+                      ("standard_bias", tensor_ty[1], &external_reference);
+    char tcon_text[2][32];
+    for (UINT32 i = 0; i < 2; ++i) {
+        snprintf(tcon_text[i], sizeof(tcon_text[i]), "%u",
+                 (UINT32)external_tcon[i]);
+        STANDARD_LOWER_CHECK
+            (external[i] != NULL &&
+             DSL_Builder_Set_Value_Source_Position(external[i], &position),
+             "external source position");
+        ST_tensor_bind_metadata
+            (DSL_Builder_Get_Value_Result_Symbol(external[i]),
+             "tensor_tcon_idx", tcon_text[i]);
+    }
+    seed = DSL_Builder_Create_Tensor_Constant
+               ("standard_seed", tensor_ty[0], "float32", 4,
+                "[1,1,2,2]", "zero_init", "0");
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    kids[0] = seed;
+    kids[1] = seed;
+    computed[0] = DSL_Builder_Create_Operator
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, kids, 2, &attribute, 1);
+    kids[0] = computed[0];
+    kids[1] = seed;
+    computed[1] = DSL_Builder_Create_Operator
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, kids, 2, &attribute, 1);
+    STANDARD_LOWER_CHECK
+        (seed != NULL && computed[0] != NULL && computed[1] != NULL &&
+         DSL_Builder_Set_Value_Source_Position(seed, &position) &&
+         DSL_Builder_Set_Value_Source_Position(computed[0], &position) &&
+         DSL_Builder_Set_Value_Source_Position(computed[1], &position) &&
+         DSL_Builder_Append_PU_Value(pu, external[0]) &&
+         DSL_Builder_Append_PU_Value(pu, external[1]) &&
+         DSL_Builder_Append_PU_Value(pu, seed) &&
+         DSL_Builder_Append_PU_Value(pu, computed[0]) &&
+         DSL_Builder_Append_PU_Value(pu, computed[1]) &&
+         DSL_Builder_Return_PU_Values(pu, NULL, 0),
+         "computed chain construction");
+    if (failed)
+        return failed;
+
+    memset(projection_requests, 0, sizeof(projection_requests));
+    for (UINT32 i = 0; i < 2; ++i) {
+        projection_requests[i].owner_pu_st = PU_Info_proc_sym(pu);
+        projection_requests[i].source_value_id =
+            DSL_Builder_Get_Value_Image_Id(computed[i]);
+        projection_requests[i].expected_source_st =
+            DSL_Builder_Get_Value_Result_Symbol(computed[i]);
+        projection_requests[i].expected_source_ty = tensor_ty[0];
+        projection_requests[i].handle_ty = handle_ty;
+        projection_requests[i].binding_kind =
+            DSL_RUNTIME_BINDING_LOCAL_VALUE;
+        projection_requests[i].formal_ordinal =
+            DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
+    }
+    memset(&runtime_plan, 0, sizeof(runtime_plan));
+    runtime_plan.values = projection_requests;
+    runtime_plan.value_count = 2;
+    memset(inputs, 0, sizeof(inputs));
+    memset(bindings, 0, sizeof(bindings));
+    for (UINT32 i = 0; i < 2; ++i) {
+        inputs[i].input_kind =
+            DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR;
+        inputs[i].source_owner_pu_st = PU_Info_proc_sym(pu);
+        inputs[i].source_value_id =
+            DSL_Builder_Get_Value_Image_Id(external[i]);
+        inputs[i].source_ty = tensor_ty[i];
+        inputs[i].source_tcon = external_tcon[i];
+        inputs[i].stable_role = i == 0 ?
+            "fhe.standard.weight" : "fhe.standard.bias";
+        inputs[i].handle_ty = handle_ty;
+        bindings[i].owner_pu_st = PU_Info_proc_sym(pu);
+        bindings[i].runtime_input_index = i;
+        bindings[i].handle_ty = handle_ty;
+        bindings[i].binding_kind =
+            DSL_RUNTIME_INPUT_BINDING_ROOT_PROMOTED_SOURCE;
+        bindings[i].semantic_role = inputs[i].stable_role;
+        bindings[i].source_position =
+            ST_Srcpos(St_Table[DSL_Builder_Get_Value_Result_Symbol
+                (external[i])]);
+    }
+    memset(&program_plan, 0, sizeof(program_plan));
+    program_plan.runtime_inputs = inputs;
+    program_plan.runtime_input_count = 2;
+    program_plan.runtime_input_bindings = bindings;
+    program_plan.runtime_input_binding_count = 2;
+    DSL_Program_Interface_Result_Init(&interface_result);
+    STANDARD_LOWER_CHECK
+        (DSL_Program_Interface_Plan_Validate
+             (&program_plan, &runtime_plan, stderr) &&
+         DSL_Builder_Select_PU(pu) &&
+         DSL_Program_Interface_Apply_PU
+             (pu, &program_plan, &runtime_plan, stderr,
+              &interface_result),
+         "program/runtime interface projection");
+    if (failed)
+        return failed;
+
+    for (UINT32 i = 0; i < 2; ++i) {
+        STANDARD_LOWER_CHECK
+            (DSL_Runtime_Interface_Image_Find_Value
+                 (PU_Info_proc_sym(pu),
+                  projection_requests[i].source_value_id,
+                  &projections[i]),
+             "computed runtime projection");
+        UINT32 input_count = 0;
+        UINT32 binding_count = 0;
+        for (UINT32 input_id = 1;
+             input_id <=
+                DSL_Program_Interface_Image_Runtime_Input_Count();
+             ++input_id) {
+            DSL_RUNTIME_INPUT_RECORD current;
+            if (DSL_Program_Interface_Image_Get_Runtime_Input
+                    (input_id, &current) &&
+                current.source_value_id == inputs[i].source_value_id) {
+                input_records[i] = current;
+                ++input_count;
+            }
+        }
+        for (UINT32 binding_id = 1;
+             binding_id <=
+                DSL_Program_Interface_Image_Runtime_Binding_Count();
+             ++binding_id) {
+            DSL_RUNTIME_INPUT_BINDING_RECORD current;
+            if (DSL_Program_Interface_Image_Get_Runtime_Binding
+                    (binding_id, &current) && input_count == 1 &&
+                current.runtime_input_id == input_records[i].id &&
+                current.binding_kind ==
+                    DSL_RUNTIME_INPUT_BINDING_ROOT_PROMOTED_SOURCE) {
+                binding_records[i] = current;
+                ++binding_count;
+            }
+        }
+        STANDARD_LOWER_CHECK(input_count == 1 && binding_count == 1,
+                             "promoted source relation");
+    }
+    if (failed)
+        return failed;
+
+    body = WN_func_body(PU_Info_tree_ptr(pu));
+    memset(containing_blocks, 0, sizeof(containing_blocks));
+    definitions[0] = Find_STID_And_Block
+                         (body, projection_requests[0].expected_source_st,
+                          &containing_blocks[0]);
+    definitions[1] = Find_STID_And_Block
+                         (body, projection_requests[1].expected_source_st,
+                          &containing_blocks[1]);
+    definitions[2] = Find_STID_And_Block
+                         (body,
+                          DSL_Builder_Get_Value_Result_Symbol(external[0]),
+                          &containing_blocks[2]);
+    definitions[3] = Find_STID_And_Block
+                         (body,
+                          DSL_Builder_Get_Value_Result_Symbol(external[1]),
+                          &containing_blocks[3]);
+    STANDARD_LOWER_CHECK
+        (definitions[0] != NULL && definitions[1] != NULL &&
+         definitions[2] != NULL && definitions[3] != NULL,
+         "native definitions");
+    if (failed) {
+        fprintf(stderr, "definition presence: computed0=%d computed1=%d "
+                "weight=%d bias=%d\n", definitions[0] != NULL,
+                definitions[1] != NULL, definitions[2] != NULL,
+                definitions[3] != NULL);
+        return failed;
+    }
+    for (UINT32 i = 0; i < 2; ++i) {
+        standard_block[i] = WN_CreateBlock();
+        WN *value = i == 0 ?
+            WN_Intconst(Pointer_Mtype, 0) :
+            WN_CreateLdid
+                (OPR_LDID, Pointer_Mtype, Pointer_Mtype, 0,
+                 projections[0].handle_st, projections[0].handle_ty);
+        handle_definition[i] = WN_CreateStid
+            (OPR_STID, MTYPE_V, Pointer_Mtype, 0,
+             projections[i].handle_st, projections[i].handle_ty, value);
+        WN_Set_Linenum
+            (handle_definition[i], WN_Get_Linenum(definitions[i]));
+        WN_INSERT_BlockLast(standard_block[i], handle_definition[i]);
+    }
+
+    memset(requests, 0, sizeof(requests));
+    const UINT32 request_order[4] = { 1, 3, 0, 2 };
+    for (UINT32 request_index = 0; request_index < 4; ++request_index) {
+        UINT32 source_index = request_order[request_index];
+        DSL_IR_NATIVE_VALUE_LOWER_REQUEST &request =
+            requests[request_index];
+        request.pu_root = PU_Info_tree_ptr(pu);
+        request.containing_block = containing_blocks[source_index];
+        request.native_definition = definitions[source_index];
+        if (source_index < 2) {
+            request.source_value_id =
+                projection_requests[source_index].source_value_id;
+            request.expected_operator = OPR_DSLADD;
+            request.expected_version = 1;
+            request.mode =
+                DSL_IR_NATIVE_LOWER_COMPUTED_STANDARD_BLOCK;
+            request.relation.relation_kind =
+                DSL_IR_LOWER_RELATION_RUNTIME_VALUE_PROJECTION;
+            request.relation.value_projection_id =
+                projections[source_index].id;
+            request.standard_block = standard_block[source_index];
+            request.result_handle_definition =
+                handle_definition[source_index];
+        } else {
+            UINT32 external_index = source_index - 2;
+            request.source_value_id =
+                DSL_Builder_Get_Value_Image_Id(external[external_index]);
+            request.expected_operator = OPR_DSLTENSORCONST;
+            request.expected_version = 1;
+            request.mode =
+                DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION;
+            request.relation.relation_kind =
+                DSL_IR_LOWER_RELATION_ROOT_PROMOTED_INPUT;
+            request.relation.runtime_input_id =
+                input_records[external_index].id;
+            request.relation.runtime_binding_id =
+                binding_records[external_index].id;
+        }
+    }
+
+#define STANDARD_LOWER_EXPECT_REJECT(request_array, count, message) \
+    STANDARD_LOWER_CHECK \
+        (!DSL_IR_Lower_Native_Values_To_Standard_Blocks \
+              (PU_Info_proc_sym(pu), request_array, count, NULL, results) && \
+         Find_STID_And_Block \
+             (body, projection_requests[0].expected_source_st, NULL) == \
+                definitions[0] && \
+         Find_STID_And_Block \
+             (body, projection_requests[1].expected_source_st, NULL) == \
+                definitions[1], \
+         message)
+
+    DSL_IR_NATIVE_VALUE_LOWER_REQUEST malformed[4];
+    memcpy(malformed, requests, sizeof(malformed));
+    malformed[0].expected_version = 2;
+    STANDARD_LOWER_EXPECT_REJECT
+        (malformed, 4, "wrong logical version rejects without mutation");
+
+    memcpy(malformed, requests, sizeof(malformed));
+    malformed[0].relation.value_projection_id = projections[0].id;
+    STANDARD_LOWER_EXPECT_REJECT
+        (malformed, 4, "wrong runtime projection rejects without mutation");
+
+    memcpy(malformed, requests, sizeof(malformed));
+    malformed[1] = malformed[0];
+    STANDARD_LOWER_EXPECT_REJECT
+        (malformed, 4, "duplicate member rejects without mutation");
+
+    memcpy(malformed, requests, sizeof(malformed));
+    malformed[2].standard_block = malformed[0].standard_block;
+    STANDARD_LOWER_EXPECT_REJECT
+        (malformed, 4, "duplicate standard block rejects without mutation");
+
+    STANDARD_LOWER_CHECK
+        (!DSL_IR_Lower_Native_Values_To_Standard_Blocks
+              (ST_IDX_ZERO, requests, 4, NULL, results) &&
+         Find_STID_And_Block
+             (body, projection_requests[0].expected_source_st, NULL) ==
+                definitions[0],
+         "wrong owner rejects without mutation");
+
+    ST_IDX saved_handle_st = WN_st_idx(handle_definition[0]);
+    WN_st_idx(handle_definition[0]) = projections[1].handle_st;
+    STANDARD_LOWER_EXPECT_REJECT
+        (requests, 4, "wrong result handle rejects without mutation");
+    WN_st_idx(handle_definition[0]) = saved_handle_st;
+
+    SRCPOS saved_handle_position = WN_Get_Linenum(handle_definition[0]);
+    WN_Set_Linenum(handle_definition[0], 0);
+    STANDARD_LOWER_EXPECT_REJECT
+        (requests, 4, "missing result source position rejects");
+    WN_Set_Linenum(handle_definition[0], saved_handle_position);
+
+    WN *trailing_statement = WN_CreateEval(WN_Intconst(MTYPE_I4, 0));
+    WN_Set_Linenum(trailing_statement, saved_handle_position);
+    WN_INSERT_BlockLast(standard_block[0], trailing_statement);
+    STANDARD_LOWER_EXPECT_REJECT
+        (requests, 4, "nonfinal result handle rejects without mutation");
+    WN_EXTRACT_FromBlock(standard_block[0], trailing_statement);
+    WN_DELETE_Tree(trailing_statement);
+
+    TY_IDX source_pointer_ty = Make_Pointer_Type(tensor_ty[0]);
+    WN *address_use = WN_CreateEval
+        (WN_CreateLda
+             (OPR_LDA, Pointer_Mtype, MTYPE_V, 0, source_pointer_ty,
+              projection_requests[0].expected_source_st));
+    WN_INSERT_BlockAfter(containing_blocks[0], definitions[0], address_use);
+    STANDARD_LOWER_EXPECT_REJECT
+        (requests, 4, "address-taken source rejects without mutation");
+    WN_EXTRACT_FromBlock(containing_blocks[0], address_use);
+    WN_DELETE_Tree(address_use);
+
+    DSL_IR_NATIVE_VALUE_LOWER_REQUEST partial = requests[2];
+    STANDARD_LOWER_CHECK
+        (!DSL_IR_Lower_Native_Values_To_Standard_Blocks
+              (PU_Info_proc_sym(pu), &partial, 1, NULL, results) &&
+         Find_STID_And_Block
+             (body, projection_requests[0].expected_source_st, NULL) ==
+                definitions[0] &&
+         Find_STID_And_Block
+             (body, projection_requests[1].expected_source_st, NULL) ==
+                definitions[1],
+         "partial chain rejects without mutation");
+    STANDARD_LOWER_CHECK
+         (DSL_IR_Lower_Native_Values_To_Standard_Blocks
+             (PU_Info_proc_sym(pu), requests, 4, stderr, results) &&
+         DSL_IR_Image_Validate(stderr) &&
+         DSL_IR_Image_Validate_Lowered_Relations(stderr) &&
+         DSL_Program_Interface_Validate_Lowered_PU(pu, stderr) &&
+         DSL_Region_Verify_PU(pu, stderr) &&
+         DSL_Call_ABI_Image_Validate_PU(pu, stderr) &&
+         DSL_PU_Interface_Image_Validate_PU(pu, stderr) &&
+         DSL_Gatekeeper_Verify_Program
+             (pu, stderr, NULL),
+         "atomic standard lowering transaction");
+    for (UINT32 i = 0; i < 4; ++i) {
+        UINT32 source_index = request_order[i];
+        ST_IDX source_st = source_index < 2 ?
+            projection_requests[source_index].expected_source_st :
+            DSL_Builder_Get_Value_Result_Symbol
+                (external[source_index - 2]);
+        STANDARD_LOWER_CHECK
+            (results[i].source_value_id == requests[i].source_value_id &&
+             results[i].relation_kind ==
+                requests[i].relation.relation_kind &&
+             Find_STID_And_Block(body, source_st, NULL) == NULL,
+             "lowering result evidence");
+    }
+
+    UINT64 runtime_image_size = 0;
+    UINT64 program_image_size = 0;
+    unsigned char *runtime_image =
+        Capture_Runtime_Interface_Image(&runtime_image_size);
+    unsigned char *program_image =
+        Capture_Program_Interface_Image(&program_image_size);
+    DSL_RUNTIME_INTERFACE_IMAGE_HEADER *runtime_header =
+        (DSL_RUNTIME_INTERFACE_IMAGE_HEADER *)runtime_image;
+    DSL_PROGRAM_INTERFACE_IMAGE_HEADER *program_header =
+        (DSL_PROGRAM_INTERFACE_IMAGE_HEADER *)program_image;
+    UINT32 saved_projection_count = runtime_header->value_projection_count;
+    UINT32 saved_binding_count =
+        program_header->runtime_input_binding_count;
+    STANDARD_LOWER_CHECK(saved_projection_count == 2 &&
+                         saved_binding_count == 2,
+                         "mapped relation fixture census");
+
+    UINT64 dsl_image_size = 0;
+    unsigned char *dsl_image = Capture_DSL_IR_Image(&dsl_image_size);
+    DSL_IR_IMAGE_HEADER *dsl_header =
+        (DSL_IR_IMAGE_HEADER *)dsl_image;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD *dsl_descriptors =
+        (DSL_IR_OPCODE_DESCRIPTOR_RECORD *)
+            (dsl_image + DSL_IR_IMAGE_HEADER_SIZE);
+    DSL_IR_NODE_RECORD *dsl_nodes = (DSL_IR_NODE_RECORD *)
+        ((unsigned char *)dsl_descriptors +
+         (UINT64)dsl_header->opcode_descriptor_count *
+             DSL_IR_OPCODE_DESCRIPTOR_RECORD_SIZE);
+    DSL_IR_ATTRIBUTE_RECORD *dsl_attributes =
+        (DSL_IR_ATTRIBUTE_RECORD *)
+            ((unsigned char *)dsl_nodes +
+             (UINT64)dsl_header->node_count * DSL_IR_NODE_RECORD_SIZE);
+    DSL_IR_VALUE_RECORD *dsl_values = (DSL_IR_VALUE_RECORD *)
+        ((unsigned char *)dsl_attributes +
+         (UINT64)dsl_header->attribute_count *
+             DSL_IR_ATTRIBUTE_RECORD_SIZE);
+    DSL_IR_VALUE_RECORD &mapped_value =
+        dsl_values[requests[0].source_value_id - 1];
+    DSL_IR_NODE_RECORD &mapped_node =
+        dsl_nodes[mapped_value.producer_node_id - 1];
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD &mapped_descriptor =
+        dsl_descriptors[mapped_node.opcode_descriptor_id - 1];
+    UINT32 saved_value_flags = mapped_value.flags;
+    UINT32 saved_node_flags = mapped_node.flags;
+    UINT32 saved_effect_model = mapped_descriptor.effect_model;
+    DSL_IR_VALUE_RECORD installed_value;
+
+    mapped_value.flags = DSL_IR_VALUE_FLAG_NONE;
+    STANDARD_LOWER_CHECK
+        (!DSL_IR_Image_Load_Mapped(dsl_image, dsl_image_size, NULL) &&
+         DSL_IR_Image_Get_Value
+             (requests[0].source_value_id, &installed_value) &&
+         installed_value.flags == DSL_IR_VALUE_FLAG_LOWERED,
+         "mapped lowered node/value mismatch rejects without mutation");
+    mapped_value.flags = saved_value_flags;
+    mapped_node.flags = DSL_IR_NODE_FLAG_LOWERED |
+                        DSL_IR_NODE_FLAG_RETIRED;
+    STANDARD_LOWER_CHECK
+        (!DSL_IR_Image_Load_Mapped(dsl_image, dsl_image_size, NULL),
+         "mapped lowered/retired collision rejects");
+    mapped_node.flags = saved_node_flags;
+    mapped_descriptor.effect_model = DSL_EFFECT_MODEL_RUNTIME_EFFECT;
+    STANDARD_LOWER_CHECK
+        (!DSL_IR_Image_Load_Mapped(dsl_image, dsl_image_size, NULL),
+         "mapped effectful lowered node rejects");
+    mapped_descriptor.effect_model = saved_effect_model;
+    delete [] dsl_image;
+
+    runtime_header->value_projection_count = 1;
+    UINT64 short_runtime_size = DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE +
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD_SIZE;
+    STANDARD_LOWER_CHECK
+        (!DSL_Program_Runtime_Interface_Images_Load_Mapped
+              (program_image, program_image_size,
+               runtime_image, short_runtime_size, NULL) &&
+         DSL_Runtime_Interface_Image_Value_Count() == 2 &&
+         DSL_Program_Interface_Image_Runtime_Binding_Count() == 2,
+         "missing lowered projection rejects paired load atomically");
+    runtime_header->value_projection_count = saved_projection_count;
+    program_header->runtime_input_binding_count = 1;
+    UINT64 short_program_size = program_image_size -
+        DSL_RUNTIME_INPUT_BINDING_RECORD_SIZE;
+    STANDARD_LOWER_CHECK
+        (!DSL_Program_Runtime_Interface_Images_Load_Mapped
+              (program_image, short_program_size,
+               runtime_image, runtime_image_size, NULL) &&
+         DSL_Runtime_Interface_Image_Value_Count() == 2 &&
+         DSL_Program_Interface_Image_Runtime_Binding_Count() == 2,
+         "missing promoted binding rejects paired load atomically");
+    program_header->runtime_input_binding_count = saved_binding_count;
+    STANDARD_LOWER_CHECK
+        (DSL_Program_Runtime_Interface_Images_Load_Mapped
+             (program_image, program_image_size,
+              runtime_image, runtime_image_size, stderr) &&
+         DSL_IR_Image_Validate_Lowered_Relations(stderr),
+         "valid lowered relation pair reloads");
+    delete [] program_image;
+    delete [] runtime_image;
+
+    (void) unlink(artifact);
+    STANDARD_LOWER_CHECK
+        (Write_Runtime_Interface_Artifact(artifact, pu, NULL) &&
+         access(artifact, F_OK) == 0,
+         "mapped-image finalization");
+    if (!failed)
+        printf("DSL native-to-standard lowering contract passed\n");
+#undef STANDARD_LOWER_EXPECT_REJECT
+#undef STANDARD_LOWER_CHECK
+    return failed;
+}
+
 static void
 Init_Shape_Solver_Descriptor
         (DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor,
@@ -10333,6 +11024,8 @@ main(void)
         return Check_Program_Interface_Cycle_Rejection();
     if (getenv("OPEN64_DSL_PROGRAM_INTERFACE_ONLY") != NULL)
         return Check_Program_Interface_Evolution();
+    if (getenv("OPEN64_DSL_STANDARD_LOWER_ONLY") != NULL)
+        return Check_Native_To_Standard_Lowering();
     if (getenv("OPEN64_DSL_CANONICALIZATION_ONLY") != NULL)
         return Check_Algebraic_Canonicalization();
     if (getenv("OPEN64_DSL_TENSOR_FOLD_M3_ONLY") != NULL)

@@ -507,7 +507,8 @@ typedef struct {
 
 typedef enum {
     DSL_IR_NODE_FLAG_NONE = 0,
-    DSL_IR_NODE_FLAG_RETIRED = 0x00000001
+    DSL_IR_NODE_FLAG_RETIRED = 0x00000001,
+    DSL_IR_NODE_FLAG_LOWERED = 0x00000002
 } DSL_IR_NODE_FLAG;
 
 #define DSL_IR_NODE_REDIRECT_ORDINAL_SHIFT 16
@@ -555,7 +556,8 @@ typedef struct {
 
 typedef enum {
     DSL_IR_VALUE_FLAG_NONE = 0,
-    DSL_IR_VALUE_FLAG_REDIRECTED = 0x00000001
+    DSL_IR_VALUE_FLAG_REDIRECTED = 0x00000001,
+    DSL_IR_VALUE_FLAG_LOWERED = 0x00000002
 } DSL_IR_VALUE_FLAG;
 
 /*
@@ -679,6 +681,57 @@ typedef struct {
     UINT16 expected_retiring_version;
     UINT16 replacement_operand_ordinal;
 } DSL_IR_NATIVE_VALUE_RETIRE_REQUEST;
+
+/*
+ * Runtime-only standard-WHIRL lowering transaction. Logical DSL node/value
+ * rows remain immutable provenance and are marked LOWERED after their native
+ * definition leaves the executable tree. No mapped-image row is added.
+ */
+typedef enum {
+    DSL_IR_NATIVE_LOWER_UNKNOWN = 0,
+    DSL_IR_NATIVE_LOWER_COMPUTED_STANDARD_BLOCK = 1,
+    DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION = 2
+} DSL_IR_NATIVE_VALUE_LOWER_MODE;
+
+typedef enum {
+    DSL_IR_LOWER_RELATION_UNKNOWN = 0,
+    DSL_IR_LOWER_RELATION_RUNTIME_VALUE_PROJECTION = 1,
+    DSL_IR_LOWER_RELATION_ROOT_PROMOTED_INPUT = 2
+} DSL_IR_LOWER_RELATION_KIND;
+
+typedef struct {
+    UINT32 relation_kind;
+    DSL_RUNTIME_VALUE_PROJECTION_ID value_projection_id;
+    DSL_RUNTIME_INPUT_ID runtime_input_id;
+    DSL_RUNTIME_INPUT_BINDING_ID runtime_binding_id;
+} DSL_IR_LOWER_RELATION;
+
+typedef struct {
+    WN *pu_root;
+    WN *containing_block;
+    WN *native_definition;
+    DSL_IR_VALUE_ID source_value_id;
+    DSL_OPERATOR expected_operator;
+    UINT16 expected_version;
+    UINT16 reserved;
+    UINT32 mode;
+    DSL_IR_LOWER_RELATION relation;
+    WN *standard_block;
+    WN *result_handle_definition;
+} DSL_IR_NATIVE_VALUE_LOWER_REQUEST;
+
+typedef struct {
+    DSL_IR_NODE_ID source_node_id;
+    DSL_IR_VALUE_ID source_value_id;
+    UINT32 mode;
+    UINT32 relation_kind;
+    DSL_RUNTIME_VALUE_PROJECTION_ID value_projection_id;
+    DSL_RUNTIME_INPUT_ID runtime_input_id;
+    DSL_RUNTIME_INPUT_BINDING_ID runtime_binding_id;
+    ST_IDX handle_st;
+    TY_IDX handle_ty;
+    UINT32 inserted_statement_count;
+} DSL_IR_NATIVE_VALUE_LOWER_RESULT;
 
 /*
  * Runtime-only, active-PU shape refinement request. The complete request
@@ -1045,6 +1098,17 @@ extern BOOL DSL_IR_Redirect_And_Retire_Native_Value
                                 (ST_IDX owner_pu_st,
                                  const DSL_IR_NATIVE_VALUE_RETIRE_REQUEST
                                      *request);
+extern BOOL DSL_IR_Lower_Native_Values_To_Standard_Blocks
+                                (ST_IDX owner_pu_st,
+                                 const DSL_IR_NATIVE_VALUE_LOWER_REQUEST
+                                     *requests,
+                                 UINT32 request_count,
+                                 FILE *diagnostic,
+                                 DSL_IR_NATIVE_VALUE_LOWER_RESULT *results);
+extern BOOL DSL_IR_Image_Resolve_Lowered_Relation
+                                (DSL_IR_VALUE_ID value_id,
+                                 DSL_IR_NATIVE_VALUE_LOWER_RESULT *result);
+extern BOOL DSL_IR_Image_Validate_Lowered_Relations (FILE *diagnostic);
 extern BOOL DSL_IR_Refine_Native_Value_Types
                                 (PU_Info *pu_info,
                                  WN *tree,
