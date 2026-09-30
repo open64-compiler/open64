@@ -81,6 +81,9 @@ static std::vector<DSL_CALLSITE_RUNTIME_ASSOCIATION>
     DSL_callsite_runtime_associations;
 
 static BOOL DSL_IR_Image_String_Id_Valid (STR_IDX id, BOOL required);
+static BOOL DSL_IR_Image_Report (FILE *diagnostic,
+                                 const char *message,
+                                 UINT32 id);
 
 typedef struct {
     const DSL_IR_IMAGE_HEADER *header;
@@ -1999,6 +2002,118 @@ DSL_Program_Interface_Image_Find_Runtime_Binding
     return found != NULL;
 }
 
+BOOL
+DSL_IR_Image_Resolve_Lowered_Relation
+        (DSL_IR_VALUE_ID value_id,
+         DSL_IR_NATIVE_VALUE_LOWER_RESULT *result)
+{
+    DSL_IR_VALUE_RECORD value;
+    if (result == NULL ||
+        !DSL_IR_Table_Get(DSL_ir_value_table, value_id, &value) ||
+        (value.flags & DSL_IR_VALUE_FLAG_LOWERED) == 0)
+        return FALSE;
+
+    DSL_RUNTIME_VALUE_PROJECTION_ID projection_id =
+        DSL_RUNTIME_VALUE_PROJECTION_INVALID_ID;
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+    UINT32 projection_count = 0;
+    for (UINT32 i = 1; i <= DSL_runtime_value_projection_table.Size(); ++i) {
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD current;
+        if (DSL_IR_Table_Get
+                (DSL_runtime_value_projection_table, i, &current) &&
+            current.source_value_id == value_id) {
+            projection = current;
+            projection_id = i;
+            ++projection_count;
+        }
+    }
+
+    DSL_RUNTIME_INPUT_ID input_id = DSL_RUNTIME_INPUT_INVALID_ID;
+    DSL_RUNTIME_INPUT_BINDING_ID binding_id =
+        DSL_RUNTIME_INPUT_BINDING_INVALID_ID;
+    DSL_RUNTIME_INPUT_RECORD input;
+    DSL_RUNTIME_INPUT_BINDING_RECORD binding;
+    UINT32 input_count = 0;
+    for (UINT32 i = 1; i <= DSL_runtime_input_table.Size(); ++i) {
+        DSL_RUNTIME_INPUT_RECORD current;
+        if (!DSL_IR_Table_Get(DSL_runtime_input_table, i, &current) ||
+            current.input_kind !=
+                DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR ||
+            current.source_value_id != value_id)
+            continue;
+        UINT32 root_count = 0;
+        DSL_RUNTIME_INPUT_BINDING_RECORD root;
+        DSL_RUNTIME_INPUT_BINDING_ID root_id =
+            DSL_RUNTIME_INPUT_BINDING_INVALID_ID;
+        for (UINT32 j = 1;
+             j <= DSL_runtime_input_binding_table.Size(); ++j) {
+            DSL_RUNTIME_INPUT_BINDING_RECORD candidate;
+            if (DSL_IR_Table_Get
+                    (DSL_runtime_input_binding_table, j, &candidate) &&
+                candidate.runtime_input_id == current.id &&
+                candidate.owner_pu_st == current.source_owner_pu_st &&
+                candidate.binding_kind ==
+                    DSL_RUNTIME_INPUT_BINDING_ROOT_PROMOTED_SOURCE) {
+                root = candidate;
+                root_id = j;
+                ++root_count;
+            }
+        }
+        if (root_count != 1)
+            return FALSE;
+        input = current;
+        input_id = i;
+        binding = root;
+        binding_id = root_id;
+        ++input_count;
+    }
+
+    if ((projection_count == 1) == (input_count == 1))
+        return FALSE;
+    memset(result, 0, sizeof(*result));
+    result->source_node_id = value.producer_node_id;
+    result->source_value_id = value.id;
+    if (projection_count == 1) {
+        if (projection.source_st != value.st ||
+            projection.source_ty != value.ty ||
+            projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE)
+            return FALSE;
+        result->mode = DSL_IR_NATIVE_LOWER_COMPUTED_STANDARD_BLOCK;
+        result->relation_kind =
+            DSL_IR_LOWER_RELATION_RUNTIME_VALUE_PROJECTION;
+        result->value_projection_id = projection_id;
+        result->handle_st = projection.handle_st;
+        result->handle_ty = projection.handle_ty;
+    } else {
+        if (input.source_st != value.st || input.source_ty != value.ty ||
+            input.source_tcon == TCON_IDX_ZERO ||
+            binding.handle_ty != input.handle_ty)
+            return FALSE;
+        result->mode = DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION;
+        result->relation_kind = DSL_IR_LOWER_RELATION_ROOT_PROMOTED_INPUT;
+        result->runtime_input_id = input_id;
+        result->runtime_binding_id = binding_id;
+        result->handle_st = binding.handle_st;
+        result->handle_ty = binding.handle_ty;
+    }
+    return TRUE;
+}
+
+BOOL
+DSL_IR_Image_Validate_Lowered_Relations (FILE *diagnostic)
+{
+    for (UINT32 i = 1; i <= DSL_ir_value_table.Size(); ++i) {
+        const DSL_IR_VALUE_RECORD &value = DSL_ir_value_table[i - 1];
+        if ((value.flags & DSL_IR_VALUE_FLAG_LOWERED) == 0)
+            continue;
+        DSL_IR_NATIVE_VALUE_LOWER_RESULT relation;
+        if (!DSL_IR_Image_Resolve_Lowered_Relation(i, &relation))
+            return DSL_IR_Image_Report
+                       (diagnostic, "invalid lowered runtime relation", i);
+    }
+    return TRUE;
+}
+
 DSL_RETIRED_FORMAL_ID
 DSL_Program_Interface_Image_Add_Retired_Formal
         (const DSL_RETIRED_FORMAL_RECORD *record)
@@ -2180,6 +2295,70 @@ DSL_Program_Interface_Image_Load_Mapped
     return TRUE;
 }
 
+static BOOL
+DSL_IR_Lowered_Relation_Views_Validate
+        (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *projections,
+         UINT32 projection_count,
+         const DSL_RUNTIME_INPUT_RECORD *inputs,
+         UINT32 input_count,
+         const DSL_RUNTIME_INPUT_BINDING_RECORD *bindings,
+         UINT32 binding_count,
+         FILE *diagnostic)
+{
+    for (UINT32 value_id = 1;
+         value_id <= DSL_ir_value_table.Size(); ++value_id) {
+        const DSL_IR_VALUE_RECORD &value = DSL_ir_value_table[value_id - 1];
+        if ((value.flags & DSL_IR_VALUE_FLAG_LOWERED) == 0)
+            continue;
+        UINT32 matched_projections = 0;
+        for (UINT32 i = 0; i < projection_count; ++i) {
+            if (projections[i].source_value_id != value.id)
+                continue;
+            if (projections[i].source_st != value.st ||
+                projections[i].source_ty != value.ty ||
+                projections[i].binding_kind !=
+                    DSL_RUNTIME_BINDING_LOCAL_VALUE)
+                return DSL_IR_Image_Report
+                           (diagnostic,
+                            "lowered projection mismatch", value.id);
+            ++matched_projections;
+        }
+        UINT32 matched_inputs = 0;
+        for (UINT32 i = 0; i < input_count; ++i) {
+            if (inputs[i].input_kind !=
+                    DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR ||
+                inputs[i].source_value_id != value.id)
+                continue;
+            if (inputs[i].source_st != value.st ||
+                inputs[i].source_ty != value.ty ||
+                inputs[i].source_tcon == TCON_IDX_ZERO)
+                return DSL_IR_Image_Report
+                           (diagnostic,
+                            "lowered promoted input mismatch", value.id);
+            UINT32 root_count = 0;
+            for (UINT32 j = 0; j < binding_count; ++j) {
+                if (bindings[j].runtime_input_id == inputs[i].id &&
+                    bindings[j].owner_pu_st ==
+                        inputs[i].source_owner_pu_st &&
+                    bindings[j].binding_kind ==
+                        DSL_RUNTIME_INPUT_BINDING_ROOT_PROMOTED_SOURCE &&
+                    bindings[j].handle_ty == inputs[i].handle_ty)
+                    ++root_count;
+            }
+            if (root_count != 1)
+                return DSL_IR_Image_Report
+                           (diagnostic,
+                            "lowered promoted binding mismatch", value.id);
+            ++matched_inputs;
+        }
+        if ((matched_projections == 1) == (matched_inputs == 1))
+            return DSL_IR_Image_Report
+                       (diagnostic,
+                        "ambiguous lowered runtime relation", value.id);
+    }
+    return TRUE;
+}
+
 BOOL
 DSL_Program_Runtime_Interface_Images_Load_Mapped
         (const void *program_section_base, UINT64 program_section_size,
@@ -2219,6 +2398,16 @@ DSL_Program_Runtime_Interface_Images_Load_Mapped
               has_runtime ? runtime_view.calls : NULL,
               has_runtime ? runtime_view.header->call_projection_count : 0,
               TRUE, diagnostic))
+        return FALSE;
+    if (!DSL_IR_Lowered_Relation_Views_Validate
+             (has_runtime ? runtime_view.values : NULL,
+              has_runtime ? runtime_view.header->value_projection_count : 0,
+              has_program ? program_view.inputs : NULL,
+              has_program ? program_view.header->runtime_input_count : 0,
+              has_program ? program_view.bindings : NULL,
+              has_program ?
+                  program_view.header->runtime_input_binding_count : 0,
+              diagnostic))
         return FALSE;
     if (has_program)
         DSL_Program_Interface_Mapped_View_Commit(program_view);
@@ -2279,6 +2468,31 @@ DSL_IR_Image_Report (FILE *diagnostic, const char *message, UINT32 id)
 }
 
 static BOOL
+DSL_IR_Image_Node_Acyclic
+        (const DSL_IR_IMAGE_VIEW *view,
+         DSL_IR_NODE_ID node_id,
+         std::vector<UINT8> *state)
+{
+    if ((*state)[node_id - 1] == 1)
+        return FALSE;
+    if ((*state)[node_id - 1] == 2)
+        return TRUE;
+    (*state)[node_id - 1] = 1;
+    const DSL_IR_NODE_RECORD &node = view->nodes[node_id - 1];
+    for (UINT32 i = 0; i < node.operand_count; ++i) {
+        const DSL_IR_VALUE_REFERENCE_RECORD &reference =
+            view->value_references[node.first_operand_reference_id - 1 + i];
+        const DSL_IR_VALUE_RECORD &value = view->values[reference.value_id - 1];
+        if (value.producer_node_id != DSL_IR_NODE_INVALID_ID &&
+            !DSL_IR_Image_Node_Acyclic
+                (view, value.producer_node_id, state))
+            return FALSE;
+    }
+    (*state)[node_id - 1] = 2;
+    return TRUE;
+}
+
+static BOOL
 DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
 {
     const DSL_IR_IMAGE_HEADER &header = *view->header;
@@ -2321,7 +2535,10 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
         const DSL_IR_VALUE_RECORD &record = view->values[i];
         if (record.id != i + 1 || record.value_kind == DSL_IR_VALUE_UNKNOWN ||
             record.producer_node_id > header.node_count ||
-            (record.flags & ~DSL_IR_VALUE_FLAG_REDIRECTED) != 0 ||
+            (record.flags & ~(DSL_IR_VALUE_FLAG_REDIRECTED |
+                              DSL_IR_VALUE_FLAG_LOWERED)) != 0 ||
+            ((record.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0 &&
+             (record.flags & DSL_IR_VALUE_FLAG_LOWERED) != 0) ||
             record.reserved != 0 ||
             !DSL_IR_Image_String_Id_Valid(record.name, FALSE) ||
             !DSL_IR_Image_String_Id_Valid(record.metadata, FALSE))
@@ -2351,6 +2568,7 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
     for (UINT32 i = 0; i < header.node_count; ++i) {
         const DSL_IR_NODE_RECORD &record = view->nodes[i];
         const UINT32 valid_node_flags = DSL_IR_NODE_FLAG_RETIRED |
+                                        DSL_IR_NODE_FLAG_LOWERED |
                                         DSL_IR_NODE_REDIRECT_ORDINAL_MASK;
         active_attribute_count += record.attribute_count;
         active_value_reference_count += record.operand_count;
@@ -2359,6 +2577,8 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
             record.result_value_id == 0 ||
             record.result_value_id > header.value_count ||
             (record.flags & ~valid_node_flags) != 0 ||
+            ((record.flags & DSL_IR_NODE_FLAG_RETIRED) != 0 &&
+             (record.flags & DSL_IR_NODE_FLAG_LOWERED) != 0) ||
             ((record.flags & DSL_IR_NODE_FLAG_RETIRED) == 0 &&
              (record.flags & DSL_IR_NODE_REDIRECT_ORDINAL_MASK) != 0) ||
             !DSL_IR_Image_String_Id_Valid(record.payload, FALSE))
@@ -2432,9 +2652,16 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
                 (target->flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0)
                 return DSL_IR_Image_Report
                            (diagnostic, "invalid retired node", i + 1);
-        } else if ((result.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0) {
+        } else if ((record.flags & DSL_IR_NODE_FLAG_LOWERED) != 0) {
+            if ((result.flags & DSL_IR_VALUE_FLAG_LOWERED) == 0 ||
+                (result.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0 ||
+                descriptor.effect_model != DSL_EFFECT_MODEL_PURE)
+                return DSL_IR_Image_Report
+                           (diagnostic, "invalid lowered node", i + 1);
+        } else if ((result.flags & (DSL_IR_VALUE_FLAG_REDIRECTED |
+                                    DSL_IR_VALUE_FLAG_LOWERED)) != 0) {
             return DSL_IR_Image_Report
-                       (diagnostic, "redirected live value", result.id);
+                       (diagnostic, "nonlive flag on live value", result.id);
         }
     }
 
@@ -2446,9 +2673,22 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
     for (UINT32 i = 0; i < header.value_reference_count; ++i) {
         const DSL_IR_VALUE_RECORD &referenced =
             view->values[view->value_references[i].value_id - 1];
+        const DSL_IR_NODE_RECORD &owner =
+            view->nodes[view->value_references[i].owner_node_id - 1];
         if ((referenced.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0)
             return DSL_IR_Image_Report
                        (diagnostic, "reference to redirected value", i + 1);
+        if ((referenced.flags & DSL_IR_VALUE_FLAG_LOWERED) != 0 &&
+            (owner.flags & DSL_IR_NODE_FLAG_LOWERED) == 0)
+            return DSL_IR_Image_Report
+                       (diagnostic, "live reference to lowered value", i + 1);
+    }
+
+    std::vector<UINT8> node_state(header.node_count, 0);
+    for (UINT32 i = 1; i <= header.node_count; ++i) {
+        if (!DSL_IR_Image_Node_Acyclic(view, i, &node_state))
+            return DSL_IR_Image_Report
+                       (diagnostic, "cyclic value dependency", i);
     }
 
     return TRUE;
@@ -2517,6 +2757,30 @@ DSL_IR_Image_Redirect_And_Retire_Value
         (replacement_operand_ordinal << DSL_IR_NODE_REDIRECT_ORDINAL_SHIFT);
     DSL_ir_value_table[retiring_value_id - 1].flags |=
         DSL_IR_VALUE_FLAG_REDIRECTED;
+    return TRUE;
+}
+
+BOOL
+DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID value_id)
+{
+    DSL_IR_VALUE_RECORD value;
+    if (!DSL_IR_Table_Get(DSL_ir_value_table, value_id, &value) ||
+        value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
+        value.producer_node_id > DSL_ir_node_table.Size() ||
+        value.flags != DSL_IR_VALUE_FLAG_NONE)
+        return FALSE;
+    DSL_IR_NODE_RECORD &node =
+        DSL_ir_node_table[value.producer_node_id - 1];
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
+    if (node.result_value_id != value_id ||
+        node.flags != DSL_IR_NODE_FLAG_NONE ||
+        !DSL_IR_Table_Get
+            (DSL_ir_opcode_descriptor_table, node.opcode_descriptor_id,
+             &descriptor) ||
+        descriptor.effect_model != DSL_EFFECT_MODEL_PURE)
+        return FALSE;
+    node.flags = DSL_IR_NODE_FLAG_LOWERED;
+    DSL_ir_value_table[value_id - 1].flags = DSL_IR_VALUE_FLAG_LOWERED;
     return TRUE;
 }
 
@@ -3079,7 +3343,8 @@ DSL_IR_Image_Executable_Node_Count (void)
 {
     UINT32 count = 0;
     for (UINT32 i = 0; i < DSL_ir_node_table.Size(); ++i) {
-        if ((DSL_ir_node_table[i].flags & DSL_IR_NODE_FLAG_RETIRED) == 0)
+        if ((DSL_ir_node_table[i].flags &
+             (DSL_IR_NODE_FLAG_RETIRED | DSL_IR_NODE_FLAG_LOWERED)) == 0)
             ++count;
     }
     return count;

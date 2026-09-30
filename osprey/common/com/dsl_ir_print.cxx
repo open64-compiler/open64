@@ -203,6 +203,28 @@ DSL_IR_Image_Print (FILE *file)
             DSL_IR_Image_Value_Redirect_Target(node.result_value_id, &target);
             fprintf(file, " status=retired redirected_to=value%u", target);
         }
+        if ((node.flags & DSL_IR_NODE_FLAG_LOWERED) != 0) {
+            DSL_IR_NATIVE_VALUE_LOWER_RESULT relation;
+            if (DSL_IR_Image_Resolve_Lowered_Relation
+                    (node.result_value_id, &relation)) {
+                fprintf(file, " status=lowered relation=%s",
+                        relation.relation_kind ==
+                            DSL_IR_LOWER_RELATION_RUNTIME_VALUE_PROJECTION ?
+                        "runtime_value_projection" :
+                        "root_promoted_input");
+                if (relation.value_projection_id != 0)
+                    fprintf(file, " projection=%u",
+                            relation.value_projection_id);
+                if (relation.runtime_input_id != 0)
+                    fprintf(file, " runtime_input=%u runtime_binding=%u",
+                            relation.runtime_input_id,
+                            relation.runtime_binding_id);
+                fprintf(file, " handle=<%u,%u> handle_ty=%u",
+                        ST_IDX_level(relation.handle_st),
+                        ST_IDX_index(relation.handle_st),
+                        (UINT32)relation.handle_ty);
+            }
+        }
         if (node.payload != STR_IDX_ZERO)
             fprintf (file, " payload=%s", DSL_IR_String(node.payload));
         fprintf (file, " flags=0x%x\n", node.flags);
@@ -238,6 +260,28 @@ DSL_IR_Image_Print (FILE *file)
             DSL_IR_VALUE_ID target = DSL_IR_VALUE_INVALID_ID;
             DSL_IR_Image_Value_Redirect_Target(record.id, &target);
             fprintf(file, " status=redirected redirected_to=value%u", target);
+        }
+        if ((record.flags & DSL_IR_VALUE_FLAG_LOWERED) != 0) {
+            DSL_IR_NATIVE_VALUE_LOWER_RESULT relation;
+            if (DSL_IR_Image_Resolve_Lowered_Relation
+                    (record.id, &relation)) {
+                fprintf(file, " status=lowered relation=%s",
+                        relation.relation_kind ==
+                            DSL_IR_LOWER_RELATION_RUNTIME_VALUE_PROJECTION ?
+                        "runtime_value_projection" :
+                        "root_promoted_input");
+                if (relation.value_projection_id != 0)
+                    fprintf(file, " projection=%u",
+                            relation.value_projection_id);
+                if (relation.runtime_input_id != 0)
+                    fprintf(file, " runtime_input=%u runtime_binding=%u",
+                            relation.runtime_input_id,
+                            relation.runtime_binding_id);
+                fprintf(file, " handle=<%u,%u> handle_ty=%u",
+                        ST_IDX_level(relation.handle_st),
+                        ST_IDX_index(relation.handle_st),
+                        (UINT32)relation.handle_ty);
+            }
         }
         fprintf (file, " flags=0x%x\n", record.flags);
     }
