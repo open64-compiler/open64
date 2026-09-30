@@ -444,12 +444,42 @@ register the final semantic verifier, and certify the exact evaluation and
 selector 87-static/147-dynamic censuses through `.mid.B`, `ir_b2a -st -src`,
 unchanged `whirl2c`, and mock-runtime execution.
 
-The post-PR #155 full-model audit found that this binding cannot yet be
-implemented safely. The generic projection requires complete projection of
-all original formals and call arguments, including verified-dead BatchNorm
-inputs, while it has no contract to promote root-owned live plaintext values
-to launcher-supplied formals or to thread the runtime-only model and composite
-coefficient handles through shared PUs. The exact evidence, rejected
-workarounds, proposed generic transactions, and test matrix are recorded in
-`doc/FHE-SYNC5-RUNTIME-ENTRY-BINDING-GAP.md`. S5-2c remains fail-closed until
-that main/common contract is reviewed and merged.
+PR #156 closed the post-PR #155 program-interface gaps. The merged generic
+transaction now prunes verified-dead BatchNorm formals and caller actuals,
+promotes root-owned live plaintext values to launcher-supplied runtime inputs,
+and threads model and composite-coefficient resources through reused PUs. The
+FHE consumer can therefore resolve a source value to its exact
+owner-qualified projected handle and resolve a semantic resource role to the
+exact program input handle. A focused fixture also constructs and verifies a
+detached descriptor-select plus bootstrap call sequence using those resolved
+handles and ordinary standard WHIRL.
+
+PR #157 closed the next boundary with the reviewed atomic transaction. The FHE
+consumer now supplies a detached complete ReLU standard-WHIRL block whose
+final `STID` defines the exact projected runtime output handle. The successful
+focused transaction emits six selector calls plus refresh, normalization,
+three polynomial stages, and reconstruction; it removes the executable
+`common.relu` definition and retains the logical node/value as lowered
+provenance. The root model and three coefficient handles are explicit program
+inputs. Promoted external tensors use the transaction's source-elision mode;
+runtime-only resources have no source DSL definition and remain excluded.
+
+S5-2c is no longer blocked on shared infrastructure. It remains fail-closed
+until the FHE pass expands this pattern to every admitted full-model operation,
+collects complete per-PU request arrays, registers the production semantic
+callback, proves the exact 87-static/147-dynamic census, and atomically
+publishes the complete `.mid.B` artifact family.
+
+The original evidence, rejected workarounds, PR #156/#157 resolution, and current
+consumer sequence are recorded in
+`doc/FHE-SYNC5-RUNTIME-ENTRY-BINDING-GAP.md`.
+
+The focused consumer checkpoint is reproduced by
+`osprey/be/vho/tests/fhe_semantic_runtime_lower_test.sh`. It runs the linked
+contract producer, writes `runtime_call_resolution.B`, reopens that binary in a
+separate `ir_b2a -st -src` process, extracts the target PU trace, and checks
+the exact six-selector/one-refresh/one-normalization/three-stage/one-
+reconstruction census. It also checks the four root resource roles, lowered
+`common.relu` provenance, absence of an executable ReLU in the target PU, and
+retains commands, diagnostics, and SHA-256 hashes under the selected artifact
+directory.

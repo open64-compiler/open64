@@ -1,6 +1,6 @@
 # FHE SYNC-5 Runtime Entry And Resource Binding Gap
 
-Status: blocking contract handoff after PR #155
+Status: closed by PR #156 and PR #157; full-model consumption is FHE-owned
 
 ## Purpose
 
@@ -151,3 +151,43 @@ After the contracts merge, the FHE semantic lowerer will:
    and
 8. publish `.mid.B` and its auxiliary schedule artifacts atomically.
 
+## Post-PR #156 Resolution And Current Boundary
+
+PR #156 published the generic program-interface transaction required by the
+first three steps above:
+
+- verified-dead formals and all matching caller actuals can be pruned as one
+  owner-safe program edit;
+- live root external tensors can be promoted to exact launcher-supplied
+  runtime input handles while retaining their canonical tensor/value rows as
+  provenance; and
+- role-qualified runtime resources can be threaded through the root and
+  shared callee PUs without globals, name parsing, or invented tensor values.
+
+The FHE consumer has exercised those contracts with exact owner-qualified
+value lookup and role lookup. It also constructs a detached checked
+`open64_fhe_operation_desc_select_v1` followed by
+`open64_fhe_bootstrap_v1`, preserving source position and using the merged
+`fhe.model` program input plus the exact projected ciphertext handle. This
+proves handle origin and standard-call construction, but deliberately leaves
+the logical source node and physical DSL definition unchanged.
+
+PR #157 supplies the remaining atomic native-value lowering transaction.
+Its relation is a closed tagged union:
+
+1. `COMPUTED_STANDARD_BLOCK` replaces one executable native DSL definition
+   with a detached standard-WHIRL block whose final store defines that source
+   value's exact projected runtime output handle.
+2. `PROMOTED_SOURCE_ELISION` removes the executable external tensor-constant
+   definition without adding a store because the root launcher supplies the
+   corresponding promoted runtime input.
+
+Both modes retain logical node/value rows and source evidence, mark them as
+lowered/nonexecuting provenance, reject incomplete or inconsistent arrays
+before mutation, and commit in deterministic physical definition order.
+Runtime-only model and coefficient resources have no source DSL definition and
+therefore need no request. The FHE consumer has certified computed mode with a
+complete source-ReLU block containing six selector/evaluation pairs and one
+final projected-result assignment. Full-model operation coverage, all-PU
+callback registration, census verification, and `.mid.B` publication remain
+FHE-owned; no further common/com API gap is known at this checkpoint.

@@ -47,6 +47,8 @@ VHO_FHE_Runtime_Lower_Structural_Gate
     if (!DSL_IR_Image_Validate(diagnostic) ||
         !DSL_Effect_Image_Validate(diagnostic) ||
         !DSL_Call_Image_Validate(diagnostic) ||
+        !DSL_Runtime_Interface_Image_Validate(diagnostic) ||
+        !DSL_Program_Interface_Image_Validate(diagnostic) ||
         !DSL_FHE_Image_Validate(diagnostic) ||
         !DSL_FHE_Plan_Image_Validate(diagnostic) ||
         !DSL_FHE_Approx_Profile_Image_Validate(diagnostic) ||
@@ -210,6 +212,15 @@ VHO_FHE_Runtime_Lower_Program_Unit
     if (!VHO_FHE_Unlowered_Gate_Program_Unit
              (pu_info, *tree, diagnostic, &gate_result)) {
         local_result.error_count += gate_result.error_count;
+        if (result != NULL)
+            *result = local_result;
+        return FALSE;
+    }
+    if (!DSL_Program_Interface_Validate_Lowered_PU
+             (pu_info, diagnostic)) {
+        VHO_FHE_Runtime_Lower_Report
+            (diagnostic, &local_result,
+             "lowered program interface is inconsistent");
         if (result != NULL)
             *result = local_result;
         return FALSE;
