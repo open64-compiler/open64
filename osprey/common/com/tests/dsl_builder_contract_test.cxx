@@ -5106,6 +5106,1181 @@ Check_Runtime_Interface_Projection(void)
 }
 
 static int
+Check_Program_Interface_Cycle_Rejection(void)
+{
+    DSL_BUILDER_PROGRAM_UNIT pu[3];
+    DSL_BUILDER_PU_SOURCE_IDENTITY identity;
+    DSL_BUILDER_CALLSITE_INFO callsite_info;
+    DSL_CALLSITE_METADATA_RECORD callsite[3];
+    DSL_RUNTIME_INPUT_REQUEST input;
+    DSL_RUNTIME_INPUT_BINDING_REQUEST binding[3];
+    DSL_RUNTIME_INPUT_CALL_REQUEST call[3];
+    DSL_PROGRAM_INTERFACE_PLAN program_plan;
+    DSL_RUNTIME_INTERFACE_PLAN runtime_plan;
+    TY_IDX handle_ty;
+    UINT32 file_id[3];
+    const char *name[3] = {
+        "program_interface_cycle_root",
+        "program_interface_cycle_a",
+        "program_interface_cycle_b"
+    };
+    int failed = 0;
+#define PROGRAM_CYCLE_CHECK(condition, message) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "program cycle check failed: %s\n", message); \
+            failed = 1; \
+        } \
+    } while (0)
+
+    PROGRAM_CYCLE_CHECK(DSL_Builder_Begin_Program(),
+                        "program initialization");
+    handle_ty = Create_Runtime_Interface_Handle_TY
+                    ("program_interface_cycle_resource_v1");
+    for (UINT32 i = 0; i < 3; ++i) {
+        pu[i] = DSL_Builder_Create_Minimal_PU(name[i]);
+        file_id[i] = DSL_Builder_Register_Source_File(pu[i], __FILE__);
+        memset(&identity, 0, sizeof(identity));
+        identity.canonical_definition_name = name[i];
+        identity.defining_module = "dsl_builder_contract_test";
+        identity.defining_file = __FILE__;
+        identity.defining_line = __LINE__;
+        PROGRAM_CYCLE_CHECK
+            (pu[i] != NULL && file_id[i] != 0 &&
+             DSL_Builder_Set_PU_Source_Identity(pu[i], &identity) &&
+             DSL_Builder_Return_PU_Values(pu[i], NULL, 0),
+             "cycle PU construction");
+    }
+    const UINT32 caller_index[3] = { 0, 1, 2 };
+    const UINT32 callee_index[3] = { 1, 2, 1 };
+    for (UINT32 i = 0; i < 3; ++i) {
+        memset(&callsite_info, 0, sizeof(callsite_info));
+        callsite_info.canonical_class_name = name[callee_index[i]];
+        callsite_info.instance_path = "program.interface.cycle";
+        callsite_info.context_identity = name[caller_index[i]];
+        callsite_info.call_ordinal = i;
+        callsite_info.source_position.file_id = file_id[caller_index[i]];
+        callsite_info.source_position.line = __LINE__ + i + 1;
+        callsite_info.source_position.statement_begin = 1;
+        DSL_BUILDER_CALL builder_call = DSL_Builder_Create_PU_Call
+            (pu[caller_index[i]], pu[callee_index[i]], NULL, 0, NULL, 0,
+             &callsite_info);
+        PROGRAM_CYCLE_CHECK
+            (builder_call != NULL &&
+             DSL_Call_Image_Find_Callsite(builder_call, &callsite[i]),
+             "cycle call construction");
+    }
+    if (failed)
+        return failed;
+
+    memset(&input, 0, sizeof(input));
+    input.input_kind = DSL_RUNTIME_INPUT_OPAQUE_RESOURCE;
+    input.stable_role = "fhe.cycle.resource";
+    input.handle_ty = handle_ty;
+    memset(binding, 0, sizeof(binding));
+    for (UINT32 i = 0; i < 3; ++i) {
+        USRCPOS source_position;
+        USRCPOS_clear(source_position);
+        USRCPOS_filenum(source_position) = file_id[i];
+        USRCPOS_linenum(source_position) = __LINE__ + i + 1;
+        binding[i].owner_pu_st = PU_Info_proc_sym(pu[i]);
+        binding[i].runtime_input_index = i == 0 ? 0 :
+            DSL_PROGRAM_INTERFACE_INVALID_REQUEST_INDEX;
+        binding[i].handle_ty = handle_ty;
+        binding[i].binding_kind = i == 0 ?
+            DSL_RUNTIME_INPUT_BINDING_ROOT_RESOURCE :
+            DSL_RUNTIME_INPUT_BINDING_THREADED_FORMAL;
+        binding[i].semantic_role = "fhe.cycle.resource";
+        binding[i].source_position = USRCPOS_srcpos(source_position);
+    }
+    const UINT32 caller_binding[3] = { 0, 1, 2 };
+    const UINT32 callee_binding[3] = { 1, 2, 1 };
+    for (UINT32 i = 0; i < 3; ++i) {
+        call[i].callsite_id = callsite[i].id;
+        call[i].caller_binding_index = caller_binding[i];
+        call[i].callee_binding_index = callee_binding[i];
+    }
+    memset(&program_plan, 0, sizeof(program_plan));
+    program_plan.runtime_inputs = &input;
+    program_plan.runtime_input_count = 1;
+    program_plan.runtime_input_bindings = binding;
+    program_plan.runtime_input_binding_count = 3;
+    program_plan.runtime_input_calls = call;
+    program_plan.runtime_input_call_count = 3;
+    memset(&runtime_plan, 0, sizeof(runtime_plan));
+    WN *tree_snapshot[3] = {
+        PU_Info_tree_ptr(pu[0]), PU_Info_tree_ptr(pu[1]),
+        PU_Info_tree_ptr(pu[2])
+    };
+    UINT32 ty_count = TY_Table_Size();
+    UINT32 value_count = DSL_IR_Image_Value_Count();
+    PROGRAM_CYCLE_CHECK
+        (!DSL_Program_Interface_Plan_Validate
+              (&program_plan, &runtime_plan, NULL) &&
+         PU_Info_tree_ptr(pu[0]) == tree_snapshot[0] &&
+         PU_Info_tree_ptr(pu[1]) == tree_snapshot[1] &&
+         PU_Info_tree_ptr(pu[2]) == tree_snapshot[2] &&
+         TY_Table_Size() == ty_count &&
+         DSL_IR_Image_Value_Count() == value_count &&
+         DSL_Program_Interface_Image_Runtime_Input_Count() == 0 &&
+         DSL_Runtime_Interface_Image_Value_Count() == 0,
+         "complete cyclic resource graph rejects without mutation");
+    if (!failed)
+        printf("DSL program interface cycle rejection passed\n");
+#undef PROGRAM_CYCLE_CHECK
+    return failed;
+}
+
+static int
+Check_Program_Interface_Evolution(void)
+{
+    const char *artifact = getenv("OPEN64_DSL_PROGRAM_INTERFACE_ARTIFACT");
+    DSL_BUILDER_TENSOR_TYPE_CORE type_core;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_PROGRAM_UNIT callee;
+    DSL_BUILDER_PROGRAM_UNIT caller;
+    DSL_BUILDER_VALUE formals[3];
+    DSL_BUILDER_VALUE result_formal;
+    DSL_BUILDER_VALUE callee_result;
+    DSL_BUILDER_VALUE constants[2];
+    DSL_BUILDER_VALUE arguments[3];
+    DSL_BUILDER_VALUE call_result[2];
+    DSL_BUILDER_CALL builder_call[2];
+    DSL_BUILDER_CALLSITE_INFO callsite_info;
+    DSL_BUILDER_PU_SOURCE_IDENTITY source_identity;
+    DSL_CALLSITE_METADATA_RECORD callsite[2];
+    DSL_CALL_ARGUMENT_RECORD live_argument[2];
+    DSL_CALL_ARGUMENT_RECORD retired_argument[4];
+    DSL_PU_FORMAL_RECORD live_formal;
+    DSL_PU_FORMAL_RECORD retired_formal[2];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    DSL_BUILDER_VALUE kids[2];
+    const char *result_names[1] = { "program_interface_result" };
+    DSL_RUNTIME_VALUE_PROJECTION_REQUEST values[6];
+    DSL_RUNTIME_CALL_PROJECTION_REQUEST calls[4];
+    DSL_RUNTIME_INTERFACE_PLAN runtime_plan;
+    DSL_RETIRED_FORMAL_REQUEST retired_formals[2];
+    DSL_RETIRED_CALL_ARGUMENT_REQUEST retired_arguments[4];
+    DSL_RUNTIME_INPUT_REQUEST inputs[6];
+    DSL_RUNTIME_INPUT_BINDING_REQUEST bindings[12];
+    DSL_RUNTIME_INPUT_CALL_REQUEST input_calls[12];
+    DSL_PROGRAM_INTERFACE_PLAN program_plan;
+    DSL_PROGRAM_INTERFACE_RESULT result;
+    TY_IDX tensor_ty;
+    TY_IDX cipher_ty;
+    TY_IDX model_ty;
+    TY_IDX plain_ty;
+    TY_IDX wrong_tensor_ty;
+    TCON_IDX coefficient_tcon[3];
+    TCON_IDX external_tcon[2];
+    DSL_TENSOR_TCON_CREATE_INFO tcon_info;
+    DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE external_reference;
+    DSL_BUILDER_VALUE external_tensor[2];
+    int failed = 0;
+#define PROGRAM_INTERFACE_CHECK(condition, message) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "program interface check failed: %s\n", \
+                    message); \
+            failed = 1; \
+        } \
+    } while (0)
+
+    if (artifact == NULL || artifact[0] == '\0') {
+        fprintf(stderr, "program interface artifact path is required\n");
+        return 1;
+    }
+    PROGRAM_INTERFACE_CHECK(DSL_Builder_Begin_Program(),
+                            "program initialization");
+    DSL_Opcode_Register_Common_Substrate();
+    memset(&type_core, 0, sizeof(type_core));
+    type_core.kind = "tensor";
+    type_core.dtype = "float32";
+    type_core.rank = 4;
+    type_core.logical_shape = "[1,1,2,2]";
+    tensor_ty = DSL_Builder_Create_Tensor_Type_Core
+                    ("program_interface_tensor", MTYPE_To_TY(MTYPE_F4),
+                     &type_core);
+    TY_tensor_bind_attribute
+        (tensor_ty, TY_TENSOR_SCHEMA_LAYOUT, "row_major");
+    TY_tensor_bind_attribute
+        (tensor_ty, TY_TENSOR_SCHEMA_PLACEMENT, "side_file");
+    TY_tensor_bind_attribute
+        (tensor_ty, TY_TENSOR_SCHEMA_MEMORY, "external_data");
+    PROGRAM_INTERFACE_CHECK(TY_tensor_seal(tensor_ty),
+                            "canonical tensor descriptor");
+    DSL_BUILDER_TENSOR_TYPE_CORE wrong_core = type_core;
+    wrong_core.rank = 1;
+    wrong_core.logical_shape = "[4]";
+    wrong_tensor_ty = DSL_Builder_Create_Tensor_Type_Core
+                          ("program_interface_wrong_tensor",
+                           MTYPE_To_TY(MTYPE_F4), &wrong_core);
+    TY_tensor_bind_attribute
+        (wrong_tensor_ty, TY_TENSOR_SCHEMA_LAYOUT, "row_major");
+    TY_tensor_bind_attribute
+        (wrong_tensor_ty, TY_TENSOR_SCHEMA_PLACEMENT, "side_file");
+    TY_tensor_bind_attribute
+        (wrong_tensor_ty, TY_TENSOR_SCHEMA_MEMORY, "external_data");
+    PROGRAM_INTERFACE_CHECK(TY_tensor_seal(wrong_tensor_ty),
+                            "alternate canonical tensor descriptor");
+    cipher_ty = Create_Runtime_Interface_Handle_TY
+                    ("program_interface_ciphertext_v1");
+    model_ty = Create_Runtime_Interface_Handle_TY
+                   ("program_interface_model_v1");
+    plain_ty = Create_Runtime_Interface_Handle_TY
+                   ("program_interface_plaintext_v1");
+    memset(&tcon_info, 0, sizeof(tcon_info));
+    tcon_info.descriptor_ty = tensor_ty;
+    tcon_info.scalar_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F4, 0.0));
+    tcon_info.element_mtype = MTYPE_F4;
+    tcon_info.element_count = 4;
+    tcon_info.logical_bytes = 16;
+    tcon_info.required_alignment = 16;
+    tcon_info.element_size = 4;
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Tensor_TCON_Create_Zero
+             (&tcon_info, &coefficient_tcon[0], NULL),
+         "stage0 coefficient TCON");
+    tcon_info.scalar_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F4, 1.0));
+    tcon_info.scalar_integer_value = 1;
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Tensor_TCON_Create_One
+             (&tcon_info, &coefficient_tcon[1], NULL),
+         "stage1 coefficient TCON");
+    tcon_info.scalar_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F4, 2.0));
+    tcon_info.scalar_integer_value = 2;
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Tensor_TCON_Create_Splat
+             (&tcon_info, &coefficient_tcon[2], NULL),
+         "stage2 coefficient TCON");
+    memset(&tcon_info, 0, sizeof(tcon_info));
+    tcon_info.descriptor_ty = tensor_ty;
+    tcon_info.element_mtype = MTYPE_F4;
+    tcon_info.element_count = 4;
+    tcon_info.logical_bytes = 16;
+    tcon_info.required_alignment = 16;
+    tcon_info.element_size = 4;
+    tcon_info.side_path = "program_interface.safetensors";
+    tcon_info.side_path_length = strlen(tcon_info.side_path);
+    tcon_info.byte_length = 16;
+    tcon_info.checksum_hi = 0x12345678;
+    tcon_info.checksum_lo = 0x9abcdef0;
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Tensor_TCON_Create_Side_File_Dense
+             (&tcon_info, &external_tcon[0], NULL),
+         "promoted external weight TCON");
+    tcon_info.descriptor_ty = wrong_tensor_ty;
+    tcon_info.side_path = "program_interface.safetensors";
+    tcon_info.side_path_length = strlen(tcon_info.side_path);
+    tcon_info.checksum_hi = 0x23456789;
+    tcon_info.checksum_lo = 0xabcdef01;
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Tensor_TCON_Create_Side_File_Dense
+             (&tcon_info, &external_tcon[1], NULL),
+         "promoted external bias TCON");
+
+    callee = DSL_Builder_Create_Minimal_PU("program_interface_callee");
+    UINT32 callee_file = DSL_Builder_Register_Source_File(callee, __FILE__);
+    memset(&source_identity, 0, sizeof(source_identity));
+    source_identity.canonical_definition_name = "ProgramInterfaceCallee";
+    source_identity.defining_module = "dsl_builder_contract_test";
+    source_identity.defining_file = __FILE__;
+    source_identity.defining_line = __LINE__;
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Builder_Set_PU_Source_Identity(callee, &source_identity),
+         "callee source identity");
+    memset(&position, 0, sizeof(position));
+    position.file_id = callee_file;
+    position.line = __LINE__ + 1;
+    position.statement_begin = 1;
+    formals[0] = DSL_Builder_Declare_PU_Formal
+                     (callee, "live_input", 0, tensor_ty, &position);
+    ++position.line;
+    formals[1] = DSL_Builder_Declare_PU_Formal
+                     (callee, "dead_bn_input", 1, tensor_ty, &position);
+    ++position.line;
+    formals[2] = DSL_Builder_Declare_PU_Formal
+                     (callee, "dead_bn_state", 2, tensor_ty, &position);
+    ++position.line;
+    result_formal = DSL_Builder_Declare_PU_Result
+                        (callee, "cipher_output", 0, tensor_ty,
+                         DSL_PU_RESULT_TENSOR, &position);
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    kids[0] = formals[0];
+    kids[1] = formals[0];
+    callee_result = DSL_Builder_Create_Operator
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, kids, 2, &attribute, 1);
+    PROGRAM_INTERFACE_CHECK
+        (callee != NULL && formals[0] != NULL && formals[1] != NULL &&
+         formals[2] != NULL &&
+         result_formal != NULL && callee_result != NULL &&
+         DSL_Builder_Set_Value_Source_Position(callee_result, &position) &&
+         DSL_Builder_Return_PU_Values(callee, &callee_result, 1),
+         "callee construction");
+
+    caller = DSL_Builder_Create_Minimal_PU("program_interface_caller");
+    UINT32 caller_file = DSL_Builder_Register_Source_File(caller, __FILE__);
+    memset(&source_identity, 0, sizeof(source_identity));
+    source_identity.canonical_definition_name = "ProgramInterfaceCaller";
+    source_identity.defining_module = "dsl_builder_contract_test";
+    source_identity.defining_file = __FILE__;
+    source_identity.defining_line = __LINE__;
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Builder_Set_PU_Source_Identity(caller, &source_identity),
+         "caller source identity");
+    position.file_id = caller_file;
+    position.line = __LINE__ + 1;
+    memset(&external_reference, 0, sizeof(external_reference));
+    external_reference.storage_format = "safetensors";
+    external_reference.side_file = "program_interface.safetensors";
+    external_reference.tensor_key = "promoted.weight";
+    external_reference.byte_length = 16;
+    external_reference.checksum =
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    external_tensor[0] = DSL_Builder_Create_External_Tensor_Constant
+                             ("promoted_weight", tensor_ty,
+                              &external_reference);
+    char external_tcon_text[2][32];
+    snprintf(external_tcon_text[0], sizeof(external_tcon_text[0]), "%u",
+             (UINT32)external_tcon[0]);
+    PROGRAM_INTERFACE_CHECK
+        (external_tensor[0] != NULL &&
+         DSL_Builder_Set_Value_Source_Position
+             (external_tensor[0], &position),
+         "promoted external weight source");
+    if (external_tensor[0] != NULL)
+        ST_tensor_bind_metadata
+            (DSL_Builder_Get_Value_Result_Symbol(external_tensor[0]),
+             "tensor_tcon_idx", external_tcon_text[0]);
+    external_reference.tensor_key = "promoted.bias";
+    external_tensor[1] = DSL_Builder_Create_External_Tensor_Constant
+                             ("promoted_bias", wrong_tensor_ty,
+                              &external_reference);
+    snprintf(external_tcon_text[1], sizeof(external_tcon_text[1]), "%u",
+             (UINT32)external_tcon[1]);
+    PROGRAM_INTERFACE_CHECK
+        (external_tensor[1] != NULL &&
+         DSL_Builder_Set_Value_Source_Position
+             (external_tensor[1], &position),
+         "promoted external bias source");
+    if (external_tensor[1] != NULL)
+        ST_tensor_bind_metadata
+            (DSL_Builder_Get_Value_Result_Symbol(external_tensor[1]),
+             "tensor_tcon_idx", external_tcon_text[1]);
+    constants[0] = DSL_Builder_Create_Tensor_Constant
+                       ("live_seed", tensor_ty, "float32", 4, "[1,1,2,2]",
+                        "zero_init", "0");
+    constants[1] = DSL_Builder_Create_Tensor_Constant
+                       ("dead_seed", tensor_ty, "float32", 4, "[1,1,2,2]",
+                        "one_init", "1");
+    kids[0] = constants[0];
+    kids[1] = constants[0];
+    arguments[0] = DSL_Builder_Create_Operator
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, kids, 2, &attribute, 1);
+    kids[0] = constants[1];
+    kids[1] = constants[1];
+    arguments[1] = DSL_Builder_Create_Operator
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, kids, 2, &attribute, 1);
+    kids[0] = constants[1];
+    kids[1] = constants[0];
+    arguments[2] = DSL_Builder_Create_Operator
+        (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                         DSL_OPCODE_COMMON_ADD, 1),
+         1, kids, 2, &attribute, 1);
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Builder_Set_Value_Source_Position(arguments[0], &position) &&
+         DSL_Builder_Set_Value_Source_Position(arguments[1], &position) &&
+         DSL_Builder_Set_Value_Source_Position(arguments[2], &position),
+         "caller source positions");
+    memset(&callsite_info, 0, sizeof(callsite_info));
+    callsite_info.canonical_class_name = "ProgramInterfaceCallee";
+    callsite_info.instance_path = "program.interface";
+    callsite_info.context_identity = "program.interface.call";
+    callsite_info.call_ordinal = 0;
+    callsite_info.source_position = position;
+    builder_call[0] = DSL_Builder_Create_PU_Call
+                          (caller, callee, arguments, 3, result_names, 1,
+                           &callsite_info);
+    PROGRAM_INTERFACE_CHECK
+        (builder_call[0] != NULL &&
+         DSL_Builder_Get_PU_Call_Result
+             (builder_call[0], 0, &call_result[0]) &&
+         DSL_Builder_Set_PU_Call_Argument_Role
+             (builder_call[0], 0, 0, "fhe.live_input") &&
+         DSL_Builder_Set_PU_Call_Argument_Role
+             (builder_call[0], 1, 1, "fhe.dead_bn_input") &&
+         DSL_Builder_Set_PU_Call_Argument_Role
+             (builder_call[0], 2, 2, "fhe.dead_bn_state") &&
+         DSL_Call_Image_Find_Callsite(builder_call[0], &callsite[0]) &&
+         DSL_Call_ABI_Image_Find_Argument_By_Id
+             (callsite[0].id, 0, &live_argument[0]) &&
+         DSL_Call_ABI_Image_Find_Argument_By_Id
+             (callsite[0].id, 1, &retired_argument[0]) &&
+         DSL_Call_ABI_Image_Find_Argument_By_Id
+             (callsite[0].id, 2, &retired_argument[1]) &&
+         DSL_PU_Interface_Image_Find_Formal
+             (PU_Info_proc_sym(callee), 0, &live_formal) &&
+         DSL_PU_Interface_Image_Find_Formal
+             (PU_Info_proc_sym(callee), 1, &retired_formal[0]) &&
+         DSL_PU_Interface_Image_Find_Formal
+             (PU_Info_proc_sym(callee), 2, &retired_formal[1]),
+         "first caller and retirement identity");
+    ++callsite_info.call_ordinal;
+    callsite_info.context_identity = "program.interface.call.second";
+    builder_call[1] = DSL_Builder_Create_PU_Call
+                          (caller, callee, arguments, 3, result_names, 1,
+                           &callsite_info);
+    PROGRAM_INTERFACE_CHECK
+        (builder_call[1] != NULL &&
+         DSL_Builder_Get_PU_Call_Result
+             (builder_call[1], 0, &call_result[1]) &&
+         DSL_Builder_Set_PU_Call_Argument_Role
+             (builder_call[1], 0, 0, "fhe.live_input") &&
+         DSL_Builder_Set_PU_Call_Argument_Role
+             (builder_call[1], 1, 1, "fhe.dead_bn_input") &&
+         DSL_Builder_Set_PU_Call_Argument_Role
+             (builder_call[1], 2, 2, "fhe.dead_bn_state") &&
+         DSL_Call_Image_Find_Callsite(builder_call[1], &callsite[1]) &&
+         DSL_Call_ABI_Image_Find_Argument_By_Id
+             (callsite[1].id, 0, &live_argument[1]) &&
+         DSL_Call_ABI_Image_Find_Argument_By_Id
+             (callsite[1].id, 1, &retired_argument[2]) &&
+         DSL_Call_ABI_Image_Find_Argument_By_Id
+             (callsite[1].id, 2, &retired_argument[3]),
+         "second caller and retirement identity");
+    if (failed)
+        return failed;
+
+    memset(values, 0, sizeof(values));
+    DSL_BUILDER_VALUE source_values[6] = {
+        formals[0], result_formal, callee_result, arguments[0],
+        call_result[0], call_result[1]
+    };
+    ST_IDX owners[6] = {
+        PU_Info_proc_sym(callee), PU_Info_proc_sym(callee),
+        PU_Info_proc_sym(callee), PU_Info_proc_sym(caller),
+        PU_Info_proc_sym(caller), PU_Info_proc_sym(caller)
+    };
+    TY_IDX handles[6] = {
+        cipher_ty, cipher_ty, cipher_ty, cipher_ty, cipher_ty, cipher_ty
+    };
+    UINT32 kinds[6] = {
+        DSL_RUNTIME_BINDING_INPUT_FORMAL,
+        DSL_RUNTIME_BINDING_RESULT_FORMAL,
+        DSL_RUNTIME_BINDING_LOCAL_VALUE,
+        DSL_RUNTIME_BINDING_LOCAL_VALUE,
+        DSL_RUNTIME_BINDING_LOCAL_VALUE,
+        DSL_RUNTIME_BINDING_LOCAL_VALUE
+    };
+    UINT32 ordinals[6] = {
+        0, 3, DSL_RUNTIME_INTERFACE_INVALID_ORDINAL,
+        DSL_RUNTIME_INTERFACE_INVALID_ORDINAL,
+        DSL_RUNTIME_INTERFACE_INVALID_ORDINAL,
+        DSL_RUNTIME_INTERFACE_INVALID_ORDINAL
+    };
+    for (UINT32 i = 0; i < 6; ++i) {
+        values[i].owner_pu_st = owners[i];
+        values[i].source_value_id =
+            DSL_Builder_Get_Value_Image_Id(source_values[i]);
+        values[i].expected_source_st =
+            DSL_Builder_Get_Value_Result_Symbol(source_values[i]);
+        values[i].expected_source_ty = tensor_ty;
+        values[i].handle_ty = handles[i];
+        values[i].binding_kind = kinds[i];
+        values[i].formal_ordinal = ordinals[i];
+    }
+    memset(calls, 0, sizeof(calls));
+    calls[0].owner_pu_st = PU_Info_proc_sym(caller);
+    calls[0].callsite_id = callsite[0].id;
+    calls[0].source_value_id = values[3].source_value_id;
+    calls[0].actual_ordinal = 0;
+    calls[0].callee_formal_ordinal = 0;
+    calls[0].direction = DSL_RUNTIME_CALL_INPUT;
+    calls[1].owner_pu_st = PU_Info_proc_sym(caller);
+    calls[1].callsite_id = callsite[0].id;
+    calls[1].source_value_id = values[4].source_value_id;
+    calls[1].actual_ordinal = 3;
+    calls[1].callee_formal_ordinal = 3;
+    calls[1].direction = DSL_RUNTIME_CALL_RESULT;
+    calls[2] = calls[0];
+    calls[2].callsite_id = callsite[1].id;
+    calls[3] = calls[1];
+    calls[3].callsite_id = callsite[1].id;
+    calls[3].source_value_id = values[5].source_value_id;
+    runtime_plan.values = values;
+    runtime_plan.value_count = 6;
+    runtime_plan.calls = calls;
+    runtime_plan.call_count = 4;
+
+    retired_formals[0].pu_formal_id = retired_formal[0].id;
+    retired_formals[0].semantic_role = "fhe.dead_bn_input";
+    retired_formals[1].pu_formal_id = retired_formal[1].id;
+    retired_formals[1].semantic_role = "fhe.dead_bn_state";
+    retired_arguments[0].call_argument_id = retired_argument[0].id;
+    retired_arguments[0].semantic_role = "fhe.dead_bn_input";
+    retired_arguments[1].call_argument_id = retired_argument[1].id;
+    retired_arguments[1].semantic_role = "fhe.dead_bn_state";
+    retired_arguments[2].call_argument_id = retired_argument[2].id;
+    retired_arguments[2].semantic_role = "fhe.dead_bn_input";
+    retired_arguments[3].call_argument_id = retired_argument[3].id;
+    retired_arguments[3].semantic_role = "fhe.dead_bn_state";
+    memset(inputs, 0, sizeof(inputs));
+    inputs[0].input_kind = DSL_RUNTIME_INPUT_OPAQUE_RESOURCE;
+    inputs[0].stable_role = "fhe.model";
+    inputs[0].handle_ty = model_ty;
+    const char *coefficient_roles[3] = {
+        "fhe.relu.coefficient.stage0", "fhe.relu.coefficient.stage1",
+        "fhe.relu.coefficient.stage2"
+    };
+    for (UINT32 i = 0; i < 3; ++i) {
+        inputs[i + 1].input_kind = DSL_RUNTIME_INPUT_TENSOR_TCON_RESOURCE;
+        inputs[i + 1].source_ty = tensor_ty;
+        inputs[i + 1].source_tcon = coefficient_tcon[i];
+        inputs[i + 1].stable_role = coefficient_roles[i];
+        inputs[i + 1].handle_ty = plain_ty;
+    }
+    inputs[4].input_kind = DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR;
+    inputs[4].source_owner_pu_st = PU_Info_proc_sym(caller);
+    inputs[4].source_value_id =
+        DSL_Builder_Get_Value_Image_Id(external_tensor[0]);
+    inputs[4].source_ty = tensor_ty;
+    inputs[4].source_tcon = external_tcon[0];
+    inputs[4].stable_role = "fhe.promoted.weight.context0";
+    inputs[4].handle_ty = plain_ty;
+    inputs[5].input_kind = DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR;
+    inputs[5].source_owner_pu_st = PU_Info_proc_sym(caller);
+    inputs[5].source_value_id =
+        DSL_Builder_Get_Value_Image_Id(external_tensor[1]);
+    inputs[5].source_ty = wrong_tensor_ty;
+    inputs[5].source_tcon = external_tcon[1];
+    inputs[5].stable_role = "fhe.promoted.bias.context0";
+    inputs[5].handle_ty = plain_ty;
+    memset(bindings, 0, sizeof(bindings));
+    bindings[0].owner_pu_st = PU_Info_proc_sym(caller);
+    bindings[0].runtime_input_index = 0;
+    bindings[0].handle_ty = model_ty;
+    bindings[0].binding_kind = DSL_RUNTIME_INPUT_BINDING_ROOT_RESOURCE;
+    bindings[0].semantic_role = "fhe.model";
+    bindings[0].source_position = ST_Srcpos
+        (St_Table[DSL_Builder_Get_Value_Result_Symbol(arguments[0])]);
+    bindings[1].owner_pu_st = PU_Info_proc_sym(callee);
+    bindings[1].runtime_input_index =
+        DSL_PROGRAM_INTERFACE_INVALID_REQUEST_INDEX;
+    bindings[1].handle_ty = model_ty;
+    bindings[1].binding_kind = DSL_RUNTIME_INPUT_BINDING_THREADED_FORMAL;
+    bindings[1].semantic_role = "fhe.model";
+    bindings[1].source_position = bindings[0].source_position;
+    const UINT32 input_order[5] = { 3, 1, 2, 4, 5 };
+    const char *callee_roles[5] = {
+        "fhe.relu.coefficient.slot2", "fhe.relu.coefficient.slot0",
+        "fhe.relu.coefficient.slot1", "fhe.promoted.weight",
+        "fhe.promoted.bias"
+    };
+    for (UINT32 i = 0; i < 5; ++i) {
+        UINT32 root_index = 2 + i * 2;
+        UINT32 callee_index = root_index + 1;
+        UINT32 input_index = input_order[i];
+        bindings[root_index].owner_pu_st = PU_Info_proc_sym(caller);
+        bindings[root_index].runtime_input_index = input_index;
+        bindings[root_index].handle_ty = inputs[input_index].handle_ty;
+        bindings[root_index].binding_kind = input_index >= 4 ?
+            DSL_RUNTIME_INPUT_BINDING_ROOT_PROMOTED_SOURCE :
+            DSL_RUNTIME_INPUT_BINDING_ROOT_RESOURCE;
+        bindings[root_index].semantic_role = inputs[input_index].stable_role;
+        bindings[root_index].source_position = bindings[0].source_position;
+        bindings[callee_index].owner_pu_st = PU_Info_proc_sym(callee);
+        bindings[callee_index].runtime_input_index =
+            DSL_PROGRAM_INTERFACE_INVALID_REQUEST_INDEX;
+        bindings[callee_index].handle_ty = inputs[input_index].handle_ty;
+        bindings[callee_index].binding_kind =
+            DSL_RUNTIME_INPUT_BINDING_THREADED_FORMAL;
+        bindings[callee_index].semantic_role = callee_roles[i];
+        bindings[callee_index].source_position = bindings[0].source_position;
+    }
+    UINT32 input_call_index = 0;
+    for (UINT32 c = 0; c < 2; ++c) {
+        for (UINT32 pair = 0; pair < 6; ++pair) {
+            input_calls[input_call_index].callsite_id = callsite[c].id;
+            input_calls[input_call_index].caller_binding_index = pair * 2;
+            input_calls[input_call_index].callee_binding_index = pair * 2 + 1;
+            ++input_call_index;
+        }
+    }
+    if (getenv("OPEN64_DSL_PROGRAM_INTERFACE_PERMUTE") != NULL) {
+        for (UINT32 i = 0; i < 1; ++i) {
+            DSL_RETIRED_FORMAL_REQUEST temporary = retired_formals[i];
+            retired_formals[i] = retired_formals[1 - i];
+            retired_formals[1 - i] = temporary;
+        }
+        for (UINT32 i = 0; i < 2; ++i) {
+            DSL_RETIRED_CALL_ARGUMENT_REQUEST temporary =
+                retired_arguments[i];
+            retired_arguments[i] = retired_arguments[3 - i];
+            retired_arguments[3 - i] = temporary;
+            DSL_RUNTIME_CALL_PROJECTION_REQUEST call_temporary = calls[i];
+            calls[i] = calls[3 - i];
+            calls[3 - i] = call_temporary;
+        }
+        for (UINT32 i = 0; i < 3; ++i) {
+            DSL_RUNTIME_VALUE_PROJECTION_REQUEST temporary = values[i];
+            values[i] = values[5 - i];
+            values[5 - i] = temporary;
+        }
+        for (UINT32 i = 0; i < 3; ++i) {
+            DSL_RUNTIME_INPUT_REQUEST temporary = inputs[i];
+            inputs[i] = inputs[5 - i];
+            inputs[5 - i] = temporary;
+        }
+        for (UINT32 i = 0; i < 12; ++i) {
+            if (bindings[i].runtime_input_index !=
+                DSL_PROGRAM_INTERFACE_INVALID_REQUEST_INDEX)
+                bindings[i].runtime_input_index =
+                    5 - bindings[i].runtime_input_index;
+        }
+        for (UINT32 i = 0; i < 6; ++i) {
+            DSL_RUNTIME_INPUT_BINDING_REQUEST temporary = bindings[i];
+            bindings[i] = bindings[11 - i];
+            bindings[11 - i] = temporary;
+        }
+        for (UINT32 i = 0; i < 12; ++i) {
+            input_calls[i].caller_binding_index =
+                11 - input_calls[i].caller_binding_index;
+            input_calls[i].callee_binding_index =
+                11 - input_calls[i].callee_binding_index;
+        }
+        for (UINT32 i = 0; i < 6; ++i) {
+            DSL_RUNTIME_INPUT_CALL_REQUEST temporary = input_calls[i];
+            input_calls[i] = input_calls[11 - i];
+            input_calls[11 - i] = temporary;
+        }
+    }
+    memset(&program_plan, 0, sizeof(program_plan));
+    program_plan.retired_formals = retired_formals;
+    program_plan.retired_formal_count = 2;
+    program_plan.retired_call_arguments = retired_arguments;
+    program_plan.retired_call_argument_count = 4;
+    program_plan.runtime_inputs = inputs;
+    program_plan.runtime_input_count = 6;
+    program_plan.runtime_input_bindings = bindings;
+    program_plan.runtime_input_binding_count = 12;
+    program_plan.runtime_input_calls = input_calls;
+    program_plan.runtime_input_call_count = 12;
+
+    DSL_RUNTIME_INPUT_BINDING_REQUEST bad_bindings[12];
+    memcpy(bad_bindings, bindings, sizeof(bindings));
+    bad_bindings[11].source_position = 0;
+    DSL_PROGRAM_INTERFACE_PLAN bad_program_plan = program_plan;
+    bad_program_plan.runtime_input_bindings = bad_bindings;
+    PROGRAM_INTERFACE_CHECK(DSL_Builder_Select_PU(caller),
+                            "select caller for invalid plan snapshot");
+    WN *caller_tree_before_invalid_plan = PU_Info_tree_ptr(caller);
+    UINT32 st_count_before_invalid_plan = ST_Table_Size(CURRENT_SYMTAB);
+    UINT32 ty_count_before_invalid_plan = TY_Table_Size();
+    UINT32 value_count_before_invalid_plan = DSL_IR_Image_Value_Count();
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Plan_Validate
+              (&bad_program_plan, &runtime_plan, NULL) &&
+         PU_Info_tree_ptr(caller) == caller_tree_before_invalid_plan &&
+         ST_Table_Size(CURRENT_SYMTAB) == st_count_before_invalid_plan &&
+         TY_Table_Size() == ty_count_before_invalid_plan &&
+         DSL_IR_Image_Value_Count() == value_count_before_invalid_plan &&
+         DSL_Program_Interface_Image_Runtime_Input_Count() == 0 &&
+         DSL_Program_Interface_Image_Runtime_Binding_Count() == 0 &&
+         DSL_Program_Interface_Image_Runtime_Call_Count() == 0 &&
+         DSL_Runtime_Interface_Image_Value_Count() == 0,
+         "invalid final binding rejects without mutation");
+
+    DSL_RUNTIME_INPUT_REQUEST bad_inputs[6];
+    UINT32 weight_input_index = DSL_PROGRAM_INTERFACE_INVALID_REQUEST_INDEX;
+    UINT32 coefficient_input_index =
+        DSL_PROGRAM_INTERFACE_INVALID_REQUEST_INDEX;
+    for (UINT32 i = 0; i < 6; ++i) {
+        if (strcmp(inputs[i].stable_role,
+                   "fhe.promoted.weight.context0") == 0)
+            weight_input_index = i;
+        if (coefficient_input_index ==
+                DSL_PROGRAM_INTERFACE_INVALID_REQUEST_INDEX &&
+            inputs[i].input_kind ==
+                DSL_RUNTIME_INPUT_TENSOR_TCON_RESOURCE)
+            coefficient_input_index = i;
+    }
+    PROGRAM_INTERFACE_CHECK
+        (weight_input_index != DSL_PROGRAM_INTERFACE_INVALID_REQUEST_INDEX &&
+         coefficient_input_index !=
+             DSL_PROGRAM_INTERFACE_INVALID_REQUEST_INDEX,
+         "negative runtime input identities");
+    memcpy(bad_inputs, inputs, sizeof(inputs));
+    bad_inputs[weight_input_index].source_owner_pu_st =
+        PU_Info_proc_sym(callee);
+    bad_program_plan = program_plan;
+    bad_program_plan.runtime_inputs = bad_inputs;
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Plan_Validate
+              (&bad_program_plan, &runtime_plan, NULL),
+         "wrong external source owner rejects");
+    memcpy(bad_inputs, inputs, sizeof(inputs));
+    bad_inputs[weight_input_index].source_tcon = coefficient_tcon[0];
+    bad_program_plan.runtime_inputs = bad_inputs;
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Plan_Validate
+              (&bad_program_plan, &runtime_plan, NULL),
+         "wrong external source TCON rejects");
+    memcpy(bad_inputs, inputs, sizeof(inputs));
+    bad_inputs[coefficient_input_index].source_ty = wrong_tensor_ty;
+    bad_program_plan.runtime_inputs = bad_inputs;
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Plan_Validate
+              (&bad_program_plan, &runtime_plan, NULL),
+         "wrong coefficient descriptor TY rejects");
+    memcpy(bad_bindings, bindings, sizeof(bindings));
+    UINT32 root_resource_binding_index =
+        DSL_PROGRAM_INTERFACE_INVALID_REQUEST_INDEX;
+    for (UINT32 i = 0; i < 12; ++i) {
+        if (bindings[i].binding_kind ==
+            DSL_RUNTIME_INPUT_BINDING_ROOT_RESOURCE) {
+            root_resource_binding_index = i;
+            break;
+        }
+    }
+    PROGRAM_INTERFACE_CHECK
+        (root_resource_binding_index !=
+             DSL_PROGRAM_INTERFACE_INVALID_REQUEST_INDEX,
+         "negative root resource identity");
+    bad_bindings[root_resource_binding_index].binding_kind =
+        DSL_RUNTIME_INPUT_BINDING_ROOT_PROMOTED_SOURCE;
+    bad_program_plan = program_plan;
+    bad_program_plan.runtime_input_bindings = bad_bindings;
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Plan_Validate
+              (&bad_program_plan, &runtime_plan, NULL) &&
+         DSL_Program_Interface_Image_Runtime_Input_Count() == 0 &&
+         DSL_Runtime_Interface_Image_Value_Count() == 0,
+         "crossed root binding kind rejects without mutation");
+    bad_program_plan = program_plan;
+    bad_program_plan.runtime_input_call_count = 11;
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Plan_Validate
+              (&bad_program_plan, &runtime_plan, NULL),
+         "missing threaded edge rejects");
+    DSL_RUNTIME_INPUT_CALL_REQUEST extra_input_calls[13];
+    memcpy(extra_input_calls, input_calls, sizeof(input_calls));
+    extra_input_calls[12] = input_calls[0];
+    bad_program_plan = program_plan;
+    bad_program_plan.runtime_input_calls = extra_input_calls;
+    bad_program_plan.runtime_input_call_count = 13;
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Plan_Validate
+              (&bad_program_plan, &runtime_plan, NULL),
+         "extra threaded edge rejects");
+    DSL_RUNTIME_INPUT_CALL_REQUEST root_target_calls[12];
+    memcpy(root_target_calls, input_calls, sizeof(input_calls));
+    root_target_calls[0].callee_binding_index =
+        root_target_calls[0].caller_binding_index;
+    bad_program_plan = program_plan;
+    bad_program_plan.runtime_input_calls = root_target_calls;
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Plan_Validate
+              (&bad_program_plan, &runtime_plan, NULL),
+         "call-to-root edge rejects");
+
+    DSL_RETIRED_FORMAL_REQUEST executable_retired_formals[3];
+    DSL_RETIRED_CALL_ARGUMENT_REQUEST executable_retired_arguments[6];
+    executable_retired_formals[0].pu_formal_id = live_formal.id;
+    executable_retired_formals[0].semantic_role = "fhe.live_input";
+    memcpy(&executable_retired_formals[1], retired_formals,
+           sizeof(retired_formals));
+    executable_retired_arguments[0].call_argument_id =
+        live_argument[0].id;
+    executable_retired_arguments[0].semantic_role = "fhe.live_input";
+    executable_retired_arguments[1].call_argument_id =
+        live_argument[1].id;
+    executable_retired_arguments[1].semantic_role = "fhe.live_input";
+    memcpy(&executable_retired_arguments[2], retired_arguments,
+           sizeof(retired_arguments));
+    DSL_RUNTIME_VALUE_PROJECTION_REQUEST executable_values[5];
+    UINT32 executable_value_count = 0;
+    for (UINT32 i = 0; i < 6; ++i) {
+        if (values[i].source_value_id != live_formal.formal_value_id)
+            executable_values[executable_value_count++] = values[i];
+    }
+    DSL_RUNTIME_CALL_PROJECTION_REQUEST executable_calls[2];
+    UINT32 executable_call_count = 0;
+    for (UINT32 i = 0; i < 4; ++i) {
+        if (calls[i].actual_ordinal != 0)
+            executable_calls[executable_call_count++] = calls[i];
+    }
+    DSL_PROGRAM_INTERFACE_PLAN executable_program_plan = program_plan;
+    executable_program_plan.retired_formals = executable_retired_formals;
+    executable_program_plan.retired_formal_count = 3;
+    executable_program_plan.retired_call_arguments =
+        executable_retired_arguments;
+    executable_program_plan.retired_call_argument_count = 6;
+    DSL_RUNTIME_INTERFACE_PLAN executable_runtime_plan = runtime_plan;
+    executable_runtime_plan.values = executable_values;
+    executable_runtime_plan.value_count = executable_value_count;
+    executable_runtime_plan.calls = executable_calls;
+    executable_runtime_plan.call_count = executable_call_count;
+    PROGRAM_INTERFACE_CHECK
+        (executable_value_count == 5 && executable_call_count == 2 &&
+         DSL_Program_Interface_Plan_Validate
+             (&executable_program_plan, &executable_runtime_plan, stderr) &&
+         DSL_Builder_Select_PU(callee),
+         "executable retirement plan reaches PU preflight");
+    WN *callee_tree_before_live_retirement = PU_Info_tree_ptr(callee);
+    UINT32 callee_st_count_before_live_retirement =
+        ST_Table_Size(CURRENT_SYMTAB);
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Apply_PU
+              (callee, &executable_program_plan, &executable_runtime_plan,
+               NULL, &result) &&
+         PU_Info_tree_ptr(callee) == callee_tree_before_live_retirement &&
+         ST_Table_Size(CURRENT_SYMTAB) ==
+             callee_st_count_before_live_retirement &&
+         DSL_Program_Interface_Image_Retired_Formal_Count() == 0 &&
+         DSL_Runtime_Interface_Image_Value_Count() == 0,
+         "executable formal retirement rejects without mutation");
+
+    PROGRAM_INTERFACE_CHECK(DSL_Builder_Select_PU(callee),
+                            "select callee for REGION retirement test");
+    DSL_REGION retirement_region = DSL_Region_Create
+        (callee, NULL, "fhe.retirement.guard", 1);
+    PROGRAM_INTERFACE_CHECK
+        (retirement_region != NULL &&
+         DSL_Region_Declare_Symbol
+             (retirement_region, retired_formal[0].formal_st,
+              DSL_REGION_VALUE_INPUT, 0,
+              DSL_REGION_INTERFACE_FLAG_NONE) &&
+         DSL_Region_Append_To_PU(retirement_region),
+         "nested REGION-interface retirement fixture");
+    WN *retirement_region_wn = DSL_Region_WN(retirement_region);
+    UINT32 st_count_before_region_retirement =
+        ST_Table_Size(CURRENT_SYMTAB);
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Apply_PU
+              (callee, &program_plan, &runtime_plan, NULL, &result) &&
+         DSL_Region_WN(retirement_region) == retirement_region_wn &&
+         ST_Table_Size(CURRENT_SYMTAB) ==
+             st_count_before_region_retirement &&
+         DSL_Program_Interface_Image_Retired_Formal_Count() == 0 &&
+         DSL_Runtime_Interface_Image_Value_Count() == 0,
+         "nested REGION-interface retirement rejects without mutation");
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Region_Consume_WN(callee, retirement_region_wn),
+         "consume retirement REGION fixture");
+    WN_DELETE_FromBlock(WN_func_body(PU_Info_tree_ptr(callee)),
+                        retirement_region_wn);
+
+    TY_IDX retired_pointer_ty =
+        Make_Pointer_Type(retired_formal[0].formal_ty);
+    WN *retired_address = WN_CreateLda
+        (OPR_LDA, Pointer_Mtype, MTYPE_V, 0, retired_pointer_ty,
+         retired_formal[0].formal_st);
+    WN *retired_address_eval = WN_CreateEval(retired_address);
+    WN *callee_body = WN_func_body(PU_Info_tree_ptr(callee));
+    WN_INSERT_BlockBefore(callee_body, WN_last(callee_body),
+                          retired_address_eval);
+    UINT32 st_count_before_address_retirement =
+        ST_Table_Size(CURRENT_SYMTAB);
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Apply_PU
+              (callee, &program_plan, &runtime_plan, NULL, &result) &&
+         WN_prev(WN_last(callee_body)) == retired_address_eval &&
+         ST_Table_Size(CURRENT_SYMTAB) ==
+             st_count_before_address_retirement &&
+         DSL_Program_Interface_Image_Retired_Formal_Count() == 0 &&
+         DSL_Runtime_Interface_Image_Value_Count() == 0,
+         "address-taken formal retirement rejects without mutation");
+    WN_DELETE_FromBlock(callee_body, retired_address_eval);
+
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Program_Interface_Plan_Validate
+             (&program_plan, &runtime_plan, stderr) &&
+         DSL_Builder_Select_PU(caller) &&
+         DSL_Program_Interface_Apply_PU
+             (caller, &program_plan, &runtime_plan, stderr, &result) &&
+         result.retired_call_argument_count == 4 &&
+         result.runtime_binding_count == 6 &&
+         result.runtime_call_count == 12,
+         "caller program-interface transaction");
+
+    DSL_RUNTIME_INPUT_BINDING_REQUEST mismatched_bindings[12];
+    memcpy(mismatched_bindings, bindings, sizeof(bindings));
+    mismatched_bindings[11].semantic_role = "fhe.mismatched_weight";
+    DSL_PROGRAM_INTERFACE_PLAN mismatched_plan = program_plan;
+    mismatched_plan.runtime_input_bindings = mismatched_bindings;
+    PROGRAM_INTERFACE_CHECK(DSL_Builder_Select_PU(callee),
+                            "select callee for mismatch test");
+    WN *callee_tree_before_mismatch = PU_Info_tree_ptr(callee);
+    UINT32 st_count_before_mismatch = ST_Table_Size(CURRENT_SYMTAB);
+    UINT32 ty_count_before_mismatch = TY_Table_Size();
+    UINT32 value_count_before_mismatch = DSL_IR_Image_Value_Count();
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Apply_PU
+              (callee, &mismatched_plan, &runtime_plan, NULL, &result) &&
+         PU_Info_tree_ptr(callee) == callee_tree_before_mismatch &&
+         ST_Table_Size(CURRENT_SYMTAB) == st_count_before_mismatch &&
+         TY_Table_Size() == ty_count_before_mismatch &&
+         DSL_IR_Image_Value_Count() == value_count_before_mismatch &&
+         DSL_Program_Interface_Image_Retired_Formal_Count() == 0 &&
+         DSL_Program_Interface_Image_Retired_Call_Count() == 4 &&
+         DSL_Program_Interface_Image_Runtime_Binding_Count() == 6,
+         "mismatched second-PU plan rejects without mutation");
+
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Program_Interface_Apply_PU
+         (callee, &program_plan, &runtime_plan, stderr, &result) &&
+         result.retired_formal_count == 2 &&
+         result.runtime_binding_count == 6 &&
+         DSL_Program_Interface_Apply_PU
+             (callee, &program_plan, &runtime_plan, NULL, &result) == FALSE &&
+         DSL_Runtime_Interface_Image_Validate(stderr) &&
+         DSL_Program_Interface_Image_Validate(stderr),
+         "callee program-interface transaction");
+
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Builder_Select_PU(caller) &&
+         DSL_Program_Interface_Validate_PU(caller, stderr) &&
+         DSL_Builder_Select_PU(callee) &&
+         DSL_Program_Interface_Validate_PU(callee, stderr),
+         "per-PU program-interface verification");
+
+    DSL_PROGRAM_INTERFACE_IMAGE_HEADER image_header;
+    DSL_Program_Interface_Image_Get_Header(&image_header);
+    UINT64 image_size = DSL_PROGRAM_INTERFACE_IMAGE_HEADER_SIZE +
+        (UINT64)image_header.retired_formal_count *
+            DSL_RETIRED_FORMAL_RECORD_SIZE +
+        (UINT64)image_header.retired_call_argument_count *
+            DSL_RETIRED_CALL_ARGUMENT_RECORD_SIZE +
+        (UINT64)image_header.runtime_input_count *
+            DSL_RUNTIME_INPUT_RECORD_SIZE +
+        (UINT64)image_header.runtime_input_binding_count *
+            DSL_RUNTIME_INPUT_BINDING_RECORD_SIZE +
+        (UINT64)image_header.runtime_input_call_count *
+            DSL_RUNTIME_INPUT_CALL_RECORD_SIZE;
+    unsigned char *mapped_image = new unsigned char[image_size];
+    memcpy(mapped_image, &image_header, sizeof(image_header));
+    unsigned char *cursor =
+        mapped_image + DSL_PROGRAM_INTERFACE_IMAGE_HEADER_SIZE;
+    DSL_RETIRED_FORMAL_RECORD *mapped_retired_formals =
+        (DSL_RETIRED_FORMAL_RECORD *)cursor;
+    for (UINT32 i = 1; i <= image_header.retired_formal_count; ++i) {
+        DSL_Program_Interface_Image_Get_Retired_Formal
+            (i, &mapped_retired_formals[i - 1]);
+    }
+    cursor += (UINT64)image_header.retired_formal_count *
+              DSL_RETIRED_FORMAL_RECORD_SIZE;
+    DSL_RETIRED_CALL_ARGUMENT_RECORD *mapped_retired_calls =
+        (DSL_RETIRED_CALL_ARGUMENT_RECORD *)cursor;
+    for (UINT32 i = 1;
+         i <= image_header.retired_call_argument_count; ++i) {
+        DSL_Program_Interface_Image_Get_Retired_Call
+            (i, &mapped_retired_calls[i - 1]);
+    }
+    cursor += (UINT64)image_header.retired_call_argument_count *
+              DSL_RETIRED_CALL_ARGUMENT_RECORD_SIZE;
+    DSL_RUNTIME_INPUT_RECORD *mapped_inputs =
+        (DSL_RUNTIME_INPUT_RECORD *)cursor;
+    for (UINT32 i = 1; i <= image_header.runtime_input_count; ++i) {
+        DSL_Program_Interface_Image_Get_Runtime_Input
+            (i, &mapped_inputs[i - 1]);
+    }
+    cursor += (UINT64)image_header.runtime_input_count *
+              DSL_RUNTIME_INPUT_RECORD_SIZE;
+    DSL_RUNTIME_INPUT_BINDING_RECORD *mapped_bindings =
+        (DSL_RUNTIME_INPUT_BINDING_RECORD *)cursor;
+    for (UINT32 i = 1;
+         i <= image_header.runtime_input_binding_count; ++i) {
+        DSL_Program_Interface_Image_Get_Runtime_Binding
+            (i, &mapped_bindings[i - 1]);
+    }
+    cursor += (UINT64)image_header.runtime_input_binding_count *
+              DSL_RUNTIME_INPUT_BINDING_RECORD_SIZE;
+    DSL_RUNTIME_INPUT_CALL_RECORD *mapped_input_calls =
+        (DSL_RUNTIME_INPUT_CALL_RECORD *)cursor;
+    for (UINT32 i = 1; i <= image_header.runtime_input_call_count; ++i) {
+        DSL_Program_Interface_Image_Get_Runtime_Call
+            (i, &mapped_input_calls[i - 1]);
+    }
+    ST_IDX saved_owner = mapped_bindings[0].owner_pu_st;
+    mapped_bindings[0].owner_pu_st = make_ST_IDX
+        (ST_Table_Size(GLOBAL_SYMTAB) + 8, GLOBAL_SYMTAB);
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Image_Load_Mapped
+              (mapped_image, image_size, NULL) &&
+         DSL_Program_Interface_Image_Runtime_Binding_Count() == 12,
+         "malformed mapped owner rejects without table mutation");
+    mapped_bindings[0].owner_pu_st = saved_owner;
+    DSL_PU_FORMAL_ID saved_formal_id =
+        mapped_retired_formals[0].pu_formal_id;
+    mapped_retired_formals[0].pu_formal_id = DSL_PU_FORMAL_INVALID_ID;
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Image_Load_Mapped
+              (mapped_image, image_size, NULL) &&
+         DSL_Program_Interface_Image_Retired_Formal_Count() == 2,
+         "malformed mapped formal identity rejects without mutation");
+    mapped_retired_formals[0].pu_formal_id = saved_formal_id;
+    TY_IDX saved_input_handle_ty = mapped_inputs[0].handle_ty;
+    mapped_inputs[0].handle_ty = tensor_ty;
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Image_Load_Mapped
+              (mapped_image, image_size, NULL) &&
+         DSL_Program_Interface_Image_Runtime_Input_Count() == 6,
+         "malformed mapped input type rejects without mutation");
+    mapped_inputs[0].handle_ty = saved_input_handle_ty;
+    UINT32 saved_binding_ordinal =
+        mapped_bindings[0].final_formal_ordinal;
+    mapped_bindings[0].final_formal_ordinal =
+        DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Image_Load_Mapped
+              (mapped_image, image_size, NULL) &&
+         DSL_Program_Interface_Image_Runtime_Binding_Count() == 12,
+         "malformed mapped binding ordinal rejects without mutation");
+    mapped_bindings[0].final_formal_ordinal = saved_binding_ordinal;
+    STR_IDX saved_binding_role = mapped_bindings[0].semantic_role;
+    mapped_bindings[0].semantic_role = 0;
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Image_Load_Mapped
+              (mapped_image, image_size, NULL) &&
+         DSL_Program_Interface_Image_Runtime_Binding_Count() == 12,
+         "malformed mapped binding role rejects without mutation");
+    mapped_bindings[0].semantic_role = saved_binding_role;
+    DSL_CALLSITE_METADATA_ID saved_callsite_id =
+        mapped_input_calls[0].callsite_id;
+    mapped_input_calls[0].callsite_id = DSL_CALLSITE_METADATA_INVALID_ID;
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Image_Load_Mapped
+              (mapped_image, image_size, NULL) &&
+         DSL_Program_Interface_Image_Runtime_Call_Count() == 12,
+         "malformed mapped call identity rejects without mutation");
+    mapped_input_calls[0].callsite_id = saved_callsite_id;
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Image_Load_Mapped
+              (mapped_image, image_size - 1, NULL) &&
+         DSL_Program_Interface_Image_Runtime_Binding_Count() == 12,
+         "truncated mapped image rejects without table mutation");
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Program_Interface_Image_Load_Mapped
+             (mapped_image, image_size, stderr) &&
+         DSL_Program_Interface_Image_Runtime_Binding_Count() == 12,
+         "valid mapped program interface reloads");
+
+    DSL_RUNTIME_INTERFACE_IMAGE_HEADER runtime_header;
+    DSL_Runtime_Interface_Image_Get_Header(&runtime_header);
+    UINT64 runtime_image_size = DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE +
+        (UINT64)runtime_header.value_projection_count *
+            DSL_RUNTIME_VALUE_PROJECTION_RECORD_SIZE +
+        (UINT64)runtime_header.call_projection_count *
+            DSL_RUNTIME_CALL_PROJECTION_RECORD_SIZE;
+    unsigned char *runtime_image = new unsigned char[runtime_image_size];
+    memcpy(runtime_image, &runtime_header, sizeof(runtime_header));
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD *mapped_values =
+        (DSL_RUNTIME_VALUE_PROJECTION_RECORD *)
+            (runtime_image + DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE);
+    for (UINT32 i = 1; i <= runtime_header.value_projection_count; ++i)
+        DSL_Runtime_Interface_Image_Get_Value(i, &mapped_values[i - 1]);
+    DSL_RUNTIME_CALL_PROJECTION_RECORD *mapped_calls =
+        (DSL_RUNTIME_CALL_PROJECTION_RECORD *)
+            (runtime_image + DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE +
+             (UINT64)runtime_header.value_projection_count *
+                 DSL_RUNTIME_VALUE_PROJECTION_RECORD_SIZE);
+    for (UINT32 i = 1; i <= runtime_header.call_projection_count; ++i)
+        DSL_Runtime_Interface_Image_Get_Call(i, &mapped_calls[i - 1]);
+    UINT32 live_formal_index = DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
+    for (UINT32 i = 0; i < runtime_header.value_projection_count; ++i) {
+        if (mapped_values[i].owner_pu_st == PU_Info_proc_sym(callee) &&
+            mapped_values[i].binding_kind ==
+                DSL_RUNTIME_BINDING_INPUT_FORMAL) {
+            live_formal_index = i;
+            break;
+        }
+    }
+    PROGRAM_INTERFACE_CHECK
+        (live_formal_index != DSL_RUNTIME_INTERFACE_INVALID_ORDINAL,
+         "mapped runtime live formal identity");
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD saved_projection =
+        mapped_values[live_formal_index];
+    mapped_values[live_formal_index].source_value_id =
+        retired_formal[0].formal_value_id;
+    mapped_values[live_formal_index].source_st = retired_formal[0].formal_st;
+    mapped_values[live_formal_index].source_ty = retired_formal[0].formal_ty;
+    mapped_values[live_formal_index].formal_ordinal =
+        retired_formal[0].formal_ordinal;
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD installed_projection;
+    DSL_Runtime_Interface_Image_Get_Value(1, &installed_projection);
+    DSL_RETIRED_FORMAL_RECORD installed_retired_formal;
+    DSL_Program_Interface_Image_Get_Retired_Formal
+        (1, &installed_retired_formal);
+    STR_IDX paired_candidate_role =
+        Save_Str("fhe.dead_bn_input.paired_candidate");
+    STR_IDX saved_retired_formal_role =
+        mapped_retired_formals[0].semantic_role;
+    mapped_retired_formals[0].semantic_role = paired_candidate_role;
+    STR_IDX saved_retired_call_roles[4];
+    for (UINT32 i = 0; i < image_header.retired_call_argument_count; ++i) {
+        saved_retired_call_roles[i] = mapped_retired_calls[i].semantic_role;
+        if (mapped_retired_calls[i].old_callee_formal_ordinal ==
+            mapped_retired_formals[0].old_formal_ordinal)
+            mapped_retired_calls[i].semantic_role = paired_candidate_role;
+    }
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Runtime_Interface_Images_Load_Mapped
+              (mapped_image, image_size, runtime_image,
+               runtime_image_size, NULL) &&
+         DSL_Runtime_Interface_Image_Value_Count() == 6 &&
+         DSL_Program_Interface_Image_Runtime_Binding_Count() == 12,
+         "paired mapped rejection preserves table counts");
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD observed_projection;
+    DSL_RETIRED_FORMAL_RECORD observed_retired_formal;
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Runtime_Interface_Image_Get_Value(1, &observed_projection) &&
+         DSL_Program_Interface_Image_Get_Retired_Formal
+             (1, &observed_retired_formal) &&
+         memcmp(&installed_projection, &observed_projection,
+                sizeof(installed_projection)) == 0 &&
+         memcmp(&installed_retired_formal, &observed_retired_formal,
+                sizeof(installed_retired_formal)) == 0,
+         "paired rejection preserves runtime and program rows");
+    mapped_retired_formals[0].semantic_role = saved_retired_formal_role;
+    for (UINT32 i = 0; i < image_header.retired_call_argument_count; ++i)
+        mapped_retired_calls[i].semantic_role = saved_retired_call_roles[i];
+    mapped_values[live_formal_index] = saved_projection;
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Program_Runtime_Interface_Images_Load_Mapped
+             (mapped_image, image_size, runtime_image,
+              runtime_image_size, stderr),
+         "valid mapped interface pair reloads atomically");
+    delete [] mapped_image;
+    delete [] runtime_image;
+
+    Remove_Runtime_Interface_DSL_Definitions(PU_Info_tree_ptr(callee));
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Program_Interface_Validate_Lowered_PU(callee, stderr) &&
+         DSL_Builder_Select_PU(caller),
+         "callee lowered program interface");
+    Remove_Runtime_Interface_DSL_Definitions(PU_Info_tree_ptr(caller));
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Program_Interface_Validate_Lowered_PU(caller, stderr),
+         "caller lowered program interface");
+
+    (void) unlink(artifact);
+    PROGRAM_INTERFACE_CHECK
+        (Write_Runtime_Interface_Artifact(artifact, callee, caller),
+         "program-interface mapped-image finalization");
+    if (!failed)
+        printf("DSL program interface evolution contract passed\n");
+#undef PROGRAM_INTERFACE_CHECK
+    return failed;
+}
+
+static int
 Check_Tensor_Interner_Mapped_Image(void)
 {
     const char *artifact = getenv("OPEN64_DSL_SHAPE_SP2_ARTIFACT");
@@ -9154,6 +10329,10 @@ main(void)
         return Check_Multiple_Program_Units();
     if (getenv("OPEN64_DSL_RUNTIME_INTERFACE_ONLY") != NULL)
         return Check_Runtime_Interface_Projection();
+    if (getenv("OPEN64_DSL_PROGRAM_INTERFACE_CYCLE_ONLY") != NULL)
+        return Check_Program_Interface_Cycle_Rejection();
+    if (getenv("OPEN64_DSL_PROGRAM_INTERFACE_ONLY") != NULL)
+        return Check_Program_Interface_Evolution();
     if (getenv("OPEN64_DSL_CANONICALIZATION_ONLY") != NULL)
         return Check_Algebraic_Canonicalization();
     if (getenv("OPEN64_DSL_TENSOR_FOLD_M3_ONLY") != NULL)

@@ -49,6 +49,36 @@ DSL_Runtime_Call_Direction_Name (UINT32 direction)
 }
 
 static const char *
+DSL_Interface_Retirement_Reason_Name (UINT32 reason)
+{
+    static const char *names[] = { "unknown", "verified_dead_input" };
+    return reason < sizeof(names) / sizeof(names[0]) ?
+           names[reason] : names[0];
+}
+
+static const char *
+DSL_Runtime_Input_Kind_Name (UINT32 kind)
+{
+    static const char *names[] = {
+        "unknown", "source_external_tensor", "opaque_resource",
+        "tensor_tcon_resource"
+    };
+    return kind < sizeof(names) / sizeof(names[0]) ?
+           names[kind] : names[0];
+}
+
+static const char *
+DSL_Runtime_Input_Binding_Kind_Name (UINT32 kind)
+{
+    static const char *names[] = {
+        "unknown", "root_promoted_source", "root_resource",
+        "threaded_formal"
+    };
+    return kind < sizeof(names) / sizeof(names[0]) ?
+           names[kind] : names[0];
+}
+
+static const char *
 DSL_IR_String (STR_IDX id)
 {
     return id == STR_IDX_ZERO ? "" : Index_To_Str(id);
@@ -355,6 +385,94 @@ DSL_IR_Image_Print (FILE *file)
                 record.actual_ordinal, record.callee_formal_ordinal,
                 DSL_Runtime_Call_Direction_Name(record.direction),
                 record.flags);
+    }
+    DSL_PROGRAM_INTERFACE_IMAGE_HEADER program_header;
+    DSL_Program_Interface_Image_Get_Header(&program_header);
+    fprintf(file, "DSL Program Interface Image: version=%u "
+            "retired_formals=%u retired_call_arguments=%u "
+            "runtime_inputs=%u runtime_bindings=%u runtime_calls=%u\n",
+            program_header.version, program_header.retired_formal_count,
+            program_header.retired_call_argument_count,
+            program_header.runtime_input_count,
+            program_header.runtime_input_binding_count,
+            program_header.runtime_input_call_count);
+    fprintf(file, "DSL Retired Formal Table:\n");
+    for (UINT32 i = 1; i <= program_header.retired_formal_count; ++i) {
+        DSL_RETIRED_FORMAL_RECORD record;
+        DSL_Program_Interface_Image_Get_Retired_Formal(i, &record);
+        fprintf(file, "  [%u] owner_pu=<%u,%u> pu_formal=%u "
+                "old_formal=%u value=%u st=<%u,%u> ty=%u "
+                "reason=%s role=%s flags=0x%x\n", record.id,
+                ST_IDX_level(record.owner_pu_st),
+                ST_IDX_index(record.owner_pu_st), record.pu_formal_id,
+                record.old_formal_ordinal, record.formal_value_id,
+                ST_IDX_level(record.formal_st), ST_IDX_index(record.formal_st),
+                (UINT32)record.formal_ty,
+                DSL_Interface_Retirement_Reason_Name
+                    (record.retirement_reason),
+                DSL_IR_String(record.semantic_role), record.flags);
+    }
+    fprintf(file, "DSL Retired Call Argument Table:\n");
+    for (UINT32 i = 1;
+         i <= program_header.retired_call_argument_count; ++i) {
+        DSL_RETIRED_CALL_ARGUMENT_RECORD record;
+        DSL_Program_Interface_Image_Get_Retired_Call(i, &record);
+        fprintf(file, "  [%u] callsite=%u call_argument=%u old_actual=%u "
+                "old_formal=%u value=%u reason=%s role=%s flags=0x%x\n",
+                record.id, record.callsite_id, record.call_argument_id,
+                record.old_actual_ordinal, record.old_callee_formal_ordinal,
+                record.argument_value_id,
+                DSL_Interface_Retirement_Reason_Name
+                    (record.retirement_reason),
+                DSL_IR_String(record.semantic_role), record.flags);
+    }
+    fprintf(file, "DSL Runtime Input Table:\n");
+    for (UINT32 i = 1; i <= program_header.runtime_input_count; ++i) {
+        DSL_RUNTIME_INPUT_RECORD record;
+        DSL_Program_Interface_Image_Get_Runtime_Input(i, &record);
+        fprintf(file, "  [%u] kind=%s role=%s handle_ty=%u "
+                "source_owner=<%u,%u> source_value=%u source_st=<%u,%u> "
+                "source_ty=%u source_tcon=%u flags=0x%x\n", record.id,
+                DSL_Runtime_Input_Kind_Name(record.input_kind),
+                DSL_IR_String(record.stable_role), (UINT32)record.handle_ty,
+                ST_IDX_level(record.source_owner_pu_st),
+                ST_IDX_index(record.source_owner_pu_st),
+                record.source_value_id, ST_IDX_level(record.source_st),
+                ST_IDX_index(record.source_st), (UINT32)record.source_ty,
+                (UINT32)record.source_tcon, record.flags);
+    }
+    fprintf(file, "DSL Runtime Input Binding Table:\n");
+    for (UINT32 i = 1; i <= program_header.runtime_input_binding_count; ++i) {
+        DSL_RUNTIME_INPUT_BINDING_RECORD record;
+        DSL_Program_Interface_Image_Get_Runtime_Binding(i, &record);
+        fprintf(file, "  [%u] owner_pu=<%u,%u> input=%u "
+                "handle_st=<%u,%u> handle_ty=%u final_formal=%u "
+                "kind=%s role=%s flags=0x%x\n", record.id,
+                ST_IDX_level(record.owner_pu_st),
+                ST_IDX_index(record.owner_pu_st), record.runtime_input_id,
+                ST_IDX_level(record.handle_st), ST_IDX_index(record.handle_st),
+                (UINT32)record.handle_ty, record.final_formal_ordinal,
+                DSL_Runtime_Input_Binding_Kind_Name(record.binding_kind),
+                DSL_IR_String(record.semantic_role), record.flags);
+    }
+    fprintf(file, "DSL Runtime Input Call Table:\n");
+    for (UINT32 i = 1; i <= program_header.runtime_input_call_count; ++i) {
+        DSL_RUNTIME_INPUT_CALL_RECORD record;
+        DSL_Program_Interface_Image_Get_Runtime_Call(i, &record);
+        fprintf(file, "  [%u] callsite=%u caller=<%u,%u> "
+                "caller_formal=%u callee=<%u,%u> callee_formal=%u "
+                "actual=%u formal=%u handle_ty=%u role=%s flags=0x%x\n",
+                record.id, record.callsite_id,
+                ST_IDX_level(record.caller_owner_pu_st),
+                ST_IDX_index(record.caller_owner_pu_st),
+                record.caller_final_formal_ordinal,
+                ST_IDX_level(record.callee_owner_pu_st),
+                ST_IDX_index(record.callee_owner_pu_st),
+                record.callee_final_formal_ordinal,
+                record.final_actual_ordinal,
+                record.final_callee_formal_ordinal,
+                (UINT32)record.handle_ty,
+                DSL_IR_String(record.semantic_role), record.flags);
     }
     DSL_FHE_Image_Print(file);
     DSL_FHE_Plan_Image_Print(file);

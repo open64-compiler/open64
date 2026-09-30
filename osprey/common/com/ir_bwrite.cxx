@@ -998,6 +998,55 @@ WN_write_dsl_runtime_interface_image (Output_File *fl)
 }
 
 void
+WN_write_dsl_program_interface_image (Output_File *fl)
+{
+    if (!DSL_Program_Interface_Image_Has_Records())
+        return;
+    FmtAssert(DSL_Program_Interface_Image_Validate(stderr),
+              ("invalid DSL program interface table"));
+    Section *cur_section = get_section
+                               (WT_DSL_PROGRAM_INTERFACE,
+                                MIPS_WHIRL_DSL_PROGRAM_INTERFACE, fl);
+    fl->file_size = ir_b_align(fl->file_size, sizeof(mINT64), 0);
+    cur_section->shdr.sh_offset = fl->file_size;
+    DSL_PROGRAM_INTERFACE_IMAGE_HEADER header;
+    DSL_Program_Interface_Image_Get_Header(&header);
+    ir_b_save_buf(&header, sizeof(header), sizeof(mINT64), 0, fl);
+    for (UINT32 i = 1; i <= header.retired_formal_count; ++i) {
+        DSL_RETIRED_FORMAL_RECORD record;
+        FmtAssert(DSL_Program_Interface_Image_Get_Retired_Formal(i, &record),
+                  ("missing DSL retired formal %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.retired_call_argument_count; ++i) {
+        DSL_RETIRED_CALL_ARGUMENT_RECORD record;
+        FmtAssert(DSL_Program_Interface_Image_Get_Retired_Call(i, &record),
+                  ("missing DSL retired call argument %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.runtime_input_count; ++i) {
+        DSL_RUNTIME_INPUT_RECORD record;
+        FmtAssert(DSL_Program_Interface_Image_Get_Runtime_Input(i, &record),
+                  ("missing DSL runtime input %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.runtime_input_binding_count; ++i) {
+        DSL_RUNTIME_INPUT_BINDING_RECORD record;
+        FmtAssert(DSL_Program_Interface_Image_Get_Runtime_Binding(i, &record),
+                  ("missing DSL runtime input binding %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    for (UINT32 i = 1; i <= header.runtime_input_call_count; ++i) {
+        DSL_RUNTIME_INPUT_CALL_RECORD record;
+        FmtAssert(DSL_Program_Interface_Image_Get_Runtime_Call(i, &record),
+                  ("missing DSL runtime input call %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    cur_section->shdr.sh_size = fl->file_size - cur_section->shdr.sh_offset;
+    cur_section->shdr.sh_addralign = sizeof(mINT64);
+}
+
+void
 WN_write_dsl_fhe_image (Output_File *fl)
 {
     if (!DSL_FHE_Image_Has_Records())
@@ -2027,6 +2076,7 @@ Write_Global_Info (PU_Info *pu_tree)
     WN_write_dsl_pu_interface_image(ir_output);
     WN_write_dsl_call_abi_image(ir_output);
     WN_write_dsl_runtime_interface_image(ir_output);
+    WN_write_dsl_program_interface_image(ir_output);
     WN_write_dsl_fhe_image(ir_output);
     WN_write_dsl_fhe_plan_image(ir_output);
     WN_write_dsl_fhe_approx_profile_image(ir_output);
