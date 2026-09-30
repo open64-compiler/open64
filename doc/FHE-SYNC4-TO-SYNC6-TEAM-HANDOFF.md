@@ -230,7 +230,9 @@ secure_resnet20.fhe.B
 | Commit | Coding scope | Required tests and evidence |
 | --- | --- | --- |
 | S5-1 Runtime ABI v1 implementation | Implement the public header and support code from the sole normative `FHE-RUNTIME-C-ABI-V1-CONTRACT.md`; do not create a second schema | C and C++ ABI compile tests; version/profile hashes; size/visibility checks; ownership and double-free negatives |
-| S5-2 Standard-call lowering | Lower the complete FHE/SIHE/CKKS model to normal `OPR_CALL`, symbols, result stores, descriptors, checks, and control flow | Focused and full-model `.B/.T`; source positions; exact TY/formal/result/descriptor checks |
+| S5-2a Propagation admission gate | Re-run/consume certified shape facts and context-sensitive FHE CKKS state after materialization; select one exact runtime role for every live value without changing canonical tensor identity | Missing/pending/conflicting class, descriptor, layout, level, scale, component, precision, slot, call-context, and pending-action negatives |
+| S5-2b Runtime-interface projection | Persist the owner-qualified relation from unchanged source DSL values to exact ciphertext/plaintext handle TY/ST; migrate PU inputs, hidden results, caller actuals/results, prototypes, and return stores through the reviewed generic transaction | Two-PU and six-PU exact-TY tests; local ST collision; source positions; wrong owner/ordinal/class; partial-PU abort; mapped reopen and `ir_b2a -st -src` evidence |
+| S5-2c Standard-call lowering | Lower the complete admitted FHE/SIHE/CKKS model to normal `OPR_CALL`, result stores, descriptors, checks, cleanup, and control flow using projected handles | Focused and full-model `.B/.T`; exact handle/formal/result/descriptor checks; canonical tensor rows retained only as non-executable provenance |
 | S5-3 Unlowered-node gate | Reject every remaining FHE/SIHE/CKKS logical node before `whirl2c` | One retained-node negative per layer; stable diagnostic; no generated C on failure |
 | S5-4 Mock provider | Implement deterministic semantics and failure injection behind ABI v1, including context/key/ciphertext envelope import/export and launcher/broker behavior | Full operation set; ownership, alias, transport, retry, cleanup, and worker-termination simulation |
 | S5-5 Generated-C boundary | Teach build/driver flow to compile and link `whirl2c` output with the mock | Generated C contains no ACE/OpenFHE types; dependency inspection; ordinary WHIRL regression |
@@ -241,6 +243,9 @@ Retain evidence under `artifacts/fhe/sync5-middle-whirl/`.
 ### Exit Gate
 
 - `secure_resnet20.mid.B` contains standard WHIRL only.
+- Shape/FHE-state propagation admits every projected value, and the runtime
+  interface distinguishes exact ciphertext and plaintext handle types without
+  mutating canonical TensorDescriptorIR/TY identity.
 - `whirl2c` output compiles and links without ACE or OpenFHE installed.
 - The mock executable validates call order, ownership, status, and cleanup.
 - A deliberately retained custom node fails before C emission.

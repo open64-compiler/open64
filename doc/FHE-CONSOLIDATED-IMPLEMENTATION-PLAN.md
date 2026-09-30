@@ -104,8 +104,13 @@ capture or planning of the complete ResNet-20 graph.
     adaptation. It attaches value-specific CKKS layout, level, scale,
     precision, alignment, rotation, and pending-action facts without mutating
     canonical TensorDescriptorIR/TY identity.
+16. Runtime-interface projection is a separate lowering step after successful
+    shape and FHE-state propagation. It relates each unchanged canonical DSL
+    value to an owner-local exact opaque handle TY/ST, including context-safe
+    PU formals, caller actuals, hidden results, and call results. It must never
+    retype canonical tensor identity into `void *` or a runtime handle.
 
-The detailed algorithm and validation contract for decisions 13-15 is
+The detailed algorithm and validation contract for decisions 13-16 is
 `doc/FHE-SHAPE-AND-ENCRYPTION-STATE-PROPAGATION.md`.
 
 The selected first executable provider and its API mapping are defined in
@@ -597,6 +602,9 @@ Required phase output:
 secure_resnet20.fhe.B
   -> SIHE/CKKS correctness planning
   -> secure_resnet20.ckks.B
+  -> shape and context-sensitive FHE-state certification
+  -> exact runtime-role selection
+  -> program-level runtime-interface projection
   -> FHE runtime-call lowering
   -> secure_resnet20.mid.B
   -> whirl2c
@@ -606,6 +614,15 @@ secure_resnet20.fhe.B
 
 Acceptance checks:
 
+- Propagation is the semantic admission gate for projection: every live value
+  has concrete compatible shape, value class, encryption descriptor, layout,
+  level, scale, component, precision, and pending-action evidence.
+- Canonical tensor `TY_IDX`, TensorDescriptorIR, DSL value, PU-interface, and
+  call-ABI rows remain source provenance. A separate owner-qualified runtime
+  projection records the exact ciphertext or plaintext handle TY/ST.
+- PU inputs pass exact borrowed handles by value; hidden results use
+  caller-owned null-initialized handles passed by pointer-to-handle; caller and
+  callee projected TYs agree exactly across all nine block callsites.
 - `secure_resnet20.mid.T` contains standard WHIRL calls, formals, results,
   symbols, initializers, status checks, and control flow only.
 - The unlowered-node verifier rejects remaining FHE/SIHE/CKKS/HPOLY nodes.
@@ -617,6 +634,8 @@ Acceptance checks:
   and evaluation-key requirements consumed by the mock and later ACE gate.
 - The mock executable validates the exact published manifest rather than a
   provider-specific schedule inferred during SYNC-6.
+- Any propagation or projection failure is checkpoint-terminal and publishes
+  no `.mid.B`, generated C, or auxiliary schedule artifact.
 
 Merge rule: assign every shared driver/whirl2c file to one PR owner before
 editing. The mock-runtime PR must not depend on an ACE runtime installation.
