@@ -20,6 +20,8 @@
 #include "fhe_runtime_lower.h"
 #include "fhe_standard_whirl.h"
 #include "fhe_unlowered_gate.h"
+#include "glob.h"
+#include "ir_bwrite.h"
 #include "ir_reader.h"
 #include "mempool.h"
 #include "pu_info.h"
@@ -46,6 +48,7 @@ Host_Format_Parm (INT kind, MEM_PTR parm)
 static UINT32 observed_gate_count;
 static UINT32 observed_pass_count;
 static const char *observed_checkpoint_path;
+static UINT32 test_source_file_id;
 
 static BOOL
 Observe_Runtime_Gate
@@ -100,7 +103,7 @@ Test_Source_Position (void)
 {
     USRCPOS position;
     USRCPOS_clear(position);
-    USRCPOS_filenum(position) = 1;
+    USRCPOS_filenum(position) = test_source_file_id;
     USRCPOS_linenum(position) = 37;
     USRCPOS_column(position) = 5;
     USRCPOS_stmt_begin(position) = 1;
@@ -140,6 +143,40 @@ Count_Global_Functions (const char *name)
             ++count;
     }
     return count;
+}
+
+static UINT32
+Count_Global_Variables (void)
+{
+    UINT32 count = 0;
+    ST *st;
+    INT32 index;
+    FOREACH_SYMBOL(GLOBAL_SYMTAB, st, index) {
+        if (ST_class(st) == CLASS_VAR)
+            ++count;
+    }
+    return count;
+}
+
+static TY_IDX
+Create_Opaque_Handle_TY (const char *name)
+{
+    TY_IDX opaque_ty;
+    TY &opaque = New_TY(opaque_ty);
+    TY_Init(opaque, 0, KIND_STRUCT, MTYPE_M, Save_Str(name));
+    Set_TY_align(opaque_ty, 1);
+    return Make_Pointer_Type(opaque_ty);
+}
+
+static ST_IDX
+Create_Local_Handle_ST
+        (const char *name, TY_IDX ty, SRCPOS source_position)
+{
+    ST *st = New_ST(CURRENT_SYMTAB);
+    ST_Init(st, Save_Str(name), CLASS_VAR, SCLASS_AUTO, EXPORT_LOCAL, ty);
+    Set_ST_is_temp_var(*st);
+    Set_ST_Srcpos(*st, source_position);
+    return ST_st_idx(st);
 }
 
 static BOOL
@@ -350,6 +387,199 @@ Verify_Two_Calls (WN *body)
 }
 
 static BOOL
+Build_Descriptor_Selected_Call (WN *tree)
+{
+    const UINT32 static_ordinal = 23;
+    const UINT32 operation_kind = 3;
+    WN *body = WN_func_body(tree);
+    SRCPOS source_position = Test_Source_Position();
+    TY_IDX status_ty = MTYPE_To_TY(MTYPE_I4);
+    TY_IDX u4_ty = MTYPE_To_TY(MTYPE_U4);
+    TY_IDX model_ty = Create_Opaque_Handle_TY("open64_fhe_model_v1");
+    TY_IDX ciphertext_ty =
+        Create_Opaque_Handle_TY("open64_fhe_ciphertext_v1");
+    TY_IDX descriptor_ty =
+        Create_Opaque_Handle_TY("open64_fhe_operation_desc_v1");
+    TY_IDX descriptor_output_ty = Make_Pointer_Type(descriptor_ty);
+    TY_IDX ciphertext_output_ty = Make_Pointer_Type(ciphertext_ty);
+    ST_IDX model_st = Create_Local_Handle_ST
+                          ("fhe_model", model_ty, source_position);
+    ST_IDX anchor_st = Create_Local_Handle_ST
+                           ("fhe_anchor", ciphertext_ty, source_position);
+    UINT32 formal_count = WN_num_formals(tree);
+    UINT32 global_variable_count = Count_Global_Variables();
+
+    VHO_FHE_STANDARD_PARM select_parameters[5];
+    memset(select_parameters, 0, sizeof(select_parameters));
+    select_parameters[0].formal_ty = model_ty;
+    select_parameters[0].actual_ty = model_ty;
+    select_parameters[0].actual = WN_CreateLdid
+                                      (OPR_LDID, Pointer_Mtype,
+                                       Pointer_Mtype, 0, model_st, model_ty);
+    select_parameters[0].policy =
+        VHO_FHE_STANDARD_PARM_BORROWED_READ_ONLY;
+    select_parameters[1].formal_ty = ciphertext_ty;
+    select_parameters[1].actual_ty = ciphertext_ty;
+    select_parameters[1].actual = WN_CreateLdid
+                                      (OPR_LDID, Pointer_Mtype,
+                                       Pointer_Mtype, 0, anchor_st,
+                                       ciphertext_ty);
+    select_parameters[1].policy =
+        VHO_FHE_STANDARD_PARM_BORROWED_READ_ONLY;
+    select_parameters[2].formal_ty = u4_ty;
+    select_parameters[2].actual_ty = u4_ty;
+    select_parameters[2].actual = WN_Intconst(MTYPE_U4, static_ordinal);
+    select_parameters[2].policy = VHO_FHE_STANDARD_PARM_BY_VALUE;
+    select_parameters[3].formal_ty = u4_ty;
+    select_parameters[3].actual_ty = u4_ty;
+    select_parameters[3].actual = WN_Intconst(MTYPE_U4, operation_kind);
+    select_parameters[3].policy = VHO_FHE_STANDARD_PARM_BY_VALUE;
+    select_parameters[4].formal_ty = descriptor_output_ty;
+    select_parameters[4].policy = VHO_FHE_STANDARD_PARM_OUTPUT_SLOT;
+    select_parameters[4].output_name = "fhe_selected_descriptor";
+    select_parameters[4].output_ty = descriptor_ty;
+
+    VHO_FHE_STANDARD_CALL_SPEC select_spec;
+    memset(&select_spec, 0, sizeof(select_spec));
+    select_spec.function_name = "open64_fhe_operation_desc_select_v1";
+    select_spec.status_ty = status_ty;
+    select_spec.parameters = select_parameters;
+    select_spec.parameter_count = 5;
+    select_spec.status_name = "fhe_select_status";
+    select_spec.source_position = source_position;
+    select_spec.build_failure = Build_Failure_Block;
+
+    VHO_FHE_STANDARD_CALL_RESULT select_result;
+    BOOL selected = VHO_FHE_Build_Standard_Call
+                        (&select_spec, stderr, &select_result) &&
+                    select_result.output_st != ST_IDX_ZERO &&
+                    ST_type(select_result.output_st) == descriptor_ty &&
+                    ST_Srcpos(St_Table[select_result.output_st]) ==
+                        source_position &&
+                    VHO_FHE_Commit_Standard_Call
+                        (body, NULL, &select_result, stderr);
+    for (UINT32 i = 0; i < 4; ++i)
+        WN_DELETE_Tree(select_parameters[i].actual);
+    if (!selected)
+        return FALSE;
+
+    VHO_FHE_STANDARD_PARM evaluate_parameters[4];
+    memset(evaluate_parameters, 0, sizeof(evaluate_parameters));
+    evaluate_parameters[0].formal_ty = model_ty;
+    evaluate_parameters[0].actual_ty = model_ty;
+    evaluate_parameters[0].actual = WN_CreateLdid
+                                        (OPR_LDID, Pointer_Mtype,
+                                         Pointer_Mtype, 0, model_st, model_ty);
+    evaluate_parameters[0].policy =
+        VHO_FHE_STANDARD_PARM_BORROWED_READ_ONLY;
+    evaluate_parameters[1].formal_ty = ciphertext_ty;
+    evaluate_parameters[1].actual_ty = ciphertext_ty;
+    evaluate_parameters[1].actual = WN_CreateLdid
+                                        (OPR_LDID, Pointer_Mtype,
+                                         Pointer_Mtype, 0, anchor_st,
+                                         ciphertext_ty);
+    evaluate_parameters[1].policy =
+        VHO_FHE_STANDARD_PARM_BORROWED_READ_ONLY;
+    evaluate_parameters[2].formal_ty = descriptor_ty;
+    evaluate_parameters[2].actual_ty = descriptor_ty;
+    evaluate_parameters[2].actual = WN_CreateLdid
+                                        (OPR_LDID, Pointer_Mtype,
+                                         Pointer_Mtype, 0,
+                                         select_result.output_st,
+                                         descriptor_ty);
+    evaluate_parameters[2].policy =
+        VHO_FHE_STANDARD_PARM_BORROWED_READ_ONLY;
+    evaluate_parameters[3].formal_ty = ciphertext_output_ty;
+    evaluate_parameters[3].policy = VHO_FHE_STANDARD_PARM_OUTPUT_SLOT;
+    evaluate_parameters[3].output_name = "fhe_selected_result";
+    evaluate_parameters[3].output_ty = ciphertext_ty;
+
+    VHO_FHE_STANDARD_CALL_SPEC evaluate_spec;
+    memset(&evaluate_spec, 0, sizeof(evaluate_spec));
+    evaluate_spec.function_name = "open64_fhe_bootstrap_v1";
+    evaluate_spec.status_ty = status_ty;
+    evaluate_spec.parameters = evaluate_parameters;
+    evaluate_spec.parameter_count = 4;
+    evaluate_spec.status_name = "fhe_evaluate_status";
+    evaluate_spec.source_position = source_position;
+    evaluate_spec.build_failure = Build_Failure_Block;
+
+    VHO_FHE_STANDARD_CALL_RESULT evaluate_result;
+    BOOL evaluated = VHO_FHE_Build_Standard_Call
+                         (&evaluate_spec, stderr, &evaluate_result) &&
+                     evaluate_result.output_st != ST_IDX_ZERO &&
+                     ST_type(evaluate_result.output_st) == ciphertext_ty &&
+                     ST_Srcpos(St_Table[evaluate_result.output_st]) ==
+                         source_position &&
+                     VHO_FHE_Commit_Standard_Call
+                         (body, NULL, &evaluate_result, stderr);
+    for (UINT32 i = 0; i < 3; ++i)
+        WN_DELETE_Tree(evaluate_parameters[i].actual);
+    if (!evaluated || WN_num_formals(tree) != formal_count ||
+        Count_Global_Variables() != global_variable_count) {
+        fprintf(stderr,
+                "descriptor selection changed the PU or global interface\n");
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL
+Verify_Descriptor_Selected_Call (WN *tree)
+{
+    WN *body = WN_func_body(tree);
+    WN *select_call = NULL;
+    WN *evaluate_call = NULL;
+    UINT32 call_count = 0;
+    for (WN *stmt = WN_first(body); stmt != NULL; stmt = WN_next(stmt)) {
+        if (WN_operator(stmt) != OPR_CALL)
+            continue;
+        ++call_count;
+        const char *name = ST_name(WN_st(stmt));
+        if (strcmp(name, "open64_fhe_operation_desc_select_v1") == 0)
+            select_call = stmt;
+        else if (strcmp(name, "open64_fhe_bootstrap_v1") == 0)
+            evaluate_call = stmt;
+    }
+    if (call_count != 2 || select_call == NULL || evaluate_call == NULL ||
+        WN_kid_count(select_call) != 5 ||
+        WN_kid_count(evaluate_call) != 4) {
+        fprintf(stderr, "descriptor-selected call sequence changed\n");
+        return FALSE;
+    }
+
+    WN *static_ordinal = WN_kid0(WN_kid(select_call, 2));
+    WN *operation_kind = WN_kid0(WN_kid(select_call, 3));
+    WN *descriptor_address = WN_kid0(WN_kid(select_call, 4));
+    WN *descriptor_actual = WN_kid0(WN_kid(evaluate_call, 2));
+    WN *select_capture = WN_next(select_call);
+    WN *select_check = select_capture == NULL ? NULL :
+                           WN_next(select_capture);
+    WN *evaluate_initialize = WN_prev(evaluate_call);
+    SRCPOS select_position = WN_Get_Linenum(select_call);
+    SRCPOS evaluate_position = WN_Get_Linenum(evaluate_call);
+    if (WN_operator(static_ordinal) != OPR_INTCONST ||
+        WN_const_val(static_ordinal) != 23 ||
+        WN_operator(operation_kind) != OPR_INTCONST ||
+        WN_const_val(operation_kind) != 3 ||
+        WN_operator(descriptor_address) != OPR_LDA ||
+        WN_operator(descriptor_actual) != OPR_LDID ||
+        WN_st_idx(descriptor_address) != WN_st_idx(descriptor_actual) ||
+        select_capture == NULL || WN_operator(select_capture) != OPR_STID ||
+        select_check == NULL || WN_operator(select_check) != OPR_IF ||
+        evaluate_initialize == NULL ||
+        WN_operator(evaluate_initialize) != OPR_STID ||
+        WN_next(select_check) != evaluate_initialize ||
+        SRCPOS_linenum(select_position) != 37 ||
+        SRCPOS_linenum(evaluate_position) != 37) {
+        fprintf(stderr,
+                "descriptor selection lost ordering, identity, or source\n");
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL
 Verify_Gate_Rejection (struct pu_info *pu_info)
 {
     WN *native = DSL_WN_Create_Native
@@ -386,6 +616,30 @@ Write_Review_Trace (WN *tree)
     return fclose(trace) == 0;
 }
 
+static BOOL
+Write_Review_Artifact
+        (DSL_BUILDER_PROGRAM_UNIT *program_units, UINT32 program_unit_count)
+{
+    const char *path = getenv("OPEN64_FHE_RUNTIME_LOWER_ARTIFACT");
+    if (path == NULL || path[0] == '\0')
+        return TRUE;
+    if (program_units == NULL || program_unit_count == 0)
+        return FALSE;
+    Irb_File_Name = (char *)path;
+    if (Open_Output_Info(Irb_File_Name) == NULL)
+        return FALSE;
+    for (UINT32 i = 0; i < program_unit_count; ++i) {
+        if (!DSL_Builder_Select_PU(program_units[i])) {
+            Close_Output_Info();
+            return FALSE;
+        }
+        Write_PU_Info(program_units[i]);
+    }
+    Write_Global_Info(program_units[0]);
+    Close_Output_Info();
+    return TRUE;
+}
+
 int
 main (void)
 {
@@ -396,12 +650,27 @@ main (void)
         DSL_Builder_Create_Minimal_PU("fhe_runtime_lower_contract");
     if (pu == NULL || !DSL_Builder_Select_PU(pu))
         return 1;
+    test_source_file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    if (test_source_file_id == 0)
+        return 1;
     WN *tree = PU_Info_tree_ptr(pu);
     WN *body = WN_func_body(tree);
     if (!Build_Two_Calls(body) || !Verify_Two_Calls(body) ||
         !Write_Review_Trace(tree) ||
         !Verify_Gate_Rejection(pu)) {
         fprintf(stderr, "standard FHE WHIRL construction changed\n");
+        return 1;
+    }
+
+    DSL_BUILDER_PROGRAM_UNIT selector_pu =
+        DSL_Builder_Create_Minimal_PU("fhe_descriptor_selection_contract");
+    if (selector_pu == NULL || !DSL_Builder_Select_PU(selector_pu))
+        return 1;
+    WN *selector_tree = PU_Info_tree_ptr(selector_pu);
+    if (!Build_Descriptor_Selected_Call(selector_tree) ||
+        !Verify_Descriptor_Selected_Call(selector_tree) ||
+        !Write_Review_Trace(selector_tree)) {
+        fprintf(stderr, "FHE descriptor selection contract changed\n");
         return 1;
     }
 
@@ -453,6 +722,14 @@ main (void)
             VHO_FHE_Runtime_Lowering_Checkpoint_Output ||
         result.error_count != 0)
         return 1;
+
+    DSL_BUILDER_PROGRAM_UNIT program_units[4] = {
+        pu, selector_pu, runtime_pu, second_runtime_pu
+    };
+    if (!Write_Review_Artifact(program_units, 4)) {
+        fprintf(stderr, "FHE runtime lowering artifact write failed\n");
+        return 1;
+    }
 
     DSL_Builder_Abort_Program();
     VHO_FHE_Runtime_Lower_Reset_Passes();

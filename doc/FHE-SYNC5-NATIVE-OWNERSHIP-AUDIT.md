@@ -1,7 +1,8 @@
 # FHE SYNC-5 Native Infrastructure Ownership Audit
 
-Status: main-owned native infrastructure implemented; FHE semantic binding and
-end-to-end `.mid.B` certification remain pending
+Status: main-owned native infrastructure and dynamic descriptor-selection
+contract implemented; FHE semantic binding and end-to-end `.mid.B`
+certification remain pending
 
 ## Purpose
 
@@ -199,6 +200,29 @@ creating a second external declaration.  The initial API permits at most one
 output slot per call; expansion requires a reviewed API revision and focused
 ABI tests.
 
+### Dynamic Descriptor Selection
+
+Shared class-centric PUs cannot embed one context-specific operation
+descriptor. SYNC-5 therefore uses the session-scoped reservation contract in
+`FHE-SYNC5-DESCRIPTOR-SELECTION-CONTRACT.md`. Generated WHIRL calls
+`open64_fhe_operation_desc_select_v1(model, anchor, static_ordinal,
+operation_kind, &descriptor)`, checks its status, and immediately passes the
+borrowed descriptor to the evaluation call. The anchor is ABI operand zero
+and identifies the current inference session and schedule cursor.
+
+The runtime owns dynamic event selection and reservation. The shared PU owns
+only its static ordinal and operation kind. Successful selection does not
+advance the cursor; successful evaluation output publication advances it once.
+Recoverable provider failure clears the reservation without advancing, and a
+retry selects again. A wrong or second selection/evaluation returns
+`CALL_ORDER_MISMATCH` under the detailed ABI priority rules.
+
+This is represented entirely with the existing standard-call builder and
+ordinary local symbols. It adds no hidden PU formal, global counter, DSL
+opcode, mapped-image section, or common/com API. Selection is a control call
+outside the 87-static/147-dynamic evaluation census and has a separate exact
+87/147 selector census.
+
 ### Canonical Tensor To Runtime-Handle Projection
 
 SYNC-5 requires an owner-safe transition from canonical tensor-valued PU and
@@ -377,10 +401,14 @@ slots initialized to NULL, exact actual/formal TY checks, wrong-pointee and
 same-name/prototype-conflict rejection, failure-path access to captured locals,
 function TY/ST reuse, stable checkpoint-path delivery across PUs,
 disabled-phase behavior, callback registration, result aggregation, and
-rejection of an executable native DSL carrier.
+rejection of an executable native DSL carrier. It also constructs the exact
+selector-then-evaluation sequence and proves descriptor-local flow, immediate
+status-checked ordering, exact opaque TY identities, unchanged PU formals, and
+absence of a global cursor variable.
 
-The FHE workstream may implement ABI v1 headers, mock behavior, and schedule
-producers concurrently.  Its next coordinated step is to bind the semantic
-runtime lowerer to these interfaces, register the final semantic verifier, and
-certify the exact 87-static/147-dynamic schedule through `.mid.B`,
-`ir_b2a -st -src`, unchanged `whirl2c`, and mock-runtime execution.
+The FHE workstream may implement ABI v1 headers, descriptor selection,
+reservation/mock behavior, and schedule producers concurrently. Its next
+coordinated step is to bind the semantic runtime lowerer to these interfaces,
+register the final semantic verifier, and certify the exact evaluation and
+selector 87-static/147-dynamic censuses through `.mid.B`, `ir_b2a -st -src`,
+unchanged `whirl2c`, and mock-runtime execution.
