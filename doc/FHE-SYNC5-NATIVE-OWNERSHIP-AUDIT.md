@@ -1,8 +1,7 @@
 # FHE SYNC-5 Native Infrastructure Ownership Audit
 
-Status: main-owned native infrastructure and dynamic descriptor-selection
-contract implemented; FHE semantic binding and end-to-end `.mid.B`
-certification remain pending
+Status: main-owned phase, projection, and descriptor-selection infrastructure
+merged; full-model entry/resource binding contract remains pending
 
 ## Purpose
 
@@ -444,3 +443,13 @@ coordinated step is to bind the semantic runtime lowerer to these interfaces,
 register the final semantic verifier, and certify the exact evaluation and
 selector 87-static/147-dynamic censuses through `.mid.B`, `ir_b2a -st -src`,
 unchanged `whirl2c`, and mock-runtime execution.
+
+The post-PR #155 full-model audit found that this binding cannot yet be
+implemented safely. The generic projection requires complete projection of
+all original formals and call arguments, including verified-dead BatchNorm
+inputs, while it has no contract to promote root-owned live plaintext values
+to launcher-supplied formals or to thread the runtime-only model and composite
+coefficient handles through shared PUs. The exact evidence, rejected
+workarounds, proposed generic transactions, and test matrix are recorded in
+`doc/FHE-SYNC5-RUNTIME-ENTRY-BINDING-GAP.md`. S5-2c remains fail-closed until
+that main/common contract is reviewed and merged.

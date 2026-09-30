@@ -238,6 +238,14 @@ secure_resnet20.fhe.B
 | S5-5 Generated-C boundary | Teach build/driver flow to compile and link `whirl2c` output with the mock | Generated C contains no ACE/OpenFHE types; dependency inspection; ordinary WHIRL regression |
 | S5-6 Full schedule and mock certification | Run complete ResNet-20 and freeze the successful call census, execution-expanded semantic schedule, operation descriptors, signed rotations, key requirements, complete provider-capability manifest, and separate lifecycle/failure transcripts | `.ckks.B/.T`, `.mid.B/.T`, generated C, mock executable, manifests, transcripts, logs, hashes, and independent census recomputation |
 
+Post-PR #155 checkpoint: S5-1 and the standalone S5-4 ABI/mock contract are
+merged. S5-2c is blocked before semantic call emission by the three generic
+program-interface gaps documented in
+`FHE-SYNC5-RUNTIME-ENTRY-BINDING-GAP.md`: dead canonical ABI pruning, root
+entry-parameter promotion, and explicit runtime-resource threading for the
+model and ReLU coefficient handles. Do not substitute globals, uninitialized
+locals, name parsing, or projected dead BN parameters.
+
 Retain evidence under `artifacts/fhe/sync5-middle-whirl/`.
 
 ### Exit Gate

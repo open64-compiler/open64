@@ -142,6 +142,18 @@ source, and TensorDescriptorIR records as non-executable provenance. A failed
 multi-PU migration is terminal for artifact publication; it must not emit a
 partially projected binary.
 
+Projection also needs explicit program-interface transactions for cases that
+are not a one-for-one retyping of an existing physical formal. A verified-dead
+source formal and all corresponding caller actuals may be pruned only by a
+complete owner-safe transaction. A live root-owned external tensor may become
+a launcher-supplied runtime formal only through a source-linked promotion
+contract. Runtime-only resources such as an FHE model or approximation
+coefficient handles require stable semantic roles and explicit threading
+through shared PUs. They must never appear as uninitialized locals, hidden
+process state, or invented tensor identities. The concrete SYNC-5 gap and test
+requirements are recorded in
+`doc/FHE-SYNC5-RUNTIME-ENTRY-BINDING-GAP.md`.
+
 This rule generalizes beyond FHE: domain state propagation decides whether a
 runtime representation is legal, while a separate generic projection service
 performs the representation change. Analyses must never use ABI retyping as a

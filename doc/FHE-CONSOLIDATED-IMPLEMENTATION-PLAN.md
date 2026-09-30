@@ -637,6 +637,15 @@ Acceptance checks:
 - Any propagation or projection failure is checkpoint-terminal and publishes
   no `.mid.B`, generated C, or auxiliary schedule artifact.
 
+Post-PR #155 audit checkpoint: the phase shell, one-for-one tensor projection,
+descriptor selection, ABI v1, and standalone mock are merged. Full-model
+S5-2c emission remains blocked on three generic interface transactions:
+verified-dead formal/actual pruning, root external-parameter promotion, and
+explicit model/coefficient resource threading through reused PUs. The exact
+contract handoff is `doc/FHE-SYNC5-RUNTIME-ENTRY-BINDING-GAP.md`. Until those
+transactions merge, the compiler must fail closed rather than emit
+uninitialized runtime handles or project dead BatchNorm inputs.
+
 Merge rule: assign every shared driver/whirl2c file to one PR owner before
 editing. The mock-runtime PR must not depend on an ACE runtime installation.
 
