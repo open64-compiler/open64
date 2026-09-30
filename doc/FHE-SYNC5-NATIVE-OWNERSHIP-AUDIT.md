@@ -199,6 +199,81 @@ creating a second external declaration.  The initial API permits at most one
 output slot per call; expansion requires a reviewed API revision and focused
 ABI tests.
 
+### Canonical Tensor To Runtime-Handle Projection
+
+SYNC-5 requires an owner-safe transition from canonical tensor-valued PU and
+call interfaces to standard WHIRL interfaces carrying opaque runtime handles.
+The optional append-only `.WHIRL.dsl_runtime_interface` image records that
+transition without changing any canonical tensor, DSL value, PU formal, call
+ABI, source, REGION, or FHE planning row.  Those earlier rows remain immutable
+provenance.
+
+The generic plan/apply service is split deliberately:
+
+```text
+DSL_Runtime_Interface_Plan_Validate(...)
+DSL_Runtime_Interface_Apply_PU(active_pu, ...)
+DSL_Runtime_Interface_Validate_PU(active_pu, ...)
+```
+
+The plan covers the complete program with stable IDs, but `Apply_PU` touches
+only the currently selected PU and its active local symbol and map tables.  It
+creates one exact handle TY/ST projection for each selected source value,
+rebuilds that PU's `FUNC_ENTRY`, function TYLIST, call parameters, and return
+stores, and appends fixed projection rows.  The backend driver remains
+responsible for selecting every PU and invoking the service under the normal
+per-PU compilation scope.  No WN, local ST, or borrowed query result survives
+a PU transition.
+
+Each value row records the canonical source value/ST/TY, the projected handle
+ST/TY, and one of these structural roles:
+
+- local runtime value;
+- by-value input formal; or
+- hidden caller-owned result formal carrying a pointer to the exact handle TY.
+
+Each call row joins a stable callsite and actual ordinal to the selected value
+projection and callee formal ordinal.  Inputs become by-value, read-only,
+passed-not-saved handle loads.  Results use a caller-owned handle local,
+initialized to NULL before the call and passed as a typed pointer-to-handle
+output parameter.  Exact TY identity is required: ciphertext and plaintext
+handles remain different TYs even when both use the same pointer-width machine
+type.
+
+Canonical DSL call metadata may associate an actual and formal with different
+ordinals.  Standard WHIRL and the C ABI are positional, so runtime-interface
+v1 deliberately requires `actual_ordinal == callee_formal_ordinal`.  A
+non-positional canonical call must be normalized or adapted by a separately
+reviewed semantic transformation before projection; v1 never silently swaps
+arguments.
+
+The service does not infer encryption roles, choose provider operations, lower
+FHE semantics, or select handle types.  FHE-owned propagation must first
+certify shape and context-sensitive encryption state, then select the exact
+runtime role and handle TY for every participating value.  Only after those
+decisions are complete may the generic projection run.  Standard-call
+construction follows projection.
+
+Preflight verifies complete formal and call coverage, exact owner/value/ST/TY
+identity, legal role/sentinel combinations, physical source ABI agreement,
+cross-PU formal agreement, and duplicate absence before mutating the active
+PU.  A later failure is terminal for the checkpoint transaction; the driver
+must not retry or continue conversion in the same process.  Final PU
+validation proves the rebuilt prototype and calls match the fixed rows and
+that executable WHIRL no longer references canonical tensor STs.  Lifecycle
+locals created solely by standard-call lowering do not require projection
+rows.
+
+The v1 mapped image has a 32-byte header, 48-byte value rows, 40-byte call
+rows, and 8-byte ELF section alignment.  Unknown or malformed rows fail
+closed.  Older readers may ignore the optional section, but they cannot safely
+process the projected physical ABI as the original tensor interface; the
+standard-WHIRL checkpoint and current gatekeeper are therefore the supported
+consumer boundary.  `ir_b2a -st -src` prints logical value and call projection
+tables while ordinary WHIRL printing continues to show the resulting
+`FUNC_ENTRY`, `OPR_PARM`, `OPR_CALL`/`OPR_VCALL`, loads, stores, and control
+flow.
+
 ### Final Unlowered Gate
 
 `fhe_unlowered_gate.h` provides a PU-local structural verifier and a

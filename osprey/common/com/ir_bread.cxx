@@ -519,6 +519,21 @@ WN_get_dsl_pu_interface_image (void *handle)
 }
 
 INT
+WN_get_dsl_runtime_interface_image (void *handle)
+{
+    OFFSET_AND_SIZE shdr = get_section
+                               (handle, SHT_MIPS_WHIRL,
+                                WT_DSL_RUNTIME_INTERFACE);
+    if (shdr.offset == 0) {
+        DSL_Runtime_Interface_Image_Reset();
+        return 0;
+    }
+    const void *section_base = (const char *)handle + shdr.offset;
+    return DSL_Runtime_Interface_Image_Load_Mapped
+               (section_base, shdr.size, stderr) ? 0 : -1;
+}
+
+INT
 WN_get_dsl_fhe_image (void *handle)
 {
     OFFSET_AND_SIZE shdr = get_section
@@ -1752,6 +1767,10 @@ Read_Global_Info (INT32 *p_num_PUs)
     }
     if (WN_get_dsl_call_abi_image(global_fhandle) == -1) {
         ErrMsg (EC_IR_Scn_Read, "DSL call ABI image", global_ir_file);
+    }
+    if (WN_get_dsl_runtime_interface_image(global_fhandle) == -1) {
+        ErrMsg (EC_IR_Scn_Read, "DSL runtime interface image",
+                global_ir_file);
     }
     if (WN_get_dsl_fhe_image(global_fhandle) == -1) {
         ErrMsg (EC_IR_Scn_Read, "DSL FHE image", global_ir_file);

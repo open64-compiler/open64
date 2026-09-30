@@ -11,6 +11,9 @@
 #include "segmented_array.h"
 #include "strtab.h"
 
+extern BOOL DSL_Runtime_Interface_Value_Record_Contract_Valid
+                                (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *);
+
 typedef struct wn_map_tab WN_MAP_TAB;
 extern WN_MAP_TAB *Current_Map_Tab;
 extern "C" INT32 IPA_WN_MAP32_Get (WN_MAP_TAB *maptab, WN_MAP wn_map,
@@ -31,6 +34,10 @@ typedef SEGMENTED_ARRAY<DSL_CALLSITE_METADATA_RECORD>
     DSL_CALLSITE_METADATA_TABLE;
 typedef SEGMENTED_ARRAY<DSL_CALL_ARGUMENT_RECORD> DSL_CALL_ARGUMENT_TABLE;
 typedef SEGMENTED_ARRAY<DSL_PU_FORMAL_RECORD> DSL_PU_FORMAL_TABLE;
+typedef SEGMENTED_ARRAY<DSL_RUNTIME_VALUE_PROJECTION_RECORD>
+    DSL_RUNTIME_VALUE_PROJECTION_TABLE;
+typedef SEGMENTED_ARRAY<DSL_RUNTIME_CALL_PROJECTION_RECORD>
+    DSL_RUNTIME_CALL_PROJECTION_TABLE;
 
 static DSL_IR_OPCODE_DESCRIPTOR_TABLE DSL_ir_opcode_descriptor_table;
 static DSL_IR_NODE_TABLE DSL_ir_node_table;
@@ -43,6 +50,8 @@ static DSL_PU_SOURCE_IDENTITY_TABLE DSL_pu_source_identity_table;
 static DSL_CALLSITE_METADATA_TABLE DSL_callsite_metadata_table;
 static DSL_CALL_ARGUMENT_TABLE DSL_call_argument_table;
 static DSL_PU_FORMAL_TABLE DSL_pu_formal_table;
+static DSL_RUNTIME_VALUE_PROJECTION_TABLE DSL_runtime_value_projection_table;
+static DSL_RUNTIME_CALL_PROJECTION_TABLE DSL_runtime_call_projection_table;
 
 typedef struct {
     ST_IDX owner_pu_st;
@@ -101,6 +110,15 @@ typedef char DSL_PU_Interface_Image_Header_Size_Check
         DSL_PU_INTERFACE_IMAGE_HEADER_SIZE ? 1 : -1];
 typedef char DSL_PU_Formal_Size_Check
     [sizeof(DSL_PU_FORMAL_RECORD) == DSL_PU_FORMAL_RECORD_SIZE ? 1 : -1];
+typedef char DSL_Runtime_Interface_Header_Size_Check
+    [sizeof(DSL_RUNTIME_INTERFACE_IMAGE_HEADER) ==
+        DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE ? 1 : -1];
+typedef char DSL_Runtime_Value_Projection_Size_Check
+    [sizeof(DSL_RUNTIME_VALUE_PROJECTION_RECORD) ==
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD_SIZE ? 1 : -1];
+typedef char DSL_Runtime_Call_Projection_Size_Check
+    [sizeof(DSL_RUNTIME_CALL_PROJECTION_RECORD) ==
+        DSL_RUNTIME_CALL_PROJECTION_RECORD_SIZE ? 1 : -1];
 
 template <typename RECORD>
 static void
@@ -135,6 +153,7 @@ DSL_IR_Image_Reset (void)
     DSL_Call_Image_Reset();
     DSL_Call_ABI_Image_Reset();
     DSL_PU_Interface_Image_Reset();
+    DSL_Runtime_Interface_Image_Reset();
 }
 
 static BOOL
@@ -752,6 +771,379 @@ DSL_PU_Interface_Image_Load_Mapped
         DSL_PU_Interface_Image_Reset();
         return FALSE;
     }
+    return TRUE;
+}
+
+static BOOL
+DSL_Runtime_Interface_Report
+        (FILE *diagnostic, const char *message, UINT32 id)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "DSL runtime interface image error: %s id=%u\n",
+                message, id);
+    return FALSE;
+}
+
+static const DSL_RUNTIME_VALUE_PROJECTION_RECORD *
+DSL_Runtime_Interface_Find_Value_In_View
+        (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *values,
+         UINT32 value_count, ST_IDX owner_pu_st,
+         DSL_IR_VALUE_ID source_value_id)
+{
+    for (UINT32 i = 0; i < value_count; ++i) {
+        if (values[i].owner_pu_st == owner_pu_st &&
+            values[i].source_value_id == source_value_id)
+            return &values[i];
+    }
+    return NULL;
+}
+
+static BOOL
+DSL_Runtime_Interface_View_Validate
+        (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *values,
+         UINT32 value_count,
+         const DSL_RUNTIME_CALL_PROJECTION_RECORD *calls,
+         UINT32 call_count, FILE *diagnostic)
+{
+    for (UINT32 i = 0; i < value_count; ++i) {
+        const DSL_RUNTIME_VALUE_PROJECTION_RECORD &record = values[i];
+        DSL_PU_FORMAL_RECORD formal;
+        BOOL is_formal = record.binding_kind ==
+                             DSL_RUNTIME_BINDING_INPUT_FORMAL ||
+                         record.binding_kind ==
+                             DSL_RUNTIME_BINDING_RESULT_FORMAL;
+        if (record.id != i + 1 ||
+            !DSL_Runtime_Interface_Value_Record_Contract_Valid(&record) ||
+            record.binding_kind < DSL_RUNTIME_BINDING_LOCAL_VALUE ||
+            record.binding_kind > DSL_RUNTIME_BINDING_RESULT_FORMAL ||
+            (is_formal && record.formal_ordinal ==
+                              DSL_RUNTIME_INTERFACE_INVALID_ORDINAL) ||
+            (!is_formal && record.formal_ordinal !=
+                               DSL_RUNTIME_INTERFACE_INVALID_ORDINAL) ||
+            record.flags != 0 || record.reserved0 != 0 ||
+            record.reserved1 != 0)
+            return DSL_Runtime_Interface_Report
+                       (diagnostic, "invalid value projection", i + 1);
+        if (is_formal &&
+            (!DSL_PU_Interface_Image_Find_Formal
+                 (record.owner_pu_st, record.formal_ordinal, &formal) ||
+             formal.formal_value_id != record.source_value_id ||
+             formal.formal_st != record.source_st ||
+             formal.formal_ty != record.source_ty))
+            return DSL_Runtime_Interface_Report
+                       (diagnostic, "formal provenance mismatch", i + 1);
+        for (UINT32 j = 0; j < i; ++j) {
+            if (values[j].owner_pu_st == record.owner_pu_st &&
+                (values[j].source_value_id == record.source_value_id ||
+                 values[j].handle_st == record.handle_st ||
+                 (is_formal &&
+                  values[j].formal_ordinal == record.formal_ordinal)))
+                return DSL_Runtime_Interface_Report
+                           (diagnostic, "duplicate value projection", i + 1);
+        }
+    }
+
+    for (UINT32 i = 0; i < call_count; ++i) {
+        const DSL_RUNTIME_CALL_PROJECTION_RECORD &record = calls[i];
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        const DSL_RUNTIME_VALUE_PROJECTION_RECORD *value =
+            record.value_projection_id == 0 ||
+            record.value_projection_id > value_count ? NULL :
+            &values[record.value_projection_id - 1];
+        DSL_PU_FORMAL_RECORD formal;
+        const DSL_RUNTIME_VALUE_PROJECTION_RECORD *formal_projection = NULL;
+        if (record.id != i + 1 ||
+            record.callsite_id == DSL_CALLSITE_METADATA_INVALID_ID ||
+            !DSL_Call_Image_Get_Callsite(record.callsite_id, &callsite) ||
+            callsite.owner_pu_st != record.owner_pu_st || value == NULL ||
+            value->owner_pu_st != record.owner_pu_st ||
+            value->source_value_id != record.source_value_id ||
+            record.actual_ordinal == DSL_RUNTIME_INTERFACE_INVALID_ORDINAL ||
+            record.callee_formal_ordinal ==
+                DSL_RUNTIME_INTERFACE_INVALID_ORDINAL ||
+            record.actual_ordinal != record.callee_formal_ordinal ||
+            record.direction < DSL_RUNTIME_CALL_INPUT ||
+            record.direction > DSL_RUNTIME_CALL_RESULT ||
+            record.flags != 0 || record.reserved != 0 ||
+            !DSL_PU_Interface_Image_Find_Formal
+                 (callsite.callee_pu_st, record.callee_formal_ordinal,
+                  &formal))
+            return DSL_Runtime_Interface_Report
+                       (diagnostic, "invalid call projection", i + 1);
+        formal_projection = DSL_Runtime_Interface_Find_Value_In_View
+                                (values, value_count,
+                                 callsite.callee_pu_st,
+                                 formal.formal_value_id);
+        if (formal_projection == NULL ||
+            formal_projection->formal_ordinal !=
+                record.callee_formal_ordinal ||
+            formal_projection->handle_ty != value->handle_ty ||
+            (record.direction == DSL_RUNTIME_CALL_INPUT &&
+             formal_projection->binding_kind !=
+                 DSL_RUNTIME_BINDING_INPUT_FORMAL) ||
+            (record.direction == DSL_RUNTIME_CALL_RESULT &&
+             formal_projection->binding_kind !=
+                 DSL_RUNTIME_BINDING_RESULT_FORMAL))
+            return DSL_Runtime_Interface_Report
+                       (diagnostic, "call/formal projection mismatch", i + 1);
+        if (record.direction == DSL_RUNTIME_CALL_INPUT) {
+            DSL_CALL_ARGUMENT_RECORD argument;
+            if (!DSL_Call_ABI_Image_Find_Argument_By_Id
+                    (record.callsite_id, record.actual_ordinal, &argument) ||
+                argument.argument_value_id != record.source_value_id ||
+                argument.callee_formal_ordinal !=
+                    record.callee_formal_ordinal)
+                return DSL_Runtime_Interface_Report
+                           (diagnostic, "input provenance mismatch", i + 1);
+        }
+        for (UINT32 j = 0; j < i; ++j) {
+            if (calls[j].callsite_id == record.callsite_id &&
+                calls[j].actual_ordinal == record.actual_ordinal)
+                return DSL_Runtime_Interface_Report
+                           (diagnostic, "duplicate call projection", i + 1);
+        }
+    }
+
+    for (UINT32 call_id = 1;
+         call_id <= DSL_Call_Image_Callsite_Count(); ++call_id) {
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        if (!DSL_Call_Image_Get_Callsite(call_id, &callsite))
+            return DSL_Runtime_Interface_Report
+                       (diagnostic, "missing callsite", call_id);
+        for (UINT32 formal_id = 1;
+             formal_id <= DSL_PU_Interface_Image_Formal_Count();
+             ++formal_id) {
+            DSL_PU_FORMAL_RECORD formal;
+            if (!DSL_PU_Interface_Image_Get_Formal(formal_id, &formal))
+                return DSL_Runtime_Interface_Report
+                           (diagnostic, "missing formal", formal_id);
+            if (formal.owner_pu_st != callsite.callee_pu_st)
+                continue;
+            const DSL_RUNTIME_VALUE_PROJECTION_RECORD *projection =
+                DSL_Runtime_Interface_Find_Value_In_View
+                    (values, value_count, formal.owner_pu_st,
+                     formal.formal_value_id);
+            UINT32 input_relation_count = 0;
+            for (UINT32 argument_id = 1;
+                 argument_id <= DSL_Call_ABI_Image_Argument_Count();
+                 ++argument_id) {
+                DSL_CALL_ARGUMENT_RECORD argument;
+                if (!DSL_Call_ABI_Image_Get_Argument
+                        (argument_id, &argument))
+                    return DSL_Runtime_Interface_Report
+                               (diagnostic, "missing call argument",
+                                argument_id);
+                if (argument.callsite_id == callsite.id &&
+                    argument.callee_formal_ordinal ==
+                        formal.formal_ordinal)
+                    ++input_relation_count;
+            }
+            UINT32 expected_direction = input_relation_count == 1 ?
+                DSL_RUNTIME_CALL_INPUT : DSL_RUNTIME_CALL_RESULT;
+            UINT32 expected_binding = input_relation_count == 1 ?
+                DSL_RUNTIME_BINDING_INPUT_FORMAL :
+                DSL_RUNTIME_BINDING_RESULT_FORMAL;
+            if (input_relation_count > 1 || projection == NULL ||
+                projection->binding_kind != expected_binding)
+                return DSL_Runtime_Interface_Report
+                           (diagnostic, "formal call role mismatch",
+                            formal_id);
+            UINT32 found = 0;
+            for (UINT32 i = 0; i < call_count; ++i) {
+                if (calls[i].callsite_id == callsite.id &&
+                    calls[i].callee_formal_ordinal ==
+                        formal.formal_ordinal &&
+                    calls[i].direction == expected_direction)
+                    ++found;
+            }
+            if (found != 1)
+                return DSL_Runtime_Interface_Report
+                           (diagnostic, "incomplete call projection",
+                            call_id);
+        }
+    }
+    return TRUE;
+}
+
+void
+DSL_Runtime_Interface_Image_Get_Header
+        (DSL_RUNTIME_INTERFACE_IMAGE_HEADER *header)
+{
+    if (header == NULL)
+        return;
+    memset(header, 0, sizeof(*header));
+    header->magic = DSL_RUNTIME_INTERFACE_IMAGE_MAGIC;
+    header->version = DSL_RUNTIME_INTERFACE_IMAGE_VERSION;
+    header->value_projection_count =
+        DSL_runtime_value_projection_table.Size();
+    header->call_projection_count =
+        DSL_runtime_call_projection_table.Size();
+}
+
+void
+DSL_Runtime_Interface_Image_Reset (void)
+{
+    DSL_runtime_value_projection_table.Delete_down_to(0);
+    DSL_runtime_call_projection_table.Delete_down_to(0);
+}
+
+BOOL
+DSL_Runtime_Interface_Image_Has_Records (void)
+{
+    return DSL_runtime_value_projection_table.Size() != 0 ||
+           DSL_runtime_call_projection_table.Size() != 0;
+}
+
+BOOL
+DSL_Runtime_Interface_Image_Validate (FILE *diagnostic)
+{
+    std::vector<DSL_RUNTIME_VALUE_PROJECTION_RECORD> values;
+    std::vector<DSL_RUNTIME_CALL_PROJECTION_RECORD> calls;
+    for (UINT32 i = 0; i < DSL_runtime_value_projection_table.Size(); ++i)
+        values.push_back(DSL_runtime_value_projection_table[i]);
+    for (UINT32 i = 0; i < DSL_runtime_call_projection_table.Size(); ++i)
+        calls.push_back(DSL_runtime_call_projection_table[i]);
+    return DSL_Runtime_Interface_View_Validate
+               (values.empty() ? NULL : &values[0], values.size(),
+                calls.empty() ? NULL : &calls[0], calls.size(), diagnostic);
+}
+
+UINT32
+DSL_Runtime_Interface_Image_Value_Count (void)
+{
+    return DSL_runtime_value_projection_table.Size();
+}
+
+UINT32
+DSL_Runtime_Interface_Image_Call_Count (void)
+{
+    return DSL_runtime_call_projection_table.Size();
+}
+
+BOOL
+DSL_Runtime_Interface_Image_Get_Value
+        (DSL_RUNTIME_VALUE_PROJECTION_ID id,
+         DSL_RUNTIME_VALUE_PROJECTION_RECORD *record)
+{
+    return DSL_IR_Table_Get(DSL_runtime_value_projection_table, id, record);
+}
+
+BOOL
+DSL_Runtime_Interface_Image_Get_Call
+        (DSL_RUNTIME_CALL_PROJECTION_ID id,
+         DSL_RUNTIME_CALL_PROJECTION_RECORD *record)
+{
+    return DSL_IR_Table_Get(DSL_runtime_call_projection_table, id, record);
+}
+
+BOOL
+DSL_Runtime_Interface_Image_Find_Value
+        (ST_IDX owner_pu_st, DSL_IR_VALUE_ID source_value_id,
+         DSL_RUNTIME_VALUE_PROJECTION_RECORD *record)
+{
+    for (UINT32 i = 0; i < DSL_runtime_value_projection_table.Size(); ++i) {
+        const DSL_RUNTIME_VALUE_PROJECTION_RECORD &current =
+            DSL_runtime_value_projection_table[i];
+        if (current.owner_pu_st == owner_pu_st &&
+            current.source_value_id == source_value_id) {
+            if (record != NULL)
+                *record = current;
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+BOOL
+DSL_Runtime_Interface_Image_Find_Call
+        (DSL_CALLSITE_METADATA_ID callsite_id, UINT32 actual_ordinal,
+         DSL_RUNTIME_CALL_PROJECTION_RECORD *record)
+{
+    for (UINT32 i = 0; i < DSL_runtime_call_projection_table.Size(); ++i) {
+        const DSL_RUNTIME_CALL_PROJECTION_RECORD &current =
+            DSL_runtime_call_projection_table[i];
+        if (current.callsite_id == callsite_id &&
+            current.actual_ordinal == actual_ordinal) {
+            if (record != NULL)
+                *record = current;
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+DSL_RUNTIME_VALUE_PROJECTION_ID
+DSL_Runtime_Interface_Image_Add_Value
+        (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *record)
+{
+    if (record == NULL)
+        return DSL_RUNTIME_VALUE_PROJECTION_INVALID_ID;
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD copy = *record;
+    UINT32 index = DSL_runtime_value_projection_table.Insert(copy);
+    DSL_runtime_value_projection_table[index].id = index + 1;
+    return index + 1;
+}
+
+DSL_RUNTIME_CALL_PROJECTION_ID
+DSL_Runtime_Interface_Image_Add_Call
+        (const DSL_RUNTIME_CALL_PROJECTION_RECORD *record)
+{
+    if (record == NULL)
+        return DSL_RUNTIME_CALL_PROJECTION_INVALID_ID;
+    DSL_RUNTIME_CALL_PROJECTION_RECORD copy = *record;
+    UINT32 index = DSL_runtime_call_projection_table.Insert(copy);
+    DSL_runtime_call_projection_table[index].id = index + 1;
+    return index + 1;
+}
+
+BOOL
+DSL_Runtime_Interface_Image_Load_Mapped
+        (const void *section_base, UINT64 section_size, FILE *diagnostic)
+{
+    if (section_base == NULL ||
+        section_size < DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE)
+        return DSL_Runtime_Interface_Report
+                   (diagnostic, "section is truncated", 0);
+    const DSL_RUNTIME_INTERFACE_IMAGE_HEADER *header =
+        (const DSL_RUNTIME_INTERFACE_IMAGE_HEADER *)section_base;
+    UINT64 remaining = section_size -
+                       DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE;
+    if (header->magic != DSL_RUNTIME_INTERFACE_IMAGE_MAGIC ||
+        header->version != DSL_RUNTIME_INTERFACE_IMAGE_VERSION ||
+        header->flags != 0 || header->reserved0 != 0 ||
+        header->reserved1 != 0 || header->reserved2 != 0 ||
+        header->value_projection_count >
+            remaining / DSL_RUNTIME_VALUE_PROJECTION_RECORD_SIZE)
+        return DSL_Runtime_Interface_Report(diagnostic, "invalid header", 0);
+
+    remaining -= (UINT64)header->value_projection_count *
+                 DSL_RUNTIME_VALUE_PROJECTION_RECORD_SIZE;
+    if (header->call_projection_count >
+            remaining / DSL_RUNTIME_CALL_PROJECTION_RECORD_SIZE ||
+        (UINT64)header->call_projection_count *
+            DSL_RUNTIME_CALL_PROJECTION_RECORD_SIZE != remaining)
+        return DSL_Runtime_Interface_Report(diagnostic, "invalid header", 0);
+
+    const char *cursor = (const char *)section_base +
+                         DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE;
+    const DSL_RUNTIME_VALUE_PROJECTION_RECORD *values =
+        (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *)cursor;
+    cursor += (UINT64)header->value_projection_count *
+              DSL_RUNTIME_VALUE_PROJECTION_RECORD_SIZE;
+    const DSL_RUNTIME_CALL_PROJECTION_RECORD *calls =
+        (const DSL_RUNTIME_CALL_PROJECTION_RECORD *)cursor;
+    if (!DSL_Runtime_Interface_View_Validate
+             (values, header->value_projection_count, calls,
+              header->call_projection_count, diagnostic))
+        return FALSE;
+
+    DSL_Runtime_Interface_Image_Reset();
+    if (header->value_projection_count != 0)
+        DSL_runtime_value_projection_table.Insert
+            (values, header->value_projection_count);
+    if (header->call_projection_count != 0)
+        DSL_runtime_call_projection_table.Insert
+            (calls, header->call_projection_count);
     return TRUE;
 }
 

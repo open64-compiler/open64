@@ -31,6 +31,24 @@ DSL_IR_Value_Kind_Name (UINT32 value_kind)
 }
 
 static const char *
+DSL_Runtime_Binding_Kind_Name (UINT32 kind)
+{
+    static const char *names[] = {
+        "unknown", "local_value", "input_formal", "result_formal"
+    };
+    return kind < sizeof(names) / sizeof(names[0]) ?
+           names[kind] : names[0];
+}
+
+static const char *
+DSL_Runtime_Call_Direction_Name (UINT32 direction)
+{
+    static const char *names[] = { "unknown", "input", "result" };
+    return direction < sizeof(names) / sizeof(names[0]) ?
+           names[direction] : names[0];
+}
+
+static const char *
 DSL_IR_String (STR_IDX id)
 {
     return id == STR_IDX_ZERO ? "" : Index_To_Str(id);
@@ -298,6 +316,45 @@ DSL_IR_Image_Print (FILE *file)
                 ST_IDX_index(callsite.callee_pu_st), record.actual_ordinal,
                 record.callee_formal_ordinal, record.argument_value_id,
                 DSL_IR_String(record.semantic_role), record.flags);
+    }
+    DSL_RUNTIME_INTERFACE_IMAGE_HEADER runtime_header;
+    DSL_Runtime_Interface_Image_Get_Header(&runtime_header);
+    fprintf(file,
+            "DSL Runtime Interface Image: version=%u values=%u calls=%u\n",
+            runtime_header.version, runtime_header.value_projection_count,
+            runtime_header.call_projection_count);
+    fprintf(file, "DSL Runtime Value Projection Table:\n");
+    for (UINT32 i = 1; i <= runtime_header.value_projection_count; ++i) {
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD record;
+        DSL_Runtime_Interface_Image_Get_Value(i, &record);
+        fprintf(file, "  [%u] owner_pu=<%u,%u> source_value=%u "
+                "source_st=<%u,%u> source_ty=%u handle_st=<%u,%u> "
+                "handle_ty=%u kind=%s formal=",
+                record.id, ST_IDX_level(record.owner_pu_st),
+                ST_IDX_index(record.owner_pu_st), record.source_value_id,
+                ST_IDX_level(record.source_st), ST_IDX_index(record.source_st),
+                (UINT32)record.source_ty, ST_IDX_level(record.handle_st),
+                ST_IDX_index(record.handle_st), (UINT32)record.handle_ty,
+                DSL_Runtime_Binding_Kind_Name(record.binding_kind));
+        if (record.formal_ordinal == DSL_RUNTIME_INTERFACE_INVALID_ORDINAL)
+            fprintf(file, "<none>");
+        else
+            fprintf(file, "%u", record.formal_ordinal);
+        fprintf(file, " flags=0x%x\n", record.flags);
+    }
+    fprintf(file, "DSL Runtime Call Projection Table:\n");
+    for (UINT32 i = 1; i <= runtime_header.call_projection_count; ++i) {
+        DSL_RUNTIME_CALL_PROJECTION_RECORD record;
+        DSL_Runtime_Interface_Image_Get_Call(i, &record);
+        fprintf(file, "  [%u] owner_pu=<%u,%u> callsite=%u "
+                "source_value=%u projection=%u actual=%u formal=%u "
+                "direction=%s flags=0x%x\n", record.id,
+                ST_IDX_level(record.owner_pu_st),
+                ST_IDX_index(record.owner_pu_st), record.callsite_id,
+                record.source_value_id, record.value_projection_id,
+                record.actual_ordinal, record.callee_formal_ordinal,
+                DSL_Runtime_Call_Direction_Name(record.direction),
+                record.flags);
     }
     DSL_FHE_Image_Print(file);
     DSL_FHE_Plan_Image_Print(file);
