@@ -636,9 +636,10 @@ static BOOL
 Build_And_Lower_Resolved_Relu_Sequence
         (DSL_BUILDER_PROGRAM_UNIT pu, TY_IDX ciphertext_ty, TY_IDX model_ty,
          TY_IDX plaintext_ty, DSL_BUILDER_VALUE anchor,
+         DSL_BUILDER_VALUE weight, DSL_BUILDER_VALUE bias,
          DSL_BUILDER_VALUE relu)
 {
-    DSL_RUNTIME_VALUE_PROJECTION_REQUEST value_requests[2];
+    DSL_RUNTIME_VALUE_PROJECTION_REQUEST value_requests[4];
     memset(value_requests, 0, sizeof(value_requests));
     value_requests[0].owner_pu_st = PU_Info_proc_sym(pu);
     value_requests[0].source_value_id = DSL_Builder_Get_Value_Image_Id(anchor);
@@ -649,21 +650,35 @@ Build_And_Lower_Resolved_Relu_Sequence
     value_requests[0].handle_ty = ciphertext_ty;
     value_requests[0].binding_kind = DSL_RUNTIME_BINDING_INPUT_FORMAL;
     value_requests[0].formal_ordinal = 0;
-    value_requests[1].owner_pu_st = PU_Info_proc_sym(pu);
-    value_requests[1].source_value_id = DSL_Builder_Get_Value_Image_Id(relu);
-    value_requests[1].expected_source_st =
+    DSL_BUILDER_VALUE plain_values[2] = { weight, bias };
+    for (UINT32 i = 0; i < 2; ++i) {
+        value_requests[1 + i].owner_pu_st = PU_Info_proc_sym(pu);
+        value_requests[1 + i].source_value_id =
+            DSL_Builder_Get_Value_Image_Id(plain_values[i]);
+        value_requests[1 + i].expected_source_st =
+            DSL_Builder_Get_Value_Result_Symbol(plain_values[i]);
+        value_requests[1 + i].expected_source_ty =
+            ST_type(value_requests[1 + i].expected_source_st);
+        value_requests[1 + i].handle_ty = plaintext_ty;
+        value_requests[1 + i].binding_kind =
+            DSL_RUNTIME_BINDING_INPUT_FORMAL;
+        value_requests[1 + i].formal_ordinal = 1 + i;
+    }
+    value_requests[3].owner_pu_st = PU_Info_proc_sym(pu);
+    value_requests[3].source_value_id = DSL_Builder_Get_Value_Image_Id(relu);
+    value_requests[3].expected_source_st =
         DSL_Builder_Get_Value_Result_Symbol(relu);
-    value_requests[1].expected_source_ty =
-        ST_type(value_requests[1].expected_source_st);
-    value_requests[1].handle_ty = ciphertext_ty;
-    value_requests[1].binding_kind = DSL_RUNTIME_BINDING_LOCAL_VALUE;
-    value_requests[1].formal_ordinal =
+    value_requests[3].expected_source_ty =
+        ST_type(value_requests[3].expected_source_st);
+    value_requests[3].handle_ty = ciphertext_ty;
+    value_requests[3].binding_kind = DSL_RUNTIME_BINDING_LOCAL_VALUE;
+    value_requests[3].formal_ordinal =
         DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
 
     DSL_RUNTIME_INTERFACE_PLAN runtime_plan;
     memset(&runtime_plan, 0, sizeof(runtime_plan));
     runtime_plan.values = value_requests;
-    runtime_plan.value_count = 2;
+    runtime_plan.value_count = 4;
 
     const char *roles[4] = {
         "fhe.model",
@@ -704,7 +719,7 @@ Build_And_Lower_Resolved_Relu_Sequence
         (pu, &program_plan, &runtime_plan, stderr, &interface_result);
     if (!interface_valid || interface_result.runtime_input_count != 4 ||
         interface_result.runtime_binding_count != 4 ||
-        interface_result.canonical_projection_count != 2) {
+        interface_result.canonical_projection_count != 4) {
         fprintf(stderr,
                 "runtime interface changed: valid=%d inputs=%u bindings=%u "
                 "projections=%u\n", interface_valid,
@@ -723,7 +738,7 @@ Build_And_Lower_Resolved_Relu_Sequence
              (pu, value_requests[0].source_value_id, stderr,
               &projected_anchor) ||
         !VHO_FHE_Runtime_Resolve_Value_Handle
-             (pu, value_requests[1].source_value_id, stderr,
+             (pu, value_requests[3].source_value_id, stderr,
               &projected_relu) ||
         model.handle_ty != model_ty ||
         projected_anchor.handle_ty != ciphertext_ty ||
@@ -734,6 +749,99 @@ Build_And_Lower_Resolved_Relu_Sequence
             (pu, DSL_IR_VALUE_INVALID_ID, NULL, &projected_anchor))
     {
         fprintf(stderr, "runtime handle resolution evidence changed\n");
+        return FALSE;
+    }
+
+    const DSL_IR_VALUE_ID conv_operands[3] = {
+        value_requests[0].source_value_id,
+        value_requests[1].source_value_id,
+        value_requests[2].source_value_id
+    };
+    const DSL_IR_VALUE_ID residual_operands[2] = {
+        value_requests[0].source_value_id,
+        value_requests[0].source_value_id
+    };
+    const DSL_IR_VALUE_ID unary_operands[1] = {
+        value_requests[0].source_value_id
+    };
+    const UINT32 operation_kinds[5] = {
+        VHO_FHE_RUNTIME_OP_CONV2D_PLAIN,
+        VHO_FHE_RUNTIME_OP_RESIDUAL_ADD,
+        VHO_FHE_RUNTIME_OP_AVERAGE_POOL,
+        VHO_FHE_RUNTIME_OP_LAYOUT_CONVERT,
+        VHO_FHE_RUNTIME_OP_LINEAR_PLAIN
+    };
+    const DSL_IR_VALUE_ID *operation_operands[5] = {
+        conv_operands, residual_operands, unary_operands, unary_operands,
+        conv_operands
+    };
+    const UINT32 operation_operand_counts[5] = { 3, 2, 1, 1, 3 };
+    const char *operation_functions[5] = {
+        "open64_fhe_conv2d_plain_v1",
+        "open64_fhe_residual_add_v1",
+        "open64_fhe_average_pool_v1",
+        "open64_fhe_layout_convert_v1",
+        "open64_fhe_linear_plain_v1"
+    };
+    for (UINT32 i = 0; i < 5; ++i) {
+        VHO_FHE_RUNTIME_OPERATION_REQUEST operation;
+        memset(&operation, 0, sizeof(operation));
+        operation.operation_kind = operation_kinds[i];
+        operation.static_ordinal = 50 + i;
+        operation.operand_value_ids = operation_operands[i];
+        operation.operand_count = operation_operand_counts[i];
+        VHO_FHE_RUNTIME_CALL_SEQUENCE operation_sequence;
+        if (!VHO_FHE_Runtime_Build_Operation_Sequence
+                 (pu, &operation, Test_Source_Position(),
+                  Build_Failure_Block, NULL, stderr, &operation_sequence) ||
+            operation_sequence.block == NULL ||
+            operation_sequence.standard_call_count != 2 ||
+            operation_sequence.output_handle_count != 2 ||
+            operation_sequence.status_check_count != 2 ||
+            ST_type(operation_sequence.output_st) != ciphertext_ty) {
+            fprintf(stderr, "runtime operation sequence %u changed\n", i);
+            return FALSE;
+        }
+        UINT32 call_count = 0;
+        BOOL saw_selector = FALSE;
+        BOOL saw_evaluation = FALSE;
+        for (WN *stmt = WN_first(operation_sequence.block); stmt != NULL;
+             stmt = WN_next(stmt)) {
+            if (WN_operator(stmt) != OPR_CALL)
+                continue;
+            ++call_count;
+            const char *name = ST_name(WN_st(stmt));
+            if (strcmp(name, "open64_fhe_operation_desc_select_v1") == 0) {
+                WN *ordinal = WN_kid0(WN_kid(stmt, 2));
+                WN *kind = WN_kid0(WN_kid(stmt, 3));
+                saw_selector = WN_operator(ordinal) == OPR_INTCONST &&
+                    WN_const_val(ordinal) == 50 + i &&
+                    WN_operator(kind) == OPR_INTCONST &&
+                    WN_const_val(kind) == operation_kinds[i];
+            }
+            else if (strcmp(name, operation_functions[i]) == 0)
+                saw_evaluation = TRUE;
+        }
+        BOOL valid_operation = call_count == 2 && saw_selector &&
+                               saw_evaluation;
+        WN_DELETE_Tree(operation_sequence.block);
+        if (!valid_operation) {
+            fprintf(stderr, "runtime operation ABI %u changed\n", i);
+            return FALSE;
+        }
+    }
+
+    VHO_FHE_RUNTIME_OPERATION_REQUEST unsupported;
+    memset(&unsupported, 0, sizeof(unsupported));
+    unsupported.operation_kind = VHO_FHE_RUNTIME_OP_RELU_POLY_STAGE;
+    unsupported.static_ordinal = 60;
+    unsupported.operand_value_ids = unary_operands;
+    unsupported.operand_count = 1;
+    VHO_FHE_RUNTIME_CALL_SEQUENCE rejected_sequence;
+    if (VHO_FHE_Runtime_Build_Operation_Sequence
+            (pu, &unsupported, Test_Source_Position(), Build_Failure_Block,
+             NULL, NULL, &rejected_sequence)) {
+        fprintf(stderr, "specialized ReLU operation was admitted generically\n");
         return FALSE;
     }
 
@@ -807,7 +915,7 @@ Build_And_Lower_Resolved_Relu_Sequence
     request.pu_root = PU_Info_tree_ptr(pu);
     request.containing_block = body;
     request.native_definition = relu;
-    request.source_value_id = value_requests[1].source_value_id;
+    request.source_value_id = value_requests[3].source_value_id;
     request.expected_operator = OPR_DSLRELU;
     request.expected_version = 2;
     request.mode = DSL_IR_NATIVE_LOWER_COMPUTED_STANDARD_BLOCK;
@@ -954,6 +1062,12 @@ main (void)
     DSL_BUILDER_VALUE binding_anchor = DSL_Builder_Declare_PU_Formal
         (binding_pu, "ciphertext_anchor", 0, source_tensor_ty,
          &binding_position);
+    DSL_BUILDER_VALUE binding_weight = DSL_Builder_Declare_PU_Formal
+        (binding_pu, "conv_weight", 1, source_tensor_ty,
+         &binding_position);
+    DSL_BUILDER_VALUE binding_bias = DSL_Builder_Declare_PU_Formal
+        (binding_pu, "conv_bias", 2, source_tensor_ty,
+         &binding_position);
     DSL_BUILDER_VALUE relu_kids[1] = { binding_anchor };
     DSL_BUILDER_VALUE binding_relu = DSL_Builder_Create_Operator_With_Result
         (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2), 2,
@@ -966,7 +1080,8 @@ main (void)
                                       ("open64_fhe_plain_tensor_v1");
     BOOL binding_setup = source_tensor_ty != TY_IDX_ZERO &&
         binding_pu != NULL && binding_position.file_id != 0 &&
-        binding_anchor != NULL && binding_relu != NULL;
+        binding_anchor != NULL && binding_weight != NULL &&
+        binding_bias != NULL && binding_relu != NULL;
     if (binding_setup)
         binding_setup = DSL_Builder_Set_PU_Source_Identity
                             (binding_pu, &binding_identity);
@@ -983,7 +1098,8 @@ main (void)
     }
     if (!Build_And_Lower_Resolved_Relu_Sequence
             (binding_pu, binding_ciphertext_ty, binding_model_ty,
-             binding_plaintext_ty, binding_anchor, binding_relu)) {
+             binding_plaintext_ty, binding_anchor, binding_weight,
+             binding_bias, binding_relu)) {
         fprintf(stderr, "FHE runtime ReLU lowering changed\n");
         return 1;
     }

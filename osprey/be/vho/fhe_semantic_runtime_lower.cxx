@@ -27,13 +27,6 @@
 #include "symtab.h"
 #include "wn.h"
 
-enum {
-    VHO_FHE_RUNTIME_OP_BOOTSTRAP = 3,
-    VHO_FHE_RUNTIME_OP_RELU_NORMALIZE = 4,
-    VHO_FHE_RUNTIME_OP_RELU_POLY_STAGE = 5,
-    VHO_FHE_RUNTIME_OP_RELU_RECONSTRUCT = 6
-};
-
 static BOOL
 VHO_FHE_Runtime_Semantic_Report (FILE *diagnostic, const char *message)
 {
@@ -538,6 +531,228 @@ VHO_FHE_Runtime_Append_Reconstruct_Evaluation
     for (UINT32 i = 0; i < 4; ++i)
         WN_DELETE_Tree(parameters[i].actual);
     return valid;
+}
+
+static BOOL
+VHO_FHE_Runtime_Append_Binary_Evaluation
+        (WN *block, const char *function_name,
+         const VHO_FHE_RUNTIME_HANDLE_BINDING &model,
+         const VHO_FHE_RUNTIME_HANDLE_BINDING &left,
+         const VHO_FHE_RUNTIME_HANDLE_BINDING &right,
+         ST_IDX descriptor_st, TY_IDX descriptor_ty,
+         SRCPOS source_position,
+         VHO_FHE_STANDARD_FAILURE_BUILDER build_failure,
+         void *failure_context, FILE *diagnostic,
+         VHO_FHE_STANDARD_CALL_RESULT *evaluated)
+{
+    VHO_FHE_STANDARD_PARM parameters[5];
+    memset(parameters, 0, sizeof(parameters));
+    parameters[0].formal_ty = model.handle_ty;
+    parameters[0].actual_ty = model.handle_ty;
+    parameters[0].actual = VHO_FHE_Runtime_Handle_Load(model);
+    parameters[0].policy = VHO_FHE_STANDARD_PARM_BORROWED_READ_ONLY;
+    parameters[1].formal_ty = left.handle_ty;
+    parameters[1].actual_ty = left.handle_ty;
+    parameters[1].actual = VHO_FHE_Runtime_Handle_Load(left);
+    parameters[1].policy = VHO_FHE_STANDARD_PARM_BORROWED_READ_ONLY;
+    parameters[2].formal_ty = right.handle_ty;
+    parameters[2].actual_ty = right.handle_ty;
+    parameters[2].actual = VHO_FHE_Runtime_Handle_Load(right);
+    parameters[2].policy = VHO_FHE_STANDARD_PARM_BORROWED_READ_ONLY;
+    parameters[3].formal_ty = descriptor_ty;
+    parameters[3].actual_ty = descriptor_ty;
+    parameters[3].actual = VHO_FHE_Runtime_Handle_ST_Load
+                               (descriptor_st, descriptor_ty);
+    parameters[3].policy = VHO_FHE_STANDARD_PARM_BORROWED_READ_ONLY;
+    parameters[4].formal_ty = Make_Pointer_Type(left.handle_ty);
+    parameters[4].policy = VHO_FHE_STANDARD_PARM_OUTPUT_SLOT;
+    parameters[4].output_name = "fhe_binary_result";
+    parameters[4].output_ty = left.handle_ty;
+
+    VHO_FHE_STANDARD_CALL_SPEC spec;
+    memset(&spec, 0, sizeof(spec));
+    spec.function_name = function_name;
+    spec.status_ty = MTYPE_To_TY(MTYPE_I4);
+    spec.parameters = parameters;
+    spec.parameter_count = 5;
+    spec.status_name = "fhe_binary_status";
+    spec.source_position = source_position;
+    spec.build_failure = build_failure;
+    spec.failure_context = failure_context;
+    BOOL valid = VHO_FHE_Runtime_Append_Call
+                     (block, &spec, diagnostic, evaluated);
+    for (UINT32 i = 0; i < 4; ++i)
+        WN_DELETE_Tree(parameters[i].actual);
+    return valid;
+}
+
+static BOOL
+VHO_FHE_Runtime_Append_Plain_Evaluation
+        (WN *block, const char *function_name,
+         const VHO_FHE_RUNTIME_HANDLE_BINDING &model,
+         const VHO_FHE_RUNTIME_HANDLE_BINDING &input,
+         const VHO_FHE_RUNTIME_HANDLE_BINDING &weight,
+         const VHO_FHE_RUNTIME_HANDLE_BINDING &bias,
+         ST_IDX descriptor_st, TY_IDX descriptor_ty,
+         SRCPOS source_position,
+         VHO_FHE_STANDARD_FAILURE_BUILDER build_failure,
+         void *failure_context, FILE *diagnostic,
+         VHO_FHE_STANDARD_CALL_RESULT *evaluated)
+{
+    VHO_FHE_STANDARD_PARM parameters[6];
+    memset(parameters, 0, sizeof(parameters));
+    parameters[0].formal_ty = model.handle_ty;
+    parameters[0].actual_ty = model.handle_ty;
+    parameters[0].actual = VHO_FHE_Runtime_Handle_Load(model);
+    parameters[0].policy = VHO_FHE_STANDARD_PARM_BORROWED_READ_ONLY;
+    parameters[1].formal_ty = input.handle_ty;
+    parameters[1].actual_ty = input.handle_ty;
+    parameters[1].actual = VHO_FHE_Runtime_Handle_Load(input);
+    parameters[1].policy = VHO_FHE_STANDARD_PARM_BORROWED_READ_ONLY;
+    parameters[2].formal_ty = weight.handle_ty;
+    parameters[2].actual_ty = weight.handle_ty;
+    parameters[2].actual = VHO_FHE_Runtime_Handle_Load(weight);
+    parameters[2].policy = VHO_FHE_STANDARD_PARM_BORROWED_READ_ONLY;
+    parameters[3].formal_ty = bias.handle_ty;
+    parameters[3].actual_ty = bias.handle_ty;
+    parameters[3].actual = VHO_FHE_Runtime_Handle_Load(bias);
+    parameters[3].policy = VHO_FHE_STANDARD_PARM_BORROWED_READ_ONLY;
+    parameters[4].formal_ty = descriptor_ty;
+    parameters[4].actual_ty = descriptor_ty;
+    parameters[4].actual = VHO_FHE_Runtime_Handle_ST_Load
+                               (descriptor_st, descriptor_ty);
+    parameters[4].policy = VHO_FHE_STANDARD_PARM_BORROWED_READ_ONLY;
+    parameters[5].formal_ty = Make_Pointer_Type(input.handle_ty);
+    parameters[5].policy = VHO_FHE_STANDARD_PARM_OUTPUT_SLOT;
+    parameters[5].output_name = "fhe_plain_result";
+    parameters[5].output_ty = input.handle_ty;
+
+    VHO_FHE_STANDARD_CALL_SPEC spec;
+    memset(&spec, 0, sizeof(spec));
+    spec.function_name = function_name;
+    spec.status_ty = MTYPE_To_TY(MTYPE_I4);
+    spec.parameters = parameters;
+    spec.parameter_count = 6;
+    spec.status_name = "fhe_plain_status";
+    spec.source_position = source_position;
+    spec.build_failure = build_failure;
+    spec.failure_context = failure_context;
+    BOOL valid = VHO_FHE_Runtime_Append_Call
+                     (block, &spec, diagnostic, evaluated);
+    for (UINT32 i = 0; i < 5; ++i)
+        WN_DELETE_Tree(parameters[i].actual);
+    return valid;
+}
+
+BOOL
+VHO_FHE_Runtime_Build_Operation_Sequence
+        (struct pu_info *pu_info,
+         const VHO_FHE_RUNTIME_OPERATION_REQUEST *request,
+         SRCPOS source_position,
+         VHO_FHE_STANDARD_FAILURE_BUILDER build_failure,
+         void *failure_context, FILE *diagnostic,
+         VHO_FHE_RUNTIME_CALL_SEQUENCE *sequence)
+{
+    VHO_FHE_Runtime_Call_Sequence_Init(sequence);
+    if (request == NULL || sequence == NULL ||
+        request->static_ordinal == 0 || request->operand_value_ids == NULL ||
+        source_position == 0 || build_failure == NULL)
+        return VHO_FHE_Runtime_Semantic_Report
+                   (diagnostic, "operation call request is incomplete");
+
+    const char *function_name = NULL;
+    UINT32 expected_operands = 0;
+    switch (request->operation_kind) {
+    case VHO_FHE_RUNTIME_OP_CONV2D_PLAIN:
+        function_name = "open64_fhe_conv2d_plain_v1";
+        expected_operands = 3;
+        break;
+    case VHO_FHE_RUNTIME_OP_RESIDUAL_ADD:
+        function_name = "open64_fhe_residual_add_v1";
+        expected_operands = 2;
+        break;
+    case VHO_FHE_RUNTIME_OP_AVERAGE_POOL:
+        function_name = "open64_fhe_average_pool_v1";
+        expected_operands = 1;
+        break;
+    case VHO_FHE_RUNTIME_OP_LAYOUT_CONVERT:
+        function_name = "open64_fhe_layout_convert_v1";
+        expected_operands = 1;
+        break;
+    case VHO_FHE_RUNTIME_OP_LINEAR_PLAIN:
+        function_name = "open64_fhe_linear_plain_v1";
+        expected_operands = 3;
+        break;
+    default:
+        return VHO_FHE_Runtime_Semantic_Report
+                   (diagnostic, "operation kind requires another lowering path");
+    }
+    if (request->operand_count != expected_operands)
+        return VHO_FHE_Runtime_Semantic_Report
+                   (diagnostic, "operation operand count does not match ABI");
+
+    VHO_FHE_RUNTIME_HANDLE_BINDING model;
+    VHO_FHE_RUNTIME_HANDLE_BINDING operands[3];
+    if (!VHO_FHE_Runtime_Resolve_Role_Handle
+             (pu_info, "fhe.model", diagnostic, &model))
+        return FALSE;
+    for (UINT32 i = 0; i < expected_operands; ++i) {
+        if (!VHO_FHE_Runtime_Resolve_Value_Handle
+                 (pu_info, request->operand_value_ids[i], diagnostic,
+                  &operands[i]))
+            return FALSE;
+    }
+    if ((request->operation_kind == VHO_FHE_RUNTIME_OP_RESIDUAL_ADD &&
+         operands[1].handle_ty != operands[0].handle_ty) ||
+        ((request->operation_kind == VHO_FHE_RUNTIME_OP_CONV2D_PLAIN ||
+          request->operation_kind == VHO_FHE_RUNTIME_OP_LINEAR_PLAIN) &&
+         (operands[1].handle_ty != operands[2].handle_ty ||
+          operands[1].handle_ty == operands[0].handle_ty)))
+        return VHO_FHE_Runtime_Semantic_Report
+                   (diagnostic, "operation handle roles do not match ABI");
+
+    WN *block = WN_CreateBlock();
+    VHO_FHE_STANDARD_CALL_RESULT selected;
+    if (!VHO_FHE_Runtime_Append_Selector
+             (block, model, operands[0].handle_st, operands[0].handle_ty,
+              request->static_ordinal, request->operation_kind,
+              source_position, build_failure, failure_context,
+              diagnostic, &selected)) {
+        WN_DELETE_Tree(block);
+        return FALSE;
+    }
+    TY_IDX descriptor_ty = VHO_FHE_Runtime_Opaque_Handle_TY
+                               ("open64_fhe_operation_desc_v1");
+    VHO_FHE_STANDARD_CALL_RESULT evaluated;
+    BOOL valid;
+    if (expected_operands == 1)
+        valid = VHO_FHE_Runtime_Append_Unary_Evaluation
+                    (block, function_name, model, operands[0].handle_st,
+                     operands[0].handle_ty, selected.output_st, descriptor_ty,
+                     source_position, build_failure, failure_context,
+                     diagnostic, &evaluated);
+    else if (request->operation_kind == VHO_FHE_RUNTIME_OP_RESIDUAL_ADD)
+        valid = VHO_FHE_Runtime_Append_Binary_Evaluation
+                    (block, function_name, model, operands[0], operands[1],
+                     selected.output_st, descriptor_ty, source_position,
+                     build_failure, failure_context, diagnostic, &evaluated);
+    else
+        valid = VHO_FHE_Runtime_Append_Plain_Evaluation
+                    (block, function_name, model, operands[0], operands[1],
+                     operands[2], selected.output_st, descriptor_ty,
+                     source_position, build_failure, failure_context,
+                     diagnostic, &evaluated);
+    if (!valid) {
+        WN_DELETE_Tree(block);
+        return FALSE;
+    }
+
+    sequence->block = block;
+    sequence->output_st = evaluated.output_st;
+    sequence->standard_call_count = 2;
+    sequence->output_handle_count = 2;
+    sequence->status_check_count = 2;
+    return TRUE;
 }
 
 BOOL

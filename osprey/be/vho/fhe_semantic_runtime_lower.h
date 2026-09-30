@@ -47,6 +47,26 @@ typedef struct {
     UINT32 status_check_count;
 } VHO_FHE_RUNTIME_CALL_SEQUENCE;
 
+/* Exact operation_kind values from open64_fhe_runtime_abi.h ABI v1. */
+typedef enum {
+    VHO_FHE_RUNTIME_OP_CONV2D_PLAIN = 1,
+    VHO_FHE_RUNTIME_OP_RESIDUAL_ADD = 2,
+    VHO_FHE_RUNTIME_OP_BOOTSTRAP = 3,
+    VHO_FHE_RUNTIME_OP_RELU_NORMALIZE = 4,
+    VHO_FHE_RUNTIME_OP_RELU_POLY_STAGE = 5,
+    VHO_FHE_RUNTIME_OP_RELU_RECONSTRUCT = 6,
+    VHO_FHE_RUNTIME_OP_AVERAGE_POOL = 7,
+    VHO_FHE_RUNTIME_OP_LAYOUT_CONVERT = 8,
+    VHO_FHE_RUNTIME_OP_LINEAR_PLAIN = 9
+} VHO_FHE_RUNTIME_OPERATION_KIND;
+
+typedef struct {
+    UINT32 operation_kind;
+    UINT32 static_ordinal;
+    const DSL_IR_VALUE_ID *operand_value_ids;
+    UINT32 operand_count;
+} VHO_FHE_RUNTIME_OPERATION_REQUEST;
+
 extern void VHO_FHE_Runtime_Call_Sequence_Init
                                 (VHO_FHE_RUNTIME_CALL_SEQUENCE *sequence);
 extern BOOL VHO_FHE_Runtime_Resolve_Value_Handle
@@ -63,6 +83,16 @@ extern BOOL VHO_FHE_Runtime_Build_Bootstrap_Sequence
                                 (struct pu_info *pu_info,
                                  DSL_IR_VALUE_ID anchor_value_id,
                                  UINT32 static_ordinal,
+                                 SRCPOS source_position,
+                                 VHO_FHE_STANDARD_FAILURE_BUILDER
+                                     build_failure,
+                                 void *failure_context,
+                                 FILE *diagnostic,
+                                 VHO_FHE_RUNTIME_CALL_SEQUENCE *sequence);
+extern BOOL VHO_FHE_Runtime_Build_Operation_Sequence
+                                (struct pu_info *pu_info,
+                                 const VHO_FHE_RUNTIME_OPERATION_REQUEST
+                                     *request,
                                  SRCPOS source_position,
                                  VHO_FHE_STANDARD_FAILURE_BUILDER
                                      build_failure,

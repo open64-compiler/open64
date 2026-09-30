@@ -658,6 +658,14 @@ every admitted full-model operation, all-PU callback registration, exact
 The historical interface gap and its PR #156/#157 resolution are tracked in
 `doc/FHE-SYNC5-RUNTIME-ENTRY-BINDING-GAP.md`.
 
+The FHE semantic builder now covers all ABI v1 evaluation classes used by the
+model: Conv2D/plain, residual add, the six-operation composite ReLU, average
+pool, layout conversion, and linear/plain. This closes per-operation checked
+call construction. It does not yet close the full-model gate: the production
+callback must still derive static ordinals from the certified schedule, submit
+complete per-PU atomic lowering arrays, and prove the 87/147 evaluation and
+selector censuses before publishing `.mid.B`.
+
 Merge rule: assign every shared driver/whirl2c file to one PR owner before
 editing. The mock-runtime PR must not depend on an ACE runtime installation.
 

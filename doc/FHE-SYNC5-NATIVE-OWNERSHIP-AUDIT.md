@@ -483,3 +483,15 @@ reconstruction census. It also checks the four root resource roles, lowered
 `common.relu` provenance, absence of an executable ReLU in the target PU, and
 retains commands, diagnostics, and SHA-256 hashes under the selected artifact
 directory.
+
+The same FHE-owned semantic builder also admits the five remaining evaluation
+classes in ABI v1: `conv2d_plain`, `residual_add`, `average_pool`,
+`layout_convert`, and `linear_plain`. Each request resolves exact
+owner-qualified projected operands, enforces its closed operand count and
+ciphertext/plain-handle role constraints, and builds one descriptor selector
+followed by one checked evaluation. Composite ReLU stages remain on their
+specialized path and are rejected by this generic operation entry point. The
+linked fixture exercises every admitted kind and its exact selector kind,
+static ordinal, function symbol, output type, status check, and unsupported-
+kind rejection. Production callback registration and source-node-to-static-
+ordinal mapping remain the next S5-2c boundary.
