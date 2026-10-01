@@ -142,6 +142,27 @@ source, and TensorDescriptorIR records as non-executable provenance. A failed
 multi-PU migration is terminal for artifact publication; it must not emit a
 partially projected binary.
 
+Projection also needs explicit program-interface transactions for cases that
+are not a one-for-one retyping of an existing physical formal. PR #156
+provides the required owner-safe pruning of verified-dead formals and caller
+actuals, source-linked promotion of live root external tensors, and stable
+role-based threading of runtime-only model and coefficient resources through
+shared PUs. These values must never appear as uninitialized locals, hidden
+process state, or invented tensor identities.
+
+After projection, PR #157 provides the separate atomic operation that replaces
+an executable native DSL definition. A computed definition is replaced by a
+standard-WHIRL block whose final store defines the exact projected runtime
+handle. A promoted external tensor definition is elided because its value
+arrives through the program interface. In both cases the logical node/value
+rows remain inspectable lowered provenance, source positions survive, and a
+complete request array is preflighted before physical or logical mutation.
+Runtime-only resources have no source DSL definition. The FHE pass owns
+semantic block construction; common infrastructure owns this synchronized
+WN/image transaction. The concrete history and current SYNC-5 boundary are
+recorded in
+`doc/FHE-SYNC5-RUNTIME-ENTRY-BINDING-GAP.md`.
+
 This rule generalizes beyond FHE: domain state propagation decides whether a
 runtime representation is legal, while a separate generic projection service
 performs the representation change. Analyses must never use ABI retyping as a

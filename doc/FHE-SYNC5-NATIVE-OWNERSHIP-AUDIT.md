@@ -1,8 +1,7 @@
 # FHE SYNC-5 Native Infrastructure Ownership Audit
 
-Status: main-owned native infrastructure and dynamic descriptor-selection
-contract implemented; FHE semantic binding and end-to-end `.mid.B`
-certification remain pending
+Status: main-owned phase, projection, and descriptor-selection infrastructure
+merged; full-model entry/resource binding contract remains pending
 
 ## Purpose
 
@@ -67,6 +66,44 @@ encodings, or a special in-memory path.
 | `whirl2c` | Gate before invocation; do not add FHE syntax | Prove generated C contains only ABI v1 C names and ordinary C types |
 | Runtime ABI and mock | No ownership | Header, descriptors, manifests, deterministic mock, failure injection, compile/link/run tests |
 
+### Common/AI Reuse Criterion
+
+API ownership follows semantic applicability rather than the domain that first
+needed the service. A transaction, query, verifier, or lowering helper stays
+in `osprey/common/com` when its contract is domain-neutral or naturally usable
+by AI and tensor compiler domains. This includes external tensor references,
+shape/type refinement, stable logical-value lookup, pure value retirement,
+runtime-handle projection, program-interface reconstruction, and native DSL to
+standard-WHIRL lowering. FHE may be their first production consumer without
+becoming their architectural owner.
+
+An API belongs in an FHE-owned module only when correct interpretation requires
+FHE-specific facts such as an encryption scheme or descriptor, CKKS level and
+scale state, ciphertext component or precision state, key requirements,
+bootstrap reasons, polynomial/composite approximation policy, encrypted
+runtime ABI, or FHE-specific diagnostics and publication gates. File names,
+current caller locations, and milestone provenance do not override this test.
+
+Code review must apply the following decision order:
+
+1. If an API can express an AI/tensor transformation without cryptographic
+   vocabulary or policy, keep it in `common/com`.
+2. If generic mechanics and FHE policy are mixed, keep the mechanics in
+   `common/com` and move only the policy adapter and FHE records to the
+   FHE-owned module.
+3. If the API cannot be specified or verified without FHE semantics, place it
+   in the FHE-owned module and expose only a narrow generic registration hook
+   where shared infrastructure must invoke it.
+
+The persisted FHE source and planning images therefore live in
+`osprey/common/fhe`. That module owns `fhe_image.{h,cxx}`,
+`fhe_plan.{h,cxx}`, `fhe_image_print.cxx`, and `fhe_plan_print.cxx`. The
+FHE-specific basenames make the ownership boundary visible; fixed rows,
+section identifiers, mapped-image services, and public `DSL_FHE_*` symbols
+remain unchanged. Generic DSL image, rewrite, retype, lowering,
+runtime-interface, and program-interface services remain in
+`osprey/common/com` under the Common/AI reuse criterion.
+
 ## Reserved Main-Owned Files
 
 The main infrastructure workstream exclusively owns edits to these shared
@@ -117,6 +154,44 @@ interfaces.  It must not edit the shared driver, checkpoint lifecycle,
 `whirl2c`, mapped-image reader/writer, or generic WN/ST construction code.
 
 ## Implemented Main Interfaces
+
+### Native Transaction Source Ownership
+
+The generic common/com implementation is divided by transaction authority:
+
+- `dsl_ir_rewrite.cxx` owns typed external tensor lookup/materialization,
+  identity-preserving native logical rewrite, and pure value redirect/retire;
+- `dsl_runtime_interface.cxx` owns runtime handle projection plans, projected
+  FUNC_ENTRY/call/return reconstruction, and runtime projection verification;
+- `dsl_program_interface.cxx` owns program-wide input promotion, verified-dead
+  formal/call retirement, deterministic ABI reconstruction, and final
+  interface verification;
+- `dsl_ir_lower.cxx` owns native DSL to standard-WHIRL replacement; and
+- `dsl_ir_retype.cxx` owns atomic value/TY refinement.
+
+The private headers `dsl_ir_transaction_internal.h` and
+`dsl_runtime_interface_internal.h` expose only active-PU predicates and
+cross-transaction journals/helpers. They are not frontend APIs, mapped-image
+contracts, or permission to bypass the public atomic transactions. Every
+extracted unit retains complete preflight-before-commit behavior and stable
+diagnostics; the split changes no WN encoding, ELF section, row layout, or
+binary WHIRL revision.
+
+The generic call-ABI and PU-interface validators remain beside the generic IR
+transaction preflight because they join mapped call, formal, value,
+runtime-projection, and retired-interface records. They neither choose runtime
+projection policy nor perform program reconstruction. Moving them into either
+mutation unit would make that unit own the other's mapped-image invariants;
+they remain read-only shared validation until a dedicated image-validation
+module is justified by broader reuse.
+
+Active-PU mutation and definition-lookup APIs accept `PU_Info *` as their sole
+physical authority. They derive the global owner ST, PU tree, and containing
+BLOCKs from that object and the named definitions or insertion anchors.
+Runtime-only requests therefore do not repeat `owner_pu_st`, `pu_root`,
+`containing_block`, or `insertion_block`. This prevents disagreement among
+multiple representations of the selected PU while preserving stable logical
+value IDs and mapped-image provenance as the semantic authority.
 
 ### Per-PU Runtime-Lowering Driver
 
@@ -444,3 +519,381 @@ coordinated step is to bind the semantic runtime lowerer to these interfaces,
 register the final semantic verifier, and certify the exact evaluation and
 selector 87-static/147-dynamic censuses through `.mid.B`, `ir_b2a -st -src`,
 unchanged `whirl2c`, and mock-runtime execution.
+
+PR #156 closed the post-PR #155 program-interface gaps. The merged generic
+transaction now prunes verified-dead BatchNorm formals and caller actuals,
+promotes root-owned live plaintext values to launcher-supplied runtime inputs,
+and threads model and composite-coefficient resources through reused PUs. The
+FHE consumer can therefore resolve a source value to its exact
+owner-qualified projected handle and resolve a semantic resource role to the
+exact program input handle. A focused fixture also constructs and verifies a
+detached descriptor-select plus bootstrap call sequence using those resolved
+handles and ordinary standard WHIRL.
+
+PR #157 closed the next boundary with the reviewed atomic transaction. The FHE
+consumer now supplies a detached complete ReLU standard-WHIRL block whose
+final `STID` defines the exact projected runtime output handle. The successful
+focused transaction emits six selector calls plus refresh, normalization,
+three polynomial stages, and reconstruction; it removes the executable
+`common.relu` definition and retains the logical node/value as lowered
+provenance. The root model and three coefficient handles are explicit program
+inputs. Promoted external tensors use the transaction's source-elision mode;
+runtime-only resources have no source DSL definition and remain excluded.
+
+S5-2c is no longer blocked on shared infrastructure. It remains fail-closed
+until the FHE pass expands this pattern to every admitted full-model operation,
+collects complete per-PU request arrays, registers the production semantic
+callback, proves the exact 87-static/147-dynamic census, and atomically
+publishes the complete `.mid.B` artifact family.
+
+The original evidence, rejected workarounds, PR #156/#157 resolution, and current
+consumer sequence are recorded in
+`doc/FHE-SYNC5-RUNTIME-ENTRY-BINDING-GAP.md`.
+
+The focused consumer checkpoint is reproduced by
+`osprey/be/vho/tests/fhe_semantic_runtime_lower_test.sh`. It runs the linked
+contract producer, writes `runtime_call_resolution.B`, reopens that binary in a
+separate `ir_b2a -st -src` process, extracts the target PU trace, and checks
+the exact six-selector/one-refresh/one-normalization/three-stage/one-
+reconstruction census. It also checks the four root resource roles, lowered
+`common.relu` provenance, absence of an executable ReLU in the target PU, and
+retains commands, diagnostics, and SHA-256 hashes under the selected artifact
+directory.
+
+The same FHE-owned semantic builder also admits the five remaining evaluation
+classes in ABI v1: `conv2d_plain`, `residual_add`, `average_pool`,
+`layout_convert`, and `linear_plain`. Each request resolves exact
+owner-qualified projected operands, enforces its closed operand count and
+ciphertext/plain-handle role constraints, and builds one descriptor selector
+followed by one checked evaluation. Composite ReLU stages remain on their
+specialized path and are rejected by this generic operation entry point. The
+linked fixture exercises every admitted kind and its exact selector kind,
+static ordinal, function symbol, output type, status check, and unsupported-
+kind rejection. Production callback registration and source-node-to-static-
+ordinal mapping remain the next S5-2c boundary.
+
+`common.output_logits` is deliberately outside the evaluation census. Its
+lowering uses a zero-call identity block whose sole final store copies the
+input ciphertext handle to the exact projected output handle. It does not
+invent an ABI entry point, descriptor selector, output allocation, or status
+check. The same atomic native-value transaction removes its executable DSL
+definition while retaining lowered logical provenance.
+
+The schedule preflight orders physical evaluation definitions by stable PU
+source-definition identity and DSL node identity, then propagates execution
+multiplicity through the canonical callsite graph. A ReLU definition occupies
+six consecutive static ordinals; Conv2D, residual add, average pool, layout
+conversion, and linear occupy one; tensor sources and output logits occupy
+none. Cyclic calls, unknown live executable operators, ambiguous ownership,
+and count overflow fail before mutation. Applied to the retained six-PU
+SecureResNet SYNC-4 binary, the independent mapped-image test finds 32
+physical evaluation definitions and proves exactly 87 static evaluations and
+147 execution-expanded events. The optional
+`OPEN64_FHE_RUNTIME_SCHEDULE_INPUT` lane in the focused script retains this
+result as `schedule-census.log`.
+
+The same mapped-image preflight now derives the complete program-interface
+request census from stable semantic tables rather than source symbol names.
+It uses call-ABI semantic roles to identify 48 unique dead BatchNorm formals
+and all 80 matching caller actuals. It joins live Conv call arguments, the
+root Conv fold, and the classifier node to prove 44 distinct external
+plaintext sources: 42 folded Conv weight/bias tensors plus classifier weight
+and bias. The resulting flow requires four runtime-only resources, 44 root
+source bindings, 24 shared-callee plaintext slots, 24 model/coefficient
+resource bindings across six PUs, and 76 rooted call edges. This census is a
+no-mutation prerequisite to constructing and validating the complete
+`DSL_PROGRAM_INTERFACE_PLAN` and `DSL_RUNTIME_INTERFACE_PLAN`.
+
+## Reviewable Commit Sequence And Acceptance Gates
+
+This section is the canonical detailed execution sequence for the remaining
+SYNC-5 work. The consolidated and integration plans summarize the milestone;
+they do not replace the commit-level gates below. A commit may be split for
+review size, but it must not combine a later gate with an incomplete earlier
+gate or claim full-model certification from a focused fixture.
+
+### S5-A: Checked Runtime Operation Construction
+
+**Status:** complete in local commits `7388b98e`, `93ed75fb`, and `17476faf`.
+
+**Purpose:** establish the standard-WHIRL construction pattern independently
+of whole-program ABI mutation.
+
+**Implementation scope:**
+
+1. Resolve canonical DSL values to exact owner-qualified runtime handles.
+2. Resolve `fhe.model` and three coefficient roles through program-input
+   bindings rather than globals or source names.
+3. Build descriptor selection followed by checked evaluation for
+   Conv2D/plain, residual add, mandatory-refresh composite ReLU, average pool,
+   layout conversion, and linear/plain.
+4. Lower output logits as a zero-call identity assignment.
+5. Capture every status result, initialize every output handle, preserve
+   source positions, and finish each computed block with one store to the
+   exact projected output.
+6. Submit focused definitions through
+   `DSL_IR_Lower_Native_Values_To_Standard_Blocks` and retain logical
+   `status=lowered` provenance.
+
+**Primary owned files:**
+
+- `osprey/be/vho/fhe_semantic_runtime_lower.{h,cxx}`
+- `osprey/be/vho/tests/fhe_runtime_lower_contract_test.cxx`
+- `osprey/be/vho/tests/fhe_semantic_runtime_lower_test.sh`
+
+**Required review evidence:** exact ABI symbol, operation kind, operand count,
+handle TY, selector-before-evaluation order, source position, output store,
+status check, unsupported-kind rejection, and separate-process
+`ir_b2a -st -src` reopen.
+
+**Exit criterion:** every evaluation class needed by SecureResNet has an exact
+detached standard-WHIRL builder; this does not yet imply complete model
+lowering.
+
+### S5-B: Deterministic Full-Program Runtime Schedule
+
+**Status:** complete in local commit `90ec2afd`.
+
+**Purpose:** freeze descriptor/evaluation ordinals before operation mutation.
+
+**Implementation scope:**
+
+1. Order physical evaluation definitions by stable PU source identity and DSL
+   node identity.
+2. Assign one static ordinal to each one-call operation and six consecutive
+   ordinals to each composite ReLU.
+3. Propagate PU execution multiplicity through the canonical call graph.
+4. Reject recursive/cyclic calls, unknown executable operators, ambiguous
+   value ownership, and count overflow.
+5. Exclude tensor sources and output-logits identity from the evaluation
+   census.
+
+**Positive full-model expectation:** six PUs, 32 physical scheduled
+definitions, 87 static evaluations, and 147 context-expanded evaluations.
+
+**Negative tests:** unknown live operator, cyclic call graph, malformed owner,
+and overflow must fail before mutation.
+
+**Retained evidence:** `schedule-census.log` beside the focused runtime
+lowering artifact family.
+
+**Exit criterion:** repeated runs over the same mapped input produce the same
+source-node-to-static-ordinal mapping and exact 87/147 totals.
+
+### S5-C: Whole-Program Interface Request Census
+
+**Status:** complete in local commit `f43dfb4e`.
+
+**Purpose:** prove the exact population of the later program/runtime interface
+plans before creating handle symbols or rewriting any PU.
+
+**Implementation scope:**
+
+1. Use call-ABI semantic roles to identify dead BatchNorm inputs and live Conv
+   plaintext inputs. Source ST names are not classification keys.
+2. Deduplicate dead callee formals by `(callee PU, canonical formal ordinal)`.
+3. Join root BatchNorm-fold provenance to the folded stem Conv operands.
+4. Join the live linear node to classifier weight and bias.
+5. Prove each selected plaintext source is a live root-owned tensor constant.
+6. Derive rooted model/coefficient flow across all canonical callsites.
+
+**Positive full-model expectation:**
+
+| Population | Exact count |
+| --- | ---: |
+| Dead BatchNorm formals | 48 |
+| Matching dead caller actuals | 80 |
+| Folded Conv plaintext tensors | 42 |
+| Classifier plaintext tensors | 2 |
+| Runtime-only resources | 4 |
+| Root source bindings | 44 |
+| Shared-callee plaintext bindings | 24 |
+| Model/coefficient bindings across six PUs | 24 |
+| Total runtime bindings | 92 |
+| Runtime-input call edges | 76 |
+
+**Exit criterion:** the census is deterministic, owner-qualified, and derived
+only from persisted semantic identity tables and logical operands.
+
+### S5-D: Construct And Prevalidate Complete Interface Plans
+
+**Status:** implementation started; the typed TCON lookup prerequisite is
+implemented and focused validation is in progress before request construction.
+
+**Purpose:** materialize the S5-C identities into complete immutable
+`DSL_PROGRAM_INTERFACE_PLAN` and `DSL_RUNTIME_INTERFACE_PLAN` arrays before
+the first PU is changed.
+
+**Implementation checklist:**
+
+1. Create retirement requests for all 48 dead formals and 80 corresponding
+   call arguments, retaining canonical IDs and semantic roles.
+2. Create 44 `SOURCE_EXTERNAL_TENSOR` inputs with exact source owner, value,
+   tensor TY, TCON, external reference, and plaintext handle TY.
+3. Create `fhe.model` as an opaque resource and the three coefficient inputs
+   as TCON-backed resources with exact coefficient tensors.
+4. Create all 92 root/threaded bindings in canonical contract order.
+5. Create all 76 runtime-input calls, joining caller and callee bindings by
+   stable callsite and semantic role.
+6. Create projections for every effective live formal, hidden result,
+   operation operand/result, promoted source, and retained call value. Exclude
+   redirected values and verified-dead BN inputs.
+7. Assign ciphertext handle TY only to encrypted activations/results and
+   plaintext handle TY only to folded weights, biases, and coefficients.
+   Canonical tensor `TY_IDX` values remain unchanged.
+8. Create call projections for every surviving input and hidden result edge
+   across all nine callsites.
+9. Reject duplicate, missing, cross-owner, wrong-direction, wrong-handle-TY,
+   unrooted-resource, and incomplete-plan cases before mutation.
+10. Call `DSL_Program_Interface_Plan_Validate` on the complete arrays and keep
+    those arrays byte-stable for every later PU callback.
+
+**Tests:** request permutation determinism, missing final request, wrong source
+owner, wrong plaintext/ciphertext TY, unrooted resource, duplicate retirement,
+missing hidden result, and all-PU plan fingerprint mismatch.
+
+**Native contract resolution:** every
+`DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR` request requires the exact
+`source_tcon`. The backend-safe
+`DSL_IR_Image_Get_External_Tensor_Reference()` view currently exposes the
+external side file, key, byte range, checksum, descriptor type, element type,
+shape, and layout, but not the tensor's attached `TCON_IDX`. Recovering that
+index by parsing the owner-local ST metadata key `tensor_tcon_idx` would
+violate the reviewed structured-access boundary and is not permitted in the
+FHE pass. BatchNorm provenance also cannot supply a complete substitute
+because the classifier weight and bias are not BatchNorm-fold outputs.
+
+`DSL_IR_EXTERNAL_TENSOR_REFERENCE` now includes `TCON_IDX tensor_tcon`, and
+`DSL_IR_Image_Get_External_Tensor_Reference()` populates it without changing
+mapped-image rows or binary WHIRL. The service requires the active owner PU
+and validates the exact value,
+ST, and TY. A present TCON must be nonzero and side-file-dense, with exact
+descriptor type, path, range, dtype, and shape agreement; absence maps to zero
+for legacy source tensors. Focused common tests must reject malformed metadata
+and path/range/type disagreement without mutation and preserve mapped-reopen
+behavior. S5-D requires a nonzero result while constructing all 44 external
+plaintext input requests exclusively through this typed service.
+
+**Exit criterion:** one complete plan validates against the real six-PU input
+without modifying WN, ST, TY, or managed image tables.
+
+### S5-E: Apply Program And Runtime Interfaces Across Six PUs
+
+**Status:** pending S5-D.
+
+**Purpose:** perform the reviewed ABI transition while each PU's local symbol
+table and map table are active.
+
+**Implementation checklist:**
+
+1. Apply exactly one owner-qualified slice through
+   `DSL_Program_Interface_Apply_PU` during normal preorder PU traversal.
+2. Compact dead BN formals and matching call actuals while retaining immutable
+   provenance rows.
+3. Promote 44 root external tensors to launcher-supplied plaintext handles.
+4. Thread model, three coefficients, and context-specific plaintext handles
+   through five shared callee PUs without cloning them.
+5. Rebuild each `FUNC_ENTRY`, function TYLIST, call actual list, and hidden
+   result path once.
+6. Prove input handles are borrowed by value, hidden results are caller-owned
+   null-initialized pointer-to-handle outputs, and exact TY identity agrees on
+   both sides of every call.
+7. Run `DSL_Program_Interface_Validate_PU` after each apply.
+
+**Negative tests:** wrong active PU, colliding local ST indexes, later-PU
+failure, missing incoming threaded edge, call-to-root edge, and cycle. Any
+post-commit failure is checkpoint-terminal and publishes no artifact.
+
+**Exit criterion:** all six PU/call interfaces match persistent interface rows
+and every runtime handle has a rooted initialization path.
+
+### S5-F: Atomic Full-Model Operation Lowering
+
+**Status:** pending S5-E.
+
+**Purpose:** replace every admitted executable DSL definition with standard
+WHIRL using the frozen schedule and projected handles.
+
+**Implementation checklist:**
+
+1. Collect each PU's complete lowering request array before changing its first
+   definition.
+2. Use S5-B records for exact static ordinals and ABI operation kinds.
+3. Build 13 Conv2D/plain, five residual-add, 11 physical composite-ReLU,
+   average-pool, flatten/layout-convert, and linear/plain sequences.
+4. Build output logits as a zero-call identity outside the 87-call census.
+5. Elide promoted external sources through `PROMOTED_SOURCE_ELISION`.
+6. Submit computed and elision requests atomically through
+   `DSL_IR_Lower_Native_Values_To_Standard_Blocks`.
+7. Preserve source node, result value, owner, position, attributes, lineage,
+   and lowered relation.
+8. Reject operands without exactly one projected handle and final stores that
+   do not define the exact projected result.
+
+**Tests:** invalid last request rollback, wrong ordinal, missing coefficient,
+wrong Conv plaintext TY, wrong result ST, duplicate source definition, and
+surviving promoted source.
+
+**Exit criterion:** every executable definition is replaced once and per-PU
+counts sum to exactly 87 evaluations and 87 descriptor selections statically.
+
+### S5-G: Production Callback, Final Gates, And Atomic Checkpoint
+
+**Status:** pending S5-F.
+
+**Purpose:** integrate S5-D through S5-F into the all-PU runtime-lowering phase
+and publish only a complete middle-WHIRL checkpoint.
+
+**Implementation checklist:**
+
+1. Register the FHE gatekeeper and production lowering callback.
+2. Prepare and authenticate immutable schedule/interface plans on the first
+   callback; require the same fingerprint for every later PU.
+3. Accumulate exact PU, definition, selector, evaluation, output, status, and
+   elision counters.
+4. Run structural and semantic verification after each PU.
+5. Require six converted PUs, 32 scheduled definitions, 87 static/147 dynamic
+   evaluations, matching selector events, complete lowered relations, and
+   valid program/runtime images in the finalizer.
+6. Run lowered-interface and final unlowered-FHE gates.
+7. Register schedule/report auxiliaries and publish
+   `secure_resnet20.mid.B` last as the commit marker.
+8. Clear retained process state on success and every failure path.
+
+**Negative tests:** failure at each PU position, counter mismatch, plan change,
+finalizer failure, stale destination, and signal cleanup. No final or `.tmp`
+artifact may survive rejection.
+
+**Exit criterion:** the six-PU `.mid.B` family publishes atomically and
+contains no executable DSL/FHE carrier.
+
+### S5-H: Inspection, Generated C, And Mock Executable Certification
+
+**Status:** pending S5-G.
+
+**Purpose:** close SYNC-5 without depending on an ACE installation.
+
+**Implementation checklist:**
+
+1. Reopen `secure_resnet20.mid.B` separately with `ir_b2a -st -src` and retain
+   `secure_resnet20.mid.T`.
+2. Verify standard functions, calls, parameters, status paths, output handles,
+   source positions, interface rows, and lowered provenance.
+3. Run unchanged `whirl2c`; generated C may include only the public FHE C ABI
+   and ordinary C/Open64 support headers.
+4. Compile and link generated C against the standalone mock runtime.
+5. Execute the mock with the deterministic schedule manifest and verify exact
+   ordering, kinds, ordinals, resource roles, output ownership, and failures.
+6. Retain source, input `.B/.T`, `.mid.B/.mid.T`, phase trace, generated C,
+   commands, executable log, manifests, diagnostics, and `SHA256SUMS` in a
+   host-visible directory.
+
+**Negative tests:** unlowered carrier, malformed manifest, wrong ordinal,
+missing resource, wrong handle TY, mock status failure, and generated-C
+publication failure.
+
+**Final SYNC-5 exit criterion:** generated C from the complete six-PU
+SecureResNet middle-WHIRL artifact compiles, links, and passes the deterministic
+mock runtime. Evidence proves exact 87/147 evaluation and selector accounting,
+no executable DSL/FHE nodes, and no partial output on failure. ACE ANT provider
+execution remains SYNC-6.

@@ -18,8 +18,8 @@
 
 #include "defs.h"
 #include "config_fhe.h"
-#include "dsl_fhe.h"
-#include "dsl_fhe_plan.h"
+#include "fhe_image.h"
+#include "fhe_plan.h"
 #include "dsl_ir_image.h"
 #include "fhe_materialize.h"
 #include "fhe_semantic_materialize.h"

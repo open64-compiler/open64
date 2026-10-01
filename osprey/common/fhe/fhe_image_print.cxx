@@ -1,8 +1,12 @@
 /*
  * Copyright (C) 2026 Open64 Project
+ *
+ * Stable logical printing for the FHE source image. See
+ * doc/FHE-SYNC1-NATIVE-CONTRACT.md and
+ * doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md.
  */
 
-#include "dsl_fhe.h"
+#include "fhe_image.h"
 #include "strtab.h"
 #include "symtab.h"
 

@@ -512,11 +512,14 @@ typedef struct {
 
 extern BOOL DSL_IR_Refine_Native_Value_Types
     (PU_Info *pu_info,
-     WN *tree,
      const DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST *requests,
      UINT32 request_count,
      FILE *diagnostic);
 ```
+
+`PU_Info` is the single source of truth for the target PU and its WHIRL root.
+The transaction derives the tree with `PU_Info_tree_ptr()`; callers do not pass
+a redundant tree pointer or establish an independent root identity.
 
 This is an architectural sketch, not a frozen public API. The normative SP4
 protocol is in `WHIRL-DSL-SHAPE-RETYPING-CONTRACT.md`. It requires

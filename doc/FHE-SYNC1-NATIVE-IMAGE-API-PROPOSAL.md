@@ -556,7 +556,7 @@ checkpoint.
 | --- | --- |
 | File area | Purpose |
 | --- | --- |
-| Existing `osprey/common/com/dsl_fhe*` native files | Main/common-owned structural image, validation, print, reader/writer, and builder substrate from SYNC-1. |
+| Existing `osprey/common/fhe/dsl_fhe*` native files | FHE-owned structural image, validation, print, reader/writer, and builder substrate from SYNC-1. |
 | FHE semantic gatekeeper files, exact path TBD | Entry, encryption, secret-key, approximation, and bootstrap validation after ownership assignment. |
 | FHE conversion/lowering files, exact path TBD | ResNet-20 FHE adaptation, SIHE/CKKS planning, and runtime ABI lowering after later checkpoints. |
 | `osprey/torch2whirl/FHE-INGESTION-PLAN.md` | SYNC-2 frontend plan for ResNet-20 capture, after native APIs merge. |

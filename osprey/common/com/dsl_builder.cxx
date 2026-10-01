@@ -20,8 +20,8 @@
 #endif /* ! defined(BUILD_OS_DARWIN) */
 
 #include "dsl_builder.h"
-#include "dsl_fhe.h"
-#include "dsl_fhe_plan.h"
+#include "fhe_image.h"
+#include "fhe_plan.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_memory_behavior.h"
 #include "dsl_shape.h"

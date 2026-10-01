@@ -73,7 +73,7 @@ WOPT_DSL_populate_tensor_control_snapshot
       BOOL last_statement = statement == bb->Laststmt();
       ++statement_order;
       if (DSL_IR_Image_Find_Definition_Value
-              (PU_Info_proc_sym(pu), statement, &value)) {
+              (pu, statement, &value)) {
         DSL_TENSOR_CONTROL_POSITION position;
         memset(&position, 0, sizeof(position));
         position.node_id = value.producer_node_id;

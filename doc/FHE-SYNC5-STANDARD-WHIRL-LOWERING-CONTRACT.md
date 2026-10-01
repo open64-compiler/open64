@@ -42,9 +42,25 @@ invalid.  No private metadata string is used to reconstruct the relation.
 ## Transaction API
 
 `DSL_IR_Lower_Native_Values_To_Standard_Blocks()` accepts a complete request
-array for one active PU.  The driver owns PU selection and local symbol-table
-lifetime.  Request order is not semantic; commit order follows the physical
-definition order in the PU tree.
+array for one active PU through a `PU_Info *`. The `PU_Info` is the sole
+ownership and tree authority; the lowering service derives the active PU root,
+each native definition's containing block, and the final result-handle
+definition from `WN_last(standard_block)`. Requests therefore cannot provide
+conflicting roots, parent blocks, or result STIDs. Request order is not
+semantic; commit order follows the physical definition order in the PU tree.
+
+The transaction is implemented in
+`osprey/common/com/dsl_ir_lower.cxx`. Generic value and payload transactions
+remain in `dsl_ir_rewrite.cxx`; runtime projection planning and reconstruction
+belong to `dsl_runtime_interface.cxx`; program-wide ABI retirement, input
+promotion, and final interface verification belong to
+`dsl_program_interface.cxx`. Standard-WHIRL replacement legality, preflight,
+commit ordering, and post-verification belong exclusively to the lowering
+file. Private active-PU predicates and runtime-interface journals are shared
+only through `dsl_ir_transaction_internal.h` and
+`dsl_runtime_interface_internal.h`; neither header is a producer API. The
+runtime API uses `PU_Info *` as its single physical context. This source-level
+ownership split does not change binary WHIRL.
 
 ### Computed Standard Block
 
@@ -154,4 +170,3 @@ reopens it with `ir_b2a -st -src`.  The retained `.T` must show four lowered
 relations, two standard result-handle `STID`s, both promoted formals, the
 rank-4/rank-1 tensor descriptors, and no executable native definitions for the
 four lowered sources.
-

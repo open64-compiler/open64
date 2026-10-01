@@ -329,7 +329,7 @@ VHO_DSL_Shape_Refine_Program_Unit
     if (!context.requests.empty()) {
         DSL_IR_VALUE_TYPE_REFINEMENT_RESULT retype_result;
         if (!DSL_IR_Refine_Native_Value_Types
-                 (pu_info, tree, &context.requests[0],
+                 (pu_info, &context.requests[0],
                   context.requests.size(), diagnostic, &retype_result)) {
             local_result.rollback_count = retype_result.rollback_count;
             ++local_result.diagnostic_count;

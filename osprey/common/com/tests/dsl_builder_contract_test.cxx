@@ -33,8 +33,8 @@
 #include "srcpos.h"
 #include "dsl_builder.h"
 #include "dsl_contract.h"
-#include "dsl_fhe.h"
-#include "dsl_fhe_plan.h"
+#include "fhe_image.h"
+#include "fhe_plan.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_memory_behavior.h"
 #include "dsl_shape.h"
@@ -6637,12 +6637,12 @@ Check_FHE_SYNC3_Native_Rewrite(void)
          "stable image values for colliding local symbols");
     FHE_SYNC3_REWRITE_CHECK
         (DSL_IR_Image_Find_Definition_Value
-             (PU_Info_proc_sym(second_pu), second_add, &observed_value) &&
+             (second_pu, second_add, &observed_value) &&
          observed_value.id == second_value.id,
          "owner-aware definition lookup selects the second PU value");
     FHE_SYNC3_REWRITE_CHECK
         (!DSL_IR_Image_Find_Definition_Value
-              (PU_Info_proc_sym(first_pu), second_add, NULL),
+              (first_pu, second_add, NULL),
          "owner-aware definition lookup rejects the colliding foreign PU");
     if (failed)
         return failed;
@@ -6680,7 +6680,7 @@ Check_FHE_SYNC3_Native_Rewrite(void)
     rewrite.expected_operator = OPR_DSLMUL;
     FHE_SYNC3_REWRITE_CHECK
         (!DSL_IR_Rewrite_Native_Value
-             (PU_Info_proc_sym(second_pu), second_add, second_value.id,
+             (second_pu, second_add, second_value.id,
               &rewrite) &&
          WN_kid0(second_add) == expression_before &&
          DSL_IR_Image_Get_Node(second_value.producer_node_id, &node_after) &&
@@ -6696,7 +6696,7 @@ Check_FHE_SYNC3_Native_Rewrite(void)
     operand_value_ids[0] = DSL_Builder_Get_Value_Image_Id(first_input[0]);
     FHE_SYNC3_REWRITE_CHECK
         (!DSL_IR_Rewrite_Native_Value
-             (PU_Info_proc_sym(second_pu), second_add, second_value.id,
+             (second_pu, second_add, second_value.id,
               &rewrite) &&
          WN_kid0(second_add) == expression_before &&
          DSL_IR_Image_Get_Node(second_value.producer_node_id, &node_after) &&
@@ -6710,7 +6710,7 @@ Check_FHE_SYNC3_Native_Rewrite(void)
     operand_value_ids[0] = DSL_Builder_Get_Value_Image_Id(second_input[0]);
     FHE_SYNC3_REWRITE_CHECK
         (DSL_IR_Rewrite_Native_Value
-             (PU_Info_proc_sym(second_pu), second_add, second_value.id,
+             (second_pu, second_add, second_value.id,
               &rewrite) &&
          WN_kid0(second_add) != expression_before &&
          DSL_WN_Get_Logical_Opcode
@@ -6718,7 +6718,7 @@ Check_FHE_SYNC3_Native_Rewrite(void)
          logical_opcode.dsl_operator == OPR_DSLMUL &&
          logical_opcode.source_version == 1 &&
          DSL_IR_Image_Find_Definition_Value
-             (PU_Info_proc_sym(second_pu), second_add, &observed_value) &&
+             (second_pu, second_add, &observed_value) &&
          observed_value.id == second_value.id &&
          observed_value.st == second_value.st &&
          observed_value.ty == second_value.ty &&
@@ -6870,6 +6870,7 @@ Check_FHE_SYNC1_Mapped_Image(void)
              DSL_Builder_Get_Value_Image_Id(weight) &&
          observed_external.descriptor_ty == weight_ty &&
          observed_external.st == WN_st_idx(weight) &&
+         observed_external.tensor_tcon == TCON_IDX_ZERO &&
          observed_external.rank == 2 &&
          observed_external.byte_offset == 0 &&
          observed_external.byte_length == 16 &&
@@ -7499,7 +7500,6 @@ Check_External_Tensor_Materialization(void)
         requests[i].tensor_tcon = folded_tcons[i];
         requests[i].source_value_id =
             DSL_Builder_Get_Value_Image_Id(sources[i]);
-        requests[i].insertion_block = body;
         requests[i].insert_before = i < 2 ? calls[0] : calls[1];
         requests[i].source_position =
             WN_Get_Linenum(i < 2 ? calls[0] : calls[1]);
@@ -7527,7 +7527,7 @@ Check_External_Tensor_Materialization(void)
     rejected[1].byte_length = 4;
     EXTERNAL_REWRITE_CHECK
         (!DSL_IR_Materialize_External_Tensor_Values
-              (PU_Info_proc_sym(caller), rejected, 2, materialized) &&
+              (caller, rejected, 2, materialized) &&
          DSL_IR_Image_Node_Count() == node_count &&
          DSL_IR_Image_Value_Count() == value_count &&
          ST_Table_Size(CURRENT_SYMTAB) == st_count &&
@@ -7550,7 +7550,7 @@ Check_External_Tensor_Materialization(void)
     rejected[1].name = rejected[0].name;
     EXTERNAL_REWRITE_CHECK
         (!DSL_IR_Materialize_External_Tensor_Values
-              (PU_Info_proc_sym(caller), rejected, 2, materialized) &&
+              (caller, rejected, 2, materialized) &&
          DSL_IR_Image_Node_Count() == node_count &&
          DSL_IR_Image_Value_Count() == value_count &&
          ST_Table_Size(CURRENT_SYMTAB) == st_count,
@@ -7561,7 +7561,7 @@ Check_External_Tensor_Materialization(void)
     rejected[1].name = "duplicate_target_bias";
     EXTERNAL_REWRITE_CHECK
         (!DSL_IR_Materialize_External_Tensor_Values
-              (PU_Info_proc_sym(caller), rejected, 2, materialized) &&
+              (caller, rejected, 2, materialized) &&
          DSL_IR_Image_Node_Count() == node_count &&
          DSL_IR_Image_Value_Count() == value_count &&
          ST_Table_Size(CURRENT_SYMTAB) == st_count,
@@ -7571,7 +7571,7 @@ Check_External_Tensor_Materialization(void)
     rejected[1].checksum = "bad-checksum";
     EXTERNAL_REWRITE_CHECK
         (!DSL_IR_Materialize_External_Tensor_Values
-              (PU_Info_proc_sym(caller), rejected, 2, materialized) &&
+              (caller, rejected, 2, materialized) &&
          DSL_IR_Image_Node_Count() == node_count &&
          DSL_IR_Image_Value_Count() == value_count &&
          ST_Table_Size(CURRENT_SYMTAB) == st_count,
@@ -7581,7 +7581,7 @@ Check_External_Tensor_Materialization(void)
     rejected[1].tensor_tcon = TCON_IDX_ZERO;
     EXTERNAL_REWRITE_CHECK
         (!DSL_IR_Materialize_External_Tensor_Values
-              (PU_Info_proc_sym(caller), rejected, 2, materialized) &&
+              (caller, rejected, 2, materialized) &&
          DSL_IR_Image_Node_Count() == node_count &&
          DSL_IR_Image_Value_Count() == value_count &&
          ST_Table_Size(CURRENT_SYMTAB) == st_count,
@@ -7591,7 +7591,7 @@ Check_External_Tensor_Materialization(void)
     rejected[1].descriptor_ty = MTYPE_To_TY(MTYPE_F4);
     EXTERNAL_REWRITE_CHECK
         (!DSL_IR_Materialize_External_Tensor_Values
-              (PU_Info_proc_sym(caller), rejected, 2, materialized) &&
+              (caller, rejected, 2, materialized) &&
          DSL_IR_Image_Node_Count() == node_count &&
          DSL_IR_Image_Value_Count() == value_count &&
          ST_Table_Size(CURRENT_SYMTAB) == st_count,
@@ -7599,7 +7599,7 @@ Check_External_Tensor_Materialization(void)
 
     EXTERNAL_REWRITE_CHECK
         (!DSL_IR_Materialize_External_Tensor_Values
-              (PU_Info_proc_sym(callee), requests, 6, materialized) &&
+              (callee, requests, 6, materialized) &&
          DSL_IR_Image_Node_Count() == node_count &&
          DSL_IR_Image_Value_Count() == value_count &&
          ST_Table_Size(CURRENT_SYMTAB) == st_count,
@@ -7607,7 +7607,7 @@ Check_External_Tensor_Materialization(void)
 
     EXTERNAL_REWRITE_CHECK
         (DSL_IR_Materialize_External_Tensor_Values
-             (PU_Info_proc_sym(caller), requests, 6, materialized),
+             (caller, requests, 6, materialized),
          "two contexts plus entry weight and bias materialization");
     for (UINT32 i = 0; i < 6; ++i) {
         EXTERNAL_REWRITE_CHECK
@@ -7623,6 +7623,12 @@ Check_External_Tensor_Materialization(void)
                      NULL, 10) ==
                  DSL_Builder_Get_Value_Image_Id(sources[i]),
              "same-TY replacement and source context metadata");
+        EXTERNAL_REWRITE_CHECK
+            (DSL_IR_Image_Get_External_Tensor_Reference
+                 (PU_Info_proc_sym(caller), materialized[i].value_id,
+                  &observed) &&
+             observed.tensor_tcon == folded_tcons[i],
+             "typed lookup returns the converted tensor TCON");
     }
     for (UINT32 i = 0; i < 4; ++i)
         EXTERNAL_REWRITE_CHECK
@@ -9363,6 +9369,7 @@ Check_Native_To_Standard_Lowering(void)
     DSL_RUNTIME_VALUE_PROJECTION_RECORD projections[2];
     DSL_RUNTIME_INPUT_RECORD input_records[2];
     DSL_RUNTIME_INPUT_BINDING_RECORD binding_records[2];
+    DSL_IR_EXTERNAL_TENSOR_REFERENCE observed_external;
     DSL_IR_NATIVE_VALUE_LOWER_REQUEST requests[4];
     DSL_IR_NATIVE_VALUE_LOWER_RESULT results[4];
     DSL_TENSOR_TCON_CREATE_INFO tcon_info;
@@ -9480,7 +9487,48 @@ Check_Native_To_Standard_Lowering(void)
         ST_tensor_bind_metadata
             (DSL_Builder_Get_Value_Result_Symbol(external[i]),
              "tensor_tcon_idx", tcon_text[i]);
+        STANDARD_LOWER_CHECK
+            (DSL_IR_Image_Get_External_Tensor_Reference
+                 (PU_Info_proc_sym(pu),
+                  DSL_Builder_Get_Value_Image_Id(external[i]),
+                  &observed_external) &&
+             observed_external.tensor_tcon == external_tcon[i],
+             "typed external lookup returns the attached tensor TCON");
     }
+    UINT32 original_node_count = DSL_IR_Image_Node_Count();
+    UINT32 original_value_count = DSL_IR_Image_Value_Count();
+    UINT32 original_st_count = ST_Table_Size(CURRENT_SYMTAB);
+    ST_tensor_bind_metadata
+        (DSL_Builder_Get_Value_Result_Symbol(external[0]),
+         "tensor_tcon_idx", "not-a-tcon");
+    STANDARD_LOWER_CHECK
+        (!DSL_IR_Image_Get_External_Tensor_Reference
+              (PU_Info_proc_sym(pu),
+               DSL_Builder_Get_Value_Image_Id(external[0]),
+               &observed_external) &&
+         DSL_IR_Image_Node_Count() == original_node_count &&
+         DSL_IR_Image_Value_Count() == original_value_count &&
+         ST_Table_Size(CURRENT_SYMTAB) == original_st_count,
+         "malformed tensor TCON metadata rejects without IR mutation");
+    ST_tensor_bind_metadata
+        (DSL_Builder_Get_Value_Result_Symbol(external[0]),
+         "tensor_tcon_idx", tcon_text[1]);
+    STANDARD_LOWER_CHECK
+        (!DSL_IR_Image_Get_External_Tensor_Reference
+              (PU_Info_proc_sym(pu),
+               DSL_Builder_Get_Value_Image_Id(external[0]),
+               &observed_external),
+         "descriptor-mismatched tensor TCON rejects typed lookup");
+    ST_tensor_bind_metadata
+        (DSL_Builder_Get_Value_Result_Symbol(external[0]),
+         "tensor_tcon_idx", tcon_text[0]);
+    STANDARD_LOWER_CHECK
+        (DSL_IR_Image_Get_External_Tensor_Reference
+             (PU_Info_proc_sym(pu),
+              DSL_Builder_Get_Value_Image_Id(external[0]),
+              &observed_external) &&
+         observed_external.tensor_tcon == external_tcon[0],
+         "valid tensor TCON metadata restores typed lookup");
     seed = DSL_Builder_Create_Tensor_Constant
                ("standard_seed", tensor_ty[0], "float32", 4,
                 "[1,1,2,2]", "zero_init", "0");
@@ -9659,8 +9707,6 @@ Check_Native_To_Standard_Lowering(void)
         UINT32 source_index = request_order[request_index];
         DSL_IR_NATIVE_VALUE_LOWER_REQUEST &request =
             requests[request_index];
-        request.pu_root = PU_Info_tree_ptr(pu);
-        request.containing_block = containing_blocks[source_index];
         request.native_definition = definitions[source_index];
         if (source_index < 2) {
             request.source_value_id =
@@ -9674,8 +9720,6 @@ Check_Native_To_Standard_Lowering(void)
             request.relation.value_projection_id =
                 projections[source_index].id;
             request.standard_block = standard_block[source_index];
-            request.result_handle_definition =
-                handle_definition[source_index];
         } else {
             UINT32 external_index = source_index - 2;
             request.source_value_id =
@@ -9696,7 +9740,7 @@ Check_Native_To_Standard_Lowering(void)
 #define STANDARD_LOWER_EXPECT_REJECT(request_array, count, message) \
     STANDARD_LOWER_CHECK \
         (!DSL_IR_Lower_Native_Values_To_Standard_Blocks \
-              (PU_Info_proc_sym(pu), request_array, count, NULL, results) && \
+              (pu, request_array, count, NULL, results) && \
          Find_STID_And_Block \
              (body, projection_requests[0].expected_source_st, NULL) == \
                 definitions[0] && \
@@ -9728,7 +9772,7 @@ Check_Native_To_Standard_Lowering(void)
 
     STANDARD_LOWER_CHECK
         (!DSL_IR_Lower_Native_Values_To_Standard_Blocks
-              (ST_IDX_ZERO, requests, 4, NULL, results) &&
+              (NULL, requests, 4, NULL, results) &&
          Find_STID_And_Block
              (body, projection_requests[0].expected_source_st, NULL) ==
                 definitions[0],
@@ -9768,7 +9812,7 @@ Check_Native_To_Standard_Lowering(void)
     DSL_IR_NATIVE_VALUE_LOWER_REQUEST partial = requests[2];
     STANDARD_LOWER_CHECK
         (!DSL_IR_Lower_Native_Values_To_Standard_Blocks
-              (PU_Info_proc_sym(pu), &partial, 1, NULL, results) &&
+              (pu, &partial, 1, NULL, results) &&
          Find_STID_And_Block
              (body, projection_requests[0].expected_source_st, NULL) ==
                 definitions[0] &&
@@ -9778,7 +9822,7 @@ Check_Native_To_Standard_Lowering(void)
          "partial chain rejects without mutation");
     STANDARD_LOWER_CHECK
          (DSL_IR_Lower_Native_Values_To_Standard_Blocks
-             (PU_Info_proc_sym(pu), requests, 4, stderr, results) &&
+             (pu, requests, 4, stderr, results) &&
          DSL_IR_Image_Validate(stderr) &&
          DSL_IR_Image_Validate_Lowered_Relations(stderr) &&
          DSL_Program_Interface_Validate_Lowered_PU(pu, stderr) &&
@@ -10764,8 +10808,6 @@ Check_DSL_Value_Retirement(void)
     consumer_definition = Find_STID_In_Block
         (body, DSL_Builder_Get_Value_Result_Symbol(values[2]));
     memset(&request, 0, sizeof(request));
-    request.pu_root = PU_Info_tree_ptr(pu);
-    request.containing_block = body;
     request.replacement_definition = replacement_definition;
     request.replacement_value_id = DSL_Builder_Get_Value_Image_Id(values[0]);
     request.retiring_definition = retiring_definition;
@@ -10780,7 +10822,7 @@ Check_DSL_Value_Retirement(void)
     WN_INSERT_BlockAfter(body, retiring_definition, address_use);
     RETIRE_CHECK
         (!DSL_IR_Redirect_And_Retire_Native_Value
-              (PU_Info_proc_sym(pu), &request) &&
+              (pu, &request) &&
          Find_STID_In_Block
              (body, DSL_Builder_Get_Value_Result_Symbol(values[1])) != NULL &&
          WN_st_idx(WN_kid0(WN_kid0(consumer_definition))) ==
@@ -10796,10 +10838,9 @@ Check_DSL_Value_Retirement(void)
     nested_if = WN_CreateIf(WN_Intconst(MTYPE_I4, 1), nested_block,
                             WN_CreateBlock());
     WN_INSERT_BlockBefore(body, consumer_definition, nested_if);
-    request.containing_block = nested_block;
     RETIRE_CHECK
         (!DSL_IR_Redirect_And_Retire_Native_Value
-              (PU_Info_proc_sym(pu), &request) &&
+              (pu, &request) &&
          Find_STID_In_Block
              (nested_block,
               DSL_Builder_Get_Value_Result_Symbol(values[1])) != NULL &&
@@ -10812,12 +10853,11 @@ Check_DSL_Value_Retirement(void)
     WN_DELETE_Tree(nested_if);
     WN_INSERT_BlockBefore(body, consumer_definition, replacement_definition);
     WN_INSERT_BlockAfter(body, replacement_definition, retiring_definition);
-    request.containing_block = body;
     RETIRE_CHECK
         (replacement_definition != NULL && retiring_definition != NULL &&
          consumer_definition != NULL &&
          DSL_IR_Redirect_And_Retire_Native_Value
-             (PU_Info_proc_sym(pu), &request),
+             (pu, &request),
          "redirect and retire pure value");
     RETIRE_CHECK
         (Find_STID_In_Block
@@ -10952,7 +10992,7 @@ Check_DSL_Value_Retirement(void)
     request.retiring_value_id = DSL_Builder_Get_Value_Image_Id(collision[1]);
     UINT32 collision_node_count = DSL_IR_Image_Node_Count();
     BOOL collision_rejected = !DSL_IR_Redirect_And_Retire_Native_Value
-        (PU_Info_proc_sym(pu), &request);
+        (pu, &request);
     region_dump = tmpfile();
     size_t region_after_size = 0;
     if (region_dump != NULL) {

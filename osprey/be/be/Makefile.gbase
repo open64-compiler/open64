@@ -200,6 +200,7 @@ IPO_DIR			= $(BUILD_TOT)/ipa/main/optimize
 IPC_DIR			= $(BUILD_TOT)/ipa/common
 COMMON_DIR 		= $(BUILD_TOT)/common
 COMMON_COM_DIR 		= $(COMMON_DIR)/com
+COMMON_FHE_DIR 		= $(COMMON_DIR)/fhe
 COMMON_UTIL_DIR		= $(COMMON_DIR)/util
 COMMON_COM_TARG_DIR 	= $(COMMON_COM_DIR)/$(BUILD_TARGET_DIR)
 COMMON_TARG_INFO_ACCESS_DIR = $(TARG_INFO_SRC)/access
@@ -216,6 +217,7 @@ SRC_DIRS = \
   $(BE_VHO_DIR)		\
   $(BE_LNO_DIR)		\
   $(COMMON_COM_DIR)	\
+  $(COMMON_FHE_DIR)	\
   $(COMMON_COM_TARG_DIR)\
   $(COMMON_TARG_INFO_ACCESS_DIR)\
   $(COMMON_UTIL_DIR)	\
@@ -332,6 +334,7 @@ BE_VHO_CXX_SRCS = \
   fhe_unlowered_gate.cxx \
   fhe_semantic_convert.cxx \
   fhe_semantic_materialize.cxx \
+  fhe_semantic_runtime_lower.cxx \
   f90_lower.cxx           \
   f90_lower_dep.cxx     \
   vho_lower.cxx		\
@@ -343,10 +346,12 @@ COMMON_COM_CXX_SRCS = \
   config_cache.cxx	\
   dsl_domain.cxx       \
   dsl_gatekeeper.cxx   \
-  dsl_fhe.cxx          \
-  dsl_fhe_plan.cxx     \
   dsl_ir_image.cxx     \
+  dsl_ir_lower.cxx     \
+  dsl_program_interface.cxx \
+  dsl_ir_retype.cxx    \
   dsl_ir_rewrite.cxx   \
+  dsl_runtime_interface.cxx \
   dsl_region.cxx       \
   dsl_memory_behavior.cxx \
   dsl_opcode.cxx       \
@@ -379,6 +384,10 @@ COMMON_COM_CXX_SRCS = \
   wutil.cxx		\
   DaVinci.cxx           \
   comp_decl.cxx
+
+COMMON_FHE_CXX_SRCS = \
+  fhe_image.cxx        \
+  fhe_plan.cxx
 
 COMMON_COM_PCH_CXX_SRCS = \
   const.cxx		\
@@ -674,6 +683,7 @@ BE_CXX_SRCS = \
   $(BE_BE_TARG_CXX_SRCS) \
   $(BE_COM_CXX_SRCS)	\
   $(COMMON_COM_CXX_SRCS) \
+  $(COMMON_FHE_CXX_SRCS) \
   $(COMMON_UTIL_CXX_SRCS) \
   $(BE_REGION_CXX_SRCS)	\
   $(BE_LNO_CXX_SRCS)	\

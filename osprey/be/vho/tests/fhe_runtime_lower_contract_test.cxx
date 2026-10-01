@@ -18,9 +18,11 @@
 #include "errors.h"
 #include "err_host.tab"
 #include "fhe_runtime_lower.h"
+#include "fhe_semantic_runtime_lower.h"
 #include "fhe_standard_whirl.h"
 #include "fhe_unlowered_gate.h"
 #include "glob.h"
+#include "ir_bread.h"
 #include "ir_bwrite.h"
 #include "ir_reader.h"
 #include "mempool.h"
@@ -98,6 +100,22 @@ Initialize_Test_Context (void)
     DST_Init(NULL, 0);
 }
 
+static void
+Initialize_Reader_Test_Context (void)
+{
+    MEM_Initialize();
+    Set_Error_Tables(Phases, host_errlist);
+    Init_Error_Handler(10);
+    Set_Error_File(NULL);
+    Set_Error_Line(ERROR_LINE_UNKNOWN);
+    Preconfigure();
+    Init_Controls_Tbl();
+    ABI_Name = "n64";
+    Configure();
+    Initialize_Symbol_Tables(FALSE);
+    New_Scope(GLOBAL_SYMTAB, Malloc_Mem_Pool, FALSE);
+}
+
 static SRCPOS
 Test_Source_Position (void)
 {
@@ -108,6 +126,24 @@ Test_Source_Position (void)
     USRCPOS_column(position) = 5;
     USRCPOS_stmt_begin(position) = 1;
     return USRCPOS_srcpos(position);
+}
+
+static void
+Set_Block_Source_Position (WN *tree, SRCPOS source_position)
+{
+    if (tree == NULL)
+        return;
+    OPERATOR opr = WN_operator(tree);
+    if ((OPERATOR_is_stmt(opr) || OPERATOR_is_scf(opr)) &&
+        opr != OPR_BLOCK)
+        WN_Set_Linenum(tree, source_position);
+    if (opr == OPR_BLOCK) {
+        for (WN *stmt = WN_first(tree); stmt != NULL; stmt = WN_next(stmt))
+            Set_Block_Source_Position(stmt, source_position);
+        return;
+    }
+    for (INT32 i = 0; i < WN_kid_count(tree); ++i)
+        Set_Block_Source_Position(WN_kid(tree, i), source_position);
 }
 
 static WN *
@@ -129,6 +165,7 @@ Build_Failure_Block
         WN_INSERT_BlockLast(block, WN_CreateEval(output));
     }
     WN_INSERT_BlockLast(block, WN_CreateReturn());
+    Set_Block_Source_Position(block, Test_Source_Position());
     return block;
 }
 
@@ -161,6 +198,18 @@ Count_Global_Variables (void)
 static TY_IDX
 Create_Opaque_Handle_TY (const char *name)
 {
+    for (UINT32 index = 1; index < TY_Table_Size(); ++index) {
+        TY_IDX candidate = make_TY_IDX(index);
+        if (TY_kind(candidate) != KIND_POINTER)
+            continue;
+        TY_IDX pointee = TY_pointed(candidate);
+        if (pointee != TY_IDX_ZERO &&
+            TY_IDX_index(pointee) < TY_Table_Size() &&
+            TY_kind(pointee) == KIND_STRUCT && TY_name(pointee) != NULL &&
+            strcmp(TY_name(pointee), name) == 0)
+            return Make_Pointer_Type(pointee);
+    }
+
     TY_IDX opaque_ty;
     TY &opaque = New_TY(opaque_ty);
     TY_Init(opaque, 0, KIND_STRUCT, MTYPE_M, Save_Str(name));
@@ -601,6 +650,364 @@ Verify_Gate_Rejection (struct pu_info *pu_info)
 }
 
 static BOOL
+Build_And_Lower_Resolved_Relu_Sequence
+        (DSL_BUILDER_PROGRAM_UNIT pu, TY_IDX ciphertext_ty, TY_IDX model_ty,
+         TY_IDX plaintext_ty, DSL_BUILDER_VALUE anchor,
+         DSL_BUILDER_VALUE weight, DSL_BUILDER_VALUE bias,
+         DSL_BUILDER_VALUE relu)
+{
+    DSL_RUNTIME_VALUE_PROJECTION_REQUEST value_requests[4];
+    memset(value_requests, 0, sizeof(value_requests));
+    value_requests[0].owner_pu_st = PU_Info_proc_sym(pu);
+    value_requests[0].source_value_id = DSL_Builder_Get_Value_Image_Id(anchor);
+    value_requests[0].expected_source_st =
+        DSL_Builder_Get_Value_Result_Symbol(anchor);
+    value_requests[0].expected_source_ty =
+        ST_type(value_requests[0].expected_source_st);
+    value_requests[0].handle_ty = ciphertext_ty;
+    value_requests[0].binding_kind = DSL_RUNTIME_BINDING_INPUT_FORMAL;
+    value_requests[0].formal_ordinal = 0;
+    DSL_BUILDER_VALUE plain_values[2] = { weight, bias };
+    for (UINT32 i = 0; i < 2; ++i) {
+        value_requests[1 + i].owner_pu_st = PU_Info_proc_sym(pu);
+        value_requests[1 + i].source_value_id =
+            DSL_Builder_Get_Value_Image_Id(plain_values[i]);
+        value_requests[1 + i].expected_source_st =
+            DSL_Builder_Get_Value_Result_Symbol(plain_values[i]);
+        value_requests[1 + i].expected_source_ty =
+            ST_type(value_requests[1 + i].expected_source_st);
+        value_requests[1 + i].handle_ty = plaintext_ty;
+        value_requests[1 + i].binding_kind =
+            DSL_RUNTIME_BINDING_INPUT_FORMAL;
+        value_requests[1 + i].formal_ordinal = 1 + i;
+    }
+    value_requests[3].owner_pu_st = PU_Info_proc_sym(pu);
+    value_requests[3].source_value_id = DSL_Builder_Get_Value_Image_Id(relu);
+    value_requests[3].expected_source_st =
+        DSL_Builder_Get_Value_Result_Symbol(relu);
+    value_requests[3].expected_source_ty =
+        ST_type(value_requests[3].expected_source_st);
+    value_requests[3].handle_ty = ciphertext_ty;
+    value_requests[3].binding_kind = DSL_RUNTIME_BINDING_LOCAL_VALUE;
+    value_requests[3].formal_ordinal =
+        DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
+
+    DSL_RUNTIME_INTERFACE_PLAN runtime_plan;
+    memset(&runtime_plan, 0, sizeof(runtime_plan));
+    runtime_plan.values = value_requests;
+    runtime_plan.value_count = 4;
+
+    const char *roles[4] = {
+        "fhe.model",
+        "fhe.relu.coefficient.stage0",
+        "fhe.relu.coefficient.stage1",
+        "fhe.relu.coefficient.stage2"
+    };
+    DSL_RUNTIME_INPUT_REQUEST input_requests[4];
+    DSL_RUNTIME_INPUT_BINDING_REQUEST binding_requests[4];
+    memset(input_requests, 0, sizeof(input_requests));
+    memset(binding_requests, 0, sizeof(binding_requests));
+    for (UINT32 i = 0; i < 4; ++i) {
+        TY_IDX handle_ty = i == 0 ? model_ty : plaintext_ty;
+        input_requests[i].input_kind = DSL_RUNTIME_INPUT_OPAQUE_RESOURCE;
+        input_requests[i].stable_role = roles[i];
+        input_requests[i].handle_ty = handle_ty;
+        binding_requests[i].owner_pu_st = PU_Info_proc_sym(pu);
+        binding_requests[i].runtime_input_index = i;
+        binding_requests[i].handle_ty = handle_ty;
+        binding_requests[i].binding_kind =
+            DSL_RUNTIME_INPUT_BINDING_ROOT_RESOURCE;
+        binding_requests[i].semantic_role = roles[i];
+        binding_requests[i].source_position = Test_Source_Position();
+    }
+
+    DSL_PROGRAM_INTERFACE_PLAN program_plan;
+    memset(&program_plan, 0, sizeof(program_plan));
+    program_plan.runtime_inputs = input_requests;
+    program_plan.runtime_input_count = 4;
+    program_plan.runtime_input_bindings = binding_requests;
+    program_plan.runtime_input_binding_count = 4;
+
+    DSL_PROGRAM_INTERFACE_RESULT interface_result;
+    memset(&interface_result, 0, sizeof(interface_result));
+    BOOL interface_valid = DSL_Program_Interface_Plan_Validate
+        (&program_plan, &runtime_plan, stderr) && DSL_Builder_Select_PU(pu) &&
+        DSL_Program_Interface_Apply_PU
+        (pu, &program_plan, &runtime_plan, stderr, &interface_result);
+    if (!interface_valid || interface_result.runtime_input_count != 4 ||
+        interface_result.runtime_binding_count != 4 ||
+        interface_result.canonical_projection_count != 4) {
+        fprintf(stderr,
+                "runtime interface changed: valid=%d inputs=%u bindings=%u "
+                "projections=%u\n", interface_valid,
+                interface_result.runtime_input_count,
+                interface_result.runtime_binding_count,
+                interface_result.canonical_projection_count);
+        return FALSE;
+    }
+
+    DSL_IR_VALUE_RECORD relu_value_record;
+    VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD schedule_record;
+    VHO_FHE_Runtime_Static_Schedule_Reset();
+    if (!DSL_IR_Image_Get_Value
+             (value_requests[3].source_value_id, &relu_value_record) ||
+        !VHO_FHE_Runtime_Static_Schedule_Prepare(stderr) ||
+        VHO_FHE_Runtime_Static_Schedule_Record_Count() != 1 ||
+        VHO_FHE_Runtime_Static_Evaluation_Count() != 6 ||
+        VHO_FHE_Runtime_Dynamic_Evaluation_Count() != 6 ||
+        !VHO_FHE_Runtime_Static_Schedule_Find
+             (relu_value_record.producer_node_id, &schedule_record) ||
+        schedule_record.owner_pu_st != PU_Info_proc_sym(pu) ||
+        schedule_record.result_value_id != value_requests[3].source_value_id ||
+        schedule_record.logical_operator != OPR_DSLRELU ||
+        schedule_record.first_static_ordinal != 1 ||
+        schedule_record.static_evaluation_count != 6 ||
+        schedule_record.execution_multiplicity != 1 ||
+        schedule_record.dynamic_evaluation_count != 6) {
+        fprintf(stderr, "runtime static schedule census changed\n");
+        return FALSE;
+    }
+    VHO_FHE_Runtime_Static_Schedule_Reset();
+
+    VHO_FHE_RUNTIME_HANDLE_BINDING model;
+    VHO_FHE_RUNTIME_HANDLE_BINDING projected_anchor;
+    VHO_FHE_RUNTIME_HANDLE_BINDING projected_relu;
+    VHO_FHE_RUNTIME_HANDLE_BINDING rejected_binding;
+    if (!VHO_FHE_Runtime_Resolve_Role_Handle
+             (pu, "fhe.model", stderr, &model) ||
+        !VHO_FHE_Runtime_Resolve_Value_Handle
+             (pu, value_requests[0].source_value_id, stderr,
+              &projected_anchor) ||
+        !VHO_FHE_Runtime_Resolve_Value_Handle
+             (pu, value_requests[3].source_value_id, stderr,
+              &projected_relu) ||
+        model.handle_ty != model_ty ||
+        projected_anchor.handle_ty != ciphertext_ty ||
+        projected_relu.handle_ty != ciphertext_ty ||
+        VHO_FHE_Runtime_Resolve_Role_Handle
+            (pu, "fhe.missing", NULL, &rejected_binding) ||
+        VHO_FHE_Runtime_Resolve_Value_Handle
+            (pu, DSL_IR_VALUE_INVALID_ID, NULL, &rejected_binding))
+    {
+        fprintf(stderr, "runtime handle resolution evidence changed\n");
+        return FALSE;
+    }
+
+    const DSL_IR_VALUE_ID conv_operands[3] = {
+        value_requests[0].source_value_id,
+        value_requests[1].source_value_id,
+        value_requests[2].source_value_id
+    };
+    const DSL_IR_VALUE_ID residual_operands[2] = {
+        value_requests[0].source_value_id,
+        value_requests[0].source_value_id
+    };
+    const DSL_IR_VALUE_ID unary_operands[1] = {
+        value_requests[0].source_value_id
+    };
+    const UINT32 operation_kinds[5] = {
+        VHO_FHE_RUNTIME_OP_CONV2D_PLAIN,
+        VHO_FHE_RUNTIME_OP_RESIDUAL_ADD,
+        VHO_FHE_RUNTIME_OP_AVERAGE_POOL,
+        VHO_FHE_RUNTIME_OP_LAYOUT_CONVERT,
+        VHO_FHE_RUNTIME_OP_LINEAR_PLAIN
+    };
+    const DSL_IR_VALUE_ID *operation_operands[5] = {
+        conv_operands, residual_operands, unary_operands, unary_operands,
+        conv_operands
+    };
+    const UINT32 operation_operand_counts[5] = { 3, 2, 1, 1, 3 };
+    const char *operation_functions[5] = {
+        "open64_fhe_conv2d_plain_v1",
+        "open64_fhe_residual_add_v1",
+        "open64_fhe_average_pool_v1",
+        "open64_fhe_layout_convert_v1",
+        "open64_fhe_linear_plain_v1"
+    };
+    for (UINT32 i = 0; i < 5; ++i) {
+        VHO_FHE_RUNTIME_OPERATION_REQUEST operation;
+        memset(&operation, 0, sizeof(operation));
+        operation.operation_kind = operation_kinds[i];
+        operation.static_ordinal = 50 + i;
+        operation.operand_value_ids = operation_operands[i];
+        operation.operand_count = operation_operand_counts[i];
+        VHO_FHE_RUNTIME_CALL_SEQUENCE operation_sequence;
+        if (!VHO_FHE_Runtime_Build_Operation_Sequence
+                 (pu, &operation, Test_Source_Position(),
+                  Build_Failure_Block, NULL, stderr, &operation_sequence) ||
+            operation_sequence.block == NULL ||
+            operation_sequence.standard_call_count != 2 ||
+            operation_sequence.output_handle_count != 2 ||
+            operation_sequence.status_check_count != 2 ||
+            ST_type(operation_sequence.output_st) != ciphertext_ty) {
+            fprintf(stderr, "runtime operation sequence %u changed\n", i);
+            return FALSE;
+        }
+        UINT32 call_count = 0;
+        BOOL saw_selector = FALSE;
+        BOOL saw_evaluation = FALSE;
+        for (WN *stmt = WN_first(operation_sequence.block); stmt != NULL;
+             stmt = WN_next(stmt)) {
+            if (WN_operator(stmt) != OPR_CALL)
+                continue;
+            ++call_count;
+            const char *name = ST_name(WN_st(stmt));
+            if (strcmp(name, "open64_fhe_operation_desc_select_v1") == 0) {
+                WN *ordinal = WN_kid0(WN_kid(stmt, 2));
+                WN *kind = WN_kid0(WN_kid(stmt, 3));
+                saw_selector = WN_operator(ordinal) == OPR_INTCONST &&
+                    WN_const_val(ordinal) == 50 + i &&
+                    WN_operator(kind) == OPR_INTCONST &&
+                    WN_const_val(kind) == operation_kinds[i];
+            }
+            else if (strcmp(name, operation_functions[i]) == 0)
+                saw_evaluation = TRUE;
+        }
+        BOOL valid_operation = call_count == 2 && saw_selector &&
+                               saw_evaluation;
+        WN_DELETE_Tree(operation_sequence.block);
+        if (!valid_operation) {
+            fprintf(stderr, "runtime operation ABI %u changed\n", i);
+            return FALSE;
+        }
+    }
+
+    VHO_FHE_RUNTIME_OPERATION_REQUEST unsupported;
+    memset(&unsupported, 0, sizeof(unsupported));
+    unsupported.operation_kind = VHO_FHE_RUNTIME_OP_RELU_POLY_STAGE;
+    unsupported.static_ordinal = 60;
+    unsupported.operand_value_ids = unary_operands;
+    unsupported.operand_count = 1;
+    VHO_FHE_RUNTIME_CALL_SEQUENCE rejected_sequence;
+    if (VHO_FHE_Runtime_Build_Operation_Sequence
+            (pu, &unsupported, Test_Source_Position(), Build_Failure_Block,
+             NULL, NULL, &rejected_sequence)) {
+        fprintf(stderr, "specialized ReLU operation was admitted generically\n");
+        return FALSE;
+    }
+
+    VHO_FHE_RUNTIME_CALL_SEQUENCE identity_sequence;
+    WN *identity_result = NULL;
+    if (!VHO_FHE_Runtime_Build_Identity_Sequence
+             (pu, value_requests[0].source_value_id, stderr,
+              &identity_sequence) ||
+        identity_sequence.block == NULL ||
+        identity_sequence.output_st != projected_anchor.handle_st ||
+        identity_sequence.standard_call_count != 0 ||
+        identity_sequence.output_handle_count != 0 ||
+        identity_sequence.status_check_count != 0 ||
+        !VHO_FHE_Runtime_Finalize_Projected_Output
+             (&projected_relu, Test_Source_Position(), &identity_sequence,
+              &identity_result) ||
+        identity_result == NULL || WN_first(identity_sequence.block) !=
+            identity_result || WN_next(identity_result) != NULL) {
+        fprintf(stderr, "runtime identity sequence changed\n");
+        return FALSE;
+    }
+    WN_DELETE_Tree(identity_sequence.block);
+
+    VHO_FHE_RUNTIME_CALL_SEQUENCE sequence;
+    if (!VHO_FHE_Runtime_Build_Relu_Sequence
+             (pu, value_requests[0].source_value_id, 31,
+              Test_Source_Position(), Build_Failure_Block, NULL,
+              stderr, &sequence) ||
+        sequence.block == NULL || sequence.output_st == ST_IDX_ZERO ||
+        sequence.standard_call_count != 12 ||
+        sequence.output_handle_count != 12 ||
+        sequence.status_check_count != 12 ||
+        ST_type(sequence.output_st) != ciphertext_ty)
+    {
+        fprintf(stderr,
+                "ReLU sequence changed: calls=%u outputs=%u checks=%u\n",
+                sequence.standard_call_count, sequence.output_handle_count,
+                sequence.status_check_count);
+        return FALSE;
+    }
+
+    UINT32 call_count = 0;
+    UINT32 selector_count = 0;
+    BOOL saw_select = FALSE;
+    BOOL saw_bootstrap = FALSE;
+    BOOL saw_normalize = FALSE;
+    UINT32 poly_stage_count = 0;
+    BOOL saw_reconstruct = FALSE;
+    for (WN *stmt = WN_first(sequence.block); stmt != NULL;
+         stmt = WN_next(stmt)) {
+        if (WN_operator(stmt) != OPR_CALL)
+            continue;
+        ++call_count;
+        const char *name = ST_name(WN_st(stmt));
+        if (strcmp(name, "open64_fhe_operation_desc_select_v1") == 0) {
+            saw_select = TRUE;
+            WN *ordinal = WN_kid0(WN_kid(stmt, 2));
+            WN *kind = WN_kid0(WN_kid(stmt, 3));
+            const UINT32 expected_kind[6] = {
+                3, 4, 5, 5, 5, 6
+            };
+            if (WN_operator(ordinal) != OPR_INTCONST ||
+                selector_count >= 6 ||
+                WN_const_val(ordinal) != 31 + selector_count ||
+                WN_operator(kind) != OPR_INTCONST ||
+                WN_const_val(kind) != expected_kind[selector_count])
+                return FALSE;
+            ++selector_count;
+        }
+        else if (strcmp(name, "open64_fhe_bootstrap_v1") == 0)
+            saw_bootstrap = TRUE;
+        else if (strcmp(name, "open64_fhe_relu_normalize_v1") == 0)
+            saw_normalize = TRUE;
+        else if (strcmp(name, "open64_fhe_relu_poly_stage_v1") == 0)
+            ++poly_stage_count;
+        else if (strcmp(name, "open64_fhe_relu_reconstruct_v1") == 0)
+            saw_reconstruct = TRUE;
+    }
+    BOOL valid = call_count == 12 && selector_count == 6 && saw_select &&
+                 saw_bootstrap &&
+                 saw_normalize && poly_stage_count == 3 && saw_reconstruct;
+    WN *result_definition = NULL;
+    if (valid && !VHO_FHE_Runtime_Finalize_Projected_Output
+                     (&projected_relu, Test_Source_Position(), &sequence,
+                      &result_definition))
+        valid = FALSE;
+
+    DSL_IR_NATIVE_VALUE_LOWER_REQUEST request;
+    memset(&request, 0, sizeof(request));
+    request.native_definition = relu;
+    request.source_value_id = value_requests[3].source_value_id;
+    request.expected_operator = OPR_DSLRELU;
+    request.expected_version = 2;
+    request.mode = DSL_IR_NATIVE_LOWER_COMPUTED_STANDARD_BLOCK;
+    request.relation.relation_kind =
+        DSL_IR_LOWER_RELATION_RUNTIME_VALUE_PROJECTION;
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD relu_projection;
+    memset(&relu_projection, 0, sizeof(relu_projection));
+    if (valid && !DSL_Runtime_Interface_Image_Find_Value
+                     (PU_Info_proc_sym(pu), request.source_value_id,
+                      &relu_projection))
+        valid = FALSE;
+    request.relation.value_projection_id = relu_projection.id;
+    request.standard_block = sequence.block;
+    DSL_IR_NATIVE_VALUE_LOWER_RESULT lower_result;
+    if (valid &&
+        (!DSL_IR_Lower_Native_Values_To_Standard_Blocks
+             (pu, &request, 1, stderr, &lower_result) ||
+         lower_result.source_value_id != request.source_value_id ||
+         lower_result.mode != DSL_IR_NATIVE_LOWER_COMPUTED_STANDARD_BLOCK ||
+         lower_result.relation_kind !=
+             DSL_IR_LOWER_RELATION_RUNTIME_VALUE_PROJECTION ||
+         lower_result.handle_st != projected_relu.handle_st ||
+         lower_result.inserted_statement_count == 0))
+        valid = FALSE;
+    if (valid)
+        sequence.block = NULL;
+    if (sequence.block != NULL)
+        WN_DELETE_Tree(sequence.block);
+    if (!valid)
+        fprintf(stderr, "atomic ReLU lowering evidence changed\n");
+    return valid;
+}
+
+static BOOL
 Write_Review_Trace (WN *tree)
 {
     const char *path = getenv("OPEN64_FHE_RUNTIME_LOWER_TRACE");
@@ -640,11 +1047,68 @@ Write_Review_Artifact
     return TRUE;
 }
 
+static int
+Check_Mapped_Static_Schedule (const char *path)
+{
+    void *input = Open_Input_Info((char *)path);
+    INT32 pu_count = 0;
+    if (input == NULL || input == (void *)-1 || Read_Global_Info(&pu_count) ==
+        NULL) {
+        fprintf(stderr, "could not reopen runtime schedule input %s\n", path);
+        return 1;
+    }
+    BOOL valid = pu_count == 6 &&
+        VHO_FHE_Runtime_Static_Schedule_Prepare(stderr) &&
+        VHO_FHE_Runtime_Static_Evaluation_Count() == 87 &&
+        VHO_FHE_Runtime_Dynamic_Evaluation_Count() == 147;
+    VHO_FHE_RUNTIME_INTERFACE_CENSUS interface_census;
+    memset(&interface_census, 0, sizeof(interface_census));
+    valid = valid && VHO_FHE_Runtime_Interface_Census_Prepare
+                         (stderr, &interface_census) &&
+        interface_census.pu_count == 6 &&
+        interface_census.callsite_count == 9 &&
+        interface_census.retired_formal_count == 48 &&
+        interface_census.retired_call_argument_count == 80 &&
+        interface_census.source_external_input_count == 44 &&
+        interface_census.runtime_resource_input_count == 4 &&
+        interface_census.root_source_binding_count == 44 &&
+        interface_census.threaded_source_binding_count == 24 &&
+        interface_census.resource_binding_count == 24 &&
+        interface_census.runtime_input_call_count == 76;
+    fprintf(stderr,
+            "FHE runtime schedule census: pu=%d records=%u static=%u "
+            "dynamic=%u\n", pu_count,
+            VHO_FHE_Runtime_Static_Schedule_Record_Count(),
+            VHO_FHE_Runtime_Static_Evaluation_Count(),
+            VHO_FHE_Runtime_Dynamic_Evaluation_Count());
+    fprintf(stderr,
+            "FHE runtime interface census: retired_formals=%u "
+            "retired_actuals=%u sources=%u resources=%u bindings=%u "
+            "calls=%u\n", interface_census.retired_formal_count,
+            interface_census.retired_call_argument_count,
+            interface_census.source_external_input_count,
+            interface_census.runtime_resource_input_count,
+            interface_census.root_source_binding_count +
+                interface_census.threaded_source_binding_count +
+                interface_census.resource_binding_count,
+            interface_census.runtime_input_call_count);
+    VHO_FHE_Runtime_Static_Schedule_Reset();
+    Free_Input_Info();
+    return valid ? 0 : 1;
+}
+
 int
 main (void)
 {
+    const char *schedule_input =
+        getenv("OPEN64_FHE_RUNTIME_SCHEDULE_INPUT");
+    if (schedule_input != NULL && schedule_input[0] != '\0') {
+        Initialize_Reader_Test_Context();
+        return Check_Mapped_Static_Schedule(schedule_input);
+    }
     Initialize_Test_Context();
-    if (!DSL_Builder_Begin_Program())
+    if (!DSL_Builder_Begin_Program() ||
+        !DSL_Opcode_Register_Common_Substrate())
         return 1;
     DSL_BUILDER_PROGRAM_UNIT pu =
         DSL_Builder_Create_Minimal_PU("fhe_runtime_lower_contract");
@@ -671,6 +1135,85 @@ main (void)
         !Verify_Descriptor_Selected_Call(selector_tree) ||
         !Write_Review_Trace(selector_tree)) {
         fprintf(stderr, "FHE descriptor selection contract changed\n");
+        return 1;
+    }
+
+    DSL_BUILDER_TENSOR_TYPE_CORE type_core;
+    DSL_BUILDER_TENSOR_DESCRIPTOR tensor_descriptor;
+    memset(&type_core, 0, sizeof(type_core));
+    memset(&tensor_descriptor, 0, sizeof(tensor_descriptor));
+    type_core.kind = "tensor";
+    type_core.dtype = "float32";
+    type_core.rank = 1;
+    type_core.logical_shape = "[8]";
+    tensor_descriptor.type_core = type_core;
+    tensor_descriptor.traits.traits = "activation";
+    tensor_descriptor.representation.layout = "packed";
+    tensor_descriptor.representation.sharding = "replicated";
+    tensor_descriptor.representation.placement = "host";
+    tensor_descriptor.representation.memory = "contiguous";
+    tensor_descriptor.representation.quantization = "none";
+    TY_IDX source_tensor_ty = DSL_Builder_Intern_Tensor_Type
+        ("fhe_runtime_source_tensor", MTYPE_To_TY(MTYPE_F4),
+         &tensor_descriptor);
+    DSL_BUILDER_PROGRAM_UNIT binding_pu =
+        DSL_Builder_Create_Minimal_PU("fhe_runtime_binding_contract");
+    DSL_BUILDER_PU_SOURCE_IDENTITY binding_identity;
+    memset(&binding_identity, 0, sizeof(binding_identity));
+    binding_identity.canonical_definition_name =
+        "FHERuntimeBindingContract";
+    binding_identity.defining_module = "fhe_runtime_lower_contract_test";
+    binding_identity.defining_file = __FILE__;
+    binding_identity.defining_line = 37;
+    DSL_BUILDER_SOURCE_POSITION binding_position;
+    memset(&binding_position, 0, sizeof(binding_position));
+    binding_position.file_id = DSL_Builder_Register_Source_File
+                                   (binding_pu, __FILE__);
+    binding_position.line = 37;
+    binding_position.column = 5;
+    binding_position.statement_begin = 1;
+    DSL_BUILDER_VALUE binding_anchor = DSL_Builder_Declare_PU_Formal
+        (binding_pu, "ciphertext_anchor", 0, source_tensor_ty,
+         &binding_position);
+    DSL_BUILDER_VALUE binding_weight = DSL_Builder_Declare_PU_Formal
+        (binding_pu, "conv_weight", 1, source_tensor_ty,
+         &binding_position);
+    DSL_BUILDER_VALUE binding_bias = DSL_Builder_Declare_PU_Formal
+        (binding_pu, "conv_bias", 2, source_tensor_ty,
+         &binding_position);
+    DSL_BUILDER_VALUE relu_kids[1] = { binding_anchor };
+    DSL_BUILDER_VALUE binding_relu = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2), 2,
+         relu_kids, 1, NULL, 0, "relu_result", source_tensor_ty);
+    TY_IDX binding_model_ty = Create_Opaque_Handle_TY
+                                  ("open64_fhe_model_v1");
+    TY_IDX binding_ciphertext_ty = Create_Opaque_Handle_TY
+                                       ("open64_fhe_ciphertext_v1");
+    TY_IDX binding_plaintext_ty = Create_Opaque_Handle_TY
+                                      ("open64_fhe_plain_tensor_v1");
+    BOOL binding_setup = source_tensor_ty != TY_IDX_ZERO &&
+        binding_pu != NULL && binding_position.file_id != 0 &&
+        binding_anchor != NULL && binding_weight != NULL &&
+        binding_bias != NULL && binding_relu != NULL;
+    if (binding_setup)
+        binding_setup = DSL_Builder_Set_PU_Source_Identity
+                            (binding_pu, &binding_identity);
+    if (binding_setup)
+        binding_setup = DSL_Builder_Set_Value_Source_Position
+                            (binding_relu, &binding_position);
+    if (binding_setup)
+        binding_setup = DSL_Builder_Append_PU_Value(binding_pu, binding_relu);
+    if (binding_setup)
+        binding_setup = DSL_Builder_Return_PU_Values(binding_pu, NULL, 0);
+    if (!binding_setup) {
+        fprintf(stderr, "FHE runtime binding fixture setup changed\n");
+        return 1;
+    }
+    if (!Build_And_Lower_Resolved_Relu_Sequence
+            (binding_pu, binding_ciphertext_ty, binding_model_ty,
+             binding_plaintext_ty, binding_anchor, binding_weight,
+             binding_bias, binding_relu)) {
+        fprintf(stderr, "FHE runtime ReLU lowering changed\n");
         return 1;
     }
 
@@ -723,10 +1266,10 @@ main (void)
         result.error_count != 0)
         return 1;
 
-    DSL_BUILDER_PROGRAM_UNIT program_units[4] = {
-        pu, selector_pu, runtime_pu, second_runtime_pu
+    DSL_BUILDER_PROGRAM_UNIT program_units[5] = {
+        pu, selector_pu, binding_pu, runtime_pu, second_runtime_pu
     };
-    if (!Write_Review_Artifact(program_units, 4)) {
+    if (!Write_Review_Artifact(program_units, 5)) {
         fprintf(stderr, "FHE runtime lowering artifact write failed\n");
         return 1;
     }

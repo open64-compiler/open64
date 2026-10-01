@@ -1,8 +1,12 @@
 /*
  * Copyright (C) 2026 Open64 Project
+ *
+ * Stable logical printing for FHE plan/profile/context images. See
+ * doc/FHE-SYNC3-NATIVE-PLAN-CONTRACT.md and
+ * doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md.
  */
 
-#include "dsl_fhe_plan.h"
+#include "fhe_plan.h"
 #include "dsl_opcode.h"
 #include "strtab.h"
 #include "symtab.h"

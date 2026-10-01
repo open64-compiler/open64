@@ -22,8 +22,8 @@
 
 #include "fhe_semantic_convert.h"
 #include "fhe_convert.h"
-#include "dsl_fhe.h"
-#include "dsl_fhe_plan.h"
+#include "fhe_image.h"
+#include "fhe_plan.h"
 #include "dsl_ir_image.h"
 #include "dsl_opcode.h"
 #include "dsl_tensor_fold.h"
@@ -2088,11 +2088,17 @@ VHO_FHE_Resolve_Callee_BN_Pair
     return TRUE;
 }
 
+/*
+ * Find the native STID that defines one stable logical value while walking
+ * the already selected PU tree. This FHE-side query records the direct parent
+ * BLOCK for later request construction but performs no mutation; the public
+ * common/com transaction independently derives and validates physical
+ * ownership from Current_PU_Info before commit.
+ */
 static void
 VHO_FHE_Find_Value_Definition
         (WN *node,
          WN *containing_block,
-         ST_IDX owner_pu_st,
          DSL_IR_VALUE_ID value_id,
          WN **definition,
          WN **definition_block);
@@ -2241,7 +2247,6 @@ VHO_FHE_Prepare_Call_Context_Folds
             weight_request.descriptor_ty = folded_weight->ty;
             weight_request.tensor_tcon = fold.folded_weight_tcon;
             weight_request.source_value_id = fold.source_conv_weight;
-            weight_request.insertion_block = body;
             weight_request.insert_before = call;
             weight_request.call = call;
             weight_request.actual_ordinal = weight.actual_ordinal;
@@ -2261,7 +2266,6 @@ VHO_FHE_Prepare_Call_Context_Folds
             bias_request.descriptor_ty = folded_bias->ty;
             bias_request.tensor_tcon = fold.folded_bias_tcon;
             bias_request.source_value_id = fold.source_conv_bias;
-            bias_request.insertion_block = body;
             bias_request.insert_before = call;
             bias_request.call = call;
             bias_request.actual_ordinal = bias.actual_ordinal;
@@ -2284,7 +2288,8 @@ VHO_FHE_Prepare_Call_Context_Folds
     std::vector<DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_RESULT> results
         (requests->size());
     if (!DSL_IR_Materialize_External_Tensor_Values
-             (owner_pu_st, &(*requests)[0], requests->size(), &results[0])) {
+             (Current_PU_Info, &(*requests)[0], requests->size(),
+              &results[0])) {
         return VHO_FHE_Semantic_Report
                    (diagnostic, "CFHECNN-BN-003",
                     "atomic folded call-operand materialization failed");
@@ -2357,7 +2362,7 @@ VHO_FHE_Rewrite_Entry_Conv_Operands
         !VHO_FHE_Copy_Node_Attributes(conv_node, &attributes))
         return FALSE;
     VHO_FHE_Find_Value_Definition
-        (tree, NULL, owner_pu_st, conv_result.id,
+        (tree, NULL, conv_result.id,
          &definition, &definition_block);
     if (definition == NULL || definition_block == NULL)
         return VHO_FHE_Semantic_Report
@@ -2399,7 +2404,7 @@ VHO_FHE_Rewrite_Entry_Conv_Operands
     request.payload = conv_node->payload;
     request.result_value_kind = DSL_IR_VALUE_OPERATOR_RESULT;
     if (!DSL_IR_Rewrite_Native_Value
-             (owner_pu_st, definition, conv_result.id, &request)) {
+             (Current_PU_Info, definition, conv_result.id, &request)) {
         return VHO_FHE_Semantic_Report
                    (diagnostic, "CFHECNN-BN-003",
                     "atomic entry convolution operand rewrite failed");
@@ -2531,7 +2536,7 @@ VHO_FHE_Prepare_Entry_Context_Folds
         WN *conv_definition = NULL;
         WN *conv_block = NULL;
         VHO_FHE_Find_Value_Definition
-            (tree, NULL, owner_pu_st, conv_result.id,
+            (tree, NULL, conv_result.id,
              &conv_definition, &conv_block);
         if (conv_definition == NULL || conv_block == NULL)
             return FALSE;
@@ -2542,7 +2547,6 @@ VHO_FHE_Prepare_Entry_Context_Folds
         requests[0].descriptor_ty = folded_weight->ty;
         requests[0].tensor_tcon = fold.folded_weight_tcon;
         requests[0].source_value_id = fold.source_conv_weight;
-        requests[0].insertion_block = conv_block;
         requests[0].insert_before = conv_definition;
         requests[0].source_position = WN_Get_Linenum(conv_definition);
         requests[0].storage_format = "safetensors";
@@ -2556,7 +2560,6 @@ VHO_FHE_Prepare_Entry_Context_Folds
         requests[1].descriptor_ty = folded_bias->ty;
         requests[1].tensor_tcon = fold.folded_bias_tcon;
         requests[1].source_value_id = fold.source_conv_bias;
-        requests[1].insertion_block = conv_block;
         requests[1].insert_before = conv_definition;
         requests[1].source_position = WN_Get_Linenum(conv_definition);
         requests[1].storage_format = "safetensors";
@@ -2568,7 +2571,7 @@ VHO_FHE_Prepare_Entry_Context_Folds
         requests[1].source_policy =
             DSL_IR_MATERIALIZE_SOURCE_EXTERNAL_OR_IMPLICIT_ZERO;
         if (!DSL_IR_Materialize_External_Tensor_Values
-                 (owner_pu_st, requests, 2, results))
+                 (Current_PU_Info, requests, 2, results))
             return VHO_FHE_Semantic_Report
                        (diagnostic, "CFHECNN-BN-003",
                         "entry folded tensor materialization failed");
@@ -2646,11 +2649,11 @@ VHO_FHE_Record_BN_Fold_For_Conv
     return TRUE;
 }
 
+/* Implement the read-only definition search declared above. */
 static void
 VHO_FHE_Find_Value_Definition
         (WN *node,
          WN *containing_block,
-         ST_IDX owner_pu_st,
          DSL_IR_VALUE_ID value_id,
          WN **definition,
          WN **definition_block)
@@ -2661,7 +2664,7 @@ VHO_FHE_Find_Value_Definition
         for (WN *statement = WN_first(node); statement != NULL;
              statement = WN_next(statement)) {
             VHO_FHE_Find_Value_Definition
-                (statement, node, owner_pu_st, value_id,
+                (statement, node, value_id,
                  definition, definition_block);
             if (*definition != NULL)
                 return;
@@ -2671,7 +2674,7 @@ VHO_FHE_Find_Value_Definition
     if (WN_operator(node) == OPR_STID) {
         DSL_IR_VALUE_RECORD value;
         if (DSL_IR_Image_Find_Definition_Value
-                (owner_pu_st, node, &value) && value.id == value_id) {
+                (Current_PU_Info, node, &value) && value.id == value_id) {
             *definition = node;
             *definition_block = containing_block;
             return;
@@ -2679,7 +2682,7 @@ VHO_FHE_Find_Value_Definition
     }
     for (INT32 kid = 0; kid < WN_kid_count(node); ++kid)
         VHO_FHE_Find_Value_Definition
-            (WN_kid(node, kid), containing_block, owner_pu_st, value_id,
+            (WN_kid(node, kid), containing_block, value_id,
              definition, definition_block);
 }
 
@@ -2719,10 +2722,10 @@ VHO_FHE_Retire_Batch_Norm
     WN *bn_definition = NULL;
     WN *bn_block = NULL;
     VHO_FHE_Find_Value_Definition
-        (tree, NULL, owner_pu_st, conv_value_id,
+        (tree, NULL, conv_value_id,
          &conv_definition, &conv_block);
     VHO_FHE_Find_Value_Definition
-        (tree, NULL, owner_pu_st, bn_node.result_value_id,
+        (tree, NULL, bn_node.result_value_id,
          &bn_definition, &bn_block);
     if (conv_definition == NULL || bn_definition == NULL ||
         conv_block == NULL || conv_block != bn_block)
@@ -2732,8 +2735,6 @@ VHO_FHE_Retire_Batch_Norm
 
     DSL_IR_NATIVE_VALUE_RETIRE_REQUEST request;
     memset(&request, 0, sizeof(request));
-    request.pu_root = tree;
-    request.containing_block = conv_block;
     request.replacement_definition = conv_definition;
     request.replacement_value_id = conv_value_id;
     request.retiring_definition = bn_definition;
@@ -2741,7 +2742,8 @@ VHO_FHE_Retire_Batch_Norm
     request.expected_retiring_operator = OPR_DSLBATCHNORMINFER;
     request.expected_retiring_version = 2;
     request.replacement_operand_ordinal = 0;
-    if (!DSL_IR_Redirect_And_Retire_Native_Value(owner_pu_st, &request))
+    if (!DSL_IR_Redirect_And_Retire_Native_Value
+             (Current_PU_Info, &request))
         return VHO_FHE_Semantic_Report
                    (diagnostic, "CFHECNN-BN-003",
                     "atomic BatchNorm result retirement failed");

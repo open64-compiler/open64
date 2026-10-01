@@ -238,6 +238,24 @@ secure_resnet20.fhe.B
 | S5-5 Generated-C boundary | Teach build/driver flow to compile and link `whirl2c` output with the mock | Generated C contains no ACE/OpenFHE types; dependency inspection; ordinary WHIRL regression |
 | S5-6 Full schedule and mock certification | Run complete ResNet-20 and freeze the successful call census, execution-expanded semantic schedule, operation descriptors, signed rotations, key requirements, complete provider-capability manifest, and separate lifecycle/failure transcripts | `.ckks.B/.T`, `.mid.B/.T`, generated C, mock executable, manifests, transcripts, logs, hashes, and independent census recomputation |
 
+Post-PR #156 checkpoint: S5-1 and the standalone S5-4 ABI/mock contract are
+merged, and the generic program-interface transaction now covers dead
+canonical ABI pruning, root entry-parameter promotion, and explicit
+model/coefficient resource threading. The FHE consumer resolves exact
+projected and role-qualified handles and has certified detached
+descriptor-select plus bootstrap standard-call construction.
+
+PR #157 merged the reviewed atomic native-value lowering transaction. The FHE
+consumer has certified one complete source-ReLU replacement: six selectors,
+refresh, normalization, three polynomial stages, reconstruction, and a final
+store to the exact projected output handle, with logical rows retained as
+lowered provenance. S5-2c now proceeds as FHE-owned full-model operation
+coverage, all-PU callback registration, exact census verification, and atomic
+artifact publication. Do not substitute raw WN/image edits, globals,
+uninitialized locals, name parsing, or projected dead BN parameters. The
+exact history and current boundary are in
+`FHE-SYNC5-RUNTIME-ENTRY-BINDING-GAP.md`.
+
 Retain evidence under `artifacts/fhe/sync5-middle-whirl/`.
 
 ### Exit Gate

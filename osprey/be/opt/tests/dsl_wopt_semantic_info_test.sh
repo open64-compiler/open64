@@ -11,6 +11,7 @@ mkdir -p "$tmp_dir"
 cxx="${CXX:-g++}"
 "$cxx" -std=gnu++98 \
   -I"$repo_root/osprey/common/com" \
+  -I"$repo_root/osprey/common/fhe" \
   -I"$repo_root/osprey/common/util" \
   -I"$repo_root/osprey/linux/include" \
   -I"$repo_root/osprey/be/opt" \

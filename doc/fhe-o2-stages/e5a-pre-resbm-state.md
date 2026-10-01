@@ -213,9 +213,9 @@ current O2-O0Q-001 qualification
 ```
 E5A may reuse accepted interfaces from these components:
 
-- `osprey/common/com/dsl_fhe.h` and `dsl_fhe.cxx`;
-- `osprey/common/com/dsl_fhe_plan.h` and `dsl_fhe_plan.cxx`;
-- `osprey/common/com/dsl_fhe_plan_print.cxx`;
+- `osprey/common/fhe/fhe_image.h` and `fhe_image.cxx`;
+- `osprey/common/fhe/fhe_plan.h` and `fhe_plan.cxx`;
+- `osprey/common/fhe/dsl_fhe_plan_print.cxx`;
 - the accepted O2-E2 record serializer and validator;
 - the accepted O2-E3 state-transfer and effect library;
 - the accepted O2-E4 selected-layout reader;

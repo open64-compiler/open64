@@ -135,16 +135,17 @@ before allocating a `TY` record.
 Primary implementation:
 
 ```text
-osprey/common/com/dsl_ir_rewrite.cxx
+osprey/common/com/dsl_ir_retype.cxx
 osprey/common/com/dsl_ir_image.h
 osprey/common/com/dsl_region.cxx
 osprey/common/com/dsl_region.h
 ```
 
-This work owns expected-old-type preflight, active-PU ownership, WN/ST/value
-agreement, call ABI updates, PU formal updates, return relationships, REGION
-interfaces, commit ordering, and rejection without mutation. Table-only
-mutation helpers must remain private.
+`dsl_ir_retype.cxx` owns expected-old-type preflight, active-PU ownership,
+WN/ST/value agreement, rejection of values that participate in call/PU or
+unsupported auxiliary relations, commit ordering, strict post-verification,
+and rollback. REGION and managed-image verification remain required around the
+transaction. Table-only mutation helpers must remain private.
 
 ### VHO orchestration
 
@@ -375,7 +376,7 @@ Status: completed on `codex/dsl-shape-sp5`.
 
 Actions:
 
-1. Implement the reviewed atomic retyping API in `dsl_ir_rewrite.cxx`.
+1. Implement the reviewed atomic retyping API in `dsl_ir_retype.cxx`.
 2. Add `dsl_shape_refine.h/.cxx` with per-PU collection, solve, mutation-plan,
    preflight, commit, and strict post-verification.
 3. Add `VHO_DSL_Shape_Refine_Driver()` in check-only and refine modes.

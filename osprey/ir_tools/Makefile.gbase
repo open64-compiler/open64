@@ -149,6 +149,7 @@ endif
 
 COMMON_UTIL_DIR= $(BUILD_TOT)/common/util
 COMMON_COM_DIR= $(BUILD_TOT)/common/com
+COMMON_FHE_DIR= $(BUILD_TOT)/common/fhe
 COMMON_COM_TARG_DIR= $(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR)
 BE_COM_DIR= $(BUILD_TOT)/be/com
 BE_VHO_DIR= $(BUILD_TOT)/be/vho
@@ -197,7 +198,8 @@ LDIRT += fhe_semantic_convert.o
 LDIRT += dsl_wopt_bridge_test dsl_wopt_bridge_test.o
 LDIRT += opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 
-LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_COM_TARG_DIR) \
+LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_FHE_DIR) \
+	-I$(COMMON_COM_TARG_DIR) \
 	-I$(COMMON_UTIL_DIR) -I$(BE_COM_DIR) -I$(BE_VHO_DIR) -I$(BE_OPT_DIR) $(XINC)  \
         -I$(BUILD_TOT)/include
 LCINCS += -I$(BUILD_TOT)
@@ -225,12 +227,12 @@ COMMON_COM_CXX_SRC =	\
         dsl_gatekeeper.cxx \
 	dsl_contract.cxx \
         dsl_domain.cxx	\
-        dsl_fhe.cxx \
-        dsl_fhe_plan.cxx \
-        dsl_fhe_plan_print.cxx \
-        dsl_fhe_print.cxx \
         dsl_ir_image.cxx \
+        dsl_ir_lower.cxx \
+        dsl_program_interface.cxx \
+        dsl_ir_retype.cxx \
         dsl_ir_rewrite.cxx \
+        dsl_runtime_interface.cxx \
         dsl_ir_print.cxx \
         dsl_region.cxx \
 	dsl_memory_behavior.cxx \
@@ -279,6 +281,12 @@ COMMON_COM_CXX_SRC =	\
 	xstats.cxx	\
 	intrn_info.cxx
 
+COMMON_FHE_CXX_SRC = \
+        fhe_image.cxx \
+        fhe_image_print.cxx \
+        fhe_plan.cxx \
+        fhe_plan_print.cxx
+
 BE_COM_SRCS =           \
 	wssa_defs.cxx   \
 	wssa_sym.cxx    \
@@ -295,6 +303,7 @@ COMMON_COM_TARG_CXX_SRCS =	\
 
 CXXFILES =		\
 	$(COMMON_COM_CXX_SRC) \
+	$(COMMON_FHE_CXX_SRC) \
 	$(COMMON_COM_TARG_CXX_SRCS) \
         $(BE_COM_SRCS)
 
@@ -324,7 +333,8 @@ install: default
 
 include $(COMMONRULES)
 
-VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_COM_TARG_DIR) $(BE_COM_DIR) \
+VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_FHE_DIR) \
+	$(COMMON_COM_TARG_DIR) $(BE_COM_DIR) \
 	$(BE_VHO_DIR)
 
 ir_b2a: $(OBJECTS) ir_a2b.o
@@ -610,6 +620,9 @@ fhe_runtime_lower.o: $(BE_VHO_DIR)/fhe_runtime_lower.cxx
 fhe_standard_whirl.o: $(BE_VHO_DIR)/fhe_standard_whirl.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
+fhe_semantic_runtime_lower.o: $(BE_VHO_DIR)/fhe_semantic_runtime_lower.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
 fhe_unlowered_gate.o: $(BE_VHO_DIR)/fhe_unlowered_gate.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
@@ -627,10 +640,12 @@ fhe_materialize_contract_test.o: \
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 fhe_runtime_lower_contract_test: $(OBJECTS) controls.o fhe_checkpoint.o \
-		fhe_runtime_lower.o fhe_standard_whirl.o fhe_unlowered_gate.o \
+		fhe_runtime_lower.o fhe_standard_whirl.o \
+		fhe_semantic_runtime_lower.o fhe_unlowered_gate.o \
 		fhe_runtime_lower_contract_test.o
 	$(link.c++f) -o $@ fhe_runtime_lower_contract_test.o controls.o \
 		fhe_checkpoint.o fhe_runtime_lower.o fhe_standard_whirl.o \
+		fhe_semantic_runtime_lower.o \
 		fhe_unlowered_gate.o $(OBJECTS) $(LDFLAGS)
 
 fhe_runtime_lower_contract_test.o: \

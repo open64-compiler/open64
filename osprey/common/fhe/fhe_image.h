@@ -1,9 +1,13 @@
 /*
  * Copyright (C) 2026 Open64 Project
+ *
+ * Fixed-width FHE source-image records and managed-image services. See
+ * doc/FHE-SYNC1-NATIVE-CONTRACT.md and
+ * doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md.
  */
 
-#ifndef dsl_fhe_INCLUDED
-#define dsl_fhe_INCLUDED
+#ifndef fhe_image_INCLUDED
+#define fhe_image_INCLUDED
 
 #include <stdio.h>
 
@@ -341,4 +345,4 @@ extern BOOL DSL_Builder_Get_FHE_Value_Encryption_Descriptor
                          (DSL_BUILDER_VALUE value,
                           DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD *record);
 
-#endif /* dsl_fhe_INCLUDED */
+#endif /* fhe_image_INCLUDED */

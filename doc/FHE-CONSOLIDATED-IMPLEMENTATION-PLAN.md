@@ -637,6 +637,41 @@ Acceptance checks:
 - Any propagation or projection failure is checkpoint-terminal and publishes
   no `.mid.B`, generated C, or auxiliary schedule artifact.
 
+Post-PR #156 audit checkpoint: the phase shell, one-for-one tensor projection,
+descriptor selection, ABI v1, standalone mock, verified-dead formal/actual
+pruning, root external-parameter promotion, and explicit model/coefficient
+resource threading are merged. The FHE consumer now resolves exact
+owner-qualified projected value handles and role-qualified program inputs, and
+constructs a detached checked descriptor-select plus bootstrap standard-WHIRL
+sequence without mutating the logical image.
+
+PR #157 closed the final shared-contract dependency with the atomic native DSL
+to standard-WHIRL lowering transaction. The FHE consumer now exercises it on
+one complete source `common.relu`: six descriptor selections and the ordered
+refresh, normalization, three polynomial-stage, and reconstruction calls
+replace the executable native definition; one final store defines the exact
+projected result handle; and the logical node/value remain inspectable as
+`status=lowered` provenance. The model and three coefficient resources are
+explicit program inputs. The remaining S5-2c work is FHE-owned expansion to
+every admitted full-model operation, all-PU callback registration, exact
+87-static/147-dynamic census verification, and atomic `.mid.B` publication.
+The historical interface gap and its PR #156/#157 resolution are tracked in
+`doc/FHE-SYNC5-RUNTIME-ENTRY-BINDING-GAP.md`.
+
+The FHE semantic builder now covers all ABI v1 evaluation classes used by the
+model: Conv2D/plain, residual add, the six-operation composite ReLU, average
+pool, layout conversion, and linear/plain. This closes per-operation checked
+call construction. It does not yet close the full-model gate: the production
+callback must still derive static ordinals from the certified schedule, submit
+complete per-PU atomic lowering arrays, and prove the 87/147 evaluation and
+selector censuses before publishing `.mid.B`.
+
+The canonical commit-by-commit SYNC-5 execution order, exact request counts,
+negative tests, retained artifacts, and exit criteria are maintained in
+`doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md` under **Reviewable Commit Sequence
+And Acceptance Gates**. Its S5-A through S5-H gates control detailed status;
+this consolidated plan remains the cross-milestone summary.
+
 Merge rule: assign every shared driver/whirl2c file to one PR owner before
 editing. The mock-runtime PR must not depend on an ACE runtime installation.
 

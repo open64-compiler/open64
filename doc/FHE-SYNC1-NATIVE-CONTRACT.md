@@ -95,7 +95,7 @@ foreign IDs, and every entry `first/count` range before publishing the image.
 
 ## Native API
 
-`dsl_fhe.h` owns fixed rows, public enums, initialization, interning, lookup,
+`fhe_image.h` owns fixed rows, public enums, initialization, interning, lookup,
 reset, validation, mapped-image loading, and logical printing. The initial
 opaque builder surface is:
 

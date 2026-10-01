@@ -11,7 +11,7 @@
 #include "config_targ_opt.h"
 #include "controls.h"
 #include "dsl_builder.h"
-#include "dsl_fhe.h"
+#include "fhe_image.h"
 #include "dwarf_DST_mem.h"
 #include "erglob.h"
 #include "errors.h"

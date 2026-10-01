@@ -381,9 +381,9 @@ clone/value/callsite provenance contract is reviewed.
 
 ## Native Image API
 
-`dsl_fhe_plan.h` owns records, enums, initialization, lookup, validation,
+`fhe_plan.h` owns records, enums, initialization, lookup, validation,
 mapped-image loading, and logical printing. The low-level API follows the
-existing `dsl_fhe.h` service:
+existing `fhe_image.h` service:
 
 ```c++
 void DSL_FHE_Plan_Image_Reset(void);

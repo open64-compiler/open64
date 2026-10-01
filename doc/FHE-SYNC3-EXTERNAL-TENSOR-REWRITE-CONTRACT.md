@@ -20,7 +20,7 @@ BOOL DSL_IR_Image_Get_External_Tensor_Reference(
     DSL_IR_EXTERNAL_TENSOR_REFERENCE *reference);
 
 BOOL DSL_IR_Materialize_External_Tensor_Values(
-    ST_IDX owner_pu_st,
+    PU_Info *pu_info,
     const DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_REQUEST *requests,
     UINT32 request_count,
     DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_RESULT *results);
@@ -33,6 +33,9 @@ the existing DSL value, ST metadata, and canonical tensor TY. It validates:
 - `common.tensor_const.v1` and `external_data` semantics;
 - result value, result ST, and canonical `TY_IDX` consistency;
 - storage format, side-file path, tensor key, byte range, and checksum syntax;
+- the optional attached side-file-dense tensor TCON, when present, including
+  descriptor, element representation, logical size, alignment, path, and byte
+  range agreement;
 - dtype, rank, logical shape, layout, placement, and memory descriptor facts;
 - exact static tensor byte size and element-aligned byte offset; and
 - agreement between the structured fields and the logical storage URI.
@@ -41,6 +44,14 @@ Callers receive structured fields and do not parse ST metadata or payload
 strings themselves. The returned strings remain owned by the existing Open64
 string and tensor tables. A caller must not retain those borrowed fields across
 owner-PU table mutation, mapped-image reset, or program reset.
+
+The runtime-only view exposes the attached TCON as `tensor_tcon`. Zero means a
+legacy or source external tensor has no attached TCON. A nonzero value is
+returned only after the complete side-file-dense contract above validates.
+Converted tensors and runtime-interface plaintext inputs require a nonzero
+TCON. This lets the compiler carry compact references to large plaintext
+tensors and future CKKS key material while the bytes remain in authenticated
+external artifacts rather than expanding the binary WHIRL file.
 
 Checksum validation at this common/com boundary covers syntax and agreement
 between structured metadata and the logical storage URI. It does not read the
@@ -51,8 +62,8 @@ FHE producer and semantic gatekeeper own payload digest verification.
 
 `DSL_IR_Materialize_External_Tensor_Values()` preflights the complete request
 array before creating a symbol, WN, image row, or call replacement. Each
-request names an existing owner-PU tensor-constant source and creates one
-caller-owned `common.tensor_const.v1` value with:
+request names an existing tensor-constant source in the exact active PU and
+creates one caller-owned `common.tensor_const.v1` value with:
 
 - the exact canonical tensor `TY_IDX`;
 - a side-file dense tensor TCON whose descriptor, path, range, and logical byte
@@ -79,7 +90,10 @@ When `call` is non-null, the request must identify one existing read-only,
 passed-not-saved, by-reference actual and its expected source value. Commit
 replaces that actual with the new same-`TY_IDX` value. When `call` is null, the
 new value is inserted at the supplied entry-owned anchor without inventing a
-fake callsite. This supports the ResNet stem Conv/BatchNorm context.
+fake callsite. This supports the ResNet stem Conv/BatchNorm context. The
+request does not carry an insertion BLOCK. The transaction derives that BLOCK
+from `PU_Info` and `insert_before`, rejecting an anchor that is not contained
+by the active PU tree.
 
 Duplicate names and duplicate call-actual targets in one transaction are
 rejected. Invalid owner, type, range, checksum, TCON, insertion anchor, or
@@ -190,9 +204,11 @@ builder operation before creating call-role rows.
 
 `DSL_IR_Redirect_And_Retire_Native_Value()` supports the narrow pure-expression
 case required to retire a folded BatchNorm result. The caller supplies the
-owner PU, function root, containing BLOCK, replacement and retiring STIDs,
-their managed value IDs, the expected logical operator/version, and the
-operand ordinal that names the replacement.
+exact active `PU_Info`, replacement and retiring definitions, their managed
+value IDs, the expected logical operator/version, and the operand ordinal that
+names the replacement. The transaction derives the PU root, owner ST, and one
+common containing BLOCK from `PU_Info` and the definitions; callers cannot
+provide competing physical authority.
 
 Preflight requires:
 

@@ -99,8 +99,8 @@
 #include "ir_bcom.h"
 #include "ir_bread.h"
 #include "dsl_ir_image.h"
-#include "dsl_fhe.h"
-#include "dsl_fhe_plan.h"
+#include "fhe_image.h"
+#include "fhe_plan.h"
 #include "dsl_region.h"
 #include "config_opt.h"
 
