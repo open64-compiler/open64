@@ -109,6 +109,10 @@ if grep -Fq 'VALUE ordinal=0' "$trace"; then
   echo "retired REGION input remains in $trace" >&2
   exit 1
 fi
+if [[ "$(grep -Ec 'U8STID 0 .*__dsl_runtime_program_interface_result_' "$trace")" -ne 2 ]]; then
+  echo "caller result-handle null initializers changed in $trace" >&2
+  exit 1
+fi
 
 if [[ "$(grep -Ec '^FUNC_ENTRY ' "$trace")" -ne 2 ]] ||
    [[ "$(grep -Ec 'VCALL .*program_interface_callee' "$trace")" -ne 2 ]]; then

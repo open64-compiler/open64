@@ -6079,9 +6079,57 @@ Check_Program_Interface_Evolution(void)
          DSL_Program_Interface_Image_Validate(stderr),
          "callee program-interface transaction");
 
+    PROGRAM_INTERFACE_CHECK(DSL_Builder_Select_PU(caller),
+                            "select caller for result initialization");
+    WN *result_calls[2] = { NULL, NULL };
+    WN *result_initializers[2] = { NULL, NULL };
+    for (UINT32 i = 0; i < 2; ++i) {
+        DSL_RUNTIME_CALL_PROJECTION_RECORD result_call;
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD result_value;
+        WN *call = const_cast<WN *>
+                       (DSL_Call_Image_Get_Call_WN(callsite[i].id));
+        WN *initialize = call == NULL ? NULL : WN_prev(call);
+        PROGRAM_INTERFACE_CHECK
+            (DSL_Runtime_Interface_Image_Find_Call
+                 (callsite[i].id, 3, &result_call) &&
+             DSL_Runtime_Interface_Image_Get_Value
+                 (result_call.value_projection_id, &result_value) &&
+             initialize != NULL &&
+             WN_operator(initialize) == OPR_STID &&
+             WN_st_idx(initialize) == result_value.handle_st &&
+             WN_ty(initialize) == result_value.handle_ty &&
+             WN_operator(WN_kid0(initialize)) == OPR_INTCONST &&
+             WN_const_val(WN_kid0(initialize)) == 0 &&
+             WN_Get_Linenum(initialize) == WN_Get_Linenum(call),
+             "caller-owned result handle null initialization");
+        result_calls[i] = call;
+        result_initializers[i] = initialize;
+    }
     PROGRAM_INTERFACE_CHECK
-        (DSL_Builder_Select_PU(caller) &&
-         DSL_Program_Interface_Validate_PU(caller, stderr) &&
+        (result_initializers[0] != NULL &&
+         DSL_Program_Interface_Validate_PU(caller, stderr),
+         "result initialization validates");
+    if (result_calls[0] != NULL && result_initializers[0] != NULL) {
+        WN *parent = WN_func_body(PU_Info_tree_ptr(caller));
+        PROGRAM_INTERFACE_CHECK(parent != NULL,
+                                "result call parent block");
+        if (parent != NULL) {
+            WN_EXTRACT_FromBlock(parent, result_initializers[0]);
+            PROGRAM_INTERFACE_CHECK
+                (!DSL_Program_Interface_Validate_PU(caller, NULL),
+                 "missing result initialization rejects");
+            WN_INSERT_BlockBefore
+                (parent, result_calls[0], result_initializers[0]);
+        }
+        WN_const_val(WN_kid0(result_initializers[0])) = 1;
+        PROGRAM_INTERFACE_CHECK
+            (!DSL_Program_Interface_Validate_PU(caller, NULL),
+             "nonzero result initialization rejects");
+        WN_const_val(WN_kid0(result_initializers[0])) = 0;
+    }
+
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Program_Interface_Validate_PU(caller, stderr) &&
          DSL_Builder_Select_PU(callee) &&
          DSL_Program_Interface_Validate_PU(callee, stderr),
          "per-PU program-interface verification");

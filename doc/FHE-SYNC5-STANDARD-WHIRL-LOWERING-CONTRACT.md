@@ -123,6 +123,16 @@ positions, and retired-formal provenance remain intact. Final per-PU
 program-interface verification requires each retired symbol to be absent from
 both executable WN and the loaded REGION interface.
 
+Each caller-owned result handle passed through a by-reference output `PARM`
+must be initialized by exactly one canonical null `STID` in the contiguous
+statement sequence immediately before its call. The initializer uses the
+handle's exact TY and machine type and inherits the call source position. The
+complete call/result set is proven during the existing no-mutation preflight;
+commit inserts the initializers with the rebuilt call before retiring the old
+call. Per-PU and mapped-image verification require both the output `LDA` and
+its matching null initialization, so a missing, nonzero, mistyped, duplicated,
+or source-position-mismatched initializer fails closed.
+
 ## Mapped Image And Compatibility
 
 The binary representation remains DSL image version 1.  New readers validate:
@@ -200,4 +210,5 @@ The separate two-PU program-interface fixture applies the caller first and
 proves only that PU is commit-eligible, applies the callee second, then writes
 and reopens the completed artifact. The current reader must validate both PUs
 on mapped reopen; malformed or incomplete published interfaces still fail
-closed.
+closed. The trace also retains the caller-owned result-handle zero
+initializations immediately before both rewritten calls.

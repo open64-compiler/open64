@@ -1165,6 +1165,19 @@ DSL_Program_Interface_Create_Call_Parm
                 WN_PARM_PASSED_NOT_SAVED);
 }
 
+/* Create the canonical caller-owned null value for one output handle. */
+static WN *
+DSL_Program_Interface_Create_Null_Initialization
+        (const DSL_PROGRAM_CREATED_VALUE &value, SRCPOS source_position)
+{
+    TYPE_ID mtype = TY_mtype(value.request->handle_ty);
+    WN *initialize = WN_CreateStid
+        (OPR_STID, MTYPE_V, mtype, 0, value.handle_st,
+         value.request->handle_ty, WN_Intconst(mtype, 0));
+    WN_Set_Linenum(initialize, source_position);
+    return initialize;
+}
+
 /* Create a threaded runtime-input PARM from one caller binding handle. */
 static WN *
 DSL_Program_Interface_Create_Binding_Parm
@@ -1380,6 +1393,7 @@ DSL_Program_Interface_Apply_PU
         WN_st_idx(new_call) = WN_st_idx(old_call);
         WN_call_flag(new_call) = WN_call_flag(old_call);
         WN_Set_Linenum(new_call, WN_Get_Linenum(old_call));
+        std::vector<const DSL_PROGRAM_CREATED_VALUE *> result_values;
 
         for (UINT32 old_ordinal = 0;
              old_ordinal < (UINT32)WN_kid_count(old_call); ++old_ordinal) {
@@ -1406,6 +1420,8 @@ DSL_Program_Interface_Apply_PU
             WN_kid(new_call, final_ordinal) =
                 DSL_Program_Interface_Create_Call_Parm
                     (*value, request->direction);
+            if (request->direction == DSL_RUNTIME_CALL_RESULT)
+                result_values.push_back(value);
         }
         for (UINT32 i = 0;
              i < program_plan->runtime_input_call_count; ++i) {
@@ -1432,6 +1448,12 @@ DSL_Program_Interface_Apply_PU
         FmtAssert(parent != NULL,
                   ("preflighted call parent is missing"));
         WN_INSERT_BlockBefore(parent, old_call, new_call);
+        for (UINT32 i = 0; i < result_values.size(); ++i) {
+            WN *initialize =
+                DSL_Program_Interface_Create_Null_Initialization
+                    (*result_values[i], WN_Get_Linenum(new_call));
+            WN_INSERT_BlockBefore(parent, new_call, initialize);
+        }
         FmtAssert(DSL_Call_Image_Replace_Call_WN
                       (callsite_id, old_call, new_call),
                   ("callsite runtime association update failed"));
@@ -1690,6 +1712,30 @@ DSL_Program_Interface_Parm_Matches_Handle
                 WN_PARM_PASSED_NOT_SAVED);
 }
 
+/* Verify exactly one canonical null initialization immediately before call. */
+static BOOL
+DSL_Program_Interface_Call_Has_Null_Initialization
+        (const WN *call, ST_IDX handle_st, TY_IDX handle_ty)
+{
+    TYPE_ID mtype = TY_mtype(handle_ty);
+    UINT32 match_count = 0;
+    for (const WN *stmt = WN_prev(call);
+         stmt != NULL && WN_operator(stmt) == OPR_STID;
+         stmt = WN_prev(stmt)) {
+        if (WN_st_idx(stmt) != handle_st)
+            continue;
+        const WN *value = WN_kid0(stmt);
+        if (WN_offset(stmt) != 0 || WN_ty(stmt) != handle_ty ||
+            WN_desc(stmt) != mtype || value == NULL ||
+            WN_operator(value) != OPR_INTCONST ||
+            WN_rtype(value) != mtype || WN_const_val(value) != 0 ||
+            WN_Get_Linenum(stmt) != WN_Get_Linenum(call))
+            return FALSE;
+        ++match_count;
+    }
+    return match_count == 1;
+}
+
 /*
  * Verify a committed PU's final formals, calls, retirement rows, and threaded
  * runtime-input bindings against physical WHIRL and active local symbols.
@@ -1794,7 +1840,10 @@ DSL_Program_Interface_Validate_PU (PU_Info *pu, FILE *diagnostic)
                 ordinal >= WN_kid_count(call) ||
                 !DSL_Program_Interface_Parm_Matches_Handle
                     (WN_kid(call, ordinal), value.handle_st,
-                     value.handle_ty, runtime_call.direction))
+                     value.handle_ty, runtime_call.direction) ||
+                (runtime_call.direction == DSL_RUNTIME_CALL_RESULT &&
+                 !DSL_Program_Interface_Call_Has_Null_Initialization
+                     (call, value.handle_st, value.handle_ty)))
                 return DSL_Program_Interface_Report
                            (diagnostic, "live call projection mismatch",
                             argument.id);
@@ -1837,7 +1886,9 @@ DSL_Program_Interface_Validate_PU (PU_Info *pu, FILE *diagnostic)
                 ordinal >= WN_kid_count(call) ||
                 !DSL_Program_Interface_Parm_Matches_Handle
                     (WN_kid(call, ordinal), value.handle_st,
-                     value.handle_ty, DSL_RUNTIME_CALL_RESULT))
+                     value.handle_ty, DSL_RUNTIME_CALL_RESULT) ||
+                !DSL_Program_Interface_Call_Has_Null_Initialization
+                    (call, value.handle_st, value.handle_ty))
                 return DSL_Program_Interface_Report
                            (diagnostic, "runtime result call mismatch", i);
             ++expected_actuals;
