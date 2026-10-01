@@ -9708,8 +9708,6 @@ Check_Native_To_Standard_Lowering(void)
         UINT32 source_index = request_order[request_index];
         DSL_IR_NATIVE_VALUE_LOWER_REQUEST &request =
             requests[request_index];
-        request.pu_root = PU_Info_tree_ptr(pu);
-        request.containing_block = containing_blocks[source_index];
         request.native_definition = definitions[source_index];
         if (source_index < 2) {
             request.source_value_id =
@@ -9723,8 +9721,6 @@ Check_Native_To_Standard_Lowering(void)
             request.relation.value_projection_id =
                 projections[source_index].id;
             request.standard_block = standard_block[source_index];
-            request.result_handle_definition =
-                handle_definition[source_index];
         } else {
             UINT32 external_index = source_index - 2;
             request.source_value_id =
@@ -9745,7 +9741,7 @@ Check_Native_To_Standard_Lowering(void)
 #define STANDARD_LOWER_EXPECT_REJECT(request_array, count, message) \
     STANDARD_LOWER_CHECK \
         (!DSL_IR_Lower_Native_Values_To_Standard_Blocks \
-              (PU_Info_proc_sym(pu), request_array, count, NULL, results) && \
+              (pu, request_array, count, NULL, results) && \
          Find_STID_And_Block \
              (body, projection_requests[0].expected_source_st, NULL) == \
                 definitions[0] && \
@@ -9777,7 +9773,7 @@ Check_Native_To_Standard_Lowering(void)
 
     STANDARD_LOWER_CHECK
         (!DSL_IR_Lower_Native_Values_To_Standard_Blocks
-              (ST_IDX_ZERO, requests, 4, NULL, results) &&
+              (NULL, requests, 4, NULL, results) &&
          Find_STID_And_Block
              (body, projection_requests[0].expected_source_st, NULL) ==
                 definitions[0],
@@ -9817,7 +9813,7 @@ Check_Native_To_Standard_Lowering(void)
     DSL_IR_NATIVE_VALUE_LOWER_REQUEST partial = requests[2];
     STANDARD_LOWER_CHECK
         (!DSL_IR_Lower_Native_Values_To_Standard_Blocks
-              (PU_Info_proc_sym(pu), &partial, 1, NULL, results) &&
+              (pu, &partial, 1, NULL, results) &&
          Find_STID_And_Block
              (body, projection_requests[0].expected_source_st, NULL) ==
                 definitions[0] &&
@@ -9827,7 +9823,7 @@ Check_Native_To_Standard_Lowering(void)
          "partial chain rejects without mutation");
     STANDARD_LOWER_CHECK
          (DSL_IR_Lower_Native_Values_To_Standard_Blocks
-             (PU_Info_proc_sym(pu), requests, 4, stderr, results) &&
+             (pu, requests, 4, stderr, results) &&
          DSL_IR_Image_Validate(stderr) &&
          DSL_IR_Image_Validate_Lowered_Relations(stderr) &&
          DSL_Program_Interface_Validate_Lowered_PU(pu, stderr) &&

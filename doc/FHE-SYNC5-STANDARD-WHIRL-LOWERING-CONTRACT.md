@@ -42,16 +42,19 @@ invalid.  No private metadata string is used to reconstruct the relation.
 ## Transaction API
 
 `DSL_IR_Lower_Native_Values_To_Standard_Blocks()` accepts a complete request
-array for one active PU.  The driver owns PU selection and local symbol-table
-lifetime.  Request order is not semantic; commit order follows the physical
-definition order in the PU tree.
+array for one active PU through a `PU_Info *`. The `PU_Info` is the sole
+ownership and tree authority; the lowering service derives the active PU root,
+each native definition's containing block, and the final result-handle
+definition from `WN_last(standard_block)`. Requests therefore cannot provide
+conflicting roots, parent blocks, or result STIDs. Request order is not
+semantic; commit order follows the physical definition order in the PU tree.
 
 The transaction is implemented in
 `osprey/common/com/dsl_ir_lower.cxx`. Generic value/payload/interface rewrite
 services remain in `dsl_ir_rewrite.cxx`; standard-WHIRL replacement legality,
 preflight, commit ordering, and post-verification belong exclusively to the
-lowering file. This is a source-ownership split only and does not change the
-public API or binary WHIRL.
+lowering file. The runtime API uses `PU_Info *` as its single physical context;
+this is a source-level contract tightening and does not change binary WHIRL.
 
 ### Computed Standard Block
 

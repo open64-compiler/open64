@@ -23,24 +23,38 @@
 extern BOOL DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID);
 extern UINT32 DSL_Region_Symbol_Use_Count (PU_Info *, ST_IDX);
 
+/* Confirm that the caller selected the PU whose local WHIRL state is active. */
 static BOOL
-DSL_IR_Lower_Current_PU_Is (ST_IDX owner_pu_st)
+DSL_IR_Lower_Current_PU_Is (PU_Info *pu_info)
 {
-    return Current_PU_Info != NULL &&
-           PU_Info_proc_sym(Current_PU_Info) == owner_pu_st;
+    return pu_info != NULL && Current_PU_Info == pu_info;
 }
 
-static BOOL
-DSL_IR_Lower_Block_Contains (const WN *block, const WN *statement)
+/* Find the innermost BLOCK that directly or recursively contains a statement. */
+static WN *
+DSL_IR_Lower_Find_Containing_Block (WN *tree, const WN *target)
 {
-    if (block == NULL || WN_operator(block) != OPR_BLOCK || statement == NULL)
-        return FALSE;
-    for (const WN *current = WN_first(block); current != NULL;
-         current = WN_next(current)) {
-        if (current == statement)
-            return TRUE;
+    if (tree == NULL || target == NULL)
+        return NULL;
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (WN *current = WN_first(tree); current != NULL;
+             current = WN_next(current)) {
+            if (current == target)
+                return tree;
+            WN *containing = DSL_IR_Lower_Find_Containing_Block
+                                  (current, target);
+            if (containing != NULL)
+                return containing;
+        }
+        return NULL;
     }
-    return FALSE;
+    for (INT32 i = 0; i < WN_kid_count(tree); ++i) {
+        WN *containing = DSL_IR_Lower_Find_Containing_Block
+                              (WN_kid(tree, i), target);
+        if (containing != NULL)
+            return containing;
+    }
+    return NULL;
 }
 
 typedef struct {
@@ -53,8 +67,11 @@ typedef struct {
     DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
     ST_IDX handle_st;
     TY_IDX handle_ty;
+    WN *containing_block;
+    WN *result_handle_definition;
 } DSL_IR_NATIVE_VALUE_LOWER_JOURNAL;
 
+/* Resolve a native definition to its image value, including promoted sources. */
 static BOOL
 DSL_IR_Lower_Find_Native_Definition_Value
         (ST_IDX owner_pu_st,
@@ -102,6 +119,7 @@ DSL_IR_Lower_Find_Native_Definition_Value
     return TRUE;
 }
 
+/* Emit one stable diagnostic for a request and convert failure to FALSE. */
 static BOOL
 DSL_IR_Lower_Report
         (FILE *diagnostic,
@@ -115,6 +133,7 @@ DSL_IR_Lower_Report
     return FALSE;
 }
 
+/* Test whether a detached standard block is already attached to the PU tree. */
 static BOOL
 DSL_IR_Lower_Tree_Contains (const WN *tree, const WN *target)
 {
@@ -137,6 +156,7 @@ DSL_IR_Lower_Tree_Contains (const WN *tree, const WN *target)
     return FALSE;
 }
 
+/* Assign deterministic preorder positions used to order physical commits. */
 static BOOL
 DSL_IR_Lower_Find_Tree_Order
         (const WN *tree,
@@ -168,6 +188,7 @@ DSL_IR_Lower_Find_Tree_Order
     return FALSE;
 }
 
+/* Locate a journal entry by its native definition during source-use scans. */
 static const DSL_IR_NATIVE_VALUE_LOWER_JOURNAL *
 DSL_IR_Lower_Find_Definition
         (const std::vector<DSL_IR_NATIVE_VALUE_LOWER_JOURNAL> &journal,
@@ -180,6 +201,7 @@ DSL_IR_Lower_Find_Definition
     return NULL;
 }
 
+/* Locate a journal entry by logical node identity during closure checks. */
 static const DSL_IR_NATIVE_VALUE_LOWER_JOURNAL *
 DSL_IR_Lower_Find_Node
         (const std::vector<DSL_IR_NATIVE_VALUE_LOWER_JOURNAL> &journal,
@@ -200,6 +222,7 @@ typedef struct {
     BOOL valid;
 } DSL_IR_LOWER_SOURCE_USE_SCAN;
 
+/* Reject source-symbol reads, definitions, and escapes outside this transaction. */
 static void
 DSL_IR_Lower_Scan_Source_Uses
         (const WN *tree,
@@ -244,6 +267,7 @@ typedef struct {
     BOOL valid;
 } DSL_IR_LOWER_STANDARD_BLOCK_SCAN;
 
+/* Validate a detached replacement block and its sole final handle definition. */
 static void
 DSL_IR_Lower_Scan_Standard_Block
         (const WN *tree, DSL_IR_LOWER_STANDARD_BLOCK_SCAN *scan)
@@ -277,6 +301,7 @@ DSL_IR_Lower_Scan_Standard_Block
         DSL_IR_Lower_Scan_Standard_Block(WN_kid(tree, i), scan);
 }
 
+/* Prove that every logical value reference is lowered or in this request set. */
 static BOOL
 DSL_IR_Lower_Logical_Uses_Closed
         (const DSL_IR_NATIVE_VALUE_LOWER_JOURNAL &entry,
@@ -308,6 +333,7 @@ DSL_IR_Lower_Logical_Uses_Closed
     return TRUE;
 }
 
+/* Resolve a computed projection or promoted root input to its runtime handle. */
 static BOOL
 DSL_IR_Lower_Relation_Resolve
         (ST_IDX owner_pu_st,
@@ -380,6 +406,7 @@ DSL_IR_Lower_Relation_Resolve
 }
 
 struct DSL_IR_LOWER_JOURNAL_LESS {
+    /* Sort transactions by native tree order before extracting definitions. */
     BOOL operator()
         (const DSL_IR_NATIVE_VALUE_LOWER_JOURNAL &left,
          const DSL_IR_NATIVE_VALUE_LOWER_JOURNAL &right) const
@@ -388,21 +415,30 @@ struct DSL_IR_LOWER_JOURNAL_LESS {
     }
 };
 
+/*
+ * Lower all requested native definitions for one active PU. Preflight derives
+ * every physical parent/result relationship from PU_Info and the borrowed
+ * request blocks, validates source/effect/runtime closure, then commits WHIRL
+ * extraction and logical LOWERED flags in tree order. No rollback allocation
+ * or mapped-image layout change is part of the commit path.
+ */
 BOOL
 DSL_IR_Lower_Native_Values_To_Standard_Blocks
-        (ST_IDX owner_pu_st,
+        (PU_Info *pu_info,
          const DSL_IR_NATIVE_VALUE_LOWER_REQUEST *requests,
          UINT32 request_count,
          FILE *diagnostic,
          DSL_IR_NATIVE_VALUE_LOWER_RESULT *results)
 {
-    if (!DSL_IR_Lower_Current_PU_Is(owner_pu_st) ||
-        Current_PU_Info == NULL ||
-        PU_Info_proc_sym(Current_PU_Info) != owner_pu_st ||
+    if (results != NULL && request_count != 0)
+        memset(results, 0,
+               request_count * sizeof(DSL_IR_NATIVE_VALUE_LOWER_RESULT));
+    WN *pu_root = pu_info == NULL ? NULL : PU_Info_tree_ptr(pu_info);
+    ST_IDX owner_pu_st = pu_info == NULL ? ST_IDX_ZERO :
+        PU_Info_proc_sym(pu_info);
+    if (!DSL_IR_Lower_Current_PU_Is(pu_info) || pu_root == NULL ||
         requests == NULL || request_count == 0 || results == NULL)
         return DSL_IR_Lower_Report(diagnostic, 0, "transaction is incomplete");
-    memset(results, 0,
-           request_count * sizeof(DSL_IR_NATIVE_VALUE_LOWER_RESULT));
 
     /* Prove the complete physical/logical replacement set before mutation. */
     std::vector<DSL_IR_NATIVE_VALUE_LOWER_JOURNAL> journal;
@@ -412,12 +448,12 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
         memset(&entry, 0, sizeof(entry));
         entry.request = &request;
         entry.request_index = i;
-        if (request.reserved != 0 ||
-            request.pu_root != PU_Info_tree_ptr(Current_PU_Info) ||
-            request.containing_block == NULL ||
-            WN_operator(request.containing_block) != OPR_BLOCK ||
-            !DSL_IR_Lower_Block_Contains
-                (request.containing_block, request.native_definition))
+        entry.containing_block = DSL_IR_Lower_Find_Containing_Block
+                                    (pu_root, request.native_definition);
+        if (request.standard_block != NULL &&
+            WN_operator(request.standard_block) == OPR_BLOCK)
+            entry.result_handle_definition = WN_last(request.standard_block);
+        if (request.reserved != 0 || entry.containing_block == NULL)
             return DSL_IR_Lower_Report
                        (diagnostic, i, "PU or containing block mismatch");
         if (!DSL_IR_Lower_Find_Native_Definition_Value
@@ -440,7 +476,7 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
             !DSL_Tensor_Has_Unique_Ownership(entry.value.st) ||
             WN_Get_Linenum(request.native_definition) == 0 ||
             DSL_Region_Symbol_Use_Count
-                (Current_PU_Info, entry.value.st) != 0)
+                (pu_info, entry.value.st) != 0)
             return DSL_IR_Lower_Report
                        (diagnostic, i, "source ownership or use mismatch");
         if (!DSL_IR_Lower_Relation_Resolve
@@ -450,7 +486,7 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
                        (diagnostic, i, "runtime relation mismatch");
         UINT32 order = 0;
         if (!DSL_IR_Lower_Find_Tree_Order
-                (request.pu_root, request.native_definition, &order,
+                (pu_root, request.native_definition, &order,
                  &entry.tree_order))
             return DSL_IR_Lower_Report
                        (diagnostic, i, "definition is outside the PU tree");
@@ -462,9 +498,9 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
                 (request.standard_block != NULL &&
                  journal[j].request->standard_block ==
                     request.standard_block) ||
-                (request.result_handle_definition != NULL &&
-                 journal[j].request->result_handle_definition ==
-                    request.result_handle_definition))
+                (entry.result_handle_definition != NULL &&
+                 journal[j].result_handle_definition ==
+                    entry.result_handle_definition))
                 return DSL_IR_Lower_Report
                            (diagnostic, i, "duplicate transaction member");
         }
@@ -490,7 +526,7 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
         source_scan.journal = &journal;
         source_scan.definition_count = 0;
         source_scan.valid = TRUE;
-        DSL_IR_Lower_Scan_Source_Uses(request.pu_root, NULL, &source_scan);
+        DSL_IR_Lower_Scan_Source_Uses(pu_root, NULL, &source_scan);
         if (!source_scan.valid || source_scan.definition_count != 1 ||
             !DSL_IR_Lower_Logical_Uses_Closed(entry, journal))
             return DSL_IR_Lower_Report
@@ -499,8 +535,7 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
 
         if (request.mode ==
                 DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION) {
-            if (request.standard_block != NULL ||
-                request.result_handle_definition != NULL)
+            if (request.standard_block != NULL)
                 return DSL_IR_Lower_Report
                            (diagnostic, entry.request_index,
                             "promoted source must not provide statements");
@@ -511,25 +546,18 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
             request.standard_block == NULL ||
             WN_operator(request.standard_block) != OPR_BLOCK ||
             WN_first(request.standard_block) == NULL ||
-            request.result_handle_definition == NULL ||
-            !DSL_IR_Lower_Block_Contains
-                (request.standard_block,
-                 request.result_handle_definition) ||
-            WN_last(request.standard_block) !=
-                request.result_handle_definition ||
-            DSL_IR_Lower_Tree_Contains
-                (request.pu_root, request.standard_block) ||
-            WN_operator(request.result_handle_definition) != OPR_STID ||
-            WN_st_idx(request.result_handle_definition) != entry.handle_st ||
-            WN_ty(request.result_handle_definition) != entry.handle_ty)
+            DSL_IR_Lower_Tree_Contains(pu_root, request.standard_block) ||
+            WN_operator(WN_last(request.standard_block)) != OPR_STID ||
+            WN_st_idx(WN_last(request.standard_block)) != entry.handle_st ||
+            WN_ty(WN_last(request.standard_block)) != entry.handle_ty)
             return DSL_IR_Lower_Report
                        (diagnostic, entry.request_index,
                         "computed standard block is invalid");
         DSL_IR_LOWER_STANDARD_BLOCK_SCAN block_scan;
         block_scan.source_st = entry.value.st;
         block_scan.handle_st = entry.handle_st;
-        block_scan.result_handle_definition =
-            request.result_handle_definition;
+        entry.result_handle_definition = WN_last(request.standard_block);
+        block_scan.result_handle_definition = entry.result_handle_definition;
         block_scan.source_position =
             WN_Get_Linenum(request.native_definition);
         block_scan.handle_definition_count = 0;
@@ -556,13 +584,13 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
                 WN *statement = WN_EXTRACT_FromBlock
                     (request.standard_block, WN_first(request.standard_block));
                 WN_INSERT_BlockBefore
-                    (request.containing_block,
+                    (entry.containing_block,
                      request.native_definition, statement);
             }
             WN_DELETE_Tree(request.standard_block);
         }
         WN *removed = WN_EXTRACT_FromBlock
-                          (request.containing_block,
+                          (entry.containing_block,
                            request.native_definition);
         FmtAssert(removed == request.native_definition,
                   ("preflighted native lowering extraction failed"));
@@ -589,7 +617,7 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
     }
     FmtAssert(DSL_IR_Image_Validate(NULL) &&
               DSL_IR_Image_Validate_Lowered_Relations(NULL) &&
-              DSL_Region_Verify_PU(Current_PU_Info, NULL),
+              DSL_Region_Verify_PU(pu_info, NULL),
               ("lowered DSL value failed postcondition"));
     return TRUE;
 }

@@ -684,8 +684,11 @@ typedef struct {
 } DSL_IR_NATIVE_VALUE_RETIRE_REQUEST;
 
 /*
- * Runtime-only standard-WHIRL lowering transaction. Logical DSL node/value
- * rows remain immutable provenance and are marked LOWERED after their native
+ * Runtime-only standard-WHIRL lowering transaction. The PU_Info supplied to
+ * DSL_IR_Lower_Native_Values_To_Standard_Blocks is the sole owner/tree
+ * authority; the native definition's containing BLOCK and a computed block's
+ * final result STID are derived during preflight. Logical DSL node/value rows
+ * remain immutable provenance and are marked LOWERED after their native
  * definition leaves the executable tree. No mapped-image row is added.
  */
 typedef enum {
@@ -708,8 +711,6 @@ typedef struct {
 } DSL_IR_LOWER_RELATION;
 
 typedef struct {
-    WN *pu_root;
-    WN *containing_block;
     WN *native_definition;
     DSL_IR_VALUE_ID source_value_id;
     DSL_OPERATOR expected_operator;
@@ -718,7 +719,6 @@ typedef struct {
     UINT32 mode;
     DSL_IR_LOWER_RELATION relation;
     WN *standard_block;
-    WN *result_handle_definition;
 } DSL_IR_NATIVE_VALUE_LOWER_REQUEST;
 
 typedef struct {
@@ -1099,8 +1099,16 @@ extern BOOL DSL_IR_Redirect_And_Retire_Native_Value
                                 (ST_IDX owner_pu_st,
                                  const DSL_IR_NATIVE_VALUE_RETIRE_REQUEST
                                      *request);
+/*
+ * Preflight and atomically lower a complete request set for one active PU.
+ * The API derives PU ownership, the native definitions' containing blocks,
+ * and each computed standard block's final result STID from its inputs. It
+ * mutates WHIRL and logical lowered flags only after all requests, relations,
+ * source uses, effects, and detached block contracts validate; failure before
+ * commit leaves the physical tree and image unchanged.
+ */
 extern BOOL DSL_IR_Lower_Native_Values_To_Standard_Blocks
-                                (ST_IDX owner_pu_st,
+                                (PU_Info *pu_info,
                                  const DSL_IR_NATIVE_VALUE_LOWER_REQUEST
                                      *requests,
                                  UINT32 request_count,

@@ -970,11 +970,8 @@ Build_And_Lower_Resolved_Relu_Sequence
                       &result_definition))
         valid = FALSE;
 
-    WN *body = WN_func_body(PU_Info_tree_ptr(pu));
     DSL_IR_NATIVE_VALUE_LOWER_REQUEST request;
     memset(&request, 0, sizeof(request));
-    request.pu_root = PU_Info_tree_ptr(pu);
-    request.containing_block = body;
     request.native_definition = relu;
     request.source_value_id = value_requests[3].source_value_id;
     request.expected_operator = OPR_DSLRELU;
@@ -990,11 +987,10 @@ Build_And_Lower_Resolved_Relu_Sequence
         valid = FALSE;
     request.relation.value_projection_id = relu_projection.id;
     request.standard_block = sequence.block;
-    request.result_handle_definition = result_definition;
     DSL_IR_NATIVE_VALUE_LOWER_RESULT lower_result;
     if (valid &&
         (!DSL_IR_Lower_Native_Values_To_Standard_Blocks
-             (PU_Info_proc_sym(pu), &request, 1, stderr, &lower_result) ||
+             (pu, &request, 1, stderr, &lower_result) ||
          lower_result.source_value_id != request.source_value_id ||
          lower_result.mode != DSL_IR_NATIVE_LOWER_COMPUTED_STANDARD_BLOCK ||
          lower_result.relation_kind !=
