@@ -85,7 +85,16 @@ only when the current task needs detail.
    the DSL operator, version, canonical attributes, and TensorDescriptorIR
    identity. Continue using WOPT's existing `CODEREP` instantiation of
    `wn_simp_code.h`; do not add a parallel WOPT simplifier.
-6. Keep `common/com` policy-free. It may define DSL IR records, stable IDs,
+6. Assign DSL APIs by semantic applicability, not by the first domain that
+   requested them. An API belongs in `osprey/common/com` when its contract is
+   domain-neutral or it is naturally reusable by AI/tensor compiler domains,
+   even when FHE funded or first exercised it. Move an API to an FHE-owned
+   module only when its correctness contract depends on cryptographic schemes,
+   ciphertext state, key requirements, bootstrap or approximation policy,
+   encrypted-runtime ABI, or other irreducibly FHE semantics. Caller location,
+   current usage count, and an `FHE` implementation milestone are not by
+   themselves sufficient reasons to classify an API as FHE-specific.
+7. Keep `common/com` policy-free. It may define DSL IR records, stable IDs,
    constructors/interning, structural verification, generic accessors, and
    logical printers. Fact harvesting from a PU, candidate discovery, legality
    analysis, cost/profitability modeling, optimization selection, and IR
@@ -93,7 +102,10 @@ only when the current task needs detail.
    `be/vho` for WHIRL/VHO work, `be/opt` for CFG/SSA/CODEREP work, `be/lno` for
    canonical-loop work, and IPA for cross-PU work. Do not place an optimization
    decision in `common/com` merely because its selected result is represented
-   by a common IR record.
+   by a common IR record. A domain-neutral, AI-reusable atomic mutation
+   mechanism may remain in `common/com` when the owning phase supplies the
+   complete reviewed request and retains every legality, profitability, and
+   policy decision.
 
 ## PREOPT Canonicalization And Optimization Roles
 

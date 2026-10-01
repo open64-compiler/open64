@@ -66,6 +66,35 @@ encodings, or a special in-memory path.
 | `whirl2c` | Gate before invocation; do not add FHE syntax | Prove generated C contains only ABI v1 C names and ordinary C types |
 | Runtime ABI and mock | No ownership | Header, descriptors, manifests, deterministic mock, failure injection, compile/link/run tests |
 
+### Common/AI Reuse Criterion
+
+API ownership follows semantic applicability rather than the domain that first
+needed the service. A transaction, query, verifier, or lowering helper stays
+in `osprey/common/com` when its contract is domain-neutral or naturally usable
+by AI and tensor compiler domains. This includes external tensor references,
+shape/type refinement, stable logical-value lookup, pure value retirement,
+runtime-handle projection, program-interface reconstruction, and native DSL to
+standard-WHIRL lowering. FHE may be their first production consumer without
+becoming their architectural owner.
+
+An API belongs in an FHE-owned module only when correct interpretation requires
+FHE-specific facts such as an encryption scheme or descriptor, CKKS level and
+scale state, ciphertext component or precision state, key requirements,
+bootstrap reasons, polynomial/composite approximation policy, encrypted
+runtime ABI, or FHE-specific diagnostics and publication gates. File names,
+current caller locations, and milestone provenance do not override this test.
+
+Code review must apply the following decision order:
+
+1. If an API can express an AI/tensor transformation without cryptographic
+   vocabulary or policy, keep it in `common/com`.
+2. If generic mechanics and FHE policy are mixed, keep the mechanics in
+   `common/com` and move only the policy adapter and FHE records to the
+   FHE-owned module.
+3. If the API cannot be specified or verified without FHE semantics, place it
+   in the FHE-owned module and expose only a narrow generic registration hook
+   where shared infrastructure must invoke it.
+
 ## Reserved Main-Owned Files
 
 The main infrastructure workstream exclusively owns edits to these shared
