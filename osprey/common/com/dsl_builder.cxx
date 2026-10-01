@@ -2506,6 +2506,7 @@ DSL_Builder_Create_External_Tensor_Constant
     const char *dtype;
     const char *shape;
     const char *checksum;
+    TCON_IDX tensor_tcon = TCON_IDX_ZERO;
     DSL_BUILDER_VALUE result;
 
     if (name == NULL || name[0] == '\0' ||
@@ -2542,6 +2543,44 @@ DSL_Builder_Create_External_Tensor_Constant
         reference->byte_length != tensor_byte_size)
         return NULL;
 
+    /*
+     * Give authenticated external tensors a canonical typed side-file TCON.
+     * The TCON carries only descriptor, range, path, and digest evidence; the
+     * tensor bytes remain outside binary WHIRL. Checksum-free legacy sources
+     * retain their historical zero-TCON representation.
+     */
+    if (checksum[0] != '\0') {
+        DSL_TENSOR_TCON_CREATE_INFO info;
+        UINT64 checksum_hi = 0;
+        UINT64 checksum_lo = 0;
+        for (UINT32 i = 0; i < 16; ++i) {
+            char pair[3] = { checksum[i * 2], checksum[i * 2 + 1], '\0' };
+            UINT64 byte = strtoul(pair, NULL, 16);
+            if (i < 8)
+                checksum_hi = (checksum_hi << 8) | byte;
+            else
+                checksum_lo = (checksum_lo << 8) | byte;
+        }
+        memset(&info, 0, sizeof(info));
+        info.descriptor_ty = tensor_ty;
+        info.element_mtype = TY_mtype(descriptor.element_ty);
+        info.element_count = tensor_byte_size / element_size;
+        info.logical_bytes = tensor_byte_size;
+        info.required_alignment = TY_align(tensor_ty);
+        if (info.required_alignment < element_size)
+            info.required_alignment = element_size;
+        info.element_size = element_size;
+        info.side_path = reference->side_file;
+        info.side_path_length = strlen(reference->side_file);
+        info.byte_offset = reference->byte_offset;
+        info.byte_length = reference->byte_length;
+        info.checksum_hi = checksum_hi;
+        info.checksum_lo = checksum_lo;
+        if (!DSL_Tensor_TCON_Create_Side_File_Dense
+                 (&info, &tensor_tcon, NULL))
+            return NULL;
+    }
+
     size_t uri_size = strlen(reference->storage_format) +
                       strlen(reference->side_file) +
                       strlen(reference->tensor_key) + strlen(checksum) + 96;
@@ -2552,9 +2591,9 @@ DSL_Builder_Create_External_Tensor_Constant
              reference->tensor_key,
              (unsigned long long)reference->byte_offset,
              (unsigned long long)reference->byte_length, checksum);
-    result = DSL_Builder_Create_Tensor_Constant
+    result = DSL_Builder_Create_Tensor_Constant_Value
                  (name, tensor_ty, dtype, descriptor.rank, shape,
-                  "external_data", storage_uri);
+                  "external_data", storage_uri, tensor_tcon);
     delete [] storage_uri;
     if (result == NULL)
         return NULL;

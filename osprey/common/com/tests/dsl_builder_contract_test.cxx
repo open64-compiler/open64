@@ -9455,7 +9455,6 @@ Check_Native_To_Standard_Lowering(void)
     DSL_IR_EXTERNAL_TENSOR_REFERENCE observed_external;
     DSL_IR_NATIVE_VALUE_LOWER_REQUEST requests[4];
     DSL_IR_NATIVE_VALUE_LOWER_RESULT results[4];
-    DSL_TENSOR_TCON_CREATE_INFO tcon_info;
     TCON_IDX external_tcon[2];
     TY_IDX tensor_ty[2];
     TY_IDX handle_ty;
@@ -9513,25 +9512,6 @@ Check_Native_To_Standard_Lowering(void)
     handle_ty = Create_Runtime_Interface_Handle_TY
                     ("standard_lower_ciphertext_v1");
 
-    memset(&tcon_info, 0, sizeof(tcon_info));
-    tcon_info.element_mtype = MTYPE_F4;
-    tcon_info.element_count = 4;
-    tcon_info.logical_bytes = 16;
-    tcon_info.required_alignment = 16;
-    tcon_info.element_size = 4;
-    tcon_info.side_path = "standard_lower.safetensors";
-    tcon_info.side_path_length = strlen(tcon_info.side_path);
-    tcon_info.byte_length = 16;
-    for (UINT32 i = 0; i < 2; ++i) {
-        tcon_info.descriptor_ty = tensor_ty[i];
-        tcon_info.checksum_hi = 0x34567890 + i;
-        tcon_info.checksum_lo = 0xbcdef012 + i;
-        STANDARD_LOWER_CHECK
-            (DSL_Tensor_TCON_Create_Side_File_Dense
-                 (&tcon_info, &external_tcon[i], NULL),
-             "external tensor TCON");
-    }
-
     pu = DSL_Builder_Create_Minimal_PU("standard_lower_root");
     UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
     memset(&identity, 0, sizeof(identity));
@@ -9561,22 +9541,20 @@ Check_Native_To_Standard_Lowering(void)
                       ("standard_bias", tensor_ty[1], &external_reference);
     char tcon_text[2][32];
     for (UINT32 i = 0; i < 2; ++i) {
-        snprintf(tcon_text[i], sizeof(tcon_text[i]), "%u",
-                 (UINT32)external_tcon[i]);
         STANDARD_LOWER_CHECK
             (external[i] != NULL &&
              DSL_Builder_Set_Value_Source_Position(external[i], &position),
              "external source position");
-        ST_tensor_bind_metadata
-            (DSL_Builder_Get_Value_Result_Symbol(external[i]),
-             "tensor_tcon_idx", tcon_text[i]);
         STANDARD_LOWER_CHECK
             (DSL_IR_Image_Get_External_Tensor_Reference
                  (PU_Info_proc_sym(pu),
                   DSL_Builder_Get_Value_Image_Id(external[i]),
                   &observed_external) &&
-             observed_external.tensor_tcon == external_tcon[i],
-             "typed external lookup returns the attached tensor TCON");
+             observed_external.tensor_tcon != TCON_IDX_ZERO,
+             "builder creates a typed external tensor TCON");
+        external_tcon[i] = observed_external.tensor_tcon;
+        snprintf(tcon_text[i], sizeof(tcon_text[i]), "%u",
+                 (UINT32)external_tcon[i]);
     }
     UINT32 original_node_count = DSL_IR_Image_Node_Count();
     UINT32 original_value_count = DSL_IR_Image_Value_Count();

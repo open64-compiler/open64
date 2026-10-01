@@ -717,8 +717,9 @@ only from persisted semantic identity tables and logical operands.
 
 ### S5-D: Construct And Prevalidate Complete Interface Plans
 
-**Status:** implementation started; the typed TCON lookup prerequisite is
-implemented and focused validation is in progress before request construction.
+**Status:** request construction and real six-PU prevalidation implemented;
+integration and broader certification are still in progress. No PU interface
+has been applied by this step.
 
 **Purpose:** materialize the S5-C identities into complete immutable
 `DSL_PROGRAM_INTERFACE_PLAN` and `DSL_RUNTIME_INTERFACE_PLAN` arrays before
@@ -775,7 +776,24 @@ behavior. S5-D requires a nonzero result while constructing all 44 external
 plaintext input requests exclusively through this typed service.
 
 **Exit criterion:** one complete plan validates against the real six-PU input
-without modifying WN, ST, TY, or managed image tables.
+without modifying WN, ST, canonical tensor TYs, or managed image tables.
+Process-local ABI handle pointer TY interning is permitted and accounted for.
+
+**Current evidence (2026-10-01):** the recaptured and materialized six-PU
+SecureResNet artifact prepares 48 formal retirements, 80 call-argument
+retirements, 44 external tensor inputs plus four runtime resources, 92
+bindings, 76 runtime-input call edges, 248 value projections, and 58 call
+projections. `DSL_Program_Interface_Plan_Validate` accepts the complete
+plan. Focused malformed copies reject duplicate retirement, wrong source
+owner, wrong handle type, unrooted resource, missing hidden-result projection,
+and omitted live call projections. A content fingerprint hashes each request
+field and role text rather than pointer addresses; two preparations of the
+same artifact produce the same fingerprint. The three opaque ABI handle
+pointer TYs are interned process-locally during preparation; canonical tensor
+TYs, WN/ST objects, and mapped-image records are not changed. The build also
+requires frontend linkage of the generic program/runtime interface services
+and producer attachment of side-file-dense tensor TCONs for authenticated
+external sources. Legacy checksum-free sources retain the absent-TCON state.
 
 ### S5-E: Apply Program And Runtime Interfaces Across Six PUs
 
