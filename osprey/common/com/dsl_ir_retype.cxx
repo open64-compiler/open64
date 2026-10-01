@@ -22,9 +22,19 @@
 #include "wn.h"
 #include "wn_util.h"
 
-/* Commit-only image mutation after complete transaction preflight. */
+/*
+ * Commit-only logical-image mutation used by DSL_IR_Retype_Apply after the
+ * public transaction has preflighted the corresponding WN and ST changes.
+ * It is deliberately not a supported standalone transformation API.
+ */
 extern BOOL DSL_IR_Image_Retype_Value (DSL_IR_VALUE_ID, TY_IDX, TY_IDX);
 
+/*
+ * Confirm that owner_pu_st names the PU whose local symbol table and WN tree
+ * are currently active. Local ST_IDX values are not safe to interpret outside
+ * that ownership context. DSL_IR_Retype_Preflight uses this as the first
+ * owner-safety check for every request.
+ */
 static BOOL
 DSL_IR_Retype_Current_PU_Is (ST_IDX owner_pu_st)
 {
@@ -48,6 +58,11 @@ typedef struct {
     std::vector<WN *> reads;
 } DSL_IR_RETYPE_JOURNAL;
 
+/*
+ * Emit one stable DSL-SHAPE-RETYPE diagnostic and return FALSE so every
+ * rejection path has identical formatting. Both per-request preflight and the
+ * public transaction use this helper; it never mutates compiler state.
+ */
 static BOOL
 DSL_IR_Retype_Report
         (FILE *diagnostic,
@@ -60,6 +75,14 @@ DSL_IR_Retype_Report
     return FALSE;
 }
 
+/*
+ * Census every physical use of one result ST in the active PU tree. The v1
+ * transaction admits exactly one native-DSL STID definition and LDID reads
+ * consumed directly by native DSL expressions. Address-taking, ordinary
+ * WHIRL consumers, multiple definitions, and other escaping uses invalidate
+ * the scan. Preflight later compares this physical census with logical value
+ * references before allowing a type change.
+ */
 static void
 DSL_IR_Retype_Scan_Tree
         (WN *wn,
@@ -94,6 +117,13 @@ DSL_IR_Retype_Scan_Tree
         DSL_IR_Retype_Scan_Tree(WN_kid(wn, kid), wn, st, use);
 }
 
+/*
+ * Prove that refined_ty is a monotonic shape-only refinement of old_ty. The
+ * new canonical tensor type may fill unknown dimensions, but it must preserve
+ * rank, every known dimension, element type, dtype, traits, layout, sharding,
+ * placement, memory, quantization, and alignment. This is not a dtype, layout,
+ * representation, encryption, or packing conversion.
+ */
 static BOOL
 DSL_IR_Retype_Type_Valid (TY_IDX old_ty, TY_IDX refined_ty)
 {
@@ -134,6 +164,14 @@ DSL_IR_Retype_Type_Valid (TY_IDX old_ty, TY_IDX refined_ty)
     return TRUE;
 }
 
+/*
+ * Reject a type whose identity is already consumed by an auxiliary image that
+ * has no participant in this transaction. Current FHE plan, approximation,
+ * context-state, and tensor-binding relationships are intentionally
+ * fail-closed: shape retyping cannot leave their persisted type evidence
+ * stale. Future auxiliary images must add an explicit retype participant
+ * before this guard can be relaxed.
+ */
 static BOOL
 DSL_IR_Retype_Has_Auxiliary_Relation (TY_IDX old_ty)
 {
@@ -150,6 +188,14 @@ DSL_IR_Retype_Has_Auxiliary_Relation (TY_IDX old_ty)
     return FALSE;
 }
 
+/*
+ * Preflight one request and populate a complete commit/rollback journal. It
+ * joins active-PU ownership, monotonic type legality, logical value and
+ * producer identity, pure effects, unique local-ST ownership, physical WN
+ * def/use closure, logical reference counts, ABI exclusion, and auxiliary
+ * image exclusion. Success performs no mutation and records every WN needed
+ * later by DSL_IR_Retype_Apply.
+ */
 static BOOL
 DSL_IR_Retype_Preflight
         (PU_Info *pu_info,
@@ -278,6 +324,12 @@ DSL_IR_Retype_Preflight
     return TRUE;
 }
 
+/*
+ * Apply one already-preflighted journal in either direction. It changes all
+ * admitted LDID types, the defining STID type, the result ST type, and the
+ * logical DSL value type. The public transaction calls it old-to-refined for
+ * commit and refined-to-old in reverse journal order for rollback.
+ */
 static void
 DSL_IR_Retype_Apply
         (DSL_IR_RETYPE_JOURNAL *journal,
@@ -293,6 +345,31 @@ DSL_IR_Retype_Apply
     FmtAssert(changed, ("preflighted DSL value retype failed"));
 }
 
+/*
+ * Atomically commit a complete array of inferred local tensor-shape facts to
+ * physical WHIRL, the symbol table, and the logical DSL image.
+ *
+ * The current sole production orchestrator is the VHO XLA-style DSL shape
+ * refinement driver: the shape solver infers facts, the driver interns the
+ * refined canonical TYs and builds requests, and this service owns physical
+ * mutation and rollback. The API remains inference-engine-neutral so future
+ * WOPT, IPA, region-local, post-inlining, or domain shape analyses may submit
+ * the same reviewed monotonic request contract. Such analyses should normally
+ * feed the common shape-refinement driver instead of calling this service as
+ * an independent policy path.
+ *
+ * This transaction is not for CKKS level/scale/component/precision state,
+ * plaintext or ciphertext representation, slot packing, bootstrapping,
+ * layout or dtype conversion, metakernel transformation, runtime-handle
+ * projection, or function/call ABI rewriting. Those require their own
+ * explicit transformations and provenance contracts.
+ *
+ * All requests and REGION state are preflighted before the first mutation.
+ * After commit, managed-image, REGION, and strict gatekeeper verification run
+ * together. Any failure reapplies the journals in reverse direction so the
+ * caller observes either a completely refined program or the original type
+ * graph.
+ */
 BOOL
 DSL_IR_Refine_Native_Value_Types
         (PU_Info *pu_info,
@@ -379,4 +456,3 @@ DSL_IR_Refine_Native_Value_Types
         *result = local_result;
     return TRUE;
 }
-
