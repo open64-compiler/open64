@@ -641,8 +641,8 @@ only from persisted semantic identity tables and logical operands.
 
 ### S5-D: Construct And Prevalidate Complete Interface Plans
 
-**Status:** implementation started; blocked on one main/common typed lookup
-hook before request construction may proceed.
+**Status:** implementation started; the typed TCON lookup prerequisite is
+implemented and focused validation is in progress before request construction.
 
 **Purpose:** materialize the S5-C identities into complete immutable
 `DSL_PROGRAM_INTERFACE_PLAN` and `DSL_RUNTIME_INTERFACE_PLAN` arrays before
@@ -676,7 +676,7 @@ the first PU is changed.
 owner, wrong plaintext/ciphertext TY, unrooted resource, duplicate retirement,
 missing hidden result, and all-PU plan fingerprint mismatch.
 
-**Native contract blocker:** every
+**Native contract resolution:** every
 `DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR` request requires the exact
 `source_tcon`. The backend-safe
 `DSL_IR_Image_Get_External_Tensor_Reference()` view currently exposes the
@@ -687,20 +687,16 @@ violate the reviewed structured-access boundary and is not permitted in the
 FHE pass. BatchNorm provenance also cannot supply a complete substitute
 because the classifier weight and bias are not BatchNorm-fold outputs.
 
-Main/common must therefore publish one of these equivalent runtime-only
-services, without changing mapped-image rows or binary WHIRL:
-
-1. add `TCON_IDX tensor_tcon` to `DSL_IR_EXTERNAL_TENSOR_REFERENCE` and
-   populate it in `DSL_IR_Image_Get_External_Tensor_Reference()`; or
-2. add an owner-qualified typed getter from `DSL_IR_VALUE_ID` to its attached
-   tensor `TCON_IDX`.
-
-The service must require the active owner PU and validate the exact value,
-ST, TY, nonzero tensor TCON, side-file-dense representation, descriptor type,
-path, range, dtype, and shape. Focused common tests must reject missing or
-malformed metadata and path/range/type disagreement without mutation, and
-must preserve mapped-reopen behavior. S5-D resumes by constructing all 44
-external plaintext input requests exclusively through this typed service.
+`DSL_IR_EXTERNAL_TENSOR_REFERENCE` now includes `TCON_IDX tensor_tcon`, and
+`DSL_IR_Image_Get_External_Tensor_Reference()` populates it without changing
+mapped-image rows or binary WHIRL. The service requires the active owner PU
+and validates the exact value,
+ST, and TY. A present TCON must be nonzero and side-file-dense, with exact
+descriptor type, path, range, dtype, and shape agreement; absence maps to zero
+for legacy source tensors. Focused common tests must reject malformed metadata
+and path/range/type disagreement without mutation and preserve mapped-reopen
+behavior. S5-D requires a nonzero result while constructing all 44 external
+plaintext input requests exclusively through this typed service.
 
 **Exit criterion:** one complete plan validates against the real six-PU input
 without modifying WN, ST, TY, or managed image tables.

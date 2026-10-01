@@ -1445,10 +1445,15 @@ DSL_IR_Image_Get_External_Tensor_Reference
     const char *offset_text;
     const char *length_text;
     const char *checksum;
+    const char *tensor_tcon_text;
+    const char *tensor_tcon_path;
     UINT64 offset;
     UINT64 length;
     UINT64 element_size;
     UINT64 tensor_size;
+    UINT64 tensor_tcon_value = 0;
+    UINT32 tensor_tcon_path_length = 0;
+    DSL_TENSOR_TCON_RECORD tensor_tcon;
 
     if (reference == NULL)
         return FALSE;
@@ -1478,6 +1483,7 @@ DSL_IR_Image_Get_External_Tensor_Reference
     offset_text = ST_tensor_metadata(value.st, "storage_byte_offset");
     length_text = ST_tensor_metadata(value.st, "storage_byte_length");
     checksum = ST_tensor_metadata(value.st, "storage_checksum");
+    tensor_tcon_text = ST_tensor_metadata(value.st, "tensor_tcon_idx");
     if (format == NULL || format[0] == '\0' || file == NULL ||
         file[0] == '\0' || key == NULL || key[0] == '\0' ||
         !DSL_IR_Parse_Unsigned(offset_text, &offset) ||
@@ -1497,6 +1503,30 @@ DSL_IR_Image_Get_External_Tensor_Reference
         strcmp(memory, "external_data") != 0)
         return FALSE;
 
+    if (tensor_tcon_text != NULL && tensor_tcon_text[0] != '\0') {
+        if (!DSL_IR_Parse_Unsigned(tensor_tcon_text, &tensor_tcon_value) ||
+            tensor_tcon_value == 0 ||
+            tensor_tcon_value > (UINT64)(~(TCON_IDX)0) ||
+            !DSL_Tensor_TCON_Get
+                 ((TCON_IDX)tensor_tcon_value, &tensor_tcon) ||
+            tensor_tcon.storage_kind !=
+                DSL_TENSOR_TCON_STORAGE_SIDE_FILE_DENSE ||
+            tensor_tcon.descriptor_ty != value.ty ||
+            tensor_tcon.element_mtype != TY_mtype(descriptor.element_ty) ||
+            tensor_tcon.element_size != element_size ||
+            tensor_tcon.element_count != tensor_size / element_size ||
+            tensor_tcon.logical_bytes != tensor_size ||
+            tensor_tcon.required_alignment < TY_align(value.ty) ||
+            tensor_tcon.byte_offset != offset ||
+            tensor_tcon.byte_length != length ||
+            !DSL_Tensor_TCON_Get_Side_Path
+                 ((TCON_IDX)tensor_tcon_value, &tensor_tcon_path,
+                  &tensor_tcon_path_length) ||
+            strlen(file) != tensor_tcon_path_length ||
+            memcmp(file, tensor_tcon_path, tensor_tcon_path_length) != 0)
+            return FALSE;
+    }
+
     size_t uri_size = strlen(format) + strlen(file) + strlen(key) +
                       strlen(checksum == NULL ? "" : checksum) + 96;
     char *expected = new char[uri_size];
@@ -1513,6 +1543,7 @@ DSL_IR_Image_Get_External_Tensor_Reference
     reference->producer_node_id = value.producer_node_id;
     reference->descriptor_ty = value.ty;
     reference->st = value.st;
+    reference->tensor_tcon = (TCON_IDX)tensor_tcon_value;
     reference->element_ty = descriptor.element_ty;
     reference->rank = descriptor.rank;
     reference->storage_format = format;
@@ -1578,17 +1609,12 @@ DSL_Program_Interface_Runtime_Input_Contract_Valid
 
     if (DSL_IR_Image_Current_PU_Is(record->source_owner_pu_st)) {
         DSL_IR_EXTERNAL_TENSOR_REFERENCE reference;
-        const char *tcon_text = ST_tensor_metadata
-                                    (record->source_st,
-                                     "tensor_tcon_idx");
-        UINT64 tcon_value = 0;
         if (!DSL_IR_Image_Get_External_Tensor_Reference
                  (record->source_owner_pu_st, record->source_value_id,
                   &reference) ||
             reference.descriptor_ty != record->source_ty ||
             reference.st != record->source_st ||
-            !DSL_IR_Parse_Unsigned(tcon_text, &tcon_value) ||
-            tcon_value != record->source_tcon)
+            reference.tensor_tcon != record->source_tcon)
             return FALSE;
     }
     return TRUE;

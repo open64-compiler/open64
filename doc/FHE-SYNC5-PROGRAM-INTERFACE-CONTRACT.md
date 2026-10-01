@@ -125,7 +125,10 @@ Version 1 input kinds are:
 - `SOURCE_EXTERNAL_TENSOR`: all source identity fields are nonzero and name
   one live, admitted external-data tensor value owned by the root PU. Its
   external reference, checksum, side-file range, TCON, descriptor TY, source,
-  context, and lineage remain authoritative in their existing tables.
+  context, and lineage remain authoritative in their existing tables. The
+  compiler obtains `source_tcon` from the validated `tensor_tcon` field of
+  `DSL_IR_Image_Get_External_Tensor_Reference()` and never parses owner-local
+  ST metadata.
 - `OPAQUE_RUNTIME_RESOURCE`: source fields are zero. The stable role and exact
   opaque pointer TY define the input. `fhe.model` uses this kind.
 - `TENSOR_TCON_RESOURCE`: source value/ST are zero; `source_ty` and
@@ -138,6 +141,13 @@ FHE role strings. The FHE gatekeeper requires the exact initial roles
 
 Input identity is unique by source owner/value for source external tensors and
 by stable role for runtime/TCON resources. Unknown kinds fail closed.
+
+Side-file-dense TCONs keep large plaintext tensors and typed CKKS auxiliary
+tensor payloads outside `.B`; WHIRL carries only the validated identity,
+descriptor, path, range, and digest evidence. Opaque key bundles such as a
+runtime-native rotation-key store remain `OPAQUE_RUNTIME_RESOURCE` values
+unless a separately reviewed contract gives them a canonical tensor
+representation.
 
 ### Runtime Input Binding Row
 

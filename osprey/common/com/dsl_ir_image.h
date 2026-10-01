@@ -571,6 +571,7 @@ typedef struct {
     DSL_IR_NODE_ID producer_node_id;
     TY_IDX descriptor_ty;
     ST_IDX st;
+    TCON_IDX tensor_tcon;
     TY_IDX element_ty;
     INT32 rank;
     const char *storage_format;

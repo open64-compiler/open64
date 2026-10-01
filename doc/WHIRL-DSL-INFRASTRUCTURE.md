@@ -1867,8 +1867,11 @@ full-sequence causal prompt evaluation with no KV cache.
    owner-aware typed view over the existing DSL value row, ST metadata, and
    canonical tensor TY. The service validates storage format, side-file path,
    tensor key, aligned byte range, checksum syntax, dtype, rank, shape, layout,
-   placement, memory, and logical URI agreement. Compiler passes must use this
-   service instead of parsing tensor metadata strings.
+   placement, memory, logical URI agreement, and any attached side-file-dense
+   tensor TCON. Its runtime-only result exposes the validated `tensor_tcon`;
+   zero preserves legacy source tensors without an attachment, while converted
+   and runtime-ready tensors require a nonzero value. Compiler passes must use
+   this service instead of parsing tensor metadata strings.
 
    Add `DSL_IR_Materialize_External_Tensor_Values()` as a complete-array
    preflight/commit service. It creates same-`TY_IDX`, caller-owned external

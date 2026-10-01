@@ -33,6 +33,9 @@ the existing DSL value, ST metadata, and canonical tensor TY. It validates:
 - `common.tensor_const.v1` and `external_data` semantics;
 - result value, result ST, and canonical `TY_IDX` consistency;
 - storage format, side-file path, tensor key, byte range, and checksum syntax;
+- the optional attached side-file-dense tensor TCON, when present, including
+  descriptor, element representation, logical size, alignment, path, and byte
+  range agreement;
 - dtype, rank, logical shape, layout, placement, and memory descriptor facts;
 - exact static tensor byte size and element-aligned byte offset; and
 - agreement between the structured fields and the logical storage URI.
@@ -41,6 +44,14 @@ Callers receive structured fields and do not parse ST metadata or payload
 strings themselves. The returned strings remain owned by the existing Open64
 string and tensor tables. A caller must not retain those borrowed fields across
 owner-PU table mutation, mapped-image reset, or program reset.
+
+The runtime-only view exposes the attached TCON as `tensor_tcon`. Zero means a
+legacy or source external tensor has no attached TCON. A nonzero value is
+returned only after the complete side-file-dense contract above validates.
+Converted tensors and runtime-interface plaintext inputs require a nonzero
+TCON. This lets the compiler carry compact references to large plaintext
+tensors and future CKKS key material while the bytes remain in authenticated
+external artifacts rather than expanding the binary WHIRL file.
 
 Checksum validation at this common/com boundary covers syntax and agreement
 between structured metadata and the logical storage URI. It does not read the

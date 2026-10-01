@@ -6870,6 +6870,7 @@ Check_FHE_SYNC1_Mapped_Image(void)
              DSL_Builder_Get_Value_Image_Id(weight) &&
          observed_external.descriptor_ty == weight_ty &&
          observed_external.st == WN_st_idx(weight) &&
+         observed_external.tensor_tcon == TCON_IDX_ZERO &&
          observed_external.rank == 2 &&
          observed_external.byte_offset == 0 &&
          observed_external.byte_length == 16 &&
@@ -7623,6 +7624,12 @@ Check_External_Tensor_Materialization(void)
                      NULL, 10) ==
                  DSL_Builder_Get_Value_Image_Id(sources[i]),
              "same-TY replacement and source context metadata");
+        EXTERNAL_REWRITE_CHECK
+            (DSL_IR_Image_Get_External_Tensor_Reference
+                 (PU_Info_proc_sym(caller), materialized[i].value_id,
+                  &observed) &&
+             observed.tensor_tcon == folded_tcons[i],
+             "typed lookup returns the converted tensor TCON");
     }
     for (UINT32 i = 0; i < 4; ++i)
         EXTERNAL_REWRITE_CHECK
@@ -9363,6 +9370,7 @@ Check_Native_To_Standard_Lowering(void)
     DSL_RUNTIME_VALUE_PROJECTION_RECORD projections[2];
     DSL_RUNTIME_INPUT_RECORD input_records[2];
     DSL_RUNTIME_INPUT_BINDING_RECORD binding_records[2];
+    DSL_IR_EXTERNAL_TENSOR_REFERENCE observed_external;
     DSL_IR_NATIVE_VALUE_LOWER_REQUEST requests[4];
     DSL_IR_NATIVE_VALUE_LOWER_RESULT results[4];
     DSL_TENSOR_TCON_CREATE_INFO tcon_info;
@@ -9480,7 +9488,48 @@ Check_Native_To_Standard_Lowering(void)
         ST_tensor_bind_metadata
             (DSL_Builder_Get_Value_Result_Symbol(external[i]),
              "tensor_tcon_idx", tcon_text[i]);
+        STANDARD_LOWER_CHECK
+            (DSL_IR_Image_Get_External_Tensor_Reference
+                 (PU_Info_proc_sym(pu),
+                  DSL_Builder_Get_Value_Image_Id(external[i]),
+                  &observed_external) &&
+             observed_external.tensor_tcon == external_tcon[i],
+             "typed external lookup returns the attached tensor TCON");
     }
+    UINT32 original_node_count = DSL_IR_Image_Node_Count();
+    UINT32 original_value_count = DSL_IR_Image_Value_Count();
+    UINT32 original_st_count = ST_Table_Size(CURRENT_SYMTAB);
+    ST_tensor_bind_metadata
+        (DSL_Builder_Get_Value_Result_Symbol(external[0]),
+         "tensor_tcon_idx", "not-a-tcon");
+    STANDARD_LOWER_CHECK
+        (!DSL_IR_Image_Get_External_Tensor_Reference
+              (PU_Info_proc_sym(pu),
+               DSL_Builder_Get_Value_Image_Id(external[0]),
+               &observed_external) &&
+         DSL_IR_Image_Node_Count() == original_node_count &&
+         DSL_IR_Image_Value_Count() == original_value_count &&
+         ST_Table_Size(CURRENT_SYMTAB) == original_st_count,
+         "malformed tensor TCON metadata rejects without IR mutation");
+    ST_tensor_bind_metadata
+        (DSL_Builder_Get_Value_Result_Symbol(external[0]),
+         "tensor_tcon_idx", tcon_text[1]);
+    STANDARD_LOWER_CHECK
+        (!DSL_IR_Image_Get_External_Tensor_Reference
+              (PU_Info_proc_sym(pu),
+               DSL_Builder_Get_Value_Image_Id(external[0]),
+               &observed_external),
+         "descriptor-mismatched tensor TCON rejects typed lookup");
+    ST_tensor_bind_metadata
+        (DSL_Builder_Get_Value_Result_Symbol(external[0]),
+         "tensor_tcon_idx", tcon_text[0]);
+    STANDARD_LOWER_CHECK
+        (DSL_IR_Image_Get_External_Tensor_Reference
+             (PU_Info_proc_sym(pu),
+              DSL_Builder_Get_Value_Image_Id(external[0]),
+              &observed_external) &&
+         observed_external.tensor_tcon == external_tcon[0],
+         "valid tensor TCON metadata restores typed lookup");
     seed = DSL_Builder_Create_Tensor_Constant
                ("standard_seed", tensor_ty[0], "float32", 4,
                 "[1,1,2,2]", "zero_init", "0");
