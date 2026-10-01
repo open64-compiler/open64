@@ -55,6 +55,8 @@ static std::deque<std::string> VHO_FHE_interface_role_storage;
 static DSL_PROGRAM_INTERFACE_PLAN VHO_FHE_program_plan;
 static DSL_RUNTIME_INTERFACE_PLAN VHO_FHE_runtime_plan;
 static BOOL VHO_FHE_interface_plans_prepared;
+static BOOL VHO_FHE_interface_plans_failed;
+static std::set<ST_IDX> VHO_FHE_interface_applied_owners;
 
 /* Hash semantic fields in a fixed order, never struct padding or pointers. */
 static void
@@ -229,6 +231,8 @@ VHO_FHE_Runtime_Interface_Plans_Reset (void)
     VHO_FHE_call_projections.clear();
     VHO_FHE_interface_role_storage.clear();
     VHO_FHE_interface_plans_prepared = FALSE;
+    VHO_FHE_interface_plans_failed = FALSE;
+    VHO_FHE_interface_applied_owners.clear();
     VHO_FHE_Interface_Plan_Refresh_Views();
 }
 
@@ -1229,5 +1233,60 @@ VHO_FHE_Runtime_Interface_Plans_Get
         return FALSE;
     *program_plan = VHO_FHE_program_plan;
     *runtime_plan = VHO_FHE_runtime_plan;
+    return TRUE;
+}
+
+/* Apply one owner-qualified slice and verify its physical WN/ABI projection. */
+BOOL
+VHO_FHE_Runtime_Interface_Plans_Apply_PU
+        (PU_Info *pu, FILE *diagnostic,
+         DSL_PROGRAM_INTERFACE_RESULT *result)
+{
+    if (result != NULL)
+        memset(result, 0, sizeof(*result));
+    if (!VHO_FHE_interface_plans_prepared ||
+        VHO_FHE_interface_plans_failed || pu == NULL || result == NULL ||
+        VHO_FHE_interface_applied_owners.find(PU_Info_proc_sym(pu)) !=
+            VHO_FHE_interface_applied_owners.end())
+        return VHO_FHE_Interface_Plan_Report
+                   (diagnostic, "PU interface apply order or owner is invalid");
+    if (!DSL_Program_Interface_Apply_PU
+             (pu, &VHO_FHE_program_plan, &VHO_FHE_runtime_plan,
+              diagnostic, result) ||
+        !DSL_Program_Interface_Validate_PU(pu, diagnostic)) {
+        VHO_FHE_interface_plans_failed = TRUE;
+        return VHO_FHE_Interface_Plan_Report
+                   (diagnostic, "PU interface application failed");
+    }
+    VHO_FHE_interface_applied_owners.insert(PU_Info_proc_sym(pu));
+    return TRUE;
+}
+
+/* Check all-PU coverage and complete interface images before publication. */
+BOOL
+VHO_FHE_Runtime_Interface_Plans_Verify_Complete (FILE *diagnostic)
+{
+    if (!VHO_FHE_interface_plans_prepared ||
+        VHO_FHE_interface_plans_failed ||
+        VHO_FHE_interface_applied_owners.size() !=
+            DSL_Call_Image_PU_Identity_Count() ||
+        DSL_Program_Interface_Image_Retired_Formal_Count() !=
+            VHO_FHE_program_plan.retired_formal_count ||
+        DSL_Program_Interface_Image_Retired_Call_Count() !=
+            VHO_FHE_program_plan.retired_call_argument_count ||
+        DSL_Program_Interface_Image_Runtime_Input_Count() !=
+            VHO_FHE_program_plan.runtime_input_count ||
+        DSL_Program_Interface_Image_Runtime_Binding_Count() !=
+            VHO_FHE_program_plan.runtime_input_binding_count ||
+        DSL_Program_Interface_Image_Runtime_Call_Count() !=
+            VHO_FHE_program_plan.runtime_input_call_count ||
+        DSL_Runtime_Interface_Image_Value_Count() !=
+            VHO_FHE_runtime_plan.value_count ||
+        DSL_Runtime_Interface_Image_Call_Count() !=
+            VHO_FHE_runtime_plan.call_count ||
+        !DSL_Program_Interface_Image_Validate(diagnostic) ||
+        !DSL_Runtime_Interface_Image_Validate(diagnostic))
+        return VHO_FHE_Interface_Plan_Report
+                   (diagnostic, "all-PU interface image is incomplete");
     return TRUE;
 }

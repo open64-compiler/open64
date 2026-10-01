@@ -63,4 +63,16 @@ extern BOOL VHO_FHE_Runtime_Interface_Plans_Get
                                 (DSL_PROGRAM_INTERFACE_PLAN *program_plan,
                                  DSL_RUNTIME_INTERFACE_PLAN *runtime_plan);
 
+/*
+ * Apply the retained plan to one active PU exactly once. A failed apply is
+ * terminal for this in-memory image; the enclosing checkpoint must abort.
+ */
+extern BOOL VHO_FHE_Runtime_Interface_Plans_Apply_PU
+                                (struct pu_info *pu, FILE *diagnostic,
+                                 DSL_PROGRAM_INTERFACE_RESULT *result);
+
+/* Verify all planned PUs and persisted interface rows after the last apply. */
+extern BOOL VHO_FHE_Runtime_Interface_Plans_Verify_Complete
+                                (FILE *diagnostic);
+
 #endif /* fhe_runtime_interface_plan_INCLUDED */

@@ -717,9 +717,9 @@ only from persisted semantic identity tables and logical operands.
 
 ### S5-D: Construct And Prevalidate Complete Interface Plans
 
-**Status:** request construction and real six-PU prevalidation implemented;
-integration and broader certification are still in progress. No PU interface
-has been applied by this step.
+**Status:** complete for the first six-PU ResNet-20 profile. The full request
+array validates before mutation, repeats with an identical semantic
+fingerprint, and is consumed by the separately certified S5-E application.
 
 **Purpose:** materialize the S5-C identities into complete immutable
 `DSL_PROGRAM_INTERFACE_PLAN` and `DSL_RUNTIME_INTERFACE_PLAN` arrays before
@@ -797,7 +797,22 @@ external sources. Legacy checksum-free sources retain the absent-TCON state.
 
 ### S5-E: Apply Program And Runtime Interfaces Across Six PUs
 
-**Status:** pending S5-D.
+**Status:** six-PU interface checkpoint certified locally with main/common
+reader gate `eb39e719`, owner-safe REGION pruning `6915f663`, and
+caller-owned result null initialization `e50d3333` cherry-picked for consumer
+validation. The completed image retains five `cnn.basic_block.v1` REGIONs and
+live interfaces while retiring 48 folded-dead BN formals and 80 matching
+actuals. It carries 92 bindings, 76 runtime-input call edges, 248 value
+projections, nine rewritten calls, six rewritten returns, and exactly nine
+null STIDs immediately before output-handle LDA/call pairs. Separate-process
+`ir_b2a -st -src` reopens all six PUs with source interleave and complete
+program/runtime interface tables. The replay command is captured by
+`fhe_program_interface_full_model_test.sh`, which also injects a terminal PU-5
+failure and proves neither a final nor `.tmp` binary survives. The IR_TOOLS
+fixture omits
+invalidated input SSA because that test writer has no SSA serializer; the
+production backend output path remains separate. This is an interface
+checkpoint, not S5-F operation lowering or a runtime-ready `.mid.B`.
 
 **Purpose:** perform the reviewed ABI transition while each PU's local symbol
 table and map table are active.

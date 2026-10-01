@@ -5,7 +5,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
+#include <string>
 #include <vector>
 
 #include "defs.h"
@@ -1241,9 +1243,153 @@ Check_Mapped_Static_Schedule (const char *path)
     return valid ? 0 : 1;
 }
 
+/* Apply the complete owner-qualified interface plan through mapped PU scopes. */
+static int
+Check_Mapped_Program_Interface
+        (const char *input_path, const char *output_path)
+{
+    fprintf(stderr, "interface apply: opening input\n");
+    void *input = Open_Input_Info((char *)input_path);
+    INT32 pu_count = 0;
+    PU_Info *pu_tree = input == NULL || input == (void *)-1 ? NULL :
+        Read_Global_Info(&pu_count);
+    if (pu_tree == NULL || pu_count != 6)
+        return 1;
+    fprintf(stderr, "interface apply: global input loaded\n");
+
+    PU_Info *root_pu = NULL;
+    for (PU_Info *pu = pu_tree; pu != NULL; pu = PU_Info_next(pu)) {
+        UINT32 incoming = 0;
+        for (UINT32 id = 1; id <= DSL_Call_Image_Callsite_Count(); ++id) {
+            DSL_CALLSITE_METADATA_RECORD callsite;
+            if (!DSL_Call_Image_Get_Callsite(id, &callsite))
+                return 1;
+            if (callsite.callee_pu_st == PU_Info_proc_sym(pu))
+                ++incoming;
+        }
+        if (incoming == 0) {
+            if (root_pu != NULL)
+                return 1;
+            root_pu = pu;
+        }
+    }
+    if (root_pu == NULL || root_pu != pu_tree)
+        return 1;
+
+    MEM_POOL_Push(MEM_pu_nz_pool_ptr);
+    MEM_POOL_Push(MEM_pu_pool_ptr);
+    Read_Local_Info(MEM_pu_nz_pool_ptr, root_pu);
+    Current_PU_Info = root_pu;
+    VHO_FHE_RUNTIME_INTERFACE_PLAN_SUMMARY summary;
+    memset(&summary, 0, sizeof(summary));
+    BOOL valid = VHO_FHE_Runtime_Interface_Plans_Prepare
+                     (root_pu, stderr, &summary);
+    if (!valid)
+        return 1;
+    fprintf(stderr, "interface apply: plan prepared\n");
+
+    std::string temporary_path = std::string(output_path) + ".tmp";
+    unlink(temporary_path.c_str());
+    Irb_File_Name = (char *)temporary_path.c_str();
+    if (Open_Output_Info(Irb_File_Name) == NULL)
+        return 1;
+    fprintf(stderr, "interface apply: output open\n");
+    DSL_PROGRAM_INTERFACE_RESULT aggregate;
+    memset(&aggregate, 0, sizeof(aggregate));
+    UINT32 applied = 0;
+    for (PU_Info *pu = pu_tree; pu != NULL && valid;
+         pu = PU_Info_next(pu)) {
+        fprintf(stderr, "interface apply: PU %u\n", applied + 1);
+        if (pu != root_pu) {
+            MEM_POOL_Push(MEM_pu_nz_pool_ptr);
+            MEM_POOL_Push(MEM_pu_pool_ptr);
+            Read_Local_Info(MEM_pu_nz_pool_ptr, pu);
+            Current_PU_Info = pu;
+        }
+        DSL_PROGRAM_INTERFACE_RESULT result;
+        const char *reject_pu = getenv("OPEN64_FHE_INTERFACE_REJECT_PU");
+        valid = (reject_pu == NULL || atoi(reject_pu) != applied + 1) &&
+            VHO_FHE_Runtime_Interface_Plans_Apply_PU
+                (pu, stderr, &result);
+        if (valid) {
+            aggregate.retired_formal_count += result.retired_formal_count;
+            aggregate.retired_call_argument_count +=
+                result.retired_call_argument_count;
+            aggregate.runtime_binding_count +=
+                result.runtime_binding_count;
+            aggregate.runtime_call_count += result.runtime_call_count;
+            aggregate.canonical_projection_count +=
+                result.canonical_projection_count;
+            aggregate.rewritten_call_count += result.rewritten_call_count;
+            aggregate.rewritten_return_count +=
+                result.rewritten_return_count;
+            Write_PU_Info(pu);
+            /* The IR_TOOLS writer has no SSA serializer; ABI edits also
+             * invalidate the input SSA, so omit that derived subsection. */
+            Set_PU_Info_state(pu, WT_SSA, Subsect_Missing);
+            ++applied;
+        }
+        Current_PU_Info = NULL;
+        Free_Local_Info(pu);
+        MEM_POOL_Pop(MEM_pu_nz_pool_ptr);
+        MEM_POOL_Pop(MEM_pu_pool_ptr);
+    }
+    valid = valid && applied == 6 &&
+        VHO_FHE_Runtime_Interface_Plans_Verify_Complete(stderr) &&
+        aggregate.retired_formal_count == summary.retired_formal_count &&
+        aggregate.retired_call_argument_count ==
+            summary.retired_call_argument_count &&
+        aggregate.runtime_binding_count ==
+            summary.runtime_input_binding_count &&
+        aggregate.runtime_call_count == summary.runtime_input_call_count &&
+        aggregate.canonical_projection_count ==
+            summary.value_projection_count;
+    if (valid) {
+        for (PU_Info *pu = pu_tree; pu != NULL; pu = PU_Info_next(pu)) {
+            for (INT32 kind = 0; kind < WT_SUBSECTIONS; ++kind) {
+                Subsect_State state = PU_Info_state(pu, kind);
+                if (state != Subsect_Missing && state != Subsect_Written)
+                    fprintf(stderr,
+                            "unwritten PU subsection: owner=%u kind=%d "
+                            "state=%d\n", (UINT32)PU_Info_proc_sym(pu),
+                            kind, state);
+            }
+        }
+        Write_Global_Info(pu_tree);
+    }
+    Close_Output_Info();
+    if (valid)
+        valid = rename(temporary_path.c_str(), output_path) == 0;
+    if (!valid)
+        unlink(temporary_path.c_str());
+    fprintf(stderr,
+            "FHE interface apply: pu=%u retired_formals=%u "
+            "retired_actuals=%u bindings=%u calls=%u projections=%u "
+            "rewritten_calls=%u returns=%u valid=%d\n",
+            applied, aggregate.retired_formal_count,
+            aggregate.retired_call_argument_count,
+            aggregate.runtime_binding_count, aggregate.runtime_call_count,
+            aggregate.canonical_projection_count,
+            aggregate.rewritten_call_count,
+            aggregate.rewritten_return_count, valid);
+    VHO_FHE_Runtime_Interface_Plans_Reset();
+    Free_Input_Info();
+    return valid ? 0 : 1;
+}
+
 int
 main (void)
 {
+    const char *interface_input =
+        getenv("OPEN64_FHE_INTERFACE_APPLY_INPUT");
+    const char *interface_output =
+        getenv("OPEN64_FHE_INTERFACE_APPLY_OUTPUT");
+    if (interface_input != NULL && interface_input[0] != '\0' &&
+        interface_output != NULL && interface_output[0] != '\0') {
+        Initialize_Reader_Test_Context();
+        return Check_Mapped_Program_Interface
+                   (interface_input, interface_output);
+    }
     const char *schedule_input =
         getenv("OPEN64_FHE_RUNTIME_SCHEDULE_INPUT");
     if (schedule_input != NULL && schedule_input[0] != '\0') {
