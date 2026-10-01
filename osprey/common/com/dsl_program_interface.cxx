@@ -19,6 +19,7 @@
 #include "dsl_program_interface_internal.h"
 #include "dsl_runtime_interface_internal.h"
 #include "dsl_region.h"
+#include "dsl_region_internal.h"
 #include "pu_info.h"
 #include "strtab.h"
 #include "symtab.h"
@@ -48,7 +49,6 @@ DSL_Runtime_Interface_Image_Add_Call
                                 (const DSL_RUNTIME_CALL_PROJECTION_RECORD *);
 extern BOOL DSL_Call_Image_Replace_Call_WN
                                 (DSL_CALLSITE_METADATA_ID, const WN *, WN *);
-extern UINT32 DSL_Region_Symbol_Use_Count (PU_Info *, ST_IDX);
 
 /* Emit the stable program-interface diagnostic shape and return FALSE. */
 static BOOL
@@ -1034,6 +1034,7 @@ static BOOL
 DSL_Program_Interface_Preflight_PU
         (PU_Info *pu, const DSL_PROGRAM_INTERFACE_PLAN *program_plan,
          const DSL_RUNTIME_INTERFACE_PLAN *runtime_plan,
+         std::vector<ST_IDX> *region_prune_symbols,
          std::vector<DSL_RUNTIME_RETURN_SITE> *returns,
          FILE *diagnostic)
 {
@@ -1064,17 +1065,26 @@ DSL_Program_Interface_Preflight_PU
         const DSL_RETIRED_FORMAL_REQUEST *retired =
             DSL_Program_Interface_Find_Retired_Formal_Request
                 (program_plan, formal.id);
-        if (retired != NULL &&
-            (DSL_Program_Interface_Tree_Uses_ST
-                 (WN_func_body(entry), formal.formal_st) ||
-             DSL_Region_Symbol_Use_Count(pu, formal.formal_st) != 0))
-            return DSL_Program_Interface_Report
-                       (diagnostic, "retired formal remains executable", i);
+        if (retired != NULL) {
+            if (DSL_Program_Interface_Tree_Uses_ST
+                    (WN_func_body(entry), formal.formal_st))
+                return DSL_Program_Interface_Report
+                           (diagnostic,
+                            "retired formal remains executable", i);
+            if (DSL_Region_Symbol_Use_Count(pu, formal.formal_st) != 0)
+                region_prune_symbols->push_back(formal.formal_st);
+        }
         ++canonical_formals;
     }
     if (canonical_formals != WN_num_formals(entry))
         return DSL_Program_Interface_Report
                    (diagnostic, "incomplete canonical formal interface", 0);
+    if (!region_prune_symbols->empty() &&
+        !DSL_Region_Can_Prune_Input_Symbols
+             (pu, &(*region_prune_symbols)[0], region_prune_symbols->size()))
+        return DSL_Program_Interface_Report
+                   (diagnostic,
+                    "retired formal REGION interface is not prunable", 0);
 
     for (UINT32 i = 0; i < runtime_plan->value_count; ++i) {
         const DSL_RUNTIME_VALUE_PROJECTION_REQUEST &request =
@@ -1232,6 +1242,7 @@ DSL_Program_Interface_Apply_PU
          FILE *diagnostic, DSL_PROGRAM_INTERFACE_RESULT *result)
 {
     DSL_Program_Interface_Result_Init(result);
+    std::vector<ST_IDX> region_prune_symbols;
     std::vector<DSL_RUNTIME_RETURN_SITE> returns;
     if (result == NULL || program_plan == NULL || runtime_plan == NULL)
         return FALSE;
@@ -1245,7 +1256,8 @@ DSL_Program_Interface_Apply_PU
          !DSL_Program_Interface_Plan_Validate
               (program_plan, runtime_plan, diagnostic)) ||
         !DSL_Program_Interface_Preflight_PU
-             (pu, program_plan, runtime_plan, &returns, diagnostic)) {
+             (pu, program_plan, runtime_plan, &region_prune_symbols,
+              &returns, diagnostic)) {
         if (already_applied &&
             DSL_program_interface_prepared_plan != fingerprint)
             DSL_Program_Interface_Report
@@ -1450,6 +1462,12 @@ DSL_Program_Interface_Apply_PU
         WN_DELETE_FromBlock(returns[i].parent_block, returns[i].store);
         ++result->rewritten_return_count;
     }
+
+    if (!region_prune_symbols.empty())
+        FmtAssert(DSL_Region_Prune_Input_Symbols
+                      (pu, &region_prune_symbols[0],
+                       region_prune_symbols.size()),
+                  ("preflighted REGION input pruning failed"));
 
     for (UINT32 i = 0; i < created_values.size(); ++i) {
         DSL_RUNTIME_VALUE_PROJECTION_RECORD record;
@@ -1699,7 +1717,8 @@ DSL_Program_Interface_Validate_PU (PU_Info *pu, FILE *diagnostic)
         if (DSL_Program_Interface_Image_Find_Retired_Formal
                 (formal.id, &retired)) {
             if (DSL_Program_Interface_Tree_Uses_ST
-                    (WN_func_body(entry), formal.formal_st))
+                    (WN_func_body(entry), formal.formal_st) ||
+                DSL_Region_Symbol_Use_Count(pu, formal.formal_st) != 0)
                 return DSL_Program_Interface_Report
                            (diagnostic, "retired formal remains executable",
                             formal.id);

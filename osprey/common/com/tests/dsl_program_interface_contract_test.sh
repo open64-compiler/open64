@@ -94,6 +94,8 @@ for evidence in \
   'kind=threaded_formal role=fhe.promoted.weight' \
   'kind=threaded_formal role=fhe.promoted.bias' \
   'DSL Runtime Input Call Table:' \
+  'contract=fhe.retirement.prune.v1' \
+  'VALUE ordinal=1 st=<2,1> roles=0x1 flags=0x0' \
   'program_interface_callee' \
   'program_interface_caller' \
   'dsl_builder_contract_test.cxx'; do
@@ -102,6 +104,11 @@ for evidence in \
     exit 1
   fi
 done
+
+if grep -Fq 'VALUE ordinal=0' "$trace"; then
+  echo "retired REGION input remains in $trace" >&2
+  exit 1
+fi
 
 if [[ "$(grep -Ec '^FUNC_ENTRY ' "$trace")" -ne 2 ]] ||
    [[ "$(grep -Ec 'VCALL .*program_interface_callee' "$trace")" -ne 2 ]]; then

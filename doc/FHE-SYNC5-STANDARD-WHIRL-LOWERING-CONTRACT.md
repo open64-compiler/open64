@@ -58,9 +58,11 @@ promotion, and final interface verification belong to
 commit ordering, and post-verification belong exclusively to the lowering
 file. Private active-PU predicates and runtime-interface journals are shared
 only through `dsl_ir_transaction_internal.h` and
-`dsl_runtime_interface_internal.h`; neither header is a producer API. The
-runtime API uses `PU_Info *` as its single physical context. This source-level
-ownership split does not change binary WHIRL.
+`dsl_runtime_interface_internal.h`; verified-dead program inputs use the
+private batch REGION interface transaction in `dsl_region_internal.h`. None of
+these headers is a producer API. The runtime API uses `PU_Info *` as its single
+physical context. This source-level ownership split does not change binary
+WHIRL.
 
 ### Computed Standard Block
 
@@ -96,8 +98,8 @@ Preflight rejects:
 
 - inactive/wrong PU ownership or a definition outside the supplied PU tree;
 - unknown, mismatched, effectful, already retired, or already lowered nodes;
-- non-unique result ownership, address-taking, REGION interface use, state
-  effects, or another physical definition;
+- non-unique result ownership, address-taking, non-prunable REGION interface
+  use, state effects, or another physical definition;
 - unlowered physical/logical consumers outside the transaction;
 - missing, ambiguous, owner-mismatched, ST/TY-mismatched runtime relations;
 - duplicate values, nodes, definitions, replacement blocks, or result STIDs;
@@ -109,6 +111,17 @@ After preflight, commit consists only of operations whose inputs and targets
 were validated.  Failed preflight leaves the WN tree and every managed table
 unchanged.  Postconditions are assertions because a failure after commit would
 indicate an internal compiler defect, not a recoverable input error.
+
+Verified-dead formal retirement may remove matching REGION rows only through a
+complete batch transaction. Every removed row must be a plain
+`DSL_REGION_VALUE_INPUT` with no state flags; output, result, inout, abstract
+state, or ownership rows reject the entire batch. Preflight copies the complete
+interface set, removes the requested dead inputs, and runs the normal generic
+and profile-specific REGION verifier before any mutation. Commit swaps only
+the verified interface vector. REGION nodes, live interfaces, metadata, source
+positions, and retired-formal provenance remain intact. Final per-PU
+program-interface verification requires each retired symbol to be absent from
+both executable WN and the loaded REGION interface.
 
 ## Mapped Image And Compatibility
 

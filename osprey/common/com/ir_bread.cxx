@@ -1921,11 +1921,6 @@ Read_Local_Info (MEM_POOL *pool, PU_Info *pu)
         ErrMsg (EC_IR_Scn_Read, "DSL PU interface", local_ir_file);
     if (!DSL_Call_ABI_Image_Validate_PU(pu, stderr))
         ErrMsg (EC_IR_Scn_Read, "DSL call ABI", local_ir_file);
-    if (DSL_Program_Interface_Image_Has_Records() &&
-        DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(pu)) &&
-        !DSL_Program_Interface_Validate_PU(pu, stderr))
-        ErrMsg (EC_IR_Scn_Read, "DSL program interface", local_ir_file);
-
     if (PU_Info_state(pu, WT_REGIONS) == Subsect_Exists) {
         OFFSET_AND_SIZE pu_section = get_section
             (local_fhandle, SHT_MIPS_WHIRL, WT_PU_SECTION);
@@ -1943,6 +1938,10 @@ Read_Local_Info (MEM_POOL *pool, PU_Info *pu)
                  region_size) == -1)
             ErrMsg (EC_IR_Scn_Read, "regions", local_ir_file);
     }
+    if (DSL_Program_Interface_Image_Has_Records() &&
+        DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(pu)) &&
+        !DSL_Program_Interface_Validate_PU(pu, stderr))
+        ErrMsg (EC_IR_Scn_Read, "DSL program interface", local_ir_file);
 
 #if defined(BACK_END) || defined(IR_TOOLS)
     if (WN_get_feedback (local_fhandle, pu, pool) == ERROR_RETURN) {

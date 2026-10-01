@@ -34,6 +34,7 @@
 #include "dsl_builder.h"
 #include "dsl_contract.h"
 #include "dsl_program_interface_internal.h"
+#include "dsl_region_internal.h"
 #include "fhe_image.h"
 #include "fhe_plan.h"
 #include "dsl_gatekeeper.h"
@@ -5958,10 +5959,10 @@ Check_Program_Interface_Evolution(void)
         (retirement_region != NULL &&
          DSL_Region_Declare_Symbol
              (retirement_region, retired_formal[0].formal_st,
-              DSL_REGION_VALUE_INPUT, 0,
+              DSL_REGION_VALUE_OUTPUT, 0,
               DSL_REGION_INTERFACE_FLAG_NONE) &&
          DSL_Region_Append_To_PU(retirement_region),
-         "nested REGION-interface retirement fixture");
+         "non-input REGION retirement rejection fixture");
     WN *retirement_region_wn = DSL_Region_WN(retirement_region);
     UINT32 st_count_before_region_retirement =
         ST_Table_Size(CURRENT_SYMTAB);
@@ -5973,7 +5974,7 @@ Check_Program_Interface_Evolution(void)
              st_count_before_region_retirement &&
          DSL_Program_Interface_Image_Retired_Formal_Count() == 0 &&
          DSL_Runtime_Interface_Image_Value_Count() == 0,
-         "nested REGION-interface retirement rejects without mutation");
+         "non-input REGION retirement rejects without mutation");
     PROGRAM_INTERFACE_CHECK
         (DSL_Region_Consume_WN(callee, retirement_region_wn),
          "consume retirement REGION fixture");
@@ -6001,6 +6002,25 @@ Check_Program_Interface_Evolution(void)
          DSL_Runtime_Interface_Image_Value_Count() == 0,
          "address-taken formal retirement rejects without mutation");
     WN_DELETE_FromBlock(callee_body, retired_address_eval);
+
+    PROGRAM_INTERFACE_CHECK(DSL_Builder_Select_PU(callee),
+                            "select callee for REGION input pruning");
+    DSL_REGION pruned_region = DSL_Region_Create
+        (callee, NULL, "fhe.retirement.prune", 1);
+    PROGRAM_INTERFACE_CHECK
+        (pruned_region != NULL &&
+         DSL_Region_Declare_Symbol
+             (pruned_region, retired_formal[0].formal_st,
+              DSL_REGION_VALUE_INPUT, 0,
+              DSL_REGION_INTERFACE_FLAG_NONE) &&
+         DSL_Region_Declare_Symbol
+             (pruned_region, live_formal.formal_st,
+              DSL_REGION_VALUE_INPUT, 1,
+              DSL_REGION_INTERFACE_FLAG_NONE) &&
+         DSL_Region_Append_To_PU(pruned_region) &&
+         DSL_Region_Verify_PU(callee, stderr),
+         "mixed live/dead REGION input fixture");
+    WN *pruned_region_wn = DSL_Region_WN(pruned_region);
 
     PROGRAM_INTERFACE_CHECK
         (DSL_Program_Interface_Plan_Validate
@@ -6047,6 +6067,11 @@ Check_Program_Interface_Evolution(void)
          DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(caller)) &&
          DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(callee)) &&
          result.retired_formal_count == 2 &&
+         DSL_Region_Is_Managed_WN(callee, pruned_region_wn) &&
+         DSL_Region_Symbol_Use_Count
+             (callee, retired_formal[0].formal_st) == 0 &&
+         DSL_Region_Symbol_Use_Count(callee, live_formal.formal_st) == 1 &&
+         DSL_Region_Verify_PU(callee, stderr) &&
          result.runtime_binding_count == 6 &&
          DSL_Program_Interface_Apply_PU
              (callee, &program_plan, &runtime_plan, NULL, &result) == FALSE &&
