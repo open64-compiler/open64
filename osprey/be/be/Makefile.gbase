@@ -386,8 +386,8 @@ COMMON_COM_CXX_SRCS = \
   comp_decl.cxx
 
 COMMON_FHE_CXX_SRCS = \
-  dsl_fhe.cxx          \
-  dsl_fhe_plan.cxx
+  fhe_image.cxx        \
+  fhe_plan.cxx
 
 COMMON_COM_PCH_CXX_SRCS = \
   const.cxx		\

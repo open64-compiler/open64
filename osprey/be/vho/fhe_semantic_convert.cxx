@@ -22,8 +22,8 @@
 
 #include "fhe_semantic_convert.h"
 #include "fhe_convert.h"
-#include "dsl_fhe.h"
-#include "dsl_fhe_plan.h"
+#include "fhe_image.h"
+#include "fhe_plan.h"
 #include "dsl_ir_image.h"
 #include "dsl_opcode.h"
 #include "dsl_tensor_fold.h"

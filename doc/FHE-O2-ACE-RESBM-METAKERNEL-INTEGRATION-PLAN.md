@@ -359,8 +359,8 @@ HEAD. F0/P2 revalidate relevant source deltas before consuming a claimed gate.
 
 | Area | Previously observed state | Planning consequence |
 | --- | --- | --- |
-| FHE source image | `osprey/common/fhe/dsl_fhe.h/.cxx` persists compilation configuration, entry contracts, encrypted tensor bindings, packing policy, and logical key requirements | extend accepted owners; do not duplicate them |
-| SYNC-3 plan image | `osprey/common/fhe/dsl_fhe_plan.h/.cxx` version 1 has conversion disposition, approximation, a small CKKS state record, and BN-fold provenance | insufficient for O2; do not overload it without a versioned compatibility review |
+| FHE source image | `osprey/common/fhe/fhe_image.h/.cxx` persists compilation configuration, entry contracts, encrypted tensor bindings, packing policy, and logical key requirements | extend accepted owners; do not duplicate them |
+| SYNC-3 plan image | `osprey/common/fhe/fhe_plan.h/.cxx` version 1 has conversion disposition, approximation, a small CKKS state record, and BN-fold provenance | insufficient for O2; do not overload it without a versioned compatibility review |
 | Driver | `osprey/be/be/driver.cxx` processes PUs sequentially and has an all-PU atomic checkpoint | use a file-wide planning transaction and independent reopen |
 | Conversion | `osprey/be/vho/fhe_convert.cxx` fails closed if the production gatekeeper/pass is absent | integrated O0/O2 execution is not currently accepted |
 | Generic DSL optimizer | `osprey/be/vho/dsl_opt.cxx` has ordered stages, with only canonicalization/algebraic defaults implemented | add FHE work through reviewed stage contracts |

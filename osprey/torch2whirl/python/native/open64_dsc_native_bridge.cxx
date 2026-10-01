@@ -19,7 +19,7 @@
 #include "config.h"
 #include "config_targ_opt.h"
 #include "stab.h"
-#include "dsl_fhe.h"
+#include "fhe_image.h"
 #include "dsl_builder.h"
 #include "open64_dsc_native_bridge.h"
 

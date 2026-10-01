@@ -8,8 +8,8 @@
 #include <stdio.h>
 
 #include "defs.h"
-#include "dsl_fhe.h"
-#include "dsl_fhe_plan.h"
+#include "fhe_image.h"
+#include "fhe_plan.h"
 
 #define VHO_FHE_ACE_RELU_PROFILE_NAME \
     "ace.chebyshev.sign.7x15x13.depth11"

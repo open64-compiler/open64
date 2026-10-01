@@ -6,13 +6,13 @@
  * doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md.
  */
 
-#ifndef dsl_fhe_plan_INCLUDED
-#define dsl_fhe_plan_INCLUDED
+#ifndef fhe_plan_INCLUDED
+#define fhe_plan_INCLUDED
 
 #include <stdio.h>
 
 #include "defs.h"
-#include "dsl_fhe.h"
+#include "fhe_image.h"
 #include "dsl_ir_image.h"
 #include "symtab_idx.h"
 
@@ -791,4 +791,4 @@ extern BOOL DSL_FHE_Materialization_Find
                                  DSL_FHE_MATERIALIZATION_OPERATION_RECORD
                                      *record);
 
-#endif /* dsl_fhe_plan_INCLUDED */
+#endif /* fhe_plan_INCLUDED */

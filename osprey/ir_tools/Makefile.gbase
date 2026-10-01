@@ -282,10 +282,10 @@ COMMON_COM_CXX_SRC =	\
 	intrn_info.cxx
 
 COMMON_FHE_CXX_SRC = \
-        dsl_fhe.cxx \
-        dsl_fhe_plan.cxx \
-        dsl_fhe_plan_print.cxx \
-        dsl_fhe_print.cxx
+        fhe_image.cxx \
+        fhe_image_print.cxx \
+        fhe_plan.cxx \
+        fhe_plan_print.cxx
 
 BE_COM_SRCS =           \
 	wssa_defs.cxx   \

@@ -8,7 +8,7 @@
 
 #include <string.h>
 
-#include "dsl_fhe.h"
+#include "fhe_image.h"
 #include "pu_info.h"
 #include "segmented_array.h"
 #include "strtab.h"

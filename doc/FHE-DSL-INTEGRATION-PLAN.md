@@ -302,8 +302,9 @@ even when an ACE operation permits destination/input aliasing.
 
 ## Native Builder API
 
-Add declarations in a focused `dsl_fhe.h` and implementation in
-`dsl_fhe.cxx`, with only opaque handles exposed to torch2whirl. Proposed C++
+Add declarations in the focused `osprey/common/fhe/fhe_image.h` and
+implementation in `osprey/common/fhe/fhe_image.cxx`, with only opaque handles
+exposed to torch2whirl. Proposed C++
 entry points are:
 
 ```c++

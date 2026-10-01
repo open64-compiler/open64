@@ -6,7 +6,7 @@
  * doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md.
  */
 
-#include "dsl_fhe.h"
+#include "fhe_image.h"
 #include "strtab.h"
 #include "symtab.h"
 

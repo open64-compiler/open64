@@ -96,10 +96,11 @@ Code review must apply the following decision order:
    where shared infrastructure must invoke it.
 
 The persisted FHE source and planning images therefore live in
-`osprey/common/fhe`. That module owns `dsl_fhe.{h,cxx}`,
-`dsl_fhe_plan.{h,cxx}`, and their stable logical printers. Header basenames,
-fixed rows, section identifiers, mapped-image services, and public symbols are
-unchanged by the directory move. Generic DSL image, rewrite, retype, lowering,
+`osprey/common/fhe`. That module owns `fhe_image.{h,cxx}`,
+`fhe_plan.{h,cxx}`, `fhe_image_print.cxx`, and `fhe_plan_print.cxx`. The
+FHE-specific basenames make the ownership boundary visible; fixed rows,
+section identifiers, mapped-image services, and public `DSL_FHE_*` symbols
+remain unchanged. Generic DSL image, rewrite, retype, lowering,
 runtime-interface, and program-interface services remain in
 `osprey/common/com` under the Common/AI reuse criterion.
 
