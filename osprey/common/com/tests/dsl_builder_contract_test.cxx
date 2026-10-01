@@ -33,6 +33,7 @@
 #include "srcpos.h"
 #include "dsl_builder.h"
 #include "dsl_contract.h"
+#include "dsl_program_interface_internal.h"
 #include "fhe_image.h"
 #include "fhe_plan.h"
 #include "dsl_gatekeeper.h"
@@ -6004,13 +6005,17 @@ Check_Program_Interface_Evolution(void)
     PROGRAM_INTERFACE_CHECK
         (DSL_Program_Interface_Plan_Validate
              (&program_plan, &runtime_plan, stderr) &&
+         !DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(caller)) &&
+         !DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(callee)) &&
          DSL_Builder_Select_PU(caller) &&
          DSL_Program_Interface_Apply_PU
              (caller, &program_plan, &runtime_plan, stderr, &result) &&
+         DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(caller)) &&
+         !DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(callee)) &&
          result.retired_call_argument_count == 4 &&
          result.runtime_binding_count == 6 &&
          result.runtime_call_count == 12,
-         "caller program-interface transaction");
+         "caller-only staged program-interface transaction");
 
     DSL_RUNTIME_INPUT_BINDING_REQUEST mismatched_bindings[12];
     memcpy(mismatched_bindings, bindings, sizeof(bindings));
@@ -6030,6 +6035,7 @@ Check_Program_Interface_Evolution(void)
          ST_Table_Size(CURRENT_SYMTAB) == st_count_before_mismatch &&
          TY_Table_Size() == ty_count_before_mismatch &&
          DSL_IR_Image_Value_Count() == value_count_before_mismatch &&
+         !DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(callee)) &&
          DSL_Program_Interface_Image_Retired_Formal_Count() == 0 &&
          DSL_Program_Interface_Image_Retired_Call_Count() == 4 &&
          DSL_Program_Interface_Image_Runtime_Binding_Count() == 6,
@@ -6038,6 +6044,8 @@ Check_Program_Interface_Evolution(void)
     PROGRAM_INTERFACE_CHECK
         (DSL_Program_Interface_Apply_PU
          (callee, &program_plan, &runtime_plan, stderr, &result) &&
+         DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(caller)) &&
+         DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(callee)) &&
          result.retired_formal_count == 2 &&
          result.runtime_binding_count == 6 &&
          DSL_Program_Interface_Apply_PU
@@ -6171,8 +6179,10 @@ Check_Program_Interface_Evolution(void)
     PROGRAM_INTERFACE_CHECK
         (DSL_Program_Interface_Image_Load_Mapped
              (mapped_image, image_size, stderr) &&
+         DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(caller)) &&
+         DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(callee)) &&
          DSL_Program_Interface_Image_Runtime_Binding_Count() == 12,
-         "valid mapped program interface reloads");
+         "valid mapped program interface reloads as fully committed");
 
     DSL_RUNTIME_INTERFACE_IMAGE_HEADER runtime_header;
     DSL_Runtime_Interface_Image_Get_Header(&runtime_header);

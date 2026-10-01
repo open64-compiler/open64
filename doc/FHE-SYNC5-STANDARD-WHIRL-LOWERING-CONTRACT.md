@@ -119,6 +119,18 @@ The binary representation remains DSL image version 1.  New readers validate:
 - no live logical reference to a lowered value;
 - exactly one structurally valid runtime relation per lowered value.
 
+Program-interface evolution is applied in PU scope because the backend reads,
+mutates, and writes one PU at a time. Process-local commit evidence therefore
+controls reader-side physical validation during the transaction: a PU becomes
+eligible only after its own `DSL_Program_Interface_Apply_PU()` succeeds. Rows
+already published for an earlier PU do not cause an untouched later PU to be
+validated against its future interface. The eligibility set is reset with the
+managed image and is never written to binary WHIRL. Loading a published mapped
+program-interface image marks the complete image committed, restoring strict
+per-PU validation for every PU during reopen. This ordering is implemented by
+the private `dsl_program_interface_internal.h` service and does not weaken the
+mapped-image compatibility gate.
+
 The normal reader loads the DSL image and the existing runtime/program
 interface pair, then validates the cross-section relation.  A current reader
 reopens and prints the artifact.  An immediately previous reader may reopen the
@@ -170,3 +182,9 @@ reopens it with `ir_b2a -st -src`.  The retained `.T` must show four lowered
 relations, two standard result-handle `STID`s, both promoted formals, the
 rank-4/rank-1 tensor descriptors, and no executable native definitions for the
 four lowered sources.
+
+The separate two-PU program-interface fixture applies the caller first and
+proves only that PU is commit-eligible, applies the callee second, then writes
+and reopens the completed artifact. The current reader must validate both PUs
+on mapped reopen; malformed or incomplete published interfaces still fail
+closed.

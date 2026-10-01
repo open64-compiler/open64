@@ -16,6 +16,7 @@
 
 #include "dsl_ir_image.h"
 #include "dsl_ir_transaction_internal.h"
+#include "dsl_program_interface_internal.h"
 #include "dsl_runtime_interface_internal.h"
 #include "dsl_region.h"
 #include "pu_info.h"
@@ -250,12 +251,35 @@ DSL_Program_Interface_Runtime_Value_Valid
 }
 
 static std::string DSL_program_interface_prepared_plan;
+static std::vector<ST_IDX> DSL_program_interface_committed_pus;
+static BOOL DSL_program_interface_mapped_committed = FALSE;
 
-/* Clear the process-local validated-plan fingerprint before a new program. */
+/* Clear process-local plan and PU commit evidence before a new program. */
 void
-DSL_Program_Interface_Reset_Prepared_Plan (void)
+DSL_Program_Interface_Reset_Commit_State (void)
 {
     DSL_program_interface_prepared_plan.clear();
+    DSL_program_interface_committed_pus.clear();
+    DSL_program_interface_mapped_committed = FALSE;
+}
+
+/* A complete mapped image is eligible for strict per-PU reader validation. */
+void
+DSL_Program_Interface_Mark_Mapped_Committed (void)
+{
+    DSL_program_interface_mapped_committed = TRUE;
+}
+
+/* Query process-local eligibility without interpreting local PU state. */
+BOOL
+DSL_Program_Interface_PU_Is_Committed (ST_IDX owner_pu_st)
+{
+    if (DSL_program_interface_mapped_committed)
+        return TRUE;
+    return std::find(DSL_program_interface_committed_pus.begin(),
+                     DSL_program_interface_committed_pus.end(),
+                     owner_pu_st) !=
+           DSL_program_interface_committed_pus.end();
 }
 
 /* Append one length-delimited text field to the canonical plan fingerprint. */
@@ -1586,6 +1610,7 @@ DSL_Program_Interface_Apply_PU
         ++result->runtime_call_count;
     }
     result->runtime_input_count = program_plan->runtime_input_count;
+    DSL_program_interface_committed_pus.push_back(owner_pu_st);
     return TRUE;
 }
 

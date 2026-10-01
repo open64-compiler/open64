@@ -99,6 +99,7 @@
 #include "ir_bcom.h"
 #include "ir_bread.h"
 #include "dsl_ir_image.h"
+#include "dsl_program_interface_internal.h"
 #include "fhe_image.h"
 #include "fhe_plan.h"
 #include "dsl_region.h"
@@ -1921,6 +1922,7 @@ Read_Local_Info (MEM_POOL *pool, PU_Info *pu)
     if (!DSL_Call_ABI_Image_Validate_PU(pu, stderr))
         ErrMsg (EC_IR_Scn_Read, "DSL call ABI", local_ir_file);
     if (DSL_Program_Interface_Image_Has_Records() &&
+        DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(pu)) &&
         !DSL_Program_Interface_Validate_PU(pu, stderr))
         ErrMsg (EC_IR_Scn_Read, "DSL program interface", local_ir_file);
 
