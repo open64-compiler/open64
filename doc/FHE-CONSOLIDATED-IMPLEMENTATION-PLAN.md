@@ -666,6 +666,12 @@ callback must still derive static ordinals from the certified schedule, submit
 complete per-PU atomic lowering arrays, and prove the 87/147 evaluation and
 selector censuses before publishing `.mid.B`.
 
+The canonical commit-by-commit SYNC-5 execution order, exact request counts,
+negative tests, retained artifacts, and exit criteria are maintained in
+`doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md` under **Reviewable Commit Sequence
+And Acceptance Gates**. Its S5-A through S5-H gates control detailed status;
+this consolidated plan remains the cross-milestone summary.
+
 Merge rule: assign every shared driver/whirl2c file to one PR owner before
 editing. The mock-runtime PR must not depend on an ACE runtime installation.
 
