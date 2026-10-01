@@ -22,6 +22,8 @@ pu_trace="$artifact_dir/fhe_runtime_binding_contract.T"
 command_log="$artifact_dir/commands.txt"
 validation_log="$artifact_dir/validation.log"
 hash_log="$artifact_dir/SHA256SUMS"
+schedule_input="${OPEN64_FHE_RUNTIME_SCHEDULE_INPUT:-}"
+schedule_log="$artifact_dir/schedule-census.log"
 
 for executable in "$contract_test" "$ir_b2a"; do
   if [[ ! -x "$executable" ]]; then
@@ -34,18 +36,33 @@ mkdir -p "$artifact_dir"
 find "$artifact_dir" -mindepth 1 -maxdepth 1 -type f -delete
 
 printf '%q %q\n' \
-  "OPEN64_FHE_RUNTIME_LOWER_ARTIFACT=$binary" "$contract_test" \
+  "env -u OPEN64_FHE_RUNTIME_SCHEDULE_INPUT OPEN64_FHE_RUNTIME_LOWER_ARTIFACT=$binary" \
+  "$contract_test" \
   >"$command_log"
 printf '%q -st -src %q %q\n' "$ir_b2a" "$binary" "$trace" \
   >>"$command_log"
 
-if ! OPEN64_FHE_RUNTIME_LOWER_ARTIFACT="$binary" \
+if ! env -u OPEN64_FHE_RUNTIME_SCHEDULE_INPUT \
+    OPEN64_FHE_RUNTIME_LOWER_ARTIFACT="$binary" \
     "$contract_test" >"$validation_log" 2>&1; then
   cat "$validation_log" >&2
   exit 1
 fi
 
 "$ir_b2a" -st -src "$binary" "$trace" >>"$validation_log" 2>&1
+
+if [[ -n "$schedule_input" ]]; then
+  printf '%q=%q %q\n' OPEN64_FHE_RUNTIME_SCHEDULE_INPUT \
+    "$schedule_input" "$contract_test" >>"$command_log"
+  OPEN64_FHE_RUNTIME_SCHEDULE_INPUT="$schedule_input" \
+    "$contract_test" >"$schedule_log" 2>&1
+  if ! grep -Fq \
+      'FHE runtime schedule census: pu=6 records=32 static=87 dynamic=147' \
+      "$schedule_log"; then
+    cat "$schedule_log" >&2
+    exit 1
+  fi
+fi
 
 awk '
   /FUNC_ENTRY .*fhe_runtime_binding_contract/ { in_pu = 1 }
@@ -101,3 +118,6 @@ echo "review PU trace: $pu_trace"
 echo "review commands: $command_log"
 echo "review diagnostics: $validation_log"
 echo "review hashes: $hash_log"
+if [[ -n "$schedule_input" ]]; then
+  echo "review full-model census: $schedule_log"
+fi

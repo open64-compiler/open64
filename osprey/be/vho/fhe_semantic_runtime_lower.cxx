@@ -21,17 +21,259 @@
 
 #include <string.h>
 
+#include <algorithm>
+#include <map>
+#include <vector>
+
+#include "dsl_opcode.h"
 #include "fhe_semantic_runtime_lower.h"
 #include "ir_reader.h"
 #include "pu_info.h"
 #include "symtab.h"
 #include "wn.h"
 
+typedef std::vector<VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD>
+    VHO_FHE_RUNTIME_STATIC_SCHEDULE_TABLE;
+
+static VHO_FHE_RUNTIME_STATIC_SCHEDULE_TABLE VHO_FHE_runtime_schedule;
+static UINT32 VHO_FHE_runtime_static_evaluations;
+static UINT32 VHO_FHE_runtime_dynamic_evaluations;
+
 static BOOL
 VHO_FHE_Runtime_Semantic_Report (FILE *diagnostic, const char *message)
 {
     if (diagnostic != NULL)
         fprintf(diagnostic, "CFHELOWER-SEM-001: %s\n", message);
+    return FALSE;
+}
+
+void
+VHO_FHE_Runtime_Static_Schedule_Reset (void)
+{
+    VHO_FHE_runtime_schedule.clear();
+    VHO_FHE_runtime_static_evaluations = 0;
+    VHO_FHE_runtime_dynamic_evaluations = 0;
+}
+
+static BOOL
+VHO_FHE_Runtime_Value_Owner
+        (const DSL_IR_VALUE_RECORD &value, ST_IDX *owner_pu_st,
+         UINT32 *owner_order)
+{
+    if (value.name == STR_IDX_ZERO)
+        return FALSE;
+    for (UINT32 id = 1; id <= DSL_Call_Image_PU_Identity_Count(); ++id) {
+        DSL_PU_SOURCE_IDENTITY_RECORD identity;
+        DSL_IR_VALUE_RECORD owned;
+        if (!DSL_Call_Image_Get_PU_Identity(id, &identity) ||
+            !DSL_IR_Image_Find_PU_Value
+                 (value.st, Index_To_Str(value.name),
+                  ST_name(St_Table[identity.owner_pu_st]), &owned) ||
+            owned.id != value.id)
+            continue;
+        if (owner_pu_st != NULL)
+            *owner_pu_st = identity.owner_pu_st;
+        if (owner_order != NULL)
+            *owner_order = id;
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL
+VHO_FHE_Runtime_Operator_Evaluation_Count
+        (UINT32 logical_operator, UINT32 *evaluation_count)
+{
+    if (evaluation_count == NULL)
+        return FALSE;
+    switch ((DSL_OPERATOR)logical_operator) {
+    case OPR_DSLCONV2D:
+    case OPR_DSLRESIDUALADD:
+    case OPR_DSLGLOBALAVGPOOL2D:
+    case OPR_DSLFLATTEN:
+    case OPR_DSLLINEAR:
+        *evaluation_count = 1;
+        return TRUE;
+    case OPR_DSLRELU:
+        *evaluation_count = 6;
+        return TRUE;
+    case OPR_DSLTENSORCONST:
+    case OPR_DSLOUTPUTLOGITS:
+        *evaluation_count = 0;
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
+typedef struct {
+    UINT32 owner_order;
+    VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD record;
+} VHO_FHE_RUNTIME_UNORDERED_SCHEDULE_RECORD;
+
+static bool
+VHO_FHE_Runtime_Schedule_Less
+        (const VHO_FHE_RUNTIME_UNORDERED_SCHEDULE_RECORD &left,
+         const VHO_FHE_RUNTIME_UNORDERED_SCHEDULE_RECORD &right)
+{
+    return left.owner_order < right.owner_order ||
+           (left.owner_order == right.owner_order &&
+            left.record.source_node_id < right.record.source_node_id);
+}
+
+BOOL
+VHO_FHE_Runtime_Static_Schedule_Prepare (FILE *diagnostic)
+{
+    VHO_FHE_Runtime_Static_Schedule_Reset();
+    typedef std::map<ST_IDX, UINT32> VHO_FHE_RUNTIME_OWNER_COUNT_MAP;
+    VHO_FHE_RUNTIME_OWNER_COUNT_MAP indegree;
+    VHO_FHE_RUNTIME_OWNER_COUNT_MAP multiplicity;
+    VHO_FHE_RUNTIME_OWNER_COUNT_MAP owner_order;
+    std::vector<ST_IDX> queue;
+    for (UINT32 id = 1; id <= DSL_Call_Image_PU_Identity_Count(); ++id) {
+        DSL_PU_SOURCE_IDENTITY_RECORD identity;
+        if (!DSL_Call_Image_Get_PU_Identity(id, &identity))
+            return VHO_FHE_Runtime_Semantic_Report
+                       (diagnostic, "PU source identity table is malformed");
+        indegree[identity.owner_pu_st] = 0;
+        multiplicity[identity.owner_pu_st] = 0;
+        owner_order[identity.owner_pu_st] = id;
+    }
+    for (UINT32 id = 1; id <= DSL_Call_Image_Callsite_Count(); ++id) {
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        if (!DSL_Call_Image_Get_Callsite(id, &callsite) ||
+            indegree.find(callsite.owner_pu_st) == indegree.end() ||
+            indegree.find(callsite.callee_pu_st) == indegree.end())
+            return VHO_FHE_Runtime_Semantic_Report
+                       (diagnostic, "callsite owner is not a known PU");
+        ++indegree[callsite.callee_pu_st];
+    }
+    for (VHO_FHE_RUNTIME_OWNER_COUNT_MAP::const_iterator it = indegree.begin();
+         it != indegree.end(); ++it) {
+        if (it->second == 0) {
+            queue.push_back(it->first);
+            multiplicity[it->first] = 1;
+        }
+    }
+    UINT32 processed = 0;
+    for (UINT32 cursor = 0; cursor < queue.size(); ++cursor) {
+        ST_IDX owner = queue[cursor];
+        ++processed;
+        for (UINT32 id = 1; id <= DSL_Call_Image_Callsite_Count(); ++id) {
+            DSL_CALLSITE_METADATA_RECORD callsite;
+            if (!DSL_Call_Image_Get_Callsite(id, &callsite))
+                return VHO_FHE_Runtime_Semantic_Report
+                           (diagnostic, "callsite table is malformed");
+            if (callsite.owner_pu_st != owner)
+                continue;
+            multiplicity[callsite.callee_pu_st] += multiplicity[owner];
+            if (--indegree[callsite.callee_pu_st] == 0)
+                queue.push_back(callsite.callee_pu_st);
+        }
+    }
+    if (processed != owner_order.size())
+        return VHO_FHE_Runtime_Semantic_Report
+                   (diagnostic, "runtime schedule call graph is cyclic");
+
+    std::vector<VHO_FHE_RUNTIME_UNORDERED_SCHEDULE_RECORD> unordered;
+    for (UINT32 id = 1; id <= DSL_IR_Image_Node_Count(); ++id) {
+        DSL_IR_NODE_RECORD node;
+        DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
+        DSL_IR_VALUE_RECORD value;
+        if (!DSL_IR_Image_Get_Node(id, &node) ||
+            !DSL_IR_Image_Get_Opcode_Descriptor
+                 (node.opcode_descriptor_id, &opcode) ||
+            !DSL_IR_Image_Get_Value(node.result_value_id, &value))
+            return VHO_FHE_Runtime_Semantic_Report
+                       (diagnostic, "DSL schedule source table is malformed");
+        if ((node.flags & (DSL_IR_NODE_FLAG_RETIRED |
+                           DSL_IR_NODE_FLAG_LOWERED)) != 0)
+            continue;
+        UINT32 count = 0;
+        if (!VHO_FHE_Runtime_Operator_Evaluation_Count
+                 (opcode.logical_operator, &count)) {
+            if (opcode.category == DSL_OPCODE_CATEGORY_EXECUTABLE)
+                return VHO_FHE_Runtime_Semantic_Report
+                           (diagnostic,
+                            "live DSL operator has no runtime schedule rule");
+            continue;
+        }
+        if (count == 0)
+            continue;
+        ST_IDX owner = ST_IDX_ZERO;
+        UINT32 order = 0;
+        if (!VHO_FHE_Runtime_Value_Owner(value, &owner, &order))
+            return VHO_FHE_Runtime_Semantic_Report
+                       (diagnostic, "DSL schedule value owner is ambiguous");
+        VHO_FHE_RUNTIME_UNORDERED_SCHEDULE_RECORD entry;
+        memset(&entry, 0, sizeof(entry));
+        entry.owner_order = order;
+        entry.record.source_node_id = node.id;
+        entry.record.result_value_id = node.result_value_id;
+        entry.record.owner_pu_st = owner;
+        entry.record.logical_operator = opcode.logical_operator;
+        entry.record.static_evaluation_count = count;
+        entry.record.execution_multiplicity = multiplicity[owner];
+        if (multiplicity[owner] > ~(UINT32)0 / count)
+            return VHO_FHE_Runtime_Semantic_Report
+                       (diagnostic, "dynamic schedule count overflowed");
+        entry.record.dynamic_evaluation_count = count * multiplicity[owner];
+        unordered.push_back(entry);
+    }
+    std::sort(unordered.begin(), unordered.end(),
+              VHO_FHE_Runtime_Schedule_Less);
+    UINT32 ordinal = 1;
+    for (UINT32 i = 0; i < unordered.size(); ++i) {
+        unordered[i].record.first_static_ordinal = ordinal;
+        ordinal += unordered[i].record.static_evaluation_count;
+        VHO_FHE_runtime_dynamic_evaluations +=
+            unordered[i].record.dynamic_evaluation_count;
+        VHO_FHE_runtime_schedule.push_back(unordered[i].record);
+    }
+    VHO_FHE_runtime_static_evaluations = ordinal - 1;
+    return TRUE;
+}
+
+UINT32
+VHO_FHE_Runtime_Static_Schedule_Record_Count (void)
+{
+    return VHO_FHE_runtime_schedule.size();
+}
+
+UINT32
+VHO_FHE_Runtime_Static_Evaluation_Count (void)
+{
+    return VHO_FHE_runtime_static_evaluations;
+}
+
+UINT32
+VHO_FHE_Runtime_Dynamic_Evaluation_Count (void)
+{
+    return VHO_FHE_runtime_dynamic_evaluations;
+}
+
+BOOL
+VHO_FHE_Runtime_Static_Schedule_Get
+        (UINT32 index, VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD *record)
+{
+    if (record == NULL || index >= VHO_FHE_runtime_schedule.size())
+        return FALSE;
+    *record = VHO_FHE_runtime_schedule[index];
+    return TRUE;
+}
+
+BOOL
+VHO_FHE_Runtime_Static_Schedule_Find
+        (DSL_IR_NODE_ID source_node_id,
+         VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD *record)
+{
+    for (UINT32 i = 0; i < VHO_FHE_runtime_schedule.size(); ++i) {
+        if (VHO_FHE_runtime_schedule[i].source_node_id != source_node_id)
+            continue;
+        if (record != NULL)
+            *record = VHO_FHE_runtime_schedule[i];
+        return TRUE;
+    }
     return FALSE;
 }
 

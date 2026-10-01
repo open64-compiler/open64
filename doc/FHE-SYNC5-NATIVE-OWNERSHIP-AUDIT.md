@@ -502,3 +502,16 @@ input ciphertext handle to the exact projected output handle. It does not
 invent an ABI entry point, descriptor selector, output allocation, or status
 check. The same atomic native-value transaction removes its executable DSL
 definition while retaining lowered logical provenance.
+
+The schedule preflight orders physical evaluation definitions by stable PU
+source-definition identity and DSL node identity, then propagates execution
+multiplicity through the canonical callsite graph. A ReLU definition occupies
+six consecutive static ordinals; Conv2D, residual add, average pool, layout
+conversion, and linear occupy one; tensor sources and output logits occupy
+none. Cyclic calls, unknown live executable operators, ambiguous ownership,
+and count overflow fail before mutation. Applied to the retained six-PU
+SecureResNet SYNC-4 binary, the independent mapped-image test finds 32
+physical evaluation definitions and proves exactly 87 static evaluations and
+147 execution-expanded events. The optional
+`OPEN64_FHE_RUNTIME_SCHEDULE_INPUT` lane in the focused script retains this
+result as `schedule-census.log`.

@@ -22,6 +22,7 @@
 #include "fhe_standard_whirl.h"
 #include "fhe_unlowered_gate.h"
 #include "glob.h"
+#include "ir_bread.h"
 #include "ir_bwrite.h"
 #include "ir_reader.h"
 #include "mempool.h"
@@ -97,6 +98,22 @@ Initialize_Test_Context (void)
     IR_reader_init();
     Initialize_Symbol_Tables(TRUE);
     DST_Init(NULL, 0);
+}
+
+static void
+Initialize_Reader_Test_Context (void)
+{
+    MEM_Initialize();
+    Set_Error_Tables(Phases, host_errlist);
+    Init_Error_Handler(10);
+    Set_Error_File(NULL);
+    Set_Error_Line(ERROR_LINE_UNKNOWN);
+    Preconfigure();
+    Init_Controls_Tbl();
+    ABI_Name = "n64";
+    Configure();
+    Initialize_Symbol_Tables(FALSE);
+    New_Scope(GLOBAL_SYMTAB, Malloc_Mem_Pool, FALSE);
 }
 
 static SRCPOS
@@ -729,6 +746,29 @@ Build_And_Lower_Resolved_Relu_Sequence
         return FALSE;
     }
 
+    DSL_IR_VALUE_RECORD relu_value_record;
+    VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD schedule_record;
+    VHO_FHE_Runtime_Static_Schedule_Reset();
+    if (!DSL_IR_Image_Get_Value
+             (value_requests[3].source_value_id, &relu_value_record) ||
+        !VHO_FHE_Runtime_Static_Schedule_Prepare(stderr) ||
+        VHO_FHE_Runtime_Static_Schedule_Record_Count() != 1 ||
+        VHO_FHE_Runtime_Static_Evaluation_Count() != 6 ||
+        VHO_FHE_Runtime_Dynamic_Evaluation_Count() != 6 ||
+        !VHO_FHE_Runtime_Static_Schedule_Find
+             (relu_value_record.producer_node_id, &schedule_record) ||
+        schedule_record.owner_pu_st != PU_Info_proc_sym(pu) ||
+        schedule_record.result_value_id != value_requests[3].source_value_id ||
+        schedule_record.logical_operator != OPR_DSLRELU ||
+        schedule_record.first_static_ordinal != 1 ||
+        schedule_record.static_evaluation_count != 6 ||
+        schedule_record.execution_multiplicity != 1 ||
+        schedule_record.dynamic_evaluation_count != 6) {
+        fprintf(stderr, "runtime static schedule census changed\n");
+        return FALSE;
+    }
+    VHO_FHE_Runtime_Static_Schedule_Reset();
+
     VHO_FHE_RUNTIME_HANDLE_BINDING model;
     VHO_FHE_RUNTIME_HANDLE_BINDING projected_anchor;
     VHO_FHE_RUNTIME_HANDLE_BINDING projected_relu;
@@ -1011,9 +1051,40 @@ Write_Review_Artifact
     return TRUE;
 }
 
+static int
+Check_Mapped_Static_Schedule (const char *path)
+{
+    void *input = Open_Input_Info((char *)path);
+    INT32 pu_count = 0;
+    if (input == NULL || input == (void *)-1 || Read_Global_Info(&pu_count) ==
+        NULL) {
+        fprintf(stderr, "could not reopen runtime schedule input %s\n", path);
+        return 1;
+    }
+    BOOL valid = pu_count == 6 &&
+        VHO_FHE_Runtime_Static_Schedule_Prepare(stderr) &&
+        VHO_FHE_Runtime_Static_Evaluation_Count() == 87 &&
+        VHO_FHE_Runtime_Dynamic_Evaluation_Count() == 147;
+    fprintf(stderr,
+            "FHE runtime schedule census: pu=%d records=%u static=%u "
+            "dynamic=%u\n", pu_count,
+            VHO_FHE_Runtime_Static_Schedule_Record_Count(),
+            VHO_FHE_Runtime_Static_Evaluation_Count(),
+            VHO_FHE_Runtime_Dynamic_Evaluation_Count());
+    VHO_FHE_Runtime_Static_Schedule_Reset();
+    Free_Input_Info();
+    return valid ? 0 : 1;
+}
+
 int
 main (void)
 {
+    const char *schedule_input =
+        getenv("OPEN64_FHE_RUNTIME_SCHEDULE_INPUT");
+    if (schedule_input != NULL && schedule_input[0] != '\0') {
+        Initialize_Reader_Test_Context();
+        return Check_Mapped_Static_Schedule(schedule_input);
+    }
     Initialize_Test_Context();
     if (!DSL_Builder_Begin_Program() ||
         !DSL_Opcode_Register_Common_Substrate())

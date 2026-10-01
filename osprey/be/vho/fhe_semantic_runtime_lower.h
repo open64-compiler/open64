@@ -67,6 +67,17 @@ typedef struct {
     UINT32 operand_count;
 } VHO_FHE_RUNTIME_OPERATION_REQUEST;
 
+typedef struct {
+    DSL_IR_NODE_ID source_node_id;
+    DSL_IR_VALUE_ID result_value_id;
+    ST_IDX owner_pu_st;
+    UINT32 logical_operator;
+    UINT32 first_static_ordinal;
+    UINT32 static_evaluation_count;
+    UINT32 execution_multiplicity;
+    UINT32 dynamic_evaluation_count;
+} VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD;
+
 extern void VHO_FHE_Runtime_Call_Sequence_Init
                                 (VHO_FHE_RUNTIME_CALL_SEQUENCE *sequence);
 extern BOOL VHO_FHE_Runtime_Resolve_Value_Handle
@@ -104,6 +115,19 @@ extern BOOL VHO_FHE_Runtime_Build_Identity_Sequence
                                  DSL_IR_VALUE_ID input_value_id,
                                  FILE *diagnostic,
                                  VHO_FHE_RUNTIME_CALL_SEQUENCE *sequence);
+extern void VHO_FHE_Runtime_Static_Schedule_Reset (void);
+extern BOOL VHO_FHE_Runtime_Static_Schedule_Prepare (FILE *diagnostic);
+extern UINT32 VHO_FHE_Runtime_Static_Schedule_Record_Count (void);
+extern UINT32 VHO_FHE_Runtime_Static_Evaluation_Count (void);
+extern UINT32 VHO_FHE_Runtime_Dynamic_Evaluation_Count (void);
+extern BOOL VHO_FHE_Runtime_Static_Schedule_Get
+                                (UINT32 index,
+                                 VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD
+                                     *record);
+extern BOOL VHO_FHE_Runtime_Static_Schedule_Find
+                                (DSL_IR_NODE_ID source_node_id,
+                                 VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD
+                                     *record);
 extern BOOL VHO_FHE_Runtime_Build_Relu_Sequence
                                 (struct pu_info *pu_info,
                                  DSL_IR_VALUE_ID anchor_value_id,
