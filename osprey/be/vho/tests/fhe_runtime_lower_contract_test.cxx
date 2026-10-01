@@ -1065,12 +1065,37 @@ Check_Mapped_Static_Schedule (const char *path)
         VHO_FHE_Runtime_Static_Schedule_Prepare(stderr) &&
         VHO_FHE_Runtime_Static_Evaluation_Count() == 87 &&
         VHO_FHE_Runtime_Dynamic_Evaluation_Count() == 147;
+    VHO_FHE_RUNTIME_INTERFACE_CENSUS interface_census;
+    memset(&interface_census, 0, sizeof(interface_census));
+    valid = valid && VHO_FHE_Runtime_Interface_Census_Prepare
+                         (stderr, &interface_census) &&
+        interface_census.pu_count == 6 &&
+        interface_census.callsite_count == 9 &&
+        interface_census.retired_formal_count == 48 &&
+        interface_census.retired_call_argument_count == 80 &&
+        interface_census.source_external_input_count == 44 &&
+        interface_census.runtime_resource_input_count == 4 &&
+        interface_census.root_source_binding_count == 44 &&
+        interface_census.threaded_source_binding_count == 24 &&
+        interface_census.resource_binding_count == 24 &&
+        interface_census.runtime_input_call_count == 76;
     fprintf(stderr,
             "FHE runtime schedule census: pu=%d records=%u static=%u "
             "dynamic=%u\n", pu_count,
             VHO_FHE_Runtime_Static_Schedule_Record_Count(),
             VHO_FHE_Runtime_Static_Evaluation_Count(),
             VHO_FHE_Runtime_Dynamic_Evaluation_Count());
+    fprintf(stderr,
+            "FHE runtime interface census: retired_formals=%u "
+            "retired_actuals=%u sources=%u resources=%u bindings=%u "
+            "calls=%u\n", interface_census.retired_formal_count,
+            interface_census.retired_call_argument_count,
+            interface_census.source_external_input_count,
+            interface_census.runtime_resource_input_count,
+            interface_census.root_source_binding_count +
+                interface_census.threaded_source_binding_count +
+                interface_census.resource_binding_count,
+            interface_census.runtime_input_call_count);
     VHO_FHE_Runtime_Static_Schedule_Reset();
     Free_Input_Info();
     return valid ? 0 : 1;

@@ -78,6 +78,19 @@ typedef struct {
     UINT32 dynamic_evaluation_count;
 } VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD;
 
+typedef struct {
+    UINT32 pu_count;
+    UINT32 callsite_count;
+    UINT32 retired_formal_count;
+    UINT32 retired_call_argument_count;
+    UINT32 source_external_input_count;
+    UINT32 runtime_resource_input_count;
+    UINT32 root_source_binding_count;
+    UINT32 threaded_source_binding_count;
+    UINT32 resource_binding_count;
+    UINT32 runtime_input_call_count;
+} VHO_FHE_RUNTIME_INTERFACE_CENSUS;
+
 extern void VHO_FHE_Runtime_Call_Sequence_Init
                                 (VHO_FHE_RUNTIME_CALL_SEQUENCE *sequence);
 extern BOOL VHO_FHE_Runtime_Resolve_Value_Handle
@@ -128,6 +141,9 @@ extern BOOL VHO_FHE_Runtime_Static_Schedule_Find
                                 (DSL_IR_NODE_ID source_node_id,
                                  VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD
                                      *record);
+extern BOOL VHO_FHE_Runtime_Interface_Census_Prepare
+                                (FILE *diagnostic,
+                                 VHO_FHE_RUNTIME_INTERFACE_CENSUS *census);
 extern BOOL VHO_FHE_Runtime_Build_Relu_Sequence
                                 (struct pu_info *pu_info,
                                  DSL_IR_VALUE_ID anchor_value_id,

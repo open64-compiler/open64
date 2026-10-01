@@ -515,3 +515,15 @@ physical evaluation definitions and proves exactly 87 static evaluations and
 147 execution-expanded events. The optional
 `OPEN64_FHE_RUNTIME_SCHEDULE_INPUT` lane in the focused script retains this
 result as `schedule-census.log`.
+
+The same mapped-image preflight now derives the complete program-interface
+request census from stable semantic tables rather than source symbol names.
+It uses call-ABI semantic roles to identify 48 unique dead BatchNorm formals
+and all 80 matching caller actuals. It joins live Conv call arguments, the
+root Conv fold, and the classifier node to prove 44 distinct external
+plaintext sources: 42 folded Conv weight/bias tensors plus classifier weight
+and bias. The resulting flow requires four runtime-only resources, 44 root
+source bindings, 24 shared-callee plaintext slots, 24 model/coefficient
+resource bindings across six PUs, and 76 rooted call edges. This census is a
+no-mutation prerequisite to constructing and validating the complete
+`DSL_PROGRAM_INTERFACE_PLAN` and `DSL_RUNTIME_INTERFACE_PLAN`.

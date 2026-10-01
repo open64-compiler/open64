@@ -23,8 +23,10 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 #include <vector>
 
+#include "dsl_fhe_plan.h"
 #include "dsl_opcode.h"
 #include "fhe_semantic_runtime_lower.h"
 #include "ir_reader.h"
@@ -275,6 +277,215 @@ VHO_FHE_Runtime_Static_Schedule_Find
         return TRUE;
     }
     return FALSE;
+}
+
+static BOOL
+VHO_FHE_Runtime_Role_Equals_Any
+        (STR_IDX role, const char *const *accepted, UINT32 accepted_count)
+{
+    if (role == STR_IDX_ZERO)
+        return FALSE;
+    const char *name = Index_To_Str(role);
+    for (UINT32 i = 0; i < accepted_count; ++i) {
+        if (strcmp(name, accepted[i]) == 0)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL
+VHO_FHE_Runtime_Is_Dead_BN_Role (STR_IDX role)
+{
+    static const char *const roles[] = {
+        "cnn.basic_block.bn1.scale",
+        "cnn.basic_block.bn1.bias",
+        "cnn.basic_block.bn1.mean",
+        "cnn.basic_block.bn1.variance",
+        "cnn.basic_block.bn2.scale",
+        "cnn.basic_block.bn2.bias",
+        "cnn.basic_block.bn2.mean",
+        "cnn.basic_block.bn2.variance",
+        "cnn.basic_block.downsample.bn.scale",
+        "cnn.basic_block.downsample.bn.bias",
+        "cnn.basic_block.downsample.bn.mean",
+        "cnn.basic_block.downsample.bn.variance"
+    };
+    return VHO_FHE_Runtime_Role_Equals_Any
+               (role, roles, sizeof(roles) / sizeof(roles[0]));
+}
+
+static BOOL
+VHO_FHE_Runtime_Is_Live_Conv_Parameter_Role (STR_IDX role)
+{
+    static const char *const roles[] = {
+        "cnn.basic_block.conv1.weight",
+        "cnn.basic_block.conv1.bias",
+        "cnn.basic_block.conv2.weight",
+        "cnn.basic_block.conv2.bias",
+        "cnn.basic_block.downsample.conv.weight",
+        "cnn.basic_block.downsample.conv.bias"
+    };
+    return VHO_FHE_Runtime_Role_Equals_Any
+               (role, roles, sizeof(roles) / sizeof(roles[0]));
+}
+
+static BOOL
+VHO_FHE_Runtime_Add_Node_Operand
+        (const DSL_IR_NODE_RECORD &node, UINT32 ordinal,
+         std::set<DSL_IR_VALUE_ID> *values)
+{
+    if (values == NULL || ordinal >= node.operand_count)
+        return FALSE;
+    DSL_IR_VALUE_REFERENCE_RECORD reference;
+    if (!DSL_IR_Image_Get_Value_Reference
+             (node.first_operand_reference_id + ordinal, &reference) ||
+        reference.owner_node_id != node.id ||
+        reference.ordinal != ordinal ||
+        reference.value_id == DSL_IR_VALUE_INVALID_ID)
+        return FALSE;
+    values->insert(reference.value_id);
+    return TRUE;
+}
+
+BOOL
+VHO_FHE_Runtime_Interface_Census_Prepare
+        (FILE *diagnostic, VHO_FHE_RUNTIME_INTERFACE_CENSUS *census)
+{
+    if (census == NULL)
+        return VHO_FHE_Runtime_Semantic_Report
+                   (diagnostic, "runtime interface census result is null");
+    memset(census, 0, sizeof(*census));
+
+    typedef std::pair<ST_IDX, UINT32> VHO_FHE_RUNTIME_FORMAL_KEY;
+    typedef std::pair<ST_IDX, STR_IDX> VHO_FHE_RUNTIME_BINDING_KEY;
+    std::set<VHO_FHE_RUNTIME_FORMAL_KEY> retired_formals;
+    std::set<VHO_FHE_RUNTIME_BINDING_KEY> threaded_source_bindings;
+    std::set<DSL_IR_VALUE_ID> source_inputs;
+    std::set<ST_IDX> owners;
+    std::map<ST_IDX, UINT32> indegree;
+
+    for (UINT32 id = 1; id <= DSL_Call_Image_PU_Identity_Count(); ++id) {
+        DSL_PU_SOURCE_IDENTITY_RECORD identity;
+        if (!DSL_Call_Image_Get_PU_Identity(id, &identity) ||
+            identity.owner_pu_st == ST_IDX_ZERO ||
+            !owners.insert(identity.owner_pu_st).second)
+            return VHO_FHE_Runtime_Semantic_Report
+                       (diagnostic, "PU identity census is malformed");
+        indegree[identity.owner_pu_st] = 0;
+    }
+    census->pu_count = owners.size();
+
+    for (UINT32 id = 1; id <= DSL_Call_Image_Callsite_Count(); ++id) {
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        if (!DSL_Call_Image_Get_Callsite(id, &callsite) ||
+            owners.find(callsite.owner_pu_st) == owners.end() ||
+            owners.find(callsite.callee_pu_st) == owners.end())
+            return VHO_FHE_Runtime_Semantic_Report
+                       (diagnostic, "callsite census is malformed");
+        ++indegree[callsite.callee_pu_st];
+    }
+    census->callsite_count = DSL_Call_Image_Callsite_Count();
+
+    ST_IDX root_owner = ST_IDX_ZERO;
+    UINT32 root_count = 0;
+    for (std::map<ST_IDX, UINT32>::const_iterator it = indegree.begin();
+         it != indegree.end(); ++it) {
+        if (it->second != 0)
+            continue;
+        root_owner = it->first;
+        ++root_count;
+    }
+    if (root_count != 1)
+        return VHO_FHE_Runtime_Semantic_Report
+                   (diagnostic, "runtime interface requires one root PU");
+
+    for (UINT32 id = 1; id <= DSL_Call_ABI_Image_Argument_Count(); ++id) {
+        DSL_CALL_ARGUMENT_RECORD argument;
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        if (!DSL_Call_ABI_Image_Get_Argument(id, &argument) ||
+            !DSL_Call_Image_Get_Callsite(argument.callsite_id, &callsite))
+            return VHO_FHE_Runtime_Semantic_Report
+                       (diagnostic, "call ABI census is malformed");
+        if (VHO_FHE_Runtime_Is_Dead_BN_Role(argument.semantic_role)) {
+            retired_formals.insert
+                (VHO_FHE_RUNTIME_FORMAL_KEY
+                     (callsite.callee_pu_st, argument.callee_formal_ordinal));
+            ++census->retired_call_argument_count;
+        } else if (VHO_FHE_Runtime_Is_Live_Conv_Parameter_Role
+                       (argument.semantic_role)) {
+            source_inputs.insert(argument.argument_value_id);
+            threaded_source_bindings.insert
+                (VHO_FHE_RUNTIME_BINDING_KEY
+                     (callsite.callee_pu_st, argument.semantic_role));
+            ++census->runtime_input_call_count;
+        }
+    }
+    census->retired_formal_count = retired_formals.size();
+    census->threaded_source_binding_count =
+        threaded_source_bindings.size();
+
+    for (UINT32 id = 1;
+         id <= DSL_FHE_Plan_BN_Fold_Provenance_Count(); ++id) {
+        DSL_FHE_BN_FOLD_PROVENANCE_RECORD fold;
+        DSL_IR_NODE_RECORD conv;
+        if (!DSL_FHE_Plan_Get_BN_Fold_Provenance(id, &fold) ||
+            !DSL_IR_Image_Get_Node(fold.conv_node_id, &conv))
+            return VHO_FHE_Runtime_Semantic_Report
+                       (diagnostic, "BatchNorm fold census is malformed");
+        if (fold.context_callsite_id ==
+                DSL_CALLSITE_METADATA_INVALID_ID &&
+            (!VHO_FHE_Runtime_Add_Node_Operand(conv, 1, &source_inputs) ||
+             !VHO_FHE_Runtime_Add_Node_Operand(conv, 2, &source_inputs)))
+            return VHO_FHE_Runtime_Semantic_Report
+                       (diagnostic, "root folded Conv operands are invalid");
+    }
+
+    for (UINT32 id = 1; id <= DSL_IR_Image_Node_Count(); ++id) {
+        DSL_IR_NODE_RECORD node;
+        DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
+        if (!DSL_IR_Image_Get_Node(id, &node) ||
+            !DSL_IR_Image_Get_Opcode_Descriptor
+                 (node.opcode_descriptor_id, &opcode))
+            return VHO_FHE_Runtime_Semantic_Report
+                       (diagnostic, "DSL node census is malformed");
+        if ((node.flags & (DSL_IR_NODE_FLAG_RETIRED |
+                           DSL_IR_NODE_FLAG_LOWERED)) != 0 ||
+            opcode.logical_operator != OPR_DSLLINEAR)
+            continue;
+        if (!VHO_FHE_Runtime_Add_Node_Operand(node, 1, &source_inputs) ||
+            !VHO_FHE_Runtime_Add_Node_Operand(node, 2, &source_inputs))
+            return VHO_FHE_Runtime_Semantic_Report
+                       (diagnostic, "linear plaintext operands are invalid");
+    }
+
+    for (std::set<DSL_IR_VALUE_ID>::const_iterator it = source_inputs.begin();
+         it != source_inputs.end(); ++it) {
+        DSL_IR_VALUE_RECORD value;
+        DSL_IR_NODE_RECORD node;
+        DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
+        ST_IDX owner = ST_IDX_ZERO;
+        if (!DSL_IR_Image_Get_Value(*it, &value) ||
+            value.value_kind != DSL_IR_VALUE_CONSTANT ||
+            value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
+            !VHO_FHE_Runtime_Value_Owner(value, &owner, NULL) ||
+            owner != root_owner ||
+            !DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
+            (node.flags & (DSL_IR_NODE_FLAG_RETIRED |
+                           DSL_IR_NODE_FLAG_LOWERED)) != 0 ||
+            !DSL_IR_Image_Get_Opcode_Descriptor
+                 (node.opcode_descriptor_id, &opcode) ||
+            opcode.logical_operator != OPR_DSLTENSORCONST)
+            return VHO_FHE_Runtime_Semantic_Report
+                       (diagnostic,
+                        "runtime plaintext source is not a live root tensor");
+    }
+
+    census->source_external_input_count = source_inputs.size();
+    census->runtime_resource_input_count = 4;
+    census->root_source_binding_count = source_inputs.size();
+    census->resource_binding_count = 4 * census->pu_count;
+    census->runtime_input_call_count += 4 * census->callsite_count;
+    return TRUE;
 }
 
 static BOOL
