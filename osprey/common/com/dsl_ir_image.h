@@ -1112,7 +1112,6 @@ extern BOOL DSL_IR_Image_Resolve_Lowered_Relation
 extern BOOL DSL_IR_Image_Validate_Lowered_Relations (FILE *diagnostic);
 extern BOOL DSL_IR_Refine_Native_Value_Types
                                 (PU_Info *pu_info,
-                                 WN *tree,
                                  const DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST
                                      *requests,
                                  UINT32 request_count,

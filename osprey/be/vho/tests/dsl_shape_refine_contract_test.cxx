@@ -231,7 +231,7 @@ main(void)
     DSL_IR_VALUE_TYPE_REFINEMENT_RESULT forced_failure;
     setenv("OPEN64_DSL_SHAPE_RETYPE_TEST_POSTFAIL", "1", 1);
     BOOL unexpectedly_committed = DSL_IR_Refine_Native_Value_Types
-        (pu, PU_Info_tree_ptr(pu), requests, 2, stderr, &forced_failure);
+        (pu, requests, 2, stderr, &forced_failure);
     unsetenv("OPEN64_DSL_SHAPE_RETYPE_TEST_POSTFAIL");
     if (TY_IDX_index(refined_ty) == 0 || !created || unexpectedly_committed ||
         forced_failure.rollback_count != 2 ||

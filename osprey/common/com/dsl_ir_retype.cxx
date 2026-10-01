@@ -190,6 +190,7 @@ DSL_IR_Retype_Has_Auxiliary_Relation (TY_IDX old_ty)
 
 /*
  * Preflight one request and populate a complete commit/rollback journal. It
+ * derives the WHIRL root from PU_Info as the single source of truth, then
  * joins active-PU ownership, monotonic type legality, logical value and
  * producer identity, pure effects, unique local-ST ownership, physical WN
  * def/use closure, logical reference counts, ABI exclusion, and auxiliary
@@ -199,14 +200,14 @@ DSL_IR_Retype_Has_Auxiliary_Relation (TY_IDX old_ty)
 static BOOL
 DSL_IR_Retype_Preflight
         (PU_Info *pu_info,
-         WN *tree,
          const DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST &request,
          FILE *diagnostic,
          DSL_IR_RETYPE_JOURNAL *journal)
 {
+    WN *tree = pu_info == NULL ? NULL : PU_Info_tree_ptr(pu_info);
     if (journal == NULL || pu_info == NULL || tree == NULL ||
         request.owner_pu_st != PU_Info_proc_sym(pu_info) ||
-        Current_PU_Info != pu_info || PU_Info_tree_ptr(pu_info) != tree ||
+        Current_PU_Info != pu_info ||
         !DSL_IR_Retype_Current_PU_Is(request.owner_pu_st))
         return DSL_IR_Retype_Report
                    (diagnostic, "DSL-SHAPE-RETYPE-002", request.value_id,
@@ -364,6 +365,10 @@ DSL_IR_Retype_Apply
  * projection, or function/call ABI rewriting. Those require their own
  * explicit transformations and provenance contracts.
  *
+ * PU_Info is the sole authority for the transaction's WHIRL root. Callers do
+ * not pass a duplicate tree pointer; the implementation derives the root with
+ * PU_Info_tree_ptr() for REGION verification and physical def/use scanning.
+ *
  * All requests and REGION state are preflighted before the first mutation.
  * After commit, managed-image, REGION, and strict gatekeeper verification run
  * together. Any failure reapplies the journals in reverse direction so the
@@ -373,7 +378,6 @@ DSL_IR_Retype_Apply
 BOOL
 DSL_IR_Refine_Native_Value_Types
         (PU_Info *pu_info,
-         WN *tree,
          const DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST *requests,
          UINT32 request_count,
          FILE *diagnostic,
@@ -381,6 +385,14 @@ DSL_IR_Refine_Native_Value_Types
 {
     DSL_IR_VALUE_TYPE_REFINEMENT_RESULT local_result;
     memset(&local_result, 0, sizeof(local_result));
+    if (result != NULL)
+        *result = local_result;
+    WN *tree = pu_info == NULL ? NULL : PU_Info_tree_ptr(pu_info);
+    if (pu_info == NULL || tree == NULL) {
+        return DSL_IR_Retype_Report
+                   (diagnostic, "DSL-SHAPE-RETYPE-002", 0,
+                    "PU or its WHIRL tree is unavailable");
+    }
     if (requests == NULL || request_count == 0) {
         if (result != NULL)
             *result = local_result;
@@ -403,7 +415,7 @@ DSL_IR_Refine_Native_Value_Types
                             requests[i].value_id, "duplicate value request");
         }
         if (!DSL_IR_Retype_Preflight
-                 (pu_info, tree, requests[i], diagnostic, &journals[i]))
+                 (pu_info, requests[i], diagnostic, &journals[i]))
             return FALSE;
         for (UINT32 prior = 0; prior < i; ++prior) {
             if (journals[prior].value.st == journals[i].value.st)
