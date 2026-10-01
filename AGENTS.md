@@ -238,23 +238,37 @@ only when the current task needs detail.
    reason rather than restating the code. During final review, verify these
    comments exist in every newly added C/C++ source file and still agree with
    the implementation and cited design document.
-8. All new DSL-related C/C++ files and APIs, including `dsl_*`, `opt_dsl_*`,
+8. Every function in a DSL-related `.h` or `.cxx` file, including public APIs,
+   private/static helpers, callbacks, and commit-only services, must have a
+   function-level contract comment. State the function's purpose, its role in
+   the surrounding caller/callee or phase relationship, important ownership
+   and mutation boundaries, required invariants, and failure or rollback
+   behavior where applicable. Public declarations must describe the caller
+   contract; definitions must describe implementation responsibilities that
+   are not evident from the declaration. Transactional functions must identify
+   preflight, commit, verification, and rollback roles. A brief comment is
+   sufficient for a trivial accessor or predicate, but merely restating the
+   function name, parameters, or return type is not. New DSL files must satisfy
+   this rule for every function before review. When materially modifying an
+   existing DSL function, add or correct its contract comment in the same
+   change; do not require unrelated whole-file comment churn for a narrow fix.
+9. All new DSL-related C/C++ files and APIs, including `dsl_*`, `opt_dsl_*`,
    and names prefixed with `DSL_` or `WOPT_DSL_`, must follow the established
    Open64 `be/opt` naming style. Use `ALL_CAPS_WITH_UNDERSCORES` for classes,
    structs, typedefs, enum types, and public symbolic types;
    `_lowercase_snake_case` for ordinary private data members; and
    `lowercase_snake_case` for parameters and local variables.
-9. Name member functions with an initial capital and underscore-separated
+10. Name member functions with an initial capital and underscore-separated
    words, while preserving established compiler acronyms in uppercase, for
    example `Build_candidates()`, `Verify_IR()`, and `Compute_PRE_saves()`.
    Do not introduce CamelCase forms such as `BuildCandidates()` or mixed-case
    acronym forms such as `Dsl` in new DSL code.
-10. Name trivial field accessors after the property, such as `Cfg()` or
+11. Name trivial field accessors after the property, such as `Cfg()` or
     `Descriptor()`. Use `Set_`, `Reset_`, `Is_`, `Has_`, and `Can_` for
     mutation and predicate APIs. Reserve `Get_` for operations that perform a
     lookup, computation, copy, or output assignment rather than a direct field
     read.
-11. Give public free functions, globals, enum values, and macros a stable
+12. Give public free functions, globals, enum values, and macros a stable
     subsystem prefix such as `DSL_` or `WOPT_DSL_`. Enum values and macros use
     uppercase underscore-separated names. Extern free functions follow the
     WOPT API convention: preserve the uppercase subsystem acronym, then use
@@ -265,12 +279,12 @@ only when the current task needs detail.
     such as `WN` or `DIVREM`. Avoid new unprefixed global names and prefer
     inline functions over macros unless an existing Open64 protocol requires a
     macro.
-12. Use established optimizer abbreviations such as `cr`, `stmt`, `bb`, `cfg`,
+13. Use established optimizer abbreviations such as `cr`, `stmt`, `bb`, `cfg`,
     `wn`, `phi`, `aux_id`, `kid0`, and `kid1` where their meaning is local and
     unambiguous. Use descriptive lowercase underscore-separated names for new
     semantic concepts. Do not use pointer-name prefixes or other Hungarian
     notation.
-13. Treat compact historical structures, generated interfaces, required
+14. Treat compact historical structures, generated interfaces, required
     Makefile syntax, and tightly scoped template utilities as exceptions, not
     precedents for new DSL naming. When an owning directory has a stricter
     established convention, preserve that convention and document any
