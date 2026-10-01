@@ -74,13 +74,13 @@ typedef struct {
 /* Resolve a native definition to its image value, including promoted sources. */
 static BOOL
 DSL_IR_Lower_Find_Native_Definition_Value
-        (ST_IDX owner_pu_st,
+        (PU_Info *pu_info,
          const WN *definition,
          UINT32 mode,
          DSL_IR_VALUE_RECORD *value_record)
 {
     if (DSL_IR_Image_Find_Definition_Value
-            (owner_pu_st, definition, value_record))
+            (pu_info, definition, value_record))
         return TRUE;
     if (mode != DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION ||
         definition == NULL || WN_operator(definition) != OPR_STID ||
@@ -95,6 +95,7 @@ DSL_IR_Lower_Find_Native_Definition_Value
     DSL_IR_VALUE_RECORD value;
     DSL_IR_NODE_RECORD node;
     DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
+    ST_IDX owner_pu_st = PU_Info_proc_sym(pu_info);
     if (ST_IDX_level(st) != CURRENT_SYMTAB || ST_IDX_index(st) == 0 ||
         ST_IDX_index(st) >= ST_Table_Size(CURRENT_SYMTAB) ||
         ST_type(St_Table[st]) != WN_ty(definition) ||
@@ -457,7 +458,7 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
             return DSL_IR_Lower_Report
                        (diagnostic, i, "PU or containing block mismatch");
         if (!DSL_IR_Lower_Find_Native_Definition_Value
-                (owner_pu_st, request.native_definition, request.mode,
+                (pu_info, request.native_definition, request.mode,
                  &entry.value) ||
             entry.value.id != request.source_value_id)
             return DSL_IR_Lower_Report

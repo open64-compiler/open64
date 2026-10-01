@@ -20,7 +20,7 @@ BOOL DSL_IR_Image_Get_External_Tensor_Reference(
     DSL_IR_EXTERNAL_TENSOR_REFERENCE *reference);
 
 BOOL DSL_IR_Materialize_External_Tensor_Values(
-    ST_IDX owner_pu_st,
+    PU_Info *pu_info,
     const DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_REQUEST *requests,
     UINT32 request_count,
     DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_RESULT *results);
@@ -62,8 +62,8 @@ FHE producer and semantic gatekeeper own payload digest verification.
 
 `DSL_IR_Materialize_External_Tensor_Values()` preflights the complete request
 array before creating a symbol, WN, image row, or call replacement. Each
-request names an existing owner-PU tensor-constant source and creates one
-caller-owned `common.tensor_const.v1` value with:
+request names an existing tensor-constant source in the exact active PU and
+creates one caller-owned `common.tensor_const.v1` value with:
 
 - the exact canonical tensor `TY_IDX`;
 - a side-file dense tensor TCON whose descriptor, path, range, and logical byte
@@ -90,7 +90,10 @@ When `call` is non-null, the request must identify one existing read-only,
 passed-not-saved, by-reference actual and its expected source value. Commit
 replaces that actual with the new same-`TY_IDX` value. When `call` is null, the
 new value is inserted at the supplied entry-owned anchor without inventing a
-fake callsite. This supports the ResNet stem Conv/BatchNorm context.
+fake callsite. This supports the ResNet stem Conv/BatchNorm context. The
+request does not carry an insertion BLOCK. The transaction derives that BLOCK
+from `PU_Info` and `insert_before`, rejecting an anchor that is not contained
+by the active PU tree.
 
 Duplicate names and duplicate call-actual targets in one transaction are
 rejected. Invalid owner, type, range, checksum, TCON, insertion anchor, or
@@ -201,9 +204,11 @@ builder operation before creating call-role rows.
 
 `DSL_IR_Redirect_And_Retire_Native_Value()` supports the narrow pure-expression
 case required to retire a folded BatchNorm result. The caller supplies the
-owner PU, function root, containing BLOCK, replacement and retiring STIDs,
-their managed value IDs, the expected logical operator/version, and the
-operand ordinal that names the replacement.
+exact active `PU_Info`, replacement and retiring definitions, their managed
+value IDs, the expected logical operator/version, and the operand ordinal that
+names the replacement. The transaction derives the PU root, owner ST, and one
+common containing BLOCK from `PU_Info` and the definitions; callers cannot
+provide competing physical authority.
 
 Preflight requires:
 

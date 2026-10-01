@@ -593,7 +593,8 @@ typedef enum {
 /*
  * Runtime-only request for materializing converted side-file tensor values.
  * All requests are preflighted before any symbol, WN, or image table changes.
- * source_value_id must name an existing external tensor in the owner PU. A
+ * source_value_id must name an existing external tensor in the active PU. The
+ * transaction derives the insertion BLOCK from PU_Info and insert_before. A
  * null call creates an entry-owned value without rewriting a call actual.
  */
 typedef struct {
@@ -601,7 +602,6 @@ typedef struct {
     TY_IDX descriptor_ty;
     TCON_IDX tensor_tcon;
     DSL_IR_VALUE_ID source_value_id;
-    WN *insertion_block;
     WN *insert_before;
     WN *call;
     UINT32 actual_ordinal;
@@ -671,9 +671,12 @@ typedef struct {
     UINT32 result_value_kind;
 } DSL_IR_NATIVE_VALUE_REWRITE_REQUEST;
 
+/*
+ * Runtime-only redirect/retire request. PU_Info supplied to the transaction is
+ * the sole tree/owner authority; the common containing BLOCK is derived from
+ * the two definitions during preflight.
+ */
 typedef struct {
-    WN *pu_root;
-    WN *containing_block;
     WN *replacement_definition;
     DSL_IR_VALUE_ID replacement_value_id;
     WN *retiring_definition;
@@ -1074,29 +1077,52 @@ extern BOOL DSL_IR_Image_Set_Node_Links
                                  DSL_IR_VALUE_ID result_value_id);
 extern BOOL DSL_IR_Image_Rewrite_Node
                                 (const DSL_IR_NODE_REWRITE_REQUEST *request);
+/*
+ * Resolve one native STID definition to its stable logical result value in the
+ * exact active PU. PU_Info is the sole owner authority; the query rejects an
+ * inactive PU, local-ST collisions, and physical/logical opcode disagreement.
+ * It borrows no state and performs no mutation.
+ */
 extern BOOL DSL_IR_Image_Find_Definition_Value
-                                (ST_IDX owner_pu_st,
+                                (PU_Info *pu_info,
                                  const WN *definition,
                                  DSL_IR_VALUE_RECORD *value_record);
 extern BOOL DSL_IR_Image_Get_External_Tensor_Reference
                                 (ST_IDX owner_pu_st,
                                  DSL_IR_VALUE_ID value_id,
                                  DSL_IR_EXTERNAL_TENSOR_REFERENCE *reference);
+/*
+ * Preflight and atomically materialize a complete converted-tensor request
+ * array in one active PU. Parent BLOCKs are derived from PU_Info.
+ */
 extern BOOL DSL_IR_Materialize_External_Tensor_Values
-                                (ST_IDX owner_pu_st,
+                                (PU_Info *pu_info,
                                  const DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_REQUEST
                                      *requests,
                                  UINT32 request_count,
                                  DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_RESULT
                                      *results);
+/*
+ * Atomically replace one native/logical operation in the exact active PU.
+ * Preflight proves the expected operator, schema, operands, result ST/TY,
+ * owner, and source identity. Commit preserves stable node/value identity and
+ * updates the physical WN plus logical image together; rejection leaves both
+ * unchanged.
+ */
 extern BOOL DSL_IR_Rewrite_Native_Value
-                                (ST_IDX owner_pu_st,
+                                (PU_Info *pu_info,
                                  WN *definition,
                                  DSL_IR_VALUE_ID value_id,
                                  const DSL_IR_NATIVE_VALUE_REWRITE_REQUEST
                                      *request);
+/*
+ * Atomically redirect owner-safe uses to a dominating replacement and retire
+ * one pure definition. The transaction derives the PU tree and common parent
+ * BLOCK from PU_Info, preflights WHIRL, image, call-ABI, effect, and REGION
+ * uses, then commits without accepting caller-supplied physical ownership.
+ */
 extern BOOL DSL_IR_Redirect_And_Retire_Native_Value
-                                (ST_IDX owner_pu_st,
+                                (PU_Info *pu_info,
                                  const DSL_IR_NATIVE_VALUE_RETIRE_REQUEST
                                      *request);
 /*

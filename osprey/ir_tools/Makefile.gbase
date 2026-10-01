@@ -231,8 +231,10 @@ COMMON_COM_CXX_SRC =	\
         dsl_fhe_print.cxx \
         dsl_ir_image.cxx \
         dsl_ir_lower.cxx \
+        dsl_program_interface.cxx \
         dsl_ir_retype.cxx \
         dsl_ir_rewrite.cxx \
+        dsl_runtime_interface.cxx \
         dsl_ir_print.cxx \
         dsl_region.cxx \
 	dsl_memory_behavior.cxx \

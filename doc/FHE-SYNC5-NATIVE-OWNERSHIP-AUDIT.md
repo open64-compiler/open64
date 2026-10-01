@@ -117,6 +117,44 @@ interfaces.  It must not edit the shared driver, checkpoint lifecycle,
 
 ## Implemented Main Interfaces
 
+### Native Transaction Source Ownership
+
+The generic common/com implementation is divided by transaction authority:
+
+- `dsl_ir_rewrite.cxx` owns typed external tensor lookup/materialization,
+  identity-preserving native logical rewrite, and pure value redirect/retire;
+- `dsl_runtime_interface.cxx` owns runtime handle projection plans, projected
+  FUNC_ENTRY/call/return reconstruction, and runtime projection verification;
+- `dsl_program_interface.cxx` owns program-wide input promotion, verified-dead
+  formal/call retirement, deterministic ABI reconstruction, and final
+  interface verification;
+- `dsl_ir_lower.cxx` owns native DSL to standard-WHIRL replacement; and
+- `dsl_ir_retype.cxx` owns atomic value/TY refinement.
+
+The private headers `dsl_ir_transaction_internal.h` and
+`dsl_runtime_interface_internal.h` expose only active-PU predicates and
+cross-transaction journals/helpers. They are not frontend APIs, mapped-image
+contracts, or permission to bypass the public atomic transactions. Every
+extracted unit retains complete preflight-before-commit behavior and stable
+diagnostics; the split changes no WN encoding, ELF section, row layout, or
+binary WHIRL revision.
+
+The generic call-ABI and PU-interface validators remain beside the generic IR
+transaction preflight because they join mapped call, formal, value,
+runtime-projection, and retired-interface records. They neither choose runtime
+projection policy nor perform program reconstruction. Moving them into either
+mutation unit would make that unit own the other's mapped-image invariants;
+they remain read-only shared validation until a dedicated image-validation
+module is justified by broader reuse.
+
+Active-PU mutation and definition-lookup APIs accept `PU_Info *` as their sole
+physical authority. They derive the global owner ST, PU tree, and containing
+BLOCKs from that object and the named definitions or insertion anchors.
+Runtime-only requests therefore do not repeat `owner_pu_st`, `pu_root`,
+`containing_block`, or `insertion_block`. This prevents disagreement among
+multiple representations of the selected PU while preserving stable logical
+value IDs and mapped-image provenance as the semantic authority.
+
 ### Per-PU Runtime-Lowering Driver
 
 `fhe_runtime_lower.h` publishes opaque callback types and a result record

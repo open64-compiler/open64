@@ -50,11 +50,17 @@ conflicting roots, parent blocks, or result STIDs. Request order is not
 semantic; commit order follows the physical definition order in the PU tree.
 
 The transaction is implemented in
-`osprey/common/com/dsl_ir_lower.cxx`. Generic value/payload/interface rewrite
-services remain in `dsl_ir_rewrite.cxx`; standard-WHIRL replacement legality,
-preflight, commit ordering, and post-verification belong exclusively to the
-lowering file. The runtime API uses `PU_Info *` as its single physical context;
-this is a source-level contract tightening and does not change binary WHIRL.
+`osprey/common/com/dsl_ir_lower.cxx`. Generic value and payload transactions
+remain in `dsl_ir_rewrite.cxx`; runtime projection planning and reconstruction
+belong to `dsl_runtime_interface.cxx`; program-wide ABI retirement, input
+promotion, and final interface verification belong to
+`dsl_program_interface.cxx`. Standard-WHIRL replacement legality, preflight,
+commit ordering, and post-verification belong exclusively to the lowering
+file. Private active-PU predicates and runtime-interface journals are shared
+only through `dsl_ir_transaction_internal.h` and
+`dsl_runtime_interface_internal.h`; neither header is a producer API. The
+runtime API uses `PU_Info *` as its single physical context. This source-level
+ownership split does not change binary WHIRL.
 
 ### Computed Standard Block
 
