@@ -101,6 +101,8 @@ sources=(
   "osprey/common/com/dsl_tensor_analysis.cxx"
   "osprey/common/com/dsl_tensor_locality.cxx"
   "osprey/common/com/dsl_tensor_evolution.cxx"
+  "osprey/common/com/dsl_ir_lower.cxx"
+  "osprey/common/com/dsl_ir_retype.cxx"
   "osprey/common/com/dsl_ir_rewrite.cxx"
   "osprey/common/com/dsl_region.cxx"
   "osprey/common/com/dsl_ir_print.cxx"

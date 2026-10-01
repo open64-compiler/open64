@@ -46,6 +46,13 @@ array for one active PU.  The driver owns PU selection and local symbol-table
 lifetime.  Request order is not semantic; commit order follows the physical
 definition order in the PU tree.
 
+The transaction is implemented in
+`osprey/common/com/dsl_ir_lower.cxx`. Generic value/payload/interface rewrite
+services remain in `dsl_ir_rewrite.cxx`; standard-WHIRL replacement legality,
+preflight, commit ordering, and post-verification belong exclusively to the
+lowering file. This is a source-ownership split only and does not change the
+public API or binary WHIRL.
+
 ### Computed Standard Block
 
 `DSL_IR_NATIVE_LOWER_COMPUTED_STANDARD_BLOCK` requires:
@@ -154,4 +161,3 @@ reopens it with `ir_b2a -st -src`.  The retained `.T` must show four lowered
 relations, two standard result-handle `STID`s, both promoted formals, the
 rank-4/rank-1 tensor descriptors, and no executable native definitions for the
 four lowered sources.
-
