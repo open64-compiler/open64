@@ -135,6 +135,7 @@ endif
 
 FE_DIR 			= $(BUILD_BASE)
 COMMON_COM_DIR 		= $(BUILD_TOT)/common/com
+COMMON_FHE_DIR 		= $(BUILD_TOT)/common/fhe
 COMMON_COM_TARG_DIR	= $(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR)
 COMMON_TARG_INFO_ACCESS_DIR = $(BUILD_TOT)/common/targ_info/access
 COMMON_UTIL_DIR		= $(BUILD_TOT)/common/util
@@ -183,6 +184,7 @@ TARG_GNU_DIR		= $(TARGDIR)/g++fe/gnu
 SRC_DIRS =		\
   $(FE_DIR)		\
   $(COMMON_COM_DIR)	\
+  $(COMMON_FHE_DIR)	\
   $(COMMON_COM_TARG_DIR)\
   $(COMMON_UTIL_DIR)	\
   $(COMMON_UTIL_TARG_DIR)\
@@ -191,6 +193,7 @@ INC_DIRS =		\
   $(INCLUDE_DIR)	\
   $(TARGDIR)/include \
   $(COMMON_COM_DIR)	\
+  $(COMMON_FHE_DIR)	\
   $(COMMON_COM_TARG_DIR)\
   $(COMMON_UTIL_DIR)	\
   $(COMMON_UTIL_TARG_DIR)\

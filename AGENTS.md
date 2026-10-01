@@ -106,6 +106,12 @@ only when the current task needs detail.
    mechanism may remain in `common/com` when the owning phase supplies the
    complete reviewed request and retains every legality, profitability, and
    policy decision.
+8. Place persisted FHE source-image, planning-image, approximation, context
+   state, materialization, encryption, key, and FHE logical-printing contracts
+   under `osprey/common/fhe`. Keep their mapped-image row and binary
+   compatibility obligations intact, but do not place those irreducibly FHE
+   APIs back in `common/com`. Generic AI-reusable DSL transactions remain in
+   `common/com` under rules 6 and 7.
 
 ## PREOPT Canonicalization And Optimization Roles
 

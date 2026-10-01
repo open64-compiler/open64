@@ -99,13 +99,15 @@ TARGETS = wffi.a libwffi.so whirl_ffi_gen whirl_ffi_dummy.o $(WRAPPER_TARGETS)
 
 COMMON_UTIL_DIR= $(BUILD_TOT)/common/util
 COMMON_COM_DIR= $(BUILD_TOT)/common/com
+COMMON_FHE_DIR= $(BUILD_TOT)/common/fhe
 COMMON_COM_TARG_DIR= $(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR)
 BE_COM_DIR= $(BUILD_TOT)/be/com
 BE_OPT_DIR= $(BUILD_TOT)/be/opt
 
 LDIRT = $(TARGETS)
 
-LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_COM_TARG_DIR) \
+LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_FHE_DIR) \
+	-I$(COMMON_COM_TARG_DIR) \
 	-I$(COMMON_UTIL_DIR) -I$(BE_COM_DIR) -I$(BE_OPT_DIR) $(XINC)  \
         -I$(BUILD_TOT)/include
 ifeq ($(BUILD_OS), LINUX)
@@ -228,7 +230,8 @@ install: default
 
 include $(COMMONRULES)
 
-VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_COM_TARG_DIR) $(BE_COM_DIR)
+VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_FHE_DIR) \
+	$(COMMON_COM_TARG_DIR) $(BE_COM_DIR)
 
 wffi.a: $(WFFI_LIB_OBJS)
 	$(AR) rc $@ $^

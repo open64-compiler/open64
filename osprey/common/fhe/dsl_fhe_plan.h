@@ -1,5 +1,9 @@
 /*
  * Copyright (C) 2026 Open64 Project
+ *
+ * Fixed-width FHE conversion-plan, approximation, context-state, and
+ * materialization records. See doc/FHE-SYNC3-NATIVE-PLAN-CONTRACT.md and
+ * doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md.
  */
 
 #ifndef dsl_fhe_plan_INCLUDED

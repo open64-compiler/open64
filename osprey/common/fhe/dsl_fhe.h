@@ -1,5 +1,9 @@
 /*
  * Copyright (C) 2026 Open64 Project
+ *
+ * Fixed-width FHE source-image records and managed-image services. See
+ * doc/FHE-SYNC1-NATIVE-CONTRACT.md and
+ * doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md.
  */
 
 #ifndef dsl_fhe_INCLUDED

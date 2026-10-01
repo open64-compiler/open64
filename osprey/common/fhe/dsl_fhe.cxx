@@ -1,5 +1,9 @@
 /*
  * Copyright (C) 2026 Open64 Project
+ *
+ * Implements FHE source-image interning, lookup, mapped loading, and
+ * structural validation. See doc/FHE-SYNC1-NATIVE-CONTRACT.md and
+ * doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md.
  */
 
 #include <string.h>

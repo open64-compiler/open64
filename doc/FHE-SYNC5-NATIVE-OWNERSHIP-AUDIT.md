@@ -95,6 +95,14 @@ Code review must apply the following decision order:
    in the FHE-owned module and expose only a narrow generic registration hook
    where shared infrastructure must invoke it.
 
+The persisted FHE source and planning images therefore live in
+`osprey/common/fhe`. That module owns `dsl_fhe.{h,cxx}`,
+`dsl_fhe_plan.{h,cxx}`, and their stable logical printers. Header basenames,
+fixed rows, section identifiers, mapped-image services, and public symbols are
+unchanged by the directory move. Generic DSL image, rewrite, retype, lowering,
+runtime-interface, and program-interface services remain in
+`osprey/common/com` under the Common/AI reuse criterion.
+
 ## Reserved Main-Owned Files
 
 The main infrastructure workstream exclusively owns edits to these shared

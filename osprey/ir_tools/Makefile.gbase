@@ -149,6 +149,7 @@ endif
 
 COMMON_UTIL_DIR= $(BUILD_TOT)/common/util
 COMMON_COM_DIR= $(BUILD_TOT)/common/com
+COMMON_FHE_DIR= $(BUILD_TOT)/common/fhe
 COMMON_COM_TARG_DIR= $(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR)
 BE_COM_DIR= $(BUILD_TOT)/be/com
 BE_VHO_DIR= $(BUILD_TOT)/be/vho
@@ -197,7 +198,8 @@ LDIRT += fhe_semantic_convert.o
 LDIRT += dsl_wopt_bridge_test dsl_wopt_bridge_test.o
 LDIRT += opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 
-LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_COM_TARG_DIR) \
+LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_FHE_DIR) \
+	-I$(COMMON_COM_TARG_DIR) \
 	-I$(COMMON_UTIL_DIR) -I$(BE_COM_DIR) -I$(BE_VHO_DIR) -I$(BE_OPT_DIR) $(XINC)  \
         -I$(BUILD_TOT)/include
 LCINCS += -I$(BUILD_TOT)
@@ -225,10 +227,6 @@ COMMON_COM_CXX_SRC =	\
         dsl_gatekeeper.cxx \
 	dsl_contract.cxx \
         dsl_domain.cxx	\
-        dsl_fhe.cxx \
-        dsl_fhe_plan.cxx \
-        dsl_fhe_plan_print.cxx \
-        dsl_fhe_print.cxx \
         dsl_ir_image.cxx \
         dsl_ir_lower.cxx \
         dsl_program_interface.cxx \
@@ -283,6 +281,12 @@ COMMON_COM_CXX_SRC =	\
 	xstats.cxx	\
 	intrn_info.cxx
 
+COMMON_FHE_CXX_SRC = \
+        dsl_fhe.cxx \
+        dsl_fhe_plan.cxx \
+        dsl_fhe_plan_print.cxx \
+        dsl_fhe_print.cxx
+
 BE_COM_SRCS =           \
 	wssa_defs.cxx   \
 	wssa_sym.cxx    \
@@ -299,6 +303,7 @@ COMMON_COM_TARG_CXX_SRCS =	\
 
 CXXFILES =		\
 	$(COMMON_COM_CXX_SRC) \
+	$(COMMON_FHE_CXX_SRC) \
 	$(COMMON_COM_TARG_CXX_SRCS) \
         $(BE_COM_SRCS)
 
@@ -328,7 +333,8 @@ install: default
 
 include $(COMMONRULES)
 
-VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_COM_TARG_DIR) $(BE_COM_DIR) \
+VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_FHE_DIR) \
+	$(COMMON_COM_TARG_DIR) $(BE_COM_DIR) \
 	$(BE_VHO_DIR)
 
 ir_b2a: $(OBJECTS) ir_a2b.o

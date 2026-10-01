@@ -11,6 +11,7 @@ output="${TMPDIR:-/tmp}/dsl_tensor_fold_contract_test"
   -DDSL_TENSOR_FOLD_TEST_STUB \
   -I"$repo_root/osprey/linux/include" \
   -I"$repo_root/osprey/common/com" \
+  -I"$repo_root/osprey/common/fhe" \
   -I"$repo_root/osprey/common/com/x8664" \
   -I"$repo_root/osprey/common/util" \
   -I"$repo_root/osprey/include" \

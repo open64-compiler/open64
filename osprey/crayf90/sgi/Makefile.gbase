@@ -126,6 +126,7 @@ FE90_DIR		= $(CRAYF90_DIR)/fe90
 SGI_DIR			= $(CRAYF90_DIR)/sgi
 COMMON_DIR 		= $(BUILD_TOT)/common
 COMMON_COM_DIR 		= $(COMMON_DIR)/com
+COMMON_FHE_DIR 		= $(COMMON_DIR)/fhe
 COMMON_COM_TARG_DIR 	= $(COMMON_COM_DIR)/$(BUILD_TARGET_DIR)
 COMMON_LIB_DIR 		= $(COMMON_DIR)/lib
 COMMON_UTIL_DIR 	= $(COMMON_DIR)/util
@@ -147,6 +148,7 @@ TARG_COMUTIL_DIR	= $(TARGDIR)/libcomutil
 
 SRC_DIRS                = $(SGI_DIR) \
 	                  $(COMMON_COM_DIR) \
+                          $(COMMON_FHE_DIR) \
                           $(COMMON_UTIL_DIR)\
 	                  $(COMMON_COM_TARG_DIR)
 

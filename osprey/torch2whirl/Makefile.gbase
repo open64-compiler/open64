@@ -55,6 +55,7 @@ PYTHON_NATIVE_CPPFLAGS ?= \
   -I$(OPEN64_SRC_ROOT)/osprey/linux/include \
   -I$(OPEN64_SRC_ROOT)/osprey/ir_tools \
   -I$(OPEN64_SRC_ROOT)/osprey/common/com \
+  -I$(OPEN64_SRC_ROOT)/osprey/common/fhe \
   -I$(OPEN64_SRC_ROOT)/osprey/common/com/x8664 \
   -I$(OPEN64_SRC_ROOT)/osprey/common/util \
   -I$(OPEN64_SRC_ROOT)/osprey/ipa/common \

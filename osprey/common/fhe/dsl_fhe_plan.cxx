@@ -1,5 +1,9 @@
 /*
  * Copyright (C) 2026 Open64 Project
+ *
+ * Implements managed FHE planning-image services and cross-table structural
+ * validation. See doc/FHE-SYNC3-NATIVE-PLAN-CONTRACT.md and
+ * doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md.
  */
 
 #include <float.h>
