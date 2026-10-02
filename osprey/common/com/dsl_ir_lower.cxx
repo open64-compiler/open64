@@ -242,6 +242,24 @@ DSL_IR_Lower_Find_Node
     return NULL;
 }
 
+/* Retired ABI rows preserve provenance but no longer require a live actual. */
+static BOOL
+DSL_IR_Lower_Call_Argument_Is_Verified_Dead
+        (const DSL_CALL_ARGUMENT_RECORD &argument)
+{
+    DSL_RETIRED_CALL_ARGUMENT_RECORD retired;
+    return DSL_Program_Interface_Image_Find_Retired_Call
+               (argument.id, &retired) &&
+           retired.call_argument_id == argument.id &&
+           retired.callsite_id == argument.callsite_id &&
+           retired.argument_value_id == argument.argument_value_id &&
+           retired.old_actual_ordinal == argument.actual_ordinal &&
+           retired.old_callee_formal_ordinal ==
+               argument.callee_formal_ordinal &&
+           retired.retirement_reason ==
+               DSL_INTERFACE_RETIREMENT_VERIFIED_DEAD_INPUT;
+}
+
 typedef struct {
     ST_IDX source_st;
     const WN *source_definition;
@@ -354,6 +372,12 @@ DSL_IR_Lower_Logical_Uses_Closed
         if (!DSL_Call_ABI_Image_Get_Argument(i, &argument) ||
             argument.argument_value_id != entry.value.id)
             continue;
+        if (entry.request->mode ==
+                DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION) {
+            if (!DSL_IR_Lower_Call_Argument_Is_Verified_Dead(argument))
+                return FALSE;
+            continue;
+        }
         DSL_RUNTIME_CALL_PROJECTION_RECORD call;
         if (!DSL_Runtime_Interface_Image_Find_Call
                 (argument.callsite_id, argument.actual_ordinal, &call) ||
@@ -429,8 +453,10 @@ DSL_IR_Lower_Relation_Resolve
         for (UINT32 i = 1;
              i <= DSL_Call_ABI_Image_Argument_Count(); ++i) {
             DSL_CALL_ARGUMENT_RECORD argument;
-            if (!DSL_Call_ABI_Image_Get_Argument(i, &argument) ||
-                argument.argument_value_id == value.id)
+            if (!DSL_Call_ABI_Image_Get_Argument(i, &argument))
+                return FALSE;
+            if (argument.argument_value_id == value.id &&
+                !DSL_IR_Lower_Call_Argument_Is_Verified_Dead(argument))
                 return FALSE;
         }
         *handle_st = ST_IDX_ZERO;

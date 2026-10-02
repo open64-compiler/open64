@@ -116,6 +116,13 @@ materialize its handle. This mode is intended for unused original and
 folded-away tensor constants, not for a source whose live caller still needs
 a handle.
 
+A call-ABI argument row may also remain as provenance only when the program
+interface has an exact matching `VERIFIED_DEAD_INPUT` retirement for that
+argument ID, source value, callsite, and original actual/formal ordinals.
+The physical source and local projection handles must still have no surviving
+use, and no runtime call projection may claim the value. This covers retired
+BatchNorm-only inputs without treating an unretired caller actual as dead.
+
 ## Preflight And Atomicity
 
 The complete request array is preflighted before any tree or table mutation.

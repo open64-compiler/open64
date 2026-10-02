@@ -2150,6 +2150,25 @@ DSL_IR_Image_Validate_Lowered_Relations (FILE *diagnostic)
                                (diagnostic,
                                 "dead source has runtime call", i);
             }
+            for (UINT32 j = 0; j < DSL_call_argument_table.Size(); ++j) {
+                const DSL_CALL_ARGUMENT_RECORD &argument =
+                    DSL_call_argument_table[j];
+                if (argument.argument_value_id != value.id)
+                    continue;
+                DSL_RETIRED_CALL_ARGUMENT_RECORD retired;
+                if (!DSL_Program_Interface_Image_Find_Retired_Call
+                        (argument.id, &retired) ||
+                    retired.callsite_id != argument.callsite_id ||
+                    retired.argument_value_id != value.id ||
+                    retired.old_actual_ordinal != argument.actual_ordinal ||
+                    retired.old_callee_formal_ordinal !=
+                        argument.callee_formal_ordinal ||
+                    retired.retirement_reason !=
+                        DSL_INTERFACE_RETIREMENT_VERIFIED_DEAD_INPUT)
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "dead source has live call argument", i);
+            }
         }
         if ((value.flags & DSL_IR_VALUE_FLAG_LOWERED) == 0)
             continue;
@@ -2349,6 +2368,8 @@ DSL_IR_Lowered_Relation_Views_Validate
          UINT32 projection_count,
          const DSL_RUNTIME_CALL_PROJECTION_RECORD *calls,
          UINT32 call_count,
+         const DSL_RETIRED_CALL_ARGUMENT_RECORD *retired_calls,
+         UINT32 retired_call_count,
          const DSL_RUNTIME_INPUT_RECORD *inputs,
          UINT32 input_count,
          const DSL_RUNTIME_INPUT_BINDING_RECORD *bindings,
@@ -2389,6 +2410,36 @@ DSL_IR_Lowered_Relation_Views_Validate
                      calls[i].value_projection_id == projection_id))
                     return DSL_IR_Image_Report
                                (diagnostic, "dead source has runtime call",
+                                value.id);
+            }
+            for (UINT32 i = 0; i < DSL_call_argument_table.Size(); ++i) {
+                const DSL_CALL_ARGUMENT_RECORD &argument =
+                    DSL_call_argument_table[i];
+                if (argument.argument_value_id != value.id)
+                    continue;
+                UINT32 matched_retirements = 0;
+                for (UINT32 j = 0; j < retired_call_count; ++j) {
+                    const DSL_RETIRED_CALL_ARGUMENT_RECORD &retired =
+                        retired_calls[j];
+                    if (retired.call_argument_id != argument.id)
+                        continue;
+                    if (retired.callsite_id != argument.callsite_id ||
+                        retired.argument_value_id != value.id ||
+                        retired.old_actual_ordinal !=
+                            argument.actual_ordinal ||
+                        retired.old_callee_formal_ordinal !=
+                            argument.callee_formal_ordinal ||
+                        retired.retirement_reason !=
+                            DSL_INTERFACE_RETIREMENT_VERIFIED_DEAD_INPUT)
+                        return DSL_IR_Image_Report
+                                   (diagnostic,
+                                    "invalid dead call retirement", value.id);
+                    ++matched_retirements;
+                }
+                if (matched_retirements != 1)
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "dead source has live call argument",
                                 value.id);
             }
         }
@@ -2503,6 +2554,9 @@ DSL_Program_Runtime_Interface_Images_Load_Mapped
               has_runtime ? runtime_view.header->value_projection_count : 0,
               has_runtime ? runtime_view.calls : NULL,
               has_runtime ? runtime_view.header->call_projection_count : 0,
+              has_program ? program_view.retired_calls : NULL,
+              has_program ?
+                  program_view.header->retired_call_argument_count : 0,
               has_program ? program_view.inputs : NULL,
               has_program ? program_view.header->runtime_input_count : 0,
               has_program ? program_view.bindings : NULL,
