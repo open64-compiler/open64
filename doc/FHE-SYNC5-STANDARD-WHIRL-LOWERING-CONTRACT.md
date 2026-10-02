@@ -139,6 +139,8 @@ Preflight rejects:
   projection;
 - duplicate values, nodes, definitions, replacement blocks, or result STIDs;
 - replacement statements with missing/wrong source positions;
+- a managed REGION result whose source symbol cannot be redirected to the
+  computed handle while preserving the complete output/result interface set;
 - a replacement block that writes the wrong handle or does not end in the
   single designated handle `STID`.
 
@@ -211,7 +213,12 @@ status=dead_elided relation=none
 ```
 
 The executable tree remains ordinary WHIRL and preserves source-line evidence
-for every inserted statement.
+for every inserted statement, along with managed REGION provenance. A
+computed result used by an `OUTPUT|RESULT`
+REGION interface is redirected to its projected runtime handle in the same
+complete-request transaction. `INPUT` and `INOUT` rows are not silently
+reinterpreted as results, and colliding interface symbols or ordinals reject
+before physical WN mutation.
 
 ## Ownership Boundary
 
@@ -238,14 +245,17 @@ transaction:
 - rank-4 external weight and rank-1 external bias values;
 - two computed runtime projections;
 - two root-promoted input relations;
+- one verified-dead tensor constant with a retained, unused local projection;
+- one computed result carried through a `cnn.basic_block.v1` REGION
+  `OUTPUT|RESULT` interface;
 - deliberately permuted requests to prove deterministic tree-order commit.
 
 The test proves failed partial-chain preflight leaves the tree unchanged,
 persists the successful artifact through the normal mapped-image writer, and
 reopens it with `ir_b2a -st -src`.  The retained `.T` must show four lowered
 relations, two standard result-handle `STID`s, both promoted formals, the
-rank-4/rank-1 tensor descriptors, and no executable native definitions for the
-four lowered sources.
+rank-4/rank-1 tensor descriptors, the redirected REGION result, and no
+executable native definitions for the five transformed sources.
 
 The separate two-PU program-interface fixture applies the caller first and
 proves only that PU is commit-eligible, applies the callee second, then writes

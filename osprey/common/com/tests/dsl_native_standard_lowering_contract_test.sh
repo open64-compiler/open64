@@ -62,6 +62,8 @@ for evidence in \
   'status=lowered relation=root_promoted_input' \
   'status=lowered relation=root_promoted_input projection=' \
   'status=dead_elided relation=none' \
+  'contract=cnn.basic_block.v1' \
+  'roles=0xa flags=0x0' \
   'name=standard_weight' \
   'name=standard_bias' \
   'rank=4,shape=[1,1,2,2]' \

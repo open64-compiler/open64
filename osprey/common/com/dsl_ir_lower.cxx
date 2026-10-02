@@ -13,6 +13,7 @@
 #include "dsl_memory_behavior.h"
 #include "dsl_ir_image.h"
 #include "dsl_region.h"
+#include "dsl_region_internal.h"
 #include "pu_info.h"
 #include "strtab.h"
 #include "symtab.h"
@@ -22,7 +23,6 @@
 /* Commit-only image mutation after complete transaction preflight. */
 extern BOOL DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID);
 extern BOOL DSL_IR_Image_Mark_Value_Dead_Elided (DSL_IR_VALUE_ID);
-extern UINT32 DSL_Region_Symbol_Use_Count (PU_Info *, ST_IDX);
 
 /* Confirm that the caller selected the PU whose local WHIRL state is active. */
 static BOOL
@@ -622,9 +622,7 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
         if (entry.node.flags != DSL_IR_NODE_FLAG_NONE ||
             entry.value.flags != DSL_IR_VALUE_FLAG_NONE ||
             !DSL_Tensor_Has_Unique_Ownership(entry.value.st) ||
-            WN_Get_Linenum(request.native_definition) == 0 ||
-            DSL_Region_Symbol_Use_Count
-                (pu_info, entry.value.st) != 0)
+            WN_Get_Linenum(request.native_definition) == 0)
             return DSL_IR_Lower_Report
                        (diagnostic, i, "source ownership or use mismatch");
         if (!DSL_IR_Lower_Relation_Resolve
@@ -683,6 +681,14 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
                        (diagnostic, entry.request_index,
                         "source value has an unlowered or escaping use");
 
+        if (DSL_Region_Symbol_Use_Count(pu_info, entry.value.st) != 0 &&
+            (request.mode !=
+                 DSL_IR_NATIVE_LOWER_COMPUTED_STANDARD_BLOCK ||
+             entry.handle_st == ST_IDX_ZERO))
+            return DSL_IR_Lower_Report
+                       (diagnostic, entry.request_index,
+                        "source REGION interface cannot be redirected");
+
         if (request.mode ==
                 DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION ||
             request.mode ==
@@ -736,6 +742,23 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
                         "standard block output or source position mismatch");
         entry.statement_count = block_scan.statement_count;
     }
+
+    std::vector<DSL_REGION_SYMBOL_REDIRECT> region_redirects;
+    for (UINT32 i = 0; i < journal.size(); ++i) {
+        const DSL_IR_NATIVE_VALUE_LOWER_JOURNAL &entry = journal[i];
+        if (DSL_Region_Symbol_Use_Count(pu_info, entry.value.st) == 0)
+            continue;
+        DSL_REGION_SYMBOL_REDIRECT redirect;
+        redirect.old_st = entry.value.st;
+        redirect.new_st = entry.handle_st;
+        region_redirects.push_back(redirect);
+    }
+    if (!region_redirects.empty() &&
+        !DSL_Region_Can_Apply_Lowering_Transitions
+             (pu_info, &region_redirects[0], region_redirects.size(),
+              NULL, 0))
+        return DSL_IR_Lower_Report
+                   (diagnostic, 0, "REGION transition is invalid");
 
     /* Commit in tree order so detached blocks replace their definitions. */
     std::sort(journal.begin(), journal.end(), DSL_IR_LOWER_JOURNAL_LESS());
@@ -802,6 +825,11 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
         result.handle_ty = entry.handle_ty;
         result.inserted_statement_count = entry.statement_count;
     }
+    if (!region_redirects.empty())
+        FmtAssert(DSL_Region_Apply_Lowering_Transitions
+                      (pu_info, &region_redirects[0],
+                       region_redirects.size(), NULL, 0),
+                  ("preflighted REGION lowering transition failed"));
     FmtAssert(DSL_IR_Image_Validate(NULL) &&
               DSL_IR_Image_Validate_Lowered_Relations(NULL) &&
               DSL_Region_Verify_PU(pu_info, NULL),

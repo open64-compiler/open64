@@ -9788,6 +9788,29 @@ Check_Native_To_Standard_Lowering(void)
                 definitions[3] != NULL);
         return failed;
     }
+    DSL_REGION result_region =
+        DSL_Region_Create(pu, NULL, "cnn.basic_block", 1);
+    STANDARD_LOWER_CHECK
+        (result_region != NULL &&
+         DSL_Region_Declare_Symbol
+             (result_region,
+              projection_requests[1].expected_source_st,
+              DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT,
+              0, DSL_REGION_INTERFACE_FLAG_NONE) &&
+         DSL_Region_Set_Source_Position
+             (result_region, WN_Get_Linenum(definitions[1])),
+         "computed result REGION interface");
+    if (failed)
+        return failed;
+    WN_EXTRACT_FromBlock(containing_blocks[1], definitions[1]);
+    STANDARD_LOWER_CHECK
+        (DSL_Region_Append_Statement(result_region, definitions[1]) &&
+         DSL_Region_Append_To_PU(result_region) &&
+         DSL_Region_Verify_PU(pu, stderr),
+         "computed result is owned by a REGION");
+    containing_blocks[1] = WN_region_body(DSL_Region_WN(result_region));
+    if (failed)
+        return failed;
     for (UINT32 i = 0; i < 2; ++i) {
         standard_block[i] = WN_CreateBlock();
         WN *value = i == 0 ?
@@ -9995,8 +10018,12 @@ Check_Native_To_Standard_Lowering(void)
              binding_records[0].handle_st &&
          results[4].value_projection_id == projections[2].id &&
          results[3].mode ==
-             DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION,
-         "promoted call projection and dead source evidence");
+             DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION &&
+         DSL_Region_Symbol_Use_Count
+             (pu, projection_requests[1].expected_source_st) == 0 &&
+         DSL_Region_Symbol_Use_Count
+             (pu, projections[1].handle_st) == 1,
+         "promoted, dead, and REGION result evidence");
     WN *copy_next = WN_next(promoted_copy);
     WN_EXTRACT_FromBlock(body, promoted_copy);
     STANDARD_LOWER_CHECK
