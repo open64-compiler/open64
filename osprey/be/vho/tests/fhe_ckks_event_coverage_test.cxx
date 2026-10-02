@@ -77,6 +77,13 @@ int main()
       VHO_FHE_CKKS_COVERAGE_DUPLICATE_RESULT);
   steps[1].result_value_id = changed.result_value_id + 1;
 
+  uint32_t other_event_result = steps[38].result_value_id;
+  steps[38].result_value_id = steps[0].result_value_id;
+  assert(VHO_FHE_CKKS_Verify_Event_Coverage(
+      &events[0], events.size(), 147, &steps[0], steps.size()) ==
+      VHO_FHE_CKKS_COVERAGE_DUPLICATE_RESULT);
+  steps[38].result_value_id = other_event_result;
+
   steps[0].step_ordinal = 2;
   assert(VHO_FHE_CKKS_Verify_Event_Coverage(
       &events[0], events.size(), 147, &steps[0], steps.size()) ==

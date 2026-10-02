@@ -10,6 +10,7 @@
 
 #include <map>
 #include <set>
+#include <tuple>
 
 namespace {
 
@@ -30,7 +31,6 @@ struct Event_Less {
 
 struct Event_Steps {
   std::set<uint32_t> ordinals;
-  std::set<uint32_t> results;
 };
 
 /* Reject zero IDs while allowing callsite zero for an entry-owned event. */
@@ -61,6 +61,7 @@ VHO_FHE_CKKS_Verify_Event_Coverage(
     return VHO_FHE_CKKS_COVERAGE_EVENT_COUNT;
 
   std::map<VHO_FHE_CKKS_EVENT_IDENTITY, Event_Steps, Event_Less> coverage;
+  std::set<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t> > results;
   for (size_t i = 0; i < event_count; ++i) {
     if (!Event_Valid(events[i]))
       return VHO_FHE_CKKS_COVERAGE_INVALID_ARGUMENT;
@@ -77,7 +78,11 @@ VHO_FHE_CKKS_Verify_Event_Coverage(
       return VHO_FHE_CKKS_COVERAGE_UNKNOWN_EVENT;
     if (!found->second.ordinals.insert(steps[i].step_ordinal).second)
       return VHO_FHE_CKKS_COVERAGE_DUPLICATE_STEP;
-    if (!found->second.results.insert(steps[i].result_value_id).second)
+    if (!results.insert(std::make_tuple(
+            steps[i].event.owner_pu_st,
+            steps[i].event.context_pu_identity_id,
+            steps[i].event.context_callsite_id,
+            steps[i].result_value_id)).second)
       return VHO_FHE_CKKS_COVERAGE_DUPLICATE_RESULT;
   }
 
