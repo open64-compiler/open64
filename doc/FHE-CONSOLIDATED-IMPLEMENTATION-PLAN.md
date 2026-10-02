@@ -687,6 +687,11 @@ bootstrap, and provenance graph; see
 require main/common review before allocation. The existing SYNC-5 mock path
 remains the regression reference. ACE library interaction begins only after
 this CKKS IR gate and its stable-C-ABI lowering pass.
+Do not add a second ACE-shaped mock to the S6-0 development path. Keep the
+Open64 ABI mock as the sole runtime test double through CKKS IR and terminal
+lowering. A focused ACE-call test double may be considered during final
+provider-adapter integration only if a specific adapter contract needs it;
+it must not become another required runtime layer.
 
 The exact pinned ACE import/export gap is recorded in
 `doc/FHE-SYNC6-ACE-ANT-ADMISSION-AUDIT.md`. It blocks later ACE admission and
