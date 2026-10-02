@@ -2,6 +2,12 @@
 
 Status: S6-1 source audit started; exact pinned provider **not admitted**.
 
+This finding is deferred until after the provider-independent CKKS semantic IR
+gate in `doc/FHE-SYNC6-CKKS-IR-CONFORMANCE-GATE.md`. It blocks ACE adapter and
+client/server execution, not CKKS operator/state IR design, creation, or
+mock-based terminal-lowering tests. No compiler or generated-C interaction
+with ACE is required for that IR gate.
+
 This audit implements the first check in
 `doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md`. The public C ABI remains
 `doc/FHE-RUNTIME-C-ABI-V1-CONTRACT.md`, and the provider/privacy decision is
@@ -52,8 +58,9 @@ the secret key. That would still generate and retain secret material.
 
 ## Required Reviewed ACE Patch
 
-Before S6-2, the ACE owner and Open64 FHE owner must review a new immutable
-ACE pin with all of these distinct services and tests:
+After the CKKS IR gate and before S6-2, the ACE owner and Open64 FHE owner
+must review a new immutable ACE pin with all of these distinct services and
+tests:
 
 1. Construct an evaluator-only context from authenticated public CKKS
    parameters and non-secret public, relinearization, signed-rotation, and

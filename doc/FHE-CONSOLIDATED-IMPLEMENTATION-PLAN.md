@@ -202,7 +202,7 @@ coverage in the same infrastructure PR.
 | C3: FHE conversion | Supply driver hook, cross-PU value identity, generic shape analysis, transactional rewrites, value-state attachment, and artifact publication | Certify shapes; implement FHE gatekeeping, 13-definition/21-context BatchNorm folding, converted-shape checks, operator dispositions, CKKS-state propagation, and reports | **SYNC-3: ResNet FHE conversion review** |
 | C4: ReLU correctness | Preserve and print `common.relu`; expose source/result/descriptor/composite-stage/range evidence | Certify the ACE-compatible `7 -> 15 -> 13` Chebyshev sign profile, then materialize mandatory pre-ReLU bootstrap, normalization, ordered stages, and reconstruction with all option modes | **SYNC-4: ReLU `-O0` baseline certification** |
 | C5: Standard WHIRL boundary | Supply standard call/result construction, unlowered-node gate, and `whirl2c` integration point | Freeze the deterministic full-ResNet correctness schedule and runtime-call census, publish its complete operation/rotation/key-requirement manifest, and implement the FHE C ABI and mock provider against it | **SYNC-5: Middle-WHIRL and mock executable gate** |
-| C6: ACE ANT ResNet | Complete driver link flow, provider manifest consumption, versioned context/key/ciphertext transport, and retained artifact family | Map the unchanged stable C ABI to pinned `FHErt_ant`, compare ACE capabilities with the complete SYNC-5 manifest, execute the server without secret-key material, and validate the full ResNet result on the client | **SYNC-6: End-to-end `-O0` client/server acceptance** |
+| C6: CKKS IR then ACE ANT ResNet | Review shared CKKS logical operator/image contracts and certify the executable `.ckks_ops.B` graph before driver/provider work; then complete provider manifest consumption, transport, and retained artifacts | Materialize and verify all provider-independent CKKS steps, lower them through the stable C ABI, then admit `FHErt_ant`, execute the secretless server, and validate results on the client | **SYNC-6: CKKS IR gate followed by end-to-end `-O0` client/server acceptance** |
 | C7: Optimized planning | Enable reviewed VHO/WOPT integration, common encrypted-iteration-space records, census verification, and per-pass controls | Implement selectable MetaKernel and Fhelipe planners, then add ReSBM, boundary movement/fusion, the dedicated SSAPRE-model HPAO-MU phase, HPAO-FM/HPAO-LM, and equivalence reports. HPAO-MD remains design TBD. | **SYNC-7A-E: layout-planner A/B proof and optimized-versus-`-O0` proof** |
 | C8: GPU path | Coordinate NVIDIA runtime and target-description infrastructure | Add FHE GPU capability, layout, cost, and later native POLY/RNS plans | **SYNC-8: Separate GPU architecture review** |
 
@@ -675,7 +675,22 @@ this consolidated plan remains the cross-milestone summary.
 Merge rule: assign every shared driver/whirl2c file to one PR owner before
 editing. The mock-runtime PR must not depend on an ACE runtime installation.
 
-### **SYNC-6: ACE ANT End-To-End `-O0` Client/Server Acceptance**
+### **SYNC-6: CKKS IR Then ACE ANT `-O0` Client/Server Acceptance**
+
+The first SYNC-6 gate is a provider-independent executable CKKS semantic
+WHIRL image, `secure_resnet20.ckks_ops.B`, reopened as `.T` with
+`ir_b2a -st -src`. It is later than the SYNC-4 CKKS materialization *plan*
+and earlier than terminal SYNC-5-style standard runtime calls. It must expose
+the complete per-context value-state, direct operation, key, rotation,
+bootstrap, and provenance graph; see
+`doc/FHE-SYNC6-CKKS-IR-CONFORMANCE-GATE.md`. Shared operator/image contracts
+require main/common review before allocation. The existing SYNC-5 mock path
+remains the regression reference. ACE library interaction begins only after
+this CKKS IR gate and its stable-C-ABI lowering pass.
+
+The exact pinned ACE import/export gap is recorded in
+`doc/FHE-SYNC6-ACE-ANT-ADMISSION-AUDIT.md`. It blocks later ACE admission and
+the final client/server exit, not CKKS IR creation or mock-based verification.
 
 Target command shape:
 
@@ -690,7 +705,9 @@ openpy -O0 -keep secure_resnet20.py \
 
 Required evidence:
 
-- Original, FHE, CKKS, and middle-WHIRL `.B`/`.T` pairs.
+- Original, FHE, SYNC-4 CKKS-plan, executable CKKS-operator, and terminal
+  standard-call `.B`/`.T` pairs; the historical `.mid.B` stem is not a formal
+  WHIRL-level assertion.
 - Generated C, compile command, link command, pinned ACE provider manifest, and
   dependency inspection.
 - Encryption configuration, key requirements, layout, depth/bootstrap,

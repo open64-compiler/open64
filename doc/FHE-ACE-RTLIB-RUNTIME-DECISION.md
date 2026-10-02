@@ -2,6 +2,12 @@
 
 Status: selected first executable provider; SYNC-6 capability admission pending
 
+Provider admission follows, rather than precedes, the provider-independent
+executable CKKS semantic IR conformance gate in
+`doc/FHE-SYNC6-CKKS-IR-CONFORMANCE-GATE.md`. The pinned ACE import/export gap
+is recorded separately in `doc/FHE-SYNC6-ACE-ANT-ADMISSION-AUDIT.md` and does
+not stop creation or mock-based verification of that IR.
+
 ## Authority And Decision
 
 The first Open64 FHE executable provider is the ACE ANT CKKS runtime
