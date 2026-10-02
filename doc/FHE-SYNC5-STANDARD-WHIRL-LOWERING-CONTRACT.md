@@ -246,10 +246,12 @@ The backend driver therefore skips the ordinary pre-interface
 compilation continues to run shape refinement unchanged.
 
 Before runtime lowering, `DSL_GATEKEEPER_PROJECTED` verifies the committed
-interface and requires each physical operand handle to match the logical
-value's exact runtime projection. Operator attributes, logical tensor types,
-and shape compatibility are checked through the existing DSL contracts using
-the canonical source TY, not the projected pointer TY. This mode does not
+interface. A native DSL kid may remain an exact canonical tensor-result LDID
+until S5-G replaces the operator, or it may be an exact projected runtime
+handle. Either form must resolve to the same logical image value; an unrelated
+symbol is rejected. Operator attributes, logical tensor types, and shape
+compatibility are checked through the existing DSL contracts using the
+canonical source TY, not the projected pointer TY. This mode does not
 weaken the strict/admission gates for unprojected input. Runtime lowering then
 checks the lowered program interface and rejects any executable unlowered FHE
 carrier before checkpoint publication.

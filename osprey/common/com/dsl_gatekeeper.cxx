@@ -789,20 +789,37 @@ DSL_Gatekeeper_Verify_Native_Node
                 reference.owner_node_id != image_node.id ||
                 reference.ordinal != i ||
                 !DSL_IR_Image_Get_Value(reference.value_id, &source) ||
-                !DSL_Runtime_Interface_Image_Find_Value
-                     (owner_pu_st, source.id, &projection) ||
-                projection.source_st != source.st ||
-                projection.source_ty != source.ty ||
-                projection.handle_st != WN_st_idx(operand) ||
-                projection.handle_ty != WN_ty(operand) ||
-                WN_rtype(operand) != TY_mtype(projection.handle_ty) ||
-                WN_desc(operand) != TY_mtype(projection.handle_ty) ||
                 !DSL_Gatekeeper_Tensor_Type_Admissible
                      (source.ty, context->mode)) {
                 valid = DSL_Gatekeeper_Report
-                            (context, "%s kid%u has no exact runtime "
-                             "projection", DSL_OPERATOR_name(dsl_operator),
-                             i);
+                            (context, "%s kid%u has no canonical logical "
+                             "value", DSL_OPERATOR_name(dsl_operator), i);
+                continue;
+            }
+            BOOL canonical_operand =
+                WN_rtype(operand) == MTYPE_M &&
+                WN_desc(operand) == MTYPE_M &&
+                WN_st_idx(operand) == source.st &&
+                WN_ty(operand) == source.ty &&
+                DSL_Gatekeeper_ST_Valid(source.st) &&
+                DSL_Gatekeeper_Is_Result_Symbol(context, source.st) &&
+                ST_type(St_Table[source.st]) == source.ty;
+            BOOL projected_operand = FALSE;
+            if (!canonical_operand &&
+                DSL_Runtime_Interface_Image_Find_Value
+                    (owner_pu_st, source.id, &projection))
+                projected_operand =
+                    projection.source_st == source.st &&
+                    projection.source_ty == source.ty &&
+                    projection.handle_st == WN_st_idx(operand) &&
+                    projection.handle_ty == WN_ty(operand) &&
+                    WN_rtype(operand) == TY_mtype(projection.handle_ty) &&
+                    WN_desc(operand) == TY_mtype(projection.handle_ty);
+            if (!canonical_operand && !projected_operand) {
+                valid = DSL_Gatekeeper_Report
+                            (context, "%s kid%u matches neither its "
+                             "canonical value nor runtime projection",
+                             DSL_OPERATOR_name(dsl_operator), i);
                 continue;
             }
             operand_types[i] = source.ty;

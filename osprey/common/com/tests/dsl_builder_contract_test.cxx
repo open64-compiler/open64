@@ -9844,6 +9844,17 @@ Check_Native_To_Standard_Lowering(void)
         WN_kid(native_expressions[i / 2], i % 2) = saved_operands[i];
         WN_DELETE_Tree(projected_operands[i]);
     }
+    STANDARD_LOWER_CHECK
+        (DSL_Gatekeeper_Verify_PU_Mode
+             (pu, DSL_GATEKEEPER_PROJECTED, stderr, NULL),
+         "committed projected-stage gate accepts canonical native kids");
+    ST_IDX saved_canonical_st = WN_st_idx(saved_operands[0]);
+    WN_st_idx(saved_operands[0]) = WN_st_idx(saved_operands[2]);
+    STANDARD_LOWER_CHECK
+        (!DSL_Gatekeeper_Verify_PU_Mode
+              (pu, DSL_GATEKEEPER_PROJECTED, NULL, NULL),
+         "projected-stage gate rejects a mismatched canonical kid");
+    WN_st_idx(saved_operands[0]) = saved_canonical_st;
     if (failed)
         return failed;
     for (UINT32 i = 0; i < 2; ++i) {
