@@ -3011,6 +3011,8 @@ DSL_Shape_Analyze_PU_Internal
             DSL_SHAPE_FACT inferred;
             DSL_SHAPE_INFERENCE_RESULT inference =
                 DSL_Shape_Infer_Operator(&input, &inferred);
+            if (inference == DSL_SHAPE_INFERENCE_UNREGISTERED)
+                continue;
             BOOL all_seed_facts_complete =
                 values[constraint.result_index].seed.state ==
                     DSL_SHAPE_FACT_COMPLETE;
@@ -3033,8 +3035,6 @@ DSL_Shape_Analyze_PU_Internal
                     DSL_SHAPE_CHECK_VALID)
                     inference = DSL_SHAPE_INFERENCE_CONTRADICTION;
             }
-            if (inference == DSL_SHAPE_INFERENCE_UNREGISTERED)
-                continue;
             if (inference == DSL_SHAPE_INFERENCE_CONTRADICTION) {
                 values[constraint.result_index].fact.state =
                     DSL_SHAPE_FACT_CONTRADICTION;

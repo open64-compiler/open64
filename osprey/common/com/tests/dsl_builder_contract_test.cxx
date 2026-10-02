@@ -2358,6 +2358,179 @@ Check_Construction_Tensor_Folding(void)
 }
 
 static int
+Check_CKKS_Logical_Operators(void)
+{
+    static const DSL_OPERATOR operators[] = {
+        OPR_DSLCKKSENCODE, OPR_DSLCKKSADD, OPR_DSLCKKSSUB,
+        OPR_DSLCKKSMUL, OPR_DSLCKKSROTATE, OPR_DSLCKKSRESCALE,
+        OPR_DSLCKKSMODSWITCH, OPR_DSLCKKSRELIN,
+        OPR_DSLCKKSBOOTSTRAP
+    };
+    static const char *stable_names[] = {
+        "ckks.encode", "ckks.add", "ckks.sub", "ckks.mul",
+        "ckks.rotate", "ckks.rescale", "ckks.modswitch",
+        "ckks.relin", "ckks.bootstrap"
+    };
+    static const char *attribute_schemas[] = {
+        "", "", "", "", "attr.signed_steps;attr.key_id",
+        "attr.levels;attr.target_scale_bits", "attr.target_level",
+        "attr.key_id", "attr.target_level;attr.reason;attr.key_id"
+    };
+    static const char *result_names[] = {
+        "ckks_encoded", "ckks_added", "ckks_subtracted",
+        "ckks_multiplied", "ckks_rotated", "ckks_rescaled",
+        "ckks_modswitched", "ckks_relinearized", "ckks_refreshed"
+    };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE rotate_attrs[2] = {
+        { "attr.signed_steps", "-1" }, { "attr.key_id", "rotation_key" }
+    };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE rescale_attrs[2] = {
+        { "attr.levels", "1" }, { "attr.target_scale_bits", "56" }
+    };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE modswitch_attr =
+        { "attr.target_level", "17" };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE relin_attr =
+        { "attr.key_id", "relin_key" };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE bootstrap_attrs[3] = {
+        { "attr.target_level", "18" },
+        { "attr.reason", "PRE_RELU_REFRESH" },
+        { "attr.key_id", "bootstrap_key" }
+    };
+    const DSL_BUILDER_OPERATOR_ATTRIBUTE *attributes[] = {
+        NULL, NULL, NULL, NULL, rotate_attrs, rescale_attrs,
+        &modswitch_attr, &relin_attr, bootstrap_attrs
+    };
+    const UINT32 attribute_counts[] = { 0, 0, 0, 0, 2, 2, 1, 1, 3 };
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_VALUE values[11];
+    DSL_BUILDER_VALUE kids[2];
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    DSL_DOMAIN_ID ckks_id;
+    TY_IDX tensor_ty;
+    UINT32 file_id;
+    char diagnostic[4096];
+    int failed = 0;
+
+    if (!DSL_Builder_Begin_Program() ||
+        DSL_Opcode_Register_CKKS_Domain() != 9)
+        return 1;
+    ckks_id = DSL_Domain_Find("ckks");
+    if (ckks_id == DSL_DOMAIN_INVALID_ID ||
+        (UINT32)OPR_DSLREMPART != 27 ||
+        (UINT32)OPR_DSLCKKSADD != 28 ||
+        (UINT32)OPR_DSLCKKSBOOTSTRAP != 36)
+        return 1;
+    for (UINT32 i = 0; i < 9; ++i) {
+        DSL_OPERATOR_INFO info;
+        if (!DSL_Operator_Get_Info_Version(operators[i], 1, &info) ||
+            strcmp(info.stable_name, stable_names[i]) != 0 ||
+            strcmp(info.attribute_schema, attribute_schemas[i]) != 0 ||
+            info.nkids != (i == 0 || i >= 4 ? 1 : 2) ||
+            info.shape_rule != DSL_SHAPE_RULE_OPAQUE ||
+            info.effect_model != DSL_EFFECT_MODEL_PURE ||
+            DSL_Operator_Get_Algebraic_Info(operators[i], 1, NULL) ||
+            DSL_Operator_Get_Fusibility_Info(operators[i], 1, NULL) ||
+            DSL_Operator_Find(stable_names[i], strlen(stable_names[i]), 1) !=
+                operators[i] ||
+            DSL_Opcode_Find(ckks_id, stable_names[i], 1) ==
+                DSL_OPCODE_INVALID_ID) {
+            fprintf(stderr, "CKKS logical operator contract changed: %s\n",
+                    stable_names[i]);
+            return 1;
+        }
+    }
+    if (DSL_Operator_Find("ckks.add", strlen("ckks.add"), 2) !=
+        OPR_DSLUNKNOWN)
+        return 1;
+
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 1;
+    descriptor.type_core.logical_shape = "[2]";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("ckks_roundtrip_tensor", MTYPE_To_TY(MTYPE_F4),
+                     &descriptor);
+    pu = DSL_Builder_Create_Minimal_PU("ckks_roundtrip");
+    if (tensor_ty == TY_IDX_ZERO || pu == NULL)
+        return 1;
+    file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    values[0] = DSL_Builder_Create_Tensor_Constant
+                    ("ckks_zero", tensor_ty, "float32", 1, "[2]",
+                     "splat", "0");
+    values[1] = DSL_Builder_Create_Tensor_Constant
+                    ("ckks_one", tensor_ty, "float32", 1, "[2]",
+                     "splat", "1");
+    kids[0] = values[0];
+    if (DSL_Builder_Create_Operator_With_Result
+            (DSL_Opcode_Find(ckks_id, "ckks.rotate", 1), 1,
+             kids, 1, rotate_attrs, 1, "missing_key", tensor_ty) != NULL ||
+        DSL_Builder_Create_Operator_With_Result
+            (DSL_Opcode_Find(ckks_id, "ckks.add", 1), 1,
+             values, 2, rotate_attrs, 1, "extra_attribute", tensor_ty) !=
+                NULL) {
+        fprintf(stderr, "CKKS static attribute schema was not enforced\n");
+        return 1;
+    }
+    for (UINT32 i = 0; i < 9; ++i) {
+        DSL_OPCODE_ID id = DSL_Opcode_Find
+                               (ckks_id, stable_names[i], 1);
+        kids[0] = i == 0 ? values[0] : values[i + 1];
+        kids[1] = values[1];
+        values[i + 2] = DSL_Builder_Create_Operator_With_Result
+                            (id, 1, kids, i == 0 || i >= 4 ? 1 : 2,
+                             attributes[i], attribute_counts[i],
+                             result_names[i], tensor_ty);
+        if (values[i + 2] == NULL ||
+            !DSL_WN_Is_Native(WN_kid0(values[i + 2])) ||
+            DSL_WN_operator(WN_kid0(values[i + 2])) != operators[i]) {
+            fprintf(stderr, "CKKS native expression was not created: %s\n",
+                    stable_names[i]);
+            return 1;
+        }
+    }
+    for (UINT32 i = 0; i < 11; ++i) {
+        DSL_BUILDER_SOURCE_POSITION position;
+        memset(&position, 0, sizeof(position));
+        position.file_id = file_id;
+        position.line = __LINE__;
+        position.column = 1;
+        position.statement_begin = 1;
+        if (values[i] == NULL || !DSL_Builder_Append_PU_Value(pu, values[i]) ||
+            !DSL_Builder_Set_Value_Source_Position(values[i], &position)) {
+            fprintf(stderr, "CKKS PU value/source registration failed: %u\n",
+                    i);
+            return 1;
+        }
+    }
+    if (!DSL_IR_Image_Validate(stderr))
+        failed = 1;
+    memset(&verify, 0, sizeof(verify));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (!DSL_Builder_Verify_Program(&verify)) {
+        fprintf(stderr, "CKKS builder gatekeeper failed: %s\n", diagnostic);
+        failed = 1;
+    }
+
+    const char *artifact = getenv("OPEN64_DSL_CKKS_OPCODE_ARTIFACT");
+    request.path = artifact == NULL || artifact[0] == '\0' ?
+                   "ckks_opcode_roundtrip.B" : artifact;
+    request.flags = 0;
+    (void) unlink(request.path);
+    if (!DSL_Builder_Finalize_Mapped_Image(&request) ||
+        access(request.path, F_OK) != 0) {
+        fprintf(stderr, "CKKS mapped-image finalization failed\n");
+        failed = 1;
+    }
+    if (artifact == NULL || artifact[0] == '\0')
+        (void) unlink(request.path);
+    return failed;
+}
+
+static int
 Check_Native_DSL_Node_Layout(void)
 {
     DSL_BUILDER_TENSOR_TYPE_CORE type_core;
@@ -11659,6 +11832,8 @@ main(void)
         return Check_PU_Scalar_Bound_Call_ABI();
     if (getenv("OPEN64_DSL_PU_CLONE_REGION_ONLY") != NULL)
         return Check_PU_Clone_Region_Store();
+    if (getenv("OPEN64_DSL_CKKS_OPCODE_ONLY") != NULL)
+        return Check_CKKS_Logical_Operators();
     if (getenv("OPEN64_DSL_LLAMA2_COMMON_ONLY") != NULL)
         return Check_Llama2_Common_Substrate();
     if (getenv("OPEN64_DSL_LLAMA2_TRANSFORMER_ONLY") != NULL)

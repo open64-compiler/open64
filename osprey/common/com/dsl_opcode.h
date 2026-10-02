@@ -47,7 +47,16 @@ typedef enum {
     OPR_DSLREM = 24,
     OPR_DSLDIVREM = 25,
     OPR_DSLDIVPART = 26,
-    OPR_DSLREMPART = 27
+    OPR_DSLREMPART = 27,
+    OPR_DSLCKKSADD = 28,
+    OPR_DSLCKKSSUB = 29,
+    OPR_DSLCKKSMUL = 30,
+    OPR_DSLCKKSENCODE = 31,
+    OPR_DSLCKKSROTATE = 32,
+    OPR_DSLCKKSRESCALE = 33,
+    OPR_DSLCKKSMODSWITCH = 34,
+    OPR_DSLCKKSRELIN = 35,
+    OPR_DSLCKKSBOOTSTRAP = 36
 } DSL_OPERATOR;
 
 typedef enum {
@@ -323,6 +332,7 @@ extern BOOL DSL_Algebraic_Relation_Get
                                  DSL_ALGEBRAIC_RELATION_INFO *info);
 extern UINT32 DSL_Opcode_Register_Common_Substrate (void);
 extern UINT32 DSL_Opcode_Register_Transformer_Domain (void);
+extern UINT32 DSL_Opcode_Register_CKKS_Domain (void);
 extern UINT32 DSL_Opcode_Register_Domain_Wrapper_Examples (void);
 extern DSL_OPCODE_ID DSL_Opcode_Wrapper_Target (DSL_OPCODE_ID id);
 extern void DSL_Opcode_Promotion_Registry_Reset (void);

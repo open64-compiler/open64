@@ -1037,6 +1037,8 @@ DSL_Builder_Requires_Exact_Attribute_Schema
            dsl_operator == OPR_DSLATTENTION ||
            dsl_operator == OPR_DSLSWIGLU ||
            dsl_operator == OPR_DSLSCATTER ||
+           (dsl_operator >= OPR_DSLCKKSADD &&
+            dsl_operator <= OPR_DSLCKKSBOOTSTRAP) ||
            (dsl_operator == OPR_DSLMATMUL && version == 2) ||
            (dsl_operator == OPR_DSLLINEAR && version == 3) ||
            (dsl_operator == OPR_DSLOUTPUTLOGITS && version == 3);

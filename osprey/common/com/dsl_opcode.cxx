@@ -142,7 +142,16 @@ static const char *DSL_operator_name[] = {
     "OPR_DSLREM",
     "OPR_DSLDIVREM",
     "OPR_DSLDIVPART",
-    "OPR_DSLREMPART"
+    "OPR_DSLREMPART",
+    "OPR_DSLCKKSADD",
+    "OPR_DSLCKKSSUB",
+    "OPR_DSLCKKSMUL",
+    "OPR_DSLCKKSENCODE",
+    "OPR_DSLCKKSROTATE",
+    "OPR_DSLCKKSRESCALE",
+    "OPR_DSLCKKSMODSWITCH",
+    "OPR_DSLCKKSRELIN",
+    "OPR_DSLCKKSBOOTSTRAP"
 };
 
 static const char *DSL_fusion_iteration_class_name_table[] = {
@@ -650,7 +659,49 @@ static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
     { OPR_DSLREMPART, "common.rempart", 1,
         DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
         DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
-        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_REMPART", "" }
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_REMPART", "" },
+    /* CKKS operators remain distinct from generic broadcast/algebraic rules. */
+    { OPR_DSLCKKSADD, "ckks.add", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 2,
+        DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CKKS_ADD", "" },
+    { OPR_DSLCKKSSUB, "ckks.sub", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 2,
+        DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CKKS_SUB", "" },
+    { OPR_DSLCKKSMUL, "ckks.mul", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 2,
+        DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CKKS_MUL", "" },
+    { OPR_DSLCKKSENCODE, "ckks.encode", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CKKS_ENCODE", "" },
+    { OPR_DSLCKKSROTATE, "ckks.rotate", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CKKS_ROTATE",
+        "attr.signed_steps;attr.key_id" },
+    { OPR_DSLCKKSRESCALE, "ckks.rescale", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CKKS_RESCALE",
+        "attr.levels;attr.target_scale_bits" },
+    { OPR_DSLCKKSMODSWITCH, "ckks.modswitch", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CKKS_MODSWITCH",
+        "attr.target_level" },
+    { OPR_DSLCKKSRELIN, "ckks.relin", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CKKS_RELIN",
+        "attr.key_id" },
+    { OPR_DSLCKKSBOOTSTRAP, "ckks.bootstrap", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CKKS_BOOTSTRAP",
+        "attr.target_level;attr.reason;attr.key_id" }
 };
 
 static const DSL_FUSIBILITY_INFO DSL_fusibility_info[] = {
@@ -1423,6 +1474,22 @@ DSL_Opcode_Register_Transformer_Domain (void)
         return 0;
     return DSL_Opcode_Register_Logical_Domain
                ("transformer", transformer_id, 1);
+}
+
+UINT32
+DSL_Opcode_Register_CKKS_Domain (void)
+{
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_DOMAIN_ID common_id = DSL_Domain_Find("common");
+    DSL_DOMAIN_ID ckks_id = DSL_Domain_Find("ckks");
+
+    if (common_id == DSL_DOMAIN_INVALID_ID)
+        return 0;
+    if (ckks_id == DSL_DOMAIN_INVALID_ID)
+        ckks_id = DSL_Domain_Register("ckks", common_id, 1, 0);
+    if (ckks_id == DSL_DOMAIN_INVALID_ID)
+        return 0;
+    return DSL_Opcode_Register_Logical_Domain("ckks", ckks_id, 1);
 }
 
 DSL_OPCODE_ID
