@@ -271,6 +271,20 @@ program-interface evolution.
 The result reports retired formals/actuals, promoted inputs, threaded bindings,
 rewritten calls/returns, and canonical projections separately.
 
+For the first FHE ResNet-20 consumer, the prepared six-PU plan contains 48
+verified-dead BatchNorm formals, 80 matching call actuals, 48 runtime inputs,
+92 bindings, 76 runtime-input call edges, 248 value projections, and 58 call
+projections. The staged transaction prunes only retired plain REGION input
+rows; it retains each `cnn.basic_block.v1` REGION, its live inputs, result,
+contract, source, and metadata. Each caller-owned hidden-result handle is
+zero-initialized at the call source position immediately before its output
+`LDA`/call; per-PU and mapped-reopen validation require that exact pair.
+The retained S5-E `fhe_program_interface_full_model_test.sh` reopens the
+completed binary using `ir_b2a -st -src` and rejects a terminal PU-5 failure
+without publishing a final or temporary binary. This certifies interface
+evolution only; executable DSL operation lowering and production checkpoint
+publication remain later SYNC-5 stages.
+
 ## Deadness And Ownership Proof
 
 A formal is prunable only when all of these hold:

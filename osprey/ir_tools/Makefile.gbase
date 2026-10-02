@@ -617,6 +617,10 @@ fhe_materialize.o: $(BE_VHO_DIR)/fhe_materialize.cxx
 fhe_runtime_lower.o: $(BE_VHO_DIR)/fhe_runtime_lower.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
+fhe_runtime_interface_plan.o: \
+		$(BE_VHO_DIR)/fhe_runtime_interface_plan.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
 fhe_standard_whirl.o: $(BE_VHO_DIR)/fhe_standard_whirl.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
@@ -641,10 +645,12 @@ fhe_materialize_contract_test.o: \
 
 fhe_runtime_lower_contract_test: $(OBJECTS) controls.o fhe_checkpoint.o \
 		fhe_runtime_lower.o fhe_standard_whirl.o \
+		fhe_runtime_interface_plan.o \
 		fhe_semantic_runtime_lower.o fhe_unlowered_gate.o \
 		fhe_runtime_lower_contract_test.o
 	$(link.c++f) -o $@ fhe_runtime_lower_contract_test.o controls.o \
 		fhe_checkpoint.o fhe_runtime_lower.o fhe_standard_whirl.o \
+		fhe_runtime_interface_plan.o \
 		fhe_semantic_runtime_lower.o \
 		fhe_unlowered_gate.o $(OBJECTS) $(LDFLAGS)
 

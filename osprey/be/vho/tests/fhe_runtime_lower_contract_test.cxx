@@ -5,6 +5,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+
+#include <string>
+#include <vector>
 
 #include "defs.h"
 #include "config.h"
@@ -18,6 +22,7 @@
 #include "errors.h"
 #include "err_host.tab"
 #include "fhe_runtime_lower.h"
+#include "fhe_runtime_interface_plan.h"
 #include "fhe_semantic_runtime_lower.h"
 #include "fhe_standard_whirl.h"
 #include "fhe_unlowered_gate.h"
@@ -1052,8 +1057,9 @@ Check_Mapped_Static_Schedule (const char *path)
 {
     void *input = Open_Input_Info((char *)path);
     INT32 pu_count = 0;
-    if (input == NULL || input == (void *)-1 || Read_Global_Info(&pu_count) ==
-        NULL) {
+    PU_Info *pu_tree = input == NULL || input == (void *)-1 ? NULL :
+        Read_Global_Info(&pu_count);
+    if (pu_tree == NULL) {
         fprintf(stderr, "could not reopen runtime schedule input %s\n", path);
         return 1;
     }
@@ -1092,7 +1098,281 @@ Check_Mapped_Static_Schedule (const char *path)
                 interface_census.threaded_source_binding_count +
                 interface_census.resource_binding_count,
             interface_census.runtime_input_call_count);
+
+    PU_Info *root_pu = NULL;
+    for (PU_Info *pu = pu_tree; pu != NULL; pu = PU_Info_next(pu)) {
+        UINT32 incoming = 0;
+        for (UINT32 id = 1; id <= DSL_Call_Image_Callsite_Count(); ++id) {
+            DSL_CALLSITE_METADATA_RECORD callsite;
+            if (!DSL_Call_Image_Get_Callsite(id, &callsite)) {
+                valid = FALSE;
+                break;
+            }
+            if (callsite.callee_pu_st == PU_Info_proc_sym(pu))
+                ++incoming;
+        }
+        if (incoming == 0) {
+            if (root_pu != NULL)
+                valid = FALSE;
+            root_pu = pu;
+        }
+    }
+    if (root_pu == NULL)
+        valid = FALSE;
+
+    VHO_FHE_RUNTIME_INTERFACE_PLAN_SUMMARY plan_summary;
+    memset(&plan_summary, 0, sizeof(plan_summary));
+    if (valid) {
+        MEM_POOL_Push(MEM_pu_nz_pool_ptr);
+        MEM_POOL_Push(MEM_pu_pool_ptr);
+        Read_Local_Info(MEM_pu_nz_pool_ptr, root_pu);
+        Current_PU_Info = root_pu;
+        valid = VHO_FHE_Runtime_Interface_Plans_Prepare
+                    (root_pu, stderr, &plan_summary) &&
+            plan_summary.retired_formal_count == 48 &&
+            plan_summary.retired_call_argument_count == 80 &&
+            plan_summary.runtime_input_count == 48 &&
+            plan_summary.runtime_input_binding_count == 92 &&
+            plan_summary.runtime_input_call_count == 76;
+
+        DSL_PROGRAM_INTERFACE_PLAN program_plan;
+        DSL_RUNTIME_INTERFACE_PLAN runtime_plan;
+        memset(&program_plan, 0, sizeof(program_plan));
+        memset(&runtime_plan, 0, sizeof(runtime_plan));
+        valid = valid && VHO_FHE_Runtime_Interface_Plans_Get
+                             (&program_plan, &runtime_plan);
+        if (valid) {
+            std::vector<DSL_RETIRED_FORMAL_REQUEST> duplicate_retirements
+                (program_plan.retired_formals,
+                 program_plan.retired_formals +
+                     program_plan.retired_formal_count);
+            duplicate_retirements[1] = duplicate_retirements[0];
+            DSL_PROGRAM_INTERFACE_PLAN duplicate_plan = program_plan;
+            duplicate_plan.retired_formals = &duplicate_retirements[0];
+
+            std::vector<DSL_RUNTIME_INPUT_REQUEST> wrong_owner_inputs
+                (program_plan.runtime_inputs,
+                 program_plan.runtime_inputs +
+                     program_plan.runtime_input_count);
+            wrong_owner_inputs[0].source_owner_pu_st = ST_IDX_ZERO;
+            DSL_PROGRAM_INTERFACE_PLAN wrong_owner_plan = program_plan;
+            wrong_owner_plan.runtime_inputs = &wrong_owner_inputs[0];
+
+            DSL_RUNTIME_INTERFACE_PLAN incomplete_calls = runtime_plan;
+            incomplete_calls.call_count = 0;
+            std::vector<DSL_RUNTIME_INPUT_REQUEST> wrong_handle_inputs
+                (program_plan.runtime_inputs,
+                 program_plan.runtime_inputs +
+                     program_plan.runtime_input_count);
+            wrong_handle_inputs[0].handle_ty =
+                wrong_handle_inputs[1].handle_ty;
+            for (UINT32 i = 0; i < wrong_handle_inputs.size(); ++i) {
+                if (wrong_handle_inputs[i].input_kind ==
+                    DSL_RUNTIME_INPUT_OPAQUE_RESOURCE) {
+                    wrong_handle_inputs[0].handle_ty =
+                        wrong_handle_inputs[i].handle_ty;
+                    break;
+                }
+            }
+            DSL_PROGRAM_INTERFACE_PLAN wrong_handle_plan = program_plan;
+            wrong_handle_plan.runtime_inputs = &wrong_handle_inputs[0];
+
+            std::vector<DSL_RUNTIME_INPUT_BINDING_REQUEST> unrooted_bindings
+                (program_plan.runtime_input_bindings,
+                 program_plan.runtime_input_bindings +
+                     program_plan.runtime_input_binding_count);
+            for (UINT32 i = 0; i < unrooted_bindings.size(); ++i) {
+                if (unrooted_bindings[i].binding_kind ==
+                    DSL_RUNTIME_INPUT_BINDING_ROOT_RESOURCE) {
+                    unrooted_bindings[i].owner_pu_st = ST_IDX_ZERO;
+                    break;
+                }
+            }
+            DSL_PROGRAM_INTERFACE_PLAN unrooted_plan = program_plan;
+            unrooted_plan.runtime_input_bindings = &unrooted_bindings[0];
+
+            DSL_RUNTIME_INTERFACE_PLAN missing_result = runtime_plan;
+            --missing_result.value_count;
+            BOOL rejected_duplicate = !DSL_Program_Interface_Plan_Validate
+                (&duplicate_plan, &runtime_plan, NULL);
+            BOOL rejected_owner = !DSL_Program_Interface_Plan_Validate
+                (&wrong_owner_plan, &runtime_plan, NULL);
+            BOOL rejected_handle = !DSL_Program_Interface_Plan_Validate
+                (&wrong_handle_plan, &runtime_plan, NULL);
+            BOOL rejected_unrooted = !DSL_Program_Interface_Plan_Validate
+                (&unrooted_plan, &runtime_plan, NULL);
+            BOOL rejected_result = !DSL_Program_Interface_Plan_Validate
+                (&program_plan, &missing_result, NULL);
+            BOOL rejected_calls = !DSL_Program_Interface_Plan_Validate
+                (&program_plan, &incomplete_calls, NULL);
+            fprintf(stderr,
+                    "FHE interface negative cases: duplicate=%d owner=%d "
+                    "handle=%d unrooted=%d result=%d calls=%d\n",
+                    rejected_duplicate, rejected_owner, rejected_handle,
+                    rejected_unrooted, rejected_result, rejected_calls);
+            valid = rejected_duplicate && rejected_owner &&
+                rejected_handle && rejected_unrooted && rejected_result &&
+                rejected_calls;
+        }
+        VHO_FHE_RUNTIME_INTERFACE_PLAN_SUMMARY repeated_summary;
+        memset(&repeated_summary, 0, sizeof(repeated_summary));
+        valid = valid && plan_summary.fingerprint != 0 &&
+            VHO_FHE_Runtime_Interface_Plans_Prepare
+                (root_pu, stderr, &repeated_summary) &&
+            repeated_summary.fingerprint == plan_summary.fingerprint;
+        VHO_FHE_Runtime_Interface_Plans_Reset();
+        Current_PU_Info = NULL;
+        Free_Local_Info(root_pu);
+        MEM_POOL_Pop(MEM_pu_nz_pool_ptr);
+        MEM_POOL_Pop(MEM_pu_pool_ptr);
+    }
+    fprintf(stderr,
+            "FHE runtime interface plan: retired_formals=%u "
+            "retired_actuals=%u inputs=%u bindings=%u calls=%u "
+            "value_projections=%u call_projections=%u fingerprint=%llx\n",
+            plan_summary.retired_formal_count,
+            plan_summary.retired_call_argument_count,
+            plan_summary.runtime_input_count,
+            plan_summary.runtime_input_binding_count,
+            plan_summary.runtime_input_call_count,
+            plan_summary.value_projection_count,
+            plan_summary.call_projection_count,
+            (unsigned long long)plan_summary.fingerprint);
     VHO_FHE_Runtime_Static_Schedule_Reset();
+    Free_Input_Info();
+    return valid ? 0 : 1;
+}
+
+/* Apply the complete owner-qualified interface plan through mapped PU scopes. */
+static int
+Check_Mapped_Program_Interface
+        (const char *input_path, const char *output_path)
+{
+    fprintf(stderr, "interface apply: opening input\n");
+    void *input = Open_Input_Info((char *)input_path);
+    INT32 pu_count = 0;
+    PU_Info *pu_tree = input == NULL || input == (void *)-1 ? NULL :
+        Read_Global_Info(&pu_count);
+    if (pu_tree == NULL || pu_count != 6)
+        return 1;
+    fprintf(stderr, "interface apply: global input loaded\n");
+
+    PU_Info *root_pu = NULL;
+    for (PU_Info *pu = pu_tree; pu != NULL; pu = PU_Info_next(pu)) {
+        UINT32 incoming = 0;
+        for (UINT32 id = 1; id <= DSL_Call_Image_Callsite_Count(); ++id) {
+            DSL_CALLSITE_METADATA_RECORD callsite;
+            if (!DSL_Call_Image_Get_Callsite(id, &callsite))
+                return 1;
+            if (callsite.callee_pu_st == PU_Info_proc_sym(pu))
+                ++incoming;
+        }
+        if (incoming == 0) {
+            if (root_pu != NULL)
+                return 1;
+            root_pu = pu;
+        }
+    }
+    if (root_pu == NULL || root_pu != pu_tree)
+        return 1;
+
+    MEM_POOL_Push(MEM_pu_nz_pool_ptr);
+    MEM_POOL_Push(MEM_pu_pool_ptr);
+    Read_Local_Info(MEM_pu_nz_pool_ptr, root_pu);
+    Current_PU_Info = root_pu;
+    VHO_FHE_RUNTIME_INTERFACE_PLAN_SUMMARY summary;
+    memset(&summary, 0, sizeof(summary));
+    BOOL valid = VHO_FHE_Runtime_Interface_Plans_Prepare
+                     (root_pu, stderr, &summary);
+    if (!valid)
+        return 1;
+    fprintf(stderr, "interface apply: plan prepared\n");
+
+    std::string temporary_path = std::string(output_path) + ".tmp";
+    unlink(temporary_path.c_str());
+    Irb_File_Name = (char *)temporary_path.c_str();
+    if (Open_Output_Info(Irb_File_Name) == NULL)
+        return 1;
+    fprintf(stderr, "interface apply: output open\n");
+    DSL_PROGRAM_INTERFACE_RESULT aggregate;
+    memset(&aggregate, 0, sizeof(aggregate));
+    UINT32 applied = 0;
+    for (PU_Info *pu = pu_tree; pu != NULL && valid;
+         pu = PU_Info_next(pu)) {
+        fprintf(stderr, "interface apply: PU %u\n", applied + 1);
+        if (pu != root_pu) {
+            MEM_POOL_Push(MEM_pu_nz_pool_ptr);
+            MEM_POOL_Push(MEM_pu_pool_ptr);
+            Read_Local_Info(MEM_pu_nz_pool_ptr, pu);
+            Current_PU_Info = pu;
+        }
+        DSL_PROGRAM_INTERFACE_RESULT result;
+        const char *reject_pu = getenv("OPEN64_FHE_INTERFACE_REJECT_PU");
+        valid = (reject_pu == NULL || atoi(reject_pu) != applied + 1) &&
+            VHO_FHE_Runtime_Interface_Plans_Apply_PU
+                (pu, stderr, &result);
+        if (valid) {
+            aggregate.retired_formal_count += result.retired_formal_count;
+            aggregate.retired_call_argument_count +=
+                result.retired_call_argument_count;
+            aggregate.runtime_binding_count +=
+                result.runtime_binding_count;
+            aggregate.runtime_call_count += result.runtime_call_count;
+            aggregate.canonical_projection_count +=
+                result.canonical_projection_count;
+            aggregate.rewritten_call_count += result.rewritten_call_count;
+            aggregate.rewritten_return_count +=
+                result.rewritten_return_count;
+            Write_PU_Info(pu);
+            /* The IR_TOOLS writer has no SSA serializer; ABI edits also
+             * invalidate the input SSA, so omit that derived subsection. */
+            Set_PU_Info_state(pu, WT_SSA, Subsect_Missing);
+            ++applied;
+        }
+        Current_PU_Info = NULL;
+        Free_Local_Info(pu);
+        MEM_POOL_Pop(MEM_pu_nz_pool_ptr);
+        MEM_POOL_Pop(MEM_pu_pool_ptr);
+    }
+    valid = valid && applied == 6 &&
+        VHO_FHE_Runtime_Interface_Plans_Verify_Complete(stderr) &&
+        aggregate.retired_formal_count == summary.retired_formal_count &&
+        aggregate.retired_call_argument_count ==
+            summary.retired_call_argument_count &&
+        aggregate.runtime_binding_count ==
+            summary.runtime_input_binding_count &&
+        aggregate.runtime_call_count == summary.runtime_input_call_count &&
+        aggregate.canonical_projection_count ==
+            summary.value_projection_count;
+    if (valid) {
+        for (PU_Info *pu = pu_tree; pu != NULL; pu = PU_Info_next(pu)) {
+            for (INT32 kind = 0; kind < WT_SUBSECTIONS; ++kind) {
+                Subsect_State state = PU_Info_state(pu, kind);
+                if (state != Subsect_Missing && state != Subsect_Written)
+                    fprintf(stderr,
+                            "unwritten PU subsection: owner=%u kind=%d "
+                            "state=%d\n", (UINT32)PU_Info_proc_sym(pu),
+                            kind, state);
+            }
+        }
+        Write_Global_Info(pu_tree);
+    }
+    Close_Output_Info();
+    if (valid)
+        valid = rename(temporary_path.c_str(), output_path) == 0;
+    if (!valid)
+        unlink(temporary_path.c_str());
+    fprintf(stderr,
+            "FHE interface apply: pu=%u retired_formals=%u "
+            "retired_actuals=%u bindings=%u calls=%u projections=%u "
+            "rewritten_calls=%u returns=%u valid=%d\n",
+            applied, aggregate.retired_formal_count,
+            aggregate.retired_call_argument_count,
+            aggregate.runtime_binding_count, aggregate.runtime_call_count,
+            aggregate.canonical_projection_count,
+            aggregate.rewritten_call_count,
+            aggregate.rewritten_return_count, valid);
+    VHO_FHE_Runtime_Interface_Plans_Reset();
     Free_Input_Info();
     return valid ? 0 : 1;
 }
@@ -1100,6 +1380,16 @@ Check_Mapped_Static_Schedule (const char *path)
 int
 main (void)
 {
+    const char *interface_input =
+        getenv("OPEN64_FHE_INTERFACE_APPLY_INPUT");
+    const char *interface_output =
+        getenv("OPEN64_FHE_INTERFACE_APPLY_OUTPUT");
+    if (interface_input != NULL && interface_input[0] != '\0' &&
+        interface_output != NULL && interface_output[0] != '\0') {
+        Initialize_Reader_Test_Context();
+        return Check_Mapped_Program_Interface
+                   (interface_input, interface_output);
+    }
     const char *schedule_input =
         getenv("OPEN64_FHE_RUNTIME_SCHEDULE_INPUT");
     if (schedule_input != NULL && schedule_input[0] != '\0') {

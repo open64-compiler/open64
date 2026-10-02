@@ -66,6 +66,7 @@ sources=(
   "osprey/be/vho/fhe_checkpoint.cxx"
   "osprey/be/vho/fhe_convert.cxx"
   "osprey/be/vho/fhe_materialize.cxx"
+  "osprey/be/vho/fhe_runtime_interface_plan.cxx"
   "osprey/be/vho/fhe_runtime_lower.cxx"
   "osprey/be/vho/fhe_standard_whirl.cxx"
   "osprey/be/vho/fhe_unlowered_gate.cxx"
