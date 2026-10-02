@@ -802,7 +802,6 @@ DSL_Gatekeeper_Verify_Native_Node
                 WN_st_idx(operand) == source.st &&
                 WN_ty(operand) == source.ty &&
                 DSL_Gatekeeper_ST_Valid(source.st) &&
-                DSL_Gatekeeper_Is_Result_Symbol(context, source.st) &&
                 ST_type(St_Table[source.st]) == source.ty;
             BOOL projected_operand = FALSE;
             if (!canonical_operand &&

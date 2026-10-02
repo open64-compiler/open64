@@ -249,7 +249,10 @@ Before runtime lowering, `DSL_GATEKEEPER_PROJECTED` verifies the committed
 interface. A native DSL kid may remain an exact canonical tensor-result LDID
 until S5-G replaces the operator, or it may be an exact projected runtime
 handle. Either form must resolve to the same logical image value; an unrelated
-symbol is rejected. Operator attributes, logical tensor types, and shape
+symbol is rejected. Canonical kids may also refer to model inputs or
+call-produced values that have no native result STID after S5-E; their exact
+logical value reference and active ST/TY, not native-result membership, are
+the admission proof. Operator attributes, logical tensor types, and shape
 compatibility are checked through the existing DSL contracts using the
 canonical source TY, not the projected pointer TY. This mode does not
 weaken the strict/admission gates for unprojected input. Runtime lowering then
