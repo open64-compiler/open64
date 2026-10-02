@@ -1127,11 +1127,11 @@ VHO_FHE_Runtime_Interface_Plans_Prepare
     }
 
     TY_IDX model_ty = VHO_FHE_Interface_Plan_Opaque_Handle_TY
-                          ("open64_fhe_model_v1");
+                          ("open64_fhe_model_v1_s");
     TY_IDX ciphertext_ty = VHO_FHE_Interface_Plan_Opaque_Handle_TY
-                               ("open64_fhe_ciphertext_v1");
+                               ("open64_fhe_ciphertext_v1_s");
     TY_IDX plaintext_ty = VHO_FHE_Interface_Plan_Opaque_Handle_TY
-                              ("open64_fhe_plain_tensor_v1");
+                              ("open64_fhe_plain_tensor_v1_s");
     std::map<DSL_IR_VALUE_ID, UINT32> input_indexes;
     std::map<DSL_IR_VALUE_ID, UINT32> source_binding_indexes;
     std::map<VHO_FHE_BINDING_KEY, UINT32> binding_indexes;

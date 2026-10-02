@@ -10,6 +10,17 @@ WHIRL calls, symbols, result stores, status checks, and control flow.  The
 resulting `application.mid.B` must be consumable by the existing binary WHIRL
 reader and by an otherwise unchanged `whirl2c`.
 
+The `.mid.B` stem names this post-FHE runtime-call checkpoint; it does not
+assert that Open64's formal Middle-Level WHIRL lowering has completed. The
+current checkpoint returns before ordinary `VHO_Lower_Driver()` and may retain
+legal `REGION` nodes and nonexecuting DSL/FHE provenance. It certifies the
+`-O0` terminal FHE lowering and `whirl2c` boundary only. A later `-O2` path
+must keep scheme-aware operators visible through FHE VHO and its separate
+interprocedural summary analysis, then reuse this standard-call lowerer after
+final CKKS verification and schedule freeze. The existing C-oriented IPA is
+not the owner of FHE operator semantics; see the phase-order decision in
+`FHE-WHIRL-INTEGRATION-PLAN.md`.
+
 This audit records the shared ownership boundary and the first implemented
 main-owned infrastructure batch.  It does not
 define the public FHE runtime ABI, generate the 87-static/147-dynamic call
@@ -842,7 +853,8 @@ and every runtime handle has a rooted initialization path.
 
 ### S5-F: Atomic Full-Model Operation Lowering
 
-**Status:** pending S5-E.
+**Status:** S5-F operation transaction certified; production callback remains
+S5-G.
 
 **Purpose:** replace every admitted executable DSL definition with standard
 WHIRL using the frozen schedule and projected handles.
@@ -856,7 +868,8 @@ WHIRL using the frozen schedule and projected handles.
    average-pool, flatten/layout-convert, and linear/plain sequences.
 4. Build output logits as a zero-call identity outside the 87-call census.
 5. Elide promoted external sources through `PROMOTED_SOURCE_ELISION`.
-6. Submit computed and elision requests atomically through
+6. Submit computed, promoted-source, and verified-dead-source elision requests
+   atomically through
    `DSL_IR_Lower_Native_Values_To_Standard_Blocks`.
 7. Preserve source node, result value, owner, position, attributes, lineage,
    and lowered relation.
@@ -870,12 +883,24 @@ surviving promoted source.
 **Exit criterion:** every executable definition is replaced once and per-PU
 counts sum to exactly 87 evaluations and 87 descriptor selections statically.
 
+The retained six-PU S5-F transaction has 203 requests: 33 computed definitions
+(including the zero-call output-logits identity), 44 promoted source constants,
+and 126 verified-dead source constants. It emits 87 descriptor selections and
+87 evaluations, represented by 174 standard calls. The five reusable
+`cnn.basic_block.v1` REGION output/result interfaces are redirected to their
+projected runtime handles in the same generic transaction. A separate-process
+`ir_b2a -st -src` reopen shows 13 lowered Conv2D, five residual-add, and 11
+physical common.relu definitions; the last-PU wrong-version negative leaves
+no final or temporary artifact. This `operation-lowered.B` is certification
+evidence, not the production `.mid.B` checkpoint or a completed SYNC-5 exit.
+
 ### S5-G: Production Callback, Final Gates, And Atomic Checkpoint
 
-**Status:** pending S5-F.
+**Status:** production six-PU path and checkpoint negatives locally certified;
+the S5-H generated-C review is the remaining branch exit.
 
 **Purpose:** integrate S5-D through S5-F into the all-PU runtime-lowering phase
-and publish only a complete middle-WHIRL checkpoint.
+and publish only a complete standard-call WHIRL checkpoint.
 
 **Implementation checklist:**
 
@@ -900,9 +925,32 @@ artifact may survive rejection.
 **Exit criterion:** the six-PU `.mid.B` family publishes atomically and
 contains no executable DSL/FHE carrier.
 
+The production callback now authenticates the approved provider, freezes the
+32-definition static schedule and six-PU interface census, applies the 203
+owner-qualified requests, and checks every lowered relation and REGION. The
+retained checkpoint publishes `secure_resnet20.mid.B` last, after deterministic
+schedule/report auxiliaries. Separate-process `ir_b2a -st -src` shows six PUs,
+87 descriptor selections, 11 lowered reusable ReLUs, 126 dead-elided source
+constants, and five redirected REGION output/result interfaces. The final log
+reports 33 computed values, 44 promoted sources, 126 dead sources, 87 static
+and 147 dynamic evaluations, and 174 standard calls. Bad-provider, stale
+binary, and blocked-auxiliary runs preserve existing destinations and leave no
+new final or temporary checkpoint. These are standard-call/mock-boundary
+artifacts, not an ACE ciphertext-execution result.
+
+The first backend run exposed an invalid void return slot in the previously
+retained S5-D producer image. Its mapped producer now initializes Open64's
+special global symbols immediately after `Read_Global_Info` and runs
+`Verify_SYMTAB` before writing each PU; the regenerated six-PU image and the
+direct S5-F transaction pass a stricter prototype scan. The shared PROJECTED
+gate also admits exact canonical tensor kids for logical model inputs and
+call-produced values, while preserving exact value/ST/TY checks. Both fixes
+must be integrated before treating the retained `.mid.B` as a branch exit.
+
 ### S5-H: Inspection, Generated C, And Mock Executable Certification
 
-**Status:** pending S5-G.
+**Status:** locally certified against unchanged `whirl2c` and the standalone
+mock; integration review and shared-prerequisite merge remain.
 
 **Purpose:** close SYNC-5 without depending on an ACE installation.
 
@@ -923,10 +971,45 @@ contains no executable DSL/FHE carrier.
 
 **Negative tests:** unlowered carrier, malformed manifest, wrong ordinal,
 missing resource, wrong handle TY, mock status failure, and generated-C
-publication failure.
+publication failure. The focused native test also supplies a null function
+root, a null result-initializer kid, and missing IF/EQ guard kids to the same
+shape predicates used by production; each is rejected with a stable
+`CFHELOWER-CALL-*` diagnostic without dereferencing the missing node.
 
 **Final SYNC-5 exit criterion:** generated C from the complete six-PU
-SecureResNet middle-WHIRL artifact compiles, links, and passes the deterministic
-mock runtime. Evidence proves exact 87/147 evaluation and selector accounting,
-no executable DSL/FHE nodes, and no partial output on failure. ACE ANT provider
-execution remains SYNC-6.
+SecureResNet standard-call WHIRL artifact compiles, links, and passes the
+deterministic mock runtime. Evidence proves exact 87/147 evaluation and
+selector accounting, no executable DSL/FHE nodes, and no partial output on
+failure. ACE ANT provider execution remains SYNC-6.
+
+The v1 single-result block PU ABI is void with a hidden caller-owned output
+slot. For every encrypted block call, the caller initializes a fresh output
+slot to null immediately before the call and checks it immediately after the
+call. A null result returns from the caller before another operation or side
+effect. The callee writes its one result only after every operation succeeds.
+The launcher must initialize the root's host-visible output slot to null before
+entry; it may publish a nonnull result only after the full root returns
+successfully. This is a fail-closed convention for the current single-result
+ABI, not a general status-bearing or multi-result PU design. The mapped-image
+final verifier checks the exact callsite, initialization, guard, source line,
+and return shape, and rejects a retained unguarded image with
+`CFHELOWER-CALL-005` before C translation.
+
+The retained S5-H run takes the six-PU checkpoint through unchanged
+`whirl2c`, compiles generated C with the public
+`open64_fhe_runtime_abi.h` and strict incompatible-pointer diagnostics, and
+links the generated program to the standalone mock. Executing that program
+produces 147 selector/evaluation pairs whose actual interprocedural order and
+kind/ordinal multiplicities match the immutable 32-record, 87-static,
+147-dynamic schedule. The mock returns a nonnull ciphertext at level 19,
+scale 56, and two components. Injected selector failures at calls 1, 74, and
+147 and an evaluation failure at call 74 stop downstream calls and leave the
+root output null. Wrong ordinal, required stem Conv weight, ReLU coefficient,
+and handle-kind negatives also leave the root output null. A separate strict
+C compile-negative rejects a ciphertext handle in the plaintext-weight slot.
+The runner rejects a malformed schedule, an unlowered carrier, and an older
+unguarded middle image. Generated C is first written to a private staging
+directory; a failed translation does not publish a `.w2c.c` or `.w2c.h`
+review artifact. The standalone mock does not execute ACE ciphertext
+arithmetic or certify the rotation/key implementation; those remain SYNC-6
+obligations.

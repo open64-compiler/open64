@@ -365,6 +365,26 @@ VHO_FHE_SYNC4_Parse_Provider
     return TRUE;
 }
 
+/* Recheck the exact pinned provider package without process-local state. */
+BOOL
+VHO_FHE_Authenticate_Approved_Provider_Manifest
+        (const char *path, const char *sha256, FILE *diagnostic)
+{
+    if (path == NULL || path[0] == '\0' || sha256 == NULL ||
+        strcmp(sha256, VHO_FHE_SYNC4_PROVIDER_SHA256) != 0)
+        return VHO_FHE_SYNC4_Report
+                   (diagnostic, "CFHEMAT-CAP-001",
+                    "provider manifest digest is not the approved package");
+    std::vector<unsigned char> bytes;
+    if (!VHO_FHE_SYNC4_Read_File(path, &bytes) ||
+        VHO_FHE_SYNC4_SHA256(bytes) != sha256)
+        return VHO_FHE_SYNC4_Report
+                   (diagnostic, "CFHEMAT-CAP-001",
+                    "provider manifest exact-byte SHA-256 mismatch");
+    return VHO_FHE_SYNC4_Parse_Provider(bytes, diagnostic);
+}
+
+/* Freeze one approved provider policy across all materialization PUs. */
 static BOOL
 VHO_FHE_SYNC4_Prepare_Provider
         (const VHO_FHE_MATERIALIZE_OPTIONS *options, FILE *diagnostic)
@@ -393,17 +413,8 @@ VHO_FHE_SYNC4_Prepare_Provider
         VHO_FHE_sync4_state.initialized = TRUE;
         return TRUE;
     }
-    if (digest != VHO_FHE_SYNC4_PROVIDER_SHA256)
-        return VHO_FHE_SYNC4_Report
-                   (diagnostic, "CFHEMAT-CAP-001",
-                    "provider manifest digest is not the approved package");
-    std::vector<unsigned char> bytes;
-    if (!VHO_FHE_SYNC4_Read_File(path.c_str(), &bytes) ||
-        VHO_FHE_SYNC4_SHA256(bytes) != digest)
-        return VHO_FHE_SYNC4_Report
-                   (diagnostic, "CFHEMAT-CAP-001",
-                    "provider manifest exact-byte SHA-256 mismatch");
-    if (!VHO_FHE_SYNC4_Parse_Provider(bytes, diagnostic))
+    if (!VHO_FHE_Authenticate_Approved_Provider_Manifest
+             (path.c_str(), digest.c_str(), diagnostic))
         return FALSE;
     VHO_FHE_sync4_state.approved = TRUE;
     VHO_FHE_sync4_state.initialized = TRUE;

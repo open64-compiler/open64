@@ -13,6 +13,84 @@
 #include "wn.h"
 #include "wn_util.h"
 
+/* Reject malformed guard shapes with the same code in producer and reader. */
+static BOOL
+VHO_FHE_Standard_Guard_Report
+        (FILE *diagnostic, const char *code, const char *message)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "%s: %s\n", code, message);
+    return FALSE;
+}
+
+/* A mapped PU root needs a complete body before any guard tree is inspected. */
+BOOL
+VHO_FHE_Standard_Function_Body_Valid
+        (const WN *entry, FILE *diagnostic)
+{
+    if (entry == NULL || WN_operator(entry) != OPR_FUNC_ENTRY ||
+        WN_kid_count(entry) < 3 || WN_func_body(entry) == NULL ||
+        WN_operator(WN_func_body(entry)) != OPR_BLOCK)
+        return VHO_FHE_Standard_Guard_Report
+                   (diagnostic, "CFHELOWER-CALL-000",
+                    "runtime PU has no valid function body");
+    return TRUE;
+}
+
+/* Require a fresh null store immediately before a void callee writes out. */
+BOOL
+VHO_FHE_Standard_Null_Initializer_Valid
+        (const WN *initialization, ST_IDX result_st, FILE *diagnostic)
+{
+    if (initialization == NULL || result_st == ST_IDX_ZERO ||
+        WN_operator(initialization) != OPR_STID ||
+        WN_st_idx(initialization) != result_st ||
+        WN_kid_count(initialization) != 1 ||
+        WN_kid0(initialization) == NULL ||
+        WN_operator(WN_kid0(initialization)) != OPR_INTCONST ||
+        WN_const_val(WN_kid0(initialization)) != 0)
+        return VHO_FHE_Standard_Guard_Report
+                   (diagnostic, "CFHELOWER-CALL-003",
+                    "runtime result slot is not freshly null");
+    return TRUE;
+}
+
+/* Check the entire immediate null-result branch before dereferencing kids. */
+BOOL
+VHO_FHE_Standard_Null_Guard_Valid
+        (const WN *check, ST_IDX result_st, SRCPOS source_position,
+         FILE *diagnostic)
+{
+    if (check == NULL || result_st == ST_IDX_ZERO ||
+        source_position == 0 || WN_operator(check) != OPR_IF ||
+        WN_kid_count(check) != 3 ||
+        WN_Get_Linenum(check) != source_position)
+        return VHO_FHE_Standard_Guard_Report
+                   (diagnostic, "CFHELOWER-CALL-005",
+                    "runtime call result guard is missing");
+    const WN *test = WN_if_test(check);
+    const WN *failure = WN_then(check);
+    const WN *success = WN_else(check);
+    if (test == NULL || WN_operator(test) != OPR_EQ ||
+        WN_kid_count(test) != 2 || WN_kid0(test) == NULL ||
+        WN_kid1(test) == NULL ||
+        WN_operator(WN_kid0(test)) != OPR_LDID ||
+        WN_st_idx(WN_kid0(test)) != result_st ||
+        WN_operator(WN_kid1(test)) != OPR_INTCONST ||
+        WN_const_val(WN_kid1(test)) != 0 ||
+        failure == NULL || WN_operator(failure) != OPR_BLOCK ||
+        WN_first(failure) == NULL ||
+        WN_first(failure) != WN_last(failure) ||
+        WN_operator(WN_first(failure)) != OPR_RETURN ||
+        WN_Get_Linenum(WN_first(failure)) != source_position ||
+        success == NULL || WN_operator(success) != OPR_BLOCK ||
+        WN_first(success) != NULL)
+        return VHO_FHE_Standard_Guard_Report
+                   (diagnostic, "CFHELOWER-CALL-005",
+                    "runtime call result guard is malformed");
+    return TRUE;
+}
+
 static BOOL
 VHO_FHE_Standard_Report (FILE *diagnostic, const char *message)
 {

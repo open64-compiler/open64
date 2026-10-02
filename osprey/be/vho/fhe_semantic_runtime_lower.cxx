@@ -628,6 +628,17 @@ VHO_FHE_Runtime_Opaque_Handle_TY (const char *name)
     return Make_Pointer_Type(opaque_ty);
 }
 
+/* Match the public ABI's immutable operation descriptor pointer. */
+static TY_IDX
+VHO_FHE_Runtime_Descriptor_Handle_TY (void)
+{
+    TY_IDX handle = VHO_FHE_Runtime_Opaque_Handle_TY
+                        ("open64_fhe_operation_desc_v1");
+    TY_IDX descriptor = TY_pointed(handle);
+    Set_TY_is_const(descriptor);
+    return Make_Pointer_Type(descriptor);
+}
+
 static WN *
 VHO_FHE_Runtime_Handle_ST_Load (ST_IDX st, TY_IDX ty)
 {
@@ -661,10 +672,9 @@ VHO_FHE_Runtime_Append_Selector
          void *failure_context, FILE *diagnostic,
          VHO_FHE_STANDARD_CALL_RESULT *selected)
 {
-    TY_IDX status_ty = MTYPE_To_TY(MTYPE_I4);
+    TY_IDX status_ty = MTYPE_To_TY(MTYPE_U4);
     TY_IDX u4_ty = MTYPE_To_TY(MTYPE_U4);
-    TY_IDX descriptor_ty = VHO_FHE_Runtime_Opaque_Handle_TY
-                               ("open64_fhe_operation_desc_v1");
+    TY_IDX descriptor_ty = VHO_FHE_Runtime_Descriptor_Handle_TY();
     TY_IDX descriptor_output_ty = Make_Pointer_Type(descriptor_ty);
     VHO_FHE_STANDARD_PARM parameters[5];
     memset(parameters, 0, sizeof(parameters));
@@ -739,7 +749,7 @@ VHO_FHE_Runtime_Append_Unary_Evaluation
     VHO_FHE_STANDARD_CALL_SPEC spec;
     memset(&spec, 0, sizeof(spec));
     spec.function_name = function_name;
-    spec.status_ty = MTYPE_To_TY(MTYPE_I4);
+    spec.status_ty = MTYPE_To_TY(MTYPE_U4);
     spec.parameters = parameters;
     spec.parameter_count = 4;
     spec.status_name = "fhe_runtime_status";
@@ -775,10 +785,9 @@ VHO_FHE_Runtime_Build_Bootstrap_Sequence
              (pu_info, anchor_value_id, diagnostic, &anchor))
         return FALSE;
 
-    TY_IDX status_ty = MTYPE_To_TY(MTYPE_I4);
+    TY_IDX status_ty = MTYPE_To_TY(MTYPE_U4);
     TY_IDX u4_ty = MTYPE_To_TY(MTYPE_U4);
-    TY_IDX descriptor_ty = VHO_FHE_Runtime_Opaque_Handle_TY
-                               ("open64_fhe_operation_desc_v1");
+    TY_IDX descriptor_ty = VHO_FHE_Runtime_Descriptor_Handle_TY();
     TY_IDX descriptor_output_ty = Make_Pointer_Type(descriptor_ty);
     TY_IDX ciphertext_output_ty = Make_Pointer_Type(anchor.handle_ty);
     WN *block = WN_CreateBlock();
@@ -919,7 +928,7 @@ VHO_FHE_Runtime_Append_Poly_Evaluation
     VHO_FHE_STANDARD_CALL_SPEC spec;
     memset(&spec, 0, sizeof(spec));
     spec.function_name = "open64_fhe_relu_poly_stage_v1";
-    spec.status_ty = MTYPE_To_TY(MTYPE_I4);
+    spec.status_ty = MTYPE_To_TY(MTYPE_U4);
     spec.parameters = parameters;
     spec.parameter_count = 5;
     spec.status_name = "fhe_relu_stage_status";
@@ -972,7 +981,7 @@ VHO_FHE_Runtime_Append_Reconstruct_Evaluation
     VHO_FHE_STANDARD_CALL_SPEC spec;
     memset(&spec, 0, sizeof(spec));
     spec.function_name = "open64_fhe_relu_reconstruct_v1";
-    spec.status_ty = MTYPE_To_TY(MTYPE_I4);
+    spec.status_ty = MTYPE_To_TY(MTYPE_U4);
     spec.parameters = parameters;
     spec.parameter_count = 5;
     spec.status_name = "fhe_relu_reconstruct_status";
@@ -1025,7 +1034,7 @@ VHO_FHE_Runtime_Append_Binary_Evaluation
     VHO_FHE_STANDARD_CALL_SPEC spec;
     memset(&spec, 0, sizeof(spec));
     spec.function_name = function_name;
-    spec.status_ty = MTYPE_To_TY(MTYPE_I4);
+    spec.status_ty = MTYPE_To_TY(MTYPE_U4);
     spec.parameters = parameters;
     spec.parameter_count = 5;
     spec.status_name = "fhe_binary_status";
@@ -1083,7 +1092,7 @@ VHO_FHE_Runtime_Append_Plain_Evaluation
     VHO_FHE_STANDARD_CALL_SPEC spec;
     memset(&spec, 0, sizeof(spec));
     spec.function_name = function_name;
-    spec.status_ty = MTYPE_To_TY(MTYPE_I4);
+    spec.status_ty = MTYPE_To_TY(MTYPE_U4);
     spec.parameters = parameters;
     spec.parameter_count = 6;
     spec.status_name = "fhe_plain_status";
@@ -1174,8 +1183,7 @@ VHO_FHE_Runtime_Build_Operation_Sequence
         WN_DELETE_Tree(block);
         return FALSE;
     }
-    TY_IDX descriptor_ty = VHO_FHE_Runtime_Opaque_Handle_TY
-                               ("open64_fhe_operation_desc_v1");
+    TY_IDX descriptor_ty = VHO_FHE_Runtime_Descriptor_Handle_TY();
     VHO_FHE_STANDARD_CALL_RESULT evaluated;
     BOOL valid;
     if (expected_operands == 1)
@@ -1266,8 +1274,7 @@ VHO_FHE_Runtime_Build_Relu_Sequence
               diagnostic, &bootstrap))
         return FALSE;
     WN *block = bootstrap.block;
-    TY_IDX descriptor_ty = VHO_FHE_Runtime_Opaque_Handle_TY
-                               ("open64_fhe_operation_desc_v1");
+    TY_IDX descriptor_ty = VHO_FHE_Runtime_Descriptor_Handle_TY();
     ST_IDX refreshed_st = bootstrap.output_st;
     ST_IDX current_st = refreshed_st;
     TY_IDX ciphertext_ty = anchor.handle_ty;
