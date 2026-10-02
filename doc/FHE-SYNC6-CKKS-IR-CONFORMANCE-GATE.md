@@ -54,10 +54,16 @@ source/CNN and FHE conversion
    nineteen distinct call contexts and their approved bounds and target
    post-refresh levels.
    A shared callee body cannot hardcode one context's bound or target level.
-   The S6-0a review must choose an explicit context-parameter or deterministic
-   context-specialization mechanism for executable operations, with exact
-   caller/callee identity and ABI proof. Do not clone merely to store planning
-   metadata or silently conflate the nineteen uses.
+   Prefer deterministic specialization keyed by the whole-PU executable CKKS
+   state/schedule signature, including post-refresh levels. Equivalent
+   signatures reuse one compiler PU; a context bound B may remain a typed
+   plaintext formal when it does not change circuit structure. The review
+   must prove exact caller/callee identity and ABI preservation. Do not clone
+   merely to store planning metadata, use call ordinal as a clone key, or
+   silently conflate the nineteen uses. A fully parameterized shared body is
+   an alternative only after proving dynamic-level ABI, per-context
+   executable-state semantics, and terminal lowering. One global DSL value
+   identity cannot carry three incompatible executable levels.
 3. The mandatory pre-ReLU bootstrap is an explicit CKKS operation with
    `PRE_RELU_REFRESH` reason. Bootstrap does not compute ReLU. Normalize,
    ordered degree-7/15/13 stages, and reconstruction are explicit downstream
@@ -85,8 +91,8 @@ source/CNN and FHE conversion
 
 | Slice | Owner | Reviewable result |
 | --- | --- | --- |
-| S6-0a semantic census/physical contract | Main/common owns any shared logical operator registry, WN representation, mapped-image/API, printer, and compatibility additions; FHE task supplies semantic operands, state rules, and tests. | Accepted handoff table; no enum or binary change before review. |
-| S6-0b opaque producer and per-value state | FHE task consumes only reviewed common APIs; main supplies missing generic value/operation construction hooks. | Focused add/mul/rotate/rescale/relin/bootstrap `.B`/`.T` fixtures with source and state evidence. |
+| S6-0a semantic census/physical contract | Main/common owns append-only logical registry contracts and a generic owner-PU-safe atomic one-to-many native DSL value expansion API; reuse physical `OPR_DSL` and existing DSL image/inspection tables. FHE supplies semantic operands, state rules, and tests. | Accepted handoff table and transaction contract; no enum or binary change before review. |
+| S6-0b opaque producer and per-value state | FHE task consumes only reviewed backend-safe common APIs and binds existing FHE CKKS value-state records to each new result value. | Focused add/sub/mul/rotate/rescale/relin/bootstrap `.B`/`.T` fixtures with source and state evidence. |
 | S6-0c full ResNet expansion | FHE task expands the certified high-level schedule and 19 context-specific ReLU sequences. | Six-PU `.ckks_ops.B`/`.T`, event-to-step map, key/rotation/depth census, independent numerical checks. |
 | S6-0d gate and terminal lowering | FHE task verifies the complete IR and lowers it through the existing stable C ABI; main reviews standard-WHIRL boundary. | Negative malformed-state/ownership/depth/key tests and generated-C/mock equivalence to SYNC-5. |
 | S6-1 and later | ACE provider and runtime owners, after S6-0 certification. | New exact ACE pin/capability admission, then broker/worker/client-server execution. |
@@ -94,7 +100,26 @@ source/CNN and FHE conversion
 `osprey/common/com/dsl_opcode.h` currently has no published CKKS logical
 operator family. This document requests a reviewed shared/common handoff;
 the FHE task must not assign enum values, edit physical `OPR_DSL`, or change
-the binary format independently. The private physical escape remains private.
+the binary format independently. The existing `DSL_WN_Create_Native` path
+already creates direct kids, and `.WHIRL.dsl` opcode/node/attribute/value/
+reference tables and `ir_b2a` already persist and print logical identities.
+Reuse those facilities rather than creating a parallel CKKS WN universe. The
+private physical escape remains private.
+
+The frontend-only `DSL_Builder_*` API is not a backend expansion interface.
+`DSL_IR_Rewrite_Native_Value` replaces one definition and cannot implement a
+one-to-many CKKS expansion. Main/common must publish an owner-PU-safe atomic
+transaction that preflights an expected source definition, typed existing and
+prior-step operands, ordered logical specs/attributes/results, canonical TY,
+source position, and output identity; then creates the result STIDs, physical
+native DSL nodes, image rows, and references together. On failure it leaves
+the tree and logical tables unchanged. Its result returns all new DSL value
+IDs so FHE can bind the already published CKKS value-state record to each
+distinct executable value. Any later state-binding failure is terminal for
+the checkpoint; no partially mutated image is retried or published. Complete
+high-level-event-to-step provenance must be machine-checkable: reuse typed
+existing rows if they can express the join, otherwise review an append-only
+typed relation, never encode it only in metadata strings.
 
 ### Proposed Shared Contract Census
 
@@ -111,8 +136,9 @@ that source-level purity.
 | Logical operation | Operand/result contract and required attributes | Verifier and lowering handoff |
 | --- | --- | --- |
 | `common.tensor_const.v1` (reuse) | Tensor payload -> plain constant/encoded operand; exact TY, encoding, payload digest. | Reuse existing constant identity; FHE proves source bytes and CKKS encoding state before `ckks.encode` or terminal plaintext construction. |
-| `common.add.v1` (reuse candidate) | Two cipher/plain-typed values -> one value; exact operand class, layout, scale/level-match policy, no broadcast. | Main decides whether its existing broadcast/marker contract can express this restricted CKKS use or needs a CKKS logical wrapper. FHE verifies alignment and lowers to exact add primitive. |
-| `common.mul.v1` (reuse candidate) | Cipher-cipher or cipher-plain -> one value; operation class, output component/scale policy. | Main decides reuse versus wrapper; FHE accounts for multiplicative depth and explicit downstream rescale/relin. No implicit CKKS repair inside `common.mul`. |
+| `ckks.add.v1` (new candidate) | Two cipher/plain-typed values -> one value; exact operand class, layout, scale/level-match policy, no broadcast. | Do not reuse broadcast-capable/algebraically simplified `common.add.v1` for an executable CKKS step. FHE verifies alignment and lowers to exact add primitive. |
+| `ckks.sub.v1` (new candidate) | Two cipher/plain-typed values -> one value; exact operand class, layout, scale/level-match policy. | Chebyshev evaluation needs subtraction (pinned `fhe-cmplr/rtlib/ant/ckks/src/chebyshev_impl.c` calls `Sub_ciphertext`); retain it explicitly unless an add-plus-negate expansion independently proves identical CKKS scale, depth, and key effects. |
+| `ckks.mul.v1` (new candidate) | Cipher-cipher or cipher-plain -> one value; operation class, output component/scale policy. | Do not reuse `common.mul.v1`, whose current registry contract is marker-only and permits generic algebraic handling. FHE accounts for multiplicative depth and explicit downstream rescale/relin. |
 | `ckks.encode.v1` (new candidate) | Plain tensor plus encoding descriptor -> packed plain; slots, layout, scale, level, source payload digest. | FHE proves capacity/shape and byte identity; common owns logical node contract if accepted. |
 | `ckks.rotate.v1` (new candidate) | Cipher and signed nonzero rotation -> cipher; signed index, layout, key identity. | FHE checks slots, exact rotation key, state preservation or declared transition. |
 | `ckks.rescale.v1` (new candidate) | Cipher -> cipher; exact consumed level count and target scale. | FHE checks modulus-chain availability, precision floor, and result state. |
@@ -123,18 +149,19 @@ that source-level purity.
 The accepted polynomial stages, normalization, and reconstruction lower to
 ordered uses of these arithmetic operations with exact coefficient/asset
 references and stage provenance. The census is intentionally minimal for the
-first ResNet path; subtraction, conjugation, generic ciphertext-ciphertext
-matrix operations, and POLY/RNS operators require a separate demonstrated
-need. Main/common must resolve the reuse candidates, direct-kid shapes,
-attribute schema, value construction API, printer names, and compatibility
-strategy before the FHE implementation writes any executable CKKS node.
+first ResNet path; conjugation, generic ciphertext-ciphertext matrix
+operations, and POLY/RNS operators require a separate demonstrated need.
+Main/common must resolve direct-kid shapes, attribute schema, atomic value
+construction API, printer names, and compatibility strategy before the FHE
+implementation writes any executable CKKS node.
 
 ## Test Ladder And Exit
 
 - Focused deterministic fixtures for each CKKS operation and invalid
   operand/state/key/rotation case, including input preservation on rejection.
-- Two-PU same-definition/different-context tests proving values and levels
-  remain context-sensitive without arbitrary PU cloning.
+- Two-context tests with equal signatures proving clone reuse, and different
+  signatures proving deterministic whole-PU specialization, exact call ABI,
+  typed B formal behavior, and distinct executable value levels.
 - Full six-PU ResNet census: 147 high-level events completely mapped to
   executable CKKS steps; 19 explicit pre-ReLU bootstraps with targets
   15 x 16, 17 x 1, 18 x 2; no standalone executable ReLU.
