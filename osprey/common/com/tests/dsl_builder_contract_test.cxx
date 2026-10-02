@@ -33,6 +33,8 @@
 #include "srcpos.h"
 #include "dsl_builder.h"
 #include "dsl_contract.h"
+#include "dsl_program_interface_internal.h"
+#include "dsl_region_internal.h"
 #include "fhe_image.h"
 #include "fhe_plan.h"
 #include "dsl_gatekeeper.h"
@@ -5957,10 +5959,10 @@ Check_Program_Interface_Evolution(void)
         (retirement_region != NULL &&
          DSL_Region_Declare_Symbol
              (retirement_region, retired_formal[0].formal_st,
-              DSL_REGION_VALUE_INPUT, 0,
+              DSL_REGION_VALUE_OUTPUT, 0,
               DSL_REGION_INTERFACE_FLAG_NONE) &&
          DSL_Region_Append_To_PU(retirement_region),
-         "nested REGION-interface retirement fixture");
+         "non-input REGION retirement rejection fixture");
     WN *retirement_region_wn = DSL_Region_WN(retirement_region);
     UINT32 st_count_before_region_retirement =
         ST_Table_Size(CURRENT_SYMTAB);
@@ -5972,7 +5974,7 @@ Check_Program_Interface_Evolution(void)
              st_count_before_region_retirement &&
          DSL_Program_Interface_Image_Retired_Formal_Count() == 0 &&
          DSL_Runtime_Interface_Image_Value_Count() == 0,
-         "nested REGION-interface retirement rejects without mutation");
+         "non-input REGION retirement rejects without mutation");
     PROGRAM_INTERFACE_CHECK
         (DSL_Region_Consume_WN(callee, retirement_region_wn),
          "consume retirement REGION fixture");
@@ -6001,16 +6003,39 @@ Check_Program_Interface_Evolution(void)
          "address-taken formal retirement rejects without mutation");
     WN_DELETE_FromBlock(callee_body, retired_address_eval);
 
+    PROGRAM_INTERFACE_CHECK(DSL_Builder_Select_PU(callee),
+                            "select callee for REGION input pruning");
+    DSL_REGION pruned_region = DSL_Region_Create
+        (callee, NULL, "fhe.retirement.prune", 1);
+    PROGRAM_INTERFACE_CHECK
+        (pruned_region != NULL &&
+         DSL_Region_Declare_Symbol
+             (pruned_region, retired_formal[0].formal_st,
+              DSL_REGION_VALUE_INPUT, 0,
+              DSL_REGION_INTERFACE_FLAG_NONE) &&
+         DSL_Region_Declare_Symbol
+             (pruned_region, live_formal.formal_st,
+              DSL_REGION_VALUE_INPUT, 1,
+              DSL_REGION_INTERFACE_FLAG_NONE) &&
+         DSL_Region_Append_To_PU(pruned_region) &&
+         DSL_Region_Verify_PU(callee, stderr),
+         "mixed live/dead REGION input fixture");
+    WN *pruned_region_wn = DSL_Region_WN(pruned_region);
+
     PROGRAM_INTERFACE_CHECK
         (DSL_Program_Interface_Plan_Validate
              (&program_plan, &runtime_plan, stderr) &&
+         !DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(caller)) &&
+         !DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(callee)) &&
          DSL_Builder_Select_PU(caller) &&
          DSL_Program_Interface_Apply_PU
              (caller, &program_plan, &runtime_plan, stderr, &result) &&
+         DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(caller)) &&
+         !DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(callee)) &&
          result.retired_call_argument_count == 4 &&
          result.runtime_binding_count == 6 &&
          result.runtime_call_count == 12,
-         "caller program-interface transaction");
+         "caller-only staged program-interface transaction");
 
     DSL_RUNTIME_INPUT_BINDING_REQUEST mismatched_bindings[12];
     memcpy(mismatched_bindings, bindings, sizeof(bindings));
@@ -6030,6 +6055,7 @@ Check_Program_Interface_Evolution(void)
          ST_Table_Size(CURRENT_SYMTAB) == st_count_before_mismatch &&
          TY_Table_Size() == ty_count_before_mismatch &&
          DSL_IR_Image_Value_Count() == value_count_before_mismatch &&
+         !DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(callee)) &&
          DSL_Program_Interface_Image_Retired_Formal_Count() == 0 &&
          DSL_Program_Interface_Image_Retired_Call_Count() == 4 &&
          DSL_Program_Interface_Image_Runtime_Binding_Count() == 6,
@@ -6038,7 +6064,14 @@ Check_Program_Interface_Evolution(void)
     PROGRAM_INTERFACE_CHECK
         (DSL_Program_Interface_Apply_PU
          (callee, &program_plan, &runtime_plan, stderr, &result) &&
+         DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(caller)) &&
+         DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(callee)) &&
          result.retired_formal_count == 2 &&
+         DSL_Region_Is_Managed_WN(callee, pruned_region_wn) &&
+         DSL_Region_Symbol_Use_Count
+             (callee, retired_formal[0].formal_st) == 0 &&
+         DSL_Region_Symbol_Use_Count(callee, live_formal.formal_st) == 1 &&
+         DSL_Region_Verify_PU(callee, stderr) &&
          result.runtime_binding_count == 6 &&
          DSL_Program_Interface_Apply_PU
              (callee, &program_plan, &runtime_plan, NULL, &result) == FALSE &&
@@ -6046,9 +6079,57 @@ Check_Program_Interface_Evolution(void)
          DSL_Program_Interface_Image_Validate(stderr),
          "callee program-interface transaction");
 
+    PROGRAM_INTERFACE_CHECK(DSL_Builder_Select_PU(caller),
+                            "select caller for result initialization");
+    WN *result_calls[2] = { NULL, NULL };
+    WN *result_initializers[2] = { NULL, NULL };
+    for (UINT32 i = 0; i < 2; ++i) {
+        DSL_RUNTIME_CALL_PROJECTION_RECORD result_call;
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD result_value;
+        WN *call = const_cast<WN *>
+                       (DSL_Call_Image_Get_Call_WN(callsite[i].id));
+        WN *initialize = call == NULL ? NULL : WN_prev(call);
+        PROGRAM_INTERFACE_CHECK
+            (DSL_Runtime_Interface_Image_Find_Call
+                 (callsite[i].id, 3, &result_call) &&
+             DSL_Runtime_Interface_Image_Get_Value
+                 (result_call.value_projection_id, &result_value) &&
+             initialize != NULL &&
+             WN_operator(initialize) == OPR_STID &&
+             WN_st_idx(initialize) == result_value.handle_st &&
+             WN_ty(initialize) == result_value.handle_ty &&
+             WN_operator(WN_kid0(initialize)) == OPR_INTCONST &&
+             WN_const_val(WN_kid0(initialize)) == 0 &&
+             WN_Get_Linenum(initialize) == WN_Get_Linenum(call),
+             "caller-owned result handle null initialization");
+        result_calls[i] = call;
+        result_initializers[i] = initialize;
+    }
     PROGRAM_INTERFACE_CHECK
-        (DSL_Builder_Select_PU(caller) &&
-         DSL_Program_Interface_Validate_PU(caller, stderr) &&
+        (result_initializers[0] != NULL &&
+         DSL_Program_Interface_Validate_PU(caller, stderr),
+         "result initialization validates");
+    if (result_calls[0] != NULL && result_initializers[0] != NULL) {
+        WN *parent = WN_func_body(PU_Info_tree_ptr(caller));
+        PROGRAM_INTERFACE_CHECK(parent != NULL,
+                                "result call parent block");
+        if (parent != NULL) {
+            WN_EXTRACT_FromBlock(parent, result_initializers[0]);
+            PROGRAM_INTERFACE_CHECK
+                (!DSL_Program_Interface_Validate_PU(caller, NULL),
+                 "missing result initialization rejects");
+            WN_INSERT_BlockBefore
+                (parent, result_calls[0], result_initializers[0]);
+        }
+        WN_const_val(WN_kid0(result_initializers[0])) = 1;
+        PROGRAM_INTERFACE_CHECK
+            (!DSL_Program_Interface_Validate_PU(caller, NULL),
+             "nonzero result initialization rejects");
+        WN_const_val(WN_kid0(result_initializers[0])) = 0;
+    }
+
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Program_Interface_Validate_PU(caller, stderr) &&
          DSL_Builder_Select_PU(callee) &&
          DSL_Program_Interface_Validate_PU(callee, stderr),
          "per-PU program-interface verification");
@@ -6171,8 +6252,10 @@ Check_Program_Interface_Evolution(void)
     PROGRAM_INTERFACE_CHECK
         (DSL_Program_Interface_Image_Load_Mapped
              (mapped_image, image_size, stderr) &&
+         DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(caller)) &&
+         DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(callee)) &&
          DSL_Program_Interface_Image_Runtime_Binding_Count() == 12,
-         "valid mapped program interface reloads");
+         "valid mapped program interface reloads as fully committed");
 
     DSL_RUNTIME_INTERFACE_IMAGE_HEADER runtime_header;
     DSL_Runtime_Interface_Image_Get_Header(&runtime_header);

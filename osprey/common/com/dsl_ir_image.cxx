@@ -8,6 +8,7 @@
 
 #include "dsl_ir_image.h"
 #include "dsl_opcode.h"
+#include "dsl_program_interface_internal.h"
 #include "segmented_array.h"
 #include "strtab.h"
 
@@ -16,7 +17,6 @@ extern BOOL DSL_Runtime_Interface_Value_Record_Contract_Valid
 extern BOOL DSL_Program_Interface_Pointer_TY_Contract_Valid (TY_IDX);
 extern BOOL DSL_Program_Interface_Runtime_Input_Contract_Valid
                                 (const DSL_RUNTIME_INPUT_RECORD *);
-extern void DSL_Program_Interface_Reset_Prepared_Plan (void);
 
 typedef struct wn_map_tab WN_MAP_TAB;
 extern WN_MAP_TAB *Current_Map_Tab;
@@ -1816,7 +1816,7 @@ DSL_Program_Interface_Image_Reset (void)
     DSL_runtime_input_table.Delete_down_to(0);
     DSL_runtime_input_binding_table.Delete_down_to(0);
     DSL_runtime_input_call_table.Delete_down_to(0);
-    DSL_Program_Interface_Reset_Prepared_Plan();
+    DSL_Program_Interface_Reset_Commit_State();
 }
 
 BOOL
@@ -2281,6 +2281,7 @@ DSL_Program_Interface_Mapped_View_Commit
     if (view.header->runtime_input_call_count != 0)
         DSL_runtime_input_call_table.Insert
             (view.calls, view.header->runtime_input_call_count);
+    DSL_Program_Interface_Mark_Mapped_Committed();
 }
 
 BOOL

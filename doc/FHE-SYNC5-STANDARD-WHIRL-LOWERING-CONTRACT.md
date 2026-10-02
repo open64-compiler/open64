@@ -58,9 +58,11 @@ promotion, and final interface verification belong to
 commit ordering, and post-verification belong exclusively to the lowering
 file. Private active-PU predicates and runtime-interface journals are shared
 only through `dsl_ir_transaction_internal.h` and
-`dsl_runtime_interface_internal.h`; neither header is a producer API. The
-runtime API uses `PU_Info *` as its single physical context. This source-level
-ownership split does not change binary WHIRL.
+`dsl_runtime_interface_internal.h`; verified-dead program inputs use the
+private batch REGION interface transaction in `dsl_region_internal.h`. None of
+these headers is a producer API. The runtime API uses `PU_Info *` as its single
+physical context. This source-level ownership split does not change binary
+WHIRL.
 
 ### Computed Standard Block
 
@@ -96,8 +98,8 @@ Preflight rejects:
 
 - inactive/wrong PU ownership or a definition outside the supplied PU tree;
 - unknown, mismatched, effectful, already retired, or already lowered nodes;
-- non-unique result ownership, address-taking, REGION interface use, state
-  effects, or another physical definition;
+- non-unique result ownership, address-taking, non-prunable REGION interface
+  use, state effects, or another physical definition;
 - unlowered physical/logical consumers outside the transaction;
 - missing, ambiguous, owner-mismatched, ST/TY-mismatched runtime relations;
 - duplicate values, nodes, definitions, replacement blocks, or result STIDs;
@@ -110,6 +112,27 @@ were validated.  Failed preflight leaves the WN tree and every managed table
 unchanged.  Postconditions are assertions because a failure after commit would
 indicate an internal compiler defect, not a recoverable input error.
 
+Verified-dead formal retirement may remove matching REGION rows only through a
+complete batch transaction. Every removed row must be a plain
+`DSL_REGION_VALUE_INPUT` with no state flags; output, result, inout, abstract
+state, or ownership rows reject the entire batch. Preflight copies the complete
+interface set, removes the requested dead inputs, and runs the normal generic
+and profile-specific REGION verifier before any mutation. Commit swaps only
+the verified interface vector. REGION nodes, live interfaces, metadata, source
+positions, and retired-formal provenance remain intact. Final per-PU
+program-interface verification requires each retired symbol to be absent from
+both executable WN and the loaded REGION interface.
+
+Each caller-owned result handle passed through a by-reference output `PARM`
+must be initialized by exactly one canonical null `STID` in the contiguous
+statement sequence immediately before its call. The initializer uses the
+handle's exact TY and machine type and inherits the call source position. The
+complete call/result set is proven during the existing no-mutation preflight;
+commit inserts the initializers with the rebuilt call before retiring the old
+call. Per-PU and mapped-image verification require both the output `LDA` and
+its matching null initialization, so a missing, nonzero, mistyped, duplicated,
+or source-position-mismatched initializer fails closed.
+
 ## Mapped Image And Compatibility
 
 The binary representation remains DSL image version 1.  New readers validate:
@@ -118,6 +141,18 @@ The binary representation remains DSL image version 1.  New readers validate:
 - pure lowered nodes paired with lowered result values;
 - no live logical reference to a lowered value;
 - exactly one structurally valid runtime relation per lowered value.
+
+Program-interface evolution is applied in PU scope because the backend reads,
+mutates, and writes one PU at a time. Process-local commit evidence therefore
+controls reader-side physical validation during the transaction: a PU becomes
+eligible only after its own `DSL_Program_Interface_Apply_PU()` succeeds. Rows
+already published for an earlier PU do not cause an untouched later PU to be
+validated against its future interface. The eligibility set is reset with the
+managed image and is never written to binary WHIRL. Loading a published mapped
+program-interface image marks the complete image committed, restoring strict
+per-PU validation for every PU during reopen. This ordering is implemented by
+the private `dsl_program_interface_internal.h` service and does not weaken the
+mapped-image compatibility gate.
 
 The normal reader loads the DSL image and the existing runtime/program
 interface pair, then validates the cross-section relation.  A current reader
@@ -170,3 +205,10 @@ reopens it with `ir_b2a -st -src`.  The retained `.T` must show four lowered
 relations, two standard result-handle `STID`s, both promoted formals, the
 rank-4/rank-1 tensor descriptors, and no executable native definitions for the
 four lowered sources.
+
+The separate two-PU program-interface fixture applies the caller first and
+proves only that PU is commit-eligible, applies the callee second, then writes
+and reopens the completed artifact. The current reader must validate both PUs
+on mapped reopen; malformed or incomplete published interfaces still fail
+closed. The trace also retains the caller-owned result-handle zero
+initializations immediately before both rewritten calls.

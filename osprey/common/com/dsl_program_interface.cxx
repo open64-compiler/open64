@@ -16,8 +16,10 @@
 
 #include "dsl_ir_image.h"
 #include "dsl_ir_transaction_internal.h"
+#include "dsl_program_interface_internal.h"
 #include "dsl_runtime_interface_internal.h"
 #include "dsl_region.h"
+#include "dsl_region_internal.h"
 #include "pu_info.h"
 #include "strtab.h"
 #include "symtab.h"
@@ -47,7 +49,6 @@ DSL_Runtime_Interface_Image_Add_Call
                                 (const DSL_RUNTIME_CALL_PROJECTION_RECORD *);
 extern BOOL DSL_Call_Image_Replace_Call_WN
                                 (DSL_CALLSITE_METADATA_ID, const WN *, WN *);
-extern UINT32 DSL_Region_Symbol_Use_Count (PU_Info *, ST_IDX);
 
 /* Emit the stable program-interface diagnostic shape and return FALSE. */
 static BOOL
@@ -250,12 +251,35 @@ DSL_Program_Interface_Runtime_Value_Valid
 }
 
 static std::string DSL_program_interface_prepared_plan;
+static std::vector<ST_IDX> DSL_program_interface_committed_pus;
+static BOOL DSL_program_interface_mapped_committed = FALSE;
 
-/* Clear the process-local validated-plan fingerprint before a new program. */
+/* Clear process-local plan and PU commit evidence before a new program. */
 void
-DSL_Program_Interface_Reset_Prepared_Plan (void)
+DSL_Program_Interface_Reset_Commit_State (void)
 {
     DSL_program_interface_prepared_plan.clear();
+    DSL_program_interface_committed_pus.clear();
+    DSL_program_interface_mapped_committed = FALSE;
+}
+
+/* A complete mapped image is eligible for strict per-PU reader validation. */
+void
+DSL_Program_Interface_Mark_Mapped_Committed (void)
+{
+    DSL_program_interface_mapped_committed = TRUE;
+}
+
+/* Query process-local eligibility without interpreting local PU state. */
+BOOL
+DSL_Program_Interface_PU_Is_Committed (ST_IDX owner_pu_st)
+{
+    if (DSL_program_interface_mapped_committed)
+        return TRUE;
+    return std::find(DSL_program_interface_committed_pus.begin(),
+                     DSL_program_interface_committed_pus.end(),
+                     owner_pu_st) !=
+           DSL_program_interface_committed_pus.end();
 }
 
 /* Append one length-delimited text field to the canonical plan fingerprint. */
@@ -1010,6 +1034,7 @@ static BOOL
 DSL_Program_Interface_Preflight_PU
         (PU_Info *pu, const DSL_PROGRAM_INTERFACE_PLAN *program_plan,
          const DSL_RUNTIME_INTERFACE_PLAN *runtime_plan,
+         std::vector<ST_IDX> *region_prune_symbols,
          std::vector<DSL_RUNTIME_RETURN_SITE> *returns,
          FILE *diagnostic)
 {
@@ -1040,17 +1065,26 @@ DSL_Program_Interface_Preflight_PU
         const DSL_RETIRED_FORMAL_REQUEST *retired =
             DSL_Program_Interface_Find_Retired_Formal_Request
                 (program_plan, formal.id);
-        if (retired != NULL &&
-            (DSL_Program_Interface_Tree_Uses_ST
-                 (WN_func_body(entry), formal.formal_st) ||
-             DSL_Region_Symbol_Use_Count(pu, formal.formal_st) != 0))
-            return DSL_Program_Interface_Report
-                       (diagnostic, "retired formal remains executable", i);
+        if (retired != NULL) {
+            if (DSL_Program_Interface_Tree_Uses_ST
+                    (WN_func_body(entry), formal.formal_st))
+                return DSL_Program_Interface_Report
+                           (diagnostic,
+                            "retired formal remains executable", i);
+            if (DSL_Region_Symbol_Use_Count(pu, formal.formal_st) != 0)
+                region_prune_symbols->push_back(formal.formal_st);
+        }
         ++canonical_formals;
     }
     if (canonical_formals != WN_num_formals(entry))
         return DSL_Program_Interface_Report
                    (diagnostic, "incomplete canonical formal interface", 0);
+    if (!region_prune_symbols->empty() &&
+        !DSL_Region_Can_Prune_Input_Symbols
+             (pu, &(*region_prune_symbols)[0], region_prune_symbols->size()))
+        return DSL_Program_Interface_Report
+                   (diagnostic,
+                    "retired formal REGION interface is not prunable", 0);
 
     for (UINT32 i = 0; i < runtime_plan->value_count; ++i) {
         const DSL_RUNTIME_VALUE_PROJECTION_REQUEST &request =
@@ -1131,6 +1165,19 @@ DSL_Program_Interface_Create_Call_Parm
                 WN_PARM_PASSED_NOT_SAVED);
 }
 
+/* Create the canonical caller-owned null value for one output handle. */
+static WN *
+DSL_Program_Interface_Create_Null_Initialization
+        (const DSL_PROGRAM_CREATED_VALUE &value, SRCPOS source_position)
+{
+    TYPE_ID mtype = TY_mtype(value.request->handle_ty);
+    WN *initialize = WN_CreateStid
+        (OPR_STID, MTYPE_V, mtype, 0, value.handle_st,
+         value.request->handle_ty, WN_Intconst(mtype, 0));
+    WN_Set_Linenum(initialize, source_position);
+    return initialize;
+}
+
 /* Create a threaded runtime-input PARM from one caller binding handle. */
 static WN *
 DSL_Program_Interface_Create_Binding_Parm
@@ -1208,6 +1255,7 @@ DSL_Program_Interface_Apply_PU
          FILE *diagnostic, DSL_PROGRAM_INTERFACE_RESULT *result)
 {
     DSL_Program_Interface_Result_Init(result);
+    std::vector<ST_IDX> region_prune_symbols;
     std::vector<DSL_RUNTIME_RETURN_SITE> returns;
     if (result == NULL || program_plan == NULL || runtime_plan == NULL)
         return FALSE;
@@ -1221,7 +1269,8 @@ DSL_Program_Interface_Apply_PU
          !DSL_Program_Interface_Plan_Validate
               (program_plan, runtime_plan, diagnostic)) ||
         !DSL_Program_Interface_Preflight_PU
-             (pu, program_plan, runtime_plan, &returns, diagnostic)) {
+             (pu, program_plan, runtime_plan, &region_prune_symbols,
+              &returns, diagnostic)) {
         if (already_applied &&
             DSL_program_interface_prepared_plan != fingerprint)
             DSL_Program_Interface_Report
@@ -1344,6 +1393,7 @@ DSL_Program_Interface_Apply_PU
         WN_st_idx(new_call) = WN_st_idx(old_call);
         WN_call_flag(new_call) = WN_call_flag(old_call);
         WN_Set_Linenum(new_call, WN_Get_Linenum(old_call));
+        std::vector<const DSL_PROGRAM_CREATED_VALUE *> result_values;
 
         for (UINT32 old_ordinal = 0;
              old_ordinal < (UINT32)WN_kid_count(old_call); ++old_ordinal) {
@@ -1370,6 +1420,8 @@ DSL_Program_Interface_Apply_PU
             WN_kid(new_call, final_ordinal) =
                 DSL_Program_Interface_Create_Call_Parm
                     (*value, request->direction);
+            if (request->direction == DSL_RUNTIME_CALL_RESULT)
+                result_values.push_back(value);
         }
         for (UINT32 i = 0;
              i < program_plan->runtime_input_call_count; ++i) {
@@ -1396,6 +1448,12 @@ DSL_Program_Interface_Apply_PU
         FmtAssert(parent != NULL,
                   ("preflighted call parent is missing"));
         WN_INSERT_BlockBefore(parent, old_call, new_call);
+        for (UINT32 i = 0; i < result_values.size(); ++i) {
+            WN *initialize =
+                DSL_Program_Interface_Create_Null_Initialization
+                    (*result_values[i], WN_Get_Linenum(new_call));
+            WN_INSERT_BlockBefore(parent, new_call, initialize);
+        }
         FmtAssert(DSL_Call_Image_Replace_Call_WN
                       (callsite_id, old_call, new_call),
                   ("callsite runtime association update failed"));
@@ -1426,6 +1484,12 @@ DSL_Program_Interface_Apply_PU
         WN_DELETE_FromBlock(returns[i].parent_block, returns[i].store);
         ++result->rewritten_return_count;
     }
+
+    if (!region_prune_symbols.empty())
+        FmtAssert(DSL_Region_Prune_Input_Symbols
+                      (pu, &region_prune_symbols[0],
+                       region_prune_symbols.size()),
+                  ("preflighted REGION input pruning failed"));
 
     for (UINT32 i = 0; i < created_values.size(); ++i) {
         DSL_RUNTIME_VALUE_PROJECTION_RECORD record;
@@ -1586,6 +1650,7 @@ DSL_Program_Interface_Apply_PU
         ++result->runtime_call_count;
     }
     result->runtime_input_count = program_plan->runtime_input_count;
+    DSL_program_interface_committed_pus.push_back(owner_pu_st);
     return TRUE;
 }
 
@@ -1647,6 +1712,30 @@ DSL_Program_Interface_Parm_Matches_Handle
                 WN_PARM_PASSED_NOT_SAVED);
 }
 
+/* Verify exactly one canonical null initialization immediately before call. */
+static BOOL
+DSL_Program_Interface_Call_Has_Null_Initialization
+        (const WN *call, ST_IDX handle_st, TY_IDX handle_ty)
+{
+    TYPE_ID mtype = TY_mtype(handle_ty);
+    UINT32 match_count = 0;
+    for (const WN *stmt = WN_prev(call);
+         stmt != NULL && WN_operator(stmt) == OPR_STID;
+         stmt = WN_prev(stmt)) {
+        if (WN_st_idx(stmt) != handle_st)
+            continue;
+        const WN *value = WN_kid0(stmt);
+        if (WN_offset(stmt) != 0 || WN_ty(stmt) != handle_ty ||
+            WN_desc(stmt) != mtype || value == NULL ||
+            WN_operator(value) != OPR_INTCONST ||
+            WN_rtype(value) != mtype || WN_const_val(value) != 0 ||
+            WN_Get_Linenum(stmt) != WN_Get_Linenum(call))
+            return FALSE;
+        ++match_count;
+    }
+    return match_count == 1;
+}
+
 /*
  * Verify a committed PU's final formals, calls, retirement rows, and threaded
  * runtime-input bindings against physical WHIRL and active local symbols.
@@ -1674,7 +1763,8 @@ DSL_Program_Interface_Validate_PU (PU_Info *pu, FILE *diagnostic)
         if (DSL_Program_Interface_Image_Find_Retired_Formal
                 (formal.id, &retired)) {
             if (DSL_Program_Interface_Tree_Uses_ST
-                    (WN_func_body(entry), formal.formal_st))
+                    (WN_func_body(entry), formal.formal_st) ||
+                DSL_Region_Symbol_Use_Count(pu, formal.formal_st) != 0)
                 return DSL_Program_Interface_Report
                            (diagnostic, "retired formal remains executable",
                             formal.id);
@@ -1750,7 +1840,10 @@ DSL_Program_Interface_Validate_PU (PU_Info *pu, FILE *diagnostic)
                 ordinal >= WN_kid_count(call) ||
                 !DSL_Program_Interface_Parm_Matches_Handle
                     (WN_kid(call, ordinal), value.handle_st,
-                     value.handle_ty, runtime_call.direction))
+                     value.handle_ty, runtime_call.direction) ||
+                (runtime_call.direction == DSL_RUNTIME_CALL_RESULT &&
+                 !DSL_Program_Interface_Call_Has_Null_Initialization
+                     (call, value.handle_st, value.handle_ty)))
                 return DSL_Program_Interface_Report
                            (diagnostic, "live call projection mismatch",
                             argument.id);
@@ -1793,7 +1886,9 @@ DSL_Program_Interface_Validate_PU (PU_Info *pu, FILE *diagnostic)
                 ordinal >= WN_kid_count(call) ||
                 !DSL_Program_Interface_Parm_Matches_Handle
                     (WN_kid(call, ordinal), value.handle_st,
-                     value.handle_ty, DSL_RUNTIME_CALL_RESULT))
+                     value.handle_ty, DSL_RUNTIME_CALL_RESULT) ||
+                !DSL_Program_Interface_Call_Has_Null_Initialization
+                    (call, value.handle_st, value.handle_ty))
                 return DSL_Program_Interface_Report
                            (diagnostic, "runtime result call mismatch", i);
             ++expected_actuals;

@@ -8,7 +8,9 @@
 #include <vector>
 
 #include "dsl_region.h"
+#include "dsl_region_internal.h"
 #include "dsl_ir_image.h"
+#include "dsl_ir_transaction_internal.h"
 #include "ir_bwrite.h"
 #include "ir_bcom.h"
 #include "strtab.h"
@@ -882,6 +884,88 @@ DSL_Region_Symbol_Use_Count (PU_Info *pu, ST_IDX st)
             ++count;
     }
     return count;
+}
+
+/* Test membership in one complete REGION input-pruning request. */
+static BOOL
+DSL_Region_Prune_Request_Has_ST
+        (const ST_IDX *symbols, UINT32 symbol_count, ST_IDX st)
+{
+    for (UINT32 i = 0; i < symbol_count; ++i) {
+        if (symbols[i] == st)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+/* Build and verify the candidate store without changing managed REGION data. */
+static BOOL
+DSL_Region_Build_Pruned_Input_Store
+        (PU_Info *pu, const ST_IDX *symbols, UINT32 symbol_count,
+         DSL_REGION_STORE *candidate)
+{
+    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
+    if (pu == NULL || symbols == NULL || symbol_count == 0 ||
+        candidate == NULL || store == NULL ||
+        !DSL_IR_Image_Current_PU_Is(PU_Info_proc_sym(pu)))
+        return FALSE;
+    for (UINT32 i = 0; i < symbol_count; ++i) {
+        if (ST_IDX_level(symbols[i]) != CURRENT_SYMTAB ||
+            ST_IDX_index(symbols[i]) == 0 ||
+            ST_IDX_index(symbols[i]) >= ST_Table_Size(CURRENT_SYMTAB))
+            return FALSE;
+        for (UINT32 j = 0; j < i; ++j) {
+            if (symbols[i] == symbols[j])
+                return FALSE;
+        }
+    }
+
+    *candidate = *store;
+    std::vector<BOOL> matched(symbol_count, FALSE);
+    for (UINT32 i = 0; i < candidate->interfaces.size(); ) {
+        DSL_REGION_INTERFACE_RECORD &binding = candidate->interfaces[i];
+        if (!DSL_Region_Prune_Request_Has_ST
+                 (symbols, symbol_count, binding.st)) {
+            ++i;
+            continue;
+        }
+        if (binding.roles != DSL_REGION_VALUE_INPUT ||
+            binding.flags != DSL_REGION_INTERFACE_FLAG_NONE)
+            return FALSE;
+        for (UINT32 j = 0; j < symbol_count; ++j) {
+            if (symbols[j] == binding.st)
+                matched[j] = TRUE;
+        }
+        candidate->interfaces.erase(candidate->interfaces.begin() + i);
+    }
+    for (UINT32 i = 0; i < symbol_count; ++i) {
+        if (!matched[i])
+            return FALSE;
+    }
+    return DSL_Region_Verify_Store(candidate, NULL);
+}
+
+BOOL
+DSL_Region_Can_Prune_Input_Symbols
+        (PU_Info *pu, const ST_IDX *symbols, UINT32 symbol_count)
+{
+    DSL_REGION_STORE candidate;
+    return DSL_Region_Build_Pruned_Input_Store
+               (pu, symbols, symbol_count, &candidate);
+}
+
+BOOL
+DSL_Region_Prune_Input_Symbols
+        (PU_Info *pu, const ST_IDX *symbols, UINT32 symbol_count)
+{
+    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
+    DSL_REGION_STORE candidate;
+    if (store == NULL ||
+        !DSL_Region_Build_Pruned_Input_Store
+             (pu, symbols, symbol_count, &candidate))
+        return FALSE;
+    store->interfaces.swap(candidate.interfaces);
+    return TRUE;
 }
 
 BOOL
