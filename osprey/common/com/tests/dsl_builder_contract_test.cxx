@@ -4943,6 +4943,24 @@ Check_Runtime_Interface_Projection(void)
          "inexact source PARM type rejects before mutation");
     WN_set_ty(physical_parm, saved_parm_ty);
 
+    RUNTIME_INTERFACE_CHECK(DSL_Builder_Select_PU(caller),
+                            "select caller for predefined type guard");
+    TY_IDX saved_void_ty = MTYPE_To_TY(MTYPE_V);
+    UINT32 before_ty_count = TY_Table_Size();
+    UINT32 before_tylist_count = TYLIST_Table_Size();
+    WN *before_entry = PU_Info_tree_ptr(caller);
+    MTYPE_To_TY(MTYPE_V) = TY_IDX_ZERO;
+    BOOL uninitialized_accepted = DSL_Runtime_Interface_Apply_PU
+        (caller, &plan, NULL, &apply_result);
+    MTYPE_To_TY(MTYPE_V) = saved_void_ty;
+    RUNTIME_INTERFACE_CHECK
+        (saved_void_ty != TY_IDX_ZERO && !uninitialized_accepted &&
+         TY_Table_Size() == before_ty_count &&
+         TYLIST_Table_Size() == before_tylist_count &&
+         PU_Info_tree_ptr(caller) == before_entry &&
+         DSL_Runtime_Interface_Image_Value_Count() == 0,
+         "uninitialized predefined void type rejects before mutation");
+
     RUNTIME_INTERFACE_CHECK
         (DSL_Runtime_Interface_Plan_Validate(&plan, stderr) &&
          DSL_Builder_Select_PU(caller) &&
@@ -9693,6 +9711,23 @@ Check_Native_To_Standard_Lowering(void)
     program_plan.runtime_input_bindings = bindings;
     program_plan.runtime_input_binding_count = 2;
     DSL_Program_Interface_Result_Init(&interface_result);
+    STANDARD_LOWER_CHECK(DSL_Builder_Select_PU(pu),
+                         "select projected program unit");
+    TY_IDX saved_void_ty = MTYPE_To_TY(MTYPE_V);
+    UINT32 before_ty_count = TY_Table_Size();
+    UINT32 before_tylist_count = TYLIST_Table_Size();
+    WN *before_entry = PU_Info_tree_ptr(pu);
+    MTYPE_To_TY(MTYPE_V) = TY_IDX_ZERO;
+    BOOL uninitialized_accepted = DSL_Program_Interface_Apply_PU
+        (pu, &program_plan, &runtime_plan, NULL, &interface_result);
+    MTYPE_To_TY(MTYPE_V) = saved_void_ty;
+    STANDARD_LOWER_CHECK
+        (saved_void_ty != TY_IDX_ZERO && !uninitialized_accepted &&
+         TY_Table_Size() == before_ty_count &&
+         TYLIST_Table_Size() == before_tylist_count &&
+         PU_Info_tree_ptr(pu) == before_entry &&
+         DSL_Program_Interface_Image_Runtime_Input_Count() == 0,
+         "uninitialized predefined void type rejects before mutation");
     STANDARD_LOWER_CHECK
         (DSL_Program_Interface_Plan_Validate
              (&program_plan, &runtime_plan, stderr) &&

@@ -1319,6 +1319,12 @@ DSL_Program_Interface_Apply_PU
     std::vector<DSL_RUNTIME_RETURN_SITE> returns;
     if (result == NULL || program_plan == NULL || runtime_plan == NULL)
         return FALSE;
+    TY_IDX void_ty = MTYPE_To_TY(MTYPE_V);
+    if (void_ty == TY_IDX_ZERO ||
+        TY_IDX_index(void_ty) >= TY_Table_Size() ||
+        TY_kind(void_ty) != KIND_VOID)
+        return DSL_Program_Interface_Report
+                   (diagnostic, "predefined void type is not initialized", 0);
     std::string fingerprint = DSL_Program_Interface_Plan_Fingerprint
                                   (program_plan, runtime_plan);
     BOOL already_applied = DSL_Program_Interface_Image_Has_Records();

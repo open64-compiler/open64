@@ -607,7 +607,15 @@ DSL_Runtime_Interface_Apply_PU
 {
     DSL_Runtime_Interface_Result_Init(result);
     std::vector<DSL_RUNTIME_RETURN_SITE> returns;
-    if (result == NULL || !DSL_Runtime_Interface_Plan_Validate(plan, diagnostic) ||
+    if (result == NULL || plan == NULL)
+        return FALSE;
+    TY_IDX void_ty = MTYPE_To_TY(MTYPE_V);
+    if (void_ty == TY_IDX_ZERO ||
+        TY_IDX_index(void_ty) >= TY_Table_Size() ||
+        TY_kind(void_ty) != KIND_VOID)
+        return DSL_Runtime_Interface_Report
+                   (diagnostic, "predefined void type is not initialized", 0);
+    if (!DSL_Runtime_Interface_Plan_Validate(plan, diagnostic) ||
         !DSL_Runtime_Interface_Preflight_PU
              (pu, plan, &returns, diagnostic))
         return FALSE;
@@ -860,7 +868,11 @@ DSL_Runtime_Interface_Validate_PU (PU_Info *pu, FILE *diagnostic)
         return DSL_Runtime_Interface_Report
                    (diagnostic, "runtime prototype is missing", 0);
     TYLIST_IDX tylist = TY_tylist(prototype);
-    if (TYLIST_type(Tylist_Table[tylist]) != MTYPE_To_TY(MTYPE_V))
+    TY_IDX void_ty = MTYPE_To_TY(MTYPE_V);
+    if (void_ty == TY_IDX_ZERO ||
+        TY_IDX_index(void_ty) >= TY_Table_Size() ||
+        TY_kind(void_ty) != KIND_VOID ||
+        TYLIST_type(Tylist_Table[tylist]) != void_ty)
         return DSL_Runtime_Interface_Report
                    (diagnostic, "runtime return type mismatch", 0);
     for (UINT32 ordinal = 0; ordinal < formal_count; ++ordinal) {
