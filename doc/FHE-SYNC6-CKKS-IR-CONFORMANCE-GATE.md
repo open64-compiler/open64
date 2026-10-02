@@ -96,6 +96,39 @@ operator family. This document requests a reviewed shared/common handoff;
 the FHE task must not assign enum values, edit physical `OPR_DSL`, or change
 the binary format independently. The private physical escape remains private.
 
+### Proposed Shared Contract Census
+
+All rows below are proposed v1 *logical* names, not allocated enum values.
+Main/common owns any shared registry, physical WN, mapped-image, and builder
+contract. The FHE task owns CKKS legality, state propagation, schedule
+expansion, and terminal ABI lowering. Canonical TY remains the tensor identity;
+cipher/plain class and mutable level/scale live in encryption/value-state
+records, never in a new binary type kind. An operation is pure with respect to
+source-language state but may consume keys and allocate provider values after
+terminal lowering; the verifier must not infer numerical algebra laws from
+that source-level purity.
+
+| Logical operation | Operand/result contract and required attributes | Verifier and lowering handoff |
+| --- | --- | --- |
+| `common.tensor_const.v1` (reuse) | Tensor payload -> plain constant/encoded operand; exact TY, encoding, payload digest. | Reuse existing constant identity; FHE proves source bytes and CKKS encoding state before `ckks.encode` or terminal plaintext construction. |
+| `common.add.v1` (reuse candidate) | Two cipher/plain-typed values -> one value; exact operand class, layout, scale/level-match policy, no broadcast. | Main decides whether its existing broadcast/marker contract can express this restricted CKKS use or needs a CKKS logical wrapper. FHE verifies alignment and lowers to exact add primitive. |
+| `common.mul.v1` (reuse candidate) | Cipher-cipher or cipher-plain -> one value; operation class, output component/scale policy. | Main decides reuse versus wrapper; FHE accounts for multiplicative depth and explicit downstream rescale/relin. No implicit CKKS repair inside `common.mul`. |
+| `ckks.encode.v1` (new candidate) | Plain tensor plus encoding descriptor -> packed plain; slots, layout, scale, level, source payload digest. | FHE proves capacity/shape and byte identity; common owns logical node contract if accepted. |
+| `ckks.rotate.v1` (new candidate) | Cipher and signed nonzero rotation -> cipher; signed index, layout, key identity. | FHE checks slots, exact rotation key, state preservation or declared transition. |
+| `ckks.rescale.v1` (new candidate) | Cipher -> cipher; exact consumed level count and target scale. | FHE checks modulus-chain availability, precision floor, and result state. |
+| `ckks.modswitch.v1` (new candidate) | Cipher -> cipher; exact target level. | FHE checks direction, scale/precision, and absence of undeclared repair. |
+| `ckks.relin.v1` (new candidate) | Widened cipher -> two-component cipher; key identity. | FHE checks input components, key class, and output components. |
+| `ckks.bootstrap.v1` (new candidate) | Cipher -> refreshed cipher; target level, slots, reason, bootstrap key identity. | FHE checks all 19 pre-ReLU boundaries and per-context 15/17/18 targets; bootstrap has no ReLU result semantics. |
+
+The accepted polynomial stages, normalization, and reconstruction lower to
+ordered uses of these arithmetic operations with exact coefficient/asset
+references and stage provenance. The census is intentionally minimal for the
+first ResNet path; subtraction, conjugation, generic ciphertext-ciphertext
+matrix operations, and POLY/RNS operators require a separate demonstrated
+need. Main/common must resolve the reuse candidates, direct-kid shapes,
+attribute schema, value construction API, printer names, and compatibility
+strategy before the FHE implementation writes any executable CKKS node.
+
 ## Test Ladder And Exit
 
 - Focused deterministic fixtures for each CKKS operation and invalid
