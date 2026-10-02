@@ -9443,24 +9443,24 @@ Check_Native_To_Standard_Lowering(void)
     DSL_BUILDER_VALUE seed;
     DSL_BUILDER_VALUE computed[2];
     DSL_BUILDER_VALUE kids[2];
-    DSL_RUNTIME_VALUE_PROJECTION_REQUEST projection_requests[2];
+    DSL_RUNTIME_VALUE_PROJECTION_REQUEST projection_requests[3];
     DSL_RUNTIME_INTERFACE_PLAN runtime_plan;
     DSL_RUNTIME_INPUT_REQUEST inputs[2];
     DSL_RUNTIME_INPUT_BINDING_REQUEST bindings[2];
     DSL_PROGRAM_INTERFACE_PLAN program_plan;
     DSL_PROGRAM_INTERFACE_RESULT interface_result;
-    DSL_RUNTIME_VALUE_PROJECTION_RECORD projections[2];
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD projections[3];
     DSL_RUNTIME_INPUT_RECORD input_records[2];
     DSL_RUNTIME_INPUT_BINDING_RECORD binding_records[2];
     DSL_IR_EXTERNAL_TENSOR_REFERENCE observed_external;
-    DSL_IR_NATIVE_VALUE_LOWER_REQUEST requests[4];
-    DSL_IR_NATIVE_VALUE_LOWER_RESULT results[4];
+    DSL_IR_NATIVE_VALUE_LOWER_REQUEST requests[5];
+    DSL_IR_NATIVE_VALUE_LOWER_RESULT results[5];
     TCON_IDX external_tcon[2];
     TY_IDX tensor_ty[2];
     TY_IDX handle_ty;
     WN *body;
-    WN *definitions[4];
-    WN *containing_blocks[4];
+    WN *definitions[5];
+    WN *containing_blocks[5];
     WN *standard_block[2];
     WN *handle_definition[2];
     int failed = 0;
@@ -9636,9 +9636,19 @@ Check_Native_To_Standard_Lowering(void)
         projection_requests[i].formal_ordinal =
             DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
     }
+    projection_requests[2].owner_pu_st = PU_Info_proc_sym(pu);
+    projection_requests[2].source_value_id =
+        DSL_Builder_Get_Value_Image_Id(external[0]);
+    projection_requests[2].expected_source_st =
+        DSL_Builder_Get_Value_Result_Symbol(external[0]);
+    projection_requests[2].expected_source_ty = tensor_ty[0];
+    projection_requests[2].handle_ty = handle_ty;
+    projection_requests[2].binding_kind = DSL_RUNTIME_BINDING_LOCAL_VALUE;
+    projection_requests[2].formal_ordinal =
+        DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
     memset(&runtime_plan, 0, sizeof(runtime_plan));
     runtime_plan.values = projection_requests;
-    runtime_plan.value_count = 2;
+    runtime_plan.value_count = 3;
     memset(inputs, 0, sizeof(inputs));
     memset(bindings, 0, sizeof(bindings));
     for (UINT32 i = 0; i < 2; ++i) {
@@ -9717,6 +9727,12 @@ Check_Native_To_Standard_Lowering(void)
         STANDARD_LOWER_CHECK(input_count == 1 && binding_count == 1,
                              "promoted source relation");
     }
+    STANDARD_LOWER_CHECK
+        (DSL_Runtime_Interface_Image_Find_Value
+             (PU_Info_proc_sym(pu), projection_requests[2].source_value_id,
+              &projections[2]) &&
+         projections[2].handle_st != binding_records[0].handle_st,
+         "promoted source retains a separate call projection");
     if (failed)
         return failed;
 
@@ -9736,9 +9752,13 @@ Check_Native_To_Standard_Lowering(void)
                          (body,
                           DSL_Builder_Get_Value_Result_Symbol(external[1]),
                           &containing_blocks[3]);
+    definitions[4] = Find_STID_And_Block
+                         (body, DSL_Builder_Get_Value_Result_Symbol(seed),
+                          &containing_blocks[4]);
     STANDARD_LOWER_CHECK
         (definitions[0] != NULL && definitions[1] != NULL &&
-         definitions[2] != NULL && definitions[3] != NULL,
+         definitions[2] != NULL && definitions[3] != NULL &&
+         definitions[4] != NULL,
          "native definitions");
     if (failed) {
         fprintf(stderr, "definition presence: computed0=%d computed1=%d "
@@ -9763,8 +9783,8 @@ Check_Native_To_Standard_Lowering(void)
     }
 
     memset(requests, 0, sizeof(requests));
-    const UINT32 request_order[4] = { 1, 3, 0, 2 };
-    for (UINT32 request_index = 0; request_index < 4; ++request_index) {
+    const UINT32 request_order[5] = { 1, 3, 0, 4, 2 };
+    for (UINT32 request_index = 0; request_index < 5; ++request_index) {
         UINT32 source_index = request_order[request_index];
         DSL_IR_NATIVE_VALUE_LOWER_REQUEST &request =
             requests[request_index];
@@ -9781,7 +9801,7 @@ Check_Native_To_Standard_Lowering(void)
             request.relation.value_projection_id =
                 projections[source_index].id;
             request.standard_block = standard_block[source_index];
-        } else {
+        } else if (source_index < 4) {
             UINT32 external_index = source_index - 2;
             request.source_value_id =
                 DSL_Builder_Get_Value_Image_Id(external[external_index]);
@@ -9795,6 +9815,15 @@ Check_Native_To_Standard_Lowering(void)
                 input_records[external_index].id;
             request.relation.runtime_binding_id =
                 binding_records[external_index].id;
+        } else {
+            request.source_value_id =
+                DSL_Builder_Get_Value_Image_Id(seed);
+            request.expected_operator = OPR_DSLTENSORCONST;
+            request.expected_version = 1;
+            request.mode =
+                DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION;
+            request.relation.relation_kind =
+                DSL_IR_LOWER_RELATION_VERIFIED_DEAD_SOURCE;
         }
     }
 
@@ -9810,30 +9839,30 @@ Check_Native_To_Standard_Lowering(void)
                 definitions[1], \
          message)
 
-    DSL_IR_NATIVE_VALUE_LOWER_REQUEST malformed[4];
+    DSL_IR_NATIVE_VALUE_LOWER_REQUEST malformed[5];
     memcpy(malformed, requests, sizeof(malformed));
     malformed[0].expected_version = 2;
     STANDARD_LOWER_EXPECT_REJECT
-        (malformed, 4, "wrong logical version rejects without mutation");
+        (malformed, 5, "wrong logical version rejects without mutation");
 
     memcpy(malformed, requests, sizeof(malformed));
     malformed[0].relation.value_projection_id = projections[0].id;
     STANDARD_LOWER_EXPECT_REJECT
-        (malformed, 4, "wrong runtime projection rejects without mutation");
+        (malformed, 5, "wrong runtime projection rejects without mutation");
 
     memcpy(malformed, requests, sizeof(malformed));
     malformed[1] = malformed[0];
     STANDARD_LOWER_EXPECT_REJECT
-        (malformed, 4, "duplicate member rejects without mutation");
+        (malformed, 5, "duplicate member rejects without mutation");
 
     memcpy(malformed, requests, sizeof(malformed));
     malformed[2].standard_block = malformed[0].standard_block;
     STANDARD_LOWER_EXPECT_REJECT
-        (malformed, 4, "duplicate standard block rejects without mutation");
+        (malformed, 5, "duplicate standard block rejects without mutation");
 
     STANDARD_LOWER_CHECK
         (!DSL_IR_Lower_Native_Values_To_Standard_Blocks
-              (NULL, requests, 4, NULL, results) &&
+              (NULL, requests, 5, NULL, results) &&
          Find_STID_And_Block
              (body, projection_requests[0].expected_source_st, NULL) ==
                 definitions[0],
@@ -9842,20 +9871,20 @@ Check_Native_To_Standard_Lowering(void)
     ST_IDX saved_handle_st = WN_st_idx(handle_definition[0]);
     WN_st_idx(handle_definition[0]) = projections[1].handle_st;
     STANDARD_LOWER_EXPECT_REJECT
-        (requests, 4, "wrong result handle rejects without mutation");
+        (requests, 5, "wrong result handle rejects without mutation");
     WN_st_idx(handle_definition[0]) = saved_handle_st;
 
     SRCPOS saved_handle_position = WN_Get_Linenum(handle_definition[0]);
     WN_Set_Linenum(handle_definition[0], 0);
     STANDARD_LOWER_EXPECT_REJECT
-        (requests, 4, "missing result source position rejects");
+        (requests, 5, "missing result source position rejects");
     WN_Set_Linenum(handle_definition[0], saved_handle_position);
 
     WN *trailing_statement = WN_CreateEval(WN_Intconst(MTYPE_I4, 0));
     WN_Set_Linenum(trailing_statement, saved_handle_position);
     WN_INSERT_BlockLast(standard_block[0], trailing_statement);
     STANDARD_LOWER_EXPECT_REJECT
-        (requests, 4, "nonfinal result handle rejects without mutation");
+        (requests, 5, "nonfinal result handle rejects without mutation");
     WN_EXTRACT_FromBlock(standard_block[0], trailing_statement);
     WN_DELETE_Tree(trailing_statement);
 
@@ -9866,9 +9895,26 @@ Check_Native_To_Standard_Lowering(void)
               projection_requests[0].expected_source_st));
     WN_INSERT_BlockAfter(containing_blocks[0], definitions[0], address_use);
     STANDARD_LOWER_EXPECT_REJECT
-        (requests, 4, "address-taken source rejects without mutation");
+        (requests, 5, "address-taken source rejects without mutation");
     WN_EXTRACT_FromBlock(containing_blocks[0], address_use);
     WN_DELETE_Tree(address_use);
+
+    WN *dead_address_use = WN_CreateEval
+        (WN_CreateLda
+             (OPR_LDA, Pointer_Mtype, MTYPE_V, 0, source_pointer_ty,
+              DSL_Builder_Get_Value_Result_Symbol(seed)));
+    WN_INSERT_BlockAfter
+        (containing_blocks[4], definitions[4], dead_address_use);
+    STANDARD_LOWER_EXPECT_REJECT
+        (requests, 5, "dead source address escape rejects without mutation");
+    WN_EXTRACT_FromBlock(containing_blocks[4], dead_address_use);
+    WN_DELETE_Tree(dead_address_use);
+
+    memcpy(malformed, requests, sizeof(malformed));
+    malformed[3].relation.relation_kind =
+        DSL_IR_LOWER_RELATION_ROOT_PROMOTED_INPUT;
+    STANDARD_LOWER_EXPECT_REJECT
+        (malformed, 5, "dead source cannot claim a runtime relation");
 
     DSL_IR_NATIVE_VALUE_LOWER_REQUEST partial = requests[2];
     STANDARD_LOWER_CHECK
@@ -9883,7 +9929,7 @@ Check_Native_To_Standard_Lowering(void)
          "partial chain rejects without mutation");
     STANDARD_LOWER_CHECK
          (DSL_IR_Lower_Native_Values_To_Standard_Blocks
-             (pu, requests, 4, stderr, results) &&
+             (pu, requests, 5, stderr, results) &&
          DSL_IR_Image_Validate(stderr) &&
          DSL_IR_Image_Validate_Lowered_Relations(stderr) &&
          DSL_Program_Interface_Validate_Lowered_PU(pu, stderr) &&
@@ -9893,12 +9939,14 @@ Check_Native_To_Standard_Lowering(void)
          DSL_Gatekeeper_Verify_Program
              (pu, stderr, NULL),
          "atomic standard lowering transaction");
-    for (UINT32 i = 0; i < 4; ++i) {
+    for (UINT32 i = 0; i < 5; ++i) {
         UINT32 source_index = request_order[i];
         ST_IDX source_st = source_index < 2 ?
             projection_requests[source_index].expected_source_st :
-            DSL_Builder_Get_Value_Result_Symbol
-                (external[source_index - 2]);
+            source_index < 4 ?
+                DSL_Builder_Get_Value_Result_Symbol
+                    (external[source_index - 2]) :
+                DSL_Builder_Get_Value_Result_Symbol(seed);
         STANDARD_LOWER_CHECK
             (results[i].source_value_id == requests[i].source_value_id &&
              results[i].relation_kind ==
@@ -9906,6 +9954,29 @@ Check_Native_To_Standard_Lowering(void)
              Find_STID_And_Block(body, source_st, NULL) == NULL,
              "lowering result evidence");
     }
+    WN *promoted_copy = Find_STID_And_Block
+        (body, projections[2].handle_st, NULL);
+    STANDARD_LOWER_CHECK
+        (promoted_copy != NULL &&
+         WN_operator(WN_kid0(promoted_copy)) == OPR_LDID &&
+         WN_st_idx(WN_kid0(promoted_copy)) ==
+             binding_records[0].handle_st &&
+         results[4].value_projection_id == projections[2].id &&
+         results[3].mode ==
+             DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION,
+         "promoted call projection and dead source evidence");
+    WN *copy_next = WN_next(promoted_copy);
+    WN_EXTRACT_FromBlock(body, promoted_copy);
+    STANDARD_LOWER_CHECK
+        (!DSL_Program_Interface_Validate_Lowered_PU(pu, NULL),
+         "missing promoted call projection copy rejects");
+    if (copy_next != NULL)
+        WN_INSERT_BlockBefore(body, copy_next, promoted_copy);
+    else
+        WN_INSERT_BlockLast(body, promoted_copy);
+    STANDARD_LOWER_CHECK
+        (DSL_Program_Interface_Validate_Lowered_PU(pu, stderr),
+         "restored promoted call projection copy validates");
 
     UINT64 runtime_image_size = 0;
     UINT64 program_image_size = 0;
@@ -9920,7 +9991,7 @@ Check_Native_To_Standard_Lowering(void)
     UINT32 saved_projection_count = runtime_header->value_projection_count;
     UINT32 saved_binding_count =
         program_header->runtime_input_binding_count;
-    STANDARD_LOWER_CHECK(saved_projection_count == 2 &&
+    STANDARD_LOWER_CHECK(saved_projection_count == 3 &&
                          saved_binding_count == 2,
                          "mapped relation fixture census");
 
@@ -9973,6 +10044,20 @@ Check_Native_To_Standard_Lowering(void)
         (!DSL_IR_Image_Load_Mapped(dsl_image, dsl_image_size, NULL),
          "mapped effectful lowered node rejects");
     mapped_descriptor.effect_model = saved_effect_model;
+    DSL_IR_VALUE_RECORD &mapped_dead_value =
+        dsl_values[requests[3].source_value_id - 1];
+    DSL_IR_NODE_RECORD &mapped_dead_node =
+        dsl_nodes[mapped_dead_value.producer_node_id - 1];
+    mapped_dead_value.flags = DSL_IR_VALUE_FLAG_NONE;
+    STANDARD_LOWER_CHECK
+        (!DSL_IR_Image_Load_Mapped(dsl_image, dsl_image_size, NULL),
+         "mapped dead-elided node/value mismatch rejects");
+    mapped_dead_value.flags = DSL_IR_VALUE_FLAG_DEAD_ELIDED;
+    mapped_dead_node.flags = DSL_IR_NODE_FLAG_LOWERED;
+    STANDARD_LOWER_CHECK
+        (!DSL_IR_Image_Load_Mapped(dsl_image, dsl_image_size, NULL),
+         "mapped dead source cannot claim runtime lowering");
+    mapped_dead_node.flags = DSL_IR_NODE_FLAG_DEAD_ELIDED;
     delete [] dsl_image;
 
     runtime_header->value_projection_count = 1;
@@ -9982,7 +10067,7 @@ Check_Native_To_Standard_Lowering(void)
         (!DSL_Program_Runtime_Interface_Images_Load_Mapped
               (program_image, program_image_size,
                runtime_image, short_runtime_size, NULL) &&
-         DSL_Runtime_Interface_Image_Value_Count() == 2 &&
+         DSL_Runtime_Interface_Image_Value_Count() == 3 &&
          DSL_Program_Interface_Image_Runtime_Binding_Count() == 2,
          "missing lowered projection rejects paired load atomically");
     runtime_header->value_projection_count = saved_projection_count;
@@ -9993,7 +10078,7 @@ Check_Native_To_Standard_Lowering(void)
         (!DSL_Program_Runtime_Interface_Images_Load_Mapped
               (program_image, short_program_size,
                runtime_image, runtime_image_size, NULL) &&
-         DSL_Runtime_Interface_Image_Value_Count() == 2 &&
+         DSL_Runtime_Interface_Image_Value_Count() == 3 &&
          DSL_Program_Interface_Image_Runtime_Binding_Count() == 2,
          "missing promoted binding rejects paired load atomically");
     program_header->runtime_input_binding_count = saved_binding_count;

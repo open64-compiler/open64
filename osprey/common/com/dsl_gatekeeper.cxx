@@ -78,6 +78,40 @@ DSL_Gatekeeper_Is_Result_Symbol
     return FALSE;
 }
 
+/* Permit only the reviewed root-formal to local call-projection copy. */
+static BOOL
+DSL_Gatekeeper_Is_Promoted_Copy_Load (const WN *load, const WN *store)
+{
+    if (load == NULL || store == NULL ||
+        WN_operator(load) != OPR_LDID ||
+        WN_operator(store) != OPR_STID ||
+        WN_kid0(store) != load)
+        return FALSE;
+    for (UINT32 i = 1;
+         i <= DSL_Program_Interface_Image_Runtime_Input_Count(); ++i) {
+        DSL_RUNTIME_INPUT_RECORD input;
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+        DSL_IR_NATIVE_VALUE_LOWER_RESULT relation;
+        if (!DSL_Program_Interface_Image_Get_Runtime_Input(i, &input) ||
+            input.input_kind !=
+                DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR ||
+            !DSL_IR_Image_Resolve_Lowered_Relation
+                (input.source_value_id, &relation) ||
+            relation.runtime_input_id != i ||
+            relation.value_projection_id ==
+                DSL_RUNTIME_VALUE_PROJECTION_INVALID_ID ||
+            !DSL_Runtime_Interface_Image_Get_Value
+                (relation.value_projection_id, &projection) ||
+            WN_st_idx(load) != relation.handle_st ||
+            WN_ty(load) != relation.handle_ty ||
+            WN_st_idx(store) != projection.handle_st ||
+            WN_ty(store) != projection.handle_ty)
+            continue;
+        return TRUE;
+    }
+    return FALSE;
+}
+
 static BOOL
 DSL_Gatekeeper_Collect_Results
         (WN *wn,
@@ -888,13 +922,16 @@ DSL_Gatekeeper_Verify_Tree
                            WN_operator(parent) == OPR_STID &&
                            ST_sclass(St_Table[WN_st_idx(parent)]) ==
                                SCLASS_FORMAL_REF;
+        BOOL promoted_copy =
+            DSL_Gatekeeper_Is_Promoted_Copy_Load(wn, parent);
         BOOL call_interface = WN_operator(wn) == OPR_LDA && parent != NULL &&
                               WN_operator(parent) == OPR_PARM &&
                               WN_Parm_By_Reference(parent) &&
                               WN_Parm_Passed_Not_Saved(parent) &&
                               (WN_Parm_Read_Only(parent) ||
                                WN_Parm_Out(parent));
-        if (!direct_operand && !result_copy && !call_interface)
+        if (!direct_operand && !result_copy && !promoted_copy &&
+            !call_interface)
             valid = DSL_Gatekeeper_Report
                         (context, "result symbol <%u,%u> escapes through %s",
                          ST_IDX_level(WN_st_idx(wn)),

@@ -21,7 +21,9 @@ The following append-only flag values are assigned:
 | Record | Flag | Meaning |
 | --- | --- | --- |
 | `DSL_IR_NODE_RECORD` | `DSL_IR_NODE_FLAG_LOWERED` | The logical node remains as provenance, but its native WN definition is no longer executable. |
-| `DSL_IR_VALUE_RECORD` | `DSL_IR_VALUE_FLAG_LOWERED` | The logical value is represented at runtime by exactly one reviewed relation. |
+| `DSL_IR_VALUE_RECORD` | `DSL_IR_VALUE_FLAG_LOWERED` | The logical value is represented at runtime by one primary reviewed relation. |
+| `DSL_IR_NODE_RECORD` | `DSL_IR_NODE_FLAG_DEAD_ELIDED` | A pure tensor-constant definition is absent from the executable tree after whole-PU dead-use proof. |
+| `DSL_IR_VALUE_RECORD` | `DSL_IR_VALUE_FLAG_DEAD_ELIDED` | The unused source value remains as provenance and has no runtime relation. |
 
 `LOWERED` is mutually exclusive with the existing `RETIRED`/`REDIRECTED`
 state.  A lowered node must be pure, own the lowered result value, and have no
@@ -36,8 +38,15 @@ The runtime relation is a tagged union derived from existing managed tables:
    `DSL_RUNTIME_INPUT_RECORD(SOURCE_EXTERNAL_TENSOR)` and one matching
    `DSL_RUNTIME_INPUT_BINDING_RECORD(ROOT_PROMOTED_SOURCE)`.
 
-Zero matching relations and simultaneous projection/input relations are both
-invalid.  No private metadata string is used to reconstruct the relation.
+Zero matching relations are invalid for a `LOWERED` value. A promoted source
+may also have one `LOCAL_VALUE` projection required by an existing call edge.
+Its primary relation remains `root_promoted_input`; the projection is an
+ancillary call-ABI alias and must agree on source value, owner, ST/TY, and
+handle TY. The transaction replaces the native source definition with one
+canonical, source-positioned `STID local_projection = LDID root_formal` in
+the entry body. Per-PU verification proves that copy precedes every use and
+that the projection has no other write or address escape. No private metadata
+string is used to reconstruct either relation.
 
 ## Transaction API
 
@@ -91,6 +100,18 @@ source evidence remain.
 This mode supports entry-owned weight and bias values without inventing a fake
 callsite or a computed-value projection.
 
+### Verified-Dead Source Elision
+
+`DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION` applies only to a pure,
+unprojected, unpromoted `common.tensor_const` with unique source ownership.
+The complete-PU request array must close every physical use: no read or
+address escape may survive the transaction. Logical references may remain only
+in retired, already lowered, dead-elided, or concurrently lowered provenance
+nodes. This mode supplies neither a standard block nor a runtime relation;
+the image marks node/value `DEAD_ELIDED` and retains their type, source, and
+lineage evidence. It is intended for unused original and folded-away tensor
+constants, not for a source whose live caller still needs a handle.
+
 ## Preflight And Atomicity
 
 The complete request array is preflighted before any tree or table mutation.
@@ -102,6 +123,8 @@ Preflight rejects:
   use, state effects, or another physical definition;
 - unlowered physical/logical consumers outside the transaction;
 - missing, ambiguous, owner-mismatched, ST/TY-mismatched runtime relations;
+- a promoted projection without the matching root binding, or a dead source
+  with any surviving use or runtime relation;
 - duplicate values, nodes, definitions, replacement blocks, or result STIDs;
 - replacement statements with missing/wrong source positions;
 - a replacement block that writes the wrong handle or does not end in the
@@ -140,7 +163,11 @@ The binary representation remains DSL image version 1.  New readers validate:
 - known and mutually exclusive node/value flags;
 - pure lowered nodes paired with lowered result values;
 - no live logical reference to a lowered value;
-- exactly one structurally valid runtime relation per lowered value.
+- one structurally valid primary runtime relation per lowered value, with at
+  most one matching local call projection for a promoted source.
+- paired `DEAD_ELIDED` node/value flags on a pure zero-operand tensor constant,
+  with no live logical consumer and no executable source-symbol use at the
+  per-PU gate.
 
 Program-interface evolution is applied in PU scope because the backend reads,
 mutates, and writes one PU at a time. Process-local commit evidence therefore
@@ -157,9 +184,9 @@ mapped-image compatibility gate.
 The normal reader loads the DSL image and the existing runtime/program
 interface pair, then validates the cross-section relation.  A current reader
 reopens and prints the artifact.  An immediately previous reader may reopen the
-physical WHIRL sections but must fail closed when it encounters the formerly
-reserved lowered flag; it must not silently treat the removed native node as
-executable.
+physical WHIRL sections but must fail closed when it encounters a formerly
+reserved `LOWERED` or `DEAD_ELIDED` flag; it must not silently treat a removed
+native node as executable.
 
 `ir_b2a -st -src` prints logical evidence without exposing physical
 `OPR_DSL` storage details:
@@ -167,6 +194,8 @@ executable.
 ```text
 status=lowered relation=runtime_value_projection projection=<id>
 status=lowered relation=root_promoted_input runtime_input=<id> runtime_binding=<id>
+status=lowered relation=root_promoted_input projection=<id> runtime_input=<id> runtime_binding=<id>
+status=dead_elided relation=none
 ```
 
 The executable tree remains ordinary WHIRL and preserves source-line evidence

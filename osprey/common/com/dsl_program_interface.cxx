@@ -962,6 +962,66 @@ DSL_Program_Interface_Tree_Uses_ST (const WN *tree, ST_IDX st)
     return FALSE;
 }
 
+/* A promoted source may retain a local call projection, initialized once. */
+static BOOL
+DSL_Program_Interface_Projection_Uses_Only_Read
+        (const WN *tree, ST_IDX projection_st, const WN *copy)
+{
+    if (tree == NULL)
+        return TRUE;
+    if (WN_has_sym(tree) && WN_st_idx(tree) == projection_st &&
+        tree != copy && WN_operator(tree) != OPR_LDID)
+        return FALSE;
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (const WN *stmt = WN_first(tree); stmt != NULL;
+             stmt = WN_next(stmt)) {
+            if (!DSL_Program_Interface_Projection_Uses_Only_Read
+                    (stmt, projection_st, copy))
+                return FALSE;
+        }
+        return TRUE;
+    }
+    for (UINT32 i = 0; i < WN_kid_count(tree); ++i) {
+        if (!DSL_Program_Interface_Projection_Uses_Only_Read
+                (WN_kid(tree, i), projection_st, copy))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL
+DSL_Program_Interface_Has_Promoted_Copy
+        (const WN *entry, ST_IDX binding_st,
+         ST_IDX projection_st, TY_IDX handle_ty)
+{
+    const WN *body = WN_func_body(entry);
+    if (body == NULL || WN_operator(body) != OPR_BLOCK)
+        return FALSE;
+    const WN *copy = NULL;
+    for (const WN *stmt = WN_first(body); stmt != NULL;
+         stmt = WN_next(stmt)) {
+        if (WN_operator(stmt) == OPR_STID &&
+            WN_st_idx(stmt) == projection_st) {
+            if (copy != NULL || WN_ty(stmt) != handle_ty ||
+                WN_Get_Linenum(stmt) == 0 ||
+                WN_kid_count(stmt) != 1 ||
+                WN_kid0(stmt) == NULL ||
+                WN_operator(WN_kid0(stmt)) != OPR_LDID ||
+                WN_st_idx(WN_kid0(stmt)) != binding_st ||
+                WN_ty(WN_kid0(stmt)) != handle_ty)
+                return FALSE;
+            copy = stmt;
+        } else if (copy == NULL &&
+                   DSL_Program_Interface_Tree_Uses_ST
+                       (stmt, projection_st)) {
+            return FALSE;
+        }
+    }
+    return copy != NULL &&
+           DSL_Program_Interface_Projection_Uses_Only_Read
+               (entry, projection_st, copy);
+}
+
 /* Map a request-array runtime input index to its deterministic persisted ID. */
 static UINT32
 DSL_Program_Interface_Input_Id
@@ -1924,10 +1984,52 @@ DSL_Program_Interface_Validate_Lowered_PU
             return DSL_Program_Interface_Report
                        (diagnostic,
                         "promoted source definition remains executable", i);
+        DSL_IR_VALUE_RECORD value;
+        if (!DSL_IR_Image_Get_Value(input.source_value_id, &value))
+            return DSL_Program_Interface_Report
+                       (diagnostic, "promoted source value is invalid", i);
+        if ((value.flags & DSL_IR_VALUE_FLAG_LOWERED) == 0)
+            continue;
+        DSL_IR_NATIVE_VALUE_LOWER_RESULT relation;
+        if (!DSL_IR_Image_Resolve_Lowered_Relation(value.id, &relation) ||
+            relation.runtime_input_id != i)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "promoted source relation is invalid", i);
+        if (relation.value_projection_id !=
+                DSL_RUNTIME_VALUE_PROJECTION_INVALID_ID) {
+            DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+            if (!DSL_Runtime_Interface_Image_Get_Value
+                    (relation.value_projection_id, &projection) ||
+                !DSL_Program_Interface_Has_Promoted_Copy
+                    (entry, relation.handle_st, projection.handle_st,
+                     relation.handle_ty))
+                return DSL_Program_Interface_Report
+                           (diagnostic,
+                            "promoted call projection is uninitialized", i);
+        }
     }
     if (DSL_Runtime_Interface_Tree_Uses_Source_ST(entry, owner_pu_st))
         return DSL_Program_Interface_Report
                    (diagnostic, "canonical tensor source remains executable",
                     0);
+    const char *owner_name = ST_name(St_Table[owner_pu_st]);
+    for (UINT32 i = 1; i <= DSL_IR_Image_Value_Count(); ++i) {
+        DSL_IR_VALUE_RECORD value;
+        DSL_IR_VALUE_RECORD owned;
+        if (!DSL_IR_Image_Get_Value(i, &value) ||
+            (value.flags & DSL_IR_VALUE_FLAG_DEAD_ELIDED) == 0 ||
+            ST_IDX_level(value.st) != CURRENT_SYMTAB ||
+            ST_IDX_index(value.st) == 0 ||
+            ST_IDX_index(value.st) >= ST_Table_Size(CURRENT_SYMTAB) ||
+            value.name == STR_IDX_ZERO ||
+            !DSL_IR_Image_Find_PU_Value
+                (value.st, Index_To_Str(value.name), owner_name, &owned) ||
+            owned.id != value.id)
+            continue;
+        if (DSL_Program_Interface_Tree_Uses_ST(entry, value.st))
+            return DSL_Program_Interface_Report
+                       (diagnostic,
+                        "dead-elided source remains executable", i);
+    }
     return TRUE;
 }

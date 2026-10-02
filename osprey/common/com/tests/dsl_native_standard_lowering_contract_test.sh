@@ -58,9 +58,10 @@ fi
 
 for evidence in \
   'operator=OPR_DSLADD version=1' \
-  'status=lowered relation=runtime_value_projection projection=1' \
-  'status=lowered relation=runtime_value_projection projection=2' \
+  'status=lowered relation=runtime_value_projection projection=' \
   'status=lowered relation=root_promoted_input' \
+  'status=lowered relation=root_promoted_input projection=' \
+  'status=dead_elided relation=none' \
   'name=standard_weight' \
   'name=standard_bias' \
   'rank=4,shape=[1,1,2,2]' \
@@ -78,8 +79,9 @@ done
 
 if [[ "$(grep -Fc 'status=lowered relation=runtime_value_projection' "$trace")" -ne 4 ]] ||
    [[ "$(grep -Fc 'status=lowered relation=root_promoted_input' "$trace")" -ne 4 ]] ||
+   [[ "$(grep -Fc 'status=dead_elided relation=none' "$trace")" -ne 2 ]] ||
    [[ "$(grep -Ec '^  OPR_DSLADD ' "$trace")" -ne 0 ]] ||
-   [[ "$(grep -Ec '^  OPR_DSLTENSORCONST .*standard_(weight|bias)' "$trace")" -ne 0 ]]; then
+   [[ "$(grep -Ec '^  OPR_DSLTENSORCONST .*standard_(weight|bias|seed)' "$trace")" -ne 0 ]]; then
   echo "standard-lowering relation or executable-node census changed" >&2
   exit 1
 fi
