@@ -123,7 +123,8 @@ typed relation, never encode it only in metadata strings.
 
 The FHE-owned process-local preflight in
 `osprey/be/vho/fhe_ckks_event_coverage.{h,cxx}` checks that an independently
-counted set of source events has unique owner/source/context identities,
+counted set of source events has unique owner/source-value/static-ordinal/
+context identities,
 at least one result per event, and dense per-event step ordinals. It accepts
 the same reusable PU value identity in different call contexts. The focused
 147-event test is synthetic and proves only this coverage algorithm; it does

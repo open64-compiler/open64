@@ -18,7 +18,7 @@ int main()
   std::vector<VHO_FHE_CKKS_EVENT_STEP> steps;
   for (uint32_t i = 0; i < 147; ++i) {
     VHO_FHE_CKKS_EVENT_IDENTITY event = {
-      10, i / 19 + 1, 20, i % 19
+      10, i / 19 + 1, i / 19 + 1, 20, i % 19
     };
     events.push_back(event);
     for (uint32_t ordinal = 0; ordinal < 2; ++ordinal) {
@@ -33,7 +33,7 @@ int main()
       VHO_FHE_CKKS_COVERAGE_OK);
 
   VHO_FHE_CKKS_EVENT_IDENTITY colliding_local_ids[2] = {
-    { 10, 7, 20, 0 }, { 11, 7, 21, 0 }
+    { 10, 7, 50, 20, 0 }, { 11, 7, 50, 21, 0 }
   };
   VHO_FHE_CKKS_EVENT_STEP distinct_owners[2] = {
     { colliding_local_ids[0], 0, 44 },
@@ -46,6 +46,24 @@ int main()
   assert(VHO_FHE_CKKS_Verify_Event_Coverage(
       colliding_local_ids, 2, 2, distinct_owners, 2) ==
       VHO_FHE_CKKS_COVERAGE_UNKNOWN_EVENT);
+
+  VHO_FHE_CKKS_EVENT_IDENTITY relu_events[6];
+  VHO_FHE_CKKS_EVENT_STEP relu_steps[6];
+  for (uint32_t ordinal = 0; ordinal < 6; ++ordinal) {
+    VHO_FHE_CKKS_EVENT_IDENTITY relu = {
+      10, 7, 50 + ordinal, 20, 3
+    };
+    relu_events[ordinal] = relu;
+    VHO_FHE_CKKS_EVENT_STEP step = { relu, 0, 80 + ordinal };
+    relu_steps[ordinal] = step;
+  }
+  assert(VHO_FHE_CKKS_Verify_Event_Coverage(
+      relu_events, 6, 6, relu_steps, 6) ==
+      VHO_FHE_CKKS_COVERAGE_OK);
+  relu_events[1].source_static_ordinal = 50;
+  assert(VHO_FHE_CKKS_Verify_Event_Coverage(
+      relu_events, 6, 6, relu_steps, 6) ==
+      VHO_FHE_CKKS_COVERAGE_DUPLICATE_EVENT);
 
   assert(VHO_FHE_CKKS_Verify_Event_Coverage(
       &events[0], events.size(), 146, &steps[0], steps.size()) ==
@@ -97,6 +115,7 @@ int main()
       NULL, 1, 1, NULL, 0) ==
       VHO_FHE_CKKS_COVERAGE_INVALID_ARGUMENT);
   printf("synthetic_events=147 contexts=19 steps=294 ");
-  printf("owner_collision=accepted malformed_cases=rejected\n");
+  printf("owner_collision=accepted relu_static_ordinals=6 ");
+  printf("malformed_cases=rejected\n");
   return 0;
 }

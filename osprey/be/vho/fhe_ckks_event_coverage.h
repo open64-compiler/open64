@@ -15,6 +15,7 @@
 typedef struct {
   uint32_t owner_pu_st;
   uint32_t source_value_id;
+  uint32_t source_static_ordinal;
   uint32_t context_pu_identity_id;
   uint32_t context_callsite_id;
 } VHO_FHE_CKKS_EVENT_IDENTITY;
@@ -38,9 +39,11 @@ typedef enum {
 
 /*
  * Verify one-to-many expansion coverage without borrowing or changing IR.
- * Each event has exactly one owner/context identity, at least one step, and
- * dense step ordinals starting at zero. Result identities are unique within
- * an exact context; different call contexts may reuse a specialized PU value.
+ * Each event has exactly one owner/value/static-ordinal/context identity,
+ * at least one step, and dense step ordinals starting at zero. The static
+ * ordinal distinguishes the six evaluation events of one source ReLU value.
+ * Result identities are unique within an exact context; different call
+ * contexts may reuse a specialized PU value.
  * The caller supplies its independently counted expected event total. This
  * check does not establish CKKS operation legality or persisted provenance.
  */

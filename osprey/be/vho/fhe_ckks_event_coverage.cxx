@@ -23,6 +23,8 @@ struct Event_Less {
       return left.owner_pu_st < right.owner_pu_st;
     if (left.source_value_id != right.source_value_id)
       return left.source_value_id < right.source_value_id;
+    if (left.source_static_ordinal != right.source_static_ordinal)
+      return left.source_static_ordinal < right.source_static_ordinal;
     if (left.context_pu_identity_id != right.context_pu_identity_id)
       return left.context_pu_identity_id < right.context_pu_identity_id;
     return left.context_callsite_id < right.context_callsite_id;
@@ -37,6 +39,7 @@ struct Event_Steps {
 bool Event_Valid(const VHO_FHE_CKKS_EVENT_IDENTITY &event)
 {
   return event.owner_pu_st != 0 && event.source_value_id != 0 &&
+         event.source_static_ordinal != 0 &&
          event.context_pu_identity_id != 0;
 }
 
