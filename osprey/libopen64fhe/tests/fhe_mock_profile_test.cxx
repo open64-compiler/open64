@@ -387,7 +387,17 @@ main()
                  &wrong, &output) != OPEN64_FHE_STATUS_CALL_ORDER_MISMATCH ||
         output != NULL)
       return 1;
-    if (!Ok(Evaluate(kinds[sequence], model, current, weight, bias,
+    if (kinds[sequence] == OPEN64_FHE_OP_CONV2D_PLAIN ||
+        kinds[sequence] == OPEN64_FHE_OP_LINEAR_PLAIN ||
+        kinds[sequence] == OPEN64_FHE_OP_RELU_POLY_STAGE) {
+      if (Evaluate(kinds[sequence], model, current, NULL, bias,
+                   selected, &output) !=
+              OPEN64_FHE_STATUS_INVALID_ARGUMENT || output != NULL)
+        return 1;
+    }
+    open64_fhe_plain_tensor_v1_t effective_bias =
+        sequence == 0 ? NULL : bias;
+    if (!Ok(Evaluate(kinds[sequence], model, current, weight, effective_bias,
                      selected, &output)) || output == NULL)
       return 1;
     memcpy(value_identity, selected->output_value_identity_sha256, 32);
