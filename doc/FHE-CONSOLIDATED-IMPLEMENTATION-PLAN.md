@@ -688,6 +688,13 @@ require main/common review before allocation. The existing SYNC-5 mock path
 remains the regression reference. ACE library interaction begins only after
 this CKKS IR gate and its stable-C-ABI lowering pass.
 
+An additional ACE-shaped development mock sits behind an Open64-owned private
+evaluator adapter. It mirrors pinned arithmetic call shapes without requiring
+ACE headers or `FHErt_ant` in its test build. The first focused slice and its
+non-claims are in `doc/FHE-SYNC6-ACE-SHAPED-MOCK.md`. This mock complements
+the public-ABI SYNC-5 mock; neither is real ciphertext execution or
+secretless-server proof.
+
 The exact pinned ACE import/export gap is recorded in
 `doc/FHE-SYNC6-ACE-ANT-ADMISSION-AUDIT.md`. It blocks later ACE admission and
 the final client/server exit, not CKKS IR creation or mock-based verification.
