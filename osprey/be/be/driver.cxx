@@ -135,6 +135,7 @@
 #include "vho_lower.h"
 #include "dsl_lower.h"
 #include "dsl_shape_refine.h"
+#include "dsl_program_interface_internal.h"
 #include "fhe_convert.h"
 #include "fhe_materialize.h"
 #include "fhe_runtime_lower.h"
@@ -2068,10 +2069,20 @@ Preprocess_PU (PU_Info *current_pu)
   }
 #endif
 
-  Set_Error_Phase ( "DSL Shape Refinement" );
-  pu = VHO_DSL_Shape_Refine_Driver(current_pu, pu);
-  Set_PU_Info_tree_ptr(current_pu, pu);
-  Check_for_IR_Dump(TP_GLOBOPT, pu, "DSL_SHAPE_REFINE");
+  if (need_fhe_runtime_lower_output) {
+    Set_Error_Phase ( "FHE Projected-IR Admission" );
+    FmtAssert(!VHO_DSL_Enable_WOPT &&
+              DSL_Program_Interface_PU_Is_Committed
+                  (PU_Info_proc_sym(current_pu)),
+              ("FHE runtime checkpoint requires a committed projected "
+               "interface and -O0 DSL pipeline"));
+    Check_for_IR_Dump(TP_GLOBOPT, pu, "FHE_PROJECTED_INPUT");
+  } else {
+    Set_Error_Phase ( "DSL Shape Refinement" );
+    pu = VHO_DSL_Shape_Refine_Driver(current_pu, pu);
+    Set_PU_Info_tree_ptr(current_pu, pu);
+    Check_for_IR_Dump(TP_GLOBOPT, pu, "DSL_SHAPE_REFINE");
+  }
 
   if (!w2c_only && VHO_DSL_Enable_WOPT) {
     Is_True(wopt_loaded,

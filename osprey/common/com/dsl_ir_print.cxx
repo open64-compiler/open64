@@ -203,6 +203,8 @@ DSL_IR_Image_Print (FILE *file)
             DSL_IR_Image_Value_Redirect_Target(node.result_value_id, &target);
             fprintf(file, " status=retired redirected_to=value%u", target);
         }
+        if ((node.flags & DSL_IR_NODE_FLAG_DEAD_ELIDED) != 0)
+            fprintf(file, " status=dead_elided relation=none");
         if ((node.flags & DSL_IR_NODE_FLAG_LOWERED) != 0) {
             DSL_IR_NATIVE_VALUE_LOWER_RESULT relation;
             if (DSL_IR_Image_Resolve_Lowered_Relation
@@ -261,6 +263,8 @@ DSL_IR_Image_Print (FILE *file)
             DSL_IR_Image_Value_Redirect_Target(record.id, &target);
             fprintf(file, " status=redirected redirected_to=value%u", target);
         }
+        if ((record.flags & DSL_IR_VALUE_FLAG_DEAD_ELIDED) != 0)
+            fprintf(file, " status=dead_elided relation=none");
         if ((record.flags & DSL_IR_VALUE_FLAG_LOWERED) != 0) {
             DSL_IR_NATIVE_VALUE_LOWER_RESULT relation;
             if (DSL_IR_Image_Resolve_Lowered_Relation

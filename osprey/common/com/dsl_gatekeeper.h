@@ -18,7 +18,8 @@ typedef struct {
 
 typedef enum {
     DSL_GATEKEEPER_ADMISSION = 0,
-    DSL_GATEKEEPER_STRICT = 1
+    DSL_GATEKEEPER_STRICT = 1,
+    DSL_GATEKEEPER_PROJECTED = 2
 } DSL_GATEKEEPER_MODE;
 
 typedef enum {

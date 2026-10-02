@@ -258,6 +258,15 @@ The combined service:
 6. records retirements and explicit runtime input flow in the new section; and
 7. commits the active PU tree only after every PU-local check succeeds.
 
+A mapped-image producer must call `Initialize_Special_Global_Symbols()` after
+`Read_Global_Info()` and before either interface `Apply_PU` service. This
+restores the predefined `MTYPE_To_TY` mapping from the file's TY table; a
+missing void TY otherwise creates an invalid function-prototype return slot.
+Both apply services reject an uninitialized predefined void TY before any
+tree or table mutation. The producer runs `Verify_SYMTAB` on the completed
+image before `Write_Global_Info`, in addition to the existing mapped-reopen
+and `ir_b2a -st -src` checks.
+
 All existing runtime-projection completeness rules are evaluated over the
 effective live canonical set. Retired PU formals and retired call arguments
 must be absent from the runtime projection plan. Every nonretired canonical

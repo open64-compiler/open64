@@ -14,6 +14,25 @@
 /* Count all managed REGION interface rows that refer to one symbol. */
 extern UINT32 DSL_Region_Symbol_Use_Count (PU_Info *pu, ST_IDX st);
 
+typedef struct {
+    ST_IDX old_st;
+    ST_IDX new_st;
+} DSL_REGION_SYMBOL_REDIRECT;
+
+/* Preflight and commit one complete lowering update to REGION interfaces. */
+extern BOOL DSL_Region_Can_Apply_Lowering_Transitions
+                                (PU_Info *pu,
+                                 const DSL_REGION_SYMBOL_REDIRECT *redirects,
+                                 UINT32 redirect_count,
+                                 const ST_IDX *pruned_inputs,
+                                 UINT32 pruned_input_count);
+extern BOOL DSL_Region_Apply_Lowering_Transitions
+                                (PU_Info *pu,
+                                 const DSL_REGION_SYMBOL_REDIRECT *redirects,
+                                 UINT32 redirect_count,
+                                 const ST_IDX *pruned_inputs,
+                                 UINT32 pruned_input_count);
+
 /* Prove that removing the exact plain-input symbol set preserves the store. */
 extern BOOL DSL_Region_Can_Prune_Input_Symbols
                                 (PU_Info *pu, const ST_IDX *symbols,

@@ -13,6 +13,7 @@
 #include "dsl_memory_behavior.h"
 #include "dsl_ir_image.h"
 #include "dsl_region.h"
+#include "dsl_region_internal.h"
 #include "pu_info.h"
 #include "strtab.h"
 #include "symtab.h"
@@ -21,7 +22,7 @@
 
 /* Commit-only image mutation after complete transaction preflight. */
 extern BOOL DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID);
-extern UINT32 DSL_Region_Symbol_Use_Count (PU_Info *, ST_IDX);
+extern BOOL DSL_IR_Image_Mark_Value_Dead_Elided (DSL_IR_VALUE_ID);
 
 /* Confirm that the caller selected the PU whose local WHIRL state is active. */
 static BOOL
@@ -67,6 +68,8 @@ typedef struct {
     DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
     ST_IDX handle_st;
     TY_IDX handle_ty;
+    ST_IDX local_projection_st;
+    DSL_RUNTIME_VALUE_PROJECTION_ID local_projection_id;
     WN *containing_block;
     WN *result_handle_definition;
 } DSL_IR_NATIVE_VALUE_LOWER_JOURNAL;
@@ -82,7 +85,8 @@ DSL_IR_Lower_Find_Native_Definition_Value
     if (DSL_IR_Image_Find_Definition_Value
             (pu_info, definition, value_record))
         return TRUE;
-    if (mode != DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION ||
+    if ((mode != DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION &&
+         mode != DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION) ||
         definition == NULL || WN_operator(definition) != OPR_STID ||
         WN_kid_count(definition) != 1 || WN_kid0(definition) == NULL ||
         !DSL_WN_Is_Native(WN_kid0(definition)))
@@ -157,6 +161,29 @@ DSL_IR_Lower_Tree_Contains (const WN *tree, const WN *target)
     return FALSE;
 }
 
+/* A dead local projection must have no executable use or definition. */
+static BOOL
+DSL_IR_Lower_Tree_Uses_ST (const WN *tree, ST_IDX st)
+{
+    if (tree == NULL)
+        return FALSE;
+    if (WN_has_sym(tree) && WN_st_idx(tree) == st)
+        return TRUE;
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (const WN *stmt = WN_first(tree); stmt != NULL;
+             stmt = WN_next(stmt)) {
+            if (DSL_IR_Lower_Tree_Uses_ST(stmt, st))
+                return TRUE;
+        }
+        return FALSE;
+    }
+    for (INT32 i = 0; i < WN_kid_count(tree); ++i) {
+        if (DSL_IR_Lower_Tree_Uses_ST(WN_kid(tree, i), st))
+            return TRUE;
+    }
+    return FALSE;
+}
+
 /* Assign deterministic preorder positions used to order physical commits. */
 static BOOL
 DSL_IR_Lower_Find_Tree_Order
@@ -213,6 +240,24 @@ DSL_IR_Lower_Find_Node
             return &journal[i];
     }
     return NULL;
+}
+
+/* Retired ABI rows preserve provenance but no longer require a live actual. */
+static BOOL
+DSL_IR_Lower_Call_Argument_Is_Verified_Dead
+        (const DSL_CALL_ARGUMENT_RECORD &argument)
+{
+    DSL_RETIRED_CALL_ARGUMENT_RECORD retired;
+    return DSL_Program_Interface_Image_Find_Retired_Call
+               (argument.id, &retired) &&
+           retired.call_argument_id == argument.id &&
+           retired.callsite_id == argument.callsite_id &&
+           retired.argument_value_id == argument.argument_value_id &&
+           retired.old_actual_ordinal == argument.actual_ordinal &&
+           retired.old_callee_formal_ordinal ==
+               argument.callee_formal_ordinal &&
+           retired.retirement_reason ==
+               DSL_INTERFACE_RETIREMENT_VERIFIED_DEAD_INPUT;
 }
 
 typedef struct {
@@ -316,7 +361,9 @@ DSL_IR_Lower_Logical_Uses_Closed
             continue;
         if (!DSL_IR_Image_Get_Node(reference.owner_node_id, &owner))
             return FALSE;
-        if ((owner.flags & DSL_IR_NODE_FLAG_LOWERED) == 0 &&
+        if ((owner.flags & (DSL_IR_NODE_FLAG_RETIRED |
+                            DSL_IR_NODE_FLAG_LOWERED |
+                            DSL_IR_NODE_FLAG_DEAD_ELIDED)) == 0 &&
             DSL_IR_Lower_Find_Node(journal, owner.id) == NULL)
             return FALSE;
     }
@@ -325,6 +372,12 @@ DSL_IR_Lower_Logical_Uses_Closed
         if (!DSL_Call_ABI_Image_Get_Argument(i, &argument) ||
             argument.argument_value_id != entry.value.id)
             continue;
+        if (entry.request->mode ==
+                DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION) {
+            if (!DSL_IR_Lower_Call_Argument_Is_Verified_Dead(argument))
+                return FALSE;
+            continue;
+        }
         DSL_RUNTIME_CALL_PROJECTION_RECORD call;
         if (!DSL_Runtime_Interface_Image_Find_Call
                 (argument.callsite_id, argument.actual_ordinal, &call) ||
@@ -341,8 +394,75 @@ DSL_IR_Lower_Relation_Resolve
          const DSL_IR_NATIVE_VALUE_LOWER_REQUEST &request,
          const DSL_IR_VALUE_RECORD &value,
          ST_IDX *handle_st,
-         TY_IDX *handle_ty)
+         TY_IDX *handle_ty,
+         ST_IDX *local_projection_st,
+         DSL_RUNTIME_VALUE_PROJECTION_ID *local_projection_id)
 {
+    *local_projection_st = ST_IDX_ZERO;
+    *local_projection_id = DSL_RUNTIME_VALUE_PROJECTION_INVALID_ID;
+    if (request.mode ==
+            DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION) {
+        if (request.relation.relation_kind !=
+                DSL_IR_LOWER_RELATION_VERIFIED_DEAD_SOURCE ||
+            request.relation.value_projection_id != 0 ||
+            request.relation.runtime_input_id != 0 ||
+            request.relation.runtime_binding_id != 0 ||
+            value.value_kind != DSL_IR_VALUE_CONSTANT)
+            return FALSE;
+        UINT32 projection_count = 0;
+        for (UINT32 i = 1;
+             i <= DSL_Runtime_Interface_Image_Value_Count(); ++i) {
+            DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+            if (!DSL_Runtime_Interface_Image_Get_Value(i, &projection))
+                return FALSE;
+            if (projection.source_value_id != value.id)
+                continue;
+            if (++projection_count > 1 ||
+                projection.owner_pu_st != owner_pu_st ||
+                projection.source_st != value.st ||
+                projection.source_ty != value.ty ||
+                projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE ||
+                ST_IDX_level(projection.handle_st) != CURRENT_SYMTAB ||
+                ST_IDX_index(projection.handle_st) == 0 ||
+                ST_IDX_index(projection.handle_st) >=
+                    ST_Table_Size(CURRENT_SYMTAB) ||
+                ST_sclass(St_Table[projection.handle_st]) != SCLASS_AUTO ||
+                ST_type(St_Table[projection.handle_st]) !=
+                    projection.handle_ty ||
+                projection.handle_st == value.st)
+                return FALSE;
+            *local_projection_st = projection.handle_st;
+            *local_projection_id = projection.id;
+        }
+        for (UINT32 i = 1;
+             i <= DSL_Program_Interface_Image_Runtime_Input_Count(); ++i) {
+            DSL_RUNTIME_INPUT_RECORD input;
+            if (!DSL_Program_Interface_Image_Get_Runtime_Input(i, &input) ||
+                input.source_value_id == value.id)
+                return FALSE;
+        }
+        for (UINT32 i = 1;
+             i <= DSL_Runtime_Interface_Image_Call_Count(); ++i) {
+            DSL_RUNTIME_CALL_PROJECTION_RECORD call;
+            if (!DSL_Runtime_Interface_Image_Get_Call(i, &call) ||
+                call.source_value_id == value.id ||
+                (projection_count == 1 &&
+                 call.value_projection_id == *local_projection_id))
+                return FALSE;
+        }
+        for (UINT32 i = 1;
+             i <= DSL_Call_ABI_Image_Argument_Count(); ++i) {
+            DSL_CALL_ARGUMENT_RECORD argument;
+            if (!DSL_Call_ABI_Image_Get_Argument(i, &argument))
+                return FALSE;
+            if (argument.argument_value_id == value.id &&
+                !DSL_IR_Lower_Call_Argument_Is_Verified_Dead(argument))
+                return FALSE;
+        }
+        *handle_st = ST_IDX_ZERO;
+        *handle_ty = TY_IDX_ZERO;
+        return TRUE;
+    }
     if (request.mode == DSL_IR_NATIVE_LOWER_COMPUTED_STANDARD_BLOCK) {
         DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
         if (request.relation.relation_kind !=
@@ -398,9 +518,36 @@ DSL_IR_Lower_Relation_Resolve
         binding.handle_ty != input.handle_ty)
         return FALSE;
     DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
-    if (DSL_Runtime_Interface_Image_Find_Value
-            (owner_pu_st, value.id, &projection))
+    UINT32 projection_count = 0;
+    for (UINT32 i = 1;
+         i <= DSL_Runtime_Interface_Image_Value_Count(); ++i) {
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD current;
+        if (!DSL_Runtime_Interface_Image_Get_Value(i, &current))
+            return FALSE;
+        if (current.owner_pu_st != owner_pu_st ||
+            current.source_value_id != value.id)
+            continue;
+        projection = current;
+        ++projection_count;
+    }
+    if (projection_count > 1 ||
+        (projection_count == 1 &&
+         (projection.source_st != value.st ||
+          projection.source_ty != value.ty ||
+          projection.handle_ty != binding.handle_ty ||
+          projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE ||
+          ST_IDX_level(projection.handle_st) != CURRENT_SYMTAB ||
+          ST_IDX_index(projection.handle_st) == 0 ||
+          ST_IDX_index(projection.handle_st) >=
+              ST_Table_Size(CURRENT_SYMTAB) ||
+          ST_type(St_Table[projection.handle_st]) !=
+              projection.handle_ty ||
+          ST_sclass(St_Table[projection.handle_st]) != SCLASS_AUTO)))
         return FALSE;
+    if (projection_count == 1) {
+        *local_projection_st = projection.handle_st;
+        *local_projection_id = projection.id;
+    }
     *handle_st = binding.handle_st;
     *handle_ty = binding.handle_ty;
     return TRUE;
@@ -475,14 +622,14 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
         if (entry.node.flags != DSL_IR_NODE_FLAG_NONE ||
             entry.value.flags != DSL_IR_VALUE_FLAG_NONE ||
             !DSL_Tensor_Has_Unique_Ownership(entry.value.st) ||
-            WN_Get_Linenum(request.native_definition) == 0 ||
-            DSL_Region_Symbol_Use_Count
-                (pu_info, entry.value.st) != 0)
+            WN_Get_Linenum(request.native_definition) == 0)
             return DSL_IR_Lower_Report
                        (diagnostic, i, "source ownership or use mismatch");
         if (!DSL_IR_Lower_Relation_Resolve
                 (owner_pu_st, request, entry.value,
-                 &entry.handle_st, &entry.handle_ty))
+                 &entry.handle_st, &entry.handle_ty,
+                 &entry.local_projection_st,
+                 &entry.local_projection_id))
             return DSL_IR_Lower_Report
                        (diagnostic, i, "runtime relation mismatch");
         UINT32 order = 0;
@@ -534,12 +681,34 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
                        (diagnostic, entry.request_index,
                         "source value has an unlowered or escaping use");
 
+        if (DSL_Region_Symbol_Use_Count(pu_info, entry.value.st) != 0 &&
+            (request.mode !=
+                 DSL_IR_NATIVE_LOWER_COMPUTED_STANDARD_BLOCK ||
+             entry.handle_st == ST_IDX_ZERO))
+            return DSL_IR_Lower_Report
+                       (diagnostic, entry.request_index,
+                        "source REGION interface cannot be redirected");
+
         if (request.mode ==
-                DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION) {
-            if (request.standard_block != NULL)
+                DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION ||
+            request.mode ==
+                DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION) {
+            if (request.standard_block != NULL ||
+                (entry.local_projection_st != ST_IDX_ZERO &&
+                 entry.containing_block != WN_func_body(pu_root)) ||
+                (request.mode ==
+                     DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION &&
+                 (entry.opcode.logical_operator != OPR_DSLTENSORCONST ||
+                  entry.node.operand_count != 0 ||
+                  entry.value.value_kind != DSL_IR_VALUE_CONSTANT ||
+                  (entry.local_projection_st != ST_IDX_ZERO &&
+                   (DSL_IR_Lower_Tree_Uses_ST
+                        (pu_root, entry.local_projection_st) ||
+                    DSL_Region_Symbol_Use_Count
+                        (pu_info, entry.local_projection_st) != 0)))))
                 return DSL_IR_Lower_Report
                            (diagnostic, entry.request_index,
-                            "promoted source must not provide statements");
+                            "source elision contract mismatch");
             continue;
         }
         if (request.mode !=
@@ -574,6 +743,23 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
         entry.statement_count = block_scan.statement_count;
     }
 
+    std::vector<DSL_REGION_SYMBOL_REDIRECT> region_redirects;
+    for (UINT32 i = 0; i < journal.size(); ++i) {
+        const DSL_IR_NATIVE_VALUE_LOWER_JOURNAL &entry = journal[i];
+        if (DSL_Region_Symbol_Use_Count(pu_info, entry.value.st) == 0)
+            continue;
+        DSL_REGION_SYMBOL_REDIRECT redirect;
+        redirect.old_st = entry.value.st;
+        redirect.new_st = entry.handle_st;
+        region_redirects.push_back(redirect);
+    }
+    if (!region_redirects.empty() &&
+        !DSL_Region_Can_Apply_Lowering_Transitions
+             (pu_info, &region_redirects[0], region_redirects.size(),
+              NULL, 0))
+        return DSL_IR_Lower_Report
+                   (diagnostic, 0, "REGION transition is invalid");
+
     /* Commit in tree order so detached blocks replace their definitions. */
     std::sort(journal.begin(), journal.end(), DSL_IR_LOWER_JOURNAL_LESS());
     for (UINT32 i = 0; i < journal.size(); ++i) {
@@ -589,6 +775,20 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
                      request.native_definition, statement);
             }
             WN_DELETE_Tree(request.standard_block);
+        } else if (request.mode ==
+                       DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION &&
+                   entry.local_projection_st != ST_IDX_ZERO) {
+            TYPE_ID mtype = TY_mtype(entry.handle_ty);
+            WN *load = WN_CreateLdid
+                (OPR_LDID, mtype, mtype, 0,
+                 entry.handle_st, entry.handle_ty);
+            WN *copy = WN_CreateStid
+                (OPR_STID, MTYPE_V, mtype, 0,
+                 entry.local_projection_st, entry.handle_ty, load);
+            WN_Set_Linenum
+                (copy, WN_Get_Linenum(request.native_definition));
+            WN_INSERT_BlockBefore
+                (entry.containing_block, request.native_definition, copy);
         }
         WN *removed = WN_EXTRACT_FromBlock
                           (entry.containing_block,
@@ -599,7 +799,11 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
     }
     for (UINT32 i = 0; i < journal.size(); ++i) {
         DSL_IR_NATIVE_VALUE_LOWER_JOURNAL &entry = journal[i];
-        FmtAssert(DSL_IR_Image_Mark_Value_Lowered(entry.value.id),
+        BOOL marked = entry.request->mode ==
+            DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION ?
+            DSL_IR_Image_Mark_Value_Dead_Elided(entry.value.id) :
+            DSL_IR_Image_Mark_Value_Lowered(entry.value.id);
+        FmtAssert(marked,
                   ("preflighted native lowering image update failed"));
         DSL_IR_NATIVE_VALUE_LOWER_RESULT &result =
             results[entry.request_index];
@@ -608,7 +812,12 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
         result.mode = entry.request->mode;
         result.relation_kind = entry.request->relation.relation_kind;
         result.value_projection_id =
-            entry.request->relation.value_projection_id;
+            entry.request->mode !=
+                DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION &&
+            entry.local_projection_id !=
+                DSL_RUNTIME_VALUE_PROJECTION_INVALID_ID ?
+                entry.local_projection_id :
+                entry.request->relation.value_projection_id;
         result.runtime_input_id = entry.request->relation.runtime_input_id;
         result.runtime_binding_id =
             entry.request->relation.runtime_binding_id;
@@ -616,6 +825,11 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
         result.handle_ty = entry.handle_ty;
         result.inserted_statement_count = entry.statement_count;
     }
+    if (!region_redirects.empty())
+        FmtAssert(DSL_Region_Apply_Lowering_Transitions
+                      (pu_info, &region_redirects[0],
+                       region_redirects.size(), NULL, 0),
+                  ("preflighted REGION lowering transition failed"));
     FmtAssert(DSL_IR_Image_Validate(NULL) &&
               DSL_IR_Image_Validate_Lowered_Relations(NULL) &&
               DSL_Region_Verify_PU(pu_info, NULL),

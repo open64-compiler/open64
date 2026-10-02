@@ -1345,6 +1345,17 @@ open64_fhe_mock_evaluate(
 {
   if (desc == NULL || out_result == NULL)
     return OPEN64_FHE_STATUS_INVALID_ARGUMENT;
+  bool requires_plain0 =
+      expected_kind == OPEN64_FHE_OP_CONV2D_PLAIN ||
+      expected_kind == OPEN64_FHE_OP_LINEAR_PLAIN ||
+      expected_kind == OPEN64_FHE_OP_RELU_POLY_STAGE;
+  bool permits_plain1 =
+      expected_kind == OPEN64_FHE_OP_CONV2D_PLAIN ||
+      expected_kind == OPEN64_FHE_OP_LINEAR_PLAIN;
+  if ((requires_plain0 && plain0 == NULL) ||
+      (!requires_plain0 && plain0 != NULL) ||
+      (!permits_plain1 && plain1 != NULL))
+    return OPEN64_FHE_STATUS_INVALID_ARGUMENT;
   if (*out_result != NULL) {
     if ((void *)*out_result == (void *)input0 ||
         (void *)*out_result == (void *)input1 ||

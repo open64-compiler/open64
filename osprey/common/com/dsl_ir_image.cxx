@@ -2068,12 +2068,13 @@ DSL_IR_Image_Resolve_Lowered_Relation
         ++input_count;
     }
 
-    if ((projection_count == 1) == (input_count == 1))
+    if (projection_count > 1 || input_count > 1 ||
+        (projection_count == 0 && input_count == 0))
         return FALSE;
     memset(result, 0, sizeof(*result));
     result->source_node_id = value.producer_node_id;
     result->source_value_id = value.id;
-    if (projection_count == 1) {
+    if (input_count == 0) {
         if (projection.source_st != value.st ||
             projection.source_ty != value.ty ||
             projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE)
@@ -2087,10 +2088,19 @@ DSL_IR_Image_Resolve_Lowered_Relation
     } else {
         if (input.source_st != value.st || input.source_ty != value.ty ||
             input.source_tcon == TCON_IDX_ZERO ||
-            binding.handle_ty != input.handle_ty)
+            binding.handle_ty != input.handle_ty ||
+            (projection_count == 1 &&
+             (projection.source_st != value.st ||
+              projection.source_ty != value.ty ||
+              projection.owner_pu_st != input.source_owner_pu_st ||
+              projection.handle_ty != binding.handle_ty ||
+              projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE ||
+              projection.handle_st == binding.handle_st)))
             return FALSE;
         result->mode = DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION;
         result->relation_kind = DSL_IR_LOWER_RELATION_ROOT_PROMOTED_INPUT;
+        if (projection_count == 1)
+            result->value_projection_id = projection_id;
         result->runtime_input_id = input_id;
         result->runtime_binding_id = binding_id;
         result->handle_st = binding.handle_st;
@@ -2104,6 +2114,62 @@ DSL_IR_Image_Validate_Lowered_Relations (FILE *diagnostic)
 {
     for (UINT32 i = 1; i <= DSL_ir_value_table.Size(); ++i) {
         const DSL_IR_VALUE_RECORD &value = DSL_ir_value_table[i - 1];
+        if ((value.flags & DSL_IR_VALUE_FLAG_DEAD_ELIDED) != 0) {
+            UINT32 projection_count = 0;
+            DSL_RUNTIME_VALUE_PROJECTION_ID projection_id = 0;
+            for (UINT32 j = 0;
+                 j < DSL_runtime_value_projection_table.Size(); ++j) {
+                const DSL_RUNTIME_VALUE_PROJECTION_RECORD &projection =
+                    DSL_runtime_value_projection_table[j];
+                if (projection.source_value_id != value.id)
+                    continue;
+                if (++projection_count > 1 ||
+                    projection.source_st != value.st ||
+                    projection.source_ty != value.ty ||
+                    projection.binding_kind !=
+                        DSL_RUNTIME_BINDING_LOCAL_VALUE)
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "invalid dead source projection", i);
+                projection_id = projection.id;
+            }
+            for (UINT32 j = 0; j < DSL_runtime_input_table.Size(); ++j) {
+                if (DSL_runtime_input_table[j].source_value_id == value.id)
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "dead source has runtime input", i);
+            }
+            for (UINT32 j = 0;
+                 j < DSL_runtime_call_projection_table.Size(); ++j) {
+                const DSL_RUNTIME_CALL_PROJECTION_RECORD &call =
+                    DSL_runtime_call_projection_table[j];
+                if (call.source_value_id == value.id ||
+                    (projection_id != 0 &&
+                     call.value_projection_id == projection_id))
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "dead source has runtime call", i);
+            }
+            for (UINT32 j = 0; j < DSL_call_argument_table.Size(); ++j) {
+                const DSL_CALL_ARGUMENT_RECORD &argument =
+                    DSL_call_argument_table[j];
+                if (argument.argument_value_id != value.id)
+                    continue;
+                DSL_RETIRED_CALL_ARGUMENT_RECORD retired;
+                if (!DSL_Program_Interface_Image_Find_Retired_Call
+                        (argument.id, &retired) ||
+                    retired.callsite_id != argument.callsite_id ||
+                    retired.argument_value_id != value.id ||
+                    retired.old_actual_ordinal != argument.actual_ordinal ||
+                    retired.old_callee_formal_ordinal !=
+                        argument.callee_formal_ordinal ||
+                    retired.retirement_reason !=
+                        DSL_INTERFACE_RETIREMENT_VERIFIED_DEAD_INPUT)
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "dead source has live call argument", i);
+            }
+        }
         if ((value.flags & DSL_IR_VALUE_FLAG_LOWERED) == 0)
             continue;
         DSL_IR_NATIVE_VALUE_LOWER_RESULT relation;
@@ -2300,6 +2366,10 @@ static BOOL
 DSL_IR_Lowered_Relation_Views_Validate
         (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *projections,
          UINT32 projection_count,
+         const DSL_RUNTIME_CALL_PROJECTION_RECORD *calls,
+         UINT32 call_count,
+         const DSL_RETIRED_CALL_ARGUMENT_RECORD *retired_calls,
+         UINT32 retired_call_count,
          const DSL_RUNTIME_INPUT_RECORD *inputs,
          UINT32 input_count,
          const DSL_RUNTIME_INPUT_BINDING_RECORD *bindings,
@@ -2309,9 +2379,74 @@ DSL_IR_Lowered_Relation_Views_Validate
     for (UINT32 value_id = 1;
          value_id <= DSL_ir_value_table.Size(); ++value_id) {
         const DSL_IR_VALUE_RECORD &value = DSL_ir_value_table[value_id - 1];
+        if ((value.flags & DSL_IR_VALUE_FLAG_DEAD_ELIDED) != 0) {
+            UINT32 matched_projections = 0;
+            DSL_RUNTIME_VALUE_PROJECTION_ID projection_id = 0;
+            for (UINT32 i = 0; i < projection_count; ++i) {
+                const DSL_RUNTIME_VALUE_PROJECTION_RECORD &projection =
+                    projections[i];
+                if (projection.source_value_id != value.id)
+                    continue;
+                if (++matched_projections > 1 ||
+                    projection.source_st != value.st ||
+                    projection.source_ty != value.ty ||
+                    projection.binding_kind !=
+                        DSL_RUNTIME_BINDING_LOCAL_VALUE)
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "invalid dead source projection",
+                                value.id);
+                projection_id = projection.id;
+            }
+            for (UINT32 i = 0; i < input_count; ++i) {
+                if (inputs[i].source_value_id == value.id)
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "dead source has runtime input", value.id);
+            }
+            for (UINT32 i = 0; i < call_count; ++i) {
+                if (calls[i].source_value_id == value.id ||
+                    (projection_id != 0 &&
+                     calls[i].value_projection_id == projection_id))
+                    return DSL_IR_Image_Report
+                               (diagnostic, "dead source has runtime call",
+                                value.id);
+            }
+            for (UINT32 i = 0; i < DSL_call_argument_table.Size(); ++i) {
+                const DSL_CALL_ARGUMENT_RECORD &argument =
+                    DSL_call_argument_table[i];
+                if (argument.argument_value_id != value.id)
+                    continue;
+                UINT32 matched_retirements = 0;
+                for (UINT32 j = 0; j < retired_call_count; ++j) {
+                    const DSL_RETIRED_CALL_ARGUMENT_RECORD &retired =
+                        retired_calls[j];
+                    if (retired.call_argument_id != argument.id)
+                        continue;
+                    if (retired.callsite_id != argument.callsite_id ||
+                        retired.argument_value_id != value.id ||
+                        retired.old_actual_ordinal !=
+                            argument.actual_ordinal ||
+                        retired.old_callee_formal_ordinal !=
+                            argument.callee_formal_ordinal ||
+                        retired.retirement_reason !=
+                            DSL_INTERFACE_RETIREMENT_VERIFIED_DEAD_INPUT)
+                        return DSL_IR_Image_Report
+                                   (diagnostic,
+                                    "invalid dead call retirement", value.id);
+                    ++matched_retirements;
+                }
+                if (matched_retirements != 1)
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "dead source has live call argument",
+                                value.id);
+            }
+        }
         if ((value.flags & DSL_IR_VALUE_FLAG_LOWERED) == 0)
             continue;
         UINT32 matched_projections = 0;
+        const DSL_RUNTIME_VALUE_PROJECTION_RECORD *matched_projection = NULL;
         for (UINT32 i = 0; i < projection_count; ++i) {
             if (projections[i].source_value_id != value.id)
                 continue;
@@ -2323,8 +2458,11 @@ DSL_IR_Lowered_Relation_Views_Validate
                            (diagnostic,
                             "lowered projection mismatch", value.id);
             ++matched_projections;
+            matched_projection = &projections[i];
         }
         UINT32 matched_inputs = 0;
+        const DSL_RUNTIME_INPUT_RECORD *matched_input = NULL;
+        const DSL_RUNTIME_INPUT_BINDING_RECORD *matched_binding = NULL;
         for (UINT32 i = 0; i < input_count; ++i) {
             if (inputs[i].input_kind !=
                     DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR ||
@@ -2343,16 +2481,27 @@ DSL_IR_Lowered_Relation_Views_Validate
                         inputs[i].source_owner_pu_st &&
                     bindings[j].binding_kind ==
                         DSL_RUNTIME_INPUT_BINDING_ROOT_PROMOTED_SOURCE &&
-                    bindings[j].handle_ty == inputs[i].handle_ty)
+                    bindings[j].handle_ty == inputs[i].handle_ty) {
                     ++root_count;
+                    matched_binding = &bindings[j];
+                }
             }
             if (root_count != 1)
                 return DSL_IR_Image_Report
                            (diagnostic,
                             "lowered promoted binding mismatch", value.id);
             ++matched_inputs;
+            matched_input = &inputs[i];
         }
-        if ((matched_projections == 1) == (matched_inputs == 1))
+        if (matched_projections > 1 || matched_inputs > 1 ||
+            (matched_projections == 0 && matched_inputs == 0) ||
+            (matched_projections == 1 && matched_inputs == 1 &&
+             (matched_projection->owner_pu_st !=
+                  matched_input->source_owner_pu_st ||
+              matched_projection->handle_ty !=
+                  matched_binding->handle_ty ||
+              matched_projection->handle_st ==
+                  matched_binding->handle_st)))
             return DSL_IR_Image_Report
                        (diagnostic,
                         "ambiguous lowered runtime relation", value.id);
@@ -2403,6 +2552,11 @@ DSL_Program_Runtime_Interface_Images_Load_Mapped
     if (!DSL_IR_Lowered_Relation_Views_Validate
              (has_runtime ? runtime_view.values : NULL,
               has_runtime ? runtime_view.header->value_projection_count : 0,
+              has_runtime ? runtime_view.calls : NULL,
+              has_runtime ? runtime_view.header->call_projection_count : 0,
+              has_program ? program_view.retired_calls : NULL,
+              has_program ?
+                  program_view.header->retired_call_argument_count : 0,
               has_program ? program_view.inputs : NULL,
               has_program ? program_view.header->runtime_input_count : 0,
               has_program ? program_view.bindings : NULL,
@@ -2537,9 +2691,9 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
         if (record.id != i + 1 || record.value_kind == DSL_IR_VALUE_UNKNOWN ||
             record.producer_node_id > header.node_count ||
             (record.flags & ~(DSL_IR_VALUE_FLAG_REDIRECTED |
-                              DSL_IR_VALUE_FLAG_LOWERED)) != 0 ||
-            ((record.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0 &&
-             (record.flags & DSL_IR_VALUE_FLAG_LOWERED) != 0) ||
+                              DSL_IR_VALUE_FLAG_LOWERED |
+                              DSL_IR_VALUE_FLAG_DEAD_ELIDED)) != 0 ||
+            ((record.flags & (record.flags - 1)) != 0) ||
             record.reserved != 0 ||
             !DSL_IR_Image_String_Id_Valid(record.name, FALSE) ||
             !DSL_IR_Image_String_Id_Valid(record.metadata, FALSE))
@@ -2570,6 +2724,7 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
         const DSL_IR_NODE_RECORD &record = view->nodes[i];
         const UINT32 valid_node_flags = DSL_IR_NODE_FLAG_RETIRED |
                                         DSL_IR_NODE_FLAG_LOWERED |
+                                        DSL_IR_NODE_FLAG_DEAD_ELIDED |
                                         DSL_IR_NODE_REDIRECT_ORDINAL_MASK;
         active_attribute_count += record.attribute_count;
         active_value_reference_count += record.operand_count;
@@ -2578,8 +2733,9 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
             record.result_value_id == 0 ||
             record.result_value_id > header.value_count ||
             (record.flags & ~valid_node_flags) != 0 ||
-            ((record.flags & DSL_IR_NODE_FLAG_RETIRED) != 0 &&
-             (record.flags & DSL_IR_NODE_FLAG_LOWERED) != 0) ||
+            (((record.flags & DSL_IR_NODE_FLAG_RETIRED) != 0) +
+             ((record.flags & DSL_IR_NODE_FLAG_LOWERED) != 0) +
+             ((record.flags & DSL_IR_NODE_FLAG_DEAD_ELIDED) != 0) > 1) ||
             ((record.flags & DSL_IR_NODE_FLAG_RETIRED) == 0 &&
              (record.flags & DSL_IR_NODE_REDIRECT_ORDINAL_MASK) != 0) ||
             !DSL_IR_Image_String_Id_Valid(record.payload, FALSE))
@@ -2659,8 +2815,17 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
                 descriptor.effect_model != DSL_EFFECT_MODEL_PURE)
                 return DSL_IR_Image_Report
                            (diagnostic, "invalid lowered node", i + 1);
+        } else if ((record.flags & DSL_IR_NODE_FLAG_DEAD_ELIDED) != 0) {
+            if (result.flags != DSL_IR_VALUE_FLAG_DEAD_ELIDED ||
+                result.value_kind != DSL_IR_VALUE_CONSTANT ||
+                descriptor.logical_operator != OPR_DSLTENSORCONST ||
+                descriptor.effect_model != DSL_EFFECT_MODEL_PURE ||
+                record.operand_count != 0)
+                return DSL_IR_Image_Report
+                           (diagnostic, "invalid dead-elided node", i + 1);
         } else if ((result.flags & (DSL_IR_VALUE_FLAG_REDIRECTED |
-                                    DSL_IR_VALUE_FLAG_LOWERED)) != 0) {
+                                    DSL_IR_VALUE_FLAG_LOWERED |
+                                    DSL_IR_VALUE_FLAG_DEAD_ELIDED)) != 0) {
             return DSL_IR_Image_Report
                        (diagnostic, "nonlive flag on live value", result.id);
         }
@@ -2680,9 +2845,17 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
             return DSL_IR_Image_Report
                        (diagnostic, "reference to redirected value", i + 1);
         if ((referenced.flags & DSL_IR_VALUE_FLAG_LOWERED) != 0 &&
-            (owner.flags & DSL_IR_NODE_FLAG_LOWERED) == 0)
+            (owner.flags & (DSL_IR_NODE_FLAG_RETIRED |
+                            DSL_IR_NODE_FLAG_LOWERED |
+                            DSL_IR_NODE_FLAG_DEAD_ELIDED)) == 0)
             return DSL_IR_Image_Report
                        (diagnostic, "live reference to lowered value", i + 1);
+        if ((referenced.flags & DSL_IR_VALUE_FLAG_DEAD_ELIDED) != 0 &&
+            (owner.flags & (DSL_IR_NODE_FLAG_RETIRED |
+                            DSL_IR_NODE_FLAG_LOWERED |
+                            DSL_IR_NODE_FLAG_DEAD_ELIDED)) == 0)
+            return DSL_IR_Image_Report
+                       (diagnostic, "live reference to dead value", i + 1);
     }
 
     std::vector<UINT8> node_state(header.node_count, 0);
@@ -2782,6 +2955,33 @@ DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID value_id)
         return FALSE;
     node.flags = DSL_IR_NODE_FLAG_LOWERED;
     DSL_ir_value_table[value_id - 1].flags = DSL_IR_VALUE_FLAG_LOWERED;
+    return TRUE;
+}
+
+BOOL
+DSL_IR_Image_Mark_Value_Dead_Elided (DSL_IR_VALUE_ID value_id)
+{
+    DSL_IR_VALUE_RECORD value;
+    if (!DSL_IR_Table_Get(DSL_ir_value_table, value_id, &value) ||
+        value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
+        value.producer_node_id > DSL_ir_node_table.Size() ||
+        value.value_kind != DSL_IR_VALUE_CONSTANT ||
+        value.flags != DSL_IR_VALUE_FLAG_NONE)
+        return FALSE;
+    DSL_IR_NODE_RECORD &node =
+        DSL_ir_node_table[value.producer_node_id - 1];
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
+    if (node.result_value_id != value_id ||
+        node.flags != DSL_IR_NODE_FLAG_NONE || node.operand_count != 0 ||
+        !DSL_IR_Table_Get
+            (DSL_ir_opcode_descriptor_table, node.opcode_descriptor_id,
+             &descriptor) ||
+        descriptor.logical_operator != OPR_DSLTENSORCONST ||
+        descriptor.effect_model != DSL_EFFECT_MODEL_PURE)
+        return FALSE;
+    node.flags = DSL_IR_NODE_FLAG_DEAD_ELIDED;
+    DSL_ir_value_table[value_id - 1].flags =
+        DSL_IR_VALUE_FLAG_DEAD_ELIDED;
     return TRUE;
 }
 
@@ -3345,7 +3545,8 @@ DSL_IR_Image_Executable_Node_Count (void)
     UINT32 count = 0;
     for (UINT32 i = 0; i < DSL_ir_node_table.Size(); ++i) {
         if ((DSL_ir_node_table[i].flags &
-             (DSL_IR_NODE_FLAG_RETIRED | DSL_IR_NODE_FLAG_LOWERED)) == 0)
+             (DSL_IR_NODE_FLAG_RETIRED | DSL_IR_NODE_FLAG_LOWERED |
+              DSL_IR_NODE_FLAG_DEAD_ELIDED)) == 0)
             ++count;
     }
     return count;

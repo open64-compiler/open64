@@ -42,8 +42,9 @@ VHO_FHE_Runtime_Lower_Structural_Gate
          VHO_FHE_RUNTIME_LOWER_RESULT *result)
 {
     DSL_GATEKEEPER_RESULT dsl_result;
-    BOOL valid = DSL_Gatekeeper_Verify_PU
-                     (pu_info, diagnostic, &dsl_result);
+    BOOL valid = DSL_Gatekeeper_Verify_PU_Mode
+                     (pu_info, DSL_GATEKEEPER_PROJECTED,
+                      diagnostic, &dsl_result);
     if (!DSL_IR_Image_Validate(diagnostic) ||
         !DSL_Effect_Image_Validate(diagnostic) ||
         !DSL_Call_Image_Validate(diagnostic) ||

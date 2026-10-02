@@ -886,6 +886,130 @@ DSL_Region_Symbol_Use_Count (PU_Info *pu, ST_IDX st)
     return count;
 }
 
+/* Verify all lowering redirects and plain-input removals as one REGION set. */
+static BOOL
+DSL_Region_Build_Lowering_Store
+        (PU_Info *pu, const DSL_REGION_SYMBOL_REDIRECT *redirects,
+         UINT32 redirect_count, const ST_IDX *pruned_inputs,
+         UINT32 pruned_input_count, DSL_REGION_STORE *candidate)
+{
+    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
+    if (pu == NULL || candidate == NULL ||
+        !DSL_IR_Image_Current_PU_Is(PU_Info_proc_sym(pu)) ||
+        (redirect_count != 0 && redirects == NULL) ||
+        (pruned_input_count != 0 && pruned_inputs == NULL))
+        return FALSE;
+    if (redirect_count == 0 && pruned_input_count == 0)
+        return TRUE;
+    if (store == NULL)
+        return FALSE;
+    for (UINT32 i = 0; i < redirect_count; ++i) {
+        ST_IDX old_st = redirects[i].old_st;
+        ST_IDX new_st = redirects[i].new_st;
+        if (old_st == new_st || ST_IDX_level(old_st) != CURRENT_SYMTAB ||
+            ST_IDX_level(new_st) != CURRENT_SYMTAB ||
+            ST_IDX_index(old_st) == 0 ||
+            ST_IDX_index(new_st) == 0 ||
+            ST_IDX_index(old_st) >= ST_Table_Size(CURRENT_SYMTAB) ||
+            ST_IDX_index(new_st) >= ST_Table_Size(CURRENT_SYMTAB))
+            return FALSE;
+        for (UINT32 j = 0; j < i; ++j) {
+            if (redirects[j].old_st == old_st ||
+                redirects[j].new_st == new_st)
+                return FALSE;
+        }
+    }
+    for (UINT32 i = 0; i < pruned_input_count; ++i) {
+        ST_IDX st = pruned_inputs[i];
+        if (ST_IDX_level(st) != CURRENT_SYMTAB ||
+            ST_IDX_index(st) == 0 ||
+            ST_IDX_index(st) >= ST_Table_Size(CURRENT_SYMTAB))
+            return FALSE;
+        for (UINT32 j = 0; j < redirect_count; ++j) {
+            if (redirects[j].old_st == st || redirects[j].new_st == st)
+                return FALSE;
+        }
+        for (UINT32 j = 0; j < i; ++j) {
+            if (pruned_inputs[j] == st)
+                return FALSE;
+        }
+    }
+
+    *candidate = *store;
+    std::vector<BOOL> redirected(redirect_count, FALSE);
+    std::vector<BOOL> pruned(pruned_input_count, FALSE);
+    for (UINT32 i = 0; i < candidate->interfaces.size(); ) {
+        DSL_REGION_INTERFACE_RECORD &binding = candidate->interfaces[i];
+        BOOL removed = FALSE;
+        for (UINT32 j = 0; j < pruned_input_count; ++j) {
+            if (binding.st != pruned_inputs[j])
+                continue;
+            if (binding.roles != DSL_REGION_VALUE_INPUT ||
+                binding.flags != DSL_REGION_INTERFACE_FLAG_NONE)
+                return FALSE;
+            pruned[j] = TRUE;
+            candidate->interfaces.erase(candidate->interfaces.begin() + i);
+            removed = TRUE;
+            break;
+        }
+        if (removed)
+            continue;
+        for (UINT32 j = 0; j < redirect_count; ++j) {
+            if (binding.st != redirects[j].old_st)
+                continue;
+            if ((binding.roles &
+                 (DSL_REGION_VALUE_INPUT | DSL_REGION_VALUE_INOUT)) != 0 ||
+                (binding.roles &
+                 (DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT)) == 0)
+                return FALSE;
+            binding.st = redirects[j].new_st;
+            redirected[j] = TRUE;
+            break;
+        }
+        ++i;
+    }
+    for (UINT32 i = 0; i < redirect_count; ++i) {
+        if (!redirected[i])
+            return FALSE;
+    }
+    for (UINT32 i = 0; i < pruned_input_count; ++i) {
+        if (!pruned[i])
+            return FALSE;
+    }
+    return DSL_Region_Verify_Store(candidate, NULL);
+}
+
+BOOL
+DSL_Region_Can_Apply_Lowering_Transitions
+        (PU_Info *pu, const DSL_REGION_SYMBOL_REDIRECT *redirects,
+         UINT32 redirect_count, const ST_IDX *pruned_inputs,
+         UINT32 pruned_input_count)
+{
+    DSL_REGION_STORE candidate;
+    return DSL_Region_Build_Lowering_Store
+               (pu, redirects, redirect_count, pruned_inputs,
+                pruned_input_count, &candidate);
+}
+
+BOOL
+DSL_Region_Apply_Lowering_Transitions
+        (PU_Info *pu, const DSL_REGION_SYMBOL_REDIRECT *redirects,
+         UINT32 redirect_count, const ST_IDX *pruned_inputs,
+         UINT32 pruned_input_count)
+{
+    if (redirect_count == 0 && pruned_input_count == 0)
+        return TRUE;
+    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
+    DSL_REGION_STORE candidate;
+    if (store == NULL ||
+        !DSL_Region_Build_Lowering_Store
+             (pu, redirects, redirect_count, pruned_inputs,
+              pruned_input_count, &candidate))
+        return FALSE;
+    store->interfaces.swap(candidate.interfaces);
+    return TRUE;
+}
+
 /* Test membership in one complete REGION input-pruning request. */
 static BOOL
 DSL_Region_Prune_Request_Has_ST
