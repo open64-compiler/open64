@@ -236,6 +236,24 @@ pass owns:
 The generic service does not choose providers, runtime symbols, algorithms,
 keys, levels, scales, or lowering schedules.
 
+## Projected Runtime-Checkpoint Admission
+
+The S5-E input to the runtime checkpoint is already shape-certified and has a
+committed program interface. Its executable operator kids are projected runtime
+handles, while the logical DSL value references retain canonical tensor TYs.
+The backend driver therefore skips the ordinary pre-interface
+`VHO_DSL_Shape_Refine_Driver()` only for this `-O0` checkpoint path. Normal
+compilation continues to run shape refinement unchanged.
+
+Before runtime lowering, `DSL_GATEKEEPER_PROJECTED` verifies the committed
+interface and requires each physical operand handle to match the logical
+value's exact runtime projection. Operator attributes, logical tensor types,
+and shape compatibility are checked through the existing DSL contracts using
+the canonical source TY, not the projected pointer TY. This mode does not
+weaken the strict/admission gates for unprojected input. Runtime lowering then
+checks the lowered program interface and rejects any executable unlowered FHE
+carrier before checkpoint publication.
+
 ## Certification
 
 The focused producer test contains one PU with all of the following in one

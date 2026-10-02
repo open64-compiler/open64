@@ -9811,6 +9811,41 @@ Check_Native_To_Standard_Lowering(void)
     containing_blocks[1] = WN_region_body(DSL_Region_WN(result_region));
     if (failed)
         return failed;
+
+    WN *native_expressions[2] = {
+        WN_kid0(definitions[0]), WN_kid0(definitions[1])
+    };
+    WN *saved_operands[4];
+    WN *projected_operands[4];
+    const UINT32 projected_indices[4] = { 3, 3, 0, 3 };
+    for (UINT32 i = 0; i < 4; ++i) {
+        WN *expression = native_expressions[i / 2];
+        UINT32 ordinal = i % 2;
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD &projection =
+            projections[projected_indices[i]];
+        saved_operands[i] = WN_kid(expression, ordinal);
+        projected_operands[i] = WN_CreateLdid
+            (OPR_LDID, Pointer_Mtype, Pointer_Mtype, 0,
+             projection.handle_st, projection.handle_ty);
+        WN_kid(expression, ordinal) = projected_operands[i];
+    }
+    STANDARD_LOWER_CHECK
+        (DSL_Gatekeeper_Verify_PU_Mode
+             (pu, DSL_GATEKEEPER_PROJECTED, stderr, NULL),
+         "committed projected-stage gate accepts exact operand handles");
+    ST_IDX saved_projected_st = WN_st_idx(projected_operands[0]);
+    WN_st_idx(projected_operands[0]) = projections[0].handle_st;
+    STANDARD_LOWER_CHECK
+        (!DSL_Gatekeeper_Verify_PU_Mode
+              (pu, DSL_GATEKEEPER_PROJECTED, NULL, NULL),
+         "projected-stage gate rejects a mismatched operand handle");
+    WN_st_idx(projected_operands[0]) = saved_projected_st;
+    for (UINT32 i = 0; i < 4; ++i) {
+        WN_kid(native_expressions[i / 2], i % 2) = saved_operands[i];
+        WN_DELETE_Tree(projected_operands[i]);
+    }
+    if (failed)
+        return failed;
     for (UINT32 i = 0; i < 2; ++i) {
         standard_block[i] = WN_CreateBlock();
         WN *value = i == 0 ?

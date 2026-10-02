@@ -14,6 +14,8 @@
 #include "dsl_ir_image.h"
 #include "dsl_memory_behavior.h"
 #include "dsl_opcode.h"
+#include "dsl_program_interface_internal.h"
+#include "dsl_region.h"
 #include "dsl_shape.h"
 #include "dsl_tensor_fold.h"
 #include "symtab.h"
@@ -40,7 +42,7 @@ DSL_Gatekeeper_Tensor_Type_Admissible
         (TY_IDX ty,
          DSL_GATEKEEPER_MODE mode)
 {
-    if (mode == DSL_GATEKEEPER_STRICT)
+    if (mode != DSL_GATEKEEPER_ADMISSION)
         return DSL_Gatekeeper_Tensor_Shape_Complete(ty);
     DSL_SHAPE_FACT fact;
     return TY_is_tensor_extension(ty) && TY_tensor_is_canonical(ty) &&
@@ -108,6 +110,50 @@ DSL_Gatekeeper_Is_Promoted_Copy_Load (const WN *load, const WN *store)
             WN_ty(store) != projection.handle_ty)
             continue;
         return TRUE;
+    }
+    return FALSE;
+}
+
+/* S5-E may copy a promoted input formal into its local call projection. */
+static BOOL
+DSL_Gatekeeper_Is_Projected_Input_Copy (const WN *load, const WN *store)
+{
+    if (load == NULL || store == NULL ||
+        WN_operator(load) != OPR_LDID ||
+        WN_operator(store) != OPR_STID ||
+        WN_kid0(store) != load)
+        return FALSE;
+    for (UINT32 i = 1;
+         i <= DSL_Runtime_Interface_Image_Value_Count(); ++i) {
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+        if (!DSL_Runtime_Interface_Image_Get_Value(i, &projection) ||
+            projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE ||
+            projection.handle_st != WN_st_idx(store) ||
+            projection.handle_ty != WN_ty(store))
+            continue;
+        for (UINT32 j = 1;
+             j <= DSL_Program_Interface_Image_Runtime_Input_Count(); ++j) {
+            DSL_RUNTIME_INPUT_RECORD input;
+            if (!DSL_Program_Interface_Image_Get_Runtime_Input(j, &input) ||
+                input.source_value_id != projection.source_value_id ||
+                input.source_owner_pu_st != projection.owner_pu_st ||
+                input.source_st != projection.source_st ||
+                input.source_ty != projection.source_ty)
+                continue;
+            for (UINT32 k = 1;
+                 k <= DSL_Program_Interface_Image_Runtime_Binding_Count();
+                 ++k) {
+                DSL_RUNTIME_INPUT_BINDING_RECORD binding;
+                if (DSL_Program_Interface_Image_Get_Runtime_Binding
+                        (k, &binding) &&
+                    binding.runtime_input_id == input.id &&
+                    binding.owner_pu_st == projection.owner_pu_st &&
+                    binding.handle_st == WN_st_idx(load) &&
+                    binding.handle_ty == WN_ty(load) &&
+                    binding.handle_ty == projection.handle_ty)
+                    return TRUE;
+            }
+        }
     }
     return FALSE;
 }
@@ -729,6 +775,57 @@ DSL_Gatekeeper_Verify_Native_Node
     BOOL shape_ready = DSL_Gatekeeper_Tensor_Shape_Complete(result_ty);
     for (UINT32 i = 0; i < WN_kid_count(expression); ++i) {
         WN *operand = WN_kid(expression, i);
+        if (context->mode == DSL_GATEKEEPER_PROJECTED) {
+            DSL_IR_VALUE_REFERENCE_RECORD reference;
+            DSL_IR_VALUE_RECORD source;
+            DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+            ST_IDX owner_pu_st = Current_PU_Info == NULL ? ST_IDX_ZERO :
+                PU_Info_proc_sym(Current_PU_Info);
+            if (!image_valid || operand == NULL ||
+                WN_operator(operand) != OPR_LDID ||
+                !DSL_IR_Image_Get_Value_Reference
+                     (image_node.first_operand_reference_id + i,
+                      &reference) ||
+                reference.owner_node_id != image_node.id ||
+                reference.ordinal != i ||
+                !DSL_IR_Image_Get_Value(reference.value_id, &source) ||
+                !DSL_Runtime_Interface_Image_Find_Value
+                     (owner_pu_st, source.id, &projection) ||
+                projection.source_st != source.st ||
+                projection.source_ty != source.ty ||
+                projection.handle_st != WN_st_idx(operand) ||
+                projection.handle_ty != WN_ty(operand) ||
+                WN_rtype(operand) != TY_mtype(projection.handle_ty) ||
+                WN_desc(operand) != TY_mtype(projection.handle_ty) ||
+                !DSL_Gatekeeper_Tensor_Type_Admissible
+                     (source.ty, context->mode)) {
+                valid = DSL_Gatekeeper_Report
+                            (context, "%s kid%u has no exact runtime "
+                             "projection", DSL_OPERATOR_name(dsl_operator),
+                             i);
+                continue;
+            }
+            operand_types[i] = source.ty;
+            shape_ready = shape_ready &&
+                          DSL_Gatekeeper_Tensor_Shape_Complete(source.ty);
+            if (i == 0)
+                first_operand_ty = source.ty;
+            else {
+                if (i == 1)
+                    second_operand_ty = source.ty;
+                if (shape_ready &&
+                    (dsl_operator == OPR_DSLMATMUL ||
+                     dsl_operator == OPR_DSLRESIDUALADD) &&
+                    !DSL_Shape_Tensor_Compatible
+                          (first_operand_ty, source.ty,
+                           dsl_operator == OPR_DSLRESIDUALADD))
+                    valid = DSL_Gatekeeper_Report
+                                (context, "%s kid%u tensor is incompatible "
+                                 "with kid0", DSL_OPERATOR_name(dsl_operator),
+                                 i);
+            }
+            continue;
+        }
         if (operand == NULL || WN_operator(operand) != OPR_LDID ||
             WN_rtype(operand) != MTYPE_M || WN_desc(operand) != MTYPE_M ||
             !DSL_Gatekeeper_ST_Valid(WN_st_idx(operand)) ||
@@ -924,6 +1021,16 @@ DSL_Gatekeeper_Verify_Tree
                                SCLASS_FORMAL_REF;
         BOOL promoted_copy =
             DSL_Gatekeeper_Is_Promoted_Copy_Load(wn, parent);
+        BOOL projected_input_copy =
+            context->mode == DSL_GATEKEEPER_PROJECTED &&
+            DSL_Gatekeeper_Is_Projected_Input_Copy(wn, parent);
+        BOOL projected_call =
+            context->mode == DSL_GATEKEEPER_PROJECTED &&
+            WN_operator(wn) == OPR_LDID && parent != NULL &&
+            WN_operator(parent) == OPR_PARM &&
+            (WN_parm_flag(parent) & WN_PARM_BY_VALUE) != 0 &&
+            WN_Parm_Read_Only(parent) &&
+            WN_Parm_Passed_Not_Saved(parent);
         BOOL call_interface = WN_operator(wn) == OPR_LDA && parent != NULL &&
                               WN_operator(parent) == OPR_PARM &&
                               WN_Parm_By_Reference(parent) &&
@@ -931,6 +1038,8 @@ DSL_Gatekeeper_Verify_Tree
                               (WN_Parm_Read_Only(parent) ||
                                WN_Parm_Out(parent));
         if (!direct_operand && !result_copy && !promoted_copy &&
+            !projected_input_copy &&
+            !projected_call &&
             !call_interface)
             valid = DSL_Gatekeeper_Report
                         (context, "result symbol <%u,%u> escapes through %s",
@@ -985,6 +1094,17 @@ DSL_Gatekeeper_Verify_PU_Mode
         valid = FALSE;
         ++context.result.error_count;
     }
+    if (mode == DSL_GATEKEEPER_PROJECTED &&
+        (pu == NULL ||
+         !DSL_Program_Interface_PU_Is_Committed
+              (PU_Info_proc_sym(pu)) ||
+         !DSL_Runtime_Interface_Image_Validate(diagnostic) ||
+         !DSL_Program_Interface_Image_Validate(diagnostic) ||
+         !DSL_Program_Interface_Validate_PU(pu, diagnostic) ||
+         !DSL_PU_Interface_Image_Validate_PU(pu, diagnostic) ||
+         !DSL_Region_Verify_PU(pu, diagnostic)))
+        valid = DSL_Gatekeeper_Report
+                    (&context, "projected PU interface is invalid");
     if (pu == NULL || PU_Info_state(pu, WT_TREE) != Subsect_InMem ||
         PU_Info_tree_ptr(pu) == NULL)
         valid = DSL_Gatekeeper_Report
@@ -996,24 +1116,26 @@ DSL_Gatekeeper_Verify_PU_Mode
         if (!DSL_Gatekeeper_Verify_Tree
                  (PU_Info_tree_ptr(pu), NULL, -1, &context))
             valid = FALSE;
-        DSL_SHAPE_SOLVER_RESULT shape_result;
-        if (!DSL_Shape_Analyze_PU
-                 (pu, PU_Info_tree_ptr(pu), diagnostic, &shape_result)) {
-            valid = FALSE;
-            context.result.error_count +=
-                shape_result.contradiction_count == 0 ? 1 :
-                shape_result.contradiction_count;
-        } else if (mode == DSL_GATEKEEPER_STRICT &&
-                   (shape_result.refinable_value_count != 0 ||
-                    shape_result.pending_value_count != 0 ||
-                    shape_result.unresolved_value_count != 0)) {
-            valid = DSL_Gatekeeper_Report
-                        (&context,
-                         "strict shape verification found refinable=%u "
-                         "pending=%u unresolved=%u",
-                         shape_result.refinable_value_count,
-                         shape_result.pending_value_count,
-                         shape_result.unresolved_value_count);
+        if (mode != DSL_GATEKEEPER_PROJECTED) {
+            DSL_SHAPE_SOLVER_RESULT shape_result;
+            if (!DSL_Shape_Analyze_PU
+                     (pu, PU_Info_tree_ptr(pu), diagnostic, &shape_result)) {
+                valid = FALSE;
+                context.result.error_count +=
+                    shape_result.contradiction_count == 0 ? 1 :
+                    shape_result.contradiction_count;
+            } else if (mode == DSL_GATEKEEPER_STRICT &&
+                       (shape_result.refinable_value_count != 0 ||
+                        shape_result.pending_value_count != 0 ||
+                        shape_result.unresolved_value_count != 0)) {
+                valid = DSL_Gatekeeper_Report
+                            (&context,
+                             "strict shape verification found refinable=%u "
+                             "pending=%u unresolved=%u",
+                             shape_result.refinable_value_count,
+                             shape_result.pending_value_count,
+                             shape_result.unresolved_value_count);
+            }
         }
     }
 
