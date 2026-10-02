@@ -309,7 +309,6 @@ embedded harness remains useful for bring-up but cannot close SYNC-6.
 | Commit | Coding scope | Required tests and evidence |
 | --- | --- | --- |
 | S6-0a-d CKKS semantic IR | Review shared operator/image contracts; build opaque producer, full six-PU CKKS expansion, state verifier, mapped `.ckks_ops.B`/`.T`, and unchanged ABI/mock terminal lowering | Complete high-level-to-CKKS event map, 19 explicit refreshes, level/scale/key/rotation proof, old-reader/malformed tests, source-interleaved reopen, mock equivalence; details in the CKKS IR conformance gate |
-| S6-0e ACE-shaped development mock | Build the Open64-owned ACE arithmetic adapter against a separate local implementation of the pinned ACE call shapes, without ACE headers or `FHErt_ant` in the development test | Exact function-shape checks, operation/ownership/error tests, no secret/dataset helper symbols, and later generated-C coverage through the stable ABI; this cannot replace the public-ABI mock or provider admission |
 | S6-1 Exact-provider admission | Pin ACE revision, source/patch hash, compiler ABI, options, dependencies, licenses, and prove evaluation-only public-context, keyset, ciphertext import/export plus every frozen SYNC-5 capability | Reproducible build; field-for-field manifest comparison; revision/patch mismatch; missing import/export, operation, rotation, key, or level negatives |
 | S6-2 Broker and supervised worker | Implement the ABI broker and one isolated ACE worker per public context; serialize calls within a context and expose no ACE object across IPC | Multiple-context isolation; launcher authorization; worker identity; no ACE symbols in generated C or broker |
 | S6-3 Client provisioning and transport | Implement versioned public-context, non-secret keyset, plaintext-model, ciphertext input, and ciphertext output envelopes with authenticated session binding | Client/server roundtrip; digest/config/session mismatch; secret-key-class rejection before worker dispatch |
@@ -323,9 +322,6 @@ and ciphertext transport are not yet demonstrated. That blocks ACE provider
 admission and S6-2 through S6-6, **not** S6-0 CKKS IR creation. The probe is
 not a full S6-1 build/capability pass. Do not interact with the ACE library
 from the compiler or generated program until S6-0 has certified its IR.
-The separately tested ACE-shaped development mock is specified in
-`doc/FHE-SYNC6-ACE-SHAPED-MOCK.md`; it removes ACE build/link requirements
-from adapter development but does not change the final admission gate.
 
 Retain evidence under `artifacts/fhe/sync6-ace-ant-client-server-o0/`.
 
