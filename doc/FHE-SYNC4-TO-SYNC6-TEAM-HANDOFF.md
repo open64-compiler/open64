@@ -308,6 +308,12 @@ embedded harness remains useful for bring-up but cannot close SYNC-6.
 | S6-5 Failure containment | Translate recoverable errors and fatal ACE assertion/abort/signal/IPC loss through ABI v1 without partial output; poison and reap failed contexts | Input preservation; cursor rollback; poisoned-handle cleanup; child termination/status translation; no silent replay |
 | S6-6 Full client/server certification | Execute pinned ResNet-20 with the secretless server and compare client-decrypted results with certified baselines | Accuracy/error, operation counts, bootstrap distribution, memory, latency, precision, dependency closure, no-secret evidence, and complete artifact family |
 
+S6-1 source admission is in progress. The exact-pin probe and its fail-closed
+result are recorded in `doc/FHE-SYNC6-ACE-ANT-ADMISSION-AUDIT.md`.
+Evaluation-only context/key import and ciphertext transport are not yet
+demonstrated, so S6-2 through S6-6 remain blocked pending a reviewed ACE patch
+and new immutable pin. The probe is not a full S6-1 build/capability pass.
+
 Retain evidence under `artifacts/fhe/sync6-ace-ant-client-server-o0/`.
 
 ### Required ACE Mapping
