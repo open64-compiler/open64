@@ -10,6 +10,17 @@ WHIRL calls, symbols, result stores, status checks, and control flow.  The
 resulting `application.mid.B` must be consumable by the existing binary WHIRL
 reader and by an otherwise unchanged `whirl2c`.
 
+The `.mid.B` stem names this post-FHE runtime-call checkpoint; it does not
+assert that Open64's formal Middle-Level WHIRL lowering has completed. The
+current checkpoint returns before ordinary `VHO_Lower_Driver()` and may retain
+legal `REGION` nodes and nonexecuting DSL/FHE provenance. It certifies the
+`-O0` terminal FHE lowering and `whirl2c` boundary only. A later `-O2` path
+must keep scheme-aware operators visible through FHE VHO and its separate
+interprocedural summary analysis, then reuse this standard-call lowerer after
+final CKKS verification and schedule freeze. The existing C-oriented IPA is
+not the owner of FHE operator semantics; see the phase-order decision in
+`FHE-WHIRL-INTEGRATION-PLAN.md`.
+
 This audit records the shared ownership boundary and the first implemented
 main-owned infrastructure batch.  It does not
 define the public FHE runtime ABI, generate the 87-static/147-dynamic call
@@ -889,7 +900,7 @@ evidence, not the production `.mid.B` checkpoint or a completed SYNC-5 exit.
 the S5-H generated-C review is the remaining branch exit.
 
 **Purpose:** integrate S5-D through S5-F into the all-PU runtime-lowering phase
-and publish only a complete middle-WHIRL checkpoint.
+and publish only a complete standard-call WHIRL checkpoint.
 
 **Implementation checklist:**
 
@@ -924,7 +935,7 @@ constants, and five redirected REGION output/result interfaces. The final log
 reports 33 computed values, 44 promoted sources, 126 dead sources, 87 static
 and 147 dynamic evaluations, and 174 standard calls. Bad-provider, stale
 binary, and blocked-auxiliary runs preserve existing destinations and leave no
-new final or temporary checkpoint. These are middle-WHIRL/mock-boundary
+new final or temporary checkpoint. These are standard-call/mock-boundary
 artifacts, not an ACE ciphertext-execution result.
 
 The first backend run exposed an invalid void return slot in the previously
@@ -966,10 +977,10 @@ shape predicates used by production; each is rejected with a stable
 `CFHELOWER-CALL-*` diagnostic without dereferencing the missing node.
 
 **Final SYNC-5 exit criterion:** generated C from the complete six-PU
-SecureResNet middle-WHIRL artifact compiles, links, and passes the deterministic
-mock runtime. Evidence proves exact 87/147 evaluation and selector accounting,
-no executable DSL/FHE nodes, and no partial output on failure. ACE ANT provider
-execution remains SYNC-6.
+SecureResNet standard-call WHIRL artifact compiles, links, and passes the
+deterministic mock runtime. Evidence proves exact 87/147 evaluation and
+selector accounting, no executable DSL/FHE nodes, and no partial output on
+failure. ACE ANT provider execution remains SYNC-6.
 
 The v1 single-result block PU ABI is void with a hidden caller-owned output
 slot. For every encrypted block call, the caller initializes a fresh output
