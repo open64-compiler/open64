@@ -69,4 +69,14 @@ extern BOOL VHO_FHE_Commit_Standard_Call
                                  VHO_FHE_STANDARD_CALL_RESULT *result,
                                  FILE *diagnostic);
 
+/* Validate the physical shapes used by the v1 void/hidden-result call ABI. */
+extern BOOL VHO_FHE_Standard_Function_Body_Valid
+                                (const WN *entry, FILE *diagnostic);
+extern BOOL VHO_FHE_Standard_Null_Initializer_Valid
+                                (const WN *initialization, ST_IDX result_st,
+                                 FILE *diagnostic);
+extern BOOL VHO_FHE_Standard_Null_Guard_Valid
+                                (const WN *check, ST_IDX result_st,
+                                 SRCPOS source_position, FILE *diagnostic);
+
 #endif /* fhe_standard_whirl_INCLUDED */

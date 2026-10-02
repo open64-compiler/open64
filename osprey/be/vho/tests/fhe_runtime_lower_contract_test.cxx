@@ -23,6 +23,7 @@
 #include "err_host.tab"
 #include "fhe_runtime_lower.h"
 #include "fhe_runtime_interface_plan.h"
+#include "fhe_runtime_operation_plan.h"
 #include "fhe_semantic_runtime_lower.h"
 #include "fhe_standard_whirl.h"
 #include "fhe_unlowered_gate.h"
@@ -33,6 +34,7 @@
 #include "mempool.h"
 #include "pu_info.h"
 #include "stab.h"
+#include "symtab_verify.h"
 #include "wn.h"
 
 BOOL Run_vsaopt = FALSE;
@@ -158,8 +160,9 @@ Build_Failure_Block
     (void)context;
     (void)diagnostic;
     WN *block = WN_CreateBlock();
+    TYPE_ID status_mtype = TY_mtype(ST_type(status_st));
     WN *status = WN_CreateLdid
-                     (OPR_LDID, MTYPE_I4, MTYPE_I4, 0, status_st,
+                     (OPR_LDID, status_mtype, status_mtype, 0, status_st,
                       ST_type(status_st));
     WN_INSERT_BlockLast(block, WN_CreateEval(status));
     if (output_st != ST_IDX_ZERO) {
@@ -231,6 +234,69 @@ Create_Local_Handle_ST
     Set_ST_is_temp_var(*st);
     Set_ST_Srcpos(*st, source_position);
     return ST_st_idx(st);
+}
+
+/* Reproduce null mapped-WN fields against the production guard predicates. */
+static BOOL
+Check_Malformed_Call_Guard_Shapes (WN *entry)
+{
+    WN *wrong_root = WN_CreateBlock();
+    BOOL valid = VHO_FHE_Standard_Function_Body_Valid(entry, stderr) &&
+        !VHO_FHE_Standard_Function_Body_Valid(NULL, stderr) &&
+        !VHO_FHE_Standard_Function_Body_Valid(wrong_root, stderr);
+    WN_DELETE_Tree(wrong_root);
+    if (!valid)
+        return FALSE;
+
+    TY_IDX result_ty = MTYPE_To_TY(MTYPE_U8);
+    ST_IDX result_st = Create_Local_Handle_ST
+                           ("fhe_malformed_guard_result", result_ty,
+                            Test_Source_Position());
+    TYPE_ID mtype = TY_mtype(result_ty);
+    WN *initializer = WN_CreateStid
+                          (OPR_STID, MTYPE_V, mtype, 0, result_st,
+                           result_ty, WN_Intconst(mtype, 0));
+    valid = VHO_FHE_Standard_Null_Initializer_Valid
+                (initializer, result_st, stderr);
+    WN *saved_initializer_kid = WN_kid0(initializer);
+    WN_kid0(initializer) = NULL;
+    valid = valid && !VHO_FHE_Standard_Null_Initializer_Valid
+                         (initializer, result_st, stderr);
+    WN_kid0(initializer) = saved_initializer_kid;
+    WN_DELETE_Tree(initializer);
+
+    SRCPOS position = Test_Source_Position();
+    WN *test = WN_EQ
+                   (mtype, WN_CreateLdid
+                               (OPR_LDID, mtype, mtype, 0, result_st,
+                                result_ty), WN_Zerocon(mtype));
+    WN *failure = WN_CreateBlock();
+    WN *leave = WN_CreateReturn();
+    WN_Set_Linenum(leave, position);
+    WN_INSERT_BlockLast(failure, leave);
+    WN *guard = WN_CreateIf(test, failure, WN_CreateBlock());
+    WN_Set_Linenum(guard, position);
+    valid = valid && VHO_FHE_Standard_Null_Guard_Valid
+                         (guard, result_st, position, stderr);
+    WN *saved_test = WN_kid0(guard);
+    WN_kid0(guard) = NULL;
+    valid = valid && !VHO_FHE_Standard_Null_Guard_Valid
+                         (guard, result_st, position, stderr);
+    WN_kid0(guard) = saved_test;
+    WN *saved_left = WN_kid0(test);
+    WN_kid0(test) = NULL;
+    valid = valid && !VHO_FHE_Standard_Null_Guard_Valid
+                         (guard, result_st, position, stderr);
+    WN_kid0(test) = saved_left;
+    WN *saved_right = WN_kid1(test);
+    WN_kid1(test) = NULL;
+    valid = valid && !VHO_FHE_Standard_Null_Guard_Valid
+                         (guard, result_st, position, stderr);
+    WN_kid1(test) = saved_right;
+    WN_DELETE_Tree(guard);
+    fprintf(stderr, "FHE malformed call guard shapes rejected: valid=%d\n",
+            valid);
+    return valid;
 }
 
 static BOOL
@@ -447,13 +513,16 @@ Build_Descriptor_Selected_Call (WN *tree)
     const UINT32 operation_kind = 3;
     WN *body = WN_func_body(tree);
     SRCPOS source_position = Test_Source_Position();
-    TY_IDX status_ty = MTYPE_To_TY(MTYPE_I4);
+    TY_IDX status_ty = MTYPE_To_TY(MTYPE_U4);
     TY_IDX u4_ty = MTYPE_To_TY(MTYPE_U4);
-    TY_IDX model_ty = Create_Opaque_Handle_TY("open64_fhe_model_v1");
+    TY_IDX model_ty = Create_Opaque_Handle_TY("open64_fhe_model_v1_s");
     TY_IDX ciphertext_ty =
-        Create_Opaque_Handle_TY("open64_fhe_ciphertext_v1");
+        Create_Opaque_Handle_TY("open64_fhe_ciphertext_v1_s");
     TY_IDX descriptor_ty =
         Create_Opaque_Handle_TY("open64_fhe_operation_desc_v1");
+    TY_IDX descriptor_struct = TY_pointed(descriptor_ty);
+    Set_TY_is_const(descriptor_struct);
+    descriptor_ty = Make_Pointer_Type(descriptor_struct);
     TY_IDX descriptor_output_ty = Make_Pointer_Type(descriptor_ty);
     TY_IDX ciphertext_output_ty = Make_Pointer_Type(ciphertext_ty);
     ST_IDX model_st = Create_Local_Handle_ST
@@ -659,7 +728,9 @@ Build_And_Lower_Resolved_Relu_Sequence
         (DSL_BUILDER_PROGRAM_UNIT pu, TY_IDX ciphertext_ty, TY_IDX model_ty,
          TY_IDX plaintext_ty, DSL_BUILDER_VALUE anchor,
          DSL_BUILDER_VALUE weight, DSL_BUILDER_VALUE bias,
-         DSL_BUILDER_VALUE relu)
+         DSL_BUILDER_VALUE relu,
+         DSL_BUILDER_PROGRAM_UNIT phase_pu,
+         DSL_BUILDER_PROGRAM_UNIT second_phase_pu)
 {
     DSL_RUNTIME_VALUE_PROJECTION_REQUEST value_requests[4];
     memset(value_requests, 0, sizeof(value_requests));
@@ -750,6 +821,20 @@ Build_And_Lower_Resolved_Relu_Sequence
                 interface_result.canonical_projection_count);
         return FALSE;
     }
+    DSL_BUILDER_PROGRAM_UNIT phase_pus[2] = {
+        phase_pu, second_phase_pu
+    };
+    for (UINT32 i = 0; i < 2; ++i) {
+        DSL_PROGRAM_INTERFACE_RESULT empty_result;
+        memset(&empty_result, 0, sizeof(empty_result));
+        if (phase_pus[i] == NULL || !DSL_Builder_Select_PU(phase_pus[i]) ||
+            !DSL_Program_Interface_Apply_PU
+                 (phase_pus[i], &program_plan, &runtime_plan,
+                  stderr, &empty_result))
+            return FALSE;
+    }
+    if (!DSL_Builder_Select_PU(pu))
+        return FALSE;
 
     DSL_IR_VALUE_RECORD relu_value_record;
     VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD schedule_record;
@@ -890,6 +975,28 @@ Build_And_Lower_Resolved_Relu_Sequence
         fprintf(stderr, "specialized ReLU operation was admitted generically\n");
         return FALSE;
     }
+    VHO_FHE_RUNTIME_OPERATION_REQUEST wrong_ordinal = unsupported;
+    wrong_ordinal.operation_kind = VHO_FHE_RUNTIME_OP_CONV2D_PLAIN;
+    wrong_ordinal.operand_value_ids = conv_operands;
+    wrong_ordinal.operand_count = 3;
+    wrong_ordinal.static_ordinal = 0;
+    const DSL_IR_VALUE_ID wrong_plain_operands[3] = {
+        value_requests[0].source_value_id,
+        value_requests[0].source_value_id,
+        value_requests[2].source_value_id
+    };
+    VHO_FHE_RUNTIME_OPERATION_REQUEST wrong_plain = wrong_ordinal;
+    wrong_plain.static_ordinal = 61;
+    wrong_plain.operand_value_ids = wrong_plain_operands;
+    if (VHO_FHE_Runtime_Build_Operation_Sequence
+            (pu, &wrong_ordinal, Test_Source_Position(),
+             Build_Failure_Block, NULL, NULL, &rejected_sequence) ||
+        VHO_FHE_Runtime_Build_Operation_Sequence
+            (pu, &wrong_plain, Test_Source_Position(),
+             Build_Failure_Block, NULL, NULL, &rejected_sequence)) {
+        fprintf(stderr, "wrong ordinal or Conv plaintext TY was admitted\n");
+        return FALSE;
+    }
 
     VHO_FHE_RUNTIME_CALL_SEQUENCE identity_sequence;
     WN *identity_result = NULL;
@@ -993,6 +1100,34 @@ Build_And_Lower_Resolved_Relu_Sequence
     request.relation.value_projection_id = relu_projection.id;
     request.standard_block = sequence.block;
     DSL_IR_NATIVE_VALUE_LOWER_RESULT lower_result;
+    if (valid) {
+        WN *store = WN_last(sequence.block);
+        ST_IDX expected_st = WN_st_idx(store);
+        WN_st_idx(store) = projected_anchor.handle_st;
+        BOOL wrong_result_rejected =
+            !DSL_IR_Lower_Native_Values_To_Standard_Blocks
+                 (pu, &request, 1, NULL, &lower_result);
+        WN_st_idx(store) = expected_st;
+        DSL_IR_NATIVE_VALUE_LOWER_REQUEST wrong_version = request;
+        ++wrong_version.expected_version;
+        BOOL wrong_version_rejected =
+            !DSL_IR_Lower_Native_Values_To_Standard_Blocks
+                 (pu, &wrong_version, 1, NULL, &lower_result);
+        DSL_IR_NATIVE_VALUE_LOWER_REQUEST duplicate[2] = {
+            request, request
+        };
+        DSL_IR_NATIVE_VALUE_LOWER_RESULT duplicate_results[2];
+        BOOL duplicate_rejected =
+            !DSL_IR_Lower_Native_Values_To_Standard_Blocks
+                 (pu, duplicate, 2, NULL, duplicate_results);
+        DSL_IR_NODE_RECORD unchanged;
+        valid = wrong_result_rejected && wrong_version_rejected &&
+            duplicate_rejected &&
+            DSL_IR_Image_Get_Node(relu_value_record.producer_node_id,
+                                  &unchanged) &&
+            unchanged.flags == DSL_IR_NODE_FLAG_NONE &&
+            WN_operator(relu) == OPR_STID;
+    }
     if (valid &&
         (!DSL_IR_Lower_Native_Values_To_Standard_Blocks
              (pu, &request, 1, stderr, &lower_result) ||
@@ -1255,6 +1390,7 @@ Check_Mapped_Program_Interface
         Read_Global_Info(&pu_count);
     if (pu_tree == NULL || pu_count != 6)
         return 1;
+    Initialize_Special_Global_Symbols();
     fprintf(stderr, "interface apply: global input loaded\n");
 
     PU_Info *root_pu = NULL;
@@ -1323,6 +1459,7 @@ Check_Mapped_Program_Interface
             aggregate.rewritten_call_count += result.rewritten_call_count;
             aggregate.rewritten_return_count +=
                 result.rewritten_return_count;
+            Verify_SYMTAB(CURRENT_SYMTAB);
             Write_PU_Info(pu);
             /* The IR_TOOLS writer has no SSA serializer; ABI edits also
              * invalidate the input SSA, so omit that derived subsection. */
@@ -1355,6 +1492,7 @@ Check_Mapped_Program_Interface
                             kind, state);
             }
         }
+        Verify_SYMTAB(GLOBAL_SYMTAB);
         Write_Global_Info(pu_tree);
     }
     Close_Output_Info();
@@ -1377,9 +1515,298 @@ Check_Mapped_Program_Interface
     return valid ? 0 : 1;
 }
 
+/* Reject invalid source or newly constructed prototypes before .B publication. */
+static BOOL
+Check_Operation_Prototype_Ranges (const char *stage)
+{
+    for (UINT32 i = 1; i < TY_Table_Size(); ++i) {
+        if (TY_kind(Ty_tab[i]) != KIND_FUNCTION)
+            continue;
+        TYLIST_IDX first = TY_tylist(Ty_tab[i]);
+        if (first == 0 || first >= TYLIST_Table_Size()) {
+            fprintf(stderr, "FHE prototype %s: ty=%u invalid_tylist=%u\n",
+                    stage, i, first);
+            return FALSE;
+        }
+        BOOL terminated = FALSE;
+        for (TYLIST_IDX position = first;
+             position < TYLIST_Table_Size(); ++position) {
+            TY_IDX entry = TYLIST_type(Tylist_Table[position]);
+            if (entry == TY_IDX_ZERO && position != first) {
+                terminated = TRUE;
+                break;
+            }
+            if (TY_IDX_index(entry) == 0 ||
+                TY_IDX_index(entry) >= TY_Table_Size()) {
+                fprintf(stderr, "FHE prototype %s: ty=%u tylist=%u "
+                        "entry=%u invalid_ty=%u\n", stage, i, first,
+                        position, (UINT32)entry);
+                return FALSE;
+            }
+        }
+        if (!terminated) {
+            fprintf(stderr, "FHE prototype %s: ty=%u unterminated\n",
+                    stage, i);
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+/* Certify one complete standard-WHIRL replacement array in each mapped PU. */
+static int
+Check_Mapped_Operation_Lowering
+        (const char *input_path, const char *output_path)
+{
+    void *input = Open_Input_Info((char *)input_path);
+    INT32 pu_count = 0;
+    PU_Info *pu_tree = input == NULL || input == (void *)-1 ? NULL :
+        Read_Global_Info(&pu_count);
+    if (pu_tree == NULL || pu_count != 6 ||
+        !VHO_FHE_Runtime_Static_Schedule_Prepare(stderr) ||
+        VHO_FHE_Runtime_Static_Evaluation_Count() != 87)
+        return 1;
+    Initialize_Special_Global_Symbols();
+
+    if (!Check_Operation_Prototype_Ranges("before lowering"))
+        return 1;
+
+    std::string temporary_path = std::string(output_path) + ".tmp";
+    unlink(temporary_path.c_str());
+    Irb_File_Name = (char *)temporary_path.c_str();
+    if (Open_Output_Info(Irb_File_Name) == NULL)
+        return 1;
+    BOOL valid = TRUE;
+    UINT32 applied = 0;
+    VHO_FHE_RUNTIME_OPERATION_PLAN_RESULT aggregate;
+    memset(&aggregate, 0, sizeof(aggregate));
+    for (PU_Info *pu = pu_tree; pu != NULL && valid;
+         pu = PU_Info_next(pu)) {
+        MEM_POOL_Push(MEM_pu_nz_pool_ptr);
+        MEM_POOL_Push(MEM_pu_pool_ptr);
+        Read_Local_Info(MEM_pu_nz_pool_ptr, pu);
+        Current_PU_Info = pu;
+        VHO_FHE_RUNTIME_OPERATION_PLAN_RESULT summary;
+        memset(&summary, 0, sizeof(summary));
+        valid = VHO_FHE_Runtime_Operation_Plan_Prepare_PU
+                    (pu, Build_Failure_Block, NULL, stderr, &summary);
+        const DSL_IR_NATIVE_VALUE_LOWER_REQUEST *requests = NULL;
+        UINT32 request_count = 0;
+        valid = valid && VHO_FHE_Runtime_Operation_Plan_Get
+                             (&requests, &request_count);
+        valid = valid && request_count ==
+            summary.computed_count + summary.promoted_source_count +
+            summary.unpromoted_source_count;
+        std::vector<DSL_IR_NATIVE_VALUE_LOWER_RESULT> results(request_count);
+        const char *reject_pu = getenv("OPEN64_FHE_OPERATION_REJECT_PU");
+        if (valid && reject_pu != NULL &&
+            atoi(reject_pu) == (INT32)applied + 1) {
+            std::vector<DSL_IR_NATIVE_VALUE_LOWER_REQUEST> invalid
+                (requests, requests + request_count);
+            ++invalid.back().expected_version;
+            DSL_IR_NODE_RECORD before;
+            DSL_IR_VALUE_RECORD source;
+            valid = DSL_IR_Image_Get_Value
+                        (invalid.back().source_value_id, &source) &&
+                DSL_IR_Image_Get_Node(source.producer_node_id, &before) &&
+                !DSL_IR_Lower_Native_Values_To_Standard_Blocks
+                     (pu, &invalid[0], request_count, stderr, &results[0]);
+            DSL_IR_NODE_RECORD after;
+            valid = valid &&
+                DSL_IR_Image_Get_Node(before.id, &after) &&
+                before.flags == after.flags &&
+                WN_operator(invalid.back().native_definition) == OPR_STID;
+            fprintf(stderr,
+                    "FHE operation negative: pu=%u last_request_rollback=%d\n",
+                    applied + 1, valid);
+            valid = FALSE;
+        }
+        else if (valid) {
+            valid = VHO_FHE_Runtime_Operation_Plan_Apply_PU
+                        (pu, stderr, &results[0]);
+            if (valid) {
+                valid = DSL_IR_Image_Validate_Lowered_Relations(stderr);
+            }
+            if (valid)
+                valid = Check_Operation_Prototype_Ranges("after PU");
+            if (valid) {
+                aggregate.computed_count += summary.computed_count;
+                aggregate.promoted_source_count +=
+                    summary.promoted_source_count;
+                aggregate.unpromoted_source_count +=
+                    summary.unpromoted_source_count;
+                aggregate.live_unpromoted_source_count +=
+                    summary.live_unpromoted_source_count;
+                aggregate.selector_count += summary.selector_count;
+                aggregate.evaluation_count += summary.evaluation_count;
+                aggregate.standard_call_count +=
+                    summary.standard_call_count;
+                aggregate.output_handle_count +=
+                    summary.output_handle_count;
+                aggregate.status_check_count +=
+                    summary.status_check_count;
+                Write_PU_Info(pu);
+                Set_PU_Info_state(pu, WT_SSA, Subsect_Missing);
+                ++applied;
+            }
+        }
+        fprintf(stderr,
+                "FHE operation apply: pu=%u computed=%u promoted=%u "
+                "unpromoted=%u live_unpromoted=%u selectors=%u "
+                "evaluations=%u valid=%d\n",
+                applied + (valid ? 0 : 1), summary.computed_count,
+                summary.promoted_source_count,
+                summary.unpromoted_source_count,
+                summary.live_unpromoted_source_count,
+                summary.selector_count,
+                summary.evaluation_count, valid);
+        VHO_FHE_Runtime_Operation_Plan_Reset();
+        Current_PU_Info = NULL;
+        Free_Local_Info(pu);
+        MEM_POOL_Pop(MEM_pu_nz_pool_ptr);
+        MEM_POOL_Pop(MEM_pu_pool_ptr);
+    }
+    valid = valid && applied == 6 &&
+        aggregate.computed_count == 33 &&
+        aggregate.promoted_source_count == 44 &&
+        aggregate.unpromoted_source_count == 126 &&
+        aggregate.live_unpromoted_source_count == 0 &&
+        aggregate.selector_count == 87 &&
+        aggregate.evaluation_count == 87 &&
+        aggregate.standard_call_count == 174 &&
+        DSL_IR_Image_Validate_Lowered_Relations(stderr);
+    if (valid)
+        Write_Global_Info(pu_tree);
+    Close_Output_Info();
+    if (valid)
+        valid = rename(temporary_path.c_str(), output_path) == 0;
+    if (!valid)
+        unlink(temporary_path.c_str());
+    fprintf(stderr,
+            "FHE operation total: pu=%u computed=%u promoted=%u "
+            "unpromoted=%u live_unpromoted=%u selectors=%u evaluations=%u "
+            "calls=%u valid=%d\n",
+            applied, aggregate.computed_count,
+            aggregate.promoted_source_count,
+            aggregate.unpromoted_source_count,
+            aggregate.live_unpromoted_source_count,
+            aggregate.selector_count,
+            aggregate.evaluation_count, aggregate.standard_call_count,
+            valid);
+    VHO_FHE_Runtime_Static_Schedule_Reset();
+    Free_Input_Info();
+    return valid ? 0 : 1;
+}
+
+/* Prove all six detached plans before any persistent lowering is attempted. */
+static int
+Check_Mapped_Operation_Plans (const char *input_path)
+{
+    void *input = Open_Input_Info((char *)input_path);
+    INT32 pu_count = 0;
+    PU_Info *pu_tree = input == NULL || input == (void *)-1 ? NULL :
+        Read_Global_Info(&pu_count);
+    if (pu_tree == NULL || pu_count != 6)
+        return 1;
+    Initialize_Special_Global_Symbols();
+    if (!VHO_FHE_Runtime_Static_Schedule_Prepare(stderr) ||
+        VHO_FHE_Runtime_Static_Evaluation_Count() != 87)
+        return 1;
+
+    VHO_FHE_RUNTIME_OPERATION_PLAN_RESULT aggregate;
+    memset(&aggregate, 0, sizeof(aggregate));
+    UINT32 planned = 0;
+    BOOL valid = TRUE;
+    for (PU_Info *pu = pu_tree; pu != NULL && valid;
+         pu = PU_Info_next(pu)) {
+        MEM_POOL_Push(MEM_pu_nz_pool_ptr);
+        MEM_POOL_Push(MEM_pu_pool_ptr);
+        Read_Local_Info(MEM_pu_nz_pool_ptr, pu);
+        Current_PU_Info = pu;
+        VHO_FHE_RUNTIME_OPERATION_PLAN_RESULT summary;
+        memset(&summary, 0, sizeof(summary));
+        valid = VHO_FHE_Runtime_Operation_Plan_Prepare_PU
+                    (pu, Build_Failure_Block, NULL, stderr, &summary);
+        if (valid) {
+            const DSL_IR_NATIVE_VALUE_LOWER_REQUEST *requests = NULL;
+            UINT32 count = 0;
+            valid = VHO_FHE_Runtime_Operation_Plan_Get
+                        (&requests, &count) &&
+                count == summary.computed_count +
+                         summary.promoted_source_count +
+                         summary.unpromoted_source_count;
+        }
+        if (valid) {
+            ++planned;
+            aggregate.computed_count += summary.computed_count;
+            aggregate.promoted_source_count +=
+                summary.promoted_source_count;
+            aggregate.unpromoted_source_count +=
+                summary.unpromoted_source_count;
+            aggregate.live_unpromoted_source_count +=
+                summary.live_unpromoted_source_count;
+            aggregate.selector_count += summary.selector_count;
+            aggregate.evaluation_count += summary.evaluation_count;
+            aggregate.standard_call_count +=
+                summary.standard_call_count;
+            fprintf(stderr,
+                    "FHE operation plan: pu=%u computed=%u promoted=%u "
+                    "unpromoted=%u live_unpromoted=%u selectors=%u "
+                    "evaluations=%u\n",
+                    planned, summary.computed_count,
+                    summary.promoted_source_count,
+                    summary.unpromoted_source_count,
+                    summary.live_unpromoted_source_count,
+                    summary.selector_count, summary.evaluation_count);
+        }
+        VHO_FHE_Runtime_Operation_Plan_Reset();
+        Current_PU_Info = NULL;
+        Free_Local_Info(pu);
+        MEM_POOL_Pop(MEM_pu_nz_pool_ptr);
+        MEM_POOL_Pop(MEM_pu_pool_ptr);
+    }
+    valid = valid && planned == 6 &&
+        aggregate.computed_count == 33 &&
+        aggregate.promoted_source_count == 44 &&
+        aggregate.unpromoted_source_count == 126 &&
+        aggregate.live_unpromoted_source_count == 0 &&
+        aggregate.selector_count == 87 &&
+        aggregate.evaluation_count == 87 &&
+        aggregate.standard_call_count == 174;
+    fprintf(stderr,
+            "FHE operation plan total: pu=%u computed=%u promoted=%u "
+            "unpromoted=%u live_unpromoted=%u selectors=%u "
+            "evaluations=%u calls=%u valid=%d\n",
+            planned, aggregate.computed_count,
+            aggregate.promoted_source_count,
+            aggregate.unpromoted_source_count,
+            aggregate.live_unpromoted_source_count,
+            aggregate.selector_count, aggregate.evaluation_count,
+            aggregate.standard_call_count, valid);
+    VHO_FHE_Runtime_Static_Schedule_Reset();
+    Free_Input_Info();
+    return valid ? 0 : 1;
+}
+
 int
 main (void)
 {
+    const char *operation_plan_input =
+        getenv("OPEN64_FHE_OPERATION_PLAN_INPUT");
+    if (operation_plan_input != NULL && operation_plan_input[0] != '\0') {
+        Initialize_Reader_Test_Context();
+        return Check_Mapped_Operation_Plans(operation_plan_input);
+    }
+    const char *operation_input =
+        getenv("OPEN64_FHE_OPERATION_APPLY_INPUT");
+    const char *operation_output =
+        getenv("OPEN64_FHE_OPERATION_APPLY_OUTPUT");
+    if (operation_input != NULL && operation_input[0] != '\0' &&
+        operation_output != NULL && operation_output[0] != '\0') {
+        Initialize_Reader_Test_Context();
+        return Check_Mapped_Operation_Lowering
+                   (operation_input, operation_output);
+    }
     const char *interface_input =
         getenv("OPEN64_FHE_INTERFACE_APPLY_INPUT");
     const char *interface_output =
@@ -1476,11 +1903,11 @@ main (void)
         (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2), 2,
          relu_kids, 1, NULL, 0, "relu_result", source_tensor_ty);
     TY_IDX binding_model_ty = Create_Opaque_Handle_TY
-                                  ("open64_fhe_model_v1");
+                                  ("open64_fhe_model_v1_s");
     TY_IDX binding_ciphertext_ty = Create_Opaque_Handle_TY
-                                       ("open64_fhe_ciphertext_v1");
+                                       ("open64_fhe_ciphertext_v1_s");
     TY_IDX binding_plaintext_ty = Create_Opaque_Handle_TY
-                                      ("open64_fhe_plain_tensor_v1");
+                                      ("open64_fhe_plain_tensor_v1_s");
     BOOL binding_setup = source_tensor_ty != TY_IDX_ZERO &&
         binding_pu != NULL && binding_position.file_id != 0 &&
         binding_anchor != NULL && binding_weight != NULL &&
@@ -1499,17 +1926,21 @@ main (void)
         fprintf(stderr, "FHE runtime binding fixture setup changed\n");
         return 1;
     }
-    if (!Build_And_Lower_Resolved_Relu_Sequence
+    DSL_BUILDER_PROGRAM_UNIT runtime_pu =
+        DSL_Builder_Create_Minimal_PU("fhe_runtime_lower_phase_contract");
+    DSL_BUILDER_PROGRAM_UNIT second_runtime_pu =
+        DSL_Builder_Create_Minimal_PU("fhe_runtime_lower_phase_contract_2");
+    if (runtime_pu == NULL || second_runtime_pu == NULL ||
+        !DSL_Builder_Select_PU(binding_pu) ||
+        !Build_And_Lower_Resolved_Relu_Sequence
             (binding_pu, binding_ciphertext_ty, binding_model_ty,
              binding_plaintext_ty, binding_anchor, binding_weight,
-             binding_bias, binding_relu)) {
+             binding_bias, binding_relu, runtime_pu, second_runtime_pu)) {
         fprintf(stderr, "FHE runtime ReLU lowering changed\n");
         return 1;
     }
 
-    DSL_BUILDER_PROGRAM_UNIT runtime_pu =
-        DSL_Builder_Create_Minimal_PU("fhe_runtime_lower_phase_contract");
-    if (runtime_pu == NULL || !DSL_Builder_Select_PU(runtime_pu))
+    if (!DSL_Builder_Select_PU(runtime_pu))
         return 1;
     tree = PU_Info_tree_ptr(runtime_pu);
 
@@ -1540,10 +1971,7 @@ main (void)
         result.status_check_count != 2 || result.error_count != 0)
         return 1;
 
-    DSL_BUILDER_PROGRAM_UNIT second_runtime_pu =
-        DSL_Builder_Create_Minimal_PU("fhe_runtime_lower_phase_contract_2");
-    if (second_runtime_pu == NULL ||
-        !DSL_Builder_Select_PU(second_runtime_pu))
+    if (!DSL_Builder_Select_PU(second_runtime_pu))
         return 1;
     tree = PU_Info_tree_ptr(second_runtime_pu);
     if (!VHO_FHE_Runtime_Lower_Program_Unit
@@ -1555,6 +1983,12 @@ main (void)
             VHO_FHE_Runtime_Lowering_Checkpoint_Output ||
         result.error_count != 0)
         return 1;
+
+    if (!DSL_Builder_Select_PU(pu) ||
+        !Check_Malformed_Call_Guard_Shapes(PU_Info_tree_ptr(pu))) {
+        fprintf(stderr, "FHE malformed call guard validation changed\n");
+        return 1;
+    }
 
     DSL_BUILDER_PROGRAM_UNIT program_units[5] = {
         pu, selector_pu, binding_pu, runtime_pu, second_runtime_pu
