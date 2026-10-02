@@ -121,6 +121,16 @@ high-level-event-to-step provenance must be machine-checkable: reuse typed
 existing rows if they can express the join, otherwise review an append-only
 typed relation, never encode it only in metadata strings.
 
+The FHE-owned process-local preflight in
+`osprey/be/vho/fhe_ckks_event_coverage.{h,cxx}` checks that an independently
+counted set of source events has unique owner/source/context identities,
+at least one result per event, and dense per-event step ordinals. It accepts
+the same reusable PU value identity in different call contexts. The focused
+147-event test is synthetic and proves only this coverage algorithm; it does
+not certify the ResNet event census, CKKS legality, or persisted provenance.
+The verifier must be called on the real expansion plan before the common
+transaction, and the resulting image must be checked again after reopen.
+
 ### Proposed Shared Contract Census
 
 All rows below are proposed v1 *logical* names, not allocated enum values.
