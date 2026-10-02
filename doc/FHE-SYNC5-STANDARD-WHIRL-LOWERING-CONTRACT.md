@@ -103,14 +103,18 @@ callsite or a computed-value projection.
 ### Verified-Dead Source Elision
 
 `DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION` applies only to a pure,
-unprojected, unpromoted `common.tensor_const` with unique source ownership.
+unpromoted `common.tensor_const` with unique source ownership.
 The complete-PU request array must close every physical use: no read or
 address escape may survive the transaction. Logical references may remain only
 in retired, already lowered, dead-elided, or concurrently lowered provenance
 nodes. This mode supplies neither a standard block nor a runtime relation;
 the image marks node/value `DEAD_ELIDED` and retains their type, source, and
-lineage evidence. It is intended for unused original and folded-away tensor
-constants, not for a source whose live caller still needs a handle.
+lineage evidence. One pre-existing local-value projection row may remain as
+mapped provenance, but its handle must have no physical, REGION, call, or
+runtime-input use. It is not a live runtime relation, and lowering does not
+materialize its handle. This mode is intended for unused original and
+folded-away tensor constants, not for a source whose live caller still needs
+a handle.
 
 ## Preflight And Atomicity
 
@@ -124,7 +128,8 @@ Preflight rejects:
 - unlowered physical/logical consumers outside the transaction;
 - missing, ambiguous, owner-mismatched, ST/TY-mismatched runtime relations;
 - a promoted projection without the matching root binding, or a dead source
-  with any surviving use or runtime relation;
+  with any surviving use, runtime input, call relation, or more than one local
+  projection;
 - duplicate values, nodes, definitions, replacement blocks, or result STIDs;
 - replacement statements with missing/wrong source positions;
 - a replacement block that writes the wrong handle or does not end in the

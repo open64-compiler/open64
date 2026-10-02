@@ -2030,6 +2030,17 @@ DSL_Program_Interface_Validate_Lowered_PU
             return DSL_Program_Interface_Report
                        (diagnostic,
                         "dead-elided source remains executable", i);
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+        if (DSL_Runtime_Interface_Image_Find_Value
+                (owner_pu_st, value.id, &projection) &&
+            (projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE ||
+             DSL_Program_Interface_Tree_Uses_ST
+                 (entry, projection.handle_st) ||
+             DSL_Region_Symbol_Use_Count
+                 (pu, projection.handle_st) != 0))
+            return DSL_Program_Interface_Report
+                       (diagnostic,
+                        "dead-elided projection remains executable", i);
     }
     return TRUE;
 }

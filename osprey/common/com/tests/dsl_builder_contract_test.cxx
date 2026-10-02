@@ -9443,13 +9443,14 @@ Check_Native_To_Standard_Lowering(void)
     DSL_BUILDER_VALUE seed;
     DSL_BUILDER_VALUE computed[2];
     DSL_BUILDER_VALUE kids[2];
-    DSL_RUNTIME_VALUE_PROJECTION_REQUEST projection_requests[3];
+    DSL_RUNTIME_VALUE_PROJECTION_REQUEST projection_requests[4];
+    DSL_RUNTIME_VALUE_PROJECTION_REQUEST ordered_projection_requests[4];
     DSL_RUNTIME_INTERFACE_PLAN runtime_plan;
     DSL_RUNTIME_INPUT_REQUEST inputs[2];
     DSL_RUNTIME_INPUT_BINDING_REQUEST bindings[2];
     DSL_PROGRAM_INTERFACE_PLAN program_plan;
     DSL_PROGRAM_INTERFACE_RESULT interface_result;
-    DSL_RUNTIME_VALUE_PROJECTION_RECORD projections[3];
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD projections[4];
     DSL_RUNTIME_INPUT_RECORD input_records[2];
     DSL_RUNTIME_INPUT_BINDING_RECORD binding_records[2];
     DSL_IR_EXTERNAL_TENSOR_REFERENCE observed_external;
@@ -9646,9 +9647,23 @@ Check_Native_To_Standard_Lowering(void)
     projection_requests[2].binding_kind = DSL_RUNTIME_BINDING_LOCAL_VALUE;
     projection_requests[2].formal_ordinal =
         DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
+    projection_requests[3].owner_pu_st = PU_Info_proc_sym(pu);
+    projection_requests[3].source_value_id =
+        DSL_Builder_Get_Value_Image_Id(seed);
+    projection_requests[3].expected_source_st =
+        DSL_Builder_Get_Value_Result_Symbol(seed);
+    projection_requests[3].expected_source_ty = tensor_ty[0];
+    projection_requests[3].handle_ty = handle_ty;
+    projection_requests[3].binding_kind = DSL_RUNTIME_BINDING_LOCAL_VALUE;
+    projection_requests[3].formal_ordinal =
+        DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
+    ordered_projection_requests[0] = projection_requests[3];
+    ordered_projection_requests[1] = projection_requests[2];
+    ordered_projection_requests[2] = projection_requests[0];
+    ordered_projection_requests[3] = projection_requests[1];
     memset(&runtime_plan, 0, sizeof(runtime_plan));
-    runtime_plan.values = projection_requests;
-    runtime_plan.value_count = 3;
+    runtime_plan.values = ordered_projection_requests;
+    runtime_plan.value_count = 4;
     memset(inputs, 0, sizeof(inputs));
     memset(bindings, 0, sizeof(bindings));
     for (UINT32 i = 0; i < 2; ++i) {
@@ -9733,6 +9748,12 @@ Check_Native_To_Standard_Lowering(void)
               &projections[2]) &&
          projections[2].handle_st != binding_records[0].handle_st,
          "promoted source retains a separate call projection");
+    STANDARD_LOWER_CHECK
+        (DSL_Runtime_Interface_Image_Find_Value
+             (PU_Info_proc_sym(pu), projection_requests[3].source_value_id,
+              &projections[3]) &&
+         projections[3].binding_kind == DSL_RUNTIME_BINDING_LOCAL_VALUE,
+         "unused seed retains a local projection row");
     if (failed)
         return failed;
 
@@ -9910,6 +9931,17 @@ Check_Native_To_Standard_Lowering(void)
     WN_EXTRACT_FromBlock(containing_blocks[4], dead_address_use);
     WN_DELETE_Tree(dead_address_use);
 
+    WN *dead_projection_use = WN_CreateEval
+        (WN_CreateLdid
+             (OPR_LDID, Pointer_Mtype, Pointer_Mtype, 0,
+              projections[3].handle_st, projections[3].handle_ty));
+    WN_INSERT_BlockAfter
+        (containing_blocks[4], definitions[4], dead_projection_use);
+    STANDARD_LOWER_EXPECT_REJECT
+        (requests, 5, "dead projection use rejects without mutation");
+    WN_EXTRACT_FromBlock(containing_blocks[4], dead_projection_use);
+    WN_DELETE_Tree(dead_projection_use);
+
     memcpy(malformed, requests, sizeof(malformed));
     malformed[3].relation.relation_kind =
         DSL_IR_LOWER_RELATION_ROOT_PROMOTED_INPUT;
@@ -9991,7 +10023,7 @@ Check_Native_To_Standard_Lowering(void)
     UINT32 saved_projection_count = runtime_header->value_projection_count;
     UINT32 saved_binding_count =
         program_header->runtime_input_binding_count;
-    STANDARD_LOWER_CHECK(saved_projection_count == 3 &&
+    STANDARD_LOWER_CHECK(saved_projection_count == 4 &&
                          saved_binding_count == 2,
                          "mapped relation fixture census");
 
@@ -10060,6 +10092,20 @@ Check_Native_To_Standard_Lowering(void)
     mapped_dead_node.flags = DSL_IR_NODE_FLAG_DEAD_ELIDED;
     delete [] dsl_image;
 
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD *mapped_projections =
+        (DSL_RUNTIME_VALUE_PROJECTION_RECORD *)
+            (runtime_image + DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE);
+    UINT32 saved_dead_binding_kind = mapped_projections[0].binding_kind;
+    mapped_projections[0].binding_kind =
+        DSL_RUNTIME_BINDING_INPUT_FORMAL;
+    STANDARD_LOWER_CHECK
+        (!DSL_Program_Runtime_Interface_Images_Load_Mapped
+              (program_image, program_image_size,
+               runtime_image, runtime_image_size, NULL) &&
+         DSL_Runtime_Interface_Image_Value_Count() == 4,
+         "dead projection cannot become a mapped formal");
+    mapped_projections[0].binding_kind = saved_dead_binding_kind;
+
     runtime_header->value_projection_count = 1;
     UINT64 short_runtime_size = DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE +
         DSL_RUNTIME_VALUE_PROJECTION_RECORD_SIZE;
@@ -10067,7 +10113,7 @@ Check_Native_To_Standard_Lowering(void)
         (!DSL_Program_Runtime_Interface_Images_Load_Mapped
               (program_image, program_image_size,
                runtime_image, short_runtime_size, NULL) &&
-         DSL_Runtime_Interface_Image_Value_Count() == 3 &&
+         DSL_Runtime_Interface_Image_Value_Count() == 4 &&
          DSL_Program_Interface_Image_Runtime_Binding_Count() == 2,
          "missing lowered projection rejects paired load atomically");
     runtime_header->value_projection_count = saved_projection_count;
@@ -10078,7 +10124,7 @@ Check_Native_To_Standard_Lowering(void)
         (!DSL_Program_Runtime_Interface_Images_Load_Mapped
               (program_image, short_program_size,
                runtime_image, runtime_image_size, NULL) &&
-         DSL_Runtime_Interface_Image_Value_Count() == 3 &&
+         DSL_Runtime_Interface_Image_Value_Count() == 4 &&
          DSL_Program_Interface_Image_Runtime_Binding_Count() == 2,
          "missing promoted binding rejects paired load atomically");
     program_header->runtime_input_binding_count = saved_binding_count;
