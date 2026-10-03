@@ -87,7 +87,9 @@ def read_plan_tables(path):
                int(field(line, "callsite", r"\d+")))
         if section == "range":
             require(row_id not in ranges, "duplicate range row")
-            ranges[row_id] = (key, int(field(line, "profile", r"\d+")))
+            ranges[row_id] = (
+                key, int(field(line, "profile", r"\d+")),
+                int(field(line, "positive_bound", r"tcon\d+")[4:]))
         elif section == "state":
             require(row_id not in states, "duplicate state row")
             states[row_id] = {
@@ -152,8 +154,10 @@ def audit(events, relu_values, ranges, states, operations, stage_depths):
             require(row is not None and row["kind"] == EXPECTED_KINDS[ordinal],
                     "missing or reordered materialization operation")
             require(row["range"] in ranges and
-                    ranges[row["range"]] == (key, row["profile"]),
+                    ranges[row["range"]][:2] == (key, row["profile"]),
                     "materialization range identity mismatch")
+            require(ranges[row["range"]][2] > 0,
+                    "normalization bound is absent")
             require(row["output"] in states and
                     states[row["output"]]["key"] == key,
                     "materialization state identity mismatch")
@@ -183,6 +187,9 @@ def audit(events, relu_values, ranges, states, operations, stage_depths):
                     "wrong approximation stage")
             require((row["parameter"] != 0) == (1 <= ordinal <= 4),
                     "wrong stage/normalization parameter")
+            if ordinal == 1:
+                require(row["parameter"] == ranges[row["range"]][2],
+                        "normalization parameter is not the context bound")
             if ordinal == 0:
                 require(state["pending"] & 4 and
                         state["reason"] == "pre_relu_refresh",
@@ -226,8 +233,8 @@ def main():
         raise ValueError("broken state chain was accepted")
     malformed = dict(ranges)
     row_id = next(iter(malformed))
-    old_key, profile = malformed[row_id]
-    malformed[row_id] = (old_key[:3] + (99,), profile)
+    old_key, profile, bound = malformed[row_id]
+    malformed[row_id] = (old_key[:3] + (99,), profile, bound)
     try:
         audit(census["events"], relu_values, malformed, states, operations,
               stage_depths)
@@ -235,6 +242,15 @@ def main():
         pass
     else:
         raise ValueError("wrong range context was accepted")
+    malformed = dict(ranges)
+    malformed[row_id] = (old_key, profile, bound + 1)
+    try:
+        audit(census["events"], relu_values, malformed, states, operations,
+              stage_depths)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("wrong normalization bound was accepted")
     malformed = {row_id: dict(state) for row_id, state in states.items()}
     stage_output = next(row["output"] for key, row in operations.items()
                         if key[4] == 3)
@@ -266,6 +282,7 @@ def main():
         "post_refresh_target_levels": dict(sorted(levels.items())),
         "ordered_stage_level_consumption": stage_depths,
         "negative_checks": ["state_chain", "range_context",
+                            "normalization_bound",
                             "stage_output_level", "stage_depth"],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

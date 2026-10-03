@@ -229,6 +229,7 @@ int main()
     ranges[context].context_pu_identity_id = 2;
     ranges[context].context_callsite_id = context + 1;
     ranges[context].profile_id = 1;
+    ranges[context].positive_bound_tcon = context == 0 ? 2 : 8;
     for (UINT32 ordinal = 0; ordinal < 6; ++ordinal) {
       UINT32 index = context * 6 + ordinal;
       operations[index].id = index + 1;
@@ -288,6 +289,29 @@ int main()
          plans[0].range_id == 1 && plans[0].output_state_id == 1 &&
          plans[11].operation_id == 12 && plans[11].range_id == 2 &&
          plans[11].output_state_id == 12);
+  std::vector<VHO_FHE_CKKS_RELU_BOUND_BINDING> bindings;
+  assert(VHO_FHE_CKKS_Collect_Relu_Bound_Bindings(
+      plans, &bindings, NULL));
+  assert(bindings.size() == 2 &&
+         bindings[0].positive_bound_tcon == 2 &&
+         bindings[1].positive_bound_tcon == 8 &&
+         bindings[0].context_callsite_id == 1 &&
+         bindings[1].context_callsite_id == 2);
+  operations[7].parameter_tcon = 2;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Bound_Bindings(
+      plans, &bindings, NULL));
+  assert(bindings.size() == 2 && bindings[1].positive_bound_tcon == 8);
+  operations[7].parameter_tcon = 8;
+  ranges[1].positive_bound_tcon = 0;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Bound_Bindings(
+      plans, &bindings, NULL));
+  assert(bindings.size() == 2);
+  ranges[1].positive_bound_tcon = 8;
+  std::vector<VHO_FHE_CKKS_RELU_PLAN_STEP> incomplete(plans);
+  incomplete.pop_back();
+  assert(!VHO_FHE_CKKS_Collect_Relu_Bound_Bindings(
+      incomplete, &bindings, NULL));
+  assert(bindings.size() == 2);
 
   operations[8].input_state_id = 1;
   assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
@@ -364,7 +388,7 @@ int main()
   assert(events.size() == 13);
 
   printf("linked_schedule_rows=2 source_events=13 relu_plan_steps=12 ");
-  printf("relu_static_ordinals=6 stage_depth=3+4+4 ");
+  printf("relu_static_ordinals=6 stage_depth=3+4+4 bound_contexts=2 ");
   printf("partial_output=none\n");
   return 0;
 }

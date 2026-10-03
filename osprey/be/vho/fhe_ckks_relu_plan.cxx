@@ -246,3 +246,74 @@ BOOL VHO_FHE_CKKS_Collect_Relu_Plan_Steps(
   plans->swap(collected);
   return TRUE;
 }
+
+/*
+ * Join the six verified steps to their one range-owned normalization bound.
+ * No context-specific bound is reduced to a shared source-definition value.
+ */
+BOOL VHO_FHE_CKKS_Collect_Relu_Bound_Bindings(
+    const std::vector<VHO_FHE_CKKS_RELU_PLAN_STEP> &plans,
+    std::vector<VHO_FHE_CKKS_RELU_BOUND_BINDING> *bindings,
+    FILE *diagnostic)
+{
+  if (bindings == NULL || plans.empty())
+    return Report(diagnostic, "ReLU bound plan is absent");
+
+  std::vector<VHO_FHE_CKKS_RELU_BOUND_BINDING> collected;
+  std::map<CONTEXT_KEY, UINT32> counts;
+  std::map<CONTEXT_KEY, UINT32> binding_index;
+  for (size_t i = 0; i < plans.size(); ++i) {
+    const VHO_FHE_CKKS_RELU_PLAN_STEP &step = plans[i];
+    CONTEXT_KEY key(step.event.owner_pu_st,
+                    step.event.source_value_id,
+                    step.event.context_pu_identity_id,
+                    step.event.context_callsite_id);
+    UINT32 ordinal = counts[key]++;
+    DSL_FHE_MATERIALIZATION_OPERATION_RECORD operation;
+    DSL_FHE_CONTEXT_RANGE_RECORD range;
+    if (ordinal >= 6 ||
+        !DSL_FHE_Materialization_Find(
+            step.event.owner_pu_st, step.event.source_value_id,
+            step.event.context_pu_identity_id,
+            step.event.context_callsite_id, ordinal, &operation) ||
+        operation.id != step.operation_id ||
+        operation.operation_ordinal != ordinal ||
+        operation.operation_kind != expected_kind[ordinal] ||
+        operation.range_id != step.range_id ||
+        !DSL_FHE_Context_Range_Get(step.range_id, &range) ||
+        range.id != step.range_id ||
+        range.owner_pu_st != step.event.owner_pu_st ||
+        range.source_relu_value_id != step.event.source_value_id ||
+        range.context_pu_identity_id !=
+            step.event.context_pu_identity_id ||
+        range.context_callsite_id != step.event.context_callsite_id ||
+        range.positive_bound_tcon == 0)
+      return Report(diagnostic, "ReLU bound identity disagrees");
+
+    if (ordinal == 0) {
+      VHO_FHE_CKKS_RELU_BOUND_BINDING binding = {
+        step.event.owner_pu_st, step.event.source_value_id,
+        step.event.context_pu_identity_id,
+        step.event.context_callsite_id, range.id,
+        range.positive_bound_tcon
+      };
+      binding_index[key] = collected.size();
+      collected.push_back(binding);
+    } else {
+      const VHO_FHE_CKKS_RELU_BOUND_BINDING &binding =
+          collected[binding_index[key]];
+      if (binding.range_id != range.id ||
+          binding.positive_bound_tcon != range.positive_bound_tcon ||
+          (ordinal == 1 &&
+           operation.parameter_tcon != binding.positive_bound_tcon))
+        return Report(diagnostic, "ReLU normalization bound disagrees");
+    }
+  }
+  for (std::map<CONTEXT_KEY, UINT32>::const_iterator it =
+           counts.begin(); it != counts.end(); ++it) {
+    if (it->second != 6)
+      return Report(diagnostic, "ReLU bound context lacks six steps");
+  }
+  bindings->swap(collected);
+  return TRUE;
+}

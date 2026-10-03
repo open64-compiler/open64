@@ -185,6 +185,17 @@ altered stage depth or output level. These are pre-mutation checks; actual
 CKKS primitive results must each receive their own value-specific state
 after the atomic expansion API lands.
 
+The same FHE-owned module now exposes a read-only bound-binding collector.
+Given the verified six-step plans, it returns one record per exact
+`(owner PU, source ReLU value, context PU identity, callsite)` with the
+range ID and its positive-bound `TCON_IDX`. It checks that the normalization
+operation uses that exact range-owned TCON and that all six steps retain the
+same range; malformed, missing, or context-swapped bindings leave the output
+untouched. The common image validator remains responsible for the TCON's
+numeric positivity and type. This is the input contract for future typed B
+formal/caller-actual specialization, not an assertion that such formals or
+cloned executable PUs already exist.
+
 The retained context-state evidence also proves that the six captured source
 PUs cannot remain six fixed-schedule executable CKKS PUs. For the same
 source block PU, callsites 1/2 versus 3 need ordered post-refresh levels
