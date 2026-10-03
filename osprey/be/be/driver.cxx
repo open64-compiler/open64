@@ -136,6 +136,10 @@
 #include "dsl_lower.h"
 #include "dsl_shape_refine.h"
 #include "dsl_program_interface_internal.h"
+#include "dsl_pu_transaction.h"
+#include "dsl_ir_image.h"
+#include "dsl_region.h"
+#include "fhe_checkpoint.h"
 #include "fhe_convert.h"
 #include "fhe_materialize.h"
 #include "fhe_runtime_lower.h"
@@ -433,6 +437,7 @@ static BOOL need_fhe_materialization_output = FALSE;
 static BOOL need_fhe_runtime_lower_output = FALSE;
 static Output_File *ir_output = 0;
 static char *fhe_checkpoint_temp_name = NULL;
+static char *dsl_pu_checkpoint_temp_name = NULL;
 static UINT32 fhe_checkpoint_pu_count;
 static VHO_FHE_CONVERT_RESULT fhe_checkpoint_result;
 static UINT32 fhe_materialization_pu_count;
@@ -491,6 +496,13 @@ FHE_Checkpoint_Enabled (void)
 }
 
 static BOOL
+DSL_PU_Specialization_Checkpoint_Enabled (void)
+{
+  return VHO_DSL_PU_Specialization_Checkpoint_Output != NULL &&
+         VHO_DSL_PU_Specialization_Checkpoint_Output[0] != '\0';
+}
+
+static BOOL
 FHE_Checkpoint_Output_Active (void)
 {
   return need_fhe_checkpoint_output || need_fhe_materialization_output ||
@@ -504,6 +516,16 @@ Close_FHE_Checkpoint_Output (void)
     ir_output = NULL;
     Close_Output_Info();
   }
+}
+
+static void
+Cleanup_DSL_PU_Specialization_Checkpoint (void)
+{
+  Register_Cleanup_Callback(NULL);
+  Close_FHE_Checkpoint_Output();
+  VHO_FHE_Checkpoint_Abort();
+  free(dsl_pu_checkpoint_temp_name);
+  dsl_pu_checkpoint_temp_name = NULL;
 }
 
 static void
@@ -673,16 +695,26 @@ load_components (INT argc, char **argv)
     FmtAssert(fhe_checkpoint_count <= 1,
               ("FHE conversion, materialization, and runtime-lowering "
                "checkpoints are mutually exclusive"));
-    if (FHE_Checkpoint_Enabled()) {
+    FmtAssert(!DSL_PU_Specialization_Checkpoint_Enabled() ||
+              !FHE_Checkpoint_Enabled(),
+              ("DSL PU specialization and FHE checkpoints are mutually "
+               "exclusive"));
+    if (FHE_Checkpoint_Enabled() ||
+        DSL_PU_Specialization_Checkpoint_Enabled()) {
       Run_lno = Run_autopar = Run_Distr_Array = FALSE;
       Run_preopt = Run_wopt = Run_vsaopt = Run_ipsaopt = FALSE;
       Run_cg = Run_w2c = Run_w2f = Run_w2fc_early = Run_ipl = FALSE;
+      if (DSL_PU_Specialization_Checkpoint_Enabled()) {
+        VHO_DSL_Enable_WOPT = FALSE;
+        Emit_Global_Data = FALSE;
+      }
     }
 
     if (!(Run_lno || (Run_wopt || (Run_vsaopt || Run_ipsaopt))
 	  || Run_preopt || Run_cg || Run_w2c || Run_w2f
           || Run_w2fc_early || Run_ipl) &&
-        !FHE_Checkpoint_Enabled())
+        !FHE_Checkpoint_Enabled() &&
+        !DSL_PU_Specialization_Checkpoint_Enabled())
       Run_cg = TRUE;		    /* if nothing is set, run CG */
 
     if (Run_cg || Run_lno || Run_autopar) {
@@ -2389,6 +2421,106 @@ Preorder_Process_PUs (PU_Info *current_pu)
   Postprocess_PU (current_pu);
 } /* Preorder_Process_PUs */
 
+/* A program-scope transaction owns resident PUs until the whole image is
+ * validated and written.  Normal backend traversal remains per-PU. */
+static void
+Process_DSL_PU_Specialization_Checkpoint (PU_Info *program)
+{
+  DSL_PU_TRANSACTION_POLICY policy;
+  FmtAssert(DSL_PU_Transaction_Get_Policy(&policy),
+            ("DSL PU specialization has no registered policy"));
+  FmtAssert(program != NULL,
+            ("DSL PU specialization requires at least one PU"));
+
+  MEM_POOL_Push(MEM_pu_nz_pool_ptr);
+  MEM_POOL_Push(MEM_pu_pool_ptr);
+  for (PU_Info *pu = program; pu != NULL; pu = PU_Info_next(pu)) {
+    FmtAssert(PU_Info_child(pu) == NULL,
+              ("DSL PU specialization does not support nested PUs"));
+    Read_Local_Info(MEM_pu_nz_pool_ptr, pu);
+    Save_Local_Symtab(CURRENT_SYMTAB, pu);
+  }
+
+  DSL_PU_TRANSACTION_PLAN plan;
+  memset(&plan, 0, sizeof(plan));
+  void *policy_state = NULL;
+  BOOL valid = policy.build_plan(program, &plan, &policy_state, stderr);
+  DSL_PU_TRANSACTION_RESULT *result = NULL;
+  if (valid)
+    valid = DSL_PU_Transaction_Apply_Resident
+                (program, &plan, &result, stderr);
+  if (valid && policy.after_apply != NULL)
+    valid = policy.after_apply(program, result, policy_state, stderr);
+  if (policy.release != NULL)
+    policy.release(policy_state);
+  DSL_PU_Transaction_Result_Delete(result);
+  FmtAssert(valid,
+            ("DSL PU specialization transaction failed"));
+
+  valid = DSL_IR_Image_Validate(stderr) &&
+          DSL_Call_Image_Validate(stderr) &&
+          DSL_Call_ABI_Image_Validate(stderr) &&
+          DSL_PU_Interface_Image_Validate(stderr) &&
+          DSL_Program_Interface_Image_Validate(stderr) &&
+          DSL_Effect_Image_Validate(stderr);
+  for (PU_Info *pu = program; pu != NULL && valid;
+       pu = PU_Info_next(pu)) {
+    Restore_Local_Symtab(pu);
+    Current_pu = &PU_Info_pu(pu);
+    Current_Map_Tab = PU_Info_maptab(pu);
+    valid = DSL_PU_Interface_Image_Validate_PU(pu, stderr) &&
+            DSL_Call_ABI_Image_Validate_PU(pu, stderr) &&
+            DSL_Region_Verify_PU(pu, stderr);
+  }
+  FmtAssert(valid,
+            ("DSL PU specialization image validation failed"));
+
+  const char *output = VHO_DSL_PU_Specialization_Checkpoint_Output;
+  size_t length = strlen(output) + sizeof(".tmp");
+  dsl_pu_checkpoint_temp_name = (char *)malloc(length);
+  FmtAssert(dsl_pu_checkpoint_temp_name != NULL,
+            ("could not allocate DSL PU checkpoint pathname"));
+  snprintf(dsl_pu_checkpoint_temp_name, length, "%s.tmp", output);
+  remove(dsl_pu_checkpoint_temp_name);
+  valid = VHO_FHE_Checkpoint_Begin
+              (dsl_pu_checkpoint_temp_name, output,
+               "DSL-PU-SPECIALIZATION", stderr);
+  if (!valid) {
+    free(dsl_pu_checkpoint_temp_name);
+    dsl_pu_checkpoint_temp_name = NULL;
+    FmtAssert(FALSE, ("could not reserve DSL PU checkpoint %s", output));
+  }
+  Register_Cleanup_Callback(Cleanup_DSL_PU_Specialization_Checkpoint);
+  ir_output = Open_Output_Info(dsl_pu_checkpoint_temp_name);
+  FmtAssert(ir_output != NULL,
+            ("could not open DSL PU checkpoint %s",
+             dsl_pu_checkpoint_temp_name));
+  UINT32 pu_count = 0;
+  for (PU_Info *pu = program; pu != NULL; pu = PU_Info_next(pu)) {
+    Restore_Local_Symtab(pu);
+    Current_pu = &PU_Info_pu(pu);
+    Current_Map_Tab = PU_Info_maptab(pu);
+    Write_PU_Info(pu);
+    ++pu_count;
+  }
+  total_pu_count = pu_count;
+  Write_Global_Info(program);
+  Close_FHE_Checkpoint_Output();
+  valid = VHO_FHE_Checkpoint_Finalize(&pu_count, stderr) &&
+          VHO_FHE_Checkpoint_Publish_Artifacts(stderr) &&
+          VHO_FHE_Checkpoint_Publish_Binary(stderr);
+  if (!valid) {
+    Cleanup_DSL_PU_Specialization_Checkpoint();
+    FmtAssert(FALSE, ("could not publish DSL PU checkpoint %s", output));
+  }
+  Register_Cleanup_Callback(NULL);
+  VHO_FHE_Checkpoint_Complete();
+  free(dsl_pu_checkpoint_temp_name);
+  dsl_pu_checkpoint_temp_name = NULL;
+  fprintf(stderr, "DSL PU specialization checkpoint: output=%s pu=%u\n",
+          output, pu_count);
+}
+
 static void Print_Tlog_Header(INT argc, char **argv)
 {
   INT i;
@@ -2643,7 +2775,8 @@ main (INT argc, char **argv)
   }
   BOOL needs_lno = FILE_INFO_needs_lno (File_info);
 
-  if (needs_lno && !Run_ipl && !FHE_Checkpoint_Enabled()) {
+  if (needs_lno && !Run_ipl && !FHE_Checkpoint_Enabled() &&
+      !DSL_PU_Specialization_Checkpoint_Enabled()) {
     Run_Distr_Array = TRUE;
     if (!Run_lno && !Run_autopar) {
       /* ipl is not running, and LNO has not been loaded */
@@ -2707,6 +2840,9 @@ main (INT argc, char **argv)
   }
 #endif
 
+  if (DSL_PU_Specialization_Checkpoint_Enabled()) {
+    Process_DSL_PU_Specialization_Checkpoint(pu_tree);
+  } else {
 #if defined(TARG_SL)
   if (!Run_ipisr) {
     for (PU_Info *current_pu = pu_tree;
@@ -2737,6 +2873,7 @@ main (INT argc, char **argv)
 #endif
   }
 #endif
+  }
 
   /* Terminate stdout line if showing PUs: */
   if (Show_Progress) {

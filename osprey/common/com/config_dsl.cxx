@@ -37,8 +37,12 @@ BOOL VHO_DSL_Dump_After_Lowering = FALSE;
 BOOL VHO_DSL_Dump_After_Lowering_Set = FALSE;
 BOOL VHO_DSL_Dump_After_Shape_Refinement = FALSE;
 BOOL VHO_DSL_Dump_After_Shape_Refinement_Set = FALSE;
+char *VHO_DSL_PU_Specialization_Checkpoint_Output = NULL;
 
 static OPTION_DESC Options_DSL[] = {
+  { OVK_NAME, OV_VISIBLE, FALSE, "pu_specialization_checkpoint",
+    "pu_specialization_checkpoint", 0, 0, 0,
+    &VHO_DSL_PU_Specialization_Checkpoint_Output, NULL },
   { OVK_BOOL, OV_VISIBLE, TRUE, "shape_refine", "shape_refine",
     FALSE, 0, 0, &VHO_DSL_Enable_Shape_Refinement,
     &VHO_DSL_Enable_Shape_Refinement_Set },

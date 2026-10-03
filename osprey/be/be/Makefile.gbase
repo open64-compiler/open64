@@ -668,6 +668,7 @@ BE_COM_TARG_CXX_SRCS = \
 BE_COM_CXX_SRCS +=	\
   clone.cxx		\
   clone_DST_utils.cxx	\
+  dsl_pu_transaction.cxx \
 
 BE_LNO_CXX_SRCS = \
   soe.cxx \

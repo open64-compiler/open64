@@ -160,6 +160,8 @@ BE_OPT_DIR= $(BUILD_TOT)/be/opt
 
 LDIRT = $(TARGETS)
 LDIRT += dsl_builder_contract_test dsl_builder_contract_test.o
+LDIRT += dsl_pu_transaction_contract_test \
+	dsl_pu_transaction_contract_test.o
 LDIRT += dsl_tensor_evolution_contract_test \
 	dsl_tensor_evolution_contract_test.o
 LDIRT += dsl_opt_plan_contract_test dsl_opt_plan_contract_test.o
@@ -361,6 +363,17 @@ dsl_builder_contract_test: $(OBJECTS) controls.o dsl_builder_contract_test.o
 
 dsl_builder_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_builder_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_pu_transaction_contract_test: dsl_builder.o dsl_contract.o \
+		dsl_simp.o controls.o \
+		dsl_pu_transaction_contract_test.o $(BUILD_AREA)/be/$(BE_SO)
+	$(link.c++f) -o $@ dsl_pu_transaction_contract_test.o controls.o \
+		dsl_builder.o dsl_contract.o dsl_simp.o \
+		$(BUILD_AREA)/be/$(BE_SO) $(LDFLAGS)
+
+dsl_pu_transaction_contract_test.o: \
+	$(BE_COM_DIR)/tests/dsl_pu_transaction_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_tensor_evolution_contract_test: $(OBJECTS) controls.o \

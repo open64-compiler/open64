@@ -208,11 +208,18 @@ DSL_Call_ABI_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
                 WN_ty(parm) == WN_ty(address) &&
                 TY_kind(WN_ty(parm)) == KIND_POINTER &&
                 TY_pointed(WN_ty(parm)) == value.ty;
-            BOOL scalar_bound = WN_operator(address) == OPR_LDID &&
+            TYPE_ID scalar_mtype = TY_mtype(value.ty);
+            BOOL scalar_value = WN_operator(address) == OPR_LDID &&
                 WN_Parm_By_Value(parm) &&
-                TY_mtype(value.ty) == MTYPE_F8 &&
+                TY_kind(value.ty) == KIND_SCALAR &&
+                (scalar_mtype == MTYPE_I4 ||
+                 scalar_mtype == MTYPE_U4 ||
+                 scalar_mtype == MTYPE_I8 ||
+                 scalar_mtype == MTYPE_U8 ||
+                 scalar_mtype == MTYPE_F4 ||
+                 scalar_mtype == MTYPE_F8) &&
                 WN_ty(address) == value.ty && WN_ty(parm) == value.ty;
-            if ((!tensor_reference && !scalar_bound) ||
+            if ((!tensor_reference && !scalar_value) ||
                 !WN_Parm_Read_Only(parm) || WN_Parm_Out(parm) ||
                 !WN_Parm_Passed_Not_Saved(parm))
                 return DSL_Call_ABI_PU_Report
@@ -320,10 +327,14 @@ DSL_PU_Interface_Image_Validate (FILE *diagnostic)
     return TRUE;
 }
 
-/*
- * Cross-check all persisted formal rows against one active FUNC_ENTRY and
- * local symtab, including hidden result formals. This is read-only.
- */
+struct DSL_PU_FORMAL_ORDINAL_LESS {
+    BOOL operator()(const DSL_PU_FORMAL_RECORD &kid0,
+                    const DSL_PU_FORMAL_RECORD &kid1) const
+    { return kid0.formal_ordinal < kid1.formal_ordinal; }
+};
+
+/* Cross-check the physical formal order, even when append-only row IDs are
+ * not in ordinal order after insertion before hidden results. */
 BOOL
 DSL_PU_Interface_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
 {
@@ -342,6 +353,7 @@ DSL_PU_Interface_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
         return DSL_PU_Interface_PU_Report
                    (diagnostic, "invalid function entry", 0);
 
+    std::vector<DSL_PU_FORMAL_RECORD> ordered_formals;
     for (UINT32 i = 1; i <= DSL_PU_Interface_Image_Formal_Count(); ++i) {
         DSL_PU_FORMAL_RECORD formal;
         if (!DSL_PU_Interface_Image_Get_Formal(i, &formal))
@@ -349,6 +361,12 @@ DSL_PU_Interface_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
                        (diagnostic, "missing formal", i);
         if (formal.owner_pu_st != owner_pu_st)
             continue;
+        ordered_formals.push_back(formal);
+    }
+    std::sort(ordered_formals.begin(), ordered_formals.end(),
+              DSL_PU_FORMAL_ORDINAL_LESS());
+    for (UINT32 i = 0; i < ordered_formals.size(); ++i) {
+        const DSL_PU_FORMAL_RECORD &formal = ordered_formals[i];
         DSL_RETIRED_FORMAL_RECORD retired;
         if (DSL_Program_Interface_Image_Find_Retired_Formal
                 (formal.id, &retired))
