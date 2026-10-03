@@ -35,5 +35,6 @@ extern BOOL VHO_DSL_Dump_After_Lowering;
 extern BOOL VHO_DSL_Dump_After_Lowering_Set;
 extern BOOL VHO_DSL_Dump_After_Shape_Refinement;
 extern BOOL VHO_DSL_Dump_After_Shape_Refinement_Set;
+extern char *VHO_DSL_PU_Specialization_Checkpoint_Output;
 
 #endif /* config_dsl_INCLUDED */

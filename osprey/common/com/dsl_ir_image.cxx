@@ -395,6 +395,37 @@ DSL_Call_Image_Replace_Call_WN
     return FALSE;
 }
 
+/* The physical replacement and the table change belong to one terminal
+ * program transaction; this helper is intentionally private to that path. */
+BOOL
+DSL_Call_Image_Retarget_Call_WN
+        (DSL_CALLSITE_METADATA_ID callsite_id, const WN *expected,
+         WN *replacement, ST_IDX new_callee)
+{
+    if (callsite_id == DSL_CALLSITE_METADATA_INVALID_ID ||
+        callsite_id > DSL_callsite_metadata_table.Size() ||
+        expected == NULL || replacement == NULL ||
+        new_callee == ST_IDX_ZERO)
+        return FALSE;
+    DSL_PU_SOURCE_IDENTITY_RECORD identity;
+    if (!DSL_Call_Image_Find_PU_Identity(new_callee, &identity))
+        return FALSE;
+    DSL_CALLSITE_METADATA_RECORD &record =
+        DSL_callsite_metadata_table[callsite_id - 1];
+    ST_IDX old_callee = record.callee_pu_st;
+    if (!DSL_Call_Image_Replace_Call_WN
+            (callsite_id, expected, replacement))
+        return FALSE;
+    record.callee_pu_st = new_callee;
+    if (!DSL_Call_Image_Validate(NULL)) {
+        record.callee_pu_st = old_callee;
+        DSL_Call_Image_Replace_Call_WN
+            (callsite_id, replacement, const_cast<WN *>(expected));
+        return FALSE;
+    }
+    return TRUE;
+}
+
 UINT32 DSL_Call_Image_PU_Identity_Count (void)
 { return DSL_pu_source_identity_table.Size(); }
 
@@ -623,6 +654,39 @@ DSL_Call_ABI_Image_Find_Argument_By_Id
 }
 
 BOOL
+DSL_Call_ABI_Image_Shift_Arguments
+        (DSL_CALLSITE_METADATA_ID callsite_id,
+         UINT32 first_ordinal, UINT32 count)
+{
+    if (count == 0 ||
+        callsite_id == DSL_CALLSITE_METADATA_INVALID_ID ||
+        callsite_id > DSL_callsite_metadata_table.Size() ||
+        first_ordinal == DSL_CALL_ARGUMENT_INVALID_ORDINAL)
+        return FALSE;
+    for (UINT32 i = 0; i < DSL_call_argument_table.Size(); ++i) {
+        const DSL_CALL_ARGUMENT_RECORD &argument =
+            DSL_call_argument_table[i];
+        if (argument.callsite_id != callsite_id)
+            continue;
+        if (argument.actual_ordinal !=
+            argument.callee_formal_ordinal ||
+            (argument.actual_ordinal >= first_ordinal &&
+             argument.actual_ordinal >
+                 DSL_CALL_ARGUMENT_INVALID_ORDINAL - count))
+            return FALSE;
+    }
+    for (UINT32 i = 0; i < DSL_call_argument_table.Size(); ++i) {
+        DSL_CALL_ARGUMENT_RECORD &argument = DSL_call_argument_table[i];
+        if (argument.callsite_id == callsite_id &&
+            argument.actual_ordinal >= first_ordinal) {
+            argument.actual_ordinal += count;
+            argument.callee_formal_ordinal += count;
+        }
+    }
+    return DSL_Call_ABI_Image_Validate(NULL);
+}
+
+BOOL
 DSL_Call_ABI_Image_Find_Argument
         (const WN *call, UINT32 actual_ordinal,
          DSL_CALL_ARGUMENT_RECORD *record)
@@ -798,6 +862,35 @@ DSL_PU_Interface_Image_Find_Formal
             return DSL_IR_Table_Get(DSL_pu_formal_table, i + 1, record);
     }
     return FALSE;
+}
+
+/* Commit-only ordinal shift. The physical entry is rebuilt by the owning
+ * transaction before a PU-level verifier observes these rows again. */
+BOOL
+DSL_PU_Interface_Image_Shift_Formals
+        (ST_IDX owner_pu_st, UINT32 first_ordinal, UINT32 count)
+{
+    if (count == 0 || first_ordinal == DSL_PU_FORMAL_INVALID_ORDINAL ||
+        owner_pu_st == ST_IDX_ZERO)
+        return FALSE;
+    DSL_PU_SOURCE_IDENTITY_RECORD identity;
+    if (!DSL_Call_Image_Find_PU_Identity(owner_pu_st, &identity))
+        return FALSE;
+    for (UINT32 i = 0; i < DSL_pu_formal_table.Size(); ++i) {
+        const DSL_PU_FORMAL_RECORD &formal = DSL_pu_formal_table[i];
+        if (formal.owner_pu_st == owner_pu_st &&
+            formal.formal_ordinal >= first_ordinal &&
+            formal.formal_ordinal >
+                DSL_PU_FORMAL_INVALID_ORDINAL - count)
+            return FALSE;
+    }
+    for (UINT32 i = 0; i < DSL_pu_formal_table.Size(); ++i) {
+        DSL_PU_FORMAL_RECORD &formal = DSL_pu_formal_table[i];
+        if (formal.owner_pu_st == owner_pu_st &&
+            formal.formal_ordinal >= first_ordinal)
+            formal.formal_ordinal += count;
+    }
+    return DSL_PU_Interface_Image_Validate(NULL);
 }
 
 BOOL

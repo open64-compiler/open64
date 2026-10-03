@@ -35,5 +35,15 @@ extern void DSL_IR_Image_Clone_PU_Restore
 extern BOOL DSL_Call_Image_Replace_Call_WN
                 (DSL_CALLSITE_METADATA_ID id, const WN *expected,
                  WN *replacement);
+extern BOOL DSL_PU_Interface_Image_Shift_Formals
+                (ST_IDX owner_pu_st, UINT32 first_ordinal,
+                 UINT32 count);
+extern BOOL DSL_Call_ABI_Image_Shift_Arguments
+                (DSL_CALLSITE_METADATA_ID callsite_id,
+                 UINT32 first_ordinal, UINT32 count);
+extern BOOL DSL_Call_Image_Retarget_Call_WN
+                (DSL_CALLSITE_METADATA_ID callsite_id,
+                 const WN *expected, WN *replacement,
+                 ST_IDX new_callee);
 
 #endif /* dsl_pu_specialize_internal_INCLUDED */

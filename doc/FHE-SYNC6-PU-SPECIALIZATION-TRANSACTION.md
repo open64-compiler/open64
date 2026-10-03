@@ -162,8 +162,12 @@ supplies the fourth group's approved bounds as one kind of argument request:
    clones. A local ST_IDX never identifies a value without its owning PU.
 2. **Executable signatures:** domain/schema version, source function
    identity, canonical byte sequence, and SHA-256. The generic transaction
-   compares complete canonical bytes on a digest match; a digest alone is
-   not semantic equality. Each policy specifies which executable properties
+   compares complete canonical bytes; a digest alone is not semantic
+   equality. In the first generic service, `signature_sha256` is a
+   producer-supplied diagnostic fingerprint: its lowercase syntax and
+   cross-variant consistency are checked, but the service does not recompute
+   it. A domain policy using that digest as provenance must authenticate it
+   before submitting the plan. Each policy specifies which executable properties
    enter the versioned encoding. FHE includes ordered logical CKKS
    op/version, operand/result TY and representation, static circuit
    constants, effects, layout/slots, state/level/scale/components,
@@ -402,6 +406,22 @@ temporary valid-looking output.
 | P3: checkpoint | Pre-traversal driver hook, all-PU retention, cleanup, complete gates, mapped reopen, atomic publish, compatibility. | FHE registers producer/semantic callbacks. |
 | P4: CKKS gate | Clone-aware `.ckks_ops.B`/`.T`, exact origin/event census and before/after traces. | FHE owns legality, numerical checks, and later terminal C ABI lowering. |
 
-Current code has partial P0 preflight and isolated logical-image,
-REGION-store, and scalar-ABI tests. P1-P4 are incomplete. Those tests do
-not authorize a completion PR or a SYNC-6 certification claim.
+The generic `be/com` transaction now implements P0-P2 for the supported
+non-nested, non-address-taken PU subset. Its producer test retains a physical
+three-PU `.B` and `ir_b2a -st -src` trace, with two distinct F8 bound actuals,
+a root-owned constant, logical origins, call/comment/ABI evidence, and REGION
+evidence. The dedicated `-DSL:pu_specialization_checkpoint=<path>` backend
+path retains all PUs, invokes a registered domain policy once, verifies the
+result, and atomically publishes the binary image. Without a policy it fails
+before opening output. Generic checkpoint wiring is not FHE SYNC-6
+certification: the FHE producer must still register its plan and post-apply
+semantic callbacks and demonstrate the CKKS-operation `.B`/`.T` gate in P4.
+
+When `OPEN64_WHIRL2C` is provided, the producer test also retains
+`pu_transaction_w2c.B`, its `ir_b2a -st -src` trace, and `pu_transaction_w2c.c`.
+This standard-WHIRL ABI view preserves the generic PU, the physical specialized
+PU with its typed `bound_b` formal, and the two routed calls with distinct
+bound constants. Its body returns the input tensor directly; it is not a
+translation or lowering of the executable `common.relu` node in
+`pu_transaction_apply.B`. That DSL-bearing image remains the semantic proof
+and must pass DSL lowering before `whirl2c` can translate its computation.
