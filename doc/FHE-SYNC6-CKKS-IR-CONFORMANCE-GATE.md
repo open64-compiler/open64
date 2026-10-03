@@ -93,7 +93,7 @@ source/CNN and FHE conversion
 | --- | --- | --- |
 | S6-0a semantic census/physical contract | Main/common owns append-only logical registry contracts and a generic owner-PU-safe atomic one-to-many native DSL value expansion API; reuse physical `OPR_DSL` and existing DSL image/inspection tables. FHE supplies semantic operands, state rules, and tests. | Accepted handoff table and transaction contract; no enum or binary change before review. |
 | S6-0b opaque producer and per-value state | FHE task consumes only reviewed backend-safe common APIs and binds existing FHE CKKS value-state records to each new result value. | Focused add/sub/mul/rotate/rescale/relin/bootstrap `.B`/`.T` fixtures with source and state evidence. |
-| S6-0c full ResNet expansion | FHE task expands the certified high-level schedule and 19 context-specific ReLU sequences. | Six-PU `.ckks_ops.B`/`.T`, event-to-step map, key/rotation/depth census, independent numerical checks. |
+| S6-0c full ResNet expansion | FHE task expands the six source PUs, certified high-level schedule, and 19 context-specific ReLU sequences. It specializes reused PUs by complete executable signature when required. | Clone-aware `.ckks_ops.B`/`.T` with actual PU count, origin-to-clone/event-to-step maps, key/rotation/depth census, and independent numerical checks. |
 | S6-0d gate and terminal lowering | FHE task verifies the complete IR and lowers it through the existing stable C ABI; main reviews standard-WHIRL boundary. | Negative malformed-state/ownership/depth/key tests and generated-C/mock equivalence to SYNC-5. |
 | S6-1 and later | ACE provider and runtime owners, after S6-0 certification. | New exact ACE pin/capability admission, then broker/worker/client-server execution. |
 
@@ -173,6 +173,21 @@ join to their exact context/range/state chain, with post-refresh target
 levels 15 (16 contexts), 17 (1), and 18 (2). This is inspection evidence,
 not a replacement for the native mapped-image and CKKS-state gate.
 
+The retained context-state evidence also proves that the six captured source
+PUs cannot remain six fixed-schedule executable CKKS PUs. For the same
+source block PU, callsites 1/2 versus 3 need ordered post-refresh levels
+`(15,15)` versus `(15,18)`; callsite 5 versus 6 has the same split; and
+callsite 8 versus 9 needs `(15,15)` versus `(15,17)`. The hashed
+`fhe_ckks_context_signature_audit.py` report derives three additional
+context-specialized clones, giving a **minimum of nine executable PUs**
+if each context bound B is passed as an explicit typed plaintext formal.
+That formal, its per-caller actual, exact TY, and origin PU/value/static-event
+identity require reviewed native support. If B instead becomes a static
+per-context constant, the nine call contexts may need one clone each,
+giving up to ten total PUs. The final count is a certification result, not
+a fixed acceptance assumption; metadata-only B selection and an unproved
+dynamic-level ABI are not permitted.
+
 ### Proposed Shared Contract Census
 
 All rows below are proposed v1 *logical* names, not allocated enum values.
@@ -214,8 +229,9 @@ implementation writes any executable CKKS node.
 - Two-context tests with equal signatures proving clone reuse, and different
   signatures proving deterministic whole-PU specialization, exact call ABI,
   typed B formal behavior, and distinct executable value levels.
-- Full six-PU ResNet census: 147 high-level events completely mapped to
-  executable CKKS steps; 19 explicit pre-ReLU bootstraps with targets
+- Full six-source-PU ResNet census with a verified executable clone count:
+  147 high-level events completely mapped to CKKS steps; 19 explicit
+  pre-ReLU bootstraps with targets
   15 x 16, 17 x 1, 18 x 2; no standalone executable ReLU.
 - Separate-process `.ckks_ops.B` mapped reopen and `ir_b2a -st -src` with
   nonzero source positions; old/non-FHE compatibility and malformed-image
