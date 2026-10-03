@@ -1,7 +1,8 @@
 # SYNC-6 CKKS Context Specialization Contract
 
-Status: FHE consumer proposal for main/common review. No clone or new formal
-API is implemented by this document. See
+Status: approved architecture direction; exact shared API and physical
+transaction remain subject to main/common review. No clone or new formal API
+is implemented by this document. See
 `FHE-SYNC6-CKKS-IR-CONFORMANCE-GATE.md` for the full CKKS IR gate.
 
 ## Why a PU clone is required

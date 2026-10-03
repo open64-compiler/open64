@@ -886,6 +886,57 @@ The materialization pass consumes CKKSScaleBootstrapPlanIR and emits CKKS.rescal
 
 Type propagation, scheme-state propagation, and placement optimization are three distinct compiler responsibilities. Section 6.4 determines Cipher/Plain type. Section 11.3 computes CKKS scale/level transfer functions. Section 11.4 guarantees an executable correctness baseline at -O0. ReSBM is allowed to replace that provisional placement only when optimization and bootstrap policy permit it. HPOLY/HPAO must consume the finalized CKKS scale/bootstrap schedule rather than attempting to rediscover bootstrap placement.
 
+### 11.9 SYNC-6 Executable Context Identity
+
+The source ResNet-20 capture has six PUs and nine block callsites. Its
+certified CKKS plan has nineteen ReLU contexts, not nineteen independent
+source definitions. Three shared block PUs are called with incompatible
+ordered post-refresh levels: `(15,15)` and `(15,18)` in two block families,
+and `(15,15)` and `(15,17)` in a third. A single executable result value in
+one shared PU cannot have both states. This is an executable-state problem,
+not a reason to change canonical tensor TY or call the contexts different
+Python function versions. The retained source definition, callsite, range,
+and CKKS state identities must remain connected through lowering.
+
+At `-O0`, specialize a PU by its complete ordered executable CKKS signature:
+operator/operand types, encrypted layout, key needs, level/scale/precision
+transitions, and refresh schedule. Reuse a clone only when those facts agree.
+The preferred ABI passes each approved, context-specific normalization bound
+`B` as an exact-TY plaintext formal and caller actual, so two contexts with
+the same circuit signature can share a clone without losing their distinct
+data. A block with two ReLUs needs two independently bound values unless
+their equality is proved. The observed ReLU signatures imply at least nine
+executable PUs under this ABI; all other CKKS events must be checked before
+the final count is certified. A reviewed `-O0` fallback may instead embed B
+in the specialized body, potentially requiring ten PUs for this call graph.
+That choice is keyed by the complete signature including bound bytes, never
+by arbitrary call ordinal or TCON index alone. Neither option may select B
+solely from nonexecutable metadata.
+
+Reuse Open64's `IPO_CLONE` tree/symtab/map/DST mechanism where legal, but
+extend it through one generic, owner-safe transaction that updates the DSL
+and FHE value, REGION, formal, call-ABI, callsite, state, and origin images
+with the physical PUs and calls. The CKKS one-to-many source-value expansion
+is a separate atomic transaction. Its read-only preflight is necessary but
+not sufficient: all new nodes, symbols, rows, and use redirections must be
+staged, with explicit rollback for every fallible commit action. A rejected
+request leaves the active program unchanged; a failed all-PU checkpoint
+publishes no partial `.B`. Both transactions must preserve typed links from
+the original source value/static event to every cloned executable step.
+Per-step CKKS state belongs to the resulting value, never to a mutated TY.
+
+The provider-independent `.ckks_ops.B` gate precedes ACE interaction. Use
+the existing Open64 C-ABI mock to compare terminal lowering with the SYNC-5
+baseline; do not add a second mock during CKKS IR development. The selected
+ACE provider is admitted only after a new reviewed pin supplies an
+evaluation-only context and versioned public/evaluation-key and ciphertext
+import/export. An ACE evaluator that retains a decryptor or key generator
+cannot satisfy the secretless server contract. The detailed implementation
+and test requirements are in
+`FHE-SYNC6-CKKS-IR-CONFORMANCE-GATE.md`,
+`FHE-SYNC6-CONTEXT-SPECIALIZATION-CONTRACT.md`, and
+`FHE-SYNC6-ACE-ANT-ADMISSION-AUDIT.md`.
+
 ## 12. HPOLY and HPAO Polynomial-Level Optimization
 
 ### 12.1 Architectural Motivation

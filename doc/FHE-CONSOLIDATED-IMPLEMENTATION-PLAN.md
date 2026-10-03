@@ -697,6 +697,31 @@ The exact pinned ACE import/export gap is recorded in
 `doc/FHE-SYNC6-ACE-ANT-ADMISSION-AUDIT.md`. It blocks later ACE admission and
 the final client/server exit, not CKKS IR creation or mock-based verification.
 
+The SYNC-6 implementation sequence is deliberately split at two shared
+mutation contracts. A read-only grouped-expansion preflight is useful
+evidence, but does not close either transaction or authorize `.ckks_ops.B`
+publication. The six captured source PUs are not a fixed executable-PU
+target: the accepted nineteen-context state evidence requires at least nine
+fixed-schedule variants when B is a typed formal. The exact data-flow and
+clone legality review are in
+`doc/FHE-SYNC6-CONTEXT-SPECIALIZATION-CONTRACT.md`.
+
+| Review gate | Owner and required change | Tests and exit evidence |
+| --- | --- | --- |
+| S6-0a atomic grouped expansion | Main/common completes the owner-PU-safe one-source/many-CKKS-step transaction. Preflight every group, direct operand, source use, call actual, and REGION. Stage nodes/rows/symbols before commit and provide explicit rollback for every late failure; a post-mutation assertion is not an atomicity mechanism. Keep the source as nonexecutable `LOWERED` provenance with typed event-to-step rows. | Six-group ReLU mapped roundtrip, direct-kid and final-result checks, wrong-owner/forward-use negatives, fault injection after each WN/ST/image/call-ABI/REGION action, unchanged pre/post snapshots on rejection. |
+| S6-0b executable context specialization | Main/common reviews a generic `IPO_CLONE`-based PU/interface/call transaction covering all DSL/FHE image ownership. FHE derives the complete CKKS signature and exact approved B data. Preferred ABI adds exact-TY plaintext B formals and per-callsite actuals; a static-B clone fallback requires separate review. Equivalent signatures reuse one clone, and source-definition identity survives. | Two equal-signature contexts reuse one clone with distinct bound actuals; incompatible levels split. Verify two independent B values per block call, no local-ST collision, complete formals/actuals/REGION/source positions, and rollback on failed clone or call retarget. The retained read-only ResNet audit proposes 18 caller actuals plus one entry-owned bound. |
+| S6-0c complete FHE CKKS producer | FHE consumes only merged common transactions, emits explicit CKKS operands/results and value states, and computes final specialization from all operators rather than the ReLU-only lower bound. | All 147 high-level context events map to executable CKKS steps; 19 explicit pre-ReLU bootstraps; no live common.relu or BN; complete key/rotation/depth/state report; separate-process `.ckks_ops.B` reopen with `ir_b2a -st -src`. |
+| S6-0d terminal lowering | FHE lowers the verified CKKS graph through the unchanged stable C ABI, with main review of the standard-WHIRL boundary. | Generated C links to the existing ABI mock and agrees with the certified SYNC-5 reference; malformed state/key/layout and failure paths publish no final or temporary artifact. |
+| S6-1 ACE admission | ACE/provider owner publishes a new immutable pin with an evaluator-only constructor and versioned public context, evaluation-key, ciphertext-input, and ciphertext-output import/export. Open64 compares the complete frozen manifest before link or execution. | Fresh-process positive/negative transport tests and binary/dependency proof that the server cannot generate, retain, or use a secret key or decryptor. The current pin remains `CAPABILITY_MISSING`. |
+| S6-2 to S6-6 client/server closure | Runtime owners implement broker, supervised secretless worker, client provisioning/transport, exact ACE execution, and failure containment in that order. | Full encrypted ResNet-20 inference returns ciphertext logits for client-only decryption; manifest, accuracy, resource, lifecycle, and adversarial negatives meet the existing SYNC-6 exit below. |
+
+Do not stack FHE mutating code on unpublished main/common work. Main first
+publishes and merges each generic transaction; the FHE branch then rebases
+and certifies its consumer. The ten-PU static-B option is a bounded `-O0`
+fallback, not an unreviewed substitution for the preferred nine-variant
+typed-B contract or a claim that other CKKS operations cannot require more
+specialization.
+
 Target command shape:
 
 ```text
