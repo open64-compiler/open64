@@ -3,11 +3,14 @@
 Status: staged main/common contract. The nine logical CKKS v1 operators and
 their unchanged mapped DSL image carrier are implemented in
 `osprey/common/com/dsl_opcode.{h,cxx}`. The optional typed event image,
-mapped reader/writer, gatekeeper, and `ir_b2a -st -src` inspection are the
-next implemented slice. A focused image fixture proves two executable steps
-and one lowered source, not the full six-group producer transaction.
-One-to-many expansion, executable CKKS state binding, and ResNet
-certification remain pending.
+mapped reader/writer, gatekeeper, and `ir_b2a -st -src` inspection are
+implemented. A focused image fixture proves two executable steps and one
+lowered source, not the full six-group producer transaction. The read-only
+`DSL_IR_Can_Expand_Native_Value_To_CKKS_Events` preflight checks a complete
+request without reserving symbols or mutating the PU. The executable
+one-to-many transaction, CKKS state binding, and ResNet certification remain
+pending; a successful preflight is not permission to publish a transformed
+image.
 
 ## Boundary
 
@@ -62,6 +65,12 @@ operator name.
    result, and one source retirement as one active-PU transaction. A rejected
    request leaves the tree, symbols, and managed tables unchanged. Do not
    expose an image-only persistent-edit API.
+   The commit implementation must have an explicit undo path for every
+   fallible post-preflight operation, including call ABI, REGION, physical
+   WN links, symbols, and managed rows. A late verification failure must
+   return through that rollback path; a post-mutation assertion is not an
+   atomicity mechanism. The read-only preflight is separately testable but
+   cannot reserve names or prevent another mutation between calls.
 5. Retain the old source node/value as nonexecutable provenance with the
    existing `DSL_IR_NODE_FLAG_LOWERED` and `DSL_IR_VALUE_FLAG_LOWERED` pair.
    The original source operand rows remain intact. The operand-targeted
@@ -146,6 +155,12 @@ does not stand in for the atomic producer API required below.
   conflict. Rejection must leave WN, symbol, and image counts unchanged.
 - A two-context fixture proves both same-signature reuse and different-state
   specialization without collapsing source-event identities.
+- The accepted ResNet source-event census requires at least nine fixed-schedule
+  executable PU variants. This count assumes normalization bound `B` is a
+  typed plaintext formal/actual; if a static bound must specialize the body,
+  a tenth variant may be required. Whole-PU cloning, formal append, caller
+  actual rewrite, and managed-image re-ownership form a separate generic
+  transaction; `IPO_CLONE` alone does not supply that contract.
 - Old WHIRL remains readable. An older reader of the new optional relation
   must either ignore it without misinterpreting executable CKKS nodes or fail
   closed at the DSL gatekeeper; document and test the observed behavior.

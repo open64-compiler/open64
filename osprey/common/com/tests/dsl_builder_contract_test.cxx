@@ -34,6 +34,7 @@
 #include "const.h"
 #include "dsl_builder.h"
 #include "dsl_pu_specialize_internal.h"
+#include "dsl_ckks_expand.h"
 #include "dsl_ckks_event_internal.h"
 #include "dsl_contract.h"
 #include "dsl_program_interface_internal.h"
@@ -9642,6 +9643,65 @@ Check_CKKS_Event_Image (void)
         (body, DSL_Builder_Get_Value_Result_Symbol(source), &source_block);
     CKKS_EVENT_CHECK(source_definition != NULL && source_block != NULL,
                      "source definition");
+    DSL_CKKS_EXPANSION_OPERAND expansion_operand;
+    memset(&expansion_operand, 0, sizeof(expansion_operand));
+    expansion_operand.kind = DSL_CKKS_EXPANSION_EXISTING_VALUE;
+    expansion_operand.value_id = DSL_Builder_Get_Value_Image_Id(one);
+    DSL_CKKS_EXPANSION_STEP expansion_step;
+    memset(&expansion_step, 0, sizeof(expansion_step));
+    expansion_step.dsl_operator = OPR_DSLCKKSENCODE;
+    expansion_step.version = 1;
+    expansion_step.operands = &expansion_operand;
+    expansion_step.operand_count = 1;
+    expansion_step.result_name = "event_preflight_encoded";
+    expansion_step.result_ty = tensor_ty;
+    expansion_step.source_position = WN_Get_Linenum(source_definition);
+    DSL_CKKS_EXPANSION_GROUP expansion_group;
+    memset(&expansion_group, 0, sizeof(expansion_group));
+    expansion_group.source_static_ordinal = 1;
+    expansion_group.origin_static_ordinal = 1;
+    expansion_group.step_count = 1;
+    DSL_CKKS_EXPANSION_CONTEXT expansion_context;
+    memset(&expansion_context, 0, sizeof(expansion_context));
+    expansion_context.context_pu_identity_id = identity.id;
+    expansion_context.origin_owner_pu_st = PU_Info_proc_sym(pu);
+    expansion_context.origin_source_value_id =
+        DSL_Builder_Get_Value_Image_Id(source);
+    DSL_CKKS_EXPANSION_REQUEST expansion_request;
+    memset(&expansion_request, 0, sizeof(expansion_request));
+    expansion_request.source_definition = source_definition;
+    expansion_request.source_value_id = expansion_context.origin_source_value_id;
+    expansion_request.expected_source_operator = OPR_DSLRELU;
+    expansion_request.expected_source_version = 2;
+    expansion_request.groups = &expansion_group;
+    expansion_request.group_count = 1;
+    expansion_request.steps = &expansion_step;
+    expansion_request.step_count = 1;
+    expansion_request.contexts = &expansion_context;
+    expansion_request.context_count = 1;
+    CKKS_EVENT_CHECK
+        (DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+             (pu, &expansion_request, stderr),
+         "read-only expansion preflight");
+    UINT32 original_nodes = DSL_IR_Image_Node_Count();
+    UINT32 original_values = DSL_IR_Image_Value_Count();
+    UINT32 original_symbols = ST_Table_Size(CURRENT_SYMTAB);
+    WN *early_read = WN_CreateEval
+        (WN_CreateLdid(OPR_LDID, MTYPE_M, MTYPE_M, 0,
+                       DSL_Builder_Get_Value_Result_Symbol(source),
+                       tensor_ty));
+    WN_INSERT_BlockBefore(source_block, source_definition, early_read);
+    BOOL rejected_early_read =
+        !DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+             (pu, &expansion_request, NULL);
+    CKKS_EVENT_CHECK
+        (rejected_early_read &&
+         DSL_IR_Image_Node_Count() == original_nodes &&
+         DSL_IR_Image_Value_Count() == original_values &&
+         ST_Table_Size(CURRENT_SYMTAB) == original_symbols,
+         "read-before-definition rejects without mutation");
+    WN_EXTRACT_FromBlock(source_block, early_read);
+    WN_DELETE_Tree(early_read);
     WN_EXTRACT_FromBlock(source_block, source_definition);
     if (!DSL_IR_Image_Mark_Value_Lowered
              (DSL_Builder_Get_Value_Image_Id(source)) ||

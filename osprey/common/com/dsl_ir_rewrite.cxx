@@ -17,6 +17,8 @@
 #include <vector>
 
 #include "dsl_memory_behavior.h"
+#include "dsl_ckks_expand.h"
+#include "dsl_ckks_event_internal.h"
 #include "dsl_tensor_fold.h"
 #include "dsl_ir_image.h"
 #include "dsl_ir_transaction_internal.h"
@@ -34,6 +36,8 @@ extern BOOL DSL_Call_ABI_Image_Update_Argument_Value
                                  DSL_IR_VALUE_ID);
 extern BOOL DSL_IR_Image_Redirect_And_Retire_Value
                                 (DSL_IR_VALUE_ID, DSL_IR_VALUE_ID, UINT32);
+extern BOOL DSL_IR_Image_Redirect_And_Lower_Value
+                                (DSL_IR_VALUE_ID, DSL_IR_VALUE_ID);
 extern UINT32 DSL_Region_Symbol_Use_Count (PU_Info *, ST_IDX);
 extern BOOL DSL_Region_Can_Redirect_Symbol (PU_Info *, ST_IDX, ST_IDX);
 extern BOOL DSL_Region_Redirect_Symbol (PU_Info *, ST_IDX, ST_IDX);
@@ -1637,4 +1641,440 @@ DSL_IR_Redirect_And_Retire_Native_Value
               DSL_Region_Verify_PU(Current_PU_Info, NULL),
               ("retired DSL value failed postcondition"));
     return TRUE;
+}
+
+static BOOL
+DSL_IR_CKKS_Report (FILE *diagnostic, const char *message, UINT32 index)
+{
+    if (diagnostic != NULL)
+        fprintf(diagnostic, "DSL CKKS expansion error: %s index=%u\n",
+                message, index);
+    return FALSE;
+}
+
+/* The opcode registry, not a frontend payload, owns exact static attributes. */
+static BOOL
+DSL_IR_CKKS_Attributes_Match
+        (const DSL_OPERATOR_INFO &info,
+         const DSL_CKKS_EXPANSION_STEP &step)
+{
+    const char *schema = info.attribute_schema == NULL ? "" :
+                         info.attribute_schema;
+    UINT32 required_count = 0;
+    const char *cursor = schema;
+    while (*cursor != '\0') {
+        const char *end = strchr(cursor, ';');
+        size_t length = end == NULL ? strlen(cursor) :
+                                     (size_t)(end - cursor);
+        if (length == 0)
+            return FALSE;
+        ++required_count;
+        UINT32 matches = 0;
+        for (UINT32 i = 0; i < step.attribute_count; ++i) {
+            const DSL_CKKS_EXPANSION_ATTRIBUTE &attribute =
+                step.attributes[i];
+            if (attribute.name != NULL &&
+                strlen(attribute.name) == length &&
+                strncmp(attribute.name, cursor, length) == 0)
+                ++matches;
+        }
+        if (matches != 1)
+            return FALSE;
+        if (end == NULL)
+            break;
+        cursor = end + 1;
+    }
+    if (required_count != step.attribute_count)
+        return FALSE;
+    for (UINT32 i = 0; i < step.attribute_count; ++i) {
+        const DSL_CKKS_EXPANSION_ATTRIBUTE &attribute = step.attributes[i];
+        if (attribute.name == NULL || attribute.value == NULL ||
+            attribute.value[0] == '\0' ||
+            strpbrk(attribute.name, ";=\n\r") != NULL ||
+            strpbrk(attribute.value, ";\n\r") != NULL)
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static std::string
+DSL_IR_CKKS_Payload
+        (const DSL_CKKS_EXPANSION_REQUEST &request,
+         UINT32 step_index)
+{
+    const DSL_CKKS_EXPANSION_STEP &step = request.steps[step_index];
+    std::string payload;
+    for (UINT32 i = 0; i < step.operand_count; ++i) {
+        const DSL_CKKS_EXPANSION_OPERAND &operand = step.operands[i];
+        const char *name = NULL;
+        DSL_IR_VALUE_RECORD value;
+        if (operand.kind == DSL_CKKS_EXPANSION_EXISTING_VALUE &&
+            DSL_IR_Image_Get_Value(operand.value_id, &value))
+            name = Index_To_Str(value.name);
+        else if (operand.kind == DSL_CKKS_EXPANSION_PRIOR_STEP)
+            name = request.steps[operand.step_index].result_name;
+        char ordinal[32];
+        snprintf(ordinal, sizeof(ordinal), "%u", i);
+        if (!payload.empty())
+            payload += ";";
+        payload += "kid";
+        payload += ordinal;
+        payload += "=";
+        payload += name == NULL ? "" : name;
+    }
+    for (UINT32 i = 0; i < step.attribute_count; ++i) {
+        if (!payload.empty())
+            payload += ";";
+        payload += step.attributes[i].name;
+        payload += "=";
+        payload += step.attributes[i].value;
+    }
+    return payload;
+}
+
+typedef struct {
+    WN *call;
+    WN *address;
+    UINT32 actual_ordinal;
+} DSL_IR_CKKS_CALL_USE;
+
+typedef struct {
+    ST_IDX source_st;
+    WN *source_definition;
+    const std::vector<DSL_IR_CKKS_CALL_USE> *calls;
+    BOOL source_seen;
+    BOOL valid;
+    UINT32 definition_count;
+    std::vector<WN *> reads;
+    std::vector<WN *> addresses;
+} DSL_IR_CKKS_USE_SCAN;
+
+/* The address exception is limited to an exact read-only call-ABI actual. */
+static void
+DSL_IR_CKKS_Scan_Tree (WN *wn, DSL_IR_CKKS_USE_SCAN *scan)
+{
+    if (wn == NULL || scan == NULL || !scan->valid)
+        return;
+    if (WN_operator(wn) == OPR_BLOCK) {
+        for (WN *statement = WN_first(wn); statement != NULL;
+             statement = WN_next(statement)) {
+            if (statement == scan->source_definition) {
+                if (scan->source_seen) {
+                    scan->valid = FALSE;
+                    return;
+                }
+                for (INT32 kid = 0; kid < WN_kid_count(statement); ++kid)
+                    DSL_IR_CKKS_Scan_Tree(WN_kid(statement, kid), scan);
+                ++scan->definition_count;
+                scan->source_seen = TRUE;
+            } else {
+                DSL_IR_CKKS_Scan_Tree(statement, scan);
+            }
+        }
+        return;
+    }
+    if (WN_has_sym(wn) && WN_st_idx(wn) == scan->source_st) {
+        if (WN_operator(wn) == OPR_STID) {
+            ++scan->definition_count;
+            if (wn != scan->source_definition)
+                scan->valid = FALSE;
+        } else if (WN_operator(wn) == OPR_LDID) {
+            if (scan->source_seen)
+                scan->reads.push_back(wn);
+            else
+                scan->valid = FALSE;
+        } else if (WN_operator(wn) == OPR_LDA) {
+            BOOL allowed = FALSE;
+            for (UINT32 i = 0; i < scan->calls->size(); ++i) {
+                if ((*scan->calls)[i].address == wn) {
+                    allowed = TRUE;
+                    break;
+                }
+            }
+            if (allowed && scan->source_seen)
+                scan->addresses.push_back(wn);
+            else
+                scan->valid = FALSE;
+        } else {
+            scan->valid = FALSE;
+        }
+    }
+    for (INT32 kid = 0; scan->valid && kid < WN_kid_count(wn); ++kid)
+        DSL_IR_CKKS_Scan_Tree(WN_kid(wn, kid), scan);
+}
+
+static BOOL
+DSL_IR_CKKS_Preflight_Calls
+        (ST_IDX owner_pu_st, const DSL_IR_VALUE_RECORD &source,
+         std::vector<DSL_IR_CKKS_CALL_USE> *uses, FILE *diagnostic)
+{
+    for (UINT32 i = 1; i <= DSL_Call_ABI_Image_Argument_Count(); ++i) {
+        DSL_CALL_ARGUMENT_RECORD argument;
+        if (!DSL_Call_ABI_Image_Get_Argument(i, &argument))
+            return DSL_IR_CKKS_Report
+                       (diagnostic, "missing call argument", i);
+        if (argument.argument_value_id != source.id)
+            continue;
+        DSL_RETIRED_CALL_ARGUMENT_RECORD retired;
+        if (DSL_Program_Interface_Image_Find_Retired_Call
+                (argument.id, &retired))
+            continue;
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        const WN *call = DSL_Call_Image_Get_Call_WN(argument.callsite_id);
+        if (!DSL_Call_Image_Get_Callsite
+                (argument.callsite_id, &callsite) ||
+            callsite.owner_pu_st != owner_pu_st || call == NULL)
+            return DSL_IR_CKKS_Report
+                       (diagnostic, "call owner mismatch", i);
+        UINT32 effective_ordinal = argument.actual_ordinal;
+        for (UINT32 j = 1;
+             j <= DSL_Program_Interface_Image_Retired_Call_Count(); ++j) {
+            DSL_RETIRED_CALL_ARGUMENT_RECORD retired_call;
+            if (DSL_Program_Interface_Image_Get_Retired_Call
+                    (j, &retired_call) &&
+                retired_call.callsite_id == callsite.id &&
+                retired_call.old_actual_ordinal < argument.actual_ordinal) {
+                if (effective_ordinal == 0)
+                    return DSL_IR_CKKS_Report
+                               (diagnostic, "invalid call ordinal", i);
+                --effective_ordinal;
+            }
+        }
+        DSL_IR_VALUE_RECORD actual;
+        if (effective_ordinal >= (UINT32)WN_kid_count(call) ||
+            !DSL_IR_Value_From_Call_Actual
+                (owner_pu_st, call, effective_ordinal, &actual) ||
+            actual.id != source.id)
+            return DSL_IR_CKKS_Report
+                       (diagnostic, "call actual mismatch", i);
+        const WN *parm = WN_kid(call, effective_ordinal);
+        const WN *address = WN_kid0(parm);
+        if (WN_Parm_Out(parm) ||
+            TY_kind(WN_ty(parm)) != KIND_POINTER ||
+            TY_pointed(WN_ty(parm)) != source.ty ||
+            WN_st_idx(address) != source.st)
+            return DSL_IR_CKKS_Report
+                       (diagnostic, "call actual is not read-only", i);
+        for (UINT32 j = 0; j < uses->size(); ++j) {
+            if ((*uses)[j].address == address)
+                return DSL_IR_CKKS_Report
+                           (diagnostic, "duplicate call actual", i);
+        }
+        DSL_IR_CKKS_CALL_USE use;
+        use.call = const_cast<WN *>(call);
+        use.address = const_cast<WN *>(address);
+        use.actual_ordinal = argument.actual_ordinal;
+        uses->push_back(use);
+    }
+    return TRUE;
+}
+
+static BOOL
+DSL_IR_CKKS_Preflight
+        (PU_Info *pu_info, const DSL_CKKS_EXPANSION_REQUEST *request,
+         DSL_IR_VALUE_RECORD *source_value, WN **source_block,
+         std::vector<DSL_IR_CKKS_CALL_USE> *calls,
+         DSL_IR_CKKS_USE_SCAN *scan, FILE *diagnostic)
+{
+    ST_IDX owner_pu_st = pu_info == NULL ? ST_IDX_ZERO :
+                         PU_Info_proc_sym(pu_info);
+    WN *pu_root = pu_info == NULL ? NULL : PU_Info_tree_ptr(pu_info);
+    if (pu_info == NULL || request == NULL || source_value == NULL ||
+        source_block == NULL || calls == NULL || scan == NULL ||
+        pu_info != Current_PU_Info || pu_root == NULL ||
+        !DSL_IR_Image_Current_PU_Is(owner_pu_st) ||
+        request->source_definition == NULL ||
+        request->groups == NULL || request->group_count == 0 ||
+        request->steps == NULL || request->step_count == 0 ||
+        request->contexts == NULL || request->context_count == 0 ||
+        request->final_step_index >= request->step_count ||
+        request->step_count >
+            (~(UINT32)0 - DSL_CKKS_Event_Image_Count()) /
+                request->context_count)
+        return DSL_IR_CKKS_Report
+                   (diagnostic, "invalid request or PU", 0);
+    *source_block = DSL_IR_Find_Containing_Block
+                        (pu_root, request->source_definition);
+    DSL_IR_NODE_RECORD source_node;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD source_opcode;
+    if (*source_block == NULL ||
+        !DSL_IR_Image_Find_Definition_Value
+            (pu_info, request->source_definition, source_value) ||
+        source_value->id != request->source_value_id ||
+        source_value->flags != DSL_IR_VALUE_FLAG_NONE ||
+        !DSL_IR_Image_Value_Belongs_To_PU
+            (*source_value, owner_pu_st) ||
+        !DSL_Tensor_Has_Unique_Ownership(source_value->st) ||
+        !DSL_IR_Image_Get_Node
+            (source_value->producer_node_id, &source_node) ||
+        source_node.flags != DSL_IR_NODE_FLAG_NONE ||
+        !DSL_IR_Image_Get_Opcode_Descriptor
+            (source_node.opcode_descriptor_id, &source_opcode) ||
+        source_opcode.logical_operator !=
+            request->expected_source_operator ||
+        source_opcode.version != request->expected_source_version ||
+        source_opcode.effect_model != DSL_EFFECT_MODEL_PURE ||
+        DSL_CKKS_Event_Image_Has_Source(source_value->id))
+        return DSL_IR_CKKS_Report
+                   (diagnostic, "source definition mismatch", 0);
+    for (UINT32 i = 1; i <= DSL_Effect_Image_State_Effect_Count(); ++i) {
+        DSL_STATE_EFFECT_RECORD effect;
+        if (!DSL_Effect_Image_Get_State_Effect(i, &effect) ||
+            effect.owner_node_id == source_node.id)
+            return DSL_IR_CKKS_Report
+                       (diagnostic, "source has state effect", i);
+    }
+    for (UINT32 i = 1;
+         i <= DSL_Runtime_Interface_Image_Value_Count(); ++i) {
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+        if (!DSL_Runtime_Interface_Image_Get_Value(i, &projection) ||
+            projection.source_value_id == source_value->id)
+            return DSL_IR_CKKS_Report
+                       (diagnostic, "source has runtime projection", i);
+    }
+    for (UINT32 i = 1;
+         i <= DSL_Program_Interface_Image_Runtime_Input_Count(); ++i) {
+        DSL_RUNTIME_INPUT_RECORD input;
+        if (!DSL_Program_Interface_Image_Get_Runtime_Input(i, &input) ||
+            input.source_value_id == source_value->id)
+            return DSL_IR_CKKS_Report
+                       (diagnostic, "source has runtime input", i);
+    }
+
+    UINT32 next_step = 0;
+    UINT32 prior_static_ordinal = 0;
+    for (UINT32 i = 0; i < request->group_count; ++i) {
+        const DSL_CKKS_EXPANSION_GROUP &group = request->groups[i];
+        if (group.source_static_ordinal == 0 ||
+            group.origin_static_ordinal == 0 ||
+            group.source_static_ordinal <= prior_static_ordinal ||
+            group.first_step != next_step || group.step_count == 0 ||
+            group.step_count > request->step_count - next_step)
+            return DSL_IR_CKKS_Report
+                       (diagnostic, "invalid event group", i);
+        prior_static_ordinal = group.source_static_ordinal;
+        next_step += group.step_count;
+    }
+    if (next_step != request->step_count ||
+        request->steps[request->final_step_index].result_ty !=
+            source_value->ty)
+        return DSL_IR_CKKS_Report
+                   (diagnostic, "incomplete groups or final TY", 0);
+
+    for (UINT32 i = 0; i < request->step_count; ++i) {
+        const DSL_CKKS_EXPANSION_STEP &step = request->steps[i];
+        DSL_OPERATOR_INFO info;
+        if (step.dsl_operator < OPR_DSLCKKSADD ||
+            step.dsl_operator > OPR_DSLCKKSBOOTSTRAP ||
+            !DSL_Operator_Get_Info_Version
+                (step.dsl_operator, step.version, &info) ||
+            info.nkids < 0 ||
+            (UINT32)info.nkids != step.operand_count ||
+            info.effect_model != DSL_EFFECT_MODEL_PURE ||
+            (step.operand_count != 0 && step.operands == NULL) ||
+            (step.attribute_count != 0 && step.attributes == NULL) ||
+            !DSL_IR_CKKS_Attributes_Match(info, step) ||
+            step.result_name == NULL || step.result_name[0] == '\0' ||
+            strpbrk(step.result_name, ";=\n\r") != NULL ||
+            !TY_is_tensor_extension(step.result_ty) ||
+            !TY_tensor_is_canonical(step.result_ty) ||
+            SRCPOS_linenum(step.source_position) == 0 ||
+            DSL_IR_PU_Value_Name_Exists
+                (owner_pu_st, step.result_name))
+            return DSL_IR_CKKS_Report
+                       (diagnostic, "invalid CKKS step", i);
+        for (UINT32 prior = 0; prior < i; ++prior) {
+            if (strcmp(request->steps[prior].result_name,
+                       step.result_name) == 0)
+                return DSL_IR_CKKS_Report
+                           (diagnostic, "duplicate result name", i);
+        }
+        for (UINT32 kid = 0; kid < step.operand_count; ++kid) {
+            const DSL_CKKS_EXPANSION_OPERAND &operand = step.operands[kid];
+            if (operand.kind == DSL_CKKS_EXPANSION_PRIOR_STEP) {
+                if (operand.step_index >= i || operand.value_id != 0)
+                    return DSL_IR_CKKS_Report
+                               (diagnostic, "forward step operand", i);
+                continue;
+            }
+            DSL_IR_VALUE_RECORD value;
+            if (operand.kind != DSL_CKKS_EXPANSION_EXISTING_VALUE ||
+                operand.step_index != 0 ||
+                operand.value_id == source_value->id ||
+                !DSL_IR_Image_Get_Value(operand.value_id, &value) ||
+                value.flags != DSL_IR_VALUE_FLAG_NONE ||
+                !DSL_IR_Image_Value_Belongs_To_PU
+                    (value, owner_pu_st) ||
+                ST_IDX_level(value.st) != CURRENT_SYMTAB ||
+                ST_IDX_index(value.st) == 0 ||
+                ST_IDX_index(value.st) >= ST_Table_Size(CURRENT_SYMTAB) ||
+                ST_type(St_Table[value.st]) != value.ty)
+                return DSL_IR_CKKS_Report
+                           (diagnostic, "invalid existing operand", i);
+        }
+    }
+
+    for (UINT32 i = 0; i < request->context_count; ++i) {
+        const DSL_CKKS_EXPANSION_CONTEXT &context = request->contexts[i];
+        DSL_PU_SOURCE_IDENTITY_RECORD identity;
+        DSL_IR_VALUE_RECORD origin;
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        if (!DSL_Call_Image_Get_PU_Identity
+                (context.context_pu_identity_id, &identity) ||
+            identity.owner_pu_st != owner_pu_st ||
+            !DSL_IR_Image_PU_ST_Valid(context.origin_owner_pu_st) ||
+            !DSL_IR_Image_Get_Value
+                (context.origin_source_value_id, &origin) ||
+            !DSL_IR_Image_Value_Belongs_To_PU
+                (origin, context.origin_owner_pu_st) ||
+            (context.context_callsite_id != 0 &&
+             (!DSL_Call_Image_Get_Callsite
+                  (context.context_callsite_id, &callsite) ||
+              callsite.callee_pu_st != owner_pu_st ||
+              !DSL_IR_Image_PU_ST_Valid(callsite.owner_pu_st))))
+            return DSL_IR_CKKS_Report
+                       (diagnostic, "invalid source context", i);
+        for (UINT32 prior = 0; prior < i; ++prior) {
+            if (request->contexts[prior].context_pu_identity_id ==
+                    context.context_pu_identity_id &&
+                request->contexts[prior].context_callsite_id ==
+                    context.context_callsite_id)
+                return DSL_IR_CKKS_Report
+                           (diagnostic, "duplicate source context", i);
+        }
+    }
+    if (!DSL_Region_Verify_PU(pu_info, diagnostic) ||
+        !DSL_Call_ABI_Image_Validate_PU(pu_info, diagnostic) ||
+        !DSL_IR_CKKS_Preflight_Calls
+            (owner_pu_st, *source_value, calls, diagnostic))
+        return FALSE;
+    scan->source_st = source_value->st;
+    scan->source_definition = request->source_definition;
+    scan->calls = calls;
+    scan->source_seen = FALSE;
+    scan->valid = TRUE;
+    scan->definition_count = 0;
+    DSL_IR_CKKS_Scan_Tree(*source_block, scan);
+    if (!scan->valid || !scan->source_seen ||
+        scan->definition_count != 1 ||
+        scan->addresses.size() != calls->size() ||
+        DSL_IR_Retire_Has_Use_Outside_Block
+            (pu_root, *source_block, source_value->st))
+        return DSL_IR_CKKS_Report
+                   (diagnostic, "source use is not redirectable", 0);
+    return TRUE;
+}
+
+BOOL
+DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+        (PU_Info *pu_info, const DSL_CKKS_EXPANSION_REQUEST *request,
+         FILE *diagnostic)
+{
+    DSL_IR_VALUE_RECORD source_value;
+    WN *source_block = NULL;
+    std::vector<DSL_IR_CKKS_CALL_USE> calls;
+    DSL_IR_CKKS_USE_SCAN scan;
+    return DSL_IR_CKKS_Preflight
+               (pu_info, request, &source_value, &source_block,
+                &calls, &scan, diagnostic);
 }
