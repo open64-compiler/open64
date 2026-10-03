@@ -31,7 +31,9 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "srcpos.h"
+#include "const.h"
 #include "dsl_builder.h"
+#include "dsl_pu_specialize_internal.h"
 #include "dsl_contract.h"
 #include "dsl_program_interface_internal.h"
 #include "dsl_region_internal.h"
@@ -11328,6 +11330,316 @@ Check_DSL_Value_Retirement(void)
     return failed;
 }
 
+static int
+Check_PU_Clone_Image_Rows(void)
+{
+#define CLONE_IMAGE_CHECK(condition, stage) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "DSL PU clone image failed: %s\n", stage); \
+            return 1; \
+        } \
+    } while (0)
+    CLONE_IMAGE_CHECK(DSL_Builder_Begin_Program(), "program init");
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 1;
+    descriptor.type_core.logical_shape = "[2]";
+    TY_IDX ty = DSL_Builder_Intern_Tensor_Type
+                    ("pu_clone_image_tensor", MTYPE_To_TY(MTYPE_F4),
+                     &descriptor);
+    DSL_BUILDER_PROGRAM_UNIT source =
+        DSL_Builder_Create_Minimal_PU("pu_clone_image_source");
+    UINT32 file_id = DSL_Builder_Register_Source_File(source, __FILE__);
+    DSL_BUILDER_PU_SOURCE_IDENTITY source_identity;
+    memset(&source_identity, 0, sizeof(source_identity));
+    source_identity.canonical_definition_name = "PUCloneImage.source";
+    source_identity.defining_module = "dsl_builder_contract_test";
+    source_identity.defining_file = __FILE__;
+    source_identity.defining_line = __LINE__;
+    CLONE_IMAGE_CHECK
+        (source != NULL && file_id != 0 &&
+         DSL_Builder_Set_PU_Source_Identity(source, &source_identity),
+         "source identity");
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = __LINE__;
+    position.column = 1;
+    position.statement_begin = 1;
+    DSL_BUILDER_VALUE input = DSL_Builder_Declare_PU_Formal
+        (source, "clone_input", 0, ty, &position);
+    DSL_BUILDER_VALUE relu = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, &input, 1, NULL, 0, "clone_relu", ty);
+    CLONE_IMAGE_CHECK(ty != TY_IDX_ZERO && input != NULL,
+                      "source formal");
+    CLONE_IMAGE_CHECK(relu != NULL, "source ReLU");
+    CLONE_IMAGE_CHECK
+        (DSL_Builder_Set_Value_Source_Position(relu, &position) &&
+         DSL_Builder_Append_PU_Value(source, relu),
+         "source materialization");
+
+    ST_IDX source_st = PU_Info_proc_sym(source);
+    PU_IDX clone_pu_idx;
+    PU &clone_pu = New_PU(clone_pu_idx);
+    clone_pu = Pu_Table[ST_pu(St_Table[source_st])];
+    ST *clone_st = New_ST(GLOBAL_SYMTAB);
+    ST_Init(clone_st, Save_Str("pu_clone_image_variant"), CLASS_FUNC,
+            SCLASS_TEXT, EXPORT_LOCAL, clone_pu_idx);
+    Set_ST_Srcpos(*clone_st, ST_Srcpos(St_Table[source_st]));
+    ST_IDX clone_st_idx = ST_st_idx(*clone_st);
+
+    UINT32 nodes_before = DSL_IR_Image_Node_Count();
+    UINT32 values_before = DSL_IR_Image_Value_Count();
+    UINT32 formals_before = DSL_PU_Interface_Image_Formal_Count();
+    UINT32 identities_before = DSL_Call_Image_PU_Identity_Count();
+    DSL_PU_CLONE_VALUE_PAIR pairs[8];
+    UINT32 pair_count = 0;
+    DSL_PU_CLONE_IMAGE_SAVEPOINT savepoint;
+    CLONE_IMAGE_CHECK
+        (!DSL_IR_Image_Clone_PU_Values
+             (source_st, ST_name(St_Table[source_st]),
+              clone_st_idx, ST_name(St_Table[clone_st_idx]),
+              pairs, 0, &pair_count,
+              &savepoint) &&
+         DSL_IR_Image_Node_Count() == nodes_before &&
+         DSL_IR_Image_Value_Count() == values_before &&
+         DSL_PU_Interface_Image_Formal_Count() == formals_before,
+         "capacity rejection without mutation");
+    CLONE_IMAGE_CHECK
+        (DSL_IR_Image_Clone_PU_Values
+             (source_st, ST_name(St_Table[source_st]),
+              clone_st_idx, ST_name(St_Table[clone_st_idx]),
+              pairs, 8, &pair_count,
+              &savepoint) &&
+         pair_count == 2 &&
+         DSL_IR_Image_Node_Count() == nodes_before + 1 &&
+         DSL_IR_Image_Value_Count() == values_before + 2 &&
+         DSL_PU_Interface_Image_Formal_Count() == formals_before + 1 &&
+         DSL_Call_Image_PU_Identity_Count() == identities_before + 1 &&
+         DSL_IR_Image_Validate(stderr),
+         "clone mapped rows");
+    DSL_IR_VALUE_RECORD cloned_relu;
+    CLONE_IMAGE_CHECK
+        (DSL_IR_Image_Find_PU_Value
+             (DSL_Builder_Get_Value_Result_Symbol(relu), "clone_relu",
+              ST_name(St_Table[clone_st_idx]), &cloned_relu) &&
+         cloned_relu.id != DSL_Builder_Get_Value_Image_Id(relu),
+         "distinct cloned result identity");
+    DSL_IR_Image_Clone_PU_Restore(&savepoint);
+    CLONE_IMAGE_CHECK
+        (DSL_IR_Image_Node_Count() == nodes_before &&
+         DSL_IR_Image_Value_Count() == values_before &&
+         DSL_PU_Interface_Image_Formal_Count() == formals_before &&
+         DSL_Call_Image_PU_Identity_Count() == identities_before &&
+         DSL_IR_Image_Validate(stderr),
+         "rollback restores image rows");
+    printf("DSL PU clone image rows passed\n");
+#undef CLONE_IMAGE_CHECK
+    return 0;
+}
+
+static int
+Check_PU_Scalar_Bound_Call_ABI(void)
+{
+#define SCALAR_ABI_CHECK(condition, stage) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "DSL scalar bound ABI failed: %s\n", stage); \
+            return 1; \
+        } \
+    } while (0)
+    SCALAR_ABI_CHECK(DSL_Builder_Begin_Program(), "program init");
+    DSL_BUILDER_PROGRAM_UNIT callee =
+        DSL_Builder_Create_Minimal_PU("scalar_bound_callee");
+    DSL_BUILDER_PROGRAM_UNIT caller =
+        DSL_Builder_Create_Minimal_PU("scalar_bound_caller");
+    UINT32 file_id = DSL_Builder_Register_Source_File(caller, __FILE__);
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = __LINE__;
+    position.column = 1;
+    position.statement_begin = 1;
+    DSL_BUILDER_CALLSITE_INFO callsite_info;
+    memset(&callsite_info, 0, sizeof(callsite_info));
+    callsite_info.canonical_class_name = "ScalarBound";
+    callsite_info.instance_path = "scalar.bound";
+    callsite_info.context_identity = "scalar.bound.call";
+    callsite_info.call_ordinal = 1;
+    callsite_info.source_position = position;
+    SCALAR_ABI_CHECK(callee != NULL && caller != NULL && file_id != 0 &&
+                     DSL_Builder_Select_PU(callee) &&
+                     DSL_Builder_Return_PU_Values(callee, NULL, 0),
+                     "two PUs and return");
+    WN *old_call = DSL_Builder_Create_PU_Call
+        (caller, callee, NULL, 0, NULL, 0, &callsite_info);
+    DSL_CALLSITE_METADATA_RECORD callsite;
+    SCALAR_ABI_CHECK(old_call != NULL &&
+                     DSL_Call_Image_Find_Callsite(old_call, &callsite),
+                     "managed call");
+
+    TY_IDX bound_ty = MTYPE_To_TY(MTYPE_F8);
+    SCALAR_ABI_CHECK(bound_ty != TY_IDX_ZERO &&
+                     DSL_Builder_Select_PU(callee), "callee activation");
+    ST *formal_st = New_ST(CURRENT_SYMTAB);
+    ST_Init(formal_st, Save_Str("bound_b"), CLASS_VAR, SCLASS_FORMAL,
+            EXPORT_LOCAL, bound_ty);
+    Set_ST_is_value_parm(formal_st);
+    Set_ST_Srcpos(*formal_st, WN_Get_Linenum(PU_Info_tree_ptr(callee)));
+    ST_IDX formal_idx = ST_st_idx(*formal_st);
+    WN *old_entry = PU_Info_tree_ptr(callee);
+    WN *new_entry = WN_CreateEntry
+        (1, PU_Info_proc_sym(callee), WN_func_body(old_entry),
+         WN_func_pragmas(old_entry), WN_func_varrefs(old_entry));
+    WN_formal(new_entry, 0) = WN_CreateIdname(0, formal_idx);
+    Set_PU_Info_tree_ptr(callee, new_entry);
+    DSL_IR_VALUE_RECORD formal_value;
+    DSL_IR_Value_Record_Init(&formal_value);
+    formal_value.value_kind = DSL_IR_VALUE_SYMBOL;
+    formal_value.ty = bound_ty;
+    formal_value.st = formal_idx;
+    formal_value.name = Save_Str("bound_b");
+    formal_value.metadata = Save_Str("owner_pu=scalar_bound_callee");
+    DSL_IR_VALUE_ID formal_value_id =
+        DSL_IR_Image_Add_Value(&formal_value);
+    DSL_PU_FORMAL_RECORD formal;
+    memset(&formal, 0, sizeof(formal));
+    formal.owner_pu_st = PU_Info_proc_sym(callee);
+    formal.formal_value_id = formal_value_id;
+    formal.formal_ordinal = 0;
+    formal.formal_st = formal_idx;
+    formal.formal_ty = bound_ty;
+    SCALAR_ABI_CHECK
+        (formal_value_id != DSL_IR_VALUE_INVALID_ID &&
+         DSL_PU_Interface_Image_Add_Formal(&formal) !=
+             DSL_PU_FORMAL_INVALID_ID &&
+         DSL_PU_Interface_Image_Validate_PU(callee, stderr),
+         "typed scalar formal");
+
+    SCALAR_ABI_CHECK(DSL_Builder_Select_PU(caller), "caller activation");
+    ST *actual_st = New_ST(CURRENT_SYMTAB);
+    ST_Init(actual_st, Save_Str("bound_actual"), CLASS_VAR, SCLASS_AUTO,
+            EXPORT_LOCAL, bound_ty);
+    Set_ST_Srcpos(*actual_st, WN_Get_Linenum(old_call));
+    ST_IDX actual_idx = ST_st_idx(*actual_st);
+    TCON_IDX bound_tcon = Enter_tcon
+        (Host_To_Targ_Float(MTYPE_F8, 2.0));
+    ST_IDX constant_st = ST_st_idx(*New_Const_Sym(bound_tcon, bound_ty));
+    WN *initialize = WN_CreateStid
+        (OPR_STID, MTYPE_V, MTYPE_F8, 0, actual_idx, bound_ty,
+         WN_CreateConst(OPR_CONST, MTYPE_F8, MTYPE_V, constant_st));
+    WN_Set_Linenum(initialize, WN_Get_Linenum(old_call));
+    WN *new_call = WN_Create(OPR_CALL, MTYPE_V, MTYPE_V, 1);
+    WN_st_idx(new_call) = PU_Info_proc_sym(callee);
+    WN_Set_Call_Default_Flags(new_call);
+    WN_Set_Linenum(new_call, WN_Get_Linenum(old_call));
+    WN *load = WN_CreateLdid(OPR_LDID, MTYPE_F8, MTYPE_F8, 0,
+                             actual_idx, bound_ty);
+    WN_kid(new_call, 0) = WN_CreateParm
+        (MTYPE_F8, load, bound_ty,
+         WN_PARM_BY_VALUE | WN_PARM_READ_ONLY |
+         WN_PARM_PASSED_NOT_SAVED);
+    WN *body = WN_func_body(PU_Info_tree_ptr(caller));
+    WN_INSERT_BlockBefore(body, old_call, initialize);
+    WN_INSERT_BlockBefore(body, old_call, new_call);
+    SCALAR_ABI_CHECK
+        (DSL_Call_Image_Replace_Call_WN(callsite.id, old_call, new_call),
+         "call association");
+    WN_DELETE_FromBlock(body, old_call);
+    DSL_IR_VALUE_RECORD actual_value;
+    DSL_IR_Value_Record_Init(&actual_value);
+    actual_value.value_kind = DSL_IR_VALUE_SYMBOL;
+    actual_value.ty = bound_ty;
+    actual_value.st = actual_idx;
+    actual_value.name = Save_Str("bound_actual");
+    actual_value.metadata = Save_Str("owner_pu=scalar_bound_caller");
+    DSL_IR_VALUE_ID actual_value_id =
+        DSL_IR_Image_Add_Value(&actual_value);
+    DSL_CALL_ARGUMENT_RECORD argument;
+    memset(&argument, 0, sizeof(argument));
+    argument.callsite_id = callsite.id;
+    argument.argument_value_id = actual_value_id;
+    argument.actual_ordinal = 0;
+    argument.callee_formal_ordinal = 0;
+    argument.semantic_role = Save_Str("fhe.relu.bound");
+    SCALAR_ABI_CHECK
+        (actual_value_id != DSL_IR_VALUE_INVALID_ID &&
+         DSL_Call_ABI_Image_Add_Argument(new_call, &argument) !=
+             DSL_CALL_ARGUMENT_INVALID_ID &&
+         DSL_Call_ABI_Image_Validate_PU(caller, stderr) &&
+         DSL_Builder_Select_PU(callee) &&
+         DSL_Call_ABI_Image_Validate_PU(callee, stderr),
+         "exact scalar by-value ABI");
+    SCALAR_ABI_CHECK(DSL_Builder_Select_PU(caller),
+                     "caller negative activation");
+    WN *parm = WN_kid(new_call, 0);
+    TY_IDX saved_ty = WN_ty(parm);
+    WN_set_ty(parm, MTYPE_To_TY(MTYPE_F4));
+    SCALAR_ABI_CHECK(!DSL_Call_ABI_Image_Validate_PU(caller, NULL),
+                     "wrong scalar TY rejects");
+    WN_set_ty(parm, saved_ty);
+    WN_parm_flag(parm) &= ~WN_PARM_READ_ONLY;
+    SCALAR_ABI_CHECK(!DSL_Call_ABI_Image_Validate_PU(caller, NULL),
+                     "writable scalar rejects");
+    WN_parm_flag(parm) |= WN_PARM_READ_ONLY;
+    SCALAR_ABI_CHECK(DSL_Call_ABI_Image_Validate_PU(caller, stderr),
+                     "exact scalar ABI restored");
+    printf("DSL scalar bound call ABI passed\n");
+#undef SCALAR_ABI_CHECK
+    return 0;
+}
+
+static int
+Check_PU_Clone_Region_Store(void)
+{
+#define CLONE_REGION_CHECK(condition, stage) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "DSL PU clone REGION failed: %s\n", stage); \
+            return 1; \
+        } \
+    } while (0)
+    CLONE_REGION_CHECK(DSL_Builder_Begin_Program(), "program init");
+    DSL_BUILDER_PROGRAM_UNIT source =
+        DSL_Builder_Create_Minimal_PU("clone_region_source");
+    DSL_BUILDER_PROGRAM_UNIT clone =
+        DSL_Builder_Create_Minimal_PU("clone_region_target");
+    CLONE_REGION_CHECK(source != NULL && clone != NULL &&
+                       DSL_Builder_Select_PU(source), "two PUs");
+    DSL_REGION region = DSL_Region_Create
+                            (source, NULL, "cnn.basic_block", 1);
+    CLONE_REGION_CHECK(region != NULL &&
+                       DSL_Region_Append_To_PU(region) &&
+                       DSL_Region_Verify_PU(source, stderr),
+                       "source REGION");
+    CLONE_REGION_CHECK(DSL_Builder_Select_PU(clone), "clone activation");
+    WN *tree = WN_COPY_Tree(PU_Info_tree_ptr(source));
+    CLONE_REGION_CHECK(tree != NULL, "tree copy");
+    WN_st_idx(tree) = PU_Info_proc_sym(clone);
+    Set_PU_Info_tree_ptr(clone, tree);
+    CLONE_REGION_CHECK(DSL_Region_Clone_PU_Store(source, clone) &&
+                       DSL_Region_Verify_PU(clone, stderr),
+                       "cloned REGION store");
+    WN *cloned_region = WN_first(WN_func_body(tree));
+    CLONE_REGION_CHECK(cloned_region != NULL &&
+                       cloned_region != DSL_Region_WN(region) &&
+                       DSL_Region_Is_Managed_WN(clone, cloned_region),
+                       "independent REGION owner");
+    DSL_Region_Discard_PU_Store(clone);
+    CLONE_REGION_CHECK(!DSL_Region_Is_Managed_WN(clone, cloned_region) &&
+                       DSL_Region_Is_Managed_WN
+                           (source, DSL_Region_WN(region)),
+                       "clone rollback preserves source");
+    printf("DSL PU clone REGION store passed\n");
+#undef CLONE_REGION_CHECK
+    return 0;
+}
+
 int
 main(void)
 {
@@ -11341,6 +11653,12 @@ main(void)
     if (getenv("OPEN64_DSL_PRODUCTION_NATIVE_ONLY") != NULL)
         return Check_Operator_Creation() |
                Check_Production_Native_Builder();
+    if (getenv("OPEN64_DSL_PU_CLONE_IMAGE_ONLY") != NULL)
+        return Check_PU_Clone_Image_Rows();
+    if (getenv("OPEN64_DSL_PU_SCALAR_ABI_ONLY") != NULL)
+        return Check_PU_Scalar_Bound_Call_ABI();
+    if (getenv("OPEN64_DSL_PU_CLONE_REGION_ONLY") != NULL)
+        return Check_PU_Clone_Region_Store();
     if (getenv("OPEN64_DSL_LLAMA2_COMMON_ONLY") != NULL)
         return Check_Llama2_Common_Substrate();
     if (getenv("OPEN64_DSL_LLAMA2_TRANSFORMER_ONLY") != NULL)

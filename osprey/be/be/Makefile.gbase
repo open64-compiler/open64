@@ -311,6 +311,7 @@ BE_REGION_CXX_SRCS = \
 
 BE_VHO_CXX_SRCS = \
   dsl_lower.cxx          \
+  dsl_pu_specialize.cxx  \
   dsl_shape_refine.cxx   \
   dsl_opt.cxx            \
   dsl_opt_plan_opt.cxx   \

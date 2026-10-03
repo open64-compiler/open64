@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "dsl_ir_image.h"
+#include "dsl_pu_specialize_internal.h"
 #include "dsl_opcode.h"
 #include "dsl_program_interface_internal.h"
 #include "segmented_array.h"
@@ -3525,6 +3526,201 @@ DSL_IR_Image_Find_Value
          DSL_IR_VALUE_RECORD *record)
 {
     return DSL_IR_Image_Find_PU_Value(st, name, NULL, record);
+}
+
+void
+DSL_IR_Image_Clone_PU_Restore
+        (const DSL_PU_CLONE_IMAGE_SAVEPOINT *savepoint)
+{
+    if (savepoint == NULL)
+        return;
+    DSL_pu_formal_table.Delete_down_to(savepoint->formal_count);
+    DSL_pu_source_identity_table.Delete_down_to
+        (savepoint->pu_identity_count);
+    DSL_ir_value_reference_table.Delete_down_to
+        (savepoint->reference_count);
+    DSL_ir_attribute_table.Delete_down_to(savepoint->attribute_count);
+    DSL_ir_value_table.Delete_down_to(savepoint->value_count);
+    DSL_ir_node_table.Delete_down_to(savepoint->node_count);
+}
+
+/* Copy a PU's logical rows with new IDs; the physical tree clone keeps the
+ * corresponding local ST indices but has independent symbol-table storage. */
+BOOL
+DSL_IR_Image_Clone_PU_Values
+        (ST_IDX source_pu_st, const char *source_pu_name,
+         ST_IDX clone_pu_st, const char *clone_pu_name,
+         DSL_PU_CLONE_VALUE_PAIR *pairs, UINT32 pair_capacity,
+         UINT32 *pair_count,
+         DSL_PU_CLONE_IMAGE_SAVEPOINT *savepoint)
+{
+    if (pair_count != NULL)
+        *pair_count = 0;
+    if (pairs == NULL || pair_count == NULL || savepoint == NULL ||
+        source_pu_st == clone_pu_st ||
+        ST_IDX_level(source_pu_st) != ST_IDX_level(clone_pu_st) ||
+        ST_IDX_index(source_pu_st) == 0 ||
+        ST_IDX_index(clone_pu_st) == 0 ||
+        source_pu_name == NULL || source_pu_name[0] == '\0' ||
+        clone_pu_name == NULL || clone_pu_name[0] == '\0' ||
+        strcmp(source_pu_name, clone_pu_name) == 0 ||
+        !DSL_IR_Image_Validate(NULL) ||
+        !DSL_PU_Interface_Image_Validate(NULL))
+        return FALSE;
+
+    std::string source_owner("owner_pu=");
+    source_owner += source_pu_name;
+    std::string clone_owner("owner_pu=");
+    clone_owner += clone_pu_name;
+    std::vector<DSL_IR_VALUE_ID> source_values;
+    std::vector<DSL_IR_NODE_ID> source_nodes;
+    std::vector<DSL_IR_NODE_ID> node_map
+        (DSL_ir_node_table.Size() + 1, DSL_IR_NODE_INVALID_ID);
+    std::vector<BOOL> node_seen(DSL_ir_node_table.Size() + 1, FALSE);
+    std::vector<DSL_IR_VALUE_ID> value_map
+        (DSL_ir_value_table.Size() + 1, DSL_IR_VALUE_INVALID_ID);
+    for (UINT32 i = 0; i < DSL_ir_value_table.Size(); ++i) {
+        const DSL_IR_VALUE_RECORD &value = DSL_ir_value_table[i];
+        if (value.metadata == STR_IDX_ZERO ||
+            source_owner != Index_To_Str(value.metadata))
+            continue;
+        source_values.push_back(value.id);
+        if (value.producer_node_id != DSL_IR_NODE_INVALID_ID) {
+            if (value.producer_node_id >= node_map.size() ||
+                DSL_ir_node_table[value.producer_node_id - 1]
+                    .result_value_id != value.id)
+                return FALSE;
+            if (!node_seen[value.producer_node_id]) {
+                source_nodes.push_back(value.producer_node_id);
+                node_seen[value.producer_node_id] = TRUE;
+            }
+        }
+    }
+    if (source_values.empty() || source_values.size() > pair_capacity)
+        return FALSE;
+    DSL_PU_SOURCE_IDENTITY_RECORD source_identity;
+    DSL_PU_SOURCE_IDENTITY_RECORD existing_identity;
+    if (!DSL_Call_Image_Find_PU_Identity
+            (source_pu_st, &source_identity) ||
+        DSL_Call_Image_Find_PU_Identity
+            (clone_pu_st, &existing_identity))
+        return FALSE;
+
+    savepoint->node_count = DSL_ir_node_table.Size();
+    savepoint->attribute_count = DSL_ir_attribute_table.Size();
+    savepoint->value_count = DSL_ir_value_table.Size();
+    savepoint->reference_count = DSL_ir_value_reference_table.Size();
+    savepoint->formal_count = DSL_pu_formal_table.Size();
+    savepoint->pu_identity_count = DSL_pu_source_identity_table.Size();
+
+    BOOL valid = TRUE;
+    for (UINT32 i = 0; valid && i < source_nodes.size(); ++i) {
+        DSL_IR_NODE_ID source_id = source_nodes[i];
+        if (node_map[source_id] != DSL_IR_NODE_INVALID_ID)
+            continue;
+        DSL_IR_NODE_RECORD node = DSL_ir_node_table[source_id - 1];
+        node.id = DSL_IR_NODE_INVALID_ID;
+        node.first_operand_reference_id = DSL_IR_VALUE_REFERENCE_INVALID_ID;
+        node.operand_count = 0;
+        node.first_attribute_id = DSL_IR_ATTRIBUTE_INVALID_ID;
+        node.attribute_count = 0;
+        node.result_value_id = DSL_IR_VALUE_INVALID_ID;
+        node_map[source_id] = DSL_IR_Image_Add_Node(&node);
+        valid = node_map[source_id] != DSL_IR_NODE_INVALID_ID;
+    }
+    for (UINT32 i = 0; valid && i < source_values.size(); ++i) {
+        DSL_IR_VALUE_ID source_id = source_values[i];
+        DSL_IR_VALUE_RECORD value = DSL_ir_value_table[source_id - 1];
+        if (value.producer_node_id != DSL_IR_NODE_INVALID_ID)
+            value.producer_node_id = node_map[value.producer_node_id];
+        value.id = DSL_IR_VALUE_INVALID_ID;
+        value.metadata = Save_Str(clone_owner.c_str());
+        value_map[source_id] = DSL_IR_Image_Add_Value(&value);
+        valid = value_map[source_id] != DSL_IR_VALUE_INVALID_ID;
+        pairs[i].source_value_id = source_id;
+        pairs[i].clone_value_id = value_map[source_id];
+    }
+    for (UINT32 i = 0; valid && i < source_nodes.size(); ++i) {
+        DSL_IR_NODE_ID source_id = source_nodes[i];
+        DSL_IR_NODE_RECORD source = DSL_ir_node_table[source_id - 1];
+        DSL_IR_VALUE_REFERENCE_ID first_reference =
+            DSL_IR_VALUE_REFERENCE_INVALID_ID;
+        DSL_IR_ATTRIBUTE_ID first_attribute = DSL_IR_ATTRIBUTE_INVALID_ID;
+        for (UINT32 j = 0; valid && j < source.operand_count; ++j) {
+            DSL_IR_VALUE_REFERENCE_RECORD reference =
+                DSL_ir_value_reference_table
+                    [source.first_operand_reference_id + j - 1];
+            reference.id = DSL_IR_VALUE_REFERENCE_INVALID_ID;
+            reference.owner_node_id = node_map[source_id];
+            if (reference.value_id < value_map.size() &&
+                value_map[reference.value_id] != DSL_IR_VALUE_INVALID_ID)
+                reference.value_id = value_map[reference.value_id];
+            else if (reference.value_id == DSL_IR_VALUE_INVALID_ID ||
+                     reference.value_id > DSL_ir_value_table.Size() ||
+                     ST_IDX_level
+                         (DSL_ir_value_table[reference.value_id - 1].st) !=
+                         ST_IDX_level(source_pu_st))
+                valid = FALSE;
+            if (valid) {
+                DSL_IR_VALUE_REFERENCE_ID id =
+                    DSL_IR_Image_Add_Value_Reference(&reference);
+                valid = id != DSL_IR_VALUE_REFERENCE_INVALID_ID;
+                if (j == 0)
+                    first_reference = id;
+            }
+        }
+        for (UINT32 j = 0; valid && j < source.attribute_count; ++j) {
+            DSL_IR_ATTRIBUTE_RECORD attribute = DSL_ir_attribute_table
+                [source.first_attribute_id + j - 1];
+            attribute.id = DSL_IR_ATTRIBUTE_INVALID_ID;
+            attribute.owner_node_id = node_map[source_id];
+            DSL_IR_ATTRIBUTE_ID id = DSL_IR_Image_Add_Attribute(&attribute);
+            valid = id != DSL_IR_ATTRIBUTE_INVALID_ID;
+            if (j == 0)
+                first_attribute = id;
+        }
+        if (valid)
+            valid = source.result_value_id < value_map.size() &&
+                value_map[source.result_value_id] !=
+                    DSL_IR_VALUE_INVALID_ID &&
+                DSL_IR_Image_Set_Node_Links
+                    (node_map[source_id], first_reference,
+                     source.operand_count, first_attribute,
+                     source.attribute_count,
+                     value_map[source.result_value_id]);
+    }
+    UINT32 original_formal_count = savepoint->formal_count;
+    for (UINT32 i = 0; valid && i < original_formal_count; ++i) {
+        DSL_PU_FORMAL_RECORD formal = DSL_pu_formal_table[i];
+        if (formal.owner_pu_st != source_pu_st)
+            continue;
+        if (formal.formal_value_id >= value_map.size() ||
+            value_map[formal.formal_value_id] == DSL_IR_VALUE_INVALID_ID) {
+            valid = FALSE;
+            break;
+        }
+        formal.id = DSL_PU_FORMAL_INVALID_ID;
+        formal.owner_pu_st = clone_pu_st;
+        formal.formal_value_id = value_map[formal.formal_value_id];
+        valid = DSL_PU_Interface_Image_Add_Formal(&formal) !=
+                DSL_PU_FORMAL_INVALID_ID;
+    }
+    if (valid) {
+        source_identity.id = DSL_PU_SOURCE_IDENTITY_INVALID_ID;
+        source_identity.owner_pu_st = clone_pu_st;
+        valid = DSL_Call_Image_Add_PU_Identity(&source_identity) !=
+                DSL_PU_SOURCE_IDENTITY_INVALID_ID;
+    }
+    if (valid)
+        valid = DSL_IR_Image_Validate(NULL) &&
+                DSL_PU_Interface_Image_Validate(NULL) &&
+                DSL_Call_Image_Validate(NULL);
+    if (!valid) {
+        DSL_IR_Image_Clone_PU_Restore(savepoint);
+        return FALSE;
+    }
+    *pair_count = source_values.size();
+    return TRUE;
 }
 
 UINT32

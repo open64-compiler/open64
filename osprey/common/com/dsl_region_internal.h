@@ -43,4 +43,8 @@ extern BOOL DSL_Region_Prune_Input_Symbols
                                 (PU_Info *pu, const ST_IDX *symbols,
                                  UINT32 symbol_count);
 
+/* Stage and discard the independent REGION interface store of a PU clone. */
+extern BOOL DSL_Region_Clone_PU_Store (PU_Info *source, PU_Info *clone);
+extern void DSL_Region_Discard_PU_Store (PU_Info *pu);
+
 #endif /* dsl_region_internal_INCLUDED */
