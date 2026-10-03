@@ -182,7 +182,9 @@ callsite 8 versus 9 needs `(15,15)` versus `(15,17)`. The hashed
 context-specialized clones, giving a **minimum of nine executable PUs**
 if each context bound B is passed as an explicit typed plaintext formal.
 That formal, its per-caller actual, exact TY, and origin PU/value/static-event
-identity require reviewed native support. If B instead becomes a static
+identity require reviewed native support; the concrete consumer contract and
+existing Open64 clone-service audit are in
+`FHE-SYNC6-CONTEXT-SPECIALIZATION-CONTRACT.md`. If B instead becomes a static
 per-context constant, the nine call contexts may need one clone each,
 giving up to ten total PUs. The final count is a certification result, not
 a fixed acceptance assumption; metadata-only B selection and an unproved
