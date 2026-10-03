@@ -195,15 +195,26 @@ DSL_Call_ABI_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
                                 NULL : WN_kid0(parm);
             DSL_IR_VALUE_RECORD value;
             if (WN_st_idx(call) != callsite.callee_pu_st ||
-                address == NULL || WN_operator(address) != OPR_LDA ||
-                !WN_Parm_By_Reference(parm) || !WN_Parm_Read_Only(parm) ||
-                WN_Parm_Out(parm) || !WN_Parm_Passed_Not_Saved(parm) ||
+                address == NULL ||
+                (WN_operator(address) != OPR_LDA &&
+                 WN_operator(address) != OPR_LDID) ||
                 !DSL_IR_Image_Get_Value(argument.argument_value_id, &value) ||
                 !DSL_Call_ABI_Value_Matches_ST
-                    (value, owner_pu_st, WN_st_idx(address)) ||
-                WN_ty(parm) != WN_ty(address) ||
-                TY_kind(WN_ty(parm)) != KIND_POINTER ||
-                TY_pointed(WN_ty(parm)) != value.ty)
+                    (value, owner_pu_st, WN_st_idx(address)))
+                return DSL_Call_ABI_PU_Report
+                           (diagnostic, "argument value mismatch", argument.id);
+            BOOL tensor_reference = WN_operator(address) == OPR_LDA &&
+                WN_Parm_By_Reference(parm) &&
+                WN_ty(parm) == WN_ty(address) &&
+                TY_kind(WN_ty(parm)) == KIND_POINTER &&
+                TY_pointed(WN_ty(parm)) == value.ty;
+            BOOL scalar_bound = WN_operator(address) == OPR_LDID &&
+                WN_Parm_By_Value(parm) &&
+                TY_mtype(value.ty) == MTYPE_F8 &&
+                WN_ty(address) == value.ty && WN_ty(parm) == value.ty;
+            if ((!tensor_reference && !scalar_bound) ||
+                !WN_Parm_Read_Only(parm) || WN_Parm_Out(parm) ||
+                !WN_Parm_Passed_Not_Saved(parm))
                 return DSL_Call_ABI_PU_Report
                            (diagnostic, "argument value mismatch", argument.id);
         }

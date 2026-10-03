@@ -112,6 +112,95 @@ DSL_Region_Reset (void)
     DSL_region_stores.clear();
 }
 
+static WN *
+DSL_Region_Corresponding_WN
+        (WN *source, WN *clone, const WN *target)
+{
+    if (source == target)
+        return clone;
+    if (source == NULL || clone == NULL ||
+        WN_operator(source) != WN_operator(clone))
+        return NULL;
+    if (WN_operator(source) == OPR_BLOCK) {
+        WN *source_stmt = WN_first(source);
+        WN *clone_stmt = WN_first(clone);
+        while (source_stmt != NULL && clone_stmt != NULL) {
+            WN *found = DSL_Region_Corresponding_WN
+                            (source_stmt, clone_stmt, target);
+            if (found != NULL)
+                return found;
+            source_stmt = WN_next(source_stmt);
+            clone_stmt = WN_next(clone_stmt);
+        }
+        return NULL;
+    }
+    if (WN_kid_count(source) != WN_kid_count(clone))
+        return NULL;
+    for (INT i = 0; i < WN_kid_count(source); ++i) {
+        WN *found = DSL_Region_Corresponding_WN
+                        (WN_kid(source, i), WN_kid(clone, i), target);
+        if (found != NULL)
+            return found;
+    }
+    return NULL;
+}
+
+void
+DSL_Region_Discard_PU_Store (PU_Info *pu)
+{
+    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
+    if (store == NULL)
+        return;
+    for (UINT32 i = 0; i < DSL_region_stores.size(); ++i) {
+        if (DSL_region_stores[i] == store) {
+            DSL_region_stores.erase(DSL_region_stores.begin() + i);
+            break;
+        }
+    }
+    for (UINT32 i = 0; i < store->regions.size(); ++i)
+        delete store->regions[i];
+    delete store;
+    Set_PU_Info_regions_ptr(pu, NULL);
+    Set_PU_Info_state(pu, WT_REGIONS, Subsect_Missing);
+}
+
+BOOL
+DSL_Region_Clone_PU_Store (PU_Info *source, PU_Info *clone)
+{
+    if (source == NULL || clone == NULL || source == clone ||
+        PU_Info_tree_ptr(source) == NULL ||
+        PU_Info_tree_ptr(clone) == NULL ||
+        DSL_Region_Find_Store(clone) != NULL)
+        return FALSE;
+    DSL_REGION_STORE *source_store = DSL_Region_Find_Store(source);
+    if (source_store == NULL)
+        return PU_Info_state(source, WT_REGIONS) == Subsect_Missing;
+    DSL_REGION_STORE *clone_store = DSL_Region_Get_Store(clone, TRUE);
+    if (clone_store == NULL)
+        return FALSE;
+    for (UINT32 i = 0; i < source_store->regions.size(); ++i) {
+        dsl_region_runtime *source_region = source_store->regions[i];
+        WN *clone_wn = DSL_Region_Corresponding_WN
+                           (PU_Info_tree_ptr(source),
+                            PU_Info_tree_ptr(clone), source_region->wn);
+        if (clone_wn == NULL || WN_operator(clone_wn) != OPR_REGION) {
+            DSL_Region_Discard_PU_Store(clone);
+            return FALSE;
+        }
+        dsl_region_runtime *copy = new dsl_region_runtime;
+        copy->image = source_region->image;
+        copy->image.wn_offset = 0;
+        copy->wn = clone_wn;
+        clone_store->regions.push_back(copy);
+    }
+    clone_store->interfaces = source_store->interfaces;
+    if (!DSL_Region_Verify_PU(clone, NULL)) {
+        DSL_Region_Discard_PU_Store(clone);
+        return FALSE;
+    }
+    return TRUE;
+}
+
 DSL_REGION
 DSL_Region_Create (PU_Info *pu, DSL_REGION parent,
                    const char *contract_name, UINT32 contract_version)
