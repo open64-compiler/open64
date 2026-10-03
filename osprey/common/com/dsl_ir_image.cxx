@@ -8,6 +8,7 @@
 
 #include "dsl_ir_image.h"
 #include "dsl_pu_specialize_internal.h"
+#include "dsl_ckks_expand_internal.h"
 #include "dsl_ckks_event.h"
 #include "dsl_opcode.h"
 #include "dsl_program_interface_internal.h"
@@ -3085,6 +3086,116 @@ DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID value_id)
         return FALSE;
     node.flags = DSL_IR_NODE_FLAG_LOWERED;
     DSL_ir_value_table[value_id - 1].flags = DSL_IR_VALUE_FLAG_LOWERED;
+    return TRUE;
+}
+
+BOOL
+DSL_IR_Image_CKKS_Save
+        (DSL_IR_VALUE_ID source_value_id,
+         DSL_CKKS_IMAGE_SAVEPOINT *savepoint)
+{
+    DSL_IR_VALUE_RECORD source;
+    DSL_IR_NODE_RECORD node;
+    if (savepoint == NULL ||
+        !DSL_IR_Table_Get(DSL_ir_value_table, source_value_id, &source) ||
+        !DSL_IR_Table_Get
+            (DSL_ir_node_table, source.producer_node_id, &node) ||
+        node.result_value_id != source.id)
+        return FALSE;
+    savepoint->opcode_count = DSL_ir_opcode_descriptor_table.Size();
+    savepoint->node_count = DSL_ir_node_table.Size();
+    savepoint->attribute_count = DSL_ir_attribute_table.Size();
+    savepoint->value_count = DSL_ir_value_table.Size();
+    savepoint->reference_count = DSL_ir_value_reference_table.Size();
+    savepoint->source_node_id = node.id;
+    savepoint->source_value_id = source.id;
+    savepoint->source_node_flags = node.flags;
+    savepoint->source_value_flags = source.flags;
+    return TRUE;
+}
+
+void
+DSL_IR_Image_CKKS_Restore
+        (const DSL_CKKS_IMAGE_SAVEPOINT *savepoint,
+         DSL_IR_VALUE_ID replacement_value_id)
+{
+    if (savepoint == NULL)
+        return;
+    UINT32 old_count = savepoint->reference_count;
+    if (old_count > DSL_ir_value_reference_table.Size())
+        old_count = DSL_ir_value_reference_table.Size();
+    for (UINT32 i = 0; i < old_count; ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD &reference =
+            DSL_ir_value_reference_table[i];
+        if (replacement_value_id != DSL_IR_VALUE_INVALID_ID &&
+            reference.value_id == replacement_value_id)
+            reference.value_id = savepoint->source_value_id;
+    }
+    if (savepoint->source_node_id != 0 &&
+        savepoint->source_node_id <= DSL_ir_node_table.Size())
+        DSL_ir_node_table[savepoint->source_node_id - 1].flags =
+            savepoint->source_node_flags;
+    if (savepoint->source_value_id != 0 &&
+        savepoint->source_value_id <= DSL_ir_value_table.Size())
+        DSL_ir_value_table[savepoint->source_value_id - 1].flags =
+            savepoint->source_value_flags;
+    DSL_ir_value_reference_table.Delete_down_to
+        (savepoint->reference_count);
+    DSL_ir_attribute_table.Delete_down_to(savepoint->attribute_count);
+    DSL_ir_value_table.Delete_down_to(savepoint->value_count);
+    DSL_ir_node_table.Delete_down_to(savepoint->node_count);
+    DSL_ir_opcode_descriptor_table.Delete_down_to(savepoint->opcode_count);
+}
+
+BOOL
+DSL_IR_Image_Redirect_And_Lower_Value
+        (DSL_IR_VALUE_ID source_value_id,
+         DSL_IR_VALUE_ID replacement_value_id)
+{
+    DSL_IR_VALUE_RECORD source;
+    DSL_IR_VALUE_RECORD replacement;
+    DSL_IR_NODE_RECORD source_node;
+    DSL_IR_NODE_RECORD replacement_node;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD source_opcode;
+    if (source_value_id == replacement_value_id ||
+        !DSL_IR_Table_Get
+            (DSL_ir_value_table, source_value_id, &source) ||
+        !DSL_IR_Table_Get
+            (DSL_ir_value_table, replacement_value_id, &replacement) ||
+        source.ty != replacement.ty ||
+        source.flags != DSL_IR_VALUE_FLAG_NONE ||
+        replacement.flags != DSL_IR_VALUE_FLAG_NONE ||
+        !DSL_IR_Table_Get
+            (DSL_ir_node_table, source.producer_node_id, &source_node) ||
+        !DSL_IR_Table_Get
+            (DSL_ir_node_table, replacement.producer_node_id,
+             &replacement_node) ||
+        source_node.flags != DSL_IR_NODE_FLAG_NONE ||
+        replacement_node.flags != DSL_IR_NODE_FLAG_NONE ||
+        source_node.result_value_id != source.id ||
+        replacement_node.result_value_id != replacement.id ||
+        !DSL_IR_Table_Get
+            (DSL_ir_opcode_descriptor_table,
+             source_node.opcode_descriptor_id, &source_opcode) ||
+        source_opcode.effect_model != DSL_EFFECT_MODEL_PURE)
+        return FALSE;
+    for (UINT32 i = 0; i < DSL_ir_value_reference_table.Size(); ++i) {
+        const DSL_IR_VALUE_REFERENCE_RECORD &reference =
+            DSL_ir_value_reference_table[i];
+        if (reference.value_id == source_value_id &&
+            reference.owner_node_id == source_node.id)
+            return FALSE;
+    }
+    for (UINT32 i = 0; i < DSL_ir_value_reference_table.Size(); ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD &reference =
+            DSL_ir_value_reference_table[i];
+        if (reference.value_id == source_value_id)
+            reference.value_id = replacement_value_id;
+    }
+    DSL_ir_node_table[source_node.id - 1].flags =
+        DSL_IR_NODE_FLAG_LOWERED;
+    DSL_ir_value_table[source.id - 1].flags =
+        DSL_IR_VALUE_FLAG_LOWERED;
     return TRUE;
 }
 

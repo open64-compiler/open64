@@ -5,12 +5,14 @@ their unchanged mapped DSL image carrier are implemented in
 `osprey/common/com/dsl_opcode.{h,cxx}`. The optional typed event image,
 mapped reader/writer, gatekeeper, and `ir_b2a -st -src` inspection are
 implemented. A focused image fixture proves two executable steps and one
-lowered source, not the full six-group producer transaction. The read-only
-`DSL_IR_Can_Expand_Native_Value_To_CKKS_Events` preflight checks a complete
-request without reserving symbols or mutating the PU. The executable
-one-to-many transaction, CKKS state binding, and ResNet certification remain
-pending; a successful preflight is not permission to publish a transformed
-image.
+lowered source. `DSL_IR_Can_Expand_Native_Value_To_CKKS_Events` checks a
+complete request without reserving symbols or mutating the PU. The staged
+`DSL_IR_Expand_Native_Value_To_CKKS_Events` implementation now exercises a
+six-group cross-group dependency, explicit final replacement, a late failure
+after four groups, call-ABI and REGION rollback, and separate-process mapped
+reopen. These are structural infrastructure fixtures, not the FHE semantic
+producer or a certified ResNet artifact. CKKS state binding and full ResNet
+certification remain pending.
 
 ## Boundary
 
@@ -71,6 +73,12 @@ operator name.
    return through that rollback path; a post-mutation assertion is not an
    atomicity mechanism. The read-only preflight is separately testable but
    cannot reserve names or prevent another mutation between calls.
+   Rollback savepoints include string interning, local symbols, tensor
+   metadata/KV rows, DSL opcode/node/attribute/value/reference rows, and
+   CKKS event rows. Physical uses, call-ABI arguments, REGION interfaces,
+   and the detached source definition are restored before those savepoints
+   are trimmed. A failed rollback is terminal rather than returning control
+   to a pass with uncertain IR.
 5. Retain the old source node/value as nonexecutable provenance with the
    existing `DSL_IR_NODE_FLAG_LOWERED` and `DSL_IR_VALUE_FLAG_LOWERED` pair.
    The original source operand rows remain intact. The operand-targeted

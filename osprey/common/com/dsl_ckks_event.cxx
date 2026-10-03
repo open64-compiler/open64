@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "dsl_ckks_event_internal.h"
+#include "dsl_ckks_expand_internal.h"
 #include "dsl_ir_transaction_internal.h"
 #include "segmented_array.h"
 #include "strtab.h"
@@ -49,6 +50,13 @@ UINT32
 DSL_CKKS_Event_Image_Count (void)
 {
     return DSL_ckks_event_table.Size();
+}
+
+void
+DSL_CKKS_Event_Image_Trim (UINT32 record_count)
+{
+    if (record_count <= DSL_ckks_event_table.Size())
+        DSL_ckks_event_table.Delete_down_to(record_count);
 }
 
 void

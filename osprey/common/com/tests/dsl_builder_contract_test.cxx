@@ -35,6 +35,7 @@
 #include "dsl_builder.h"
 #include "dsl_pu_specialize_internal.h"
 #include "dsl_ckks_expand.h"
+#include "dsl_ckks_expand_internal.h"
 #include "dsl_ckks_event_internal.h"
 #include "dsl_contract.h"
 #include "dsl_program_interface_internal.h"
@@ -9822,6 +9823,476 @@ Check_CKKS_Event_Image (void)
 
 static unsigned char *Capture_DSL_IR_Image (UINT64 *image_size);
 
+static int
+Check_CKKS_Expansion_Transaction (void)
+{
+#define CKKS_EXPAND_CHECK(condition, stage) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "CKKS expansion failed: %s\n", stage); \
+            return 1; \
+        } \
+    } while (0)
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 1;
+    descriptor.type_core.logical_shape = "[2]";
+    CKKS_EXPAND_CHECK(DSL_Builder_Begin_Program() &&
+                      DSL_Opcode_Register_CKKS_Domain() == 9,
+                      "program and CKKS registry");
+    TY_IDX ty = DSL_Builder_Intern_Tensor_Type
+                    ("ckks_expand_tensor", MTYPE_To_TY(MTYPE_F4),
+                     &descriptor);
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU("ckks_expand_transaction");
+    UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    DSL_BUILDER_PU_SOURCE_IDENTITY source_identity;
+    memset(&source_identity, 0, sizeof(source_identity));
+    source_identity.canonical_definition_name = "CKKSExpand.transaction";
+    source_identity.defining_module = "dsl_builder_contract_test";
+    source_identity.defining_file = __FILE__;
+    source_identity.defining_line = __LINE__;
+    DSL_PU_SOURCE_IDENTITY_RECORD identity;
+    CKKS_EXPAND_CHECK(ty != TY_IDX_ZERO && pu != NULL && file_id != 0 &&
+                      DSL_Builder_Set_PU_Source_Identity
+                          (pu, &source_identity) &&
+                      DSL_Call_Image_Find_PU_Identity
+                          (PU_Info_proc_sym(pu), &identity),
+                      "PU source identity");
+    DSL_DOMAIN_ID common_id = DSL_Domain_Find("common");
+    DSL_BUILDER_VALUE one = DSL_Builder_Create_Tensor_Constant
+        ("expand_one", ty, "float32", 1, "[2]", "splat", "1");
+    DSL_BUILDER_VALUE source = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
+         &one, 1, NULL, 0, "expand_source", ty);
+    DSL_BUILDER_VALUE consumer = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
+         &source, 1, NULL, 0, "expand_consumer", ty);
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = __LINE__;
+    position.column = 1;
+    position.statement_begin = 1;
+    DSL_BUILDER_VALUE values[3] = { one, source, consumer };
+    for (UINT32 i = 0; i < 3; ++i) {
+        ++position.line;
+        CKKS_EXPAND_CHECK
+            (values[i] != NULL &&
+             DSL_Builder_Set_Value_Source_Position(values[i], &position),
+             "source positions");
+    }
+    CKKS_EXPAND_CHECK(DSL_Builder_Append_PU_Value(pu, consumer),
+                      "materialize source and consumer");
+    WN *body = WN_func_body(PU_Info_tree_ptr(pu));
+    ST_IDX source_st = DSL_Builder_Get_Value_Result_Symbol(source);
+    WN *source_block = NULL;
+    WN *source_definition =
+        Find_STID_And_Block(body, source_st, &source_block);
+    WN *consumer_definition = Find_STID_In_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(consumer));
+    CKKS_EXPAND_CHECK(source_definition != NULL && source_block != NULL &&
+                      consumer_definition != NULL, "physical definitions");
+
+    DSL_CKKS_EXPANSION_OPERAND operands[10];
+    memset(operands, 0, sizeof(operands));
+    operands[0].kind = DSL_CKKS_EXPANSION_EXISTING_VALUE;
+    operands[0].value_id = DSL_Builder_Get_Value_Image_Id(one);
+    operands[1].kind = DSL_CKKS_EXPANSION_PRIOR_STEP;
+    operands[1].step_index = 0;
+    const UINT32 prior_steps[8] = { 1, 0, 2, 1, 3, 2, 4, 1 };
+    for (UINT32 i = 2; i < 10; ++i) {
+        operands[i].kind = DSL_CKKS_EXPANSION_PRIOR_STEP;
+        operands[i].step_index = prior_steps[i - 2];
+    }
+    operands[3].kind = DSL_CKKS_EXPANSION_EXISTING_VALUE;
+    operands[3].step_index = 0;
+    operands[3].value_id = operands[0].value_id;
+    DSL_CKKS_EXPANSION_ATTRIBUTE refresh_attrs[3] = {
+        { "attr.target_level", "18" },
+        { "attr.reason", "PRE_RELU_REFRESH" },
+        { "attr.key_id", "bootstrap_key" }
+    };
+    DSL_CKKS_EXPANSION_STEP steps[6];
+    memset(steps, 0, sizeof(steps));
+    steps[0].dsl_operator = OPR_DSLCKKSENCODE;
+    steps[0].version = 1;
+    steps[0].operands = &operands[0];
+    steps[0].operand_count = 1;
+    steps[0].result_name = "expand_encoded";
+    steps[0].result_ty = ty;
+    steps[1].dsl_operator = OPR_DSLCKKSBOOTSTRAP;
+    steps[1].version = 1;
+    steps[1].operands = &operands[1];
+    steps[1].operand_count = 1;
+    steps[1].attributes = refresh_attrs;
+    steps[1].attribute_count = 3;
+    steps[1].result_name = "expand_refreshed";
+    steps[1].result_ty = ty;
+    const DSL_OPERATOR stage_ops[4] = {
+        OPR_DSLCKKSMUL, OPR_DSLCKKSADD,
+        OPR_DSLCKKSMUL, OPR_DSLCKKSADD
+    };
+    const char *stage_names[4] = {
+        "expand_normalized", "expand_stage1",
+        "expand_stage2", "expand_reconstructed"
+    };
+    for (UINT32 i = 2; i < 6; ++i) {
+        steps[i].dsl_operator = stage_ops[i - 2];
+        steps[i].version = 1;
+        steps[i].operands = &operands[2 + 2 * (i - 2)];
+        steps[i].operand_count = 2;
+        steps[i].result_name = stage_names[i - 2];
+        steps[i].result_ty = ty;
+    }
+    for (UINT32 i = 0; i < 6; ++i)
+        steps[i].source_position = WN_Get_Linenum(source_definition);
+    DSL_CKKS_EXPANSION_GROUP groups[6];
+    memset(groups, 0, sizeof(groups));
+    for (UINT32 i = 0; i < 6; ++i) {
+        groups[i].source_static_ordinal = i + 1;
+        groups[i].origin_static_ordinal = i + 1;
+        groups[i].first_step = i;
+        groups[i].step_count = 1;
+    }
+    DSL_CKKS_EXPANSION_CONTEXT context;
+    memset(&context, 0, sizeof(context));
+    context.context_pu_identity_id = identity.id;
+    context.origin_owner_pu_st = PU_Info_proc_sym(pu);
+    context.origin_source_value_id = DSL_Builder_Get_Value_Image_Id(source);
+    DSL_CKKS_EXPANSION_REQUEST request;
+    memset(&request, 0, sizeof(request));
+    request.source_definition = source_definition;
+    request.source_value_id = context.origin_source_value_id;
+    request.expected_source_operator = OPR_DSLRELU;
+    request.expected_source_version = 2;
+    request.groups = groups;
+    request.group_count = 6;
+    request.steps = steps;
+    request.step_count = 6;
+    request.contexts = &context;
+    request.context_count = 1;
+    request.final_step_index = 5;
+    CKKS_EXPAND_CHECK
+        (DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+             (pu, &request, stderr), "initial preflight");
+    UINT32 symbol_count = ST_Table_Size(CURRENT_SYMTAB);
+    UINT32 node_count = DSL_IR_Image_Node_Count();
+    UINT32 value_count = DSL_IR_Image_Value_Count();
+    UINT32 metadata_count = St_tensor_metadata.Size();
+    UINT32 kv_count = Tensor_dsl_kv_table.Size();
+    DSL_IR_IMAGE_HEADER original_image;
+    DSL_IR_Image_Get_Header(&original_image);
+    DSL_CKKS_STRTAB_SAVEPOINT original_strings;
+    CKKS_EXPAND_CHECK(DSL_CKKS_Strtab_Save(&original_strings),
+                      "string savepoint");
+    DSL_CKKS_EXPANSION_STEP_RESULT results[6];
+    for (UINT32 stage = 1; stage <= 4; ++stage) {
+        memset(results, 0, sizeof(results));
+        DSL_CKKS_Expand_Set_Test_Fault(stage);
+        BOOL rejected = !DSL_IR_Expand_Native_Value_To_CKKS_Events
+            (pu, &request, NULL, results);
+        DSL_CKKS_Expand_Set_Test_Fault(0);
+        DSL_IR_IMAGE_HEADER current_image;
+        DSL_IR_Image_Get_Header(&current_image);
+        DSL_CKKS_STRTAB_SAVEPOINT current_strings;
+        CKKS_EXPAND_CHECK
+            (rejected && ST_Table_Size(CURRENT_SYMTAB) == symbol_count &&
+             DSL_IR_Image_Node_Count() == node_count &&
+             DSL_IR_Image_Value_Count() == value_count &&
+             current_image.opcode_descriptor_count ==
+                 original_image.opcode_descriptor_count &&
+             current_image.attribute_count == original_image.attribute_count &&
+             current_image.value_reference_count ==
+                 original_image.value_reference_count &&
+             St_tensor_metadata.Size() == metadata_count &&
+             Tensor_dsl_kv_table.Size() == kv_count &&
+             DSL_CKKS_Strtab_Save(&current_strings) &&
+             current_strings.table == original_strings.table &&
+             current_strings.next_index == original_strings.next_index &&
+             DSL_CKKS_Event_Image_Count() == 0 &&
+             Find_STID_In_Block(source_block, source_st) ==
+                 source_definition &&
+             WN_st_idx(WN_kid0(WN_kid0(consumer_definition))) ==
+                 source_st &&
+             DSL_IR_Image_Validate(stderr) &&
+             DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                 (pu, &request, stderr),
+             "late-failure rollback");
+    }
+    CKKS_EXPAND_CHECK
+        (DSL_IR_Expand_Native_Value_To_CKKS_Events
+             (pu, &request, stderr, results),
+         "atomic grouped expansion");
+    DSL_IR_VALUE_RECORD lowered;
+    CKKS_EXPAND_CHECK
+        (results[0].value_id != 0 && results[5].value_id != 0 &&
+         results[0].result_st != results[5].result_st &&
+         Find_STID_In_Block(source_block, source_st) == NULL &&
+         Find_STID_In_Block
+             (source_block, results[0].result_st) != NULL &&
+         Find_STID_In_Block
+             (source_block, results[5].result_st) != NULL &&
+         WN_st_idx(WN_kid0(WN_kid0(consumer_definition))) ==
+             results[5].result_st &&
+         DSL_IR_Image_Get_Value(request.source_value_id, &lowered) &&
+         lowered.flags == DSL_IR_VALUE_FLAG_LOWERED &&
+         DSL_CKKS_Event_Image_Count() == 6 &&
+         DSL_CKKS_Event_Image_Validate(stderr) &&
+         DSL_IR_Image_Validate(stderr),
+         "native result and event evidence");
+    const char *artifact = getenv("OPEN64_DSL_CKKS_EXPAND_ARTIFACT");
+    if (artifact != NULL && artifact[0] != '\0') {
+        DSL_BUILDER_MAPPED_IMAGE_REQUEST image_request;
+        image_request.path = artifact;
+        image_request.flags = 0;
+        CKKS_EXPAND_CHECK
+            (DSL_Builder_Finalize_Mapped_Image(&image_request),
+             "mapped binary image");
+    }
+    return 0;
+#undef CKKS_EXPAND_CHECK
+}
+
+static int
+Check_CKKS_Expansion_Call_Region (void)
+{
+#define CKKS_REGION_CHECK(condition, stage) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "CKKS call/REGION expansion failed: %s\n", stage); \
+            return 1; \
+        } \
+    } while (0)
+    CKKS_REGION_CHECK(DSL_Builder_Begin_Program() &&
+                      DSL_Opcode_Register_CKKS_Domain() == 9,
+                      "program and registry");
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 1;
+    descriptor.type_core.logical_shape = "[2]";
+    TY_IDX ty = DSL_Builder_Intern_Tensor_Type
+                    ("ckks_region_tensor", MTYPE_To_TY(MTYPE_F4),
+                     &descriptor);
+    DSL_BUILDER_PROGRAM_UNIT callee =
+        DSL_Builder_Create_Minimal_PU("ckks_region_callee");
+    UINT32 callee_file = DSL_Builder_Register_Source_File(callee, __FILE__);
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = callee_file;
+    position.line = __LINE__;
+    position.column = 1;
+    position.statement_begin = 1;
+    DSL_BUILDER_VALUE formal = DSL_Builder_Declare_PU_Formal
+        (callee, "callee_input", 0, ty, &position);
+    DSL_BUILDER_VALUE callee_result = DSL_Builder_Declare_PU_Result
+        (callee, "callee_result", 0, ty, DSL_PU_RESULT_TENSOR,
+         &position);
+    CKKS_REGION_CHECK(ty != TY_IDX_ZERO && callee != NULL &&
+                      formal != NULL && callee_result != NULL &&
+                      DSL_Builder_Return_PU_Values(callee, &formal, 1),
+                      "callee signature and return");
+
+    DSL_BUILDER_PROGRAM_UNIT caller =
+        DSL_Builder_Create_Minimal_PU("ckks_region_caller");
+    UINT32 caller_file = DSL_Builder_Register_Source_File(caller, __FILE__);
+    DSL_BUILDER_PU_SOURCE_IDENTITY source_identity;
+    memset(&source_identity, 0, sizeof(source_identity));
+    source_identity.canonical_definition_name = "CKKSRegion.caller";
+    source_identity.defining_module = "dsl_builder_contract_test";
+    source_identity.defining_file = __FILE__;
+    source_identity.defining_line = __LINE__;
+    DSL_PU_SOURCE_IDENTITY_RECORD identity;
+    CKKS_REGION_CHECK
+        (caller != NULL && caller_file != 0 &&
+         DSL_Builder_Set_PU_Source_Identity(caller, &source_identity) &&
+         DSL_Call_Image_Find_PU_Identity
+             (PU_Info_proc_sym(caller), &identity),
+         "caller source identity");
+    position.file_id = caller_file;
+    position.line = __LINE__;
+    DSL_BUILDER_VALUE one = DSL_Builder_Create_Tensor_Constant
+        ("region_one", ty, "float32", 1, "[2]", "splat", "1");
+    DSL_BUILDER_VALUE source = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, &one, 1, NULL, 0, "region_source", ty);
+    DSL_BUILDER_VALUE values[2] = { one, source };
+    for (UINT32 i = 0; i < 2; ++i) {
+        ++position.line;
+        CKKS_REGION_CHECK
+            (values[i] != NULL &&
+             DSL_Builder_Set_Value_Source_Position(values[i], &position),
+             "caller value position");
+    }
+    DSL_BUILDER_CALLSITE_INFO callsite;
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "CKKSRegionCallee";
+    callsite.instance_path = "model.region_callee";
+    callsite.context_identity = "CKKSRegion.caller.region_callee";
+    callsite.source_position = position;
+    ++callsite.source_position.line;
+    const char *result_names[1] = { "region_call_result" };
+    DSL_BUILDER_CALL call = DSL_Builder_Create_PU_Call
+        (caller, callee, &source, 1, result_names, 1, &callsite);
+    CKKS_REGION_CHECK
+        (call != NULL && DSL_Builder_Set_PU_Call_Argument_Role
+             (call, 0, 0, "input.tensor"),
+         "managed call ABI actual");
+    DSL_BUILDER_VALUE consumer = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, &source, 1, NULL, 0, "region_consumer", ty);
+    ++position.line;
+    CKKS_REGION_CHECK
+        (consumer != NULL &&
+         DSL_Builder_Set_Value_Source_Position(consumer, &position) &&
+         DSL_Builder_Append_PU_Value(caller, consumer),
+         "consumer materialization");
+    WN *body = WN_func_body(PU_Info_tree_ptr(caller));
+    WN *one_definition = Find_STID_In_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(one));
+    ST_IDX source_st = DSL_Builder_Get_Value_Result_Symbol(source);
+    WN *source_definition = Find_STID_In_Block(body, source_st);
+    WN *consumer_definition = Find_STID_In_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(consumer));
+    CKKS_REGION_CHECK(one_definition != NULL && source_definition != NULL &&
+                      consumer_definition != NULL, "caller definitions");
+
+    DSL_REGION region = DSL_Region_Create
+        (caller, NULL, "cnn.basic_block", 1);
+    CKKS_REGION_CHECK
+        (region != NULL &&
+         DSL_Region_Declare_Symbol
+             (region, source_st,
+              DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT,
+              0, DSL_REGION_INTERFACE_FLAG_NONE) &&
+         DSL_Region_Set_Source_Position
+             (region, WN_Get_Linenum(source_definition)),
+         "REGION interface");
+    WN_EXTRACT_FromBlock(body, one_definition);
+    WN_EXTRACT_FromBlock(body, source_definition);
+    WN_EXTRACT_FromBlock(body, call);
+    WN_EXTRACT_FromBlock(body, consumer_definition);
+    CKKS_REGION_CHECK
+        (DSL_Region_Append_Statement(region, one_definition) &&
+         DSL_Region_Append_Statement(region, source_definition) &&
+         DSL_Region_Append_Statement(region, call) &&
+         DSL_Region_Append_Statement(region, consumer_definition) &&
+         DSL_Region_Append_To_PU(region) &&
+         DSL_Region_Verify_PU(caller, stderr),
+         "REGION ownership");
+    WN *region_body = WN_region_body(DSL_Region_WN(region));
+    DSL_CALL_ARGUMENT_RECORD argument;
+    DSL_IR_VALUE_ID source_value_id =
+        DSL_Builder_Get_Value_Image_Id(source);
+    CKKS_REGION_CHECK
+        (DSL_Call_ABI_Image_Find_Argument(call, 0, &argument) &&
+         argument.argument_value_id == source_value_id &&
+         DSL_Region_Symbol_Use_Count(caller, source_st) == 1,
+         "pre-expansion call and REGION binding");
+
+    DSL_CKKS_EXPANSION_OPERAND operand;
+    memset(&operand, 0, sizeof(operand));
+    operand.kind = DSL_CKKS_EXPANSION_EXISTING_VALUE;
+    operand.value_id = DSL_Builder_Get_Value_Image_Id(one);
+    DSL_CKKS_EXPANSION_STEP step;
+    memset(&step, 0, sizeof(step));
+    step.dsl_operator = OPR_DSLCKKSENCODE;
+    step.version = 1;
+    step.operands = &operand;
+    step.operand_count = 1;
+    step.result_name = "region_encoded";
+    step.result_ty = ty;
+    step.source_position = WN_Get_Linenum(source_definition);
+    DSL_CKKS_EXPANSION_GROUP group;
+    memset(&group, 0, sizeof(group));
+    group.source_static_ordinal = 1;
+    group.origin_static_ordinal = 1;
+    group.step_count = 1;
+    DSL_CKKS_EXPANSION_CONTEXT context;
+    memset(&context, 0, sizeof(context));
+    context.context_pu_identity_id = identity.id;
+    context.origin_owner_pu_st = PU_Info_proc_sym(caller);
+    context.origin_source_value_id = source_value_id;
+    DSL_CKKS_EXPANSION_REQUEST request;
+    memset(&request, 0, sizeof(request));
+    request.source_definition = source_definition;
+    request.source_value_id = source_value_id;
+    request.expected_source_operator = OPR_DSLRELU;
+    request.expected_source_version = 2;
+    request.groups = &group;
+    request.group_count = 1;
+    request.steps = &step;
+    request.step_count = 1;
+    request.contexts = &context;
+    request.context_count = 1;
+    CKKS_REGION_CHECK
+        (DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+             (caller, &request, stderr), "call/REGION preflight");
+    UINT32 symbol_count = ST_Table_Size(CURRENT_SYMTAB);
+    UINT32 node_count = DSL_IR_Image_Node_Count();
+    UINT32 event_count = DSL_CKKS_Event_Image_Count();
+    DSL_CKKS_STRTAB_SAVEPOINT strings;
+    CKKS_REGION_CHECK(DSL_CKKS_Strtab_Save(&strings),
+                      "string savepoint");
+    DSL_CKKS_EXPANSION_STEP_RESULT result;
+    for (UINT32 stage = 2; stage <= 3; ++stage) {
+        memset(&result, 0, sizeof(result));
+        DSL_CKKS_Expand_Set_Test_Fault(stage);
+        BOOL rejected = !DSL_IR_Expand_Native_Value_To_CKKS_Events
+            (caller, &request, NULL, &result);
+        DSL_CKKS_Expand_Set_Test_Fault(0);
+        DSL_CKKS_STRTAB_SAVEPOINT current_strings;
+        CKKS_REGION_CHECK
+            (rejected &&
+             Find_STID_In_Block(region_body, source_st) ==
+                 source_definition &&
+             WN_st_idx(WN_kid0(WN_kid(call, 0))) == source_st &&
+             WN_st_idx(WN_kid0(WN_kid0(consumer_definition))) ==
+                 source_st &&
+             DSL_Call_ABI_Image_Find_Argument(call, 0, &argument) &&
+             argument.argument_value_id == source_value_id &&
+             DSL_Region_Symbol_Use_Count(caller, source_st) == 1 &&
+             ST_Table_Size(CURRENT_SYMTAB) == symbol_count &&
+             DSL_IR_Image_Node_Count() == node_count &&
+             DSL_CKKS_Event_Image_Count() == event_count &&
+             DSL_CKKS_Strtab_Save(&current_strings) &&
+             current_strings.next_index == strings.next_index &&
+             DSL_Region_Verify_PU(caller, stderr) &&
+             DSL_Call_ABI_Image_Validate_PU(caller, stderr),
+             "call/REGION late-failure rollback");
+    }
+    CKKS_REGION_CHECK
+        (DSL_IR_Expand_Native_Value_To_CKKS_Events
+             (caller, &request, stderr, &result),
+         "call/REGION commit");
+    CKKS_REGION_CHECK
+        (Find_STID_In_Block(region_body, source_st) == NULL &&
+         Find_STID_In_Block(region_body, result.result_st) != NULL &&
+         WN_st_idx(WN_kid0(WN_kid(call, 0))) == result.result_st &&
+         DSL_Call_ABI_Image_Find_Argument(call, 0, &argument) &&
+         argument.argument_value_id == result.value_id &&
+         DSL_Region_Symbol_Use_Count(caller, source_st) == 0 &&
+         DSL_Region_Symbol_Use_Count(caller, result.result_st) == 1 &&
+         DSL_IR_Image_Validate(stderr) &&
+         DSL_CKKS_Event_Image_Validate(stderr),
+         "committed call and REGION binding");
+    const char *artifact = getenv("OPEN64_DSL_CKKS_REGION_ARTIFACT");
+    if (artifact != NULL && artifact[0] != '\0') {
+        DSL_BUILDER_MAPPED_IMAGE_REQUEST image_request;
+        image_request.path = artifact;
+        image_request.flags = 0;
+        CKKS_REGION_CHECK
+            (DSL_Builder_Finalize_Mapped_Image(&image_request),
+             "REGION/call mapped image");
+    }
+    return 0;
+#undef CKKS_REGION_CHECK
+}
+
 static unsigned char *
 Capture_Runtime_Interface_Image (UINT64 *image_size)
 {
@@ -12120,6 +12591,10 @@ main(void)
         return Check_CKKS_Logical_Operators();
     if (getenv("OPEN64_DSL_CKKS_EVENT_ONLY") != NULL)
         return Check_CKKS_Event_Image();
+    if (getenv("OPEN64_DSL_CKKS_EXPAND_ONLY") != NULL)
+        return Check_CKKS_Expansion_Transaction();
+    if (getenv("OPEN64_DSL_CKKS_REGION_ONLY") != NULL)
+        return Check_CKKS_Expansion_Call_Region();
     if (getenv("OPEN64_DSL_LLAMA2_COMMON_ONLY") != NULL)
         return Check_Llama2_Common_Substrate();
     if (getenv("OPEN64_DSL_LLAMA2_TRANSFORMER_ONLY") != NULL)

@@ -83,4 +83,11 @@ extern BOOL DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
                                  const DSL_CKKS_EXPANSION_REQUEST *request,
                                  FILE *diagnostic);
 
+/* An accepted request publishes all steps or restores the active PU. */
+extern BOOL DSL_IR_Expand_Native_Value_To_CKKS_Events
+                                (PU_Info *pu_info,
+                                 const DSL_CKKS_EXPANSION_REQUEST *request,
+                                 FILE *diagnostic,
+                                 DSL_CKKS_EXPANSION_STEP_RESULT *results);
+
 #endif /* dsl_ckks_expand_INCLUDED */
