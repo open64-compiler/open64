@@ -7,6 +7,7 @@
  */
 
 #include "fhe_ckks_source_events.h"
+#include "fhe_ckks_relu_plan.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -14,11 +15,16 @@
 #include <vector>
 
 #include "dsl_ir_image.h"
+#include "dsl_opcode.h"
+#include "fhe_plan.h"
 #include "fhe_semantic_runtime_lower.h"
 
 static DSL_PU_SOURCE_IDENTITY_RECORD identities[2];
 static DSL_CALLSITE_METADATA_RECORD callsites[2];
 static VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD schedules[2];
+static DSL_FHE_MATERIALIZATION_OPERATION_RECORD operations[12];
+static DSL_FHE_CONTEXT_RANGE_RECORD ranges[2];
+static DSL_FHE_CONTEXT_CKKS_STATE_RECORD states[12];
 static UINT32 dynamic_count;
 
 /* Supply a valid two-PU root/callee identity table to the collector. */
@@ -84,12 +90,55 @@ UINT32 VHO_FHE_Runtime_Dynamic_Evaluation_Count(void)
   return dynamic_count;
 }
 
+/* Resolve the exact context/ordinal row from a six-part plan. */
+BOOL DSL_FHE_Materialization_Find(
+    ST_IDX owner, DSL_IR_VALUE_ID source,
+    DSL_PU_SOURCE_IDENTITY_ID identity, DSL_CALLSITE_METADATA_ID callsite,
+    UINT32 ordinal, DSL_FHE_MATERIALIZATION_OPERATION_RECORD *record)
+{
+  if (owner != 11 || source != 200 || identity != 2 ||
+      callsite == 0 || callsite > 2 || ordinal >= 6 || record == NULL)
+    return FALSE;
+  *record = operations[(callsite - 1) * 6 + ordinal];
+  return TRUE;
+}
+
+/* Match the first-path table size independently of the event array. */
+UINT32 DSL_FHE_Materialization_Operation_Count(void)
+{
+  return 12;
+}
+
+/* Expose context-specific positive bounds without constructing TCONs. */
+BOOL DSL_FHE_Context_Range_Get(
+    DSL_FHE_CONTEXT_RANGE_ID id, DSL_FHE_CONTEXT_RANGE_RECORD *record)
+{
+  if (id == 0 || id > 2 || record == NULL)
+    return FALSE;
+  *record = ranges[id - 1];
+  return TRUE;
+}
+
+/* Expose the state role/identity chain; payload legality is image-owned. */
+BOOL DSL_FHE_Context_State_Get(
+    DSL_FHE_CONTEXT_CKKS_STATE_ID id,
+    DSL_FHE_CONTEXT_CKKS_STATE_RECORD *record)
+{
+  if (id == 0 || id > 12 || record == NULL)
+    return FALSE;
+  *record = states[id - 1];
+  return TRUE;
+}
+
 /* Certify exact source identities and leave prior output on every rejection. */
 int main()
 {
   memset(identities, 0, sizeof(identities));
   memset(callsites, 0, sizeof(callsites));
   memset(schedules, 0, sizeof(schedules));
+  memset(operations, 0, sizeof(operations));
+  memset(ranges, 0, sizeof(ranges));
+  memset(states, 0, sizeof(states));
   identities[0].id = 1;
   identities[0].owner_pu_st = 10;
   identities[1].id = 2;
@@ -104,12 +153,64 @@ int main()
   schedules[0].first_static_ordinal = 1;
   schedules[0].static_evaluation_count = 1;
   schedules[0].execution_multiplicity = 1;
+  schedules[0].logical_operator = OPR_DSLCONV2D;
   schedules[1].owner_pu_st = 11;
   schedules[1].result_value_id = 200;
   schedules[1].first_static_ordinal = 2;
   schedules[1].static_evaluation_count = 6;
   schedules[1].execution_multiplicity = 2;
+  schedules[1].logical_operator = OPR_DSLRELU;
   dynamic_count = 13;
+
+  const UINT32 kinds[6] = {
+    DSL_FHE_MATERIALIZATION_OPERATION_REFRESH,
+    DSL_FHE_MATERIALIZATION_OPERATION_NORMALIZE,
+    DSL_FHE_MATERIALIZATION_OPERATION_APPROX_STAGE,
+    DSL_FHE_MATERIALIZATION_OPERATION_APPROX_STAGE,
+    DSL_FHE_MATERIALIZATION_OPERATION_APPROX_STAGE,
+    DSL_FHE_MATERIALIZATION_OPERATION_RECONSTRUCT_RELU
+  };
+  for (UINT32 context = 0; context < 2; ++context) {
+    ranges[context].id = context + 1;
+    ranges[context].owner_pu_st = 11;
+    ranges[context].source_relu_value_id = 200;
+    ranges[context].context_pu_identity_id = 2;
+    ranges[context].context_callsite_id = context + 1;
+    ranges[context].profile_id = 1;
+    for (UINT32 ordinal = 0; ordinal < 6; ++ordinal) {
+      UINT32 index = context * 6 + ordinal;
+      operations[index].id = index + 1;
+      operations[index].owner_pu_st = 11;
+      operations[index].source_relu_value_id = 200;
+      operations[index].context_pu_identity_id = 2;
+      operations[index].context_callsite_id = context + 1;
+      operations[index].operation_kind = kinds[ordinal];
+      operations[index].operation_ordinal = ordinal;
+      operations[index].profile_id = 1;
+      operations[index].range_id = context + 1;
+      operations[index].input_state_id = ordinal == 0 ? 0 : index;
+      operations[index].output_state_id = index + 1;
+      operations[index].stage_id =
+          ordinal >= 2 && ordinal <= 4 ? ordinal - 1 : 0;
+      operations[index].parameter_tcon =
+          ordinal >= 1 && ordinal <= 4 ? index + 1 : 0;
+      states[index].id = index + 1;
+      states[index].owner_pu_st = 11;
+      states[index].source_value_id = 200;
+      states[index].context_pu_identity_id = 2;
+      states[index].context_callsite_id = context + 1;
+      states[index].scheme = DSL_FHE_SCHEME_CKKS;
+      states[index].value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+      states[index].pending_actions =
+          ordinal == 0 ? DSL_FHE_CKKS_PENDING_BOOTSTRAP : 0;
+      states[index].pending_bootstrap_reason =
+          ordinal == 0 ? DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH : 0;
+      states[index].state_role =
+          ordinal == 0 ? DSL_FHE_CONTEXT_STATE_ROLE_POST_REFRESH :
+          ordinal == 5 ? DSL_FHE_CONTEXT_STATE_ROLE_RESULT :
+                         DSL_FHE_CONTEXT_STATE_ROLE_POST_OPERATION;
+    }
+  }
 
   std::vector<VHO_FHE_CKKS_EVENT_IDENTITY> events;
   assert(VHO_FHE_CKKS_Collect_Source_Events(&events, NULL));
@@ -119,6 +220,34 @@ int main()
          events[6].source_static_ordinal == 7 &&
          events[7].context_callsite_id == 2 &&
          events[12].source_static_ordinal == 7);
+  std::vector<VHO_FHE_CKKS_RELU_PLAN_STEP> plans;
+  assert(VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12 && plans[0].operation_id == 1 &&
+         plans[0].range_id == 1 && plans[0].output_state_id == 1 &&
+         plans[11].operation_id == 12 && plans[11].range_id == 2 &&
+         plans[11].output_state_id == 12);
+
+  operations[8].input_state_id = 1;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  operations[8].input_state_id = 8;
+  ranges[1].context_callsite_id = 1;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  ranges[1].context_callsite_id = 2;
+  operations[3].parameter_tcon = 0;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  operations[3].parameter_tcon = 4;
+  states[6].pending_bootstrap_reason = 0;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  states[6].pending_bootstrap_reason =
+      DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH;
+  operations[7].owner_pu_st = 10;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  operations[7].owner_pu_st = 11;
 
   callsites[1].owner_pu_st = 99;
   assert(!VHO_FHE_CKKS_Collect_Source_Events(&events, NULL));
@@ -133,7 +262,8 @@ int main()
   assert(!VHO_FHE_CKKS_Collect_Source_Events(&events, NULL));
   assert(events.size() == 13);
 
-  printf("linked_schedule_rows=2 source_events=13 relu_static_ordinals=6 ");
+  printf("linked_schedule_rows=2 source_events=13 relu_plan_steps=12 ");
+  printf("relu_static_ordinals=6 ");
   printf("partial_output=none\n");
   return 0;
 }

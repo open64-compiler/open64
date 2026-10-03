@@ -156,6 +156,23 @@ retired. Specialization of a shared PU also needs the reviewed typed link
 from clone static ordinal to original source ordinal before this event list
 can certify the final context-sensitive executable graph.
 
+The FHE-owned read-only join in
+`osprey/be/vho/fhe_ckks_relu_plan.{h,cxx}` resolves each scheduled ReLU
+source event to its exact materialization row, context range, and output
+CKKS planning state. It requires the six-part refresh/normalize/three-stage/
+reconstruction chain, dense static-event order, exact owner/context IDs,
+state-input continuity, stage/parameter identities, and a pending
+`PRE_RELU_REFRESH` bootstrap target. Its Linux linked fixture covers two
+contexts and rejects broken state, range, stage, reason, and owner evidence
+without changing output. The real ResNet contract has 19 contexts and 114
+such source events; the join is not yet an executable CKKS step producer or
+a mapped six-PU certification. The independent
+`fhe_ckks_real_relu_plan_audit.py` checks the retained six-PU `-st -src`
+trace against the hashed 147-event census: all 114 materialization rows
+join to their exact context/range/state chain, with post-refresh target
+levels 15 (16 contexts), 17 (1), and 18 (2). This is inspection evidence,
+not a replacement for the native mapped-image and CKKS-state gate.
+
 ### Proposed Shared Contract Census
 
 All rows below are proposed v1 *logical* names, not allocated enum values.
