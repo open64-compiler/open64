@@ -124,13 +124,18 @@ typed relation, never encode it only in metadata strings.
 The FHE-owned process-local preflight in
 `osprey/be/vho/fhe_ckks_event_coverage.{h,cxx}` checks that an independently
 counted set of source events has unique owner/source-value/static-ordinal/
-context identities,
-at least one result per event, and dense per-event step ordinals. It accepts
-the same reusable PU value identity in different call contexts. The focused
-147-event test is synthetic and proves only this coverage algorithm; it does
-not certify the ResNet event census, CKKS legality, or persisted provenance.
-The verifier must be called on the real expansion plan before the common
-transaction, and the resulting image must be checked again after reopen.
+context identities, at least one result per event, and dense per-event step
+ordinals. It accepts the same reusable PU value identity in different call
+contexts. A companion process-local adapter expands existing SYNC-5 static
+schedule fields over exact root/callsite routes; a nested path whose
+execution multiplicity exceeds those representable routes fails closed.
+It preflights route identity, static-ordinal uniqueness, capacity, and count
+before writing the caller's event array. The focused 147-event test is
+synthetic and proves only these algorithms; it does not certify the ResNet
+event census, CKKS legality, or persisted provenance. The real producer must
+derive the input schedule and routes from the existing managed tables, call
+this preflight before the common transaction, and check the mapped image
+again after reopen.
 
 ### Proposed Shared Contract Census
 

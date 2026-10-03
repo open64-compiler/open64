@@ -26,6 +26,20 @@ typedef struct {
   uint32_t result_value_id;
 } VHO_FHE_CKKS_EVENT_STEP;
 
+typedef struct {
+  uint32_t owner_pu_st;
+  uint32_t source_value_id;
+  uint32_t first_static_ordinal;
+  uint32_t static_evaluation_count;
+  uint32_t execution_multiplicity;
+} VHO_FHE_CKKS_STATIC_SOURCE;
+
+typedef struct {
+  uint32_t owner_pu_st;
+  uint32_t context_pu_identity_id;
+  uint32_t context_callsite_id;
+} VHO_FHE_CKKS_CONTEXT_ROUTE;
+
 typedef enum {
   VHO_FHE_CKKS_COVERAGE_OK = 0,
   VHO_FHE_CKKS_COVERAGE_INVALID_ARGUMENT,
@@ -34,8 +48,28 @@ typedef enum {
   VHO_FHE_CKKS_COVERAGE_UNKNOWN_EVENT,
   VHO_FHE_CKKS_COVERAGE_DUPLICATE_STEP,
   VHO_FHE_CKKS_COVERAGE_DUPLICATE_RESULT,
-  VHO_FHE_CKKS_COVERAGE_INCOMPLETE_EVENT
+  VHO_FHE_CKKS_COVERAGE_INCOMPLETE_EVENT,
+  VHO_FHE_CKKS_COVERAGE_SOURCE_SCHEDULE,
+  VHO_FHE_CKKS_COVERAGE_CONTEXT_ROUTE,
+  VHO_FHE_CKKS_COVERAGE_CAPACITY
 } VHO_FHE_CKKS_COVERAGE_STATUS;
+
+/*
+ * Expand the existing static evaluation schedule across exact PU routes.
+ * A route is root callsite zero or one called context. The caller must derive
+ * routes from the validated DSL call image and independently compare totals.
+ * A nested call path with multiplicity greater than the available exact
+ * routes fails closed until a typed full-path identity is published. On any
+ * failure, output events and event_count are unchanged.
+ */
+VHO_FHE_CKKS_COVERAGE_STATUS VHO_FHE_CKKS_Expand_Source_Events(
+    const VHO_FHE_CKKS_STATIC_SOURCE *sources,
+    size_t source_count,
+    const VHO_FHE_CKKS_CONTEXT_ROUTE *routes,
+    size_t route_count,
+    VHO_FHE_CKKS_EVENT_IDENTITY *events,
+    size_t event_capacity,
+    size_t *event_count);
 
 /*
  * Verify one-to-many expansion coverage without borrowing or changing IR.
