@@ -136,6 +136,15 @@ event census, CKKS legality, or persisted provenance. The real producer must
 derive the input schedule and routes from the existing managed tables, call
 this preflight before the common transaction, and check the mapped image
 again after reopen.
+`osprey/be/vho/fhe_ckks_source_events.{h,cxx}` now performs that read-only
+join using `VHO_FHE_Runtime_Static_Schedule_Prepare` and the DSL call image,
+before any CKKS node is created. Its focused linked fixture substitutes the
+table functions and proves exact root/two-callsite ReLU identities and
+no-partial-output failures; it is not yet a mapped SecureResNet run. The
+existing static schedule cannot be recomputed after a high-level source is
+retired. Specialization of a shared PU also needs the reviewed typed link
+from clone static ordinal to original source ordinal before this event list
+can certify the final context-sensitive executable graph.
 
 ### Proposed Shared Contract Census
 
