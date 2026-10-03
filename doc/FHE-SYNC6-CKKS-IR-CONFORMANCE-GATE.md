@@ -93,7 +93,7 @@ source/CNN and FHE conversion
 | --- | --- | --- |
 | S6-0a semantic census/physical contract | Main/common owns append-only logical registry contracts and a generic owner-PU-safe atomic one-to-many native DSL value expansion API; reuse physical `OPR_DSL` and existing DSL image/inspection tables. FHE supplies semantic operands, state rules, and tests. | Accepted handoff table, typed event relation, and a staged transaction with late-failure rollback. Read-only preflight alone does not close this gate. |
 | S6-0b opaque producer and per-value state | FHE task consumes only reviewed backend-safe common APIs and binds existing FHE CKKS value-state records to each new result value. | Focused add/sub/mul/rotate/rescale/relin/bootstrap `.B`/`.T` fixtures with source and state evidence. |
-| S6-0c full ResNet expansion | Main/common first publishes the generic atomic clone/formal/call transaction; FHE then expands the six source PUs, certified high-level schedule, and 19 context-specific ReLU sequences, specializing by complete executable signature. | Clone-aware `.ckks_ops.B`/`.T` with measured PU count, exact B formal/actual or separately reviewed static-B evidence, origin-to-clone/event-to-step maps, key/rotation/depth census, and independent numerical checks. |
+| S6-0c full ResNet expansion | Main/common's generic process-terminal clone/formal/call checkpoint merged in PR #164. FHE must register the policy, derive complete signatures, route approved B values, then expand the six source PUs and 19 context-specific ReLU sequences. | Clone-aware `.ckks_ops.B`/`.T` with measured PU count, exact F8 B formal/actual evidence, origin-to-clone/event-to-step maps, key/rotation/depth census, and independent numerical checks. |
 | S6-0d gate and terminal lowering | FHE task verifies the complete IR and lowers it through the existing stable C ABI; main reviews standard-WHIRL boundary. | Negative malformed-state/ownership/depth/key tests and generated-C/mock equivalence to SYNC-5. |
 | S6-1 and later | ACE provider and runtime owners, after S6-0 certification. | New exact ACE pin/capability admission, then broker/worker/client-server execution. |
 
@@ -194,9 +194,9 @@ range ID and its positive-bound `TCON_IDX`. It checks that the normalization
 operation uses that exact range-owned TCON and that all six steps retain the
 same range; malformed, missing, or context-swapped bindings leave the output
 untouched. The common image validator remains responsible for the TCON's
-numeric positivity and type. This is the input contract for future typed B
-formal/caller-actual specialization, not an assertion that such formals or
-cloned executable PUs already exist.
+numeric positivity and type. This is the input contract for the merged typed
+B transaction, not evidence that the real ResNet has already been cloned or
+that its executable CKKS PUs exist.
 
 The retained context-state evidence also proves that the six captured source
 PUs cannot remain six fixed-schedule executable CKKS PUs. For the same
@@ -206,8 +206,9 @@ callsite 8 versus 9 needs `(15,15)` versus `(15,17)`. The hashed
 `fhe_ckks_context_signature_audit.py` report derives three additional
 context-specialized clones, giving a **minimum of nine executable PUs**
 if each context bound B is passed as an explicit typed plaintext formal.
-That formal, its per-caller actual, exact TY, and origin PU/value/static-event
-identity require reviewed native support; the concrete consumer contract and
+Generic F8 formal/caller actual and owner-qualified clone value support is
+now available through PR #164; the FHE policy must still bind approved
+ranges and origin PU/value/static-event identity. The consumer contract and
 existing Open64 clone-service audit are in
 `FHE-SYNC6-CONTEXT-SPECIALIZATION-CONTRACT.md`. If B instead becomes a static
 per-context constant, the nine call contexts may need one clone each,
