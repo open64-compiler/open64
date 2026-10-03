@@ -34,6 +34,7 @@
 #include "const.h"
 #include "dsl_builder.h"
 #include "dsl_pu_specialize_internal.h"
+#include "dsl_ckks_event_internal.h"
 #include "dsl_contract.h"
 #include "dsl_program_interface_internal.h"
 #include "dsl_region_internal.h"
@@ -9536,6 +9537,229 @@ Find_STID_And_Block (WN *tree, ST_IDX st, WN **containing_block)
     return NULL;
 }
 
+/* The production path marks this pair only after the complete PU transaction. */
+extern BOOL DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID value_id);
+
+static int
+Check_CKKS_Event_Image (void)
+{
+#define CKKS_EVENT_CHECK(condition, stage) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "CKKS event fixture failed: %s\n", stage); \
+            return 1; \
+        } \
+    } while (0)
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_PU_SOURCE_IDENTITY source_identity;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE refresh_attrs[3] = {
+        { "attr.target_level", "18" },
+        { "attr.reason", "PRE_RELU_REFRESH" },
+        { "attr.key_id", "bootstrap_key" }
+    };
+    DSL_BUILDER_VALUE one;
+    DSL_BUILDER_VALUE source;
+    DSL_BUILDER_VALUE encoded;
+    DSL_BUILDER_VALUE refreshed;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_PU_SOURCE_IDENTITY_RECORD identity;
+    DSL_IR_VALUE_RECORD source_record;
+    DSL_IR_VALUE_RECORD encoded_record;
+    DSL_IR_VALUE_RECORD refreshed_record;
+    DSL_CKKS_EVENT_RECORD rows[2];
+    DSL_CKKS_EVENT_RECORD saved;
+    DSL_CKKS_EVENT_IMAGE_HEADER header;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_DOMAIN_ID common_id;
+    DSL_DOMAIN_ID ckks_id;
+    TY_IDX tensor_ty;
+    WN *body;
+    WN *source_block = NULL;
+    WN *source_definition;
+    UINT32 file_id;
+    const char *artifact = getenv("OPEN64_DSL_CKKS_EVENT_ARTIFACT");
+
+    CKKS_EVENT_CHECK(DSL_Builder_Begin_Program() &&
+                     DSL_Opcode_Register_CKKS_Domain() == 9,
+                     "program and CKKS domain");
+    common_id = DSL_Domain_Find("common");
+    ckks_id = DSL_Domain_Find("ckks");
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 1;
+    descriptor.type_core.logical_shape = "[2]";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("ckks_event_tensor", MTYPE_To_TY(MTYPE_F4),
+                     &descriptor);
+    pu = DSL_Builder_Create_Minimal_PU("ckks_event_roundtrip");
+    CKKS_EVENT_CHECK(tensor_ty != TY_IDX_ZERO && pu != NULL &&
+                     common_id != DSL_DOMAIN_INVALID_ID &&
+                     ckks_id != DSL_DOMAIN_INVALID_ID,
+                     "tensor, PU, or domain");
+    file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    memset(&source_identity, 0, sizeof(source_identity));
+    source_identity.canonical_definition_name = "CKKSEvent.roundtrip";
+    source_identity.defining_module = "dsl_builder_contract_test";
+    source_identity.defining_file = __FILE__;
+    source_identity.defining_line = __LINE__;
+    CKKS_EVENT_CHECK(file_id != 0 &&
+                     DSL_Builder_Set_PU_Source_Identity
+                         (pu, &source_identity) &&
+                     DSL_Call_Image_Find_PU_Identity
+                         (PU_Info_proc_sym(pu), &identity),
+                     "source identity");
+    one = DSL_Builder_Create_Tensor_Constant
+              ("event_one", tensor_ty, "float32", 1, "[2]", "splat", "1");
+    source = DSL_Builder_Create_Operator_With_Result
+                 (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
+                  &one, 1, NULL, 0, "event_source_relu", tensor_ty);
+    encoded = DSL_Builder_Create_Operator_With_Result
+                  (DSL_Opcode_Find(ckks_id, "ckks.encode", 1), 1,
+                   &one, 1, NULL, 0, "event_encoded", tensor_ty);
+    refreshed = DSL_Builder_Create_Operator_With_Result
+                    (DSL_Opcode_Find(ckks_id, "ckks.bootstrap", 1), 1,
+                     &encoded, 1, refresh_attrs, 3,
+                     "event_refreshed", tensor_ty);
+    CKKS_EVENT_CHECK(one != NULL && source != NULL && encoded != NULL &&
+                     refreshed != NULL, "native values");
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = __LINE__;
+    position.column = 1;
+    position.statement_begin = 1;
+    DSL_BUILDER_VALUE values[4] = { one, source, encoded, refreshed };
+    for (UINT32 i = 0; i < 4; ++i) {
+        position.line++;
+        CKKS_EVENT_CHECK
+            (DSL_Builder_Append_PU_Value(pu, values[i]) &&
+             DSL_Builder_Set_Value_Source_Position(values[i], &position),
+             "append/source position");
+    }
+    body = WN_func_body(PU_Info_tree_ptr(pu));
+    source_definition = Find_STID_And_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(source), &source_block);
+    CKKS_EVENT_CHECK(source_definition != NULL && source_block != NULL,
+                     "source definition");
+    WN_EXTRACT_FromBlock(source_block, source_definition);
+    if (!DSL_IR_Image_Mark_Value_Lowered
+             (DSL_Builder_Get_Value_Image_Id(source)) ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(source), &source_record) ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(encoded), &encoded_record) ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(refreshed), &refreshed_record)) {
+        fprintf(stderr, "CKKS event fixture failed: lower/image values\n");
+        return 1;
+    }
+
+    memset(rows, 0, sizeof(rows));
+    for (UINT32 i = 0; i < 2; ++i) {
+        rows[i].owner_pu_st = PU_Info_proc_sym(pu);
+        rows[i].source_value_id = source_record.id;
+        rows[i].source_node_id = source_record.producer_node_id;
+        rows[i].context_pu_identity_id = identity.id;
+        rows[i].source_static_ordinal = 1;
+        rows[i].step_ordinal = i;
+        rows[i].origin_owner_pu_st = PU_Info_proc_sym(pu);
+        rows[i].origin_source_value_id = source_record.id;
+        rows[i].origin_static_ordinal = 1;
+        rows[i].result_value_id = i == 0 ? encoded_record.id :
+                                  refreshed_record.id;
+        rows[i].result_node_id = i == 0 ? encoded_record.producer_node_id :
+                                 refreshed_record.producer_node_id;
+    }
+    rows[1].flags = DSL_CKKS_EVENT_FINAL_RESULT;
+    CKKS_EVENT_CHECK(DSL_CKKS_Event_Image_Add(&rows[0]) == 1 &&
+                     DSL_CKKS_Event_Image_Add(&rows[1]) == 2 &&
+                     DSL_CKKS_Event_Image_Validate(stderr),
+                     "event rows");
+    DSL_CKKS_Event_Image_Get_Header(&header);
+    CKKS_EVENT_CHECK(header.record_count == 2 &&
+                     DSL_CKKS_Event_Image_Get(2, &saved),
+                     "event header");
+    DSL_CKKS_EVENT_RECORD malformed[2];
+    DSL_CKKS_EVENT_RECORD retained;
+    memcpy(malformed, rows, sizeof(malformed));
+    malformed[0].id = 1;
+    malformed[1].id = 2;
+    malformed[1].flags = 0;
+    struct {
+        DSL_CKKS_EVENT_IMAGE_HEADER header;
+        DSL_CKKS_EVENT_RECORD records[2];
+    } mapped;
+    mapped.header = header;
+    memcpy(mapped.records, malformed, sizeof(malformed));
+    if (DSL_CKKS_Event_Image_Load_Mapped
+            (&mapped, sizeof(mapped), NULL) ||
+        DSL_CKKS_Event_Image_Count() != 2 ||
+        !DSL_CKKS_Event_Image_Get(2, &retained) ||
+        retained.flags != saved.flags) {
+        fprintf(stderr, "CKKS event fixture failed: rejected-load atomicity\n");
+        return 1;
+    }
+    memcpy(mapped.records, rows, sizeof(rows));
+    mapped.records[0].id = 1;
+    mapped.records[1].id = 2;
+    mapped.records[1].flags = DSL_CKKS_EVENT_FINAL_RESULT | 0x2;
+    CKKS_EVENT_CHECK
+        (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), NULL) &&
+         DSL_CKKS_Event_Image_Count() == 2,
+         "unknown event flag rejection");
+    mapped.records[1].flags = DSL_CKKS_EVENT_FINAL_RESULT;
+    mapped.records[1].step_ordinal = 0;
+    CKKS_EVENT_CHECK
+        (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), NULL) &&
+         DSL_CKKS_Event_Image_Count() == 2,
+         "duplicate step rejection");
+    mapped.records[1].step_ordinal = 1;
+    mapped.records[1].origin_static_ordinal = 2;
+    CKKS_EVENT_CHECK
+        (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), NULL) &&
+         DSL_CKKS_Event_Image_Count() == 2,
+         "inconsistent origin rejection");
+    mapped.records[1].origin_static_ordinal = 1;
+    mapped.records[1].result_node_id = source_record.producer_node_id;
+    CKKS_EVENT_CHECK
+        (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), NULL) &&
+         DSL_CKKS_Event_Image_Count() == 2,
+         "non-CKKS result rejection");
+    mapped.records[1].result_node_id =
+        refreshed_record.producer_node_id;
+    if (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), stderr) ||
+        !DSL_CKKS_Event_Image_Validate(stderr)) {
+        fprintf(stderr, "CKKS event fixture failed: mapped reload\n");
+        return 1;
+    }
+
+    request.path = artifact == NULL || artifact[0] == '\0' ?
+                   "ckks_event_roundtrip.B" : artifact;
+    request.flags = 0;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    char diagnostic[4096];
+    memset(&verify, 0, sizeof(verify));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (!DSL_Builder_Verify_Program(&verify)) {
+        fprintf(stderr, "CKKS event fixture gatekeeper: %s\n", diagnostic);
+        return 1;
+    }
+    (void) unlink(request.path);
+    CKKS_EVENT_CHECK(DSL_Builder_Finalize_Mapped_Image(&request),
+                     "binary finalization");
+    if (artifact == NULL || artifact[0] == '\0')
+        (void) unlink(request.path);
+    return 0;
+#undef CKKS_EVENT_CHECK
+}
+
 static unsigned char *Capture_DSL_IR_Image (UINT64 *image_size);
 
 static unsigned char *
@@ -11834,6 +12058,8 @@ main(void)
         return Check_PU_Clone_Region_Store();
     if (getenv("OPEN64_DSL_CKKS_OPCODE_ONLY") != NULL)
         return Check_CKKS_Logical_Operators();
+    if (getenv("OPEN64_DSL_CKKS_EVENT_ONLY") != NULL)
+        return Check_CKKS_Event_Image();
     if (getenv("OPEN64_DSL_LLAMA2_COMMON_ONLY") != NULL)
         return Check_Llama2_Common_Substrate();
     if (getenv("OPEN64_DSL_LLAMA2_TRANSFORMER_ONLY") != NULL)

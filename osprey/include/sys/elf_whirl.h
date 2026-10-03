@@ -92,6 +92,7 @@
 #define WT_DSL_FHE_MATERIALIZATION 0x29
 #define WT_DSL_RUNTIME_INTERFACE 0x2a
 #define WT_DSL_PROGRAM_INTERFACE 0x2b
+#define WT_DSL_CKKS_EVENT 0x2c
 
 /*
  * Special WHIRL section names.
@@ -118,6 +119,7 @@
         ".WHIRL.dsl_fhe_materialization"
 #define MIPS_WHIRL_DSL_RUNTIME_INTERFACE ".WHIRL.dsl_runtime_interface"
 #define MIPS_WHIRL_DSL_PROGRAM_INTERFACE ".WHIRL.dsl_program_interface"
+#define MIPS_WHIRL_DSL_CKKS_EVENT ".WHIRL.dsl_ckks_event"
 #if defined(TARG_SL)
 #define MIPS_WHIRL_CALLGRAPH    ".WHIRL.callgraph"
 #endif

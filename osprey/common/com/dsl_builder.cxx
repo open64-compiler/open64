@@ -23,6 +23,7 @@
 #include "fhe_image.h"
 #include "fhe_plan.h"
 #include "dsl_gatekeeper.h"
+#include "dsl_ckks_event.h"
 #include "dsl_memory_behavior.h"
 #include "dsl_shape.h"
 #include "dsl_simp.h"
@@ -4254,6 +4255,10 @@ DSL_Builder_Verify_Program_Mode
         ++gatekeeper_result.error_count;
     }
     if (!DSL_FHE_Plan_Image_Validate(diagnostic)) {
+        valid = FALSE;
+        ++gatekeeper_result.error_count;
+    }
+    if (!DSL_CKKS_Event_Image_Validate(diagnostic)) {
         valid = FALSE;
         ++gatekeeper_result.error_count;
     }

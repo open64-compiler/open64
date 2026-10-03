@@ -100,6 +100,7 @@
 #include "ir_bread.h"
 #include "dsl_ir_image.h"
 #include "dsl_program_interface_internal.h"
+#include "dsl_ckks_event.h"
 #include "fhe_image.h"
 #include "fhe_plan.h"
 #include "dsl_region.h"
@@ -641,6 +642,21 @@ WN_get_dsl_fhe_materialization_image (void *handle)
     }
     const void *section_base = (const char *)handle + shdr.offset;
     return DSL_FHE_Materialization_Image_Load_Mapped
+               (section_base, shdr.size, stderr) ? 0 : -1;
+}
+
+INT
+WN_get_dsl_ckks_event_image (void *handle)
+{
+    OFFSET_AND_SIZE shdr = get_section
+                               (handle, SHT_MIPS_WHIRL,
+                                WT_DSL_CKKS_EVENT);
+    if (shdr.offset == 0) {
+        DSL_CKKS_Event_Image_Reset();
+        return 0;
+    }
+    const void *section_base = (const char *)handle + shdr.offset;
+    return DSL_CKKS_Event_Image_Load_Mapped
                (section_base, shdr.size, stderr) ? 0 : -1;
 }
 
@@ -1803,6 +1819,9 @@ Read_Global_Info (INT32 *p_num_PUs)
     }
     if (WN_get_dsl_call_abi_image(global_fhandle) == -1) {
         ErrMsg (EC_IR_Scn_Read, "DSL call ABI image", global_ir_file);
+    }
+    if (WN_get_dsl_ckks_event_image(global_fhandle) == -1) {
+        ErrMsg (EC_IR_Scn_Read, "DSL CKKS event image", global_ir_file);
     }
     if (WN_get_dsl_program_runtime_interface_images(global_fhandle) == -1) {
         ErrMsg (EC_IR_Scn_Read, "DSL program/runtime interface image",

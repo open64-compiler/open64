@@ -3,6 +3,7 @@
  */
 
 #include "dsl_ir_image.h"
+#include "dsl_ckks_event.h"
 #include "fhe_image.h"
 #include "fhe_plan.h"
 #include "dsl_opcode.h"
@@ -225,6 +226,9 @@ DSL_IR_Image_Print (FILE *file)
                         ST_IDX_level(relation.handle_st),
                         ST_IDX_index(relation.handle_st),
                         (UINT32)relation.handle_ty);
+            } else if (DSL_CKKS_Event_Image_Has_Source
+                           (node.result_value_id)) {
+                fprintf(file, " status=lowered relation=ckks_expansion");
             }
         }
         if (node.payload != STR_IDX_ZERO)
@@ -285,6 +289,8 @@ DSL_IR_Image_Print (FILE *file)
                         ST_IDX_level(relation.handle_st),
                         ST_IDX_index(relation.handle_st),
                         (UINT32)relation.handle_ty);
+            } else if (DSL_CKKS_Event_Image_Has_Source(record.id)) {
+                fprintf(file, " status=lowered relation=ckks_expansion");
             }
         }
         fprintf (file, " flags=0x%x\n", record.flags);
@@ -527,4 +533,5 @@ DSL_IR_Image_Print (FILE *file)
     DSL_FHE_Approx_Profile_Image_Print(file);
     DSL_FHE_Context_State_Image_Print(file);
     DSL_FHE_Materialization_Image_Print(file);
+    DSL_CKKS_Event_Image_Print(file);
 }

@@ -96,6 +96,7 @@ sources=(
   "osprey/common/fhe/fhe_plan_print.cxx"
   "osprey/common/com/dsl_gatekeeper.cxx"
   "osprey/common/com/dsl_ir_image.cxx"
+  "osprey/common/com/dsl_ckks_event.cxx"
   "osprey/common/com/dsl_opt_plan.cxx"
   "osprey/common/com/dsl_fusion_candidate.cxx"
   "osprey/common/com/dsl_layout_candidate.cxx"

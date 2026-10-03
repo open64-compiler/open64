@@ -12,6 +12,7 @@
 
 #include "dsl_gatekeeper.h"
 #include "dsl_ir_image.h"
+#include "dsl_ckks_event.h"
 #include "dsl_memory_behavior.h"
 #include "dsl_opcode.h"
 #include "dsl_program_interface_internal.h"
@@ -1108,6 +1109,10 @@ DSL_Gatekeeper_Verify_PU_Mode
         valid = FALSE;
         ++context.result.error_count;
     }
+    if (!DSL_CKKS_Event_Image_Validate(diagnostic)) {
+        valid = FALSE;
+        ++context.result.error_count;
+    }
     if (!DSL_IR_Image_Validate_Lowered_Relations(diagnostic)) {
         valid = FALSE;
         ++context.result.error_count;
@@ -1196,6 +1201,10 @@ DSL_Gatekeeper_Verify_Program_Mode
         ++context.result.error_count;
     }
     if (!DSL_Call_ABI_Image_Validate(diagnostic)) {
+        valid = FALSE;
+        ++context.result.error_count;
+    }
+    if (!DSL_CKKS_Event_Image_Validate(diagnostic)) {
         valid = FALSE;
         ++context.result.error_count;
     }

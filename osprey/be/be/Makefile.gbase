@@ -351,6 +351,7 @@ COMMON_COM_CXX_SRCS = \
   dsl_domain.cxx       \
   dsl_gatekeeper.cxx   \
   dsl_ir_image.cxx     \
+  dsl_ckks_event.cxx   \
   dsl_ir_lower.cxx     \
   dsl_program_interface.cxx \
   dsl_ir_retype.cxx    \

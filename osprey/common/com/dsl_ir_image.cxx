@@ -8,6 +8,7 @@
 
 #include "dsl_ir_image.h"
 #include "dsl_pu_specialize_internal.h"
+#include "dsl_ckks_event.h"
 #include "dsl_opcode.h"
 #include "dsl_program_interface_internal.h"
 #include "segmented_array.h"
@@ -195,6 +196,7 @@ DSL_IR_Image_Reset (void)
     DSL_PU_Interface_Image_Reset();
     DSL_Runtime_Interface_Image_Reset();
     DSL_Program_Interface_Image_Reset();
+    DSL_CKKS_Event_Image_Reset();
 }
 
 static BOOL
@@ -2206,6 +2208,8 @@ DSL_IR_Image_Resolve_Lowered_Relation
 BOOL
 DSL_IR_Image_Validate_Lowered_Relations (FILE *diagnostic)
 {
+    if (!DSL_CKKS_Event_Image_Validate(diagnostic))
+        return FALSE;
     for (UINT32 i = 1; i <= DSL_ir_value_table.Size(); ++i) {
         const DSL_IR_VALUE_RECORD &value = DSL_ir_value_table[i - 1];
         if ((value.flags & DSL_IR_VALUE_FLAG_DEAD_ELIDED) != 0) {
@@ -2266,6 +2270,23 @@ DSL_IR_Image_Validate_Lowered_Relations (FILE *diagnostic)
         }
         if ((value.flags & DSL_IR_VALUE_FLAG_LOWERED) == 0)
             continue;
+        if (DSL_CKKS_Event_Image_Has_Source(value.id)) {
+            for (UINT32 j = 0;
+                 j < DSL_runtime_value_projection_table.Size(); ++j) {
+                if (DSL_runtime_value_projection_table[j].source_value_id ==
+                        value.id)
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "ambiguous CKKS/runtime lowering", i);
+            }
+            for (UINT32 j = 0; j < DSL_runtime_input_table.Size(); ++j) {
+                if (DSL_runtime_input_table[j].source_value_id == value.id)
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "ambiguous CKKS/runtime lowering", i);
+            }
+            continue;
+        }
         DSL_IR_NATIVE_VALUE_LOWER_RESULT relation;
         if (!DSL_IR_Image_Resolve_Lowered_Relation(i, &relation))
             return DSL_IR_Image_Report
@@ -2539,6 +2560,21 @@ DSL_IR_Lowered_Relation_Views_Validate
         }
         if ((value.flags & DSL_IR_VALUE_FLAG_LOWERED) == 0)
             continue;
+        if (DSL_CKKS_Event_Image_Has_Source(value.id)) {
+            for (UINT32 i = 0; i < projection_count; ++i) {
+                if (projections[i].source_value_id == value.id)
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "ambiguous CKKS/runtime lowering", value.id);
+            }
+            for (UINT32 i = 0; i < input_count; ++i) {
+                if (inputs[i].source_value_id == value.id)
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "ambiguous CKKS/runtime lowering", value.id);
+            }
+            continue;
+        }
         UINT32 matched_projections = 0;
         const DSL_RUNTIME_VALUE_PROJECTION_RECORD *matched_projection = NULL;
         for (UINT32 i = 0; i < projection_count; ++i) {

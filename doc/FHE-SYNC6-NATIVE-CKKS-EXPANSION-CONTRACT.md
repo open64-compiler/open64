@@ -1,10 +1,13 @@
 # SYNC-6 Native CKKS Expansion Contract
 
-Status: proposed main/common contract for review. The nine logical CKKS v1
-operators and their unchanged mapped DSL image carrier are implemented in
-`osprey/common/com/dsl_opcode.{h,cxx}`. This document does not claim that
-one-to-many expansion, executable CKKS state binding, or ResNet certification
-is implemented.
+Status: staged main/common contract. The nine logical CKKS v1 operators and
+their unchanged mapped DSL image carrier are implemented in
+`osprey/common/com/dsl_opcode.{h,cxx}`. The optional typed event image,
+mapped reader/writer, gatekeeper, and `ir_b2a -st -src` inspection are the
+next implemented slice. A focused image fixture proves two executable steps
+and one lowered source, not the full six-group producer transaction.
+One-to-many expansion, executable CKKS state binding, and ResNet
+certification remain pending.
 
 ## Boundary
 
@@ -59,10 +62,13 @@ operator name.
    result, and one source retirement as one active-PU transaction. A rejected
    request leaves the tree, symbols, and managed tables unchanged. Do not
    expose an image-only persistent-edit API.
-5. Retain the old source node/value as nonexecutable provenance under the
-   existing lowered/retired contract. No backend pass may count it as a
-   second CKKS operation. A failed later CKKS state bind is terminal for the
-   checkpoint: no retry in the mutated PU and no final `.B` publication.
+5. Retain the old source node/value as nonexecutable provenance with the
+   existing `DSL_IR_NODE_FLAG_LOWERED` and `DSL_IR_VALUE_FLAG_LOWERED` pair.
+   The original source operand rows remain intact. The operand-targeted
+   `RETIRED`/`REDIRECTED` flags are not suitable for a newly generated final
+   value and must not be repurposed. No backend pass may count the source as
+   a second CKKS operation. A failed later CKKS state bind is terminal for
+   the checkpoint: no retry in the mutated PU and no final `.B` publication.
 6. The transaction returns every new node/value/ST identity by event group
    and step ordinal, not WN layout details, so the FHE pass can bind existing
    per-value CKKS state and verify key, rotation, level, scale, precision,
@@ -93,9 +99,23 @@ semantically equivalent typed join; do not overload an existing row's
 published meaning. The relation is metadata about executable values, not a
 parallel WN or a replacement for direct kids.
 
+The accepted v1 candidate is `WT_DSL_CKKS_EVENT` (the next unused optional
+WHIRL section, `0x2c`), with a 32-byte header and 64-byte fixed row. The row
+contains, in order, 32-bit `id`, `owner_pu_st`, `source_value_id`,
+`source_node_id`, `context_pu_identity_id`, `context_callsite_id`,
+`source_static_ordinal`, `step_ordinal`, `result_value_id`, `result_node_id`,
+`origin_owner_pu_st`, `origin_source_value_id`, `origin_static_ordinal`,
+`flags`, and two zero-validated reserved words. The sole v1 flag marks the
+one final source replacement per exact source/context across all its event
+groups. In an unspecialized PU, origin owner/value/ordinal equal source
+owner/value/ordinal. A specialized PU uses the origin triplet as a typed
+link to the pre-clone source event. Unknown flags and nonzero reserves fail
+closed; no source name, payload path, or runtime pointer enters the row.
+
 Mapped-image validation must prove source and result IDs exist, result nodes
 are executable logical CKKS operators owned by the stated PU, the retained
-source is retired and nonexecutable, context routes are valid, and ordinals
+source is `LOWERED` and nonexecutable with no live WN or DSL uses, context
+routes are valid, and ordinals
 are unique and dense per event. At `-O0`, one result value cannot claim two
 different static events within the same exact context. It must not demand
 global uniqueness of a result value across different call contexts when a
@@ -104,10 +124,19 @@ proves complete coverage against the independently counted source-event set,
 including all 147 accepted dynamic events; common/com must not hard-code that
 model-specific count.
 
+`LOWERED` has two exclusive relation families: existing runtime-handle
+lowering and CKKS event expansion. A lowered source cannot claim both. The
+reader loads this optional event image before validating legacy runtime
+relations; images without the section retain the old path. A previous
+reader of a CKKS-bearing image fails closed at the unknown logical opcode
+descriptor. The first retained image fixture removes a source ReLU WN and
+records encode/refresh results directly to certify the image contract; it
+does not stand in for the atomic producer API required below.
+
 ## Review Gates
 
 - A six-group same-PU ReLU fixture proves cross-group prior-step operands,
-  direct WN kids, separate result ST/value IDs, one source retirement,
+  direct WN kids, separate result ST/value IDs, one source lowering,
   redirection to reconstruction, and `ir_b2a -st -src` inspection after
   mapped reopen.
 - Negatives cover wrong active PU with colliding local ST indices, wrong

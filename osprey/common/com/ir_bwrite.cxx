@@ -100,6 +100,7 @@
 #include "ir_bwrite.h"
 #include "ir_bcom.h"
 #include "dsl_ir_image.h"
+#include "dsl_ckks_event.h"
 #include "fhe_image.h"
 #include "fhe_plan.h"
 #include "dsl_region.h"
@@ -1249,6 +1250,31 @@ WN_write_dsl_fhe_materialization_image (Output_File *fl)
     cur_section->shdr.sh_addralign = sizeof(mINT64);
 }
 
+void
+WN_write_dsl_ckks_event_image (Output_File *fl)
+{
+    if (!DSL_CKKS_Event_Image_Has_Records())
+        return;
+    FmtAssert(DSL_CKKS_Event_Image_Validate(stderr),
+              ("invalid CKKS event image"));
+    Section *cur_section = get_section
+                               (WT_DSL_CKKS_EVENT,
+                                MIPS_WHIRL_DSL_CKKS_EVENT, fl);
+    fl->file_size = ir_b_align(fl->file_size, sizeof(mINT64), 0);
+    cur_section->shdr.sh_offset = fl->file_size;
+    DSL_CKKS_EVENT_IMAGE_HEADER header;
+    DSL_CKKS_Event_Image_Get_Header(&header);
+    ir_b_save_buf(&header, sizeof(header), sizeof(mINT64), 0, fl);
+    for (UINT32 i = 1; i <= header.record_count; ++i) {
+        DSL_CKKS_EVENT_RECORD record;
+        FmtAssert(DSL_CKKS_Event_Image_Get(i, &record),
+                  ("missing CKKS event relation %u", i));
+        ir_b_save_buf(&record, sizeof(record), sizeof(mINT64), 0, fl);
+    }
+    cur_section->shdr.sh_size = fl->file_size - cur_section->shdr.sh_offset;
+    cur_section->shdr.sh_addralign = sizeof(mINT64);
+}
+
 
 /*
  * Write out the debug symbol table (dst).  The DST gets its own Elf
@@ -2082,6 +2108,7 @@ Write_Global_Info (PU_Info *pu_tree)
     WN_write_dsl_fhe_approx_profile_image(ir_output);
     WN_write_dsl_fhe_context_state_image(ir_output);
     WN_write_dsl_fhe_materialization_image(ir_output);
+    WN_write_dsl_ckks_event_image(ir_output);
 
     WN_write_strtab(Index_To_Str (0), STR_Table_Size (), ir_output);
 
