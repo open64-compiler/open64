@@ -165,10 +165,17 @@ DSL_PU_Transaction_Clone_Active
 
     ST_IDX source_idx = PU_Info_proc_sym(source);
     ST *source_st = ST_ptr(source_idx);
+    TY_IDX source_prototype =
+        PU_prototype(Pu_Table[ST_pu(*source_st)]);
+    if (TY_IDX_index(source_prototype) == 0 ||
+        TY_kind(source_prototype) != KIND_FUNCTION)
+        return DSL_PU_Transaction_Report
+                   (diagnostic, "source function prototype is invalid");
     STR_IDX name = Save_Str(clone_name);
     PU_IDX pu_idx;
     PU &pu = New_PU(pu_idx);
     pu = Pu_Table[ST_pu(source_st)];
+    Set_PU_prototype(pu, source_prototype);
     ST *clone_st = New_ST(GLOBAL_SYMTAB);
     ST_Init(clone_st, name, CLASS_FUNC, SCLASS_TEXT,
             EXPORT_LOCAL, pu_idx);
@@ -605,7 +612,7 @@ DSL_PU_Transaction_Insert_Formals_Active
 
     TY_IDX old_prototype = PU_prototype(Pu_Table[ST_pu(St_Table[owner])]);
     TYLIST_IDX old_tylist = TY_tylist(old_prototype);
-    TY_IDX return_ty = TYLIST_type(old_tylist);
+    TY_IDX return_ty = TYLIST_ty(old_tylist);
     TY_IDX function_ty;
     TY &function = New_TY(function_ty);
     TY_Init(function, 0, KIND_FUNCTION, MTYPE_UNKNOWN, 0);

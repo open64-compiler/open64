@@ -8,6 +8,7 @@ repo_root="$(cd "$script_dir/../../../.." && pwd)"
 producer="${OPEN64_DSL_PU_TRANSACTION_TEST:-$repo_root/build/osprey/targdir/ir_tools/dsl_pu_transaction_contract_test}"
 ir_b2a="${OPEN64_IR_B2A:-$repo_root/build/osprey/targdir/ir_tools/ir_b2a}"
 be="${OPEN64_BE:-}"
+whirl2c="${OPEN64_WHIRL2C:-}"
 artifact_dir="${OPEN64_DSL_PU_TRANSACTION_ARTIFACT_DIR:-$repo_root/artifacts/dsl/pu-transaction}"
 
 for executable in "$producer" "$ir_b2a"; do
@@ -19,6 +20,11 @@ done
 
 if [[ -n "$be" && ! -x "$be" ]]; then
   echo "missing executable: $be" >&2
+  exit 1
+fi
+
+if [[ -n "$whirl2c" && ! -x "$whirl2c" ]]; then
+  echo "missing executable: $whirl2c" >&2
   exit 1
 fi
 
@@ -85,6 +91,40 @@ for mode in primitive apply; do
   done
 done
 
+if [[ -n "$whirl2c" ]]; then
+  image="$artifact_dir/pu_transaction_w2c.B"
+  trace="$artifact_dir/pu_transaction_w2c.T"
+  c_file="$artifact_dir/pu_transaction_w2c.c"
+  log="$artifact_dir/pu_transaction_w2c.log"
+  printf '%s\n' \
+    "OPEN64_DSL_PU_TRANSACTION_ARTIFACT=$image $producer --w2c-view" \
+    "$ir_b2a -st -src $image $trace" \
+    "(cd $artifact_dir && $whirl2c -CLIST:dotc_file=pu_transaction_w2c.c pu_transaction_w2c.B)" \
+    >>"$artifact_dir/commands.txt"
+  if ! OPEN64_DSL_PU_TRANSACTION_ARTIFACT="$image" \
+       "$producer" --w2c-view >"$log" 2>&1 ||
+     ! "$ir_b2a" -st -src "$image" "$trace" >>"$log" 2>&1 ||
+     ! (cd "$artifact_dir" && \
+         "$whirl2c" -CLIST:dotc_file=pu_transaction_w2c.c \
+           pu_transaction_w2c.B) >>"$log" 2>&1; then
+    cat "$log" >&2
+    exit 1
+  fi
+  if [[ "$(grep -Ec '^FUNC_ENTRY ' "$trace")" -ne 3 ]] ||
+     [[ "$(grep -Ec '^static void pu_transaction_' "$c_file")" -ne 3 ]] ||
+     [[ "$(grep -Fc 'pu_transaction_variant(&caller_input' "$c_file")" -ne 2 ]]; then
+    echo "generic/specialized C view changed in $c_file" >&2
+    exit 1
+  fi
+  for evidence in 'bound_b' '__dsl_arg_1_1 = 2.0' \
+                  '__dsl_arg_2_1 = 3.0'; do
+    if ! grep -Fq "$evidence" "$c_file"; then
+      echo "missing C evidence '$evidence' in $c_file" >&2
+      exit 1
+    fi
+  done
+fi
+
 if [[ -n "$be" ]]; then
   rejected="$artifact_dir/no_policy.B"
   printf '%s\n' \
@@ -103,6 +143,13 @@ if [[ -n "$be" ]]; then
   fi
 fi
 
-(cd "$artifact_dir" && sha256sum ./*.B ./*.T >SHA256SUMS)
+(
+  cd "$artifact_dir"
+  hash_files=(./*.B ./*.T)
+  if [[ -n "$whirl2c" ]]; then
+    hash_files+=(./*.c ./*.w2c.h)
+  fi
+  sha256sum "${hash_files[@]}" >SHA256SUMS
+)
 echo "DSL PU transaction contract passed"
 echo "review artifacts: $artifact_dir"

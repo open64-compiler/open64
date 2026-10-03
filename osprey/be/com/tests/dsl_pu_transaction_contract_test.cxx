@@ -197,6 +197,7 @@ main (int argc, char **argv)
         (!(argc == 3 && strcmp(argv[1], "--reopen") == 0));
     if (argc == 3 && strcmp(argv[1], "--reopen") == 0)
         return DSL_PU_Transaction_Reopen_Artifact(argv[2]);
+    BOOL w2c_view = argc == 2 && strcmp(argv[1], "--w2c-view") == 0;
     DSL_PU_TRANSACTION_POLICY policy;
     memset(&policy, 0, sizeof(policy));
     CLONE_CHECK(!DSL_PU_Transaction_Get_Policy(&policy),
@@ -248,18 +249,25 @@ main (int argc, char **argv)
     WN *result = DSL_Builder_Declare_PU_Result
                      (source, "output", 0, tensor_ty,
                       DSL_PU_RESULT_TENSOR, &position);
-    WN *relu = DSL_Builder_Create_Operator_With_Result
+    WN *relu = NULL;
+    if (w2c_view) {
+        CLONE_CHECK(input != NULL && result != NULL &&
+                    DSL_Builder_Return_PU_Values(source, &input, 1),
+                    "standard-WHIRL source body");
+    } else {
+        relu = DSL_Builder_Create_Operator_With_Result
                    (DSL_Opcode_Find(DSL_Domain_Find("common"),
                                     "common.relu", 2),
                     2, &input, 1, NULL, 0, "result", tensor_ty);
-    CLONE_CHECK(input != NULL && result != NULL && relu != NULL &&
-                DSL_Builder_Append_PU_Value(source, relu),
-                "source value");
-    DSL_REGION region = DSL_Region_Create
-                            (source, NULL, "cnn.basic_block", 1);
-    CLONE_CHECK(region != NULL && DSL_Region_Append_To_PU(region) &&
-                DSL_Builder_Return_PU_Values(source, &relu, 1) &&
-                DSL_Region_Verify_PU(source, stderr), "source REGION");
+        CLONE_CHECK(input != NULL && result != NULL && relu != NULL &&
+                    DSL_Builder_Append_PU_Value(source, relu),
+                    "source value");
+        DSL_REGION region = DSL_Region_Create
+                                (source, NULL, "cnn.basic_block", 1);
+        CLONE_CHECK(region != NULL && DSL_Region_Append_To_PU(region) &&
+                    DSL_Builder_Return_PU_Values(source, &relu, 1) &&
+                    DSL_Region_Verify_PU(source, stderr), "source REGION");
+    }
 
     PU_Info *caller = DSL_Builder_Create_Minimal_PU
                           ("pu_transaction_caller");
@@ -381,13 +389,20 @@ main (int argc, char **argv)
                 rejected_clone == NULL && rejected_count == 0,
                 "duplicate clone rejection is read-only");
 
-    if (argc == 2 && strcmp(argv[1], "--apply") == 0) {
+    if (w2c_view || (argc == 2 && strcmp(argv[1], "--apply") == 0)) {
         DSL_PU_TRANSACTION_RESULT *applied = NULL;
         CLONE_CHECK(DSL_PU_Transaction_Apply_Resident
                         (source, &plan, &applied, stderr),
                     "whole-program apply");
         ST_IDX variant_st = DSL_PU_Transaction_Variant_PU_ST(applied, 1);
         PU_Info *variant = PU_Info_next(source);
+        CLONE_CHECK(variant != NULL &&
+                    variant_st == PU_Info_proc_sym(variant),
+                    "variant PU identity");
+        TY_IDX source_prototype = PU_prototype
+            (Pu_Table[ST_pu(St_Table[PU_Info_proc_sym(source)])]);
+        TY_IDX variant_prototype = PU_prototype
+            (Pu_Table[ST_pu(St_Table[variant_st])]);
         DSL_PU_FORMAL_RECORD source_formal;
         DSL_IR_VALUE_ID copied_value = DSL_IR_VALUE_INVALID_ID;
         CLONE_CHECK(variant != NULL &&
@@ -399,6 +414,12 @@ main (int argc, char **argv)
                          &copied_value) &&
                     copied_value != source_formal.formal_value_id &&
                     WN_num_formals(PU_Info_tree_ptr(variant)) == 3 &&
+                    TY_kind(source_prototype) == KIND_FUNCTION &&
+                    TY_kind(variant_prototype) == KIND_FUNCTION &&
+                    TYLIST_ty(TY_tylist(source_prototype)) ==
+                        MTYPE_To_TY(MTYPE_V) &&
+                    TYLIST_ty(TY_tylist(variant_prototype)) ==
+                        MTYPE_To_TY(MTYPE_V) &&
                     DSL_Builder_Select_PU(caller),
                     "whole-program owner-qualified result");
         DSL_CALL_ARGUMENT_RECORD first_bound;
@@ -418,42 +439,44 @@ main (int argc, char **argv)
                     first_tcon == planned_actuals[0].source_tcon &&
                     second_tcon == planned_actuals[1].source_tcon,
                     "caller-bound exact TCON evidence");
-        CLONE_CHECK(DSL_Builder_Select_PU(source),
-                    "root activation");
-        TCON_IDX root_tcon = Enter_tcon
-            (Host_To_Targ_Float(MTYPE_F8, 1.5));
-        ST_IDX root_st = ST_IDX_ZERO;
-        DSL_IR_VALUE_ID root_value = DSL_IR_VALUE_INVALID_ID;
-        TCON_IDX rooted_tcon = TCON_IDX_ZERO;
-        CLONE_CHECK(DSL_PU_Transaction_Root_Constant_Active
-                        (source, DSL_Builder_Get_Value_Image_Id(relu),
-                         "__dsl_root_bound", MTYPE_To_TY(MTYPE_F8),
-                         root_tcon, &root_st, &root_value, stderr) &&
-                    DSL_PU_Transaction_Scalar_TCON_Active
-                        (source, root_value, &rooted_tcon, stderr) &&
-                    root_st != ST_IDX_ZERO &&
-                    rooted_tcon == root_tcon,
-                    "entry-owned root bound");
-        WN *root_definition = NULL;
-        for (WN *stmt = WN_first
-                 (WN_func_body(PU_Info_tree_ptr(source)));
-             stmt != NULL; stmt = WN_next(stmt)) {
-            if (WN_operator(stmt) == OPR_STID &&
-                WN_st_idx(stmt) == root_st)
-                root_definition = stmt;
+        if (!w2c_view) {
+            CLONE_CHECK(DSL_Builder_Select_PU(source),
+                        "root activation");
+            TCON_IDX root_tcon = Enter_tcon
+                (Host_To_Targ_Float(MTYPE_F8, 1.5));
+            ST_IDX root_st = ST_IDX_ZERO;
+            DSL_IR_VALUE_ID root_value = DSL_IR_VALUE_INVALID_ID;
+            TCON_IDX rooted_tcon = TCON_IDX_ZERO;
+            CLONE_CHECK(DSL_PU_Transaction_Root_Constant_Active
+                            (source, DSL_Builder_Get_Value_Image_Id(relu),
+                             "__dsl_root_bound", MTYPE_To_TY(MTYPE_F8),
+                             root_tcon, &root_st, &root_value, stderr) &&
+                        DSL_PU_Transaction_Scalar_TCON_Active
+                            (source, root_value, &rooted_tcon, stderr) &&
+                        root_st != ST_IDX_ZERO &&
+                        rooted_tcon == root_tcon,
+                        "entry-owned root bound");
+            WN *root_definition = NULL;
+            for (WN *stmt = WN_first
+                     (WN_func_body(PU_Info_tree_ptr(source)));
+                 stmt != NULL; stmt = WN_next(stmt)) {
+                if (WN_operator(stmt) == OPR_STID &&
+                    WN_st_idx(stmt) == root_st)
+                    root_definition = stmt;
+            }
+            CLONE_CHECK(root_definition != NULL &&
+                        WN_operator(WN_kid0(root_definition)) == OPR_CONST,
+                        "root constant physical definition");
+            WN *root_constant = WN_kid0(root_definition);
+            ST_IDX saved_constant_st = WN_st_idx(root_constant);
+            WN_st_idx(root_constant) = make_ST_IDX
+                (ST_Table_Size(GLOBAL_SYMTAB) + 7, GLOBAL_SYMTAB);
+            TCON_IDX rejected_tcon = TCON_IDX_ZERO;
+            CLONE_CHECK(!DSL_PU_Transaction_Scalar_TCON_Active
+                            (source, root_value, &rejected_tcon, NULL),
+                        "out-of-range mapped constant rejects safely");
+            WN_st_idx(root_constant) = saved_constant_st;
         }
-        CLONE_CHECK(root_definition != NULL &&
-                    WN_operator(WN_kid0(root_definition)) == OPR_CONST,
-                    "root constant physical definition");
-        WN *root_constant = WN_kid0(root_definition);
-        ST_IDX saved_constant_st = WN_st_idx(root_constant);
-        WN_st_idx(root_constant) = make_ST_IDX
-            (ST_Table_Size(GLOBAL_SYMTAB) + 7, GLOBAL_SYMTAB);
-        TCON_IDX rejected_tcon = TCON_IDX_ZERO;
-        CLONE_CHECK(!DSL_PU_Transaction_Scalar_TCON_Active
-                        (source, root_value, &rejected_tcon, NULL),
-                    "out-of-range mapped constant rejects safely");
-        WN_st_idx(root_constant) = saved_constant_st;
         CLONE_CHECK(DSL_PU_Transaction_Write_Artifact
                         (source, variant, caller),
                     "whole-program artifact");

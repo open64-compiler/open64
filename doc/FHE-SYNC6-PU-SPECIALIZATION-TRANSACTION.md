@@ -416,3 +416,12 @@ result, and atomically publishes the binary image. Without a policy it fails
 before opening output. Generic checkpoint wiring is not FHE SYNC-6
 certification: the FHE producer must still register its plan and post-apply
 semantic callbacks and demonstrate the CKKS-operation `.B`/`.T` gate in P4.
+
+When `OPEN64_WHIRL2C` is provided, the producer test also retains
+`pu_transaction_w2c.B`, its `ir_b2a -st -src` trace, and `pu_transaction_w2c.c`.
+This standard-WHIRL ABI view preserves the generic PU, the physical specialized
+PU with its typed `bound_b` formal, and the two routed calls with distinct
+bound constants. Its body returns the input tensor directly; it is not a
+translation or lowering of the executable `common.relu` node in
+`pu_transaction_apply.B`. That DSL-bearing image remains the semantic proof
+and must pass DSL lowering before `whirl2c` can translate its computation.
