@@ -147,9 +147,9 @@ BOOL DSL_FHE_Approx_Profile_Get(
 BOOL DSL_FHE_Approx_Stage_Get(
     DSL_FHE_APPROX_STAGE_ID id, DSL_FHE_APPROX_STAGE_RECORD *record)
 {
-  if (id == 0 || id > 3 || record == NULL)
+  if (id < 4 || id > 6 || record == NULL)
     return FALSE;
-  *record = stages[id - 1];
+  *record = stages[id - 4];
   return TRUE;
 }
 
@@ -165,7 +165,7 @@ int main()
   memset(&profile, 0, sizeof(profile));
   memset(stages, 0, sizeof(stages));
   profile.id = 1;
-  profile.first_stage_id = 1;
+  profile.first_stage_id = 4;
   profile.stage_count = 3;
   profile.total_multiplicative_depth = 11;
   profile.reconstruction =
@@ -176,7 +176,7 @@ int main()
   const INT32 stage_depths[3] = {3, 4, 4};
   const UINT32 stage_degrees[3] = {7, 15, 13};
   for (UINT32 stage = 0; stage < 3; ++stage) {
-    stages[stage].id = stage + 1;
+    stages[stage].id = stage + 4;
     stages[stage].profile_id = 1;
     stages[stage].stage_ordinal = stage;
     stages[stage].degree = stage_degrees[stage];
@@ -244,7 +244,8 @@ int main()
       operations[index].input_state_id = ordinal == 0 ? 0 : index;
       operations[index].output_state_id = index + 1;
       operations[index].stage_id =
-          ordinal >= 2 && ordinal <= 4 ? ordinal - 1 : 0;
+          ordinal >= 2 && ordinal <= 4 ?
+              profile.first_stage_id + ordinal - 2 : 0;
       operations[index].parameter_tcon =
           ordinal >= 1 && ordinal <= 4 ? index + 1 : 0;
       states[index].id = index + 1;
@@ -325,6 +326,10 @@ int main()
   assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
   assert(plans.size() == 12);
   operations[3].parameter_tcon = 4;
+  operations[2].stage_id = 5;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  operations[2].stage_id = 4;
   states[6].pending_bootstrap_reason = 0;
   assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
   assert(plans.size() == 12);

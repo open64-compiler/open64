@@ -171,7 +171,8 @@ BOOL VHO_FHE_CKKS_Collect_Relu_Plan_Steps(
           output_state.pending_actions != 0)) ||
         (ordinal > 0 && operation.range_id != context_range[key]) ||
         (ordinal >= 2 && ordinal <= 4 &&
-         (operation.stage_id != ordinal - 1 ||
+         (operation.stage_id !=
+              profile.first_stage_id + ordinal - 2 ||
           operation.parameter_tcon == 0)) ||
         (ordinal == 1 && (operation.stage_id != 0 ||
                           operation.parameter_tcon == 0)) ||

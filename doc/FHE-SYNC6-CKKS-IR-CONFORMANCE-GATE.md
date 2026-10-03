@@ -176,6 +176,8 @@ not a replacement for the native mapped-image and CKKS-state gate.
 The FHE read-only consumer now also checks that the accepted three ordered
 Chebyshev/Clenshaw degree-7/15/13 stage rows consume levels `3+4+4=11`
 per context under the required pre-refresh and positive-bound profile;
+stage references are resolved from the profile's first-stage ID and ordered
+ordinals, never from a presumed image-global stage ID of one;
 normalization and ReLU reconstruction do not silently consume another
 level; and every resulting state remains in the same
 encryption/layout/slot/scale family with two
