@@ -141,6 +141,16 @@ join using `VHO_FHE_Runtime_Static_Schedule_Prepare` and the DSL call image,
 before any CKKS node is created. Its focused linked fixture substitutes the
 table functions and proves exact root/two-callsite ReLU identities and
 no-partial-output failures; it is not yet a mapped SecureResNet run. The
+independent artifact auditor
+`osprey/be/vho/tests/fhe_ckks_real_event_census.py` joins the retained
+six-PU `ir_b2a -st -src` identity/node tables with the structured SYNC-5
+schedule. It verifies 6 PUs, 9 callsites, 32 source definitions, 87 static
+events, 147 context-expanded events, 11 ReLU definitions, and 19 ReLU
+contexts, including negative multiplicity, ordinal, nested-call, and
+source-value checks. Its hashed JSON output is read-only evidence, not an
+executable CKKS `.B`, a mapped-image gate, or proof of CKKS state legality.
+The native collector and common transaction still require a real mapped
+six-PU certification after the main-owned expansion API lands. The
 existing static schedule cannot be recomputed after a high-level source is
 retired. Specialization of a shared PU also needs the reviewed typed link
 from clone static ordinal to original source ordinal before this event list
