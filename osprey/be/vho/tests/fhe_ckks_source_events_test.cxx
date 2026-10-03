@@ -25,6 +25,8 @@ static VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD schedules[2];
 static DSL_FHE_MATERIALIZATION_OPERATION_RECORD operations[12];
 static DSL_FHE_CONTEXT_RANGE_RECORD ranges[2];
 static DSL_FHE_CONTEXT_CKKS_STATE_RECORD states[12];
+static DSL_FHE_COMPOSITE_PROFILE_RECORD profile;
+static DSL_FHE_APPROX_STAGE_RECORD stages[3];
 static UINT32 dynamic_count;
 
 /* Supply a valid two-PU root/callee identity table to the collector. */
@@ -130,6 +132,27 @@ BOOL DSL_FHE_Context_State_Get(
   return TRUE;
 }
 
+/* Give the consumer one complete depth-11 composite profile. */
+BOOL DSL_FHE_Approx_Profile_Get(
+    DSL_FHE_COMPOSITE_PROFILE_ID id,
+    DSL_FHE_COMPOSITE_PROFILE_RECORD *record)
+{
+  if (id != profile.id || record == NULL)
+    return FALSE;
+  *record = profile;
+  return TRUE;
+}
+
+/* Resolve ordered stage depth contracts independently of state rows. */
+BOOL DSL_FHE_Approx_Stage_Get(
+    DSL_FHE_APPROX_STAGE_ID id, DSL_FHE_APPROX_STAGE_RECORD *record)
+{
+  if (id == 0 || id > 3 || record == NULL)
+    return FALSE;
+  *record = stages[id - 1];
+  return TRUE;
+}
+
 /* Certify exact source identities and leave prior output on every rejection. */
 int main()
 {
@@ -139,6 +162,35 @@ int main()
   memset(operations, 0, sizeof(operations));
   memset(ranges, 0, sizeof(ranges));
   memset(states, 0, sizeof(states));
+  memset(&profile, 0, sizeof(profile));
+  memset(stages, 0, sizeof(stages));
+  profile.id = 1;
+  profile.first_stage_id = 1;
+  profile.stage_count = 3;
+  profile.total_multiplicative_depth = 11;
+  profile.reconstruction =
+      DSL_FHE_RECONSTRUCTION_RELU_FROM_NORMALIZED_SIGN;
+  profile.normalization_policy =
+      DSL_FHE_NORMALIZATION_POSITIVE_CONTEXT_BOUND;
+  profile.pre_refresh_policy = DSL_FHE_PRE_REFRESH_REQUIRED;
+  const INT32 stage_depths[3] = {3, 4, 4};
+  const UINT32 stage_degrees[3] = {7, 15, 13};
+  for (UINT32 stage = 0; stage < 3; ++stage) {
+    stages[stage].id = stage + 1;
+    stages[stage].profile_id = 1;
+    stages[stage].stage_ordinal = stage;
+    stages[stage].degree = stage_degrees[stage];
+    stages[stage].basis = DSL_FHE_APPROX_BASIS_CHEBYSHEV;
+    stages[stage].evaluation_scheme = DSL_FHE_APPROX_EVAL_CLENSHAW;
+    stages[stage].required_input_value_class =
+        DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+    stages[stage].output_scale_policy =
+        DSL_FHE_APPROX_OUTPUT_SCALE_PRESERVE_INPUT;
+    stages[stage].output_component_policy =
+        DSL_FHE_APPROX_COMPONENT_RELINEARIZED_TWO;
+    stages[stage].level_consumption = stage_depths[stage];
+    stages[stage].minimum_precision_bits = 30;
+  }
   identities[0].id = 1;
   identities[0].owner_pu_st = 10;
   identities[1].id = 2;
@@ -201,6 +253,16 @@ int main()
       states[index].context_callsite_id = context + 1;
       states[index].scheme = DSL_FHE_SCHEME_CKKS;
       states[index].value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+      states[index].encryption_descriptor_id = 1;
+      states[index].level =
+          (context == 0 ? 15 : 18) -
+          (ordinal >= 4 ? 11 : ordinal == 3 ? 7 :
+           ordinal == 2 ? 3 : 0);
+      states[index].scale_bits = 56;
+      states[index].component_count = 2;
+      states[index].precision_bits = 30;
+      states[index].slot_count = 32768;
+      states[index].encrypted_layout_name = 1;
       states[index].pending_actions =
           ordinal == 0 ? DSL_FHE_CKKS_PENDING_BOOTSTRAP : 0;
       states[index].pending_bootstrap_reason =
@@ -249,6 +311,45 @@ int main()
   assert(plans.size() == 12);
   operations[7].owner_pu_st = 11;
 
+  states[9].level += 1;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  states[9].level -= 1;
+  stages[1].level_consumption = 3;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  stages[1].level_consumption = 4;
+  stages[1].degree = 14;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  stages[1].degree = 15;
+  stages[0].output_scale_policy =
+      DSL_FHE_APPROX_OUTPUT_SCALE_DEFAULT_RESCALE;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  stages[0].output_scale_policy =
+      DSL_FHE_APPROX_OUTPUT_SCALE_PRESERVE_INPUT;
+  profile.total_multiplicative_depth = 10;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  profile.total_multiplicative_depth = 11;
+  states[7].level -= 1;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  states[7].level += 1;
+  states[11].scale_bits = 55;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  states[11].scale_bits = 56;
+  states[6].encryption_descriptor_id = 2;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  states[6].encryption_descriptor_id = 1;
+  states[11].precision_bits = 29;
+  assert(!VHO_FHE_CKKS_Collect_Relu_Plan_Steps(events, &plans, NULL));
+  assert(plans.size() == 12);
+  states[11].precision_bits = 30;
+
   callsites[1].owner_pu_st = 99;
   assert(!VHO_FHE_CKKS_Collect_Source_Events(&events, NULL));
   assert(events.size() == 13 && events[12].source_static_ordinal == 7);
@@ -263,7 +364,7 @@ int main()
   assert(events.size() == 13);
 
   printf("linked_schedule_rows=2 source_events=13 relu_plan_steps=12 ");
-  printf("relu_static_ordinals=6 ");
+  printf("relu_static_ordinals=6 stage_depth=3+4+4 ");
   printf("partial_output=none\n");
   return 0;
 }

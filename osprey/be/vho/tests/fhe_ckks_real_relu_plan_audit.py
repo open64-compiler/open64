@@ -25,6 +25,37 @@ EXPECTED_KINDS = (
 )
 
 
+def read_stage_depths(path):
+    """Read the accepted profile's ordered level costs independently."""
+    depths = {}
+    in_stages = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("FHE Ordered Approximation Stage Table:"):
+            in_stages = True
+            continue
+        if in_stages and not line.startswith(" "):
+            break
+        if not in_stages or not line.startswith("  ["):
+            continue
+        ordinal = int(field(line, "ordinal", r"\d+"))
+        require(ordinal not in depths and
+                int(field(line, "profile", r"\d+")) == 1,
+                "ambiguous approximation stage")
+        require(int(field(line, "degree", r"\d+")) ==
+                {0: 7, 1: 15, 2: 13}.get(ordinal) and
+                field(line, "basis") == "chebyshev" and
+                field(line, "evaluation") == "clenshaw" and
+                field(line, "input_class") == "ciphertext" and
+                field(line, "output_scale") == "preserve_input" and
+                field(line, "output_components") == "relinearized_two" and
+                int(field(line, "minimum_precision", r"\d+")) == 30,
+                "stage is not the approved first-release ACE contract")
+        depths[ordinal] = int(field(line, "level_consumption", r"\d+"))
+    require(depths == {0: 3, 1: 4, 2: 4},
+            "unexpected approved degree-7/15/13 depth contract")
+    return depths
+
+
 def field(line, name, pattern=r"[^ ]+"):
     match = re.search(r"\b" + re.escape(name) + r"=(" + pattern + r")", line)
     require(match is not None, f"missing {name} field")
@@ -95,7 +126,7 @@ def read_plan_tables(path):
     return ranges, states, operations
 
 
-def audit(events, relu_values, ranges, states, operations):
+def audit(events, relu_values, ranges, states, operations, stage_depths):
     contexts = defaultdict(list)
     for event in events:
         if event["source_value_id"] in relu_values:
@@ -135,6 +166,18 @@ def audit(events, relu_values, ranges, states, operations):
             role = "post_refresh" if ordinal == 0 else (
                 "result" if ordinal == 5 else "post_operation")
             require(state["role"] == role, "wrong context-state role")
+            require(state["scale_bits"] == 56 and
+                    state["components"] == 2 and
+                    state["precision_bits"] >= 30 and
+                    state["slots"] == 32768 and
+                    state["layout"] == "ckks.packed",
+                    "invalid ACE CKKS state payload")
+            if ordinal > 0:
+                prior = states[row["input"]]
+                cost = stage_depths[ordinal - 2] if 2 <= ordinal <= 4 else 0
+                require(prior["level"] - state["level"] == cost and
+                        prior["encryption"] == state["encryption"],
+                        "stage level or encryption transfer disagrees")
             require(row["stage"] ==
                     (ordinal - 1 if 2 <= ordinal <= 4 else 0),
                     "wrong approximation stage")
@@ -165,8 +208,9 @@ def main():
     relu_values = {value for operator, value in nodes.values()
                    if operator == "OPR_DSLRELU"}
     ranges, states, operations = read_plan_tables(args.trace)
+    stage_depths = read_stage_depths(args.trace)
     levels = audit(census["events"], relu_values,
-                   ranges, states, operations)
+                   ranges, states, operations, stage_depths)
     require(set(levels) == {15, 17, 18} and sum(levels.values()) == 19,
             "unexpected post-refresh target levels")
 
@@ -174,7 +218,8 @@ def main():
     key = next(iter(malformed))
     malformed[key] = dict(malformed[key], input=999)
     try:
-        audit(census["events"], relu_values, ranges, states, malformed)
+        audit(census["events"], relu_values, ranges, states, malformed,
+              stage_depths)
     except ValueError:
         pass
     else:
@@ -184,11 +229,32 @@ def main():
     old_key, profile = malformed[row_id]
     malformed[row_id] = (old_key[:3] + (99,), profile)
     try:
-        audit(census["events"], relu_values, malformed, states, operations)
+        audit(census["events"], relu_values, malformed, states, operations,
+              stage_depths)
     except ValueError:
         pass
     else:
         raise ValueError("wrong range context was accepted")
+    malformed = {row_id: dict(state) for row_id, state in states.items()}
+    stage_output = next(row["output"] for key, row in operations.items()
+                        if key[4] == 3)
+    malformed[stage_output]["level"] += 1
+    try:
+        audit(census["events"], relu_values, ranges, malformed, operations,
+              stage_depths)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("wrong stage level was accepted")
+    malformed_depths = dict(stage_depths)
+    malformed_depths[1] = 3
+    try:
+        audit(census["events"], relu_values, ranges, states, operations,
+              malformed_depths)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("wrong stage depth was accepted")
 
     report = {
         "schema": "open64.fhe.sync6.relu-plan-audit.v1",
@@ -198,7 +264,9 @@ def main():
         "relu_contexts": 19,
         "materialization_operations": 114,
         "post_refresh_target_levels": dict(sorted(levels.items())),
-        "negative_checks": ["state_chain", "range_context"],
+        "ordered_stage_level_consumption": stage_depths,
+        "negative_checks": ["state_chain", "range_context",
+                            "stage_output_level", "stage_depth"],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

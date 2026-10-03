@@ -35,6 +35,9 @@ const UINT32 expected_kind[6] = {
   DSL_FHE_MATERIALIZATION_OPERATION_RECONSTRUCT_RELU
 };
 
+/* First-release ACE sign profile; later profiles require separate policy. */
+const UINT32 expected_degree[3] = {7, 15, 13};
+
 /* Report a failed read-only table join without publishing partial plans. */
 BOOL Report(FILE *diagnostic, const char *message)
 {
@@ -77,7 +80,10 @@ BOOL VHO_FHE_CKKS_Collect_Relu_Plan_Steps(
   std::set<EVENT_KEY> seen;
   std::map<CONTEXT_KEY, UINT32> context_count;
   std::map<CONTEXT_KEY, DSL_FHE_CONTEXT_CKKS_STATE_ID> previous_state;
+  std::map<CONTEXT_KEY, DSL_FHE_CONTEXT_CKKS_STATE_RECORD> previous_payload;
   std::map<CONTEXT_KEY, DSL_FHE_CONTEXT_RANGE_ID> context_range;
+  std::map<CONTEXT_KEY, INT32> consumed_depth;
+  std::map<CONTEXT_KEY, INT32> precision_floor;
   for (size_t i = 0; i < events.size(); ++i) {
     const VHO_FHE_CKKS_EVENT_IDENTITY &event = events[i];
     std::map<SOURCE_KEY, VHO_FHE_RUNTIME_STATIC_SCHEDULE_RECORD>
@@ -107,6 +113,7 @@ BOOL VHO_FHE_CKKS_Collect_Relu_Plan_Steps(
     DSL_FHE_MATERIALIZATION_OPERATION_RECORD operation;
     DSL_FHE_CONTEXT_RANGE_RECORD range;
     DSL_FHE_CONTEXT_CKKS_STATE_RECORD output_state;
+    DSL_FHE_COMPOSITE_PROFILE_RECORD profile;
     if (!DSL_FHE_Materialization_Find(
             event.owner_pu_st, event.source_value_id,
             event.context_pu_identity_id, event.context_callsite_id,
@@ -129,6 +136,14 @@ BOOL VHO_FHE_CKKS_Collect_Relu_Plan_Steps(
             event.context_pu_identity_id ||
         range.context_callsite_id != event.context_callsite_id ||
         range.profile_id != operation.profile_id ||
+        !DSL_FHE_Approx_Profile_Get(operation.profile_id, &profile) ||
+        profile.id != operation.profile_id || profile.stage_count != 3 ||
+        profile.total_multiplicative_depth != 11 ||
+        profile.reconstruction !=
+            DSL_FHE_RECONSTRUCTION_RELU_FROM_NORMALIZED_SIGN ||
+        profile.normalization_policy !=
+            DSL_FHE_NORMALIZATION_POSITIVE_CONTEXT_BOUND ||
+        profile.pre_refresh_policy != DSL_FHE_PRE_REFRESH_REQUIRED ||
         !DSL_FHE_Context_State_Get(
             operation.output_state_id, &output_state) ||
         output_state.owner_pu_st != event.owner_pu_st ||
@@ -162,10 +177,59 @@ BOOL VHO_FHE_CKKS_Collect_Relu_Plan_Steps(
                           operation.parameter_tcon == 0)) ||
         ((ordinal == 0 || ordinal == 5) &&
          (operation.stage_id != 0 ||
-          operation.parameter_tcon != 0)))
+          operation.parameter_tcon != 0)) ||
+        output_state.level <= 0 || output_state.scale_bits <= 0 ||
+        output_state.component_count != 2 ||
+        output_state.precision_bits <= 0 || output_state.slot_count == 0 ||
+        output_state.encryption_descriptor_id == 0 ||
+        output_state.encrypted_layout_name == 0)
       return Report(diagnostic, "ReLU range or CKKS state chain disagrees");
 
+    if (ordinal > 0) {
+      const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &input =
+          previous_payload[key];
+      INT32 level_consumption = 0;
+      if (ordinal >= 2 && ordinal <= 4) {
+        DSL_FHE_APPROX_STAGE_RECORD stage;
+        if (!DSL_FHE_Approx_Stage_Get(operation.stage_id, &stage) ||
+            stage.id != operation.stage_id ||
+            stage.profile_id != profile.id ||
+            stage.stage_ordinal != ordinal - 2 ||
+            stage.id != profile.first_stage_id + ordinal - 2 ||
+            stage.degree != expected_degree[ordinal - 2] ||
+            stage.basis != DSL_FHE_APPROX_BASIS_CHEBYSHEV ||
+            stage.evaluation_scheme != DSL_FHE_APPROX_EVAL_CLENSHAW ||
+            stage.required_input_value_class !=
+                DSL_FHE_VALUE_CLASS_CIPHERTEXT ||
+            stage.output_scale_policy !=
+                DSL_FHE_APPROX_OUTPUT_SCALE_PRESERVE_INPUT ||
+            stage.output_component_policy !=
+                DSL_FHE_APPROX_COMPONENT_RELINEARIZED_TWO ||
+            stage.level_consumption <= 0 ||
+            output_state.precision_bits <
+                stage.minimum_precision_bits)
+          return Report(diagnostic, "ReLU stage contract disagrees");
+        level_consumption = stage.level_consumption;
+        if (precision_floor[key] < stage.minimum_precision_bits)
+          precision_floor[key] = stage.minimum_precision_bits;
+      }
+      if (output_state.encryption_descriptor_id !=
+              input.encryption_descriptor_id ||
+          output_state.slot_count != input.slot_count ||
+          output_state.encrypted_layout_name !=
+              input.encrypted_layout_name ||
+          output_state.scale_bits != input.scale_bits ||
+          input.level - output_state.level != level_consumption ||
+          (ordinal == 5 && consumed_depth[key] !=
+                               (INT32)profile.total_multiplicative_depth) ||
+          (ordinal == 5 && output_state.precision_bits <
+                               precision_floor[key]))
+        return Report(diagnostic, "ReLU CKKS state transfer disagrees");
+      consumed_depth[key] += level_consumption;
+    }
+
     previous_state[key] = operation.output_state_id;
+    previous_payload[key] = output_state;
     context_range[key] = operation.range_id;
     VHO_FHE_CKKS_RELU_PLAN_STEP step = {
       event, operation.id, range.id, output_state.id

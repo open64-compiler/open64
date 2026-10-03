@@ -173,6 +173,18 @@ join to their exact context/range/state chain, with post-refresh target
 levels 15 (16 contexts), 17 (1), and 18 (2). This is inspection evidence,
 not a replacement for the native mapped-image and CKKS-state gate.
 
+The FHE read-only consumer now also checks that the accepted three ordered
+Chebyshev/Clenshaw degree-7/15/13 stage rows consume levels `3+4+4=11`
+per context under the required pre-refresh and positive-bound profile;
+normalization and ReLU reconstruction do not silently consume another
+level; and every resulting state remains in the same
+encryption/layout/slot/scale family with two
+components and sufficient precision. The independent trace audit verifies
+the same transitions in both retained ResNet capture families and rejects
+altered stage depth or output level. These are pre-mutation checks; actual
+CKKS primitive results must each receive their own value-specific state
+after the atomic expansion API lands.
+
 The retained context-state evidence also proves that the six captured source
 PUs cannot remain six fixed-schedule executable CKKS PUs. For the same
 source block PU, callsites 1/2 versus 3 need ordered post-refresh levels
