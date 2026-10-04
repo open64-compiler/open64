@@ -8,6 +8,14 @@ program policy or a complete real circuit producer. No
 `secure_resnet20.ckks_ops.B` exists. The normative gate is
 `FHE-SYNC6-CKKS-IR-CONFORMANCE-GATE.md`.
 
+C2's first bounded column-first Conv recipe is implemented and checked
+against both a nonuniform stem-like fixture and the replay-authenticated
+folded stem weight/bias bytes. Its slot oracle covers every active output
+and rejects unsupported stride, insufficient slots, invalid weights, and
+tampered recipe metadata without output mutation. This is a local recipe
+test, not materialized CKKS WHIRL, runtime execution, or certification of
+the remaining projection/stride/channel contexts.
+
 ## Boundary And Inputs
 
 The current six-source-PU replay input is the retained
@@ -89,11 +97,22 @@ nine-ReLU lower bound and a tenth variant on non-ReLU change. The actual
 ResNet step plans do not yet exist, so C1 is machinery, not complete
 semantic-plan certification.
 
+The C2 focused evidence is retained under
+`/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-recipe/`:
+`run.log`, `stem_folded_manifest.json`, and the local extracted folded
+float32 fixture. Extraction requires the replay-pinned whole-file
+SafeTensors SHA-256 and exact stem tensor shape/dtype/ranges. No payload
+bytes are checked into Git. The current recipe admits only batch-one,
+square, 3x3 stride-one same Conv with all input/output channels packed in
+one 32768-slot ciphertext. The captured stride-two projection Convs are
+explicitly outside this first case. C2 remains open until real event-plan
+serialization, bounded full Conv coverage, and materialized IR census.
+
 | Slice | FHE-owned work | Focused exit evidence |
 | --- | --- | --- |
 | C0: replay/input gate | Add a deterministic input manifest and native read-only gate joining six-PU images, 87/147 events, 19 contexts, source/payload/coefficient hashes, and FHE/DSL validators. Reject the older `.fhe.B` and unsupported config before planning. | Stable hashed census, `-st -src` with six FUNC_ENTRYs/nine calls/nonzero source interleave; wrong hash or missing context rejects without output. |
 | C1: canonical plan serializer | Define a bounded structured per-event CKKS step plan and versioned byte encoding for operation/operand/group-output/TY/layout/state/key/rotation/B-role facts. Validate before encoding; opaque producer-supplied bytes alone are not a legal plan. | Equal semantics encode identically despite allocation/name order; changed non-ReLU operation/state/key/rotation changes bytes. Missing field, bad operand, duplicate event, or truncated encoding rejects. Retain decoded plan and hashes. |
-| C2: non-ReLU recipes | Generate CKKS step DAGs for Conv, residual add, average pool, flatten/layout, and linear. Before coding Conv, freeze the O0 encrypted-layout mapping against the governing architecture and record its exact column/row iteration order, packing, signed rotations, plaintext masks/weights, accumulation, and bias from verified folded bytes. The previously discussed ACE column-first schedule is a candidate, not an implicit MetaKernel/SYNC-7 optimizer admission. Unsupported dimensions/layouts fail closed; do not silently substitute im2col. | Per-operator clear tensor/slot oracle with nontrivial inputs; 13 Conv definitions/21 contexts, nine residual contexts, pool/flatten/linear, context-specific payloads and rotation-key census. Invalid payload/layout/slot negatives. |
+| C2: non-ReLU recipes | First certify one fixed, deterministic ACE-style column-first Conv correctness recipe with explicit NCHW/OIHW domain limits, packing, signed rotations, plaintext masks/weights, accumulation, and bias. Use verified folded bytes and a clear tensor-to-slot oracle. This provisional recipe is neither the selected Fhelipe O0 baseline nor MetaKernel/SYNC-7 optimization. Only then expand to the 13 Conv definitions/21 contexts and residual/pool/flatten/linear if the recipe remains bounded. Unsupported cases fail closed; do not silently substitute im2col. | One representative nontrivial Conv and an unsupported-case negative first; then per-operator oracles, measured materialized-IR rotation/key/state census, and exact external payload joins. Stop for review if graph-wide layout assignment/conversion, hidden state repair, or a growing special-case matrix appears. |
 | C3: ReLU recipe | In each of 19 contexts generate `ckks.bootstrap` with `PRE_RELU_REFRESH` and target 15/17/18, actual B materialization/encode/normalization, approved ordered degree-7/15/13 Chebyshev/Clenshaw stages, and reconstruction. Bootstrap does not compute ReLU. | 19 refreshes with targets 15x16/17x1/18x2, stage depth 3+4+4=11, coefficient bytes/order/hash, and independent clear polynomial oracle. Wrong B/reason/target/stage/context rejects. |
 | C4: state/requirement propagation | Transfer exact descriptor/config, cipher/plain class, TY/layout/slots, level/scale/components/precision, pending actions, key class and signed rotation through every proposed result. Insert explicit alignment/rescale/relin/encode steps when the reviewed recipe requires them. Recompute depth/keys/rotations from the DAG. | Unary/binary and cross-operator positives; missing key, wrong rotation, depleted level, low precision, mismatched state/TY/slot, forward reference, or unresolved action rejects before mutation. Retain operation/key/rotation/depth report. |
 | C5: whole-PU policy | Group byte-identical complete PU plans, register with `DSL_PU_Transaction_Register_Policy`, map variants to source PU/value/static ordinal, add B formals, route nine calls and bind 18 called B actuals plus one root B TCON. Use owner-qualified clone-value results. Measure variant count after C2-C4. | Equal contexts reuse, changed non-ReLU plan splits, two ReLUs keep two B formals, and 129 existing call-ABI roles remain correct. Missing actual, wrong owner/TY, incomplete signature or duplicate route rejects before apply. Retain variant/call/origin report. |
@@ -114,10 +133,13 @@ WN/ST/TY or mapped rows to bridge a missing API.
 
 1. After C1, review canonical encoding and equality exclusions,
    particularly per-caller B bytes versus typed B role.
-2. Before C2, reconcile and freeze the O0 Conv layout/iteration policy;
-   the unresolved Fhelipe O0 baseline proposal and later MetaKernel O2
-   proposal cannot silently change it.
-   After C2-C4, review that Conv recipe, exact ReLU DAG,
+2. C2 uses a provisional fixed ACE-style column-first Conv recipe for
+   correctness only. Its first review is one nontrivial Conv plus a negative;
+   it does not decide the unresolved Fhelipe O0 baseline proposal or admit
+   MetaKernel O2. If the fixed recipe needs graph-wide layout decisions,
+   unexpected state repair, or proliferating cases, stop and quantify the
+   gap rather than adding workarounds. After C2-C4, review the bounded Conv
+   recipe, exact ReLU DAG,
    numerical oracle, and depth/key/rotation census before mutation.
 3. After C5, review measured variant signatures, B routes, source-to-clone
    identities and complete call ABI.
