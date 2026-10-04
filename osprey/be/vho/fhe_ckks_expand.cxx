@@ -117,17 +117,20 @@ VHO_FHE_CKKS_Step_Attributes_Valid(
   }
 }
 
-/* Resolve a unary operand to a concrete state, preserving owner-qualified
- * native value checks for the common transaction that follows. */
+/* Resolve one operand to a concrete state, preserving owner-qualified native
+ * value checks for the common transaction that follows. */
 static BOOL
-VHO_FHE_CKKS_Unary_Input_State(
-    const DSL_CKKS_EXPANSION_STEP &step, UINT32 step_index,
+VHO_FHE_CKKS_Operand_State(
+    const DSL_CKKS_EXPANSION_STEP &step, UINT32 operand_index,
+    UINT32 step_index,
     const VHO_FHE_CKKS_STEP_STATE *states,
     DSL_FHE_CKKS_VALUE_STATE_RECORD *input)
 {
-  if (step.operand_count != 1 || step.operands == NULL || input == NULL)
+  if (operand_index >= step.operand_count || step.operands == NULL ||
+      input == NULL)
     return FALSE;
-  const DSL_CKKS_EXPANSION_OPERAND &operand = step.operands[0];
+  const DSL_CKKS_EXPANSION_OPERAND &operand =
+      step.operands[operand_index];
   if (operand.kind == DSL_CKKS_EXPANSION_PRIOR_STEP) {
     if (operand.step_index >= step_index)
       return FALSE;
@@ -215,12 +218,28 @@ VHO_FHE_CKKS_Can_Expand_And_Bind_States(
         step.dsl_operator == OPR_DSLCKKSRESCALE ||
         step.dsl_operator == OPR_DSLCKKSMODSWITCH) {
       DSL_FHE_CKKS_VALUE_STATE_RECORD input;
-      if (!VHO_FHE_CKKS_Unary_Input_State(
-              step, i, states, &input) ||
+      if (step.operand_count != 1 ||
+          !VHO_FHE_CKKS_Operand_State(
+              step, 0, i, states, &input) ||
           !VHO_FHE_CKKS_Verify_Unary_State_Transfer(
               step, input, state, diagnostic))
         return VHO_FHE_CKKS_Expand_Report(
             diagnostic, "unary CKKS state transfer failed", i, FALSE);
+    }
+    if (step.dsl_operator == OPR_DSLCKKSADD ||
+        step.dsl_operator == OPR_DSLCKKSSUB ||
+        step.dsl_operator == OPR_DSLCKKSMUL) {
+      DSL_FHE_CKKS_VALUE_STATE_RECORD left;
+      DSL_FHE_CKKS_VALUE_STATE_RECORD right;
+      if (step.operand_count != 2 ||
+          !VHO_FHE_CKKS_Operand_State(
+              step, 0, i, states, &left) ||
+          !VHO_FHE_CKKS_Operand_State(
+              step, 1, i, states, &right) ||
+          !VHO_FHE_CKKS_Verify_Binary_State_Transfer(
+              step, left, right, state, diagnostic))
+        return VHO_FHE_CKKS_Expand_Report(
+            diagnostic, "binary CKKS state transfer failed", i, FALSE);
     }
   }
   return DSL_IR_Can_Expand_Native_Value_To_CKKS_Events(

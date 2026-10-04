@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "fhe_image.h"
+
 /* Return the first exact logical attribute; common/com later proves schema. */
 static const char *
 VHO_FHE_CKKS_Transfer_Attribute(
@@ -155,5 +157,121 @@ VHO_FHE_CKKS_Verify_Unary_State_Transfer(
   default:
     return VHO_FHE_CKKS_Transfer_Report(
         diagnostic, "operator has no unary CKKS transfer rule");
+  }
+}
+
+/* In the first path, an arithmetic input must already be at its declared
+ * level and scale; repair happens through explicit CKKS nodes. */
+static BOOL
+VHO_FHE_CKKS_Binary_Input_Valid(
+    const DSL_FHE_CKKS_VALUE_STATE_RECORD &state,
+    DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD *descriptor)
+{
+  return state.scheme == DSL_FHE_SCHEME_CKKS &&
+         (state.value_class == DSL_FHE_VALUE_CLASS_CIPHERTEXT ||
+          state.value_class == DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT) &&
+         state.level >= 0 && state.scale_bits > 0 &&
+         state.precision_bits > 0 && state.slot_count > 0 &&
+         state.encrypted_layout_name != STR_IDX_ZERO &&
+         state.pending_actions == 0 &&
+         state.pending_bootstrap_reason ==
+             DSL_FHE_BOOTSTRAP_REASON_NONE &&
+         (state.value_class == DSL_FHE_VALUE_CLASS_CIPHERTEXT ?
+              state.component_count >= 2 : state.component_count == 1) &&
+         DSL_FHE_Get_Encryption_Descriptor(
+             state.encryption_descriptor_id, descriptor) &&
+         descriptor->scheme == DSL_FHE_SCHEME_CKKS &&
+         descriptor->value_class == state.value_class &&
+         descriptor->config_id != DSL_FHE_CONFIG_INVALID_ID &&
+         descriptor->key_set_name != STR_IDX_ZERO &&
+         (descriptor->slot_count == 0 ||
+          descriptor->slot_count == state.slot_count);
+}
+
+/* Keep the two operand representations and the ciphertext result in one
+ * encryption family without equating plaintext and ciphertext descriptors. */
+BOOL
+VHO_FHE_CKKS_Verify_Binary_State_Transfer(
+    const DSL_CKKS_EXPANSION_STEP &step,
+    const DSL_FHE_CKKS_VALUE_STATE_RECORD &left,
+    const DSL_FHE_CKKS_VALUE_STATE_RECORD &right,
+    const DSL_FHE_CKKS_VALUE_STATE_RECORD &output,
+    FILE *diagnostic)
+{
+  DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD left_desc;
+  DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD right_desc;
+  DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD output_desc;
+  if (!VHO_FHE_CKKS_Binary_Input_Valid(left, &left_desc) ||
+      !VHO_FHE_CKKS_Binary_Input_Valid(right, &right_desc) ||
+      left_desc.config_id != right_desc.config_id ||
+      left_desc.key_set_name != right_desc.key_set_name ||
+      left.level != right.level || left.scale_bits != right.scale_bits ||
+      left.slot_count != right.slot_count ||
+      left.encrypted_layout_name != right.encrypted_layout_name ||
+      left.alignment_group != right.alignment_group ||
+      (left.value_class != DSL_FHE_VALUE_CLASS_CIPHERTEXT &&
+       right.value_class != DSL_FHE_VALUE_CLASS_CIPHERTEXT) ||
+      output.scheme != DSL_FHE_SCHEME_CKKS ||
+      output.value_class != DSL_FHE_VALUE_CLASS_CIPHERTEXT ||
+      output.level != left.level || output.slot_count != left.slot_count ||
+      output.encrypted_layout_name != left.encrypted_layout_name ||
+      output.alignment_group != left.alignment_group ||
+      output.precision_bits <= 0 ||
+      output.precision_bits > left.precision_bits ||
+      output.precision_bits > right.precision_bits ||
+      output.pending_bootstrap_reason !=
+          DSL_FHE_BOOTSTRAP_REASON_NONE ||
+      !DSL_FHE_Get_Encryption_Descriptor(
+          output.encryption_descriptor_id, &output_desc) ||
+      output_desc.scheme != DSL_FHE_SCHEME_CKKS ||
+      output_desc.value_class != DSL_FHE_VALUE_CLASS_CIPHERTEXT ||
+      output_desc.config_id != left_desc.config_id ||
+      output_desc.key_set_name != left_desc.key_set_name ||
+      (output_desc.slot_count != 0 &&
+       output_desc.slot_count != output.slot_count) ||
+      output.encryption_descriptor_id !=
+          (left.value_class == DSL_FHE_VALUE_CLASS_CIPHERTEXT ?
+               left.encryption_descriptor_id :
+               right.encryption_descriptor_id) ||
+      (left.value_class == DSL_FHE_VALUE_CLASS_CIPHERTEXT &&
+       right.value_class == DSL_FHE_VALUE_CLASS_CIPHERTEXT &&
+       left.encryption_descriptor_id != right.encryption_descriptor_id))
+    return VHO_FHE_CKKS_Transfer_Report(
+        diagnostic, "binary CKKS operands or result are not aligned");
+
+  const BOOL two_ciphertexts =
+      left.value_class == DSL_FHE_VALUE_CLASS_CIPHERTEXT &&
+      right.value_class == DSL_FHE_VALUE_CLASS_CIPHERTEXT;
+  const INT64 additive_components =
+      two_ciphertexts && right.component_count > left.component_count ?
+          right.component_count :
+          left.value_class == DSL_FHE_VALUE_CLASS_CIPHERTEXT ?
+              left.component_count : right.component_count;
+  const INT64 multiplied_components = two_ciphertexts ?
+      (INT64)left.component_count + right.component_count - 1 :
+      additive_components;
+  switch (step.dsl_operator) {
+  case OPR_DSLCKKSADD:
+  case OPR_DSLCKKSSUB:
+    if (output.scale_bits != left.scale_bits ||
+        output.component_count != additive_components ||
+        output.pending_actions != 0)
+      return VHO_FHE_CKKS_Transfer_Report(
+          diagnostic, "add/sub changed aligned ciphertext state");
+    return TRUE;
+  case OPR_DSLCKKSMUL:
+    if (left.scale_bits > INT_MAX - right.scale_bits ||
+        output.scale_bits != left.scale_bits + right.scale_bits ||
+        output.component_count != multiplied_components ||
+        output.pending_actions !=
+            (UINT32)(DSL_FHE_CKKS_PENDING_RESCALE |
+                     (two_ciphertexts ?
+                          DSL_FHE_CKKS_PENDING_RELINEARIZE : 0)))
+      return VHO_FHE_CKKS_Transfer_Report(
+          diagnostic, "multiply lacks explicit scale/component repair state");
+    return TRUE;
+  default:
+    return VHO_FHE_CKKS_Transfer_Report(
+        diagnostic, "operator has no binary CKKS transfer rule");
   }
 }

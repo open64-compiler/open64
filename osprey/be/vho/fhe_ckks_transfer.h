@@ -25,4 +25,13 @@ BOOL VHO_FHE_CKKS_Verify_Unary_State_Transfer(
     const DSL_FHE_CKKS_VALUE_STATE_RECORD &output,
     FILE *diagnostic);
 
+/* Prove an aligned add/sub/mul transfer for ciphertext and optionally one
+ * encoded plaintext operand. Multiply leaves explicit repair obligations. */
+BOOL VHO_FHE_CKKS_Verify_Binary_State_Transfer(
+    const DSL_CKKS_EXPANSION_STEP &step,
+    const DSL_FHE_CKKS_VALUE_STATE_RECORD &left,
+    const DSL_FHE_CKKS_VALUE_STATE_RECORD &right,
+    const DSL_FHE_CKKS_VALUE_STATE_RECORD &output,
+    FILE *diagnostic);
+
 #endif /* fhe_ckks_transfer_INCLUDED */

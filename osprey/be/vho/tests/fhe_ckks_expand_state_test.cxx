@@ -22,14 +22,16 @@ static BOOL wrong_key_set;
 static BOOL wrong_bootstrap_profile;
 static BOOL existing_state_available = TRUE;
 static DSL_FHE_CKKS_VALUE_STATE_RECORD existing_state;
+static DSL_FHE_CKKS_VALUE_STATE_RECORD arithmetic_state;
 
 /* Supply a concrete existing operand state to the read-only FHE preflight. */
 BOOL DSL_FHE_Plan_Find_Latest_CKKS_Value_State(
     DSL_IR_VALUE_ID value_id, DSL_FHE_CKKS_VALUE_STATE_RECORD *record)
 {
-  if (!existing_state_available || value_id != 7 || record == NULL)
+  if (record == NULL || (value_id != 7 && value_id != 8 && value_id != 9) ||
+      (value_id == 7 && !existing_state_available))
     return FALSE;
-  *record = existing_state;
+  *record = value_id == 7 ? existing_state : arithmetic_state;
   return TRUE;
 }
 
@@ -234,10 +236,65 @@ static void Check_Unary_Transfers()
       step, input, output, NULL));
 }
 
+/* Keep arithmetic scale, component, and repair obligations explicit. */
+static void Check_Binary_Transfers()
+{
+  DSL_CKKS_EXPANSION_STEP step;
+  memset(&step, 0, sizeof(step));
+  Set_Existing_Input(15, 56, 2, 0);
+  DSL_FHE_CKKS_VALUE_STATE_RECORD left = existing_state;
+  DSL_FHE_CKKS_VALUE_STATE_RECORD right = left;
+  DSL_FHE_CKKS_VALUE_STATE_RECORD output = left;
+  step.dsl_operator = OPR_DSLCKKSADD;
+  assert(VHO_FHE_CKKS_Verify_Binary_State_Transfer(
+      step, left, right, output, NULL));
+  step.dsl_operator = OPR_DSLCKKSSUB;
+  assert(VHO_FHE_CKKS_Verify_Binary_State_Transfer(
+      step, left, right, output, NULL));
+  right.level = 14;
+  assert(!VHO_FHE_CKKS_Verify_Binary_State_Transfer(
+      step, left, right, output, NULL));
+  right = left;
+  right.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
+  right.encryption_descriptor_id = 1;
+  right.component_count = 1;
+  assert(VHO_FHE_CKKS_Verify_Binary_State_Transfer(
+      step, left, right, output, NULL));
+  output.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
+  assert(!VHO_FHE_CKKS_Verify_Binary_State_Transfer(
+      step, left, right, output, NULL));
+  output = left;
+  right.pending_actions = DSL_FHE_CKKS_PENDING_RESCALE;
+  assert(!VHO_FHE_CKKS_Verify_Binary_State_Transfer(
+      step, left, right, output, NULL));
+  right.pending_actions = 0;
+
+  step.dsl_operator = OPR_DSLCKKSMUL;
+  output.scale_bits = 112;
+  output.pending_actions = DSL_FHE_CKKS_PENDING_RESCALE;
+  assert(VHO_FHE_CKKS_Verify_Binary_State_Transfer(
+      step, left, right, output, NULL));
+  output.pending_actions |= DSL_FHE_CKKS_PENDING_RELINEARIZE;
+  assert(!VHO_FHE_CKKS_Verify_Binary_State_Transfer(
+      step, left, right, output, NULL));
+  right = left;
+  output.component_count = 3;
+  assert(VHO_FHE_CKKS_Verify_Binary_State_Transfer(
+      step, left, right, output, NULL));
+  output.component_count = 2;
+  assert(!VHO_FHE_CKKS_Verify_Binary_State_Transfer(
+      step, left, right, output, NULL));
+  output.component_count = 3;
+  output.scale_bits = 56;
+  assert(!VHO_FHE_CKKS_Verify_Binary_State_Transfer(
+      step, left, right, output, NULL));
+}
+
 /* Exercise preflight, ordered success, native failure, and terminal failure. */
 int main()
 {
   Check_Unary_Transfers();
+  Check_Binary_Transfers();
   DSL_CKKS_EXPANSION_STEP steps[2];
   memset(steps, 0, sizeof(steps));
   steps[0].dsl_operator = OPR_DSLCKKSENCODE;
@@ -249,6 +306,12 @@ int main()
   bootstrap_input.value_id = 7;
   steps[1].operands = &bootstrap_input;
   steps[1].operand_count = 1;
+  DSL_CKKS_EXPANSION_OPERAND arithmetic_inputs[2];
+  memset(arithmetic_inputs, 0, sizeof(arithmetic_inputs));
+  for (UINT32 i = 0; i < 2; ++i) {
+    arithmetic_inputs[i].kind = DSL_CKKS_EXPANSION_EXISTING_VALUE;
+    arithmetic_inputs[i].value_id = i + 8;
+  }
   Set_Existing_Input(10, 56, 2, DSL_FHE_CKKS_PENDING_BOOTSTRAP);
   DSL_CKKS_EXPANSION_ATTRIBUTE bootstrap_attrs[3] = {
     { "attr.target_level", "15" },
@@ -306,6 +369,11 @@ int main()
       pu, &request, states, 2, NULL));
   states[1].state.encrypted_layout_name = 1;
   steps[0].dsl_operator = OPR_DSLCKKSMUL;
+  steps[0].operands = arithmetic_inputs;
+  steps[0].operand_count = 2;
+  Set_Existing_Input(15, 28, 2, 0);
+  arithmetic_state = existing_state;
+  Set_Existing_Input(10, 56, 2, DSL_FHE_CKKS_PENDING_BOOTSTRAP);
   states[0].state.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
   states[0].state.encryption_descriptor_id = 2;
   states[0].state.component_count = 3;
@@ -313,7 +381,13 @@ int main()
                                     DSL_FHE_CKKS_PENDING_RELINEARIZE;
   assert(VHO_FHE_CKKS_Can_Expand_And_Bind_States(
       pu, &request, states, 2, NULL));
+  arithmetic_state.scale_bits = 29;
+  assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  arithmetic_state.scale_bits = 28;
   steps[0].dsl_operator = OPR_DSLCKKSENCODE;
+  steps[0].operands = NULL;
+  steps[0].operand_count = 0;
   states[0].state.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
   states[0].state.encryption_descriptor_id = 1;
   states[0].state.component_count = 1;
@@ -413,15 +487,18 @@ int main()
   assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
       pu, &request, states, 2, NULL));
   steps[1].operand_count = 1;
-  steps[0].dsl_operator = OPR_DSLCKKSMUL;
+  steps[0].dsl_operator = OPR_DSLCKKSADD;
+  steps[0].operands = arithmetic_inputs;
+  steps[0].operand_count = 2;
+  Set_Existing_Input(15, 56, 2, 0);
+  arithmetic_state = existing_state;
   states[0].state.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
   states[0].state.encryption_descriptor_id = 2;
-  states[0].state.component_count = 3;
-  states[0].state.pending_actions = DSL_FHE_CKKS_PENDING_RELINEARIZE;
-  steps[1].dsl_operator = OPR_DSLCKKSRELIN;
-  relin_attr.value = "request_key";
-  steps[1].attributes = &relin_attr;
-  steps[1].attribute_count = 1;
+  states[0].state.component_count = 2;
+  states[0].state.pending_actions = 0;
+  steps[1].dsl_operator = OPR_DSLCKKSROTATE;
+  steps[1].attributes = rotate_attrs;
+  steps[1].attribute_count = 2;
   bootstrap_input.kind = DSL_CKKS_EXPANSION_PRIOR_STEP;
   bootstrap_input.value_id = DSL_IR_VALUE_INVALID_ID;
   bootstrap_input.step_index = 0;
@@ -434,6 +511,8 @@ int main()
   bootstrap_input.value_id = 7;
   bootstrap_input.step_index = 0;
   steps[0].dsl_operator = OPR_DSLCKKSENCODE;
+  steps[0].operands = NULL;
+  steps[0].operand_count = 0;
   states[0].state.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
   states[0].state.encryption_descriptor_id = 1;
   states[0].state.component_count = 1;
@@ -441,6 +520,7 @@ int main()
   steps[1].dsl_operator = OPR_DSLCKKSBOOTSTRAP;
   steps[1].attributes = bootstrap_attrs;
   steps[1].attribute_count = 3;
+  Set_Existing_Input(10, 56, 2, DSL_FHE_CKKS_PENDING_BOOTSTRAP);
   assert(preflight_count == 6 && expansion_count == 0);
 
   fail_native = TRUE;
