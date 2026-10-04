@@ -245,6 +245,19 @@ callsite 8 versus 9 needs `(15,15)` versus `(15,17)`. The hashed
 `fhe_ckks_context_signature_audit.py` report derives three additional
 context-specialized clones, giving a **minimum of nine executable PUs**
 if each context bound B is passed as an explicit typed plaintext formal.
+The FHE-owned `fhe_ckks_variant_signature.{h,cxx}` is now the process-local
+whole-PU grouping preflight. It requires one canonical, nonempty executable
+step-plan byte string per exact source-context event, verifies complete
+event coverage and the same ordered source-static shape across contexts,
+then reuses variants only for byte-identical complete PU signatures.
+Callsite number and caller-specific B TCON bytes do not enter equality;
+the plan must encode the typed B formal role and all operator, state, key,
+rotation, TY, and layout facts. A linked 147-event fixture proves the
+ReLU-level lower bound of nine, splits a tenth variant when one non-ReLU
+event changes, and rejects incomplete/duplicate/cross-owner plans without
+partial output. This is policy machinery only. No real ResNet producer yet
+supplies the canonical bytes or calls the generic PU transaction, so the
+fixture does not certify an executable CKKS PU or the final variant count.
 Generic F8 formal/caller actual and owner-qualified clone value support is
 now available through PR #164; the FHE policy must still bind approved
 ranges and origin PU/value/static-event identity. The consumer contract and

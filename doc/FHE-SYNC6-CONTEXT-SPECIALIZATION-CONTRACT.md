@@ -103,6 +103,19 @@ The FHE consumer still owns full executable signature derivation, approved
 `B` selection, CKKS legality, source-event provenance, and the post-apply
 semantic gate. The generic transaction alone does not prove those facts.
 
+The FHE-owned `fhe_ckks_variant_signature.{h,cxx}` now supplies a
+process-local grouping preflight for the eventual policy. It compares the
+complete canonical event-plan byte sequence for every route of one source
+PU, including source static ordinals and value identity, against independent
+static and dynamic schedule totals. It requires every context of a shared
+source PU to have the same ordered source event shape. Equal byte sequences
+reuse one variant; a difference anywhere, including a non-ReLU operation,
+splits it. The caller must encode the typed `B` formal role but omit the
+per-caller bound TCON bytes only after proving actual/formal binding.
+This module does not generate CKKS steps, serialize their complete semantics,
+register a backend policy, or mutate a PU. Those obligations remain before
+the program transaction can consume its variant groups.
+
 ## Certification tests
 
 - Equal complete signatures reuse one clone; a level/key/layout difference
