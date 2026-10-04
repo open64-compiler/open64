@@ -15,12 +15,14 @@ and 147 execution-weighted events. Adding primitive C calls or changing ABI v1
 to make CKKS lowering easy is not an S6-0d option.
 
 The typed `.WHIRL.dsl_ckks_events` relation retains source-definition,
-origin-definition, context, static-event, step, and explicit final-result
+origin-definition, context, static-event, step, and source-replacement
 identities. A source event may have many CKKS steps but contributes exactly
-one public ABI evaluation call. The provider implementation of that call is
-responsible for the certified internal circuit. This is not permission to
-skip CKKS state, key, depth, layout, or numerical-equivalence checks before
-the call is emitted.
+one public ABI evaluation call. In image v1,
+`DSL_CKKS_EVENT_FINAL_RESULT` marks **one final replacement for the entire
+source/context**, not one output per static event group. The provider
+implementation of each ABI call is responsible for its certified internal
+circuit. This is not permission to skip CKKS state, key, depth, layout, or
+numerical-equivalence checks before the call is emitted.
 
 The FHE-owned `fhe_ckks_abi_origin_audit.py` is the read-only precursor to
 this gate. It joins the separately reopened six-PU source `.B` trace, its
@@ -41,11 +43,15 @@ For every source-context semantic event, before any terminal mutation:
    persisted identity. The ABI operation kind, descriptor hash, and ordinal
    must be read from that descriptor, not inferred from CKKS step position or
    equated to the CKKS static ordinal.
-2. Require one nonempty, dense, ordered CKKS step group with a unique
-   `DSL_CKKS_EVENT_FINAL_RESULT` row. Its marked result, not the last row by
-   convention, is the only ABI-visible value. Every other step result may be
-   used inside the group but must not escape to another group, call actual,
-   return, REGION interface, or external projection.
+2. Require one nonempty, dense, ordered CKKS step group and one *separately
+   proved group output* for each source-context ABI event. The v1
+   `DSL_CKKS_EVENT_FINAL_RESULT` row is checked once across the whole
+   source/context and must equal that source's final replacement. It is not
+   reused as a group-output marker. A group output may feed the next
+   source-context group only when the source schedule and descriptor permit
+   that edge. Other internal step results may not escape the group, call
+   actual, return, REGION interface, or external projection. The durable
+   group-output relation still needs a reviewed contract before mutation.
 3. Verify every step's logical operator, direct operands, owner, source
    position, canonical TY, encryption descriptor, value-specific CKKS state,
    explicit repair actions, key requirements, and typed event provenance.
@@ -81,8 +87,9 @@ S6-0d therefore needs a reviewed, generic, owner-PU atomic *grouped lowering*
 transaction from main/common, unless an existing shared service is shown to
 satisfy the following same contract:
 
-- Preflight all group member definitions, typed event rows, unique final
-  result, internal-use closure, owner/local-symbol identity, source positions,
+- Preflight all group member definitions, typed event rows, the separate
+  group output, the one source/context final replacement, internal-use
+  closure, owner/local-symbol identity, source positions,
   interface/REGION/call obligations, and one final runtime projection.
 - Accept one detached checked standard-WHIRL block for the whole group and
   produce one ABI v1 evaluation call with the existing status/output guards.
