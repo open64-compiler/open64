@@ -706,6 +706,9 @@ fixed-schedule variants when B is a typed formal. The exact data-flow and
 clone legality review are in
 `doc/FHE-SYNC6-CONTEXT-SPECIALIZATION-CONTRACT.md`.
 
+The detailed S6-0c producer, specialization, transaction, and mapped
+artifact sequence is `doc/FHE-SYNC6-S6-0C-DETAILED-EXECUTION-PLAN.md`.
+
 | Review gate | Owner and required change | Tests and exit evidence |
 | --- | --- | --- |
 | S6-0a atomic grouped expansion (merged PR #165) | Main/common publishes the owner-PU-safe one-source/many-CKKS-step transaction, nine logical operators, typed event rows, and F8 scalar kid1. Preflight covers groups, operands, source uses, call actuals, and REGION; late-failure rollback keeps the source as nonexecutable `LOWERED` provenance only on success. | Six-group mapped roundtrip and linked opcode, event-image, expansion, and PU-specialization regressions passed. These are structural tests, not a certified FHE circuit. |

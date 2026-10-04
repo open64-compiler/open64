@@ -319,6 +319,10 @@ embedded harness remains useful for bring-up but cannot close SYNC-6.
 | S6-5 Failure containment | Translate recoverable errors and fatal ACE assertion/abort/signal/IPC loss through ABI v1 without partial output; poison and reap failed contexts | Input preservation; cursor rollback; poisoned-handle cleanup; child termination/status translation; no silent replay |
 | S6-6 Full client/server certification | Execute pinned ResNet-20 with the secretless server and compare client-decrypted results with certified baselines | Accuracy/error, operation counts, bootstrap distribution, memory, latency, precision, dependency closure, no-secret evidence, and complete artifact family |
 
+The S6-0c row is expanded into reviewable C0-C8 producer and certification
+slices in `FHE-SYNC6-S6-0C-DETAILED-EXECUTION-PLAN.md`; its O0 Conv mapping
+decision must be resolved before the non-ReLU circuit recipe is frozen.
+
 Use the existing Open64 ABI mock throughout S6-0 and generated-C development.
 Do not insert a second ACE-shaped mock into that path. At final provider-adapter
 integration, add a focused ACE-call test double only if a specific call-shape,

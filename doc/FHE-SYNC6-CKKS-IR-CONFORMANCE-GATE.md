@@ -3,6 +3,8 @@
 Status: S6-0a merged in PR #165. The FHE S6-0b producer/state-binding
 adapter has a focused linked test; complete circuit generation and the
 mapped `.ckks_ops.B` remain pending.
+The reviewable S6-0c producer and certification sequence is in
+`FHE-SYNC6-S6-0C-DETAILED-EXECUTION-PLAN.md`.
 
 The provider-independent CKKS semantic IR must be created and certified before
 the Open64 compiler or generated program interacts with ACE `FHErt_ant`.
@@ -258,6 +260,15 @@ event changes, and rejects incomplete/duplicate/cross-owner plans without
 partial output. This is policy machinery only. No real ResNet producer yet
 supplies the canonical bytes or calls the generic PU transaction, so the
 fixture does not certify an executable CKKS PU or the final variant count.
+The S6-0c execution branch now adds a bounded FHE-owned structured event-plan
+serializer and a preferred variant entry that serializes those plans before
+grouping. Its linked fixture checks canonical attribute/key/rotation order,
+semantic changes, malformed inputs, and the nine-plus-optional-tenth variant
+behavior. A separate source-family replay gate re-runs the 87/147 and
+19-context auditors and verifies all referenced external tensor slices; a
+fresh source `.B` reopen matches the retained `.T` byte-for-byte. These are
+C0/C1 preflights, not real ResNet CKKS step generation or a mapped
+`.ckks_ops.B`.
 Generic F8 formal/caller actual and owner-qualified clone value support is
 now available through PR #164; the FHE policy must still bind approved
 ranges and origin PU/value/static-event identity. The consumer contract and
