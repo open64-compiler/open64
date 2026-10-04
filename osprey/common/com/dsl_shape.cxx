@@ -3065,6 +3065,8 @@ DSL_Shape_Analyze_PU_Internal
 
     for (UINT32 i = 0; i < values.size(); ++i) {
         const DSL_SHAPE_SOLVER_VALUE &value = values[i];
+        if (TY_kind(value.ty) == KIND_SCALAR)
+            continue;
         if (value.fact.state == DSL_SHAPE_FACT_CONTRADICTION) {
             ++local_result.contradiction_count;
             continue;

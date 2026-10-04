@@ -27,6 +27,12 @@ event group. Every result has its own canonical tensor TY, result ST, native
 STID, DSL node/value/reference rows, and source position. A TY is never
 mutated to express a new CKKS level or scale.
 
+CKKS add, sub, and mul may take a typed plaintext `F8` symbol as `kid1`.
+Preflight and the gatekeeper require the exact owner-PU value, symbol, TY,
+and `F8` LDID; other operand positions and CKKS operators retain tensor
+operands. Shape analysis tracks the tensor values, leaving this scalar bound
+to type and operator verification.
+
 The request must identify the expected source node/value/operator/version,
 the active PU, every source static event, one or more call contexts that share
 the same executable state/schedule signature, and the exact group/step whose

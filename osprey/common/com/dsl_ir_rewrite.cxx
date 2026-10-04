@@ -2024,6 +2024,12 @@ DSL_IR_CKKS_Preflight
                 operand.value_id == source_value->id ||
                 !DSL_IR_Image_Get_Value(operand.value_id, &value) ||
                 value.flags != DSL_IR_VALUE_FLAG_NONE ||
+                (!TY_is_tensor_extension(value.ty) &&
+                 (value.value_kind != DSL_IR_VALUE_SYMBOL ||
+                  TY_mtype(value.ty) != MTYPE_F8 || kid != 1 ||
+                  (step.dsl_operator != OPR_DSLCKKSADD &&
+                   step.dsl_operator != OPR_DSLCKKSSUB &&
+                   step.dsl_operator != OPR_DSLCKKSMUL))) ||
                 !DSL_IR_Image_Value_Belongs_To_PU
                     (value, owner_pu_st) ||
                 ST_IDX_level(value.st) != CURRENT_SYMTAB ||
@@ -2273,8 +2279,10 @@ DSL_IR_Expand_Native_Value_To_CKKS_Events
                                (operand.value_id, &value)) {
                     break;
                 }
+                TYPE_ID mtype = TY_is_tensor_extension(value.ty) ?
+                                MTYPE_M : TY_mtype(value.ty);
                 WN *load = WN_CreateLdid
-                    (OPR_LDID, MTYPE_M, MTYPE_M, 0, value.st, value.ty);
+                    (OPR_LDID, mtype, mtype, 0, value.st, value.ty);
                 if (load == NULL)
                     break;
                 kids.push_back(load);

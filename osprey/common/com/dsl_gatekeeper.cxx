@@ -778,6 +778,46 @@ DSL_Gatekeeper_Verify_Native_Node
     BOOL shape_ready = DSL_Gatekeeper_Tensor_Shape_Complete(result_ty);
     for (UINT32 i = 0; i < WN_kid_count(expression); ++i) {
         WN *operand = WN_kid(expression, i);
+        if (i == 1 && image_valid &&
+            (dsl_operator == OPR_DSLCKKSADD ||
+             dsl_operator == OPR_DSLCKKSSUB ||
+             dsl_operator == OPR_DSLCKKSMUL) &&
+            operand != NULL && WN_operator(operand) == OPR_LDID &&
+            WN_rtype(operand) == MTYPE_F8 &&
+            WN_desc(operand) == MTYPE_F8) {
+            DSL_IR_VALUE_REFERENCE_RECORD reference;
+            DSL_IR_VALUE_RECORD source;
+            DSL_IR_VALUE_RECORD owned;
+            ST_IDX owner_pu_st = Current_PU_Info == NULL ? ST_IDX_ZERO :
+                PU_Info_proc_sym(Current_PU_Info);
+            if (!DSL_IR_Image_Get_Value_Reference
+                     (image_node.first_operand_reference_id + i,
+                      &reference) ||
+                reference.owner_node_id != image_node.id ||
+                reference.ordinal != i ||
+                !DSL_IR_Image_Get_Value(reference.value_id, &source) ||
+                source.value_kind != DSL_IR_VALUE_SYMBOL ||
+                owner_pu_st == ST_IDX_ZERO ||
+                source.name == STR_IDX_ZERO ||
+                !DSL_IR_Image_Find_PU_Value
+                     (source.st, Index_To_Str(source.name),
+                      ST_name(St_Table[owner_pu_st]), &owned) ||
+                owned.id != source.id ||
+                source.ty != MTYPE_To_TY(MTYPE_F8) ||
+                source.st != WN_st_idx(operand) ||
+                !DSL_Gatekeeper_ST_Valid(source.st) ||
+                ST_type(St_Table[source.st]) != source.ty ||
+                WN_ty(operand) != source.ty)
+                valid = DSL_Gatekeeper_Report
+                            (context, "%s kid%u is not a typed F8 bound",
+                             DSL_OPERATOR_name(dsl_operator), i);
+            else {
+                operand_types[i] = source.ty;
+                second_operand_ty = source.ty;
+                shape_ready = FALSE;
+            }
+            continue;
+        }
         if (context->mode == DSL_GATEKEEPER_PROJECTED) {
             DSL_IR_VALUE_REFERENCE_RECORD reference;
             DSL_IR_VALUE_RECORD source;

@@ -9896,6 +9896,30 @@ Check_CKKS_Expansion_Transaction (void)
     CKKS_EXPAND_CHECK(source_definition != NULL && source_block != NULL &&
                       consumer_definition != NULL, "physical definitions");
 
+    TY_IDX bound_ty = MTYPE_To_TY(MTYPE_F8);
+    ST *bound_st = New_ST(CURRENT_SYMTAB);
+    ST_Init(bound_st, Save_Str("expand_bound"), CLASS_VAR, SCLASS_AUTO,
+            EXPORT_LOCAL, bound_ty);
+    Set_ST_Srcpos(*bound_st, WN_Get_Linenum(source_definition));
+    ST_IDX bound_idx = ST_st_idx(*bound_st);
+    TCON_IDX bound_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F8, 2.0));
+    ST_IDX bound_constant = ST_st_idx(*New_Const_Sym(bound_tcon, bound_ty));
+    WN *bound_definition = WN_CreateStid
+        (OPR_STID, MTYPE_V, MTYPE_F8, 0, bound_idx, bound_ty,
+         WN_CreateConst(OPR_CONST, MTYPE_F8, MTYPE_V, bound_constant));
+    WN_Set_Linenum(bound_definition, WN_Get_Linenum(source_definition));
+    WN_INSERT_BlockBefore(source_block, source_definition, bound_definition);
+    DSL_IR_VALUE_RECORD bound_value;
+    DSL_IR_Value_Record_Init(&bound_value);
+    bound_value.value_kind = DSL_IR_VALUE_SYMBOL;
+    bound_value.ty = bound_ty;
+    bound_value.st = bound_idx;
+    bound_value.name = Save_Str("expand_bound");
+    bound_value.metadata = Save_Str("owner_pu=ckks_expand_transaction");
+    DSL_IR_VALUE_ID bound_value_id = DSL_IR_Image_Add_Value(&bound_value);
+    CKKS_EXPAND_CHECK(bound_value_id != DSL_IR_VALUE_INVALID_ID,
+                      "scalar bound value");
+
     DSL_CKKS_EXPANSION_OPERAND operands[10];
     memset(operands, 0, sizeof(operands));
     operands[0].kind = DSL_CKKS_EXPANSION_EXISTING_VALUE;
@@ -9909,7 +9933,7 @@ Check_CKKS_Expansion_Transaction (void)
     }
     operands[3].kind = DSL_CKKS_EXPANSION_EXISTING_VALUE;
     operands[3].step_index = 0;
-    operands[3].value_id = operands[0].value_id;
+    operands[3].value_id = bound_value_id;
     DSL_CKKS_EXPANSION_ATTRIBUTE refresh_attrs[3] = {
         { "attr.target_level", "18" },
         { "attr.reason", "PRE_RELU_REFRESH" },
@@ -9975,6 +9999,13 @@ Check_CKKS_Expansion_Transaction (void)
     request.contexts = &context;
     request.context_count = 1;
     request.final_step_index = 5;
+    DSL_IR_VALUE_ID tensor_operand_id = operands[0].value_id;
+    operands[0].value_id = bound_value_id;
+    BOOL scalar_first_rejected = !DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+        (pu, &request, NULL);
+    operands[0].value_id = tensor_operand_id;
+    CKKS_EXPAND_CHECK(scalar_first_rejected,
+                      "scalar CKKS operand outside arithmetic kid1");
     CKKS_EXPAND_CHECK
         (DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
              (pu, &request, stderr), "initial preflight");
@@ -10043,6 +10074,34 @@ Check_CKKS_Expansion_Transaction (void)
          DSL_CKKS_Event_Image_Validate(stderr) &&
          DSL_IR_Image_Validate(stderr),
          "native result and event evidence");
+    WN *normalized_definition = Find_STID_In_Block
+        (source_block, results[2].result_st);
+    WN *normalized_expression = normalized_definition == NULL ? NULL :
+        WN_kid0(normalized_definition);
+    DSL_LOGICAL_OPCODE normalized_opcode;
+    WN *scalar_kid = normalized_expression == NULL ||
+        WN_kid_count(normalized_expression) != 2 ? NULL :
+        WN_kid(normalized_expression, 1);
+    CKKS_EXPAND_CHECK
+        (normalized_expression != NULL &&
+         DSL_WN_Get_Logical_Opcode
+             (normalized_expression, &normalized_opcode, NULL) &&
+         normalized_opcode.dsl_operator == OPR_DSLCKKSMUL &&
+         scalar_kid != NULL && WN_operator(scalar_kid) == OPR_LDID &&
+         WN_rtype(scalar_kid) == MTYPE_F8 &&
+         WN_desc(scalar_kid) == MTYPE_F8 &&
+         WN_ty(scalar_kid) == bound_ty,
+         "typed scalar CKKS operand");
+    DSL_GATEKEEPER_RESULT verification;
+    memset(&verification, 0, sizeof(verification));
+    BOOL admitted = DSL_Gatekeeper_Verify_Program_Mode
+        (pu, DSL_GATEKEEPER_ADMISSION, stderr, &verification);
+    CKKS_EXPAND_CHECK(admitted, "post-expansion admission");
+    memset(&verification, 0, sizeof(verification));
+    CKKS_EXPAND_CHECK
+        (DSL_Gatekeeper_Verify_PU_Mode
+             (pu, DSL_GATEKEEPER_ADMISSION, stderr, &verification),
+         "post-expansion PU admission");
     const char *artifact = getenv("OPEN64_DSL_CKKS_EXPAND_ARTIFACT");
     if (artifact != NULL && artifact[0] != '\0') {
         DSL_BUILDER_MAPPED_IMAGE_REQUEST image_request;
