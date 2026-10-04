@@ -8,14 +8,12 @@
 
 #include "fhe_ckks_expand.h"
 
-#include <errno.h>
-#include <limits.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include <vector>
 
 #include "fhe_image.h"
+#include "fhe_ckks_transfer.h"
 #include "strtab.h"
 
 /* Keep pre-mutation errors distinct from terminal post-expansion failures. */
@@ -43,31 +41,6 @@ VHO_FHE_CKKS_Step_Attribute(const DSL_CKKS_EXPANSION_STEP &step,
       return step.attributes[i].value;
   }
   return NULL;
-}
-
-/* Parse a complete decimal attribute, rejecting overflow and suffixes. */
-static BOOL
-VHO_FHE_CKKS_Step_Integer(const DSL_CKKS_EXPANSION_STEP &step,
-                           const char *name, INT32 *value)
-{
-  const char *text = VHO_FHE_CKKS_Step_Attribute(step, name);
-  if (text == NULL || text[0] == '\0' || value == NULL)
-    return FALSE;
-  const char *digit = text[0] == '-' ? text + 1 : text;
-  if (*digit == '\0')
-    return FALSE;
-  for (const char *cursor = digit; *cursor != '\0'; ++cursor) {
-    if (*cursor < '0' || *cursor > '9')
-      return FALSE;
-  }
-  errno = 0;
-  char *end = NULL;
-  long parsed = strtol(text, &end, 10);
-  if (errno != 0 || end == text || *end != '\0' ||
-      parsed < INT_MIN || parsed > INT_MAX)
-    return FALSE;
-  *value = (INT32)parsed;
-  return TRUE;
 }
 
 /* Match the requested key use to an existing exact config/class/rotation row. */
@@ -144,6 +117,29 @@ VHO_FHE_CKKS_Step_Attributes_Valid(
   }
 }
 
+/* Resolve a unary operand to a concrete state, preserving owner-qualified
+ * native value checks for the common transaction that follows. */
+static BOOL
+VHO_FHE_CKKS_Unary_Input_State(
+    const DSL_CKKS_EXPANSION_STEP &step, UINT32 step_index,
+    const VHO_FHE_CKKS_STEP_STATE *states,
+    DSL_FHE_CKKS_VALUE_STATE_RECORD *input)
+{
+  if (step.operand_count != 1 || step.operands == NULL || input == NULL)
+    return FALSE;
+  const DSL_CKKS_EXPANSION_OPERAND &operand = step.operands[0];
+  if (operand.kind == DSL_CKKS_EXPANSION_PRIOR_STEP) {
+    if (operand.step_index >= step_index)
+      return FALSE;
+    *input = states[operand.step_index].state;
+    return TRUE;
+  }
+  return operand.kind == DSL_CKKS_EXPANSION_EXISTING_VALUE &&
+         operand.value_id != DSL_IR_VALUE_INVALID_ID &&
+         DSL_FHE_Plan_Find_Latest_CKKS_Value_State(
+             operand.value_id, input);
+}
+
 /* Match each proposed result to a canonical tensor/encryption association.
  * The common transaction separately checks operator schema and operands. */
 BOOL
@@ -213,6 +209,19 @@ VHO_FHE_CKKS_Can_Expand_And_Bind_States(
       return VHO_FHE_CKKS_Expand_Report(
           diagnostic, "result lacks a concrete compatible CKKS state",
           i, FALSE);
+    if (step.dsl_operator == OPR_DSLCKKSBOOTSTRAP ||
+        step.dsl_operator == OPR_DSLCKKSROTATE ||
+        step.dsl_operator == OPR_DSLCKKSRELIN ||
+        step.dsl_operator == OPR_DSLCKKSRESCALE ||
+        step.dsl_operator == OPR_DSLCKKSMODSWITCH) {
+      DSL_FHE_CKKS_VALUE_STATE_RECORD input;
+      if (!VHO_FHE_CKKS_Unary_Input_State(
+              step, i, states, &input) ||
+          !VHO_FHE_CKKS_Verify_Unary_State_Transfer(
+              step, input, state, diagnostic))
+        return VHO_FHE_CKKS_Expand_Report(
+            diagnostic, "unary CKKS state transfer failed", i, FALSE);
+    }
   }
   return DSL_IR_Can_Expand_Native_Value_To_CKKS_Events(
       pu_info, request, diagnostic);

@@ -32,6 +32,7 @@ fi
     -I"$repo_root/osprey" \
     "${extra_includes[@]}" \
     "$repo_root/osprey/be/vho/fhe_ckks_expand.cxx" \
+    "$repo_root/osprey/be/vho/fhe_ckks_transfer.cxx" \
     "$repo_root/osprey/be/vho/tests/fhe_ckks_expand_state_test.cxx" \
     -o "$out_dir/fhe_ckks_expand_state_test" \
     >"$out_dir/build.log" 2>&1

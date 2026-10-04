@@ -125,9 +125,21 @@ key attributes to the existing config/key-set/class ledger. For the first
 approved profile, bootstrap requires `PRE_RELU_REFRESH`, the declared target
 level, and the `pre_relu_refresh_v1` key profile; rotation requires an exact
 signed offset and matching key; rescale and modswitch targets must agree with
-their proposed result states. These checks do not yet prove input-to-output
-state transfer, multiplicative depth, or the full key/rotation census. Those
-remain mandatory before any `.ckks_ops.B` can be published.
+their proposed result states. The FHE-owned
+`fhe_ckks_transfer.{h,cxx}` preflight now resolves each unary input from an
+existing value-state row or a prior proposed step and checks explicit
+bootstrap, rotation, relinearization, rescale, and modswitch state transfer
+before the native transaction. Bootstrap requires the pending pre-ReLU refresh
+and restores a higher level; rotation preserves state; relinearization removes
+the widened-component obligation; rescale consumes declared level and scale;
+modswitch lowers level without silently repairing scale. Missing inputs and
+inconsistent transitions fail closed with `CFHEIR-TRANSFER-001` or the adapter's
+pre-mutation diagnostic. The linked focused fixture covers each positive and
+negative transition, existing-value lookup, prior-step resolution, and
+forward-reference rejection. This does not yet prove
+binary arithmetic transfer, whole-program multiplicative depth, the full
+key/rotation census, or a mapped SecureResNet executable graph. Those remain
+mandatory before any `.ckks_ops.B` can be published.
 
 The FHE-owned process-local preflight in
 `osprey/be/vho/fhe_ckks_event_coverage.{h,cxx}` checks that an independently
