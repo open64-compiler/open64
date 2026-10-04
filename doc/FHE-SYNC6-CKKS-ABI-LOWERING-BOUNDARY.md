@@ -1,6 +1,7 @@
 # SYNC-6 CKKS-to-ABI v1 Lowering Boundary
 
-Status: proposed S6-0d contract for main/common and FHE review. No terminal
+Status: ABI v1 surface decision accepted; the S6-0c artifact and S6-0d
+grouped-mutation and image-disposition contracts remain open. No terminal
 lowering from a complete `secure_resnet20.ckks_ops.B` is certified yet.
 
 ## Fixed Contracts
@@ -20,6 +21,16 @@ one public ABI evaluation call. The provider implementation of that call is
 responsible for the certified internal circuit. This is not permission to
 skip CKKS state, key, depth, layout, or numerical-equivalence checks before
 the call is emitted.
+
+The FHE-owned `fhe_ckks_abi_origin_audit.py` is the read-only precursor to
+this gate. It joins the separately reopened six-PU source `.B` trace, its
+87-static/147-dynamic schedule, the >=9-variant/19-bound context plan, and the
+accepted SYNC-5 generated-C and 147-evaluation runtime trace. It proves
+each source event has exactly one origin and planned variant route, plus the
+unchanged ABI-kind census. It rejects duplicate routes and shifted ABI
+visits. Its report is a source-origin *template*, not a certificate for a
+specialized CKKS `.B`; the clone-value/origin, CKKS-group/descriptor, and
+six-PU terminal-collapse joins remain explicit pending proofs.
 
 ## Proposed Read-Only Gate
 
@@ -100,14 +111,15 @@ The FHE task must not clear or reinterpret the existing rows itself.
 ## Static-Callsite Decision
 
 Context specialization is required for fixed CKKS levels and typed bounds.
-That can create more physical generated-C callsites than the original six-PU
-SYNC-5 graph, even when source-origin events remain 87 and dynamic visits
-remain 147. Main-side review recommends an exact six-PU runtime
-wrapper/collapse with descriptor-selected context behavior to preserve ABI
-v1's physical 87-static/147-dynamic generated-C census; project approval and
-the reversible clone-to-source mapping proof are pending. Merely relabeling
-clone callsites as source-origin callsites is not sufficient. No representation
-may alter the ordered 147 successful ABI evaluations or public ABI v1.
+That can create more CKKS-IR callsites than the original six-PU SYNC-5 graph.
+The accepted terminal policy is to restore the canonical six-PU generated-C
+surface with exactly 87 physical static evaluation callsites and 147
+execution-weighted calls, using descriptor-selected context behavior behind
+the unchanged ABI v1. The complete, separately reopened `.ckks_ops.B` is a
+prerequisite to proving that each specialized group maps reversibly to one
+source-context event and one canonical call. Merely relabeling clone
+callsites as source-origin callsites is insufficient. No representation may
+alter the ordered 147 successful evaluations or public ABI v1.
 
 ## Exit Evidence
 

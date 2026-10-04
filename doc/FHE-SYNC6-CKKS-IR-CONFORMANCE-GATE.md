@@ -179,6 +179,15 @@ events, 147 context-expanded events, 11 ReLU definitions, and 19 ReLU
 contexts, including negative multiplicity, ordinal, nested-call, and
 source-value checks. Its hashed JSON output is read-only evidence, not an
 executable CKKS `.B`, a mapped-image gate, or proof of CKKS state legality.
+The real source-origin ABI audit uses the later
+`secure_resnet20.interfaced-initialized.B` input: the earlier `.fhe.B` lacks
+the ReLU context-operation table and cannot certify this join. The
+separate-process `-st -src` reopen of the correct input and the signature,
+bound-interface, and ABI-origin audits agree on 6 PUs, 9 calls, 87/147
+events, 19 ReLU contexts, 114 context operations, at least 9 CKKS variant
+PUs, 18 called B actuals, and one root B constant. The source-origin audit
+compares those events with the accepted SYNC-5 87-call generated-C and
+147-evaluation trace; it does not manufacture a `.ckks_ops.B`.
 The native collector and common transaction still require a real mapped
 six-PU certification after the main-owned expansion API lands. The
 existing static schedule cannot be recomputed after a high-level source is
