@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "fhe_ckks_event_coverage.h"
+#include "fhe_ckks_plan_bytes.h"
 
 typedef struct {
   VHO_FHE_CKKS_EVENT_IDENTITY event;
@@ -48,6 +49,20 @@ bool VHO_FHE_CKKS_Build_Variant_Signatures(
     size_t expected_static_event_count,
     size_t expected_dynamic_event_count,
     const VHO_FHE_CKKS_SIGNATURE_EVENT *plans,
+    size_t plan_count,
+    std::vector<VHO_FHE_CKKS_SIGNATURE_VARIANT> *variants,
+    FILE *diagnostic);
+
+/* Preferred producer entry: encode every structured, ordered event plan
+ * first, then compare full whole-PU bytes. Plan[i] belongs to event[i].
+ * Rejection leaves variants unchanged; the shared PU transaction is not
+ * invoked here. */
+bool VHO_FHE_CKKS_Build_Variants_From_Event_Plans(
+    const VHO_FHE_CKKS_EVENT_IDENTITY *source_events,
+    size_t source_event_count,
+    size_t expected_static_event_count,
+    size_t expected_dynamic_event_count,
+    const VHO_FHE_CKKS_EVENT_PLAN *plans,
     size_t plan_count,
     std::vector<VHO_FHE_CKKS_SIGNATURE_VARIANT> *variants,
     FILE *diagnostic);

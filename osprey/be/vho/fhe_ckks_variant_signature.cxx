@@ -218,3 +218,37 @@ VHO_FHE_CKKS_Build_Variant_Signatures(
   variants->swap(built);
   return true;
 }
+
+/* Serialize validated structured plans before they enter the whole-PU
+ * equality preflight; no caller-owned opaque bytes are trusted here. */
+bool
+VHO_FHE_CKKS_Build_Variants_From_Event_Plans(
+    const VHO_FHE_CKKS_EVENT_IDENTITY *source_events,
+    size_t source_event_count,
+    size_t expected_static_event_count,
+    size_t expected_dynamic_event_count,
+    const VHO_FHE_CKKS_EVENT_PLAN *plans,
+    size_t plan_count,
+    std::vector<VHO_FHE_CKKS_SIGNATURE_VARIANT> *variants,
+    FILE *diagnostic)
+{
+  if (source_events == NULL || plans == NULL || variants == NULL ||
+      source_event_count == 0 || source_event_count != plan_count)
+    return Report(diagnostic, "structured event plan set is incomplete");
+  std::vector<std::vector<unsigned char> > bytes(plan_count);
+  std::vector<VHO_FHE_CKKS_SIGNATURE_EVENT> encoded(plan_count);
+  for (size_t i = 0; i < plan_count; ++i) {
+    if (plans[i].source_static_ordinal !=
+            source_events[i].source_static_ordinal ||
+        !VHO_FHE_CKKS_Serialize_Event_Plan(
+            plans[i], &bytes[i], diagnostic))
+      return Report(diagnostic, "event plan and source ordinal disagree");
+    encoded[i].event = source_events[i];
+    encoded[i].plan_bytes = &bytes[i][0];
+    encoded[i].plan_size = bytes[i].size();
+  }
+  return VHO_FHE_CKKS_Build_Variant_Signatures(
+      source_events, source_event_count, expected_static_event_count,
+      expected_dynamic_event_count, &encoded[0], encoded.size(),
+      variants, diagnostic);
+}

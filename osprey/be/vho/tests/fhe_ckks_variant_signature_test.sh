@@ -9,6 +9,7 @@ mkdir -p "$out_dir"
 
 "${CXX:-c++}" -std=c++11 -Wall -Wextra -Werror \
     -I"$repo_root/osprey/be/vho" \
+    "$repo_root/osprey/be/vho/fhe_ckks_plan_bytes.cxx" \
     "$repo_root/osprey/be/vho/fhe_ckks_variant_signature.cxx" \
     "$repo_root/osprey/be/vho/tests/fhe_ckks_variant_signature_test.cxx" \
     -o "$out_dir/fhe_ckks_variant_signature_test" \

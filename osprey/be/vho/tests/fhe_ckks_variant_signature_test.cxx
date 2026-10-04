@@ -163,6 +163,69 @@ Check_Fail_Closed(
   assert(result.size() == 1 && result[0].source_owner_pu_st == 999);
 }
 
+/* Drive grouping through structured canonical plans, not caller-supplied
+ * opaque bytes. The fixture still does not generate a real CKKS circuit. */
+static void
+Check_Structured_Plan_Grouping(
+    const std::vector<VHO_FHE_CKKS_EVENT_IDENTITY> &events)
+{
+  const uint32_t owners[] = {12801, 13057, 13313, 13569, 13825, 14081};
+  const uint32_t first[] = {1, 11, 26, 42, 57, 73};
+  const uint32_t counts[] = {10, 15, 16, 15, 16, 15};
+  std::vector<VHO_FHE_CKKS_EVENT_PLAN> plans;
+  plans.reserve(events.size());
+  for (size_t i = 0; i < events.size(); ++i) {
+    const VHO_FHE_CKKS_EVENT_IDENTITY &event = events[i];
+    size_t owner = 0;
+    while (owner < 6 && owners[owner] != event.owner_pu_st)
+      ++owner;
+    assert(owner < 6);
+    uint32_t offset = event.source_static_ordinal - first[owner];
+    bool relu = offset >= counts[owner] - 6;
+    uint32_t level = (relu &&
+        (event.context_callsite_id == 3 ||
+         event.context_callsite_id == 6)) ? 18 :
+        (relu && event.context_callsite_id == 9) ? 17 : 15;
+    VHO_FHE_CKKS_PLAN_STATE state = {
+      1, 1, 2, static_cast<int32_t>(level), 56, 2, 40,
+      32768, 1, "ckks_slots_v1", 0, 0
+    };
+    VHO_FHE_CKKS_PLAN_STEP step = {
+      relu ? 602u : 601u, 1, 1001,
+      {{VHO_FHE_CKKS_PLAN_SOURCE_VALUE, event.source_value_id, ""}},
+      {{"attr.role", relu ? "relu" : "non_relu"}},
+      state, {relu ? "bootstrap-key" : "rotation-key"}, {}, ""
+    };
+    VHO_FHE_CKKS_EVENT_PLAN plan = {
+      event.source_static_ordinal, {step}, {0}, 0
+    };
+    plans.push_back(plan);
+  }
+  std::vector<VHO_FHE_CKKS_SIGNATURE_VARIANT> variants;
+  assert(VHO_FHE_CKKS_Build_Variants_From_Event_Plans(
+      &events[0], events.size(), 87, 147, &plans[0], plans.size(),
+      &variants, stderr));
+  assert(variants.size() == 9);
+  size_t changed = 0;
+  for (size_t i = 0; i < events.size(); ++i)
+    if (events[i].context_callsite_id == 2 &&
+        events[i].source_static_ordinal == 11)
+      changed = i;
+  assert(changed != 0);
+  plans[changed].steps[0].result_ty = 1002;
+  assert(VHO_FHE_CKKS_Build_Variants_From_Event_Plans(
+      &events[0], events.size(), 87, 147, &plans[0], plans.size(),
+      &variants, stderr));
+  assert(variants.size() == 10);
+  plans[changed].steps[0].operands[0].reference = 0;
+  std::vector<VHO_FHE_CKKS_SIGNATURE_VARIANT> sentinel(1);
+  sentinel[0].source_owner_pu_st = 999;
+  assert(!VHO_FHE_CKKS_Build_Variants_From_Event_Plans(
+      &events[0], events.size(), 87, 147, &plans[0], plans.size(),
+      &sentinel, NULL));
+  assert(sentinel.size() == 1 && sentinel[0].source_owner_pu_st == 999);
+}
+
 /* Keep the fixture explicitly below the mapped CKKS checkpoint boundary. */
 int main()
 {
@@ -172,6 +235,7 @@ int main()
   Build_Complete_Event_Plans(&events, &plans, &bytes);
   Check_Positive_And_Complete_Signature_Split(events, &plans, &bytes);
   Check_Fail_Closed(events, &plans);
+  Check_Structured_Plan_Grouping(events);
   puts("FHE complete-signature grouping fixture passed (no WHIRL emitted)");
   return 0;
 }
