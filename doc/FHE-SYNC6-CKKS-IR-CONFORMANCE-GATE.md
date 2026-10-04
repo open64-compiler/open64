@@ -136,10 +136,20 @@ modswitch lowers level without silently repairing scale. Missing inputs and
 inconsistent transitions fail closed with `CFHEIR-TRANSFER-001` or the adapter's
 pre-mutation diagnostic. The linked focused fixture covers each positive and
 negative transition, existing-value lookup, prior-step resolution, and
-forward-reference rejection. This does not yet prove
-binary arithmetic transfer, whole-program multiplicative depth, the full
+forward-reference rejection. Binary `ckks.add/sub/mul` now also preflight
+aligned ciphertext/encoded-plaintext operands, exact level/scale/layout/
+config agreement, one ciphertext result, and explicit rescale/relinearization
+obligations for multiplication. The focused test covers ciphertext-ciphertext
+and ciphertext-plaintext positives and malformed-state negatives. This does
+not yet prove whole-program multiplicative depth, the full
 key/rotation census, or a mapped SecureResNet executable graph. Those remain
 mandatory before any `.ckks_ops.B` can be published.
+
+S6-0d must preserve the frozen nine-operation public C ABI; it cannot emit a
+new C call for every CKKS primitive. The proposed event-group-to-ABI binding,
+generic grouped mutation gap, and specialized-PU static-census decision are
+recorded in `FHE-SYNC6-CKKS-ABI-LOWERING-BOUNDARY.md` for review. No terminal
+lowering is certified by the present state-transfer test.
 
 The FHE-owned process-local preflight in
 `osprey/be/vho/fhe_ckks_event_coverage.{h,cxx}` checks that an independently
