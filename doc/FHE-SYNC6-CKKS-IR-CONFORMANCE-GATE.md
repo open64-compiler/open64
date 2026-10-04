@@ -120,6 +120,14 @@ final replacement and completed bootstrap results to have no pending action.
 It then binds a new value-specific state to every returned DSL value. A failure
 after native expansion is terminal for the checkpoint: do not retry the PU or
 publish a partial image. The typed CKKS event image retains the provenance.
+The FHE preflight also joins explicit bootstrap, rotation, and relinearization
+key attributes to the existing config/key-set/class ledger. For the first
+approved profile, bootstrap requires `PRE_RELU_REFRESH`, the declared target
+level, and the `pre_relu_refresh_v1` key profile; rotation requires an exact
+signed offset and matching key; rescale and modswitch targets must agree with
+their proposed result states. These checks do not yet prove input-to-output
+state transfer, multiplicative depth, or the full key/rotation census. Those
+remain mandatory before any `.ckks_ops.B` can be published.
 
 The FHE-owned process-local preflight in
 `osprey/be/vho/fhe_ckks_event_coverage.{h,cxx}` checks that an independently

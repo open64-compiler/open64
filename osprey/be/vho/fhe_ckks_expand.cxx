@@ -8,6 +8,11 @@
 
 #include "fhe_ckks_expand.h"
 
+#include <errno.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include <vector>
 
 #include "fhe_image.h"
@@ -23,6 +28,120 @@ VHO_FHE_CKKS_Expand_Report(FILE *diagnostic, const char *message,
             terminal ? "CFHEIR-STATE-002" : "CFHEIR-STATE-001",
             step_index, message);
   return FALSE;
+}
+
+/* Read an exact registered attribute without depending on WN encoding. */
+static const char *
+VHO_FHE_CKKS_Step_Attribute(const DSL_CKKS_EXPANSION_STEP &step,
+                            const char *name)
+{
+  if (step.attribute_count != 0 && step.attributes == NULL)
+    return NULL;
+  for (UINT32 i = 0; i < step.attribute_count; ++i) {
+    if (step.attributes[i].name != NULL &&
+        strcmp(step.attributes[i].name, name) == 0)
+      return step.attributes[i].value;
+  }
+  return NULL;
+}
+
+/* Parse a complete decimal attribute, rejecting overflow and suffixes. */
+static BOOL
+VHO_FHE_CKKS_Step_Integer(const DSL_CKKS_EXPANSION_STEP &step,
+                           const char *name, INT32 *value)
+{
+  const char *text = VHO_FHE_CKKS_Step_Attribute(step, name);
+  if (text == NULL || text[0] == '\0' || value == NULL)
+    return FALSE;
+  const char *digit = text[0] == '-' ? text + 1 : text;
+  if (*digit == '\0')
+    return FALSE;
+  for (const char *cursor = digit; *cursor != '\0'; ++cursor) {
+    if (*cursor < '0' || *cursor > '9')
+      return FALSE;
+  }
+  errno = 0;
+  char *end = NULL;
+  long parsed = strtol(text, &end, 10);
+  if (errno != 0 || end == text || *end != '\0' ||
+      parsed < INT_MIN || parsed > INT_MAX)
+    return FALSE;
+  *value = (INT32)parsed;
+  return TRUE;
+}
+
+/* Match the requested key use to an existing exact config/class/rotation row. */
+static BOOL
+VHO_FHE_CKKS_Key_Available(const DSL_CKKS_EXPANSION_STEP &step,
+                            const DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD &desc,
+                            UINT32 key_class, INT32 rotation)
+{
+  const char *name = VHO_FHE_CKKS_Step_Attribute(step, "attr.key_id");
+  if (name == NULL || name[0] == '\0')
+    return FALSE;
+  for (UINT32 id = 1; id <= DSL_FHE_Key_Requirement_Count(); ++id) {
+    DSL_FHE_KEY_REQUIREMENT_RECORD key;
+    if (!DSL_FHE_Get_Key_Requirement(id, &key) || key.id != id ||
+        key.key_set_name == STR_IDX_ZERO ||
+        key.key_set_name >= STR_Table_Size())
+      return FALSE;
+    if (key.config_id == desc.config_id &&
+        key.key_set_name == desc.key_set_name &&
+        key.key_class == key_class &&
+        key.rotation_offset == rotation &&
+        strcmp(Index_To_Str(key.key_set_name), name) == 0 &&
+        (key_class != DSL_FHE_KEY_BOOTSTRAP ||
+         (key.bootstrap_profile != STR_IDX_ZERO &&
+          key.bootstrap_profile < STR_Table_Size() &&
+          strcmp(Index_To_Str(key.bootstrap_profile),
+                 "pre_relu_refresh_v1") == 0)))
+      return TRUE;
+  }
+  return FALSE;
+}
+
+/* Tie executable attributes to the concrete result state and key ledger.
+ * Operand transfer and whole-program depth remain separate FHE gates. */
+static BOOL
+VHO_FHE_CKKS_Step_Attributes_Valid(
+    const DSL_CKKS_EXPANSION_STEP &step,
+    const DSL_FHE_CKKS_VALUE_STATE_RECORD &state,
+    const DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD &descriptor)
+{
+  INT32 number = 0;
+  switch (step.dsl_operator) {
+  case OPR_DSLCKKSBOOTSTRAP:
+    return VHO_FHE_CKKS_Step_Integer(
+               step, "attr.target_level", &number) &&
+           number == state.level &&
+           VHO_FHE_CKKS_Step_Attribute(step, "attr.reason") != NULL &&
+           strcmp(VHO_FHE_CKKS_Step_Attribute(step, "attr.reason"),
+                  "PRE_RELU_REFRESH") == 0 &&
+           VHO_FHE_CKKS_Key_Available(
+               step, descriptor, DSL_FHE_KEY_BOOTSTRAP, 0);
+  case OPR_DSLCKKSROTATE:
+    return VHO_FHE_CKKS_Step_Integer(
+               step, "attr.signed_steps", &number) &&
+           number != 0 && (INT64)number < (INT64)state.slot_count &&
+           (INT64)number > -(INT64)state.slot_count &&
+           VHO_FHE_CKKS_Key_Available(
+               step, descriptor, DSL_FHE_KEY_ROTATION, number);
+  case OPR_DSLCKKSRELIN:
+    return VHO_FHE_CKKS_Key_Available(
+        step, descriptor, DSL_FHE_KEY_RELINEARIZATION, 0);
+  case OPR_DSLCKKSRESCALE:
+    return VHO_FHE_CKKS_Step_Integer(step, "attr.levels", &number) &&
+           number > 0 &&
+           VHO_FHE_CKKS_Step_Integer(
+               step, "attr.target_scale_bits", &number) &&
+           number == state.scale_bits;
+  case OPR_DSLCKKSMODSWITCH:
+    return VHO_FHE_CKKS_Step_Integer(
+               step, "attr.target_level", &number) &&
+           number == state.level;
+  default:
+    return TRUE;
+  }
 }
 
 /* Match each proposed result to a canonical tensor/encryption association.
@@ -85,10 +204,12 @@ VHO_FHE_CKKS_Can_Expand_And_Bind_States(
             state.encryption_descriptor_id, &descriptor) ||
         descriptor.scheme != DSL_FHE_SCHEME_CKKS ||
         descriptor.value_class != expected_class ||
+        descriptor.config_id == DSL_FHE_CONFIG_INVALID_ID ||
         (descriptor.slot_count != 0 &&
          descriptor.slot_count != state.slot_count) ||
         !DSL_FHE_Find_Tensor_Binding(
-            step.result_ty, state.encryption_descriptor_id, &binding))
+            step.result_ty, state.encryption_descriptor_id, &binding) ||
+        !VHO_FHE_CKKS_Step_Attributes_Valid(step, state, descriptor))
       return VHO_FHE_CKKS_Expand_Report(
           diagnostic, "result lacks a concrete compatible CKKS state",
           i, FALSE);

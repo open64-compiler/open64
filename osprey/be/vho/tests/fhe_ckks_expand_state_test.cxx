@@ -17,11 +17,22 @@ static UINT32 expansion_count;
 static UINT32 binding_count;
 static UINT32 fail_binding_at;
 static BOOL fail_native;
+static BOOL wrong_key_set;
+static BOOL wrong_bootstrap_profile;
 
 /* Keep the template layout ID in range as the real string table does. */
 STR_IDX STR_Table_Size()
 {
-  return 2;
+  return 4;
+}
+
+/* Resolve the fixture's stable layout, key-set, and bootstrap profile. */
+char *Index_To_Str(STR_IDX id)
+{
+  static char layout[] = "ckks.packed";
+  static char key[] = "request_key";
+  static char profile[] = "pre_relu_refresh_v1";
+  return id == 1 ? layout : id == 2 ? key : id == 3 ? profile : NULL;
 }
 
 /* Observe that every bad FHE state rejects before the native transaction. */
@@ -57,10 +68,36 @@ BOOL DSL_FHE_Get_Encryption_Descriptor(
     return FALSE;
   memset(record, 0, sizeof(*record));
   record->scheme = DSL_FHE_SCHEME_CKKS;
+  record->config_id = 1;
+  record->key_set_name = wrong_key_set ? 3 : 2;
   record->value_class = id == 1 ?
       DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT :
       DSL_FHE_VALUE_CLASS_CIPHERTEXT;
   record->slot_count = 8;
+  return TRUE;
+}
+
+/* Require the exact key class and signed rotation from the FHE image. */
+UINT32 DSL_FHE_Key_Requirement_Count()
+{
+  return 3;
+}
+
+BOOL DSL_FHE_Get_Key_Requirement(
+    DSL_FHE_KEY_REQUIREMENT_ID id, DSL_FHE_KEY_REQUIREMENT_RECORD *record)
+{
+  if (id < 1 || id > 3 || record == NULL)
+    return FALSE;
+  memset(record, 0, sizeof(*record));
+  record->id = id;
+  record->config_id = 1;
+  record->key_set_name = 2;
+  record->key_class = id == 1 ? DSL_FHE_KEY_BOOTSTRAP :
+                      id == 2 ? DSL_FHE_KEY_ROTATION :
+                                DSL_FHE_KEY_RELINEARIZATION;
+  record->rotation_offset = id == 2 ? -2 : 0;
+  record->bootstrap_profile = id == 1 ?
+      (wrong_bootstrap_profile ? 1 : 3) : 0;
   return TRUE;
 }
 
@@ -95,6 +132,13 @@ int main()
   steps[0].dsl_operator = OPR_DSLCKKSENCODE;
   steps[1].dsl_operator = OPR_DSLCKKSBOOTSTRAP;
   steps[0].result_ty = steps[1].result_ty = 17;
+  DSL_CKKS_EXPANSION_ATTRIBUTE bootstrap_attrs[3] = {
+    { "attr.target_level", "15" },
+    { "attr.reason", "PRE_RELU_REFRESH" },
+    { "attr.key_id", "request_key" }
+  };
+  steps[1].attributes = bootstrap_attrs;
+  steps[1].attribute_count = 3;
   DSL_CKKS_EXPANSION_REQUEST request;
   memset(&request, 0, sizeof(request));
   request.steps = steps;
@@ -139,7 +183,7 @@ int main()
   states[1].state.slot_count = 8;
   assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
       pu, &request, states, 1, NULL));
-  states[1].state.encrypted_layout_name = 2;
+  states[1].state.encrypted_layout_name = 4;
   assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
       pu, &request, states, 2, NULL));
   states[1].state.encrypted_layout_name = 1;
@@ -160,7 +204,81 @@ int main()
   assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
       pu, &request, states, 2, NULL));
   states[1].state.pending_actions = 0;
-  assert(preflight_count == 1 && expansion_count == 0);
+  bootstrap_attrs[0].value = "14";
+  assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  bootstrap_attrs[0].value = "15";
+  bootstrap_attrs[2].value = "wrong_key";
+  assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  bootstrap_attrs[2].value = "request_key";
+  wrong_key_set = TRUE;
+  assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  wrong_key_set = FALSE;
+  wrong_bootstrap_profile = TRUE;
+  assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  wrong_bootstrap_profile = FALSE;
+  steps[1].attributes = NULL;
+  assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  steps[1].attributes = bootstrap_attrs;
+  DSL_CKKS_EXPANSION_ATTRIBUTE rotate_attrs[2] = {
+    { "attr.signed_steps", "-2" },
+    { "attr.key_id", "request_key" }
+  };
+  steps[1].dsl_operator = OPR_DSLCKKSROTATE;
+  steps[1].attributes = rotate_attrs;
+  steps[1].attribute_count = 2;
+  assert(VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  rotate_attrs[0].value = "2";
+  assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  rotate_attrs[0].value = "-2";
+  DSL_CKKS_EXPANSION_ATTRIBUTE rescale_attrs[2] = {
+    { "attr.levels", "1" },
+    { "attr.target_scale_bits", "56" }
+  };
+  steps[1].dsl_operator = OPR_DSLCKKSRESCALE;
+  steps[1].attributes = rescale_attrs;
+  steps[1].attribute_count = 2;
+  assert(VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  rescale_attrs[1].value = "55";
+  assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  rescale_attrs[1].value = " 56";
+  assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  rescale_attrs[1].value = "56";
+  DSL_CKKS_EXPANSION_ATTRIBUTE modswitch_attr = {
+    "attr.target_level", "15"
+  };
+  steps[1].dsl_operator = OPR_DSLCKKSMODSWITCH;
+  steps[1].attributes = &modswitch_attr;
+  steps[1].attribute_count = 1;
+  assert(VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  modswitch_attr.value = "16";
+  assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  DSL_CKKS_EXPANSION_ATTRIBUTE relin_attr = {
+    "attr.key_id", "request_key"
+  };
+  steps[1].dsl_operator = OPR_DSLCKKSRELIN;
+  steps[1].attributes = &relin_attr;
+  steps[1].attribute_count = 1;
+  assert(VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  relin_attr.value = "wrong_key";
+  assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  steps[1].dsl_operator = OPR_DSLCKKSBOOTSTRAP;
+  steps[1].attributes = bootstrap_attrs;
+  steps[1].attribute_count = 3;
+  assert(preflight_count == 5 && expansion_count == 0);
 
   fail_native = TRUE;
   assert(!VHO_FHE_CKKS_Expand_And_Bind_States(
