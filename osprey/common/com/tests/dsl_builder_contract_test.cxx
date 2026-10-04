@@ -34,6 +34,9 @@
 #include "const.h"
 #include "dsl_builder.h"
 #include "dsl_pu_specialize_internal.h"
+#include "dsl_ckks_expand.h"
+#include "dsl_ckks_expand_internal.h"
+#include "dsl_ckks_event_internal.h"
 #include "dsl_contract.h"
 #include "dsl_program_interface_internal.h"
 #include "dsl_region_internal.h"
@@ -2354,6 +2357,179 @@ Check_Construction_Tensor_Folding(void)
     Enable_WN_Simp = saved_wn_simp;
     if (!failed)
         printf("DSL construction tensor folding contract passed\n");
+    return failed;
+}
+
+static int
+Check_CKKS_Logical_Operators(void)
+{
+    static const DSL_OPERATOR operators[] = {
+        OPR_DSLCKKSENCODE, OPR_DSLCKKSADD, OPR_DSLCKKSSUB,
+        OPR_DSLCKKSMUL, OPR_DSLCKKSROTATE, OPR_DSLCKKSRESCALE,
+        OPR_DSLCKKSMODSWITCH, OPR_DSLCKKSRELIN,
+        OPR_DSLCKKSBOOTSTRAP
+    };
+    static const char *stable_names[] = {
+        "ckks.encode", "ckks.add", "ckks.sub", "ckks.mul",
+        "ckks.rotate", "ckks.rescale", "ckks.modswitch",
+        "ckks.relin", "ckks.bootstrap"
+    };
+    static const char *attribute_schemas[] = {
+        "", "", "", "", "attr.signed_steps;attr.key_id",
+        "attr.levels;attr.target_scale_bits", "attr.target_level",
+        "attr.key_id", "attr.target_level;attr.reason;attr.key_id"
+    };
+    static const char *result_names[] = {
+        "ckks_encoded", "ckks_added", "ckks_subtracted",
+        "ckks_multiplied", "ckks_rotated", "ckks_rescaled",
+        "ckks_modswitched", "ckks_relinearized", "ckks_refreshed"
+    };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE rotate_attrs[2] = {
+        { "attr.signed_steps", "-1" }, { "attr.key_id", "rotation_key" }
+    };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE rescale_attrs[2] = {
+        { "attr.levels", "1" }, { "attr.target_scale_bits", "56" }
+    };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE modswitch_attr =
+        { "attr.target_level", "17" };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE relin_attr =
+        { "attr.key_id", "relin_key" };
+    DSL_BUILDER_OPERATOR_ATTRIBUTE bootstrap_attrs[3] = {
+        { "attr.target_level", "18" },
+        { "attr.reason", "PRE_RELU_REFRESH" },
+        { "attr.key_id", "bootstrap_key" }
+    };
+    const DSL_BUILDER_OPERATOR_ATTRIBUTE *attributes[] = {
+        NULL, NULL, NULL, NULL, rotate_attrs, rescale_attrs,
+        &modswitch_attr, &relin_attr, bootstrap_attrs
+    };
+    const UINT32 attribute_counts[] = { 0, 0, 0, 0, 2, 2, 1, 1, 3 };
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_VALUE values[11];
+    DSL_BUILDER_VALUE kids[2];
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    DSL_DOMAIN_ID ckks_id;
+    TY_IDX tensor_ty;
+    UINT32 file_id;
+    char diagnostic[4096];
+    int failed = 0;
+
+    if (!DSL_Builder_Begin_Program() ||
+        DSL_Opcode_Register_CKKS_Domain() != 9)
+        return 1;
+    ckks_id = DSL_Domain_Find("ckks");
+    if (ckks_id == DSL_DOMAIN_INVALID_ID ||
+        (UINT32)OPR_DSLREMPART != 27 ||
+        (UINT32)OPR_DSLCKKSADD != 28 ||
+        (UINT32)OPR_DSLCKKSBOOTSTRAP != 36)
+        return 1;
+    for (UINT32 i = 0; i < 9; ++i) {
+        DSL_OPERATOR_INFO info;
+        if (!DSL_Operator_Get_Info_Version(operators[i], 1, &info) ||
+            strcmp(info.stable_name, stable_names[i]) != 0 ||
+            strcmp(info.attribute_schema, attribute_schemas[i]) != 0 ||
+            info.nkids != (i == 0 || i >= 4 ? 1 : 2) ||
+            info.shape_rule != DSL_SHAPE_RULE_OPAQUE ||
+            info.effect_model != DSL_EFFECT_MODEL_PURE ||
+            DSL_Operator_Get_Algebraic_Info(operators[i], 1, NULL) ||
+            DSL_Operator_Get_Fusibility_Info(operators[i], 1, NULL) ||
+            DSL_Operator_Find(stable_names[i], strlen(stable_names[i]), 1) !=
+                operators[i] ||
+            DSL_Opcode_Find(ckks_id, stable_names[i], 1) ==
+                DSL_OPCODE_INVALID_ID) {
+            fprintf(stderr, "CKKS logical operator contract changed: %s\n",
+                    stable_names[i]);
+            return 1;
+        }
+    }
+    if (DSL_Operator_Find("ckks.add", strlen("ckks.add"), 2) !=
+        OPR_DSLUNKNOWN)
+        return 1;
+
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 1;
+    descriptor.type_core.logical_shape = "[2]";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("ckks_roundtrip_tensor", MTYPE_To_TY(MTYPE_F4),
+                     &descriptor);
+    pu = DSL_Builder_Create_Minimal_PU("ckks_roundtrip");
+    if (tensor_ty == TY_IDX_ZERO || pu == NULL)
+        return 1;
+    file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    values[0] = DSL_Builder_Create_Tensor_Constant
+                    ("ckks_zero", tensor_ty, "float32", 1, "[2]",
+                     "splat", "0");
+    values[1] = DSL_Builder_Create_Tensor_Constant
+                    ("ckks_one", tensor_ty, "float32", 1, "[2]",
+                     "splat", "1");
+    kids[0] = values[0];
+    if (DSL_Builder_Create_Operator_With_Result
+            (DSL_Opcode_Find(ckks_id, "ckks.rotate", 1), 1,
+             kids, 1, rotate_attrs, 1, "missing_key", tensor_ty) != NULL ||
+        DSL_Builder_Create_Operator_With_Result
+            (DSL_Opcode_Find(ckks_id, "ckks.add", 1), 1,
+             values, 2, rotate_attrs, 1, "extra_attribute", tensor_ty) !=
+                NULL) {
+        fprintf(stderr, "CKKS static attribute schema was not enforced\n");
+        return 1;
+    }
+    for (UINT32 i = 0; i < 9; ++i) {
+        DSL_OPCODE_ID id = DSL_Opcode_Find
+                               (ckks_id, stable_names[i], 1);
+        kids[0] = i == 0 ? values[0] : values[i + 1];
+        kids[1] = values[1];
+        values[i + 2] = DSL_Builder_Create_Operator_With_Result
+                            (id, 1, kids, i == 0 || i >= 4 ? 1 : 2,
+                             attributes[i], attribute_counts[i],
+                             result_names[i], tensor_ty);
+        if (values[i + 2] == NULL ||
+            !DSL_WN_Is_Native(WN_kid0(values[i + 2])) ||
+            DSL_WN_operator(WN_kid0(values[i + 2])) != operators[i]) {
+            fprintf(stderr, "CKKS native expression was not created: %s\n",
+                    stable_names[i]);
+            return 1;
+        }
+    }
+    for (UINT32 i = 0; i < 11; ++i) {
+        DSL_BUILDER_SOURCE_POSITION position;
+        memset(&position, 0, sizeof(position));
+        position.file_id = file_id;
+        position.line = __LINE__;
+        position.column = 1;
+        position.statement_begin = 1;
+        if (values[i] == NULL || !DSL_Builder_Append_PU_Value(pu, values[i]) ||
+            !DSL_Builder_Set_Value_Source_Position(values[i], &position)) {
+            fprintf(stderr, "CKKS PU value/source registration failed: %u\n",
+                    i);
+            return 1;
+        }
+    }
+    if (!DSL_IR_Image_Validate(stderr))
+        failed = 1;
+    memset(&verify, 0, sizeof(verify));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (!DSL_Builder_Verify_Program(&verify)) {
+        fprintf(stderr, "CKKS builder gatekeeper failed: %s\n", diagnostic);
+        failed = 1;
+    }
+
+    const char *artifact = getenv("OPEN64_DSL_CKKS_OPCODE_ARTIFACT");
+    request.path = artifact == NULL || artifact[0] == '\0' ?
+                   "ckks_opcode_roundtrip.B" : artifact;
+    request.flags = 0;
+    (void) unlink(request.path);
+    if (!DSL_Builder_Finalize_Mapped_Image(&request) ||
+        access(request.path, F_OK) != 0) {
+        fprintf(stderr, "CKKS mapped-image finalization failed\n");
+        failed = 1;
+    }
+    if (artifact == NULL || artifact[0] == '\0')
+        (void) unlink(request.path);
     return failed;
 }
 
@@ -9363,7 +9539,818 @@ Find_STID_And_Block (WN *tree, ST_IDX st, WN **containing_block)
     return NULL;
 }
 
+/* The production path marks this pair only after the complete PU transaction. */
+extern BOOL DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID value_id);
+
+static int
+Check_CKKS_Event_Image (void)
+{
+#define CKKS_EVENT_CHECK(condition, stage) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "CKKS event fixture failed: %s\n", stage); \
+            return 1; \
+        } \
+    } while (0)
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    DSL_BUILDER_PU_SOURCE_IDENTITY source_identity;
+    DSL_BUILDER_SOURCE_POSITION position;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE refresh_attrs[3] = {
+        { "attr.target_level", "18" },
+        { "attr.reason", "PRE_RELU_REFRESH" },
+        { "attr.key_id", "bootstrap_key" }
+    };
+    DSL_BUILDER_VALUE one;
+    DSL_BUILDER_VALUE source;
+    DSL_BUILDER_VALUE encoded;
+    DSL_BUILDER_VALUE refreshed;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_PU_SOURCE_IDENTITY_RECORD identity;
+    DSL_IR_VALUE_RECORD source_record;
+    DSL_IR_VALUE_RECORD encoded_record;
+    DSL_IR_VALUE_RECORD refreshed_record;
+    DSL_CKKS_EVENT_RECORD rows[2];
+    DSL_CKKS_EVENT_RECORD saved;
+    DSL_CKKS_EVENT_IMAGE_HEADER header;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    DSL_DOMAIN_ID common_id;
+    DSL_DOMAIN_ID ckks_id;
+    TY_IDX tensor_ty;
+    WN *body;
+    WN *source_block = NULL;
+    WN *source_definition;
+    UINT32 file_id;
+    const char *artifact = getenv("OPEN64_DSL_CKKS_EVENT_ARTIFACT");
+
+    CKKS_EVENT_CHECK(DSL_Builder_Begin_Program() &&
+                     DSL_Opcode_Register_CKKS_Domain() == 9,
+                     "program and CKKS domain");
+    common_id = DSL_Domain_Find("common");
+    ckks_id = DSL_Domain_Find("ckks");
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 1;
+    descriptor.type_core.logical_shape = "[2]";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
+                    ("ckks_event_tensor", MTYPE_To_TY(MTYPE_F4),
+                     &descriptor);
+    pu = DSL_Builder_Create_Minimal_PU("ckks_event_roundtrip");
+    CKKS_EVENT_CHECK(tensor_ty != TY_IDX_ZERO && pu != NULL &&
+                     common_id != DSL_DOMAIN_INVALID_ID &&
+                     ckks_id != DSL_DOMAIN_INVALID_ID,
+                     "tensor, PU, or domain");
+    file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    memset(&source_identity, 0, sizeof(source_identity));
+    source_identity.canonical_definition_name = "CKKSEvent.roundtrip";
+    source_identity.defining_module = "dsl_builder_contract_test";
+    source_identity.defining_file = __FILE__;
+    source_identity.defining_line = __LINE__;
+    CKKS_EVENT_CHECK(file_id != 0 &&
+                     DSL_Builder_Set_PU_Source_Identity
+                         (pu, &source_identity) &&
+                     DSL_Call_Image_Find_PU_Identity
+                         (PU_Info_proc_sym(pu), &identity),
+                     "source identity");
+    one = DSL_Builder_Create_Tensor_Constant
+              ("event_one", tensor_ty, "float32", 1, "[2]", "splat", "1");
+    source = DSL_Builder_Create_Operator_With_Result
+                 (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
+                  &one, 1, NULL, 0, "event_source_relu", tensor_ty);
+    encoded = DSL_Builder_Create_Operator_With_Result
+                  (DSL_Opcode_Find(ckks_id, "ckks.encode", 1), 1,
+                   &one, 1, NULL, 0, "event_encoded", tensor_ty);
+    refreshed = DSL_Builder_Create_Operator_With_Result
+                    (DSL_Opcode_Find(ckks_id, "ckks.bootstrap", 1), 1,
+                     &encoded, 1, refresh_attrs, 3,
+                     "event_refreshed", tensor_ty);
+    CKKS_EVENT_CHECK(one != NULL && source != NULL && encoded != NULL &&
+                     refreshed != NULL, "native values");
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = __LINE__;
+    position.column = 1;
+    position.statement_begin = 1;
+    DSL_BUILDER_VALUE values[4] = { one, source, encoded, refreshed };
+    for (UINT32 i = 0; i < 4; ++i) {
+        position.line++;
+        CKKS_EVENT_CHECK
+            (DSL_Builder_Append_PU_Value(pu, values[i]) &&
+             DSL_Builder_Set_Value_Source_Position(values[i], &position),
+             "append/source position");
+    }
+    body = WN_func_body(PU_Info_tree_ptr(pu));
+    source_definition = Find_STID_And_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(source), &source_block);
+    CKKS_EVENT_CHECK(source_definition != NULL && source_block != NULL,
+                     "source definition");
+    DSL_CKKS_EXPANSION_OPERAND expansion_operand;
+    memset(&expansion_operand, 0, sizeof(expansion_operand));
+    expansion_operand.kind = DSL_CKKS_EXPANSION_EXISTING_VALUE;
+    expansion_operand.value_id = DSL_Builder_Get_Value_Image_Id(one);
+    DSL_CKKS_EXPANSION_STEP expansion_step;
+    memset(&expansion_step, 0, sizeof(expansion_step));
+    expansion_step.dsl_operator = OPR_DSLCKKSENCODE;
+    expansion_step.version = 1;
+    expansion_step.operands = &expansion_operand;
+    expansion_step.operand_count = 1;
+    expansion_step.result_name = "event_preflight_encoded";
+    expansion_step.result_ty = tensor_ty;
+    expansion_step.source_position = WN_Get_Linenum(source_definition);
+    DSL_CKKS_EXPANSION_GROUP expansion_group;
+    memset(&expansion_group, 0, sizeof(expansion_group));
+    expansion_group.source_static_ordinal = 1;
+    expansion_group.origin_static_ordinal = 1;
+    expansion_group.step_count = 1;
+    DSL_CKKS_EXPANSION_CONTEXT expansion_context;
+    memset(&expansion_context, 0, sizeof(expansion_context));
+    expansion_context.context_pu_identity_id = identity.id;
+    expansion_context.origin_owner_pu_st = PU_Info_proc_sym(pu);
+    expansion_context.origin_source_value_id =
+        DSL_Builder_Get_Value_Image_Id(source);
+    DSL_CKKS_EXPANSION_REQUEST expansion_request;
+    memset(&expansion_request, 0, sizeof(expansion_request));
+    expansion_request.source_definition = source_definition;
+    expansion_request.source_value_id = expansion_context.origin_source_value_id;
+    expansion_request.expected_source_operator = OPR_DSLRELU;
+    expansion_request.expected_source_version = 2;
+    expansion_request.groups = &expansion_group;
+    expansion_request.group_count = 1;
+    expansion_request.steps = &expansion_step;
+    expansion_request.step_count = 1;
+    expansion_request.contexts = &expansion_context;
+    expansion_request.context_count = 1;
+    CKKS_EVENT_CHECK
+        (DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+             (pu, &expansion_request, stderr),
+         "read-only expansion preflight");
+    UINT32 original_nodes = DSL_IR_Image_Node_Count();
+    UINT32 original_values = DSL_IR_Image_Value_Count();
+    UINT32 original_symbols = ST_Table_Size(CURRENT_SYMTAB);
+    WN *early_read = WN_CreateEval
+        (WN_CreateLdid(OPR_LDID, MTYPE_M, MTYPE_M, 0,
+                       DSL_Builder_Get_Value_Result_Symbol(source),
+                       tensor_ty));
+    WN_INSERT_BlockBefore(source_block, source_definition, early_read);
+    BOOL rejected_early_read =
+        !DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+             (pu, &expansion_request, NULL);
+    CKKS_EVENT_CHECK
+        (rejected_early_read &&
+         DSL_IR_Image_Node_Count() == original_nodes &&
+         DSL_IR_Image_Value_Count() == original_values &&
+         ST_Table_Size(CURRENT_SYMTAB) == original_symbols,
+         "read-before-definition rejects without mutation");
+    WN_EXTRACT_FromBlock(source_block, early_read);
+    WN_DELETE_Tree(early_read);
+    WN_EXTRACT_FromBlock(source_block, source_definition);
+    if (!DSL_IR_Image_Mark_Value_Lowered
+             (DSL_Builder_Get_Value_Image_Id(source)) ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(source), &source_record) ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(encoded), &encoded_record) ||
+        !DSL_IR_Image_Get_Value
+             (DSL_Builder_Get_Value_Image_Id(refreshed), &refreshed_record)) {
+        fprintf(stderr, "CKKS event fixture failed: lower/image values\n");
+        return 1;
+    }
+
+    memset(rows, 0, sizeof(rows));
+    for (UINT32 i = 0; i < 2; ++i) {
+        rows[i].owner_pu_st = PU_Info_proc_sym(pu);
+        rows[i].source_value_id = source_record.id;
+        rows[i].source_node_id = source_record.producer_node_id;
+        rows[i].context_pu_identity_id = identity.id;
+        rows[i].source_static_ordinal = 1;
+        rows[i].step_ordinal = i;
+        rows[i].origin_owner_pu_st = PU_Info_proc_sym(pu);
+        rows[i].origin_source_value_id = source_record.id;
+        rows[i].origin_static_ordinal = 1;
+        rows[i].result_value_id = i == 0 ? encoded_record.id :
+                                  refreshed_record.id;
+        rows[i].result_node_id = i == 0 ? encoded_record.producer_node_id :
+                                 refreshed_record.producer_node_id;
+    }
+    rows[1].flags = DSL_CKKS_EVENT_FINAL_RESULT;
+    CKKS_EVENT_CHECK(DSL_CKKS_Event_Image_Add(&rows[0]) == 1 &&
+                     DSL_CKKS_Event_Image_Add(&rows[1]) == 2 &&
+                     DSL_CKKS_Event_Image_Validate(stderr),
+                     "event rows");
+    DSL_CKKS_Event_Image_Get_Header(&header);
+    CKKS_EVENT_CHECK(header.record_count == 2 &&
+                     DSL_CKKS_Event_Image_Get(2, &saved),
+                     "event header");
+    DSL_CKKS_EVENT_RECORD malformed[2];
+    DSL_CKKS_EVENT_RECORD retained;
+    memcpy(malformed, rows, sizeof(malformed));
+    malformed[0].id = 1;
+    malformed[1].id = 2;
+    malformed[1].flags = 0;
+    struct {
+        DSL_CKKS_EVENT_IMAGE_HEADER header;
+        DSL_CKKS_EVENT_RECORD records[2];
+    } mapped;
+    mapped.header = header;
+    memcpy(mapped.records, malformed, sizeof(malformed));
+    if (DSL_CKKS_Event_Image_Load_Mapped
+            (&mapped, sizeof(mapped), NULL) ||
+        DSL_CKKS_Event_Image_Count() != 2 ||
+        !DSL_CKKS_Event_Image_Get(2, &retained) ||
+        retained.flags != saved.flags) {
+        fprintf(stderr, "CKKS event fixture failed: rejected-load atomicity\n");
+        return 1;
+    }
+    memcpy(mapped.records, rows, sizeof(rows));
+    mapped.records[0].id = 1;
+    mapped.records[1].id = 2;
+    mapped.records[1].flags = DSL_CKKS_EVENT_FINAL_RESULT | 0x2;
+    CKKS_EVENT_CHECK
+        (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), NULL) &&
+         DSL_CKKS_Event_Image_Count() == 2,
+         "unknown event flag rejection");
+    mapped.records[1].flags = DSL_CKKS_EVENT_FINAL_RESULT;
+    mapped.records[1].step_ordinal = 0;
+    CKKS_EVENT_CHECK
+        (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), NULL) &&
+         DSL_CKKS_Event_Image_Count() == 2,
+         "duplicate step rejection");
+    mapped.records[1].step_ordinal = 1;
+    mapped.records[1].origin_static_ordinal = 2;
+    CKKS_EVENT_CHECK
+        (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), NULL) &&
+         DSL_CKKS_Event_Image_Count() == 2,
+         "inconsistent origin rejection");
+    mapped.records[1].origin_static_ordinal = 1;
+    mapped.records[1].result_node_id = source_record.producer_node_id;
+    CKKS_EVENT_CHECK
+        (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), NULL) &&
+         DSL_CKKS_Event_Image_Count() == 2,
+         "non-CKKS result rejection");
+    mapped.records[1].result_node_id =
+        refreshed_record.producer_node_id;
+    if (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), stderr) ||
+        !DSL_CKKS_Event_Image_Validate(stderr)) {
+        fprintf(stderr, "CKKS event fixture failed: mapped reload\n");
+        return 1;
+    }
+
+    request.path = artifact == NULL || artifact[0] == '\0' ?
+                   "ckks_event_roundtrip.B" : artifact;
+    request.flags = 0;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    char diagnostic[4096];
+    memset(&verify, 0, sizeof(verify));
+    verify.diagnostic = diagnostic;
+    verify.diagnostic_capacity = sizeof(diagnostic);
+    if (!DSL_Builder_Verify_Program(&verify)) {
+        fprintf(stderr, "CKKS event fixture gatekeeper: %s\n", diagnostic);
+        return 1;
+    }
+    (void) unlink(request.path);
+    CKKS_EVENT_CHECK(DSL_Builder_Finalize_Mapped_Image(&request),
+                     "binary finalization");
+    if (artifact == NULL || artifact[0] == '\0')
+        (void) unlink(request.path);
+    return 0;
+#undef CKKS_EVENT_CHECK
+}
+
 static unsigned char *Capture_DSL_IR_Image (UINT64 *image_size);
+
+static int
+Check_CKKS_Expansion_Transaction (void)
+{
+#define CKKS_EXPAND_CHECK(condition, stage) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "CKKS expansion failed: %s\n", stage); \
+            return 1; \
+        } \
+    } while (0)
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 1;
+    descriptor.type_core.logical_shape = "[2]";
+    CKKS_EXPAND_CHECK(DSL_Builder_Begin_Program() &&
+                      DSL_Opcode_Register_CKKS_Domain() == 9,
+                      "program and CKKS registry");
+    TY_IDX ty = DSL_Builder_Intern_Tensor_Type
+                    ("ckks_expand_tensor", MTYPE_To_TY(MTYPE_F4),
+                     &descriptor);
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU("ckks_expand_transaction");
+    UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    DSL_BUILDER_PU_SOURCE_IDENTITY source_identity;
+    memset(&source_identity, 0, sizeof(source_identity));
+    source_identity.canonical_definition_name = "CKKSExpand.transaction";
+    source_identity.defining_module = "dsl_builder_contract_test";
+    source_identity.defining_file = __FILE__;
+    source_identity.defining_line = __LINE__;
+    DSL_PU_SOURCE_IDENTITY_RECORD identity;
+    CKKS_EXPAND_CHECK(ty != TY_IDX_ZERO && pu != NULL && file_id != 0 &&
+                      DSL_Builder_Set_PU_Source_Identity
+                          (pu, &source_identity) &&
+                      DSL_Call_Image_Find_PU_Identity
+                          (PU_Info_proc_sym(pu), &identity),
+                      "PU source identity");
+    DSL_DOMAIN_ID common_id = DSL_Domain_Find("common");
+    DSL_BUILDER_VALUE one = DSL_Builder_Create_Tensor_Constant
+        ("expand_one", ty, "float32", 1, "[2]", "splat", "1");
+    DSL_BUILDER_VALUE source = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
+         &one, 1, NULL, 0, "expand_source", ty);
+    DSL_BUILDER_VALUE consumer = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
+         &source, 1, NULL, 0, "expand_consumer", ty);
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = __LINE__;
+    position.column = 1;
+    position.statement_begin = 1;
+    DSL_BUILDER_VALUE values[3] = { one, source, consumer };
+    for (UINT32 i = 0; i < 3; ++i) {
+        ++position.line;
+        CKKS_EXPAND_CHECK
+            (values[i] != NULL &&
+             DSL_Builder_Set_Value_Source_Position(values[i], &position),
+             "source positions");
+    }
+    CKKS_EXPAND_CHECK(DSL_Builder_Append_PU_Value(pu, consumer),
+                      "materialize source and consumer");
+    WN *body = WN_func_body(PU_Info_tree_ptr(pu));
+    ST_IDX source_st = DSL_Builder_Get_Value_Result_Symbol(source);
+    WN *source_block = NULL;
+    WN *source_definition =
+        Find_STID_And_Block(body, source_st, &source_block);
+    WN *consumer_definition = Find_STID_In_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(consumer));
+    CKKS_EXPAND_CHECK(source_definition != NULL && source_block != NULL &&
+                      consumer_definition != NULL, "physical definitions");
+
+    TY_IDX bound_ty = MTYPE_To_TY(MTYPE_F8);
+    ST *bound_st = New_ST(CURRENT_SYMTAB);
+    ST_Init(bound_st, Save_Str("expand_bound"), CLASS_VAR, SCLASS_AUTO,
+            EXPORT_LOCAL, bound_ty);
+    Set_ST_Srcpos(*bound_st, WN_Get_Linenum(source_definition));
+    ST_IDX bound_idx = ST_st_idx(*bound_st);
+    TCON_IDX bound_tcon = Enter_tcon(Host_To_Targ_Float(MTYPE_F8, 2.0));
+    ST_IDX bound_constant = ST_st_idx(*New_Const_Sym(bound_tcon, bound_ty));
+    WN *bound_definition = WN_CreateStid
+        (OPR_STID, MTYPE_V, MTYPE_F8, 0, bound_idx, bound_ty,
+         WN_CreateConst(OPR_CONST, MTYPE_F8, MTYPE_V, bound_constant));
+    WN_Set_Linenum(bound_definition, WN_Get_Linenum(source_definition));
+    WN_INSERT_BlockBefore(source_block, source_definition, bound_definition);
+    DSL_IR_VALUE_RECORD bound_value;
+    DSL_IR_Value_Record_Init(&bound_value);
+    bound_value.value_kind = DSL_IR_VALUE_SYMBOL;
+    bound_value.ty = bound_ty;
+    bound_value.st = bound_idx;
+    bound_value.name = Save_Str("expand_bound");
+    bound_value.metadata = Save_Str("owner_pu=ckks_expand_transaction");
+    DSL_IR_VALUE_ID bound_value_id = DSL_IR_Image_Add_Value(&bound_value);
+    CKKS_EXPAND_CHECK(bound_value_id != DSL_IR_VALUE_INVALID_ID,
+                      "scalar bound value");
+
+    DSL_CKKS_EXPANSION_OPERAND operands[10];
+    memset(operands, 0, sizeof(operands));
+    operands[0].kind = DSL_CKKS_EXPANSION_EXISTING_VALUE;
+    operands[0].value_id = DSL_Builder_Get_Value_Image_Id(one);
+    operands[1].kind = DSL_CKKS_EXPANSION_PRIOR_STEP;
+    operands[1].step_index = 0;
+    const UINT32 prior_steps[8] = { 1, 0, 2, 1, 3, 2, 4, 1 };
+    for (UINT32 i = 2; i < 10; ++i) {
+        operands[i].kind = DSL_CKKS_EXPANSION_PRIOR_STEP;
+        operands[i].step_index = prior_steps[i - 2];
+    }
+    operands[3].kind = DSL_CKKS_EXPANSION_EXISTING_VALUE;
+    operands[3].step_index = 0;
+    operands[3].value_id = bound_value_id;
+    DSL_CKKS_EXPANSION_ATTRIBUTE refresh_attrs[3] = {
+        { "attr.target_level", "18" },
+        { "attr.reason", "PRE_RELU_REFRESH" },
+        { "attr.key_id", "bootstrap_key" }
+    };
+    DSL_CKKS_EXPANSION_STEP steps[6];
+    memset(steps, 0, sizeof(steps));
+    steps[0].dsl_operator = OPR_DSLCKKSENCODE;
+    steps[0].version = 1;
+    steps[0].operands = &operands[0];
+    steps[0].operand_count = 1;
+    steps[0].result_name = "expand_encoded";
+    steps[0].result_ty = ty;
+    steps[1].dsl_operator = OPR_DSLCKKSBOOTSTRAP;
+    steps[1].version = 1;
+    steps[1].operands = &operands[1];
+    steps[1].operand_count = 1;
+    steps[1].attributes = refresh_attrs;
+    steps[1].attribute_count = 3;
+    steps[1].result_name = "expand_refreshed";
+    steps[1].result_ty = ty;
+    const DSL_OPERATOR stage_ops[4] = {
+        OPR_DSLCKKSMUL, OPR_DSLCKKSADD,
+        OPR_DSLCKKSMUL, OPR_DSLCKKSADD
+    };
+    const char *stage_names[4] = {
+        "expand_normalized", "expand_stage1",
+        "expand_stage2", "expand_reconstructed"
+    };
+    for (UINT32 i = 2; i < 6; ++i) {
+        steps[i].dsl_operator = stage_ops[i - 2];
+        steps[i].version = 1;
+        steps[i].operands = &operands[2 + 2 * (i - 2)];
+        steps[i].operand_count = 2;
+        steps[i].result_name = stage_names[i - 2];
+        steps[i].result_ty = ty;
+    }
+    for (UINT32 i = 0; i < 6; ++i)
+        steps[i].source_position = WN_Get_Linenum(source_definition);
+    DSL_CKKS_EXPANSION_GROUP groups[6];
+    memset(groups, 0, sizeof(groups));
+    for (UINT32 i = 0; i < 6; ++i) {
+        groups[i].source_static_ordinal = i + 1;
+        groups[i].origin_static_ordinal = i + 1;
+        groups[i].first_step = i;
+        groups[i].step_count = 1;
+    }
+    DSL_CKKS_EXPANSION_CONTEXT context;
+    memset(&context, 0, sizeof(context));
+    context.context_pu_identity_id = identity.id;
+    context.origin_owner_pu_st = PU_Info_proc_sym(pu);
+    context.origin_source_value_id = DSL_Builder_Get_Value_Image_Id(source);
+    DSL_CKKS_EXPANSION_REQUEST request;
+    memset(&request, 0, sizeof(request));
+    request.source_definition = source_definition;
+    request.source_value_id = context.origin_source_value_id;
+    request.expected_source_operator = OPR_DSLRELU;
+    request.expected_source_version = 2;
+    request.groups = groups;
+    request.group_count = 6;
+    request.steps = steps;
+    request.step_count = 6;
+    request.contexts = &context;
+    request.context_count = 1;
+    request.final_step_index = 5;
+    DSL_IR_VALUE_ID tensor_operand_id = operands[0].value_id;
+    operands[0].value_id = bound_value_id;
+    BOOL scalar_first_rejected = !DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+        (pu, &request, NULL);
+    operands[0].value_id = tensor_operand_id;
+    CKKS_EXPAND_CHECK(scalar_first_rejected,
+                      "scalar CKKS operand outside arithmetic kid1");
+    CKKS_EXPAND_CHECK
+        (DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+             (pu, &request, stderr), "initial preflight");
+    UINT32 symbol_count = ST_Table_Size(CURRENT_SYMTAB);
+    UINT32 node_count = DSL_IR_Image_Node_Count();
+    UINT32 value_count = DSL_IR_Image_Value_Count();
+    UINT32 metadata_count = St_tensor_metadata.Size();
+    UINT32 kv_count = Tensor_dsl_kv_table.Size();
+    DSL_IR_IMAGE_HEADER original_image;
+    DSL_IR_Image_Get_Header(&original_image);
+    DSL_CKKS_STRTAB_SAVEPOINT original_strings;
+    CKKS_EXPAND_CHECK(DSL_CKKS_Strtab_Save(&original_strings),
+                      "string savepoint");
+    DSL_CKKS_EXPANSION_STEP_RESULT results[6];
+    for (UINT32 stage = 1; stage <= 4; ++stage) {
+        memset(results, 0, sizeof(results));
+        DSL_CKKS_Expand_Set_Test_Fault(stage);
+        BOOL rejected = !DSL_IR_Expand_Native_Value_To_CKKS_Events
+            (pu, &request, NULL, results);
+        DSL_CKKS_Expand_Set_Test_Fault(0);
+        DSL_IR_IMAGE_HEADER current_image;
+        DSL_IR_Image_Get_Header(&current_image);
+        DSL_CKKS_STRTAB_SAVEPOINT current_strings;
+        CKKS_EXPAND_CHECK
+            (rejected && ST_Table_Size(CURRENT_SYMTAB) == symbol_count &&
+             DSL_IR_Image_Node_Count() == node_count &&
+             DSL_IR_Image_Value_Count() == value_count &&
+             current_image.opcode_descriptor_count ==
+                 original_image.opcode_descriptor_count &&
+             current_image.attribute_count == original_image.attribute_count &&
+             current_image.value_reference_count ==
+                 original_image.value_reference_count &&
+             St_tensor_metadata.Size() == metadata_count &&
+             Tensor_dsl_kv_table.Size() == kv_count &&
+             DSL_CKKS_Strtab_Save(&current_strings) &&
+             current_strings.table == original_strings.table &&
+             current_strings.next_index == original_strings.next_index &&
+             DSL_CKKS_Event_Image_Count() == 0 &&
+             Find_STID_In_Block(source_block, source_st) ==
+                 source_definition &&
+             WN_st_idx(WN_kid0(WN_kid0(consumer_definition))) ==
+                 source_st &&
+             DSL_IR_Image_Validate(stderr) &&
+             DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                 (pu, &request, stderr),
+             "late-failure rollback");
+    }
+    CKKS_EXPAND_CHECK
+        (DSL_IR_Expand_Native_Value_To_CKKS_Events
+             (pu, &request, stderr, results),
+         "atomic grouped expansion");
+    DSL_IR_VALUE_RECORD lowered;
+    CKKS_EXPAND_CHECK
+        (results[0].value_id != 0 && results[5].value_id != 0 &&
+         results[0].result_st != results[5].result_st &&
+         Find_STID_In_Block(source_block, source_st) == NULL &&
+         Find_STID_In_Block
+             (source_block, results[0].result_st) != NULL &&
+         Find_STID_In_Block
+             (source_block, results[5].result_st) != NULL &&
+         WN_st_idx(WN_kid0(WN_kid0(consumer_definition))) ==
+             results[5].result_st &&
+         DSL_IR_Image_Get_Value(request.source_value_id, &lowered) &&
+         lowered.flags == DSL_IR_VALUE_FLAG_LOWERED &&
+         DSL_CKKS_Event_Image_Count() == 6 &&
+         DSL_CKKS_Event_Image_Validate(stderr) &&
+         DSL_IR_Image_Validate(stderr),
+         "native result and event evidence");
+    WN *normalized_definition = Find_STID_In_Block
+        (source_block, results[2].result_st);
+    WN *normalized_expression = normalized_definition == NULL ? NULL :
+        WN_kid0(normalized_definition);
+    DSL_LOGICAL_OPCODE normalized_opcode;
+    WN *scalar_kid = normalized_expression == NULL ||
+        WN_kid_count(normalized_expression) != 2 ? NULL :
+        WN_kid(normalized_expression, 1);
+    CKKS_EXPAND_CHECK
+        (normalized_expression != NULL &&
+         DSL_WN_Get_Logical_Opcode
+             (normalized_expression, &normalized_opcode, NULL) &&
+         normalized_opcode.dsl_operator == OPR_DSLCKKSMUL &&
+         scalar_kid != NULL && WN_operator(scalar_kid) == OPR_LDID &&
+         WN_rtype(scalar_kid) == MTYPE_F8 &&
+         WN_desc(scalar_kid) == MTYPE_F8 &&
+         WN_ty(scalar_kid) == bound_ty,
+         "typed scalar CKKS operand");
+    DSL_GATEKEEPER_RESULT verification;
+    memset(&verification, 0, sizeof(verification));
+    BOOL admitted = DSL_Gatekeeper_Verify_Program_Mode
+        (pu, DSL_GATEKEEPER_ADMISSION, stderr, &verification);
+    CKKS_EXPAND_CHECK(admitted, "post-expansion admission");
+    memset(&verification, 0, sizeof(verification));
+    CKKS_EXPAND_CHECK
+        (DSL_Gatekeeper_Verify_PU_Mode
+             (pu, DSL_GATEKEEPER_ADMISSION, stderr, &verification),
+         "post-expansion PU admission");
+    const char *artifact = getenv("OPEN64_DSL_CKKS_EXPAND_ARTIFACT");
+    if (artifact != NULL && artifact[0] != '\0') {
+        DSL_BUILDER_MAPPED_IMAGE_REQUEST image_request;
+        image_request.path = artifact;
+        image_request.flags = 0;
+        CKKS_EXPAND_CHECK
+            (DSL_Builder_Finalize_Mapped_Image(&image_request),
+             "mapped binary image");
+    }
+    return 0;
+#undef CKKS_EXPAND_CHECK
+}
+
+static int
+Check_CKKS_Expansion_Call_Region (void)
+{
+#define CKKS_REGION_CHECK(condition, stage) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "CKKS call/REGION expansion failed: %s\n", stage); \
+            return 1; \
+        } \
+    } while (0)
+    CKKS_REGION_CHECK(DSL_Builder_Begin_Program() &&
+                      DSL_Opcode_Register_CKKS_Domain() == 9,
+                      "program and registry");
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 1;
+    descriptor.type_core.logical_shape = "[2]";
+    TY_IDX ty = DSL_Builder_Intern_Tensor_Type
+                    ("ckks_region_tensor", MTYPE_To_TY(MTYPE_F4),
+                     &descriptor);
+    DSL_BUILDER_PROGRAM_UNIT callee =
+        DSL_Builder_Create_Minimal_PU("ckks_region_callee");
+    UINT32 callee_file = DSL_Builder_Register_Source_File(callee, __FILE__);
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = callee_file;
+    position.line = __LINE__;
+    position.column = 1;
+    position.statement_begin = 1;
+    DSL_BUILDER_VALUE formal = DSL_Builder_Declare_PU_Formal
+        (callee, "callee_input", 0, ty, &position);
+    DSL_BUILDER_VALUE callee_result = DSL_Builder_Declare_PU_Result
+        (callee, "callee_result", 0, ty, DSL_PU_RESULT_TENSOR,
+         &position);
+    CKKS_REGION_CHECK(ty != TY_IDX_ZERO && callee != NULL &&
+                      formal != NULL && callee_result != NULL &&
+                      DSL_Builder_Return_PU_Values(callee, &formal, 1),
+                      "callee signature and return");
+
+    DSL_BUILDER_PROGRAM_UNIT caller =
+        DSL_Builder_Create_Minimal_PU("ckks_region_caller");
+    UINT32 caller_file = DSL_Builder_Register_Source_File(caller, __FILE__);
+    DSL_BUILDER_PU_SOURCE_IDENTITY source_identity;
+    memset(&source_identity, 0, sizeof(source_identity));
+    source_identity.canonical_definition_name = "CKKSRegion.caller";
+    source_identity.defining_module = "dsl_builder_contract_test";
+    source_identity.defining_file = __FILE__;
+    source_identity.defining_line = __LINE__;
+    DSL_PU_SOURCE_IDENTITY_RECORD identity;
+    CKKS_REGION_CHECK
+        (caller != NULL && caller_file != 0 &&
+         DSL_Builder_Set_PU_Source_Identity(caller, &source_identity) &&
+         DSL_Call_Image_Find_PU_Identity
+             (PU_Info_proc_sym(caller), &identity),
+         "caller source identity");
+    position.file_id = caller_file;
+    position.line = __LINE__;
+    DSL_BUILDER_VALUE one = DSL_Builder_Create_Tensor_Constant
+        ("region_one", ty, "float32", 1, "[2]", "splat", "1");
+    DSL_BUILDER_VALUE source = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, &one, 1, NULL, 0, "region_source", ty);
+    DSL_BUILDER_VALUE values[2] = { one, source };
+    for (UINT32 i = 0; i < 2; ++i) {
+        ++position.line;
+        CKKS_REGION_CHECK
+            (values[i] != NULL &&
+             DSL_Builder_Set_Value_Source_Position(values[i], &position),
+             "caller value position");
+    }
+    DSL_BUILDER_CALLSITE_INFO callsite;
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "CKKSRegionCallee";
+    callsite.instance_path = "model.region_callee";
+    callsite.context_identity = "CKKSRegion.caller.region_callee";
+    callsite.source_position = position;
+    ++callsite.source_position.line;
+    const char *result_names[1] = { "region_call_result" };
+    DSL_BUILDER_CALL call = DSL_Builder_Create_PU_Call
+        (caller, callee, &source, 1, result_names, 1, &callsite);
+    CKKS_REGION_CHECK
+        (call != NULL && DSL_Builder_Set_PU_Call_Argument_Role
+             (call, 0, 0, "input.tensor"),
+         "managed call ABI actual");
+    DSL_BUILDER_VALUE consumer = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, &source, 1, NULL, 0, "region_consumer", ty);
+    ++position.line;
+    CKKS_REGION_CHECK
+        (consumer != NULL &&
+         DSL_Builder_Set_Value_Source_Position(consumer, &position) &&
+         DSL_Builder_Append_PU_Value(caller, consumer),
+         "consumer materialization");
+    WN *body = WN_func_body(PU_Info_tree_ptr(caller));
+    WN *one_definition = Find_STID_In_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(one));
+    ST_IDX source_st = DSL_Builder_Get_Value_Result_Symbol(source);
+    WN *source_definition = Find_STID_In_Block(body, source_st);
+    WN *consumer_definition = Find_STID_In_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(consumer));
+    CKKS_REGION_CHECK(one_definition != NULL && source_definition != NULL &&
+                      consumer_definition != NULL, "caller definitions");
+
+    DSL_REGION region = DSL_Region_Create
+        (caller, NULL, "cnn.basic_block", 1);
+    CKKS_REGION_CHECK
+        (region != NULL &&
+         DSL_Region_Declare_Symbol
+             (region, source_st,
+              DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT,
+              0, DSL_REGION_INTERFACE_FLAG_NONE) &&
+         DSL_Region_Set_Source_Position
+             (region, WN_Get_Linenum(source_definition)),
+         "REGION interface");
+    WN_EXTRACT_FromBlock(body, one_definition);
+    WN_EXTRACT_FromBlock(body, source_definition);
+    WN_EXTRACT_FromBlock(body, call);
+    WN_EXTRACT_FromBlock(body, consumer_definition);
+    CKKS_REGION_CHECK
+        (DSL_Region_Append_Statement(region, one_definition) &&
+         DSL_Region_Append_Statement(region, source_definition) &&
+         DSL_Region_Append_Statement(region, call) &&
+         DSL_Region_Append_Statement(region, consumer_definition) &&
+         DSL_Region_Append_To_PU(region) &&
+         DSL_Region_Verify_PU(caller, stderr),
+         "REGION ownership");
+    WN *region_body = WN_region_body(DSL_Region_WN(region));
+    DSL_CALL_ARGUMENT_RECORD argument;
+    DSL_IR_VALUE_ID source_value_id =
+        DSL_Builder_Get_Value_Image_Id(source);
+    CKKS_REGION_CHECK
+        (DSL_Call_ABI_Image_Find_Argument(call, 0, &argument) &&
+         argument.argument_value_id == source_value_id &&
+         DSL_Region_Symbol_Use_Count(caller, source_st) == 1,
+         "pre-expansion call and REGION binding");
+
+    DSL_CKKS_EXPANSION_OPERAND operand;
+    memset(&operand, 0, sizeof(operand));
+    operand.kind = DSL_CKKS_EXPANSION_EXISTING_VALUE;
+    operand.value_id = DSL_Builder_Get_Value_Image_Id(one);
+    DSL_CKKS_EXPANSION_STEP step;
+    memset(&step, 0, sizeof(step));
+    step.dsl_operator = OPR_DSLCKKSENCODE;
+    step.version = 1;
+    step.operands = &operand;
+    step.operand_count = 1;
+    step.result_name = "region_encoded";
+    step.result_ty = ty;
+    step.source_position = WN_Get_Linenum(source_definition);
+    DSL_CKKS_EXPANSION_GROUP group;
+    memset(&group, 0, sizeof(group));
+    group.source_static_ordinal = 1;
+    group.origin_static_ordinal = 1;
+    group.step_count = 1;
+    DSL_CKKS_EXPANSION_CONTEXT context;
+    memset(&context, 0, sizeof(context));
+    context.context_pu_identity_id = identity.id;
+    context.origin_owner_pu_st = PU_Info_proc_sym(caller);
+    context.origin_source_value_id = source_value_id;
+    DSL_CKKS_EXPANSION_REQUEST request;
+    memset(&request, 0, sizeof(request));
+    request.source_definition = source_definition;
+    request.source_value_id = source_value_id;
+    request.expected_source_operator = OPR_DSLRELU;
+    request.expected_source_version = 2;
+    request.groups = &group;
+    request.group_count = 1;
+    request.steps = &step;
+    request.step_count = 1;
+    request.contexts = &context;
+    request.context_count = 1;
+    CKKS_REGION_CHECK
+        (DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+             (caller, &request, stderr), "call/REGION preflight");
+    UINT32 symbol_count = ST_Table_Size(CURRENT_SYMTAB);
+    UINT32 node_count = DSL_IR_Image_Node_Count();
+    UINT32 event_count = DSL_CKKS_Event_Image_Count();
+    DSL_CKKS_STRTAB_SAVEPOINT strings;
+    CKKS_REGION_CHECK(DSL_CKKS_Strtab_Save(&strings),
+                      "string savepoint");
+    DSL_CKKS_EXPANSION_STEP_RESULT result;
+    for (UINT32 stage = 2; stage <= 3; ++stage) {
+        memset(&result, 0, sizeof(result));
+        DSL_CKKS_Expand_Set_Test_Fault(stage);
+        BOOL rejected = !DSL_IR_Expand_Native_Value_To_CKKS_Events
+            (caller, &request, NULL, &result);
+        DSL_CKKS_Expand_Set_Test_Fault(0);
+        DSL_CKKS_STRTAB_SAVEPOINT current_strings;
+        CKKS_REGION_CHECK
+            (rejected &&
+             Find_STID_In_Block(region_body, source_st) ==
+                 source_definition &&
+             WN_st_idx(WN_kid0(WN_kid(call, 0))) == source_st &&
+             WN_st_idx(WN_kid0(WN_kid0(consumer_definition))) ==
+                 source_st &&
+             DSL_Call_ABI_Image_Find_Argument(call, 0, &argument) &&
+             argument.argument_value_id == source_value_id &&
+             DSL_Region_Symbol_Use_Count(caller, source_st) == 1 &&
+             ST_Table_Size(CURRENT_SYMTAB) == symbol_count &&
+             DSL_IR_Image_Node_Count() == node_count &&
+             DSL_CKKS_Event_Image_Count() == event_count &&
+             DSL_CKKS_Strtab_Save(&current_strings) &&
+             current_strings.next_index == strings.next_index &&
+             DSL_Region_Verify_PU(caller, stderr) &&
+             DSL_Call_ABI_Image_Validate_PU(caller, stderr),
+             "call/REGION late-failure rollback");
+    }
+    CKKS_REGION_CHECK
+        (DSL_IR_Expand_Native_Value_To_CKKS_Events
+             (caller, &request, stderr, &result),
+         "call/REGION commit");
+    CKKS_REGION_CHECK
+        (Find_STID_In_Block(region_body, source_st) == NULL &&
+         Find_STID_In_Block(region_body, result.result_st) != NULL &&
+         WN_st_idx(WN_kid0(WN_kid(call, 0))) == result.result_st &&
+         DSL_Call_ABI_Image_Find_Argument(call, 0, &argument) &&
+         argument.argument_value_id == result.value_id &&
+         DSL_Region_Symbol_Use_Count(caller, source_st) == 0 &&
+         DSL_Region_Symbol_Use_Count(caller, result.result_st) == 1 &&
+         DSL_IR_Image_Validate(stderr) &&
+         DSL_CKKS_Event_Image_Validate(stderr),
+         "committed call and REGION binding");
+    const char *artifact = getenv("OPEN64_DSL_CKKS_REGION_ARTIFACT");
+    if (artifact != NULL && artifact[0] != '\0') {
+        DSL_BUILDER_MAPPED_IMAGE_REQUEST image_request;
+        image_request.path = artifact;
+        image_request.flags = 0;
+        CKKS_REGION_CHECK
+            (DSL_Builder_Finalize_Mapped_Image(&image_request),
+             "REGION/call mapped image");
+    }
+    return 0;
+#undef CKKS_REGION_CHECK
+}
 
 static unsigned char *
 Capture_Runtime_Interface_Image (UINT64 *image_size)
@@ -11659,6 +12646,14 @@ main(void)
         return Check_PU_Scalar_Bound_Call_ABI();
     if (getenv("OPEN64_DSL_PU_CLONE_REGION_ONLY") != NULL)
         return Check_PU_Clone_Region_Store();
+    if (getenv("OPEN64_DSL_CKKS_OPCODE_ONLY") != NULL)
+        return Check_CKKS_Logical_Operators();
+    if (getenv("OPEN64_DSL_CKKS_EVENT_ONLY") != NULL)
+        return Check_CKKS_Event_Image();
+    if (getenv("OPEN64_DSL_CKKS_EXPAND_ONLY") != NULL)
+        return Check_CKKS_Expansion_Transaction();
+    if (getenv("OPEN64_DSL_CKKS_REGION_ONLY") != NULL)
+        return Check_CKKS_Expansion_Call_Region();
     if (getenv("OPEN64_DSL_LLAMA2_COMMON_ONLY") != NULL)
         return Check_Llama2_Common_Substrate();
     if (getenv("OPEN64_DSL_LLAMA2_TRANSFORMER_ONLY") != NULL)

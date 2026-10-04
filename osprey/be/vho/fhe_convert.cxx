@@ -11,6 +11,7 @@
 #include "fhe_plan.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_ir_image.h"
+#include "dsl_ckks_event.h"
 #include "errors.h"
 #include "ir_reader.h"
 #include "pu_info.h"
@@ -77,7 +78,8 @@ VHO_FHE_Convert_Checkpoint_Validate
         !DSL_Effect_Image_Validate(diagnostic) ||
         !DSL_Call_Image_Validate(diagnostic) ||
         !DSL_FHE_Image_Validate(diagnostic) ||
-        !DSL_FHE_Plan_Image_Validate(diagnostic)) {
+        !DSL_FHE_Plan_Image_Validate(diagnostic) ||
+        !DSL_CKKS_Event_Image_Validate(diagnostic)) {
         if (diagnostic != NULL)
             fprintf(diagnostic,
                     "CFHE-CHECKPOINT-003: complete managed image is invalid\n");

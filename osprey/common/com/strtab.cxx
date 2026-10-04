@@ -57,6 +57,7 @@
 #include "cxx_memory.h"			// for CXX_NEW
 
 #include "strtab.h"
+#include "dsl_ckks_expand_internal.h"
 
 // The string table is implmeneted as a single character buffer, re-allocated
 // if necessary.  Byte 0 of this buffer is alwasy NULL.  Each string is
@@ -389,6 +390,31 @@ Get_Strtab() {
   return (void *)Strtab_ptr;
 }
 
+BOOL
+DSL_CKKS_Strtab_Save (DSL_CKKS_STRTAB_SAVEPOINT *savepoint)
+{
+    if (savepoint == NULL || Strtab_ptr == NULL || Strtab.last_idx == 0)
+        return FALSE;
+    savepoint->table = Strtab_ptr;
+    savepoint->next_index = Strtab.last_idx;
+    return TRUE;
+}
+
+BOOL
+DSL_CKKS_Strtab_Restore (const DSL_CKKS_STRTAB_SAVEPOINT *savepoint)
+{
+    if (savepoint == NULL || savepoint->table != Strtab_ptr ||
+        savepoint->next_index == 0 ||
+        savepoint->next_index > Strtab.last_idx)
+        return FALSE;
+    Strtab.last_idx = savepoint->next_index;
+    if (Strtab.hash_table.size() != 0)
+        Strtab.hash_table.erase(Strtab.hash_table.begin(),
+                                Strtab.hash_table.end());
+    Strtab.init_hash();
+    return TRUE;
+}
+
 char*
 Strtab_to_char(void *tab, STR_IDX idx)
 {
@@ -577,4 +603,3 @@ Merge_TCON_Strtab (const char *buf, UINT32 size, STR_IDX_MAP& map)
 }
 
 #endif // MONGOOSE_BE
-

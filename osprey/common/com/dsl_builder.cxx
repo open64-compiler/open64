@@ -23,6 +23,7 @@
 #include "fhe_image.h"
 #include "fhe_plan.h"
 #include "dsl_gatekeeper.h"
+#include "dsl_ckks_event.h"
 #include "dsl_memory_behavior.h"
 #include "dsl_shape.h"
 #include "dsl_simp.h"
@@ -1037,6 +1038,8 @@ DSL_Builder_Requires_Exact_Attribute_Schema
            dsl_operator == OPR_DSLATTENTION ||
            dsl_operator == OPR_DSLSWIGLU ||
            dsl_operator == OPR_DSLSCATTER ||
+           (dsl_operator >= OPR_DSLCKKSADD &&
+            dsl_operator <= OPR_DSLCKKSBOOTSTRAP) ||
            (dsl_operator == OPR_DSLMATMUL && version == 2) ||
            (dsl_operator == OPR_DSLLINEAR && version == 3) ||
            (dsl_operator == OPR_DSLOUTPUTLOGITS && version == 3);
@@ -4252,6 +4255,10 @@ DSL_Builder_Verify_Program_Mode
         ++gatekeeper_result.error_count;
     }
     if (!DSL_FHE_Plan_Image_Validate(diagnostic)) {
+        valid = FALSE;
+        ++gatekeeper_result.error_count;
+    }
+    if (!DSL_CKKS_Event_Image_Validate(diagnostic)) {
         valid = FALSE;
         ++gatekeeper_result.error_count;
     }
