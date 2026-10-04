@@ -108,6 +108,67 @@ one 32768-slot ciphertext. The captured stride-two projection Convs are
 explicitly outside this first case. C2 remains open until real event-plan
 serialization, bounded full Conv coverage, and materialized IR census.
 
+### C2 Stride-Two Mapping Decision
+
+The current recipe's rotation is constant per `(output_channel,
+input_channel, kernel_y, kernel_x)` only because stride-one same Conv has
+equal packed input/output spatial indexing. For a stride-two Conv with
+input width `IW`, output width `OW`, input channel `ci`, output channel
+`oc`, kernel coordinate `(ky,kx)`, and padding `(ph,pw)`, a dense
+channel-major output slot `(oc,oy,ox)` needs the input-minus-output
+rotation
+
+```text
+r = ci*IH*IW - oc*OH*OW
+    + oy*(stride_h*IW - OW) + ox*(stride_w - 1)
+    + (ky-ph)*IW + (kx-pw)
+```
+
+For a one-channel `4x4 -> 2x2` stride-two `1x1` Conv with zero padding,
+the four output slots `(oy,ox)=(0,0),(0,1),(1,0),(1,1)` require rotations
+`0,1,6,7` respectively. One term-wide rotation cannot produce the four
+correct source slots. The first recipe must reject this shape; extending
+its constant-rotation formula would silently compute the wrong Conv.
+
+The following is a deterministic *unoptimized direct-position cost
+census*, not an executable plan or key inventory. It assumes one separate masked
+rotate/multiply contribution per valid output coordinate and folded
+OIHW term. `signed keys` deduplicates the resulting nonzero signed
+offsets; runtime rotation-key generation may further canonicalize them.
+
+| Captured projection shape | Kernel | OIHW terms | Direct position masks | Distinct signed offsets | Max offsets per term |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `16x32x32 -> 32x16x16` | `1x1` | 512 | 131,072 | 23,551 | 256 |
+| `16x32x32 -> 32x16x16` | `3x3` | 4,608 | 1,131,008 | 24,049 | 256 |
+| `32x16x16 -> 64x8x8` | `1x1` | 2,048 | 131,072 | 12,031 | 64 |
+| `32x16x16 -> 64x8x8` | `3x3` | 18,432 | 1,083,392 | 12,153 | 64 |
+
+The bounded candidate for review is **high-resolution Conv followed by
+an explicit local stride compaction**. Perform the ordinary constant-
+rotation stride-one convolution into its sparse/high-resolution plane,
+then select and pack the even spatial coordinates into the declared dense
+output layout using explicit masks, rotations, and verified CKKS state
+transitions. For the two captured shapes the temporary high-resolution
+outputs occupy 32,768 and 16,384 slots respectively, within the selected
+32,768-slot ciphertext. The high-resolution Conv would have 4,608 terms
+and at most 422 signed offsets for the first `3x3` projection, and 18,432
+terms and at most 854 for the second; **compaction cost, key set, depth,
+and correctness are not yet measured or approved**. A fixed compaction
+algorithm must pass an independent tensor-to-slot oracle, exact rotation/
+mask/state census, and residual-layout compatibility before adoption.
+
+Keeping sparse/gapped output layout across following operators would need
+graph-wide layout conversion and is outside this provisional C2 recipe.
+Per-position direct masking has the measured million-plus contribution
+matrix above and is not admitted as an implicit fallback. MetaKernel or
+another general layout planner remains a separately reviewed later design.
+If local compaction cannot be bounded without hidden CKKS state repair or
+new per-shape exceptions, stop C2 for an architecture decision; do not
+mark all ResNet Convs covered or produce `secure_resnet20.ckks_ops.B`.
+The table and counterexample are reproducible with
+`osprey/be/vho/tests/fhe_ckks_conv_stride_cost.py`; its JSON output is
+retained as review evidence, not a compiler planning image.
+
 | Slice | FHE-owned work | Focused exit evidence |
 | --- | --- | --- |
 | C0: replay/input gate | Add a deterministic input manifest and native read-only gate joining six-PU images, 87/147 events, 19 contexts, source/payload/coefficient hashes, and FHE/DSL validators. Reject the older `.fhe.B` and unsupported config before planning. | Stable hashed census, `-st -src` with six FUNC_ENTRYs/nine calls/nonzero source interleave; wrong hash or missing context rejects without output. |
