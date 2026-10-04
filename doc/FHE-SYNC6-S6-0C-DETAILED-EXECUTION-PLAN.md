@@ -169,6 +169,49 @@ The table and counterexample are reproducible with
 `osprey/be/vho/tests/fhe_ckks_conv_stride_cost.py`; its JSON output is
 retained as review evidence, not a compiler planning image.
 
+#### Read-Only Local Compaction Probe
+
+`osprey/be/vho/tests/fhe_ckks_stride_compaction_proof.py` implements a
+clear-slot bit-compaction proof without modifying WHIRL. A selection mask
+keeps the even `(y,x)` positions of a high-resolution output. For each
+remaining `x`, `y`, then channel bit, it uses complementary plaintext
+masks, one signed left rotation, and an add to move the selected branch
+from its original bit weight to the dense-output bit weight. The mask
+generation rule, exact slot-order mask SHA-256 values, cardinalities,
+and rotation at every stage are retained in
+`/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-recipe/stride-compaction-proof.json`.
+No per-output-position rotate/mask contribution is emitted.
+
+The `4x4 -> 2x2` case uses one selection plus two bit-move stages:
+five plaintext masks, signed rotations `{1,6}`, and a symbolic three
+mask-multiplication levels. The replay-authenticated call4 `1x1` folded
+projection `16x32x32 -> 32x16x16` matches an independent direct stride-two
+tensor Conv for every one of 8,192 active output slots (maximum clear
+absolute error `0`). The high-resolution temporary occupies 32,768
+slots. Compaction uses one selection plus 13 bit-move stages: 27
+plaintext masks, 13 rotations/adds, and signed keys
+`{1,2,4,8,48,96,192,384,768,1536,3072,6144,12288}`. If each
+complementary plaintext-mask pair consumes one level after rescale, the
+compaction alone consumes **14 sequential levels**, on top of the
+high-resolution Conv's plaintext multiply. Each mask/rotate/add must
+carry matching scale/level; component count remains two only under the
+usual cipher-by-plaintext/rotate/add contract. These are symbolic
+transitions, not executed CKKS evidence or a proven precision budget.
+
+The result's dense channel-major `32x16x16` slot order matches the
+source projection's declared NCHW output. In the retained source `.T`,
+the projection `cnn_conv2d_11`, normal-path `cnn_conv2d_16`, and
+`common_residual_add_18` all use canonical result `T<93>`; the
+`common.residual_add` contract has `shape_check=exact`. This proves a
+*layout/type* join, not ciphertext
+level/scale/precision compatibility of the two residual paths. The
+14-level compaction is too costly to admit without checking the actual
+context-specific post-ReLU capacity and any explicit alignment steps.
+No implicit bootstrap or state repair is allowed. **Stop C2 stride-two
+emission here** pending a separately reviewed lower-depth local packer,
+an approved state schedule, or a general layout planner decision. The
+proof does not complete C2 or authorize `.ckks_ops.B` publication.
+
 | Slice | FHE-owned work | Focused exit evidence |
 | --- | --- | --- |
 | C0: replay/input gate | Add a deterministic input manifest and native read-only gate joining six-PU images, 87/147 events, 19 contexts, source/payload/coefficient hashes, and FHE/DSL validators. Reject the older `.fhe.B` and unsupported config before planning. | Stable hashed census, `-st -src` with six FUNC_ENTRYs/nine calls/nonzero source interleave; wrong hash or missing context rejects without output. |
