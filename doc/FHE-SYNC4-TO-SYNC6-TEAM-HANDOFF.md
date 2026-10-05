@@ -276,12 +276,19 @@ Retain evidence under `artifacts/fhe/sync5-middle-whirl/`.
 
 ### Objective
 
-Keep the ABI, schedule, manifests, and generated C unchanged, replace the mock
-with the admitted ACE ANT provider, and execute the complete encrypted
-ResNet-20/CIFAR-10 path across the required client/server trust boundary.
+First create and certify the provider-independent executable CKKS semantic IR
+described in `doc/FHE-SYNC6-CKKS-IR-CONFORMANCE-GATE.md`. Only after that IR
+passes its mapped-image, state, source, and mock-lowering gates does SYNC-6
+admit an ACE provider. Keep the stable ABI and certified SYNC-5 reference
+artifacts unchanged; then replace the mock with the admitted ACE ANT provider
+and execute the complete encrypted ResNet-20/CIFAR-10 path across the required
+client/server trust boundary.
 
 ```text
-secure_resnet20.c
+FHE-CNN and context-sensitive materialization
+  -> provider-independent executable CKKS WHIRL (.ckks_ops.B)
+  -> final CKKS semantic gate and standard-call lowering
+  -> secure_resnet20.c
   -> Open64 FHE ABI v1 broker
   -> one supervised worker per imported public context
   -> libopen64_fhe_ace_ant
@@ -301,12 +308,26 @@ embedded harness remains useful for bring-up but cannot close SYNC-6.
 
 | Commit | Coding scope | Required tests and evidence |
 | --- | --- | --- |
+| S6-0a-d CKKS semantic IR | Review shared operator/image contracts; build opaque producer, full six-PU CKKS expansion, state verifier, mapped `.ckks_ops.B`/`.T`, and unchanged ABI/mock terminal lowering | Complete high-level-to-CKKS event map, 19 explicit refreshes, level/scale/key/rotation proof, old-reader/malformed tests, source-interleaved reopen, mock equivalence; details in the CKKS IR conformance gate |
 | S6-1 Exact-provider admission | Pin ACE revision, source/patch hash, compiler ABI, options, dependencies, licenses, and prove evaluation-only public-context, keyset, ciphertext import/export plus every frozen SYNC-5 capability | Reproducible build; field-for-field manifest comparison; revision/patch mismatch; missing import/export, operation, rotation, key, or level negatives |
 | S6-2 Broker and supervised worker | Implement the ABI broker and one isolated ACE worker per public context; serialize calls within a context and expose no ACE object across IPC | Multiple-context isolation; launcher authorization; worker identity; no ACE symbols in generated C or broker |
 | S6-3 Client provisioning and transport | Implement versioned public-context, non-secret keyset, plaintext-model, ciphertext input, and ciphertext output envelopes with authenticated session binding | Client/server roundtrip; digest/config/session mismatch; secret-key-class rejection before worker dispatch |
 | S6-4 ACE schedule execution | Map the frozen SYNC-5 descriptors and schedule to ACE add, multiply, rotate, relinearize, rescale, bootstrap, ReLU stages, conv, residual, pool, flatten, linear, and logits operations | Full census equality; 19 bootstrap calls at levels 15x16, 17x1, 18x2; coefficient/range/layout/state checks |
 | S6-5 Failure containment | Translate recoverable errors and fatal ACE assertion/abort/signal/IPC loss through ABI v1 without partial output; poison and reap failed contexts | Input preservation; cursor rollback; poisoned-handle cleanup; child termination/status translation; no silent replay |
 | S6-6 Full client/server certification | Execute pinned ResNet-20 with the secretless server and compare client-decrypted results with certified baselines | Accuracy/error, operation counts, bootstrap distribution, memory, latency, precision, dependency closure, no-secret evidence, and complete artifact family |
+
+Use the existing Open64 ABI mock throughout S6-0 and generated-C development.
+Do not insert a second ACE-shaped mock into that path. At final provider-adapter
+integration, add a focused ACE-call test double only if a specific call-shape,
+ownership, or failure contract requires isolation; it is not a second runtime
+layer or an S6-0 milestone.
+
+The S6-1 exact-pin probe and its fail-closed result are recorded in
+`doc/FHE-SYNC6-ACE-ANT-ADMISSION-AUDIT.md`. Evaluation-only context/key import
+and ciphertext transport are not yet demonstrated. That blocks ACE provider
+admission and S6-2 through S6-6, **not** S6-0 CKKS IR creation. The probe is
+not a full S6-1 build/capability pass. Do not interact with the ACE library
+from the compiler or generated program until S6-0 has certified its IR.
 
 Retain evidence under `artifacts/fhe/sync6-ace-ant-client-server-o0/`.
 
