@@ -107,11 +107,96 @@ static void Check_Fail_Closed()
   assert(bytes.size() == 1 && bytes[0] == 0x7f);
 }
 
+/* Probe C1's actual byte and step guards for the largest grouped Conv shape.
+ * These fictitious operator IDs prove serialization capacity only; no CKKS
+ * legality, asset binding, or executable Conv plan is inferred from this. */
+static void Check_Grouped_Conv_Structural_Budget()
+{
+  const uint32_t masks = 1143;
+  VHO_FHE_CKKS_PLAN_STATE state = {
+    1, 1, 2, 15, 56, 2, 40, 32768, 1, "ckks_slots_v1", 0, 0
+  };
+  VHO_FHE_CKKS_EVENT_PLAN plan;
+  plan.source_static_ordinal = 1;
+  plan.source_final_step_index = 0;
+  uint32_t accumulated = 0;
+  for (uint32_t i = 0; i < masks; ++i) {
+    uint32_t input = 0;
+    if (i != 0) {
+      VHO_FHE_CKKS_PLAN_STEP rotate = {
+        701, 1, 1001,
+        {{VHO_FHE_CKKS_PLAN_SOURCE_VALUE, 37, ""}}, {}, state,
+        {"rotation-key-12345"}, {static_cast<int32_t>(i)}, ""
+      };
+      input = static_cast<uint32_t>(plan.steps.size());
+      plan.steps.push_back(rotate);
+    }
+    VHO_FHE_CKKS_PLAN_STEP encode = {
+      702, 1, 1002, {}, {}, state, {}, {}, std::string(64, 'a')
+    };
+    const uint32_t encoded = static_cast<uint32_t>(plan.steps.size());
+    plan.steps.push_back(encode);
+    VHO_FHE_CKKS_PLAN_OPERAND source = {
+      i == 0 ? VHO_FHE_CKKS_PLAN_SOURCE_VALUE :
+               VHO_FHE_CKKS_PLAN_PRIOR_STEP,
+      i == 0 ? 37 : input, ""
+    };
+    VHO_FHE_CKKS_PLAN_STEP multiply = {
+      703, 1, 1001,
+      {source, {VHO_FHE_CKKS_PLAN_PRIOR_STEP, encoded, ""}},
+      {}, state, {}, {}, ""
+    };
+    plan.steps.push_back(multiply);
+    VHO_FHE_CKKS_PLAN_STEP rescale = {
+      704, 1, 1001,
+      {{VHO_FHE_CKKS_PLAN_PRIOR_STEP,
+        static_cast<uint32_t>(plan.steps.size() - 1), ""}},
+      {}, state, {}, {}, ""
+    };
+    plan.steps.push_back(rescale);
+    const uint32_t term = static_cast<uint32_t>(plan.steps.size() - 1);
+    if (i == 0) {
+      accumulated = term;
+    } else {
+      VHO_FHE_CKKS_PLAN_STEP add = {
+        705, 1, 1001,
+        {{VHO_FHE_CKKS_PLAN_PRIOR_STEP, accumulated, ""},
+         {VHO_FHE_CKKS_PLAN_PRIOR_STEP, term, ""}},
+        {}, state, {}, {}, ""
+      };
+      accumulated = static_cast<uint32_t>(plan.steps.size());
+      plan.steps.push_back(add);
+    }
+  }
+  VHO_FHE_CKKS_PLAN_STEP bias = {
+    702, 1, 1002, {}, {}, state, {}, {}, std::string(64, 'b')
+  };
+  const uint32_t bias_index = static_cast<uint32_t>(plan.steps.size());
+  plan.steps.push_back(bias);
+  VHO_FHE_CKKS_PLAN_STEP final_add = {
+    705, 1, 1001,
+    {{VHO_FHE_CKKS_PLAN_PRIOR_STEP, accumulated, ""},
+     {VHO_FHE_CKKS_PLAN_PRIOR_STEP, bias_index, ""}},
+    {}, state, {}, {}, ""
+  };
+  plan.steps.push_back(final_add);
+  plan.source_final_step_index = static_cast<uint32_t>(plan.steps.size() - 1);
+  plan.group_output_steps.push_back(plan.source_final_step_index);
+  assert(plan.steps.size() == 5 * masks);
+  std::vector<unsigned char> bytes;
+  assert(VHO_FHE_CKKS_Serialize_Event_Plan(plan, &bytes, stderr));
+  assert(bytes.size() < 4 * 1024 * 1024);
+  printf("grouped Conv structural budget: steps=%lu bytes=%lu\n",
+         static_cast<unsigned long>(plan.steps.size()),
+         static_cast<unsigned long>(bytes.size()));
+}
+
 /* Run canonicalization and no-partial-output negatives as one focused lane. */
 int main()
 {
   Check_Deterministic_Encoding();
   Check_Fail_Closed();
+  Check_Grouped_Conv_Structural_Budget();
   puts("FHE CKKS canonical event-plan bytes passed (no WHIRL emitted)");
   return 0;
 }

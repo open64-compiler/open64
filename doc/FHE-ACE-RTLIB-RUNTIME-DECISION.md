@@ -32,6 +32,18 @@ ciphertexts without creating or retaining a secret key. SYNC-6 remains blocked
 until those capabilities are proved against the exact source and build hashes
 or supplied by a separately reviewed patch and immutable pin.
 
+For plain-weight Conv, S6-0c follows the pinned ACE compiler's column-first
+pre-blocking transform: it materializes authenticated, context-bound raw F32
+feature rows outside `.B` and uses each row as a typed direct operand of an
+explicit `ckks.encode` operation. This is not an encoded ACE plaintext or a
+runtime mask-derivation instruction. The S6-0d worker adapter may package
+those bytes into ACE's `RT_DATA_WRITER` message file and use `Pt_from_msg` to
+encode a selected slice at the scheduled scale and level. The Open64 mapped
+IR retains row provenance and each encode, rotation, multiply-plaintext,
+rescale, and accumulation step; ACE's file envelope stays provider-private.
+See `doc/FHE-SYNC6-CONV-MASK-ASSET-OPTIONS.md` for the bounded row rule and
+the shared typed-value API still needed before mapped publication.
+
 ## Private Provider Boundary
 
 The selected server path is:
