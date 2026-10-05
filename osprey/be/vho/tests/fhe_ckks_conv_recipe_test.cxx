@@ -45,21 +45,25 @@ static void Fixture_Bytes(std::vector<float> *weights,
 
 /* Independently compute NCHW/OIHW Conv without rotations, packing masks, or
  * recipe terms. This is the reference for every active output slot. */
-static double Tensor_Oracle(uint32_t oc, uint32_t y, uint32_t x,
+static double Tensor_Oracle(const VHO_FHE_CKKS_CONV_SHAPE &shape,
+                            uint32_t oc, uint32_t y, uint32_t x,
                             const std::vector<float> &weights,
                             const std::vector<float> &bias,
                             const std::vector<float> &input)
 {
   double sum = bias[oc];
-  for (uint32_t ci = 0; ci < 3; ++ci)
+  for (uint32_t ci = 0; ci < shape.input_channels; ++ci)
     for (uint32_t ky = 0; ky < 3; ++ky)
       for (uint32_t kx = 0; kx < 3; ++kx) {
         const int64_t iy = int64_t(y) + ky - 1;
         const int64_t ix = int64_t(x) + kx - 1;
-        if (iy < 0 || ix < 0 || iy >= 32 || ix >= 32)
+        if (iy < 0 || ix < 0 ||
+            iy >= int64_t(shape.height) || ix >= int64_t(shape.width))
           continue;
-        const size_t source = ci * 1024 + iy * 32 + ix;
-        const size_t weight = ((oc * 3 + ci) * 3 + ky) * 3 + kx;
+        const size_t source =
+            ci * shape.height * shape.width + iy * shape.width + ix;
+        const size_t weight =
+            ((oc * shape.input_channels + ci) * 3 + ky) * 3 + kx;
         sum += double(input[source]) * weights[weight];
       }
   return sum;
@@ -107,7 +111,7 @@ static void Check_Stem_Like_Conv()
       for (uint32_t x = 0; x < 32; ++x) {
         const size_t index = oc * 1024 + y * 32 + x;
         assert(fabs(actual[index] - Tensor_Oracle(
-            oc, y, x, weights, bias, input)) < 1e-9);
+            shape, oc, y, x, weights, bias, input)) < 1e-9);
       }
   for (size_t i = 16384; i < actual.size(); ++i)
     assert(actual[i] == 0.0);
@@ -159,21 +163,29 @@ static void Check_Fail_Closed()
   assert(previous.size() == 1 && previous[0] == 77.0);
 }
 
-/* Exercise the identical recipe/oracle on authenticated, extracted folded
- * stem bytes without making model data part of the source repository. */
-static void Check_Captured_Folded_Conv(const char *fixture_path)
+/* Exercise the same recipe/oracle on authenticated folded bytes from three
+ * spatial/channel contexts without putting model data in the repository. */
+static void Check_Captured_Folded_Conv(
+    const char *fixture_path, const char *label, uint32_t input_channels,
+    uint32_t output_channels, uint32_t width)
 {
+  VHO_FHE_CKKS_CONV_SHAPE shape = Stem_Shape();
+  shape.input_channels = input_channels;
+  shape.output_channels = output_channels;
+  shape.height = width;
+  shape.width = width;
   FILE *fixture = fopen(fixture_path, "rb");
   assert(fixture != NULL);
-  std::vector<float> weights(432), bias(16), input;
+  std::vector<float> weights(size_t(output_channels) *
+                             input_channels * 9);
+  std::vector<float> bias(output_channels), input(shape.slot_count, 13.0f);
   assert(fread(&weights[0], sizeof(float), weights.size(), fixture) ==
          weights.size());
   assert(fread(&bias[0], sizeof(float), bias.size(), fixture) == bias.size());
   assert(fgetc(fixture) == EOF);
   assert(fclose(fixture) == 0);
-  std::vector<float> unused_weights, unused_bias;
-  Fixture_Bytes(&unused_weights, &unused_bias, &input);
-  const VHO_FHE_CKKS_CONV_SHAPE shape = Stem_Shape();
+  for (size_t i = 0; i < size_t(input_channels) * width * width; ++i)
+    input[i] = float(int(i % 31) - 15) / 16.0f;
   VHO_FHE_CKKS_CONV_RECIPE recipe;
   assert(VHO_FHE_CKKS_Build_Column_Conv_Recipe(
       shape, &weights[0], weights.size(), &bias[0], bias.size(),
@@ -181,14 +193,17 @@ static void Check_Captured_Folded_Conv(const char *fixture_path)
   std::vector<double> actual;
   assert(VHO_FHE_CKKS_Evaluate_Column_Conv_Clear(
       recipe, input, &actual, stderr));
-  for (uint32_t oc = 0; oc < 16; ++oc)
-    for (uint32_t y = 0; y < 32; ++y)
-      for (uint32_t x = 0; x < 32; ++x)
-        assert(fabs(actual[oc * 1024 + y * 32 + x] - Tensor_Oracle(
-            oc, y, x, weights, bias, input)) < 1e-8);
-  printf("captured folded stem: terms=%zu live=%u "
+  for (uint32_t oc = 0; oc < output_channels; ++oc)
+    for (uint32_t y = 0; y < width; ++y)
+      for (uint32_t x = 0; x < width; ++x)
+        assert(fabs(actual[oc * width * width + y * width + x] -
+                    Tensor_Oracle(shape, oc, y, x, weights, bias, input)) <
+               1e-8);
+  for (size_t i = recipe.active_output_slots; i < actual.size(); ++i)
+    assert(actual[i] == 0.0);
+  printf("captured folded %s: terms=%zu live=%u "
          "signed_rotation_keys=%zu output_slots=%u\n",
-         recipe.terms.size(), recipe.live_term_count,
+         label, recipe.terms.size(), recipe.live_term_count,
          recipe.required_signed_rotations.size(),
          recipe.active_output_slots);
 }
@@ -196,11 +211,16 @@ static void Check_Captured_Folded_Conv(const char *fixture_path)
 /* Keep this focused fixture below native expansion and mapped-image claims. */
 int main(int argc, char **argv)
 {
-  assert(argc == 1 || argc == 2);
+  assert(argc == 1 || argc == 2 || argc == 6);
   Check_Stem_Like_Conv();
   Check_Fail_Closed();
   if (argc == 2)
-    Check_Captured_Folded_Conv(argv[1]);
+    Check_Captured_Folded_Conv(argv[1], "stem", 3, 16, 32);
+  if (argc == 6)
+    Check_Captured_Folded_Conv(argv[1], argv[2],
+                               uint32_t(strtoul(argv[3], NULL, 10)),
+                               uint32_t(strtoul(argv[4], NULL, 10)),
+                               uint32_t(strtoul(argv[5], NULL, 10)));
   puts("FHE CKKS column-first Conv recipe passed (no WHIRL emitted)");
   return 0;
 }

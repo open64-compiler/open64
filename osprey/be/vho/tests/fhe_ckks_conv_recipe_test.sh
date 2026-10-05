@@ -19,6 +19,22 @@ if [[ $# -ge 3 ]]; then
         >"$out_dir/extraction.log" 2>&1
     "$out_dir/fhe_ckks_conv_recipe_test" \
         "$out_dir/stem_folded_oihw_f32.bin" >"$out_dir/run.log" 2>&1
+    python3 "$repo_root/osprey/be/vho/tests/fhe_ckks_conv_payload_fixture.py" \
+        --payload "$2" --replay "$3" --output "$out_dir" \
+        --tensor-prefix call4_cnn_basic_block_conv2_folded_ \
+        --input-channels 32 --output-channels 32 --name call4_conv2 \
+        >>"$out_dir/extraction.log" 2>&1
+    "$out_dir/fhe_ckks_conv_recipe_test" \
+        "$out_dir/call4_conv2_folded_oihw_f32.bin" call4_conv2 32 32 16 \
+        >>"$out_dir/run.log" 2>&1
+    python3 "$repo_root/osprey/be/vho/tests/fhe_ckks_conv_payload_fixture.py" \
+        --payload "$2" --replay "$3" --output "$out_dir" \
+        --tensor-prefix call7_cnn_basic_block_conv2_folded_ \
+        --input-channels 64 --output-channels 64 --name call7_conv2 \
+        >>"$out_dir/extraction.log" 2>&1
+    "$out_dir/fhe_ckks_conv_recipe_test" \
+        "$out_dir/call7_conv2_folded_oihw_f32.bin" call7_conv2 64 64 8 \
+        >>"$out_dir/run.log" 2>&1
 else
     "$out_dir/fhe_ckks_conv_recipe_test" >"$out_dir/run.log" 2>&1
 fi

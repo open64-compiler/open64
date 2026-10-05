@@ -101,12 +101,19 @@ The C2 focused evidence is retained under
 `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-recipe/`:
 `run.log`, `stem_folded_manifest.json`, and the local extracted folded
 float32 fixture. Extraction requires the replay-pinned whole-file
-SafeTensors SHA-256 and exact stem tensor shape/dtype/ranges. No payload
+SafeTensors SHA-256 and exact tensor shape/dtype/ranges. No payload
 bytes are checked into Git. The current recipe admits only batch-one,
 square, 3x3 stride-one same Conv with all input/output channels packed in
 one 32768-slot ciphertext. The captured stride-two projection Convs are
 explicitly outside this first case. C2 remains open until real event-plan
 serialization, bounded full Conv coverage, and materialized IR census.
+The same independent tensor-to-slot oracle now also passes captured
+call4 `32x16x16 -> 32x16x16` folded Conv2 (9,216 live terms, 566 signed
+rotation keys, 8,192 output slots) and call7 `64x8x8 -> 64x8x8` folded
+Conv2 (36,864 live terms, 1,142 keys, 4,096 output slots). Their exact
+folded-byte hashes are retained in separate local manifests beside the
+test log. These are proof of the fixed stride-one recipe over three
+captured sizes, not graph-wide CKKS state or key certification.
 
 ### C2 Stride-Two Mapping Decision
 

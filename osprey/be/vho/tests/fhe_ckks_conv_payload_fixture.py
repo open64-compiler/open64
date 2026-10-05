@@ -41,6 +41,10 @@ def main():
     parser.add_argument("--payload", type=Path, required=True)
     parser.add_argument("--replay", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--tensor-prefix", default="entry_stem_conv_folded_")
+    parser.add_argument("--input-channels", type=int, default=3)
+    parser.add_argument("--output-channels", type=int, default=16)
+    parser.add_argument("--name", default="stem")
     args = parser.parse_args()
     source = args.payload.read_bytes()
     replay = json.loads(args.replay.read_text(encoding="utf-8"))
@@ -58,13 +62,18 @@ def main():
     index = json.loads(source[8:8 + header_size])
     if not isinstance(index, dict):
         raise ValueError("invalid SafeTensors tensor index")
+    if args.input_channels <= 0 or args.output_channels <= 0 or \
+            not args.name.replace("_", "").isalnum():
+        raise ValueError("invalid Conv fixture identity or channels")
     base = 8 + header_size
+    weight_shape = [args.output_channels, args.input_channels, 3, 3]
+    bias_shape = [args.output_channels]
     weights = tensor_bytes(source, index, base,
-                           "entry_stem_conv_folded_weight", [16, 3, 3, 3])
+                           args.tensor_prefix + "weight", weight_shape)
     bias = tensor_bytes(source, index, base,
-                        "entry_stem_conv_folded_bias", [16])
+                        args.tensor_prefix + "bias", bias_shape)
     args.output.mkdir(parents=True, exist_ok=True)
-    fixture = args.output / "stem_folded_oihw_f32.bin"
+    fixture = args.output / f"{args.name}_folded_oihw_f32.bin"
     fixture.write_bytes(weights + bias)
     manifest = {
         "schema": "open64.fhe.sync6.conv-fixture.v1",
@@ -73,10 +82,11 @@ def main():
         "weight_sha256": digest(weights),
         "bias_sha256": digest(bias),
         "fixture_sha256": digest(weights + bias),
-        "weight_shape": [16, 3, 3, 3],
-        "bias_shape": [16],
+        "tensor_prefix": args.tensor_prefix,
+        "weight_shape": weight_shape,
+        "bias_shape": bias_shape,
     }
-    (args.output / "stem_folded_manifest.json").write_text(
+    (args.output / f"{args.name}_folded_manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(fixture)
 
