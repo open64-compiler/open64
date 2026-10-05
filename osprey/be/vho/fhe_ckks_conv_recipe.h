@@ -84,6 +84,14 @@ bool VHO_FHE_CKKS_Build_Column_Conv_Rotation_Mask(
     const VHO_FHE_CKKS_CONV_RECIPE &recipe, int32_t signed_rotation,
     std::vector<double> *mask, FILE *diagnostic);
 
+/* Serialize one ACE-style transformed feature row as active-output-slot F32
+ * bytes. Row order is input-channel/kernel-major; within a row the output
+ * channel and spatial column are contiguous. The caller owns side-file
+ * publication and authentication; this service emits no WHIRL. */
+bool VHO_FHE_CKKS_Build_Column_Conv_F32_Row_Bytes(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe, uint32_t feature_row,
+    std::vector<unsigned char> *bytes, FILE *diagnostic);
+
 /* Simulate the rotate-then-multiply-by-group-mask accumulation plus bias.
  * Compare this independently with the direct tensor and per-term oracles;
  * it remains clear-slot evidence, not CKKS IR or runtime execution. */

@@ -96,6 +96,23 @@ static void Check_Stem_Like_Conv()
   assert(center_mask.size() == shape.slot_count &&
          center_mask[0] == weights[4] && center_mask[16384] == 0);
   assert(corner_mask[0] == 0 && corner_mask[33] == weights[0]);
+  std::vector<unsigned char> corner_row, center_row;
+  assert(VHO_FHE_CKKS_Build_Column_Conv_F32_Row_Bytes(
+      recipe, 0, &corner_row, stderr));
+  assert(VHO_FHE_CKKS_Build_Column_Conv_F32_Row_Bytes(
+      recipe, 4, &center_row, stderr));
+  assert(corner_row.size() == 16384 * 4 &&
+         center_row.size() == 16384 * 4);
+  assert(corner_row[0] == 0x00 && corner_row[1] == 0x00 &&
+         corner_row[2] == 0x00 && corner_row[3] == 0x00);
+  assert(corner_row[33 * 4] == 0x00 &&
+         corner_row[33 * 4 + 1] == 0x00 &&
+         corner_row[33 * 4 + 2] == 0x40 &&
+         corner_row[33 * 4 + 3] == 0xbe);
+  assert(corner_row[(1024 + 33) * 4 + 2] == 0x00 &&
+         corner_row[(1024 + 33) * 4 + 3] == 0x3e);
+  assert(center_row[0] == 0x00 && center_row[1] == 0x00 &&
+         center_row[2] == 0x80 && center_row[3] == 0xbd);
 
   std::set<int32_t> keys;
   uint32_t live = 0;
@@ -173,6 +190,10 @@ static void Check_Fail_Closed()
   assert(!VHO_FHE_CKKS_Build_Column_Conv_Rotation_Mask(
       recipe, std::numeric_limits<int32_t>::max(), &prior_mask, NULL));
   assert(prior_mask.size() == 1 && prior_mask[0] == 77.0);
+  std::vector<unsigned char> prior_f32(1, 77);
+  assert(!VHO_FHE_CKKS_Build_Column_Conv_F32_Row_Bytes(
+      recipe, shape.input_channels * 9, &prior_f32, NULL));
+  assert(prior_f32.size() == 1 && prior_f32[0] == 77);
   ++recipe.terms[0].signed_rotation;
   assert(!VHO_FHE_CKKS_Evaluate_Column_Conv_Clear(
       recipe, input, &previous, NULL));

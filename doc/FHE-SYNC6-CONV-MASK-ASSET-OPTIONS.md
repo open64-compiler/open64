@@ -1,96 +1,97 @@
-# S6-0c Conv Mask Asset Choice
+# S6-0c Conv Plaintext Asset Decision
 
-Status: design comparison only. Neither option is approved for mask
-materialization or `.ckks_ops.B` publication. The authenticated budget and
-its 13-definition/21-context managed-identity joins are recorded in
-`FHE-SYNC6-S6-0C-DETAILED-EXECUTION-PLAN.md`. Stride-two Conv, the v2 ReLU
-evaluator identity, and C4 scale/level alignment are separate gates.
+Status: ACE-aligned raw F32 feature rows selected for C2. This selects the
+plaintext asset representation, not an executable CKKS Conv schedule or a
+provider-specific file format inside WHIRL. The four stride-two contexts,
+value-specific state transfer, and full `.ckks_ops.B` remain open.
 
-## Shared Semantic Contract
+## Source Basis
 
-For each of the 17 currently supported stride-one Conv contexts, the
-existing folded F32 OIHW weight is bound by owner PU, source Conv node/value,
-callsite, and folded-weight TCON. A mask group is keyed by an exact signed
-rotation and contains the canonical 32,768-slot, little-endian binary64
-output-slot vector. For every live OIHW term in the group, its F32 value is
-converted exactly to F8 and placed at valid output `(oc,y,x)` positions;
-all other slots are positive zero. Overlapping nonzero assignments fail.
-The canonical SHA-256 of these bytes is the asset identity, not a path or
-context display name. Both options must preserve explicit `ckks.encode`,
-its input/result types, scale/level/state, and subsequent rotate, multiply,
-rescale, and add operations. Neither option may perform Conv or CKKS state
-repair inside encode.
+The pinned ANT-ACE source is `fb76131171b9f82aa6387f84dd73684fba5277e8`.
+`Get_im2col_kernel` in `nn-addon/vector/src/vector_utils.cxx` constructs a
+matrix with input-channel/kernel feature rows and output-spatial columns.
+The outer validity traversal visits output columns before kernel features.
+Each cell is a folded F32 weight or positive zero after spatial and stride
+masking. `tensor2vector_handler.h` stores the transformed matrix as an array
+constant and expands the bias. SIHE inserts an explicit `encode` for the
+plain vector. The pinned CKKS C generator writes raw `DE_MSG_F32` slices to
+an external data file and emits indexed `Pt_from_msg` calls. ANT `pt_mgr.c`
+reads a slice and calls `Encode_float` with the requested scale and level.
+The runtime does not regenerate Conv geometry or plaintext masks.
 
-The current model yields 10,386 byte-distinct masks: 2,722,627,584 dense
-F8 bytes (2.536 GiB) before plaintext encoding. The largest single Conv
-uses 1,143 masks. Its 5,715-step structural serializer probe is 716,715
-bytes, below C1's 65,535-step/4 MiB per-event guards, but is **not** a
-legal CKKS event. There are four uncovered stride-two contexts.
+The bounded Open64 O0 rule follows the **pre-blocking column-first matrix**:
+for feature row `r` in `[0, C_in * 9)`, output channel `oc`, and output
+position `(y,x)`, let `f = (r + oc * 9) mod (C_in * 9)`. Its entry is the
+folded `OIHW[oc, f/9, (f%9)/3, f%3]` F32 value when that spatial source
+position is valid, and positive F32 zero otherwise. Entries are contiguous
+by `oc,y,x`, encoded as little-endian IEEE binary32. Row length is
+`C_out * H * W`, not an automatically padded 32,768-slot F8 vector. The
+separate encrypted input packing, row-indexed rotations, accumulation,
+bias, and scale/level effects must still be proved before C2 expansion.
+This is not the ACE fast blocking/cost-model schedule and does not silently
+admit it as a MetaKernel optimization.
 
-| Question | A. Chunked external dense masks | B. Typed derived-mask input to `ckks.encode` |
-| --- | --- | --- |
-| Persisted bytes | Exact 2.536 GiB F8 for this model, plus bounded index/hash metadata. No cross-context byte dedup was found. | Keep authenticated folded F32 payload and compact per-group derivation records; byte size depends on the reviewed record format and is not yet claimed. |
-| Materialization | Stream masks in deterministic identity/rotation order, at most 64 masks (16 MiB) per chunk. A single chunked side file plus index can use the existing auxiliary-artifact transaction; `.B` publishes last. | Produce no dense mask side file. A typed, pure derived-mask expression takes the folded-weight value and an immutable geometry/group contract, yields an F8 mask tensor, and is the direct input of explicit `ckks.encode`. |
-| Authentication | Verify each of 10,386 256-KiB slices by SHA-256, its offset/length, and the complete index/file digest before use. Raw 32-byte digests alone total 332,352 bytes. | Authenticate folded source bytes, reconstruct the exact F8 mask by the fixed rule, and verify its stored SHA-256 before encoding. Independent producer/provider reconstruction tests must agree for every captured shape and malformed case. |
-| Existing substrate | `DSL_IR_EXTERNAL_TENSOR_REFERENCE` carries 64-bit offset/length; the checkpoint publishes registered auxiliary artifacts before `.B`. These are necessary, not proof that every reader/encoder safely streams multi-gigabyte files. | Existing tensor TY remains canonical. Current `ckks.encode.v1` expects a plain tensor input; a derived-mask producer requires a separately reviewed logical operator or typed record. No existing TCON storage kind is redefined. |
-| Measurements still required | Disk write/read throughput, peak memory, full-file and per-slice hash time, provider plaintext-encode time, encoded-plaintext size/cache policy, checkpoint failure cleanup, and old-reader behavior on 10,386 references. | Derivation CPU/peak memory, provider encode time, encoded-plaintext cache policy, exact byte-for-byte provider reconstruction, plan/record count and binary size, and old-reader fail-closed behavior. The seven-second host clear rebuild/hash probe is not an encode benchmark. |
-| Principal risk | The 2.536 GiB asset cost is intrinsic, even with 16-MiB streaming; 10,386 TCON/URI references may also enlarge mapped metadata. | A provider might silently interpret a compact recipe as Conv, change F32-to-F8/zero-fill semantics, or hide state repair. The logical producer and its verifier must prevent that. |
+## Open64 Identity And Publication
 
-**Recommendation for review:** pursue B as the likely production contract and
-retain A as a bounded, measurable reference/fallback. B is admissible only
-if the compiler and an independent provider reconstruction produce identical
-authenticated F8 masks, without requiring a provider-specific instruction
-in VHO. An executable plan must still list every mask encode, rotation,
-multiply, rescale, and addition, with exact value-specific CKKS states.
-The compact record may describe plaintext derivation; it may not replace
-the Conv circuit or become an implicit runtime kernel.
+One Open64 Conv source definition can be reused by callers with different
+folded weights. A row asset is therefore identified by the exact source
+Conv/value, owner PU, context PU identity, root/callsite identity, folded
+weight value/TCON and digest, feature-row ordinal, shape/layout, and row
+digest. A shared WN attribute or a PU-local ST index is not sufficient.
+Equal complete bytes may be interned only after exact context/formal
+binding; a digest alone is not semantic equality.
 
-The minimum prospective addition for B is **one typed, pure derived-mask
-logical result or equivalent append-only typed record** connecting a
-folded-weight value to geometry, signed rotation, canonical F8 mask digest,
-and result tensor TY. The choice of operator versus record, stable name,
-physical row, version, reader/printer contract, and whether it can reuse an
-existing generic tensor primitive belong to main/common review. No enum,
-mapped-image layout, TCON kind, or public ABI v1 is changed by this note.
-Until that review, older readers must not be asked to interpret new mask
-semantics: a future producer must either use only their understood dense
-external-data form or make them fail closed on the new logical contract.
+S6-0c will publish authenticated raw F32 side-file rows and a bounded index
+as checkpoint auxiliary artifacts, with `.ckks_ops.B` last. The mapped IR
+must contain an owned, typed rank-1 F32 external tensor value as each
+`ckks.encode` direct operand, plus the row's source/context provenance and
+checksum. Encoding, rotation, multiply-plaintext, rescale, accumulation,
+and bias remain distinct executable CKKS steps with concrete value states.
+No row bytes are embedded in `.B`, and no runtime-only geometry recipe may
+stand in for `ckks.encode`. The S6-0d ACE adapter may repackage the
+provider-independent side file into ACE's `RT_DATA_WRITER` envelope; S6-0c
+must not link ACE or claim runtime encoding performance.
 
-### Shared-PU Identity Decision
+The current generic external-tensor materialization transaction requires
+the source and replacement to have the same TY. A folded weight is rank-4
+F32; its transformed row is rank-1 F32. `DSL_CKKS_EXPANSION_OPERAND` can
+refer only to an existing value or a prior CKKS step. Main/common therefore
+must review an atomic, owner-safe typed external-constant creation/binding
+contract before row values can enter mapped WHIRL. FHE code will not create
+WN, ST, TY, TCON, or image rows directly to bridge this gap.
 
-One physical Conv WN/PU body can serve multiple callsites with different
-folded-weight actuals. The reconstructed mask SHA-256 is then **context
-specific**, even when the geometry and signed rotation are identical. It
-must not be stored as one static opcode attribute on that shared WN.
-There are two admissible routes for a later exact contract:
+The requested generic transaction takes the active PU, a canonical result
+TY, side-file/TCON/range/checksum facts, a source external value, a pure
+transformation/provenance identity, a deterministic insertion point, and
+the owning context. It preflights the source owner, result shape/dtype/byte
+length, side-file bounds and checksum syntax, source-to-result relationship,
+name uniqueness, and every requested creation before mutation. It returns
+stable value IDs usable as `ckks.encode` operands; it does not rewrite a
+caller actual or reinterpret the source weight's TY. Failure leaves the
+physical tree, managed images, and side-file publication unchanged. The
+main/common review must settle the exact API and mapped provenance carrier;
+this document does not allocate an opcode, section, or TY encoding.
 
-1. Prove deterministic whole-PU specialization and interning by the complete
-   derived-mask payload bytes, so each specialized body has one valid mask
-   digest per producer. This must preserve source-definition identity and
-   the projected six-PU call ABI while making every clone/actual rewrite
-   reviewable. A hash alone cannot define variant equality.
-2. Keep reusable bodies and add a typed context-keyed mask-asset association.
-   Its exact identity must include owner PU, source value, context PU
-   identity, callsite, signed rotation, source folded-weight TCON, and
-   source/mask digests. Lookup must fail closed on missing, duplicate, or
-   cross-owner rows; an entry-owned root uses its explicit root context.
+## Comparison And Acceptance
 
-For either route, a pure logical mask producer, if accepted, returns a
-rank-1 F8 tensor of exactly 32,768 slots as the **direct** `ckks.encode`
-operand. Encode does not inherit Conv, derivation, or state-repair semantics.
-The contract tests must cover exact F32-to-F8 conversion, positive-zero
-fill, source slice/checksum and mask-digest agreement, two callers with
-different folded weights, owner/callsite mismatch, and old-reader
-fail-closed behavior. This note chooses neither route and authorizes no
-binary image or shared opcode change.
+The previous 10,386 signed-rotation-group masks and 2.536 GiB F8 budget
+remain a **diagnostic alternative**, not the selected asset format. The
+grouped clear-slot oracle is useful to cross-check tensor results, but it
+does not model ACE's feature-row file layout. The selected F32 row count,
+exact byte budget, and digest census must be recomputed from the 17
+replay-authenticated stride-one contexts; four stride-two contexts remain
+excluded. No source-model artifact or large generated side file belongs in
+Git.
 
-Before either option is selected, run a provider-independent semantic
-oracle for the 17 stride-one contexts and benchmark representative 162-,
-279-, 567-, and 1,143-mask contexts. The ACE-shaped mock can certify the
-adapter boundary and reconstructed bytes, but **cannot measure real CKKS
-encoding cost**. Measure disk bytes, hash time, peak RSS, and failure cleanup
-with the selected storage implementation; defer actual encode time and
-encoded-plaintext size to an identified provider encoder, reporting them
-as unknown until then. The four stride-two contexts require their own
-reviewed layout/state decision; these measurements cannot be extrapolated
-to them.
+Focused certification must compare the ACE-style row bytes against an
+independent column-first oracle for nonuniform folded weights, padding,
+row permutation, positive-zero fill, and all supported captured shapes.
+Reject changed source/payload hashes, duplicate or missing contexts,
+invalid feature rows, wrong TY/shape, nonfinite weight, row-range/digest
+mismatch, and any failed auxiliary publication without a final or `.tmp`
+`.ckks_ops.B`. Benchmark actual ACE encoding separately; a clear-byte
+rebuild is not an encode benchmark.
+
+The compact derived-mask proposal is deferred. It would add a new logical
+producer or typed association and is not how the pinned ACE path supplies
+plain Conv weights. Do not introduce that contract as an implicit fallback.

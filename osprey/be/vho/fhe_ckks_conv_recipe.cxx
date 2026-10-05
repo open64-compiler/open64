@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cstring>
 #include <limits>
 #include <set>
 
@@ -301,6 +302,47 @@ bool VHO_FHE_CKKS_Build_Column_Conv_Rotation_Mask(
   if (mask == NULL || !Valid_Recipe(recipe) ||
       !Build_Rotation_Mask(recipe, signed_rotation, mask))
     return Report(diagnostic, "rotation mask is absent or ambiguous");
+  return true;
+}
+
+/* Match ACE's output-column-first weight-row permutation while keeping raw
+ * F32 bytes independent of host endianness and provider file envelopes. */
+bool VHO_FHE_CKKS_Build_Column_Conv_F32_Row_Bytes(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe, uint32_t feature_row,
+    std::vector<unsigned char> *bytes, FILE *diagnostic)
+{
+  const VHO_FHE_CKKS_CONV_SHAPE &shape = recipe.shape;
+  if (bytes == NULL || sizeof(float) != 4 ||
+      !std::numeric_limits<float>::is_iec559 || !Valid_Recipe(recipe) ||
+      feature_row >= shape.input_channels * 9)
+    return Report(diagnostic, "F32 feature row or recipe is invalid");
+  const uint32_t plane = shape.height * shape.width;
+  std::vector<unsigned char> result(recipe.active_output_slots * 4, 0);
+  for (uint32_t oc = 0; oc < shape.output_channels; ++oc) {
+    const uint32_t feature =
+        (feature_row + oc * 9) % (shape.input_channels * 9);
+    const uint32_t ci = feature / 9;
+    const uint32_t ky = (feature % 9) / 3;
+    const uint32_t kx = feature % 3;
+    const float weight = recipe.terms[Term_Index(shape, oc, ci, ky, kx)]
+                             .folded_weight;
+    if (weight == 0)
+      continue;
+    uint32_t bits;
+    memcpy(&bits, &weight, sizeof(bits));
+    for (uint32_t y = 0; y < shape.height; ++y)
+      for (uint32_t x = 0; x < shape.width; ++x) {
+        if (!Valid_Output_Position(y, x, ky, kx,
+                                   shape.height, shape.width))
+          continue;
+        const size_t offset =
+            (size_t(oc) * plane + y * shape.width + x) * 4;
+        for (unsigned byte = 0; byte < 4; ++byte)
+          result[offset + byte] =
+              static_cast<unsigned char>((bits >> (8 * byte)) & 0xff);
+      }
+  }
+  bytes->swap(result);
   return true;
 }
 

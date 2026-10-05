@@ -51,7 +51,7 @@ def tensor(source, index, base, name, shape, references):
 
 
 def mask_hashes(weights, shape, height, slot_count):
-    """Hash exact little-endian F8 masks using the reviewed signed rotations."""
+    """Hash alternative signed-rotation groups for the clear-slot oracle."""
     output_channels, input_channels, _, _ = shape
     plane = height * height
     groups = defaultdict(list)
@@ -89,6 +89,36 @@ def mask_hashes(weights, shape, height, slot_count):
                     struct.pack_into("<d", mask, offset, weight)
         digests.append(sha256(mask))
     return live, len(rotations), digests, sorted(rotations)
+
+
+def ace_row_hashes(weights, shape, height):
+    """Hash ACE's column-first transformed F32 feature rows."""
+    output_channels, input_channels, _, _ = shape
+    plane = height * height
+    values = [value for (value,) in struct.iter_unpack("<f", weights)]
+    if any(not math.isfinite(value) for value in values):
+        raise ValueError("nonfinite folded weight")
+    digests = []
+    for row in range(input_channels * 9):
+        data = bytearray(output_channels * plane * 4)
+        for oc in range(output_channels):
+            feature = (row + oc * 9) % (input_channels * 9)
+            ky, kx = divmod(feature % 9, 3)
+            weight = values[oc * input_channels * 9 + feature]
+            if weight == 0:
+                continue
+            for y in range(height):
+                iy = y + ky - 1
+                if not 0 <= iy < height:
+                    continue
+                for x in range(height):
+                    ix = x + kx - 1
+                    if 0 <= ix < height:
+                        struct.pack_into("<f", data,
+                                         (oc * plane + y * height + x) * 4,
+                                         weight)
+        digests.append(sha256(data))
+    return digests
 
 
 def main():
@@ -161,6 +191,7 @@ def main():
 
     contexts = []
     mask_digests = set()
+    ace_row_digests = set()
     all_rotations = set()
     seen = set()
     for fold in folds:
@@ -209,13 +240,20 @@ def main():
         if supported:
             live, keys, digests, rotations = mask_hashes(
                 weight, weight_shape, input_shape[2], 32768)
+            feature_rows = ace_row_hashes(weight, weight_shape, input_shape[2])
             if keys != len(digests) - 1:
                 raise ValueError("zero-rotation mask or key census changed")
             row.update(live_terms=live, masks=len(digests),
                        signed_rotation_keys=keys,
                        dense_f8_bytes=len(digests) * 32768 * 8,
+                       ace_feature_rows=len(feature_rows),
+                       ace_f32_row_length=output_shape[1] *
+                                          output_shape[2] * output_shape[3],
+                       ace_dense_f32_bytes=len(feature_rows) * output_shape[1] *
+                                           output_shape[2] * output_shape[3] * 4,
                        candidate_steps=5 * len(digests))
             mask_digests.update(digests)
+            ace_row_digests.update(feature_rows)
             all_rotations.update(rotations)
         contexts.append(row)
     supported = [row for row in contexts if row["bounded_stride_one_recipe"]]
@@ -227,7 +265,7 @@ def main():
     by_shape = Counter(tuple(row["weight_shape"] + row["input_shape"][2:])
                        for row in supported)
     report = {
-        "schema": "open64.fhe.sync6.conv-mask-budget.v1",
+        "schema": "open64.fhe.sync6.conv-plaintext-budget.v2",
         "status": "read_only_no_mask_asset_or_whirl_emission",
         "source_trace_sha256": sha256(trace_bytes),
         "folded_payload_sha256": sha256(source),
@@ -236,11 +274,18 @@ def main():
         "bounded_stride_one_contexts": len(supported),
         "excluded_stride_two_contexts": len(excluded),
         "slot_count": 32768,
-        "dense_mask_format": "little_endian_ieee_binary64_32768_slots",
-        "mask_count": sum(row["masks"] for row in supported),
-        "distinct_dense_mask_sha256_count": len(mask_digests),
-        "distinct_dense_f8_bytes": len(mask_digests) * 32768 * 8,
-        "total_dense_f8_bytes_without_dedup": sum(
+        "selected_asset_format": "ace_column_first_raw_f32_feature_rows",
+        "ace_feature_row_count": sum(row["ace_feature_rows"]
+                                     for row in supported),
+        "distinct_ace_feature_row_sha256_count": len(ace_row_digests),
+        "ace_dense_f32_bytes_without_dedup": sum(
+            row["ace_dense_f32_bytes"] for row in supported),
+        "diagnostic_grouped_mask_format":
+            "little_endian_ieee_binary64_32768_slots",
+        "diagnostic_grouped_mask_count": sum(row["masks"]
+                                             for row in supported),
+        "distinct_grouped_mask_sha256_count": len(mask_digests),
+        "grouped_dense_f8_bytes_without_dedup": sum(
             row["dense_f8_bytes"] for row in supported),
         "distinct_global_signed_rotation_keys": len(all_rotations),
         "candidate_execution_weighted_steps": sum(
@@ -265,6 +310,6 @@ def main():
 
 
 if __name__ == "__main__":
-    if sys.byteorder != "little" or struct.calcsize("d") != 8:
-        raise SystemExit("canonical F8 probe requires little-endian binary64")
+    if sys.byteorder != "little" or struct.calcsize("f") != 4:
+        raise SystemExit("ACE-style F32 probe requires little-endian binary32")
     main()

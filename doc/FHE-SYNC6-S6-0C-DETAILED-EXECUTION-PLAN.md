@@ -121,24 +121,16 @@ It rejects overlapping coefficients at the same output slot; the
 independent grouped rotate/mask/add clear oracle matches the tensor
 oracle for all three captured shapes. The stem has 162 masks from 432
 live terms; call4 has 567 from 9,216; call7 has 1,143 from 36,864.
-This grouping is necessary for the largest Conv: one multiply plus one
-binary add per OIHW term would already need at least 73,727 steps,
-exceeding the current 65,535-step event-plan limit before rotations and
-repairs. A *candidate* grouped DAG has one encode/multiply/rescale per
-mask, one rotation per nonzero signed offset, a balanced add reduction,
-and a separately encoded bias add. Its call7 count is about 5,715
-primitive steps, before any further alignment operations; that is only
-a planning estimate, not a serialized event or bound CKKS state.
-The 1,143 dense call7 masks would occupy about 143 MiB as F4 or 286 MiB
-as F8 at 32,768 slots if all were materialized simultaneously. The
-current API holds only one mask at a time and emits no tensor side file.
-Exact canonical mask bytes, external asset hashes, encoded-plaintext
-state, rescale alignment, key availability, plan-byte budget, and
-runtime/storage strategy remain required C2/C4 review gates.
+This remains an independent numerical oracle, not the selected external
+asset layout. The selected ACE-aligned path serializes one transformed
+feature row at a time as little-endian F32, in output-channel/spatial-column
+order. The focused C++ test checks exact row permutation, positive-zero
+padding, and byte encoding. Neither representation has emitted WHIRL.
 
-#### Full-Model Grouped-Mask Budget And Stop Decision
+#### Full-Model ACE-Style Row Budget And Stop Decision
 
-The read-only `fhe_ckks_conv_mask_budget.py` joins each BN-fold provenance
+The read-only `fhe_ckks_conv_mask_budget.py` (report schema
+`open64.fhe.sync6.conv-plaintext-budget.v2`) joins each BN-fold provenance
 row to its Conv disposition, source/result tensor descriptors, and runtime
 input `source_tcon` role. It authenticates the retained `.T` and folded
 SafeTensors whole-file hashes against the source replay, then verifies each
@@ -149,55 +141,44 @@ There are 13 physical Conv definitions and 21 folded call contexts; the
 bounded stride-one 3x3 recipe covers 17, while four stride-two contexts
 remain excluded. No mask side file or WHIRL is produced by this probe.
 
-| Folded Conv shape, input HxW | Contexts | Masks/context | Total masks | Candidate steps |
+| Folded Conv shape, input HxW | Contexts | F32 rows/context | Total rows | Raw F32 bytes |
 | --- | ---: | ---: | ---: | ---: |
-| `16x3x3x3`, `32x32` | 1 | 162 | 162 | 810 |
-| `16x16x3x3`, `32x32` | 6 | 279 | 1,674 | 8,370 |
-| `32x32x3x3`, `16x16` | 5 | 567 | 2,835 | 14,175 |
-| `64x64x3x3`, `8x8` | 5 | 1,143 | 5,715 | 28,575 |
-| **Supported stride-one total** | **17** | | **10,386** | **51,930** |
+| `16x3x3x3`, `32x32` | 1 | 27 | 27 | 1,769,472 |
+| `16x16x3x3`, `32x32` | 6 | 144 | 864 | 56,623,104 |
+| `32x32x3x3`, `16x16` | 5 | 288 | 1,440 | 47,185,920 |
+| `64x64x3x3`, `8x8` | 5 | 576 | 2,880 | 47,185,920 |
+| **Supported stride-one total** | **17** | | **5,211** | **152,764,416** |
 
-The probe reconstructed and SHA-256-hashed every canonical little-endian
-binary64, 32,768-slot mask. All **10,386 masks are byte-distinct** for this
-folded model, so dense F8 storage is **2,722,627,584 bytes (2.536 GiB)**;
-F4 would still be 1.268 GiB before encoding but is not the reviewed
-canonical F8 representation. The global signed-rotation-offset union is
-1,850, not a certified provider key inventory. The 51,930 steps above are
-execution-weighted candidate rotate/encode/multiply/rescale/add counts,
-not a materialized DAG, and do not include legality-driven alignment.
+Rows are exactly `C_in * 9`, each of length `C_out * H * W`; the selected
+raw F32 total is about 145.69 MiB before an index, provider encoding, or
+alignment. All 5,211 rows are byte-distinct in this authenticated capture.
+The budget probe reconstructs and hashes every row from the
+replay-authenticated folded bytes. The former signed-rotation-group
+alternative has 10,386 masks and would occupy 1.268 GiB as F32 or
+2.536 GiB as F8 at 32,768 slots. Its 5,715-step C1 serializer probe was
+only a capacity test with placeholder operators/states and is **not** the
+ACE-row execution schedule. No legal per-row rotation, accumulation,
+level, scale, key, or encoded-plaintext census has been certified yet.
 
-The largest context's structural C1 serializer probe contains 5,715 steps
-and yields 716,715 canonical bytes, below the **per-event** 65,535-step
-and 4,194,304-byte limits. It uses fictitious operator IDs and placeholder
-state/assets solely to exercise the real byte guard; no actual Conv event
-has been serialized or state-verified. The read-only clear mask rebuild and
-hash pass takes about seven seconds on this host, which is **not** CKKS
-plaintext encoding time. No ACE-shaped or other provider encode benchmark
-has been run, so encoding time remains unknown.
-
-**Stop dense materialization.** Do not intern 10,386 dense tensor TCONs,
-copy them into `.B`, or publish a multi-gigabyte side file as a default.
-Review an explicit compact/lazy mask asset contract first: bind each group
-to the authenticated folded-weight TCON, owner/source/context identity,
-signed rotation, exact output-slot placement and zero-fill rule, F32-to-F8
-conversion, 32,768-slot layout, canonical mask SHA-256, and required CKKS
-encode scale/state. A provider must reconstruct the identical authenticated
-F8 bytes before encoding, with the `ckks.encode` operation and its result
-state still explicit in WHIRL. The stored recipe must not become a hidden
-Conv or state-repair operation. Compare this with bounded chunked external
-dense assets and, separately, a reviewed alternative metakernel/layout
-algorithm. Only a measured provider encoding benchmark, asset format,
-normalization/rescale schedule, and per-context C1 plan can reopen C2
-materialization. The four stride-two contexts, C3 evaluator identity, and
-C4 state alignment remain independent blockers.
+**Proceed with external F32 rows, not lazy runtime derivation.** Keep the
+raw slices and bounded index outside `.B`, authenticate each row and whole
+file, and publish them transactionally before `.ckks_ops.B`. The mapped IR
+must bind each rank-1 F32 external value to its exact source Conv/context
+and make it the direct operand of explicit `ckks.encode`. The current
+same-TY materialization API cannot transform a rank-4 folded weight into
+rank-1 row values; request an atomic typed external-constant service from
+main/common before mapped publication. The ACE worker's `RT_DATA_WRITER`
+envelope and `Pt_from_msg` encoding are S6-0d adapter concerns, not a
+reason to link ACE in this provider-independent stage. The four stride-two
+contexts, C3 evaluator identity, and C4 state alignment remain separate.
 
 Retained evidence:
-`/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-recipe/budget/full-model-mask-budget.json`
+`/private/tmp/open64-pr166-ace-aligned/conv-budget/full-model-mask-budget.json`
 and `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/plan-bytes/run.log`.
 The budget test repeats the full analysis byte-for-byte and rejects a
 changed folded payload without publishing a report.
-The bounded dense-versus-derived asset comparison and its pending shared
-contract decision are in `FHE-SYNC6-CONV-MASK-ASSET-OPTIONS.md`.
+The selected F32 row contract and exact shared API gap are in
+`FHE-SYNC6-CONV-MASK-ASSET-OPTIONS.md`.
 
 ### C2 Stride-Two Mapping Decision
 
@@ -307,7 +288,7 @@ proof does not complete C2 or authorize `.ckks_ops.B` publication.
 | --- | --- | --- |
 | C0: replay/input gate | Add a deterministic input manifest and native read-only gate joining six-PU images, 87/147 events, 19 contexts, source/payload/coefficient hashes, and FHE/DSL validators. Reject the older `.fhe.B` and unsupported config before planning. | Stable hashed census, `-st -src` with six FUNC_ENTRYs/nine calls/nonzero source interleave; wrong hash or missing context rejects without output. |
 | C1: canonical plan serializer | Define a bounded structured per-event CKKS step plan and versioned byte encoding for operation/operand/group-output/TY/layout/state/key/rotation/B-role facts. Validate before encoding; opaque producer-supplied bytes alone are not a legal plan. | Equal semantics encode identically despite allocation/name order; changed non-ReLU operation/state/key/rotation changes bytes. Missing field, bad operand, duplicate event, or truncated encoding rejects. Retain decoded plan and hashes. |
-| C2: non-ReLU recipes | First certify one fixed, deterministic ACE-style column-first Conv correctness recipe with explicit NCHW/OIHW domain limits, packing, signed rotations, plaintext masks/weights, accumulation, and bias. Use verified folded bytes and a clear tensor-to-slot oracle. This provisional recipe is neither the selected Fhelipe O0 baseline nor MetaKernel/SYNC-7 optimization. Only then expand to the 13 Conv definitions/21 contexts and residual/pool/flatten/linear if the recipe remains bounded. Unsupported cases fail closed; do not silently substitute im2col. | One representative nontrivial Conv and an unsupported-case negative first; then per-operator oracles, measured materialized-IR rotation/key/state census, and exact external payload joins. Stop for review if graph-wide layout assignment/conversion, hidden state repair, or a growing special-case matrix appears. |
+| C2: non-ReLU recipes | Use the selected ACE-aligned column-first, raw-F32 transformed feature rows as external plain operands of explicit `ckks.encode`. Join every row to verified folded bytes and exact source/call context; retain the independent signed-rotation clear oracle. Prove row-indexed rotations, accumulation, bias, and state before expanding the 13 Conv definitions/21 contexts. Do not silently substitute input im2col, fast blocking, or runtime mask derivation. Then cover residual/pool/flatten/linear. Unsupported cases fail closed. | Exact F32 bytes, row order, per-context digests, and tamper negatives first; main-owned typed external-value binding next; then per-operator oracles and measured materialized-IR rotation/key/state census. Stop for graph-wide layout changes or hidden state repair. |
 | C3: ReLU recipe | In each of 19 contexts generate `ckks.bootstrap` with `PRE_RELU_REFRESH` and target 15/17/18, actual B materialization/encode/normalization, approved ordered degree-7/15/13 Chebyshev/Clenshaw stages, and reconstruction. Bootstrap does not compute ReLU. | 19 refreshes with targets 15x16/17x1/18x2, stage depth 3+4+4=11, coefficient bytes/order/hash, and independent clear polynomial oracle. Wrong B/reason/target/stage/context rejects. |
 | C4: state/requirement propagation | Transfer exact descriptor/config, cipher/plain class, TY/layout/slots, level/scale/components/precision, pending actions, key class and signed rotation through every proposed result. Insert explicit alignment/rescale/relin/encode steps when the reviewed recipe requires them. Recompute depth/keys/rotations from the DAG. | Unary/binary and cross-operator positives; missing key, wrong rotation, depleted level, low precision, mismatched state/TY/slot, forward reference, or unresolved action rejects before mutation. Retain operation/key/rotation/depth report. |
 | C5: whole-PU policy | Group byte-identical complete PU plans, register with `DSL_PU_Transaction_Register_Policy`, map variants to source PU/value/static ordinal, add B formals, route nine calls and bind 18 called B actuals plus one root B TCON. Use owner-qualified clone-value results. Measure variant count after C2-C4. | Equal contexts reuse, changed non-ReLU plan splits, two ReLUs keep two B formals, and 129 existing call-ABI roles remain correct. Missing actual, wrong owner/TY, incomplete signature or duplicate route rejects before apply. Retain variant/call/origin report. |
@@ -328,14 +309,15 @@ WN/ST/TY or mapped rows to bridge a missing API.
 
 1. After C1, review canonical encoding and equality exclusions,
    particularly per-caller B bytes versus typed B role.
-2. C2 uses a provisional fixed ACE-style column-first Conv recipe for
-   correctness only. Its first review is one nontrivial Conv plus a negative;
-   it does not decide the unresolved Fhelipe O0 baseline proposal or admit
-   MetaKernel O2. If the fixed recipe needs graph-wide layout decisions,
+2. C2 selects ACE-style external F32 transformed rows and explicit
+   `ckks.encode` for the O0 Conv plaintext path. The independent grouped
+   mask oracle remains a correctness cross-check, not the asset format.
+   Review the rank-4 source to rank-1 row binding with main/common before
+   mapped IR publication. This does not admit ACE fast blocking or
+   MetaKernel O2. If the row-indexed recipe needs graph-wide layout work,
    unexpected state repair, or proliferating cases, stop and quantify the
-   gap rather than adding workarounds. After C2-C4, review the bounded Conv
-   recipe, exact ReLU DAG,
-   numerical oracle, and depth/key/rotation census before mutation.
+   gap. After C2-C4, review the complete Conv/ReLU DAG and depth/key/rotation
+   census before mutation.
 3. After C5, review measured variant signatures, B routes, source-to-clone
    identities and complete call ABI.
 4. After C7-C8, inspect retained separate-process `.T`, all negative
