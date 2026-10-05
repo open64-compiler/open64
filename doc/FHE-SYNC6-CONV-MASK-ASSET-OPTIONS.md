@@ -56,6 +56,34 @@ Until that review, older readers must not be asked to interpret new mask
 semantics: a future producer must either use only their understood dense
 external-data form or make them fail closed on the new logical contract.
 
+### Shared-PU Identity Decision
+
+One physical Conv WN/PU body can serve multiple callsites with different
+folded-weight actuals. The reconstructed mask SHA-256 is then **context
+specific**, even when the geometry and signed rotation are identical. It
+must not be stored as one static opcode attribute on that shared WN.
+There are two admissible routes for a later exact contract:
+
+1. Prove deterministic whole-PU specialization and interning by the complete
+   derived-mask payload bytes, so each specialized body has one valid mask
+   digest per producer. This must preserve source-definition identity and
+   the projected six-PU call ABI while making every clone/actual rewrite
+   reviewable. A hash alone cannot define variant equality.
+2. Keep reusable bodies and add a typed context-keyed mask-asset association.
+   Its exact identity must include owner PU, source value, context PU
+   identity, callsite, signed rotation, source folded-weight TCON, and
+   source/mask digests. Lookup must fail closed on missing, duplicate, or
+   cross-owner rows; an entry-owned root uses its explicit root context.
+
+For either route, a pure logical mask producer, if accepted, returns a
+rank-1 F8 tensor of exactly 32,768 slots as the **direct** `ckks.encode`
+operand. Encode does not inherit Conv, derivation, or state-repair semantics.
+The contract tests must cover exact F32-to-F8 conversion, positive-zero
+fill, source slice/checksum and mask-digest agreement, two callers with
+different folded weights, owner/callsite mismatch, and old-reader
+fail-closed behavior. This note chooses neither route and authorizes no
+binary image or shared opcode change.
+
 Before either option is selected, run a provider-independent semantic
 oracle for the 17 stride-one contexts and benchmark representative 162-,
 279-, 567-, and 1,143-mask contexts. The ACE-shaped mock can certify the
