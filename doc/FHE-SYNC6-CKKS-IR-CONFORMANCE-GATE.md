@@ -3,6 +3,8 @@
 Status: S6-0a merged in PR #165. The FHE S6-0b producer/state-binding
 adapter has a focused linked test; complete circuit generation and the
 mapped `.ckks_ops.B` remain pending.
+The reviewable S6-0c producer and certification sequence is in
+`FHE-SYNC6-S6-0C-DETAILED-EXECUTION-PLAN.md`.
 
 The provider-independent CKKS semantic IR must be created and certified before
 the Open64 compiler or generated program interacts with ACE `FHErt_ant`.
@@ -179,6 +181,15 @@ events, 147 context-expanded events, 11 ReLU definitions, and 19 ReLU
 contexts, including negative multiplicity, ordinal, nested-call, and
 source-value checks. Its hashed JSON output is read-only evidence, not an
 executable CKKS `.B`, a mapped-image gate, or proof of CKKS state legality.
+The real source-origin ABI audit uses the later
+`secure_resnet20.interfaced-initialized.B` input: the earlier `.fhe.B` lacks
+the ReLU context-operation table and cannot certify this join. The
+separate-process `-st -src` reopen of the correct input and the signature,
+bound-interface, and ABI-origin audits agree on 6 PUs, 9 calls, 87/147
+events, 19 ReLU contexts, 114 context operations, at least 9 CKKS variant
+PUs, 18 called B actuals, and one root B constant. The source-origin audit
+compares those events with the accepted SYNC-5 87-call generated-C and
+147-evaluation trace; it does not manufacture a `.ckks_ops.B`.
 The native collector and common transaction still require a real mapped
 six-PU certification after the main-owned expansion API lands. The
 existing static schedule cannot be recomputed after a high-level source is
@@ -236,6 +247,28 @@ callsite 8 versus 9 needs `(15,15)` versus `(15,17)`. The hashed
 `fhe_ckks_context_signature_audit.py` report derives three additional
 context-specialized clones, giving a **minimum of nine executable PUs**
 if each context bound B is passed as an explicit typed plaintext formal.
+The FHE-owned `fhe_ckks_variant_signature.{h,cxx}` is now the process-local
+whole-PU grouping preflight. It requires one canonical, nonempty executable
+step-plan byte string per exact source-context event, verifies complete
+event coverage and the same ordered source-static shape across contexts,
+then reuses variants only for byte-identical complete PU signatures.
+Callsite number and caller-specific B TCON bytes do not enter equality;
+the plan must encode the typed B formal role and all operator, state, key,
+rotation, TY, and layout facts. A linked 147-event fixture proves the
+ReLU-level lower bound of nine, splits a tenth variant when one non-ReLU
+event changes, and rejects incomplete/duplicate/cross-owner plans without
+partial output. This is policy machinery only. No real ResNet producer yet
+supplies the canonical bytes or calls the generic PU transaction, so the
+fixture does not certify an executable CKKS PU or the final variant count.
+The S6-0c execution branch now adds a bounded FHE-owned structured event-plan
+serializer and a preferred variant entry that serializes those plans before
+grouping. Its linked fixture checks canonical attribute/key/rotation order,
+semantic changes, malformed inputs, and the nine-plus-optional-tenth variant
+behavior. A separate source-family replay gate re-runs the 87/147 and
+19-context auditors and verifies all referenced external tensor slices; a
+fresh source `.B` reopen matches the retained `.T` byte-for-byte. These are
+C0/C1 preflights, not real ResNet CKKS step generation or a mapped
+`.ckks_ops.B`.
 Generic F8 formal/caller actual and owner-qualified clone value support is
 now available through PR #164; the FHE policy must still bind approved
 ranges and origin PU/value/static-event identity. The consumer contract and
