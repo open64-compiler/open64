@@ -196,6 +196,8 @@ Retained evidence:
 and `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/plan-bytes/run.log`.
 The budget test repeats the full analysis byte-for-byte and rejects a
 changed folded payload without publishing a report.
+The bounded dense-versus-derived asset comparison and its pending shared
+contract decision are in `FHE-SYNC6-CONV-MASK-ASSET-OPTIONS.md`.
 
 ### C2 Stride-Two Mapping Decision
 
