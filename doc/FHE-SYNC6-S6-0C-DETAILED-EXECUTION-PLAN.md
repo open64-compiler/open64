@@ -115,6 +115,27 @@ folded-byte hashes are retained in separate local manifests beside the
 test log. These are proof of the fixed stride-one recipe over three
 captured sizes, not graph-wide CKKS state or key certification.
 
+The producer-side recipe now also constructs one plaintext diagonal mask
+at a time by grouping every live OIHW term with the same *signed rotation*.
+It rejects overlapping coefficients at the same output slot; the
+independent grouped rotate/mask/add clear oracle matches the tensor
+oracle for all three captured shapes. The stem has 162 masks from 432
+live terms; call4 has 567 from 9,216; call7 has 1,143 from 36,864.
+This grouping is necessary for the largest Conv: one multiply plus one
+binary add per OIHW term would already need at least 73,727 steps,
+exceeding the current 65,535-step event-plan limit before rotations and
+repairs. A *candidate* grouped DAG has one encode/multiply/rescale per
+mask, one rotation per nonzero signed offset, a balanced add reduction,
+and a separately encoded bias add. Its call7 count is about 5,715
+primitive steps, before any further alignment operations; that is only
+a planning estimate, not a serialized event or bound CKKS state.
+The 1,143 dense call7 masks would occupy about 143 MiB as F4 or 286 MiB
+as F8 at 32,768 slots if all were materialized simultaneously. The
+current API holds only one mask at a time and emits no tensor side file.
+Exact canonical mask bytes, external asset hashes, encoded-plaintext
+state, rescale alignment, key availability, plan-byte budget, and
+runtime/storage strategy remain required C2/C4 review gates.
+
 ### C2 Stride-Two Mapping Decision
 
 The current recipe's rotation is constant per `(output_channel,

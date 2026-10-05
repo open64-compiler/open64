@@ -76,4 +76,20 @@ bool VHO_FHE_CKKS_Evaluate_Column_Conv_Clear(
     const std::vector<float> &input_slots,
     std::vector<double> *output_slots, FILE *diagnostic);
 
+/* Build one plaintext coefficient mask for all live terms sharing an exact
+ * signed rotation. This bounds later step planning by distinct rotations,
+ * not OIHW term count, and keeps only one full mask in memory at a time.
+ * No tensor TCON, key, state, or CKKS node is created here. */
+bool VHO_FHE_CKKS_Build_Column_Conv_Rotation_Mask(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe, int32_t signed_rotation,
+    std::vector<double> *mask, FILE *diagnostic);
+
+/* Simulate the rotate-then-multiply-by-group-mask accumulation plus bias.
+ * Compare this independently with the direct tensor and per-term oracles;
+ * it remains clear-slot evidence, not CKKS IR or runtime execution. */
+bool VHO_FHE_CKKS_Evaluate_Grouped_Column_Conv_Clear(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe,
+    const std::vector<float> &input_slots,
+    std::vector<double> *output_slots, FILE *diagnostic);
+
 #endif /* fhe_ckks_conv_recipe_INCLUDED */

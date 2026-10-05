@@ -88,6 +88,14 @@ static void Check_Stem_Like_Conv()
   assert(recipe.terms[0].active_output_slots == 31 * 31);
   assert(recipe.terms[4].signed_rotation == 0);
   assert(recipe.terms[4].active_output_slots == 32 * 32);
+  std::vector<double> center_mask, corner_mask;
+  assert(VHO_FHE_CKKS_Build_Column_Conv_Rotation_Mask(
+      recipe, 0, &center_mask, stderr));
+  assert(VHO_FHE_CKKS_Build_Column_Conv_Rotation_Mask(
+      recipe, -33, &corner_mask, stderr));
+  assert(center_mask.size() == shape.slot_count &&
+         center_mask[0] == weights[4] && center_mask[16384] == 0);
+  assert(corner_mask[0] == 0 && corner_mask[33] == weights[0]);
 
   std::set<int32_t> keys;
   uint32_t live = 0;
@@ -105,6 +113,9 @@ static void Check_Stem_Like_Conv()
   std::vector<double> actual;
   assert(VHO_FHE_CKKS_Evaluate_Column_Conv_Clear(
       recipe, input, &actual, stderr));
+  std::vector<double> grouped;
+  assert(VHO_FHE_CKKS_Evaluate_Grouped_Column_Conv_Clear(
+      recipe, input, &grouped, stderr));
   assert(actual.size() == shape.slot_count);
   for (uint32_t oc = 0; oc < 16; ++oc)
     for (uint32_t y = 0; y < 32; ++y)
@@ -112,9 +123,10 @@ static void Check_Stem_Like_Conv()
         const size_t index = oc * 1024 + y * 32 + x;
         assert(fabs(actual[index] - Tensor_Oracle(
             shape, oc, y, x, weights, bias, input)) < 1e-9);
+        assert(fabs(grouped[index] - actual[index]) < 1e-9);
       }
   for (size_t i = 16384; i < actual.size(); ++i)
-    assert(actual[i] == 0.0);
+    assert(actual[i] == 0.0 && grouped[i] == 0.0);
   printf("synthetic stem: terms=%zu live=%u signed_rotation_keys=%zu "
          "input_slots=%u output_slots=%u plaintext_depth=%u\n",
          recipe.terms.size(), recipe.live_term_count,
@@ -157,6 +169,10 @@ static void Check_Fail_Closed()
       recipe, input, &previous, NULL));
   assert(previous.size() == 1 && previous[0] == 77.0);
   input.push_back(13.0f);
+  std::vector<double> prior_mask(1, 77.0);
+  assert(!VHO_FHE_CKKS_Build_Column_Conv_Rotation_Mask(
+      recipe, std::numeric_limits<int32_t>::max(), &prior_mask, NULL));
+  assert(prior_mask.size() == 1 && prior_mask[0] == 77.0);
   ++recipe.terms[0].signed_rotation;
   assert(!VHO_FHE_CKKS_Evaluate_Column_Conv_Clear(
       recipe, input, &previous, NULL));
@@ -193,18 +209,26 @@ static void Check_Captured_Folded_Conv(
   std::vector<double> actual;
   assert(VHO_FHE_CKKS_Evaluate_Column_Conv_Clear(
       recipe, input, &actual, stderr));
+  std::vector<double> grouped;
+  assert(VHO_FHE_CKKS_Evaluate_Grouped_Column_Conv_Clear(
+      recipe, input, &grouped, stderr));
   for (uint32_t oc = 0; oc < output_channels; ++oc)
     for (uint32_t y = 0; y < width; ++y)
       for (uint32_t x = 0; x < width; ++x)
-        assert(fabs(actual[oc * width * width + y * width + x] -
-                    Tensor_Oracle(shape, oc, y, x, weights, bias, input)) <
-               1e-8);
+        {
+          const size_t index = oc * width * width + y * width + x;
+          const double expected = Tensor_Oracle(
+              shape, oc, y, x, weights, bias, input);
+          assert(fabs(actual[index] - expected) < 1e-8);
+          assert(fabs(grouped[index] - expected) < 1e-8);
+        }
   for (size_t i = recipe.active_output_slots; i < actual.size(); ++i)
-    assert(actual[i] == 0.0);
+    assert(actual[i] == 0.0 && grouped[i] == 0.0);
   printf("captured folded %s: terms=%zu live=%u "
-         "signed_rotation_keys=%zu output_slots=%u\n",
+         "signed_rotation_keys=%zu diagonals=%zu output_slots=%u\n",
          label, recipe.terms.size(), recipe.live_term_count,
          recipe.required_signed_rotations.size(),
+         recipe.required_signed_rotations.size() + 1,
          recipe.active_output_slots);
 }
 

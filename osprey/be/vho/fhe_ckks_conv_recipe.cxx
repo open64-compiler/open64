@@ -131,6 +131,39 @@ bool Valid_Recipe(const VHO_FHE_CKKS_CONV_RECIPE &recipe)
                     recipe.required_signed_rotations.end(), rotations.begin());
 }
 
+/* Fill one plaintext diagonal in output-slot order. Distinct terms with
+ * the same rotation may share this mask only when their output slots do
+ * not collide; a collision would require a separately reviewed sum rule. */
+bool Build_Rotation_Mask(const VHO_FHE_CKKS_CONV_RECIPE &recipe,
+                         int32_t rotation, std::vector<double> *mask)
+{
+  const VHO_FHE_CKKS_CONV_SHAPE &shape = recipe.shape;
+  std::vector<double> built(shape.slot_count, 0.0);
+  bool found = false;
+  const uint32_t plane = shape.height * shape.width;
+  for (size_t i = 0; i < recipe.terms.size(); ++i) {
+    const VHO_FHE_CKKS_CONV_TERM &term = recipe.terms[i];
+    if (term.signed_rotation != rotation || term.folded_weight == 0)
+      continue;
+    found = true;
+    for (uint32_t y = 0; y < shape.height; ++y)
+      for (uint32_t x = 0; x < shape.width; ++x) {
+        if (!Valid_Output_Position(y, x, term.kernel_y, term.kernel_x,
+                                   shape.height, shape.width))
+          continue;
+        const size_t column = size_t(term.output_channel) * plane +
+                              y * shape.width + x;
+        if (built[column] != 0)
+          return false;
+        built[column] = term.folded_weight;
+      }
+  }
+  if (!found)
+    return false;
+  mask->swap(built);
+  return true;
+}
+
 }  // namespace
 
 /* Preflight the bounded shape and finite folded bytes, then construct a
@@ -254,6 +287,62 @@ bool VHO_FHE_CKKS_Evaluate_Column_Conv_Clear(
           sum += double(input_slots[rotated]) * term.folded_weight;
         }
     result[column] = sum;
+  }
+  output_slots->swap(result);
+  return true;
+}
+
+/* Public mask construction validates the complete recipe before exposing a
+ * plaintext diagonal. Failure never replaces the caller's prior mask. */
+bool VHO_FHE_CKKS_Build_Column_Conv_Rotation_Mask(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe, int32_t signed_rotation,
+    std::vector<double> *mask, FILE *diagnostic)
+{
+  if (mask == NULL || !Valid_Recipe(recipe) ||
+      !Build_Rotation_Mask(recipe, signed_rotation, mask))
+    return Report(diagnostic, "rotation mask is absent or ambiguous");
+  return true;
+}
+
+/* Keep grouped masks process-local and prove each diagonal contributes
+ * exactly the same clear tensor value as the source OIHW Conv. */
+bool VHO_FHE_CKKS_Evaluate_Grouped_Column_Conv_Clear(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe,
+    const std::vector<float> &input_slots,
+    std::vector<double> *output_slots, FILE *diagnostic)
+{
+  if (output_slots == NULL || !Valid_Recipe(recipe) ||
+      input_slots.size() != recipe.shape.slot_count)
+    return Report(diagnostic, "grouped clear-slot recipe is incomplete");
+  for (size_t i = 0; i < input_slots.size(); ++i)
+    if (!Finite(input_slots[i]))
+      return Report(diagnostic, "grouped clear-slot input is not finite");
+
+  const VHO_FHE_CKKS_CONV_SHAPE &shape = recipe.shape;
+  const uint32_t plane = shape.height * shape.width;
+  std::vector<double> result(shape.slot_count, 0.0);
+  for (uint32_t oc = 0; oc < shape.output_channels; ++oc)
+    for (uint32_t position = 0; position < plane; ++position)
+      result[size_t(oc) * plane + position] = recipe.folded_bias[oc];
+
+  std::set<int32_t> rotations(recipe.required_signed_rotations.begin(),
+                              recipe.required_signed_rotations.end());
+  for (size_t i = 0; i < recipe.terms.size(); ++i)
+    if (recipe.terms[i].signed_rotation == 0 &&
+        recipe.terms[i].folded_weight != 0)
+      rotations.insert(0);
+  for (std::set<int32_t>::const_iterator it = rotations.begin();
+       it != rotations.end(); ++it) {
+    std::vector<double> mask;
+    if (!Build_Rotation_Mask(recipe, *it, &mask))
+      return Report(diagnostic, "rotation mask collides");
+    for (uint32_t column = 0; column < recipe.active_output_slots; ++column) {
+      if (mask[column] == 0)
+        continue;
+      const int64_t source =
+          (int64_t(column) + *it + shape.slot_count) % shape.slot_count;
+      result[column] += double(input_slots[source]) * mask[column];
+    }
   }
   output_slots->swap(result);
   return true;
