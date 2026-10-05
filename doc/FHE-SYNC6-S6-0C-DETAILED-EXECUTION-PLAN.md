@@ -136,6 +136,67 @@ Exact canonical mask bytes, external asset hashes, encoded-plaintext
 state, rescale alignment, key availability, plan-byte budget, and
 runtime/storage strategy remain required C2/C4 review gates.
 
+#### Full-Model Grouped-Mask Budget And Stop Decision
+
+The read-only `fhe_ckks_conv_mask_budget.py` joins each BN-fold provenance
+row to its Conv disposition, source/result tensor descriptors, and runtime
+input `source_tcon` role. It authenticates the retained `.T` and folded
+SafeTensors whole-file hashes against the source replay, then verifies each
+F32 weight/bias slice against its printed URI offset, length, and checksum.
+Owner PU, source Conv node/value, and callsite remain the identity; tensor
+names are used only after the managed TCON-to-role join to locate bytes.
+There are 13 physical Conv definitions and 21 folded call contexts; the
+bounded stride-one 3x3 recipe covers 17, while four stride-two contexts
+remain excluded. No mask side file or WHIRL is produced by this probe.
+
+| Folded Conv shape, input HxW | Contexts | Masks/context | Total masks | Candidate steps |
+| --- | ---: | ---: | ---: | ---: |
+| `16x3x3x3`, `32x32` | 1 | 162 | 162 | 810 |
+| `16x16x3x3`, `32x32` | 6 | 279 | 1,674 | 8,370 |
+| `32x32x3x3`, `16x16` | 5 | 567 | 2,835 | 14,175 |
+| `64x64x3x3`, `8x8` | 5 | 1,143 | 5,715 | 28,575 |
+| **Supported stride-one total** | **17** | | **10,386** | **51,930** |
+
+The probe reconstructed and SHA-256-hashed every canonical little-endian
+binary64, 32,768-slot mask. All **10,386 masks are byte-distinct** for this
+folded model, so dense F8 storage is **2,722,627,584 bytes (2.536 GiB)**;
+F4 would still be 1.268 GiB before encoding but is not the reviewed
+canonical F8 representation. The global signed-rotation-offset union is
+1,850, not a certified provider key inventory. The 51,930 steps above are
+execution-weighted candidate rotate/encode/multiply/rescale/add counts,
+not a materialized DAG, and do not include legality-driven alignment.
+
+The largest context's structural C1 serializer probe contains 5,715 steps
+and yields 716,715 canonical bytes, below the **per-event** 65,535-step
+and 4,194,304-byte limits. It uses fictitious operator IDs and placeholder
+state/assets solely to exercise the real byte guard; no actual Conv event
+has been serialized or state-verified. The read-only clear mask rebuild and
+hash pass takes about seven seconds on this host, which is **not** CKKS
+plaintext encoding time. No ACE-shaped or other provider encode benchmark
+has been run, so encoding time remains unknown.
+
+**Stop dense materialization.** Do not intern 10,386 dense tensor TCONs,
+copy them into `.B`, or publish a multi-gigabyte side file as a default.
+Review an explicit compact/lazy mask asset contract first: bind each group
+to the authenticated folded-weight TCON, owner/source/context identity,
+signed rotation, exact output-slot placement and zero-fill rule, F32-to-F8
+conversion, 32,768-slot layout, canonical mask SHA-256, and required CKKS
+encode scale/state. A provider must reconstruct the identical authenticated
+F8 bytes before encoding, with the `ckks.encode` operation and its result
+state still explicit in WHIRL. The stored recipe must not become a hidden
+Conv or state-repair operation. Compare this with bounded chunked external
+dense assets and, separately, a reviewed alternative metakernel/layout
+algorithm. Only a measured provider encoding benchmark, asset format,
+normalization/rescale schedule, and per-context C1 plan can reopen C2
+materialization. The four stride-two contexts, C3 evaluator identity, and
+C4 state alignment remain independent blockers.
+
+Retained evidence:
+`/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-recipe/budget/full-model-mask-budget.json`
+and `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/plan-bytes/run.log`.
+The budget test repeats the full analysis byte-for-byte and rejects a
+changed folded payload without publishing a report.
+
 ### C2 Stride-Two Mapping Decision
 
 The current recipe's rotation is constant per `(output_channel,
