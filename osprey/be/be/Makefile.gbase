@@ -339,6 +339,8 @@ BE_VHO_CXX_SRCS = \
   fhe_semantic_convert.cxx \
   fhe_semantic_materialize.cxx \
   fhe_semantic_runtime_lower.cxx \
+  fhe_ckks_expand.cxx \
+  fhe_ckks_transfer.cxx \
   f90_lower.cxx           \
   f90_lower_dep.cxx     \
   vho_lower.cxx		\
