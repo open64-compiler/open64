@@ -91,9 +91,9 @@ source/CNN and FHE conversion
 
 | Slice | Owner | Reviewable result |
 | --- | --- | --- |
-| S6-0a semantic census/physical contract | Main/common owns append-only logical registry contracts and a generic owner-PU-safe atomic one-to-many native DSL value expansion API; reuse physical `OPR_DSL` and existing DSL image/inspection tables. FHE supplies semantic operands, state rules, and tests. | Accepted handoff table and transaction contract; no enum or binary change before review. |
+| S6-0a semantic census/physical contract | Main/common owns append-only logical registry contracts and a generic owner-PU-safe atomic one-to-many native DSL value expansion API; reuse physical `OPR_DSL` and existing DSL image/inspection tables. FHE supplies semantic operands, state rules, and tests. | Accepted handoff table, typed event relation, and a staged transaction with late-failure rollback. Read-only preflight alone does not close this gate. |
 | S6-0b opaque producer and per-value state | FHE task consumes only reviewed backend-safe common APIs and binds existing FHE CKKS value-state records to each new result value. | Focused add/sub/mul/rotate/rescale/relin/bootstrap `.B`/`.T` fixtures with source and state evidence. |
-| S6-0c full ResNet expansion | FHE task expands the certified high-level schedule and 19 context-specific ReLU sequences. | Six-PU `.ckks_ops.B`/`.T`, event-to-step map, key/rotation/depth census, independent numerical checks. |
+| S6-0c full ResNet expansion | Main/common's generic process-terminal clone/formal/call checkpoint merged in PR #164. FHE must register the policy, derive complete signatures, route approved B values, then expand the six source PUs and 19 context-specific ReLU sequences. | Clone-aware `.ckks_ops.B`/`.T` with measured PU count, exact F8 B formal/actual evidence, origin-to-clone/event-to-step maps, key/rotation/depth census, and independent numerical checks. |
 | S6-0d gate and terminal lowering | FHE task verifies the complete IR and lowers it through the existing stable C ABI; main reviews standard-WHIRL boundary. | Negative malformed-state/ownership/depth/key tests and generated-C/mock equivalence to SYNC-5. |
 | S6-1 and later | ACE provider and runtime owners, after S6-0 certification. | New exact ACE pin/capability admission, then broker/worker/client-server execution. |
 
@@ -124,13 +124,97 @@ typed relation, never encode it only in metadata strings.
 The FHE-owned process-local preflight in
 `osprey/be/vho/fhe_ckks_event_coverage.{h,cxx}` checks that an independently
 counted set of source events has unique owner/source-value/static-ordinal/
-context identities,
-at least one result per event, and dense per-event step ordinals. It accepts
-the same reusable PU value identity in different call contexts. The focused
-147-event test is synthetic and proves only this coverage algorithm; it does
-not certify the ResNet event census, CKKS legality, or persisted provenance.
-The verifier must be called on the real expansion plan before the common
-transaction, and the resulting image must be checked again after reopen.
+context identities, at least one result per event, and dense per-event step
+ordinals. It accepts the same reusable PU value identity in different call
+contexts. A companion process-local adapter expands existing SYNC-5 static
+schedule fields over exact root/callsite routes; a nested path whose
+execution multiplicity exceeds those representable routes fails closed.
+It preflights route identity, static-ordinal uniqueness, capacity, and count
+before writing the caller's event array. The focused 147-event test is
+synthetic and proves only these algorithms; it does not certify the ResNet
+event census, CKKS legality, or persisted provenance. The real producer must
+derive the input schedule and routes from the existing managed tables, call
+this preflight before the common transaction, and check the mapped image
+again after reopen.
+`osprey/be/vho/fhe_ckks_source_events.{h,cxx}` now performs that read-only
+join using `VHO_FHE_Runtime_Static_Schedule_Prepare` and the DSL call image,
+before any CKKS node is created. Its focused linked fixture substitutes the
+table functions and proves exact root/two-callsite ReLU identities and
+no-partial-output failures; it is not yet a mapped SecureResNet run. The
+independent artifact auditor
+`osprey/be/vho/tests/fhe_ckks_real_event_census.py` joins the retained
+six-PU `ir_b2a -st -src` identity/node tables with the structured SYNC-5
+schedule. It verifies 6 PUs, 9 callsites, 32 source definitions, 87 static
+events, 147 context-expanded events, 11 ReLU definitions, and 19 ReLU
+contexts, including negative multiplicity, ordinal, nested-call, and
+source-value checks. Its hashed JSON output is read-only evidence, not an
+executable CKKS `.B`, a mapped-image gate, or proof of CKKS state legality.
+The native collector and common transaction still require a real mapped
+six-PU certification after the main-owned expansion API lands. The
+existing static schedule cannot be recomputed after a high-level source is
+retired. Specialization of a shared PU also needs the reviewed typed link
+from clone static ordinal to original source ordinal before this event list
+can certify the final context-sensitive executable graph.
+
+The FHE-owned read-only join in
+`osprey/be/vho/fhe_ckks_relu_plan.{h,cxx}` resolves each scheduled ReLU
+source event to its exact materialization row, context range, and output
+CKKS planning state. It requires the six-part refresh/normalize/three-stage/
+reconstruction chain, dense static-event order, exact owner/context IDs,
+state-input continuity, stage/parameter identities, and a pending
+`PRE_RELU_REFRESH` bootstrap target. Its Linux linked fixture covers two
+contexts and rejects broken state, range, stage, reason, and owner evidence
+without changing output. The real ResNet contract has 19 contexts and 114
+such source events; the join is not yet an executable CKKS step producer or
+a mapped six-PU certification. The independent
+`fhe_ckks_real_relu_plan_audit.py` checks the retained six-PU `-st -src`
+trace against the hashed 147-event census: all 114 materialization rows
+join to their exact context/range/state chain, with post-refresh target
+levels 15 (16 contexts), 17 (1), and 18 (2). This is inspection evidence,
+not a replacement for the native mapped-image and CKKS-state gate.
+
+The FHE read-only consumer now also checks that the accepted three ordered
+Chebyshev/Clenshaw degree-7/15/13 stage rows consume levels `3+4+4=11`
+per context under the required pre-refresh and positive-bound profile;
+stage references are resolved from the profile's first-stage ID and ordered
+ordinals, never from a presumed image-global stage ID of one;
+normalization and ReLU reconstruction do not silently consume another
+level; and every resulting state remains in the same
+encryption/layout/slot/scale family with two
+components and sufficient precision. The independent trace audit verifies
+the same transitions in both retained ResNet capture families and rejects
+altered stage depth or output level. These are pre-mutation checks; actual
+CKKS primitive results must each receive their own value-specific state
+after the atomic expansion API lands.
+
+The same FHE-owned module now exposes a read-only bound-binding collector.
+Given the verified six-step plans, it returns one record per exact
+`(owner PU, source ReLU value, context PU identity, callsite)` with the
+range ID and its positive-bound `TCON_IDX`. It checks that the normalization
+operation uses that exact range-owned TCON and that all six steps retain the
+same range; malformed, missing, or context-swapped bindings leave the output
+untouched. The common image validator remains responsible for the TCON's
+numeric positivity and type. This is the input contract for the merged typed
+B transaction, not evidence that the real ResNet has already been cloned or
+that its executable CKKS PUs exist.
+
+The retained context-state evidence also proves that the six captured source
+PUs cannot remain six fixed-schedule executable CKKS PUs. For the same
+source block PU, callsites 1/2 versus 3 need ordered post-refresh levels
+`(15,15)` versus `(15,18)`; callsite 5 versus 6 has the same split; and
+callsite 8 versus 9 needs `(15,15)` versus `(15,17)`. The hashed
+`fhe_ckks_context_signature_audit.py` report derives three additional
+context-specialized clones, giving a **minimum of nine executable PUs**
+if each context bound B is passed as an explicit typed plaintext formal.
+Generic F8 formal/caller actual and owner-qualified clone value support is
+now available through PR #164; the FHE policy must still bind approved
+ranges and origin PU/value/static-event identity. The consumer contract and
+existing Open64 clone-service audit are in
+`FHE-SYNC6-CONTEXT-SPECIALIZATION-CONTRACT.md`. If B instead becomes a static
+per-context constant, the nine call contexts may need one clone each,
+giving up to ten total PUs. The final count is a certification result, not
+a fixed acceptance assumption; metadata-only B selection and an unproved
+dynamic-level ABI are not permitted.
 
 ### Proposed Shared Contract Census
 
@@ -173,8 +257,9 @@ implementation writes any executable CKKS node.
 - Two-context tests with equal signatures proving clone reuse, and different
   signatures proving deterministic whole-PU specialization, exact call ABI,
   typed B formal behavior, and distinct executable value levels.
-- Full six-PU ResNet census: 147 high-level events completely mapped to
-  executable CKKS steps; 19 explicit pre-ReLU bootstraps with targets
+- Full six-source-PU ResNet census with a verified executable clone count:
+  147 high-level events completely mapped to CKKS steps; 19 explicit
+  pre-ReLU bootstraps with targets
   15 x 16, 17 x 1, 18 x 2; no standalone executable ReLU.
 - Separate-process `.ckks_ops.B` mapped reopen and `ir_b2a -st -src` with
   nonzero source positions; old/non-FHE compatibility and malformed-image

@@ -308,7 +308,10 @@ embedded harness remains useful for bring-up but cannot close SYNC-6.
 
 | Commit | Coding scope | Required tests and evidence |
 | --- | --- | --- |
-| S6-0a-d CKKS semantic IR | Review shared operator/image contracts; build opaque producer, full six-PU CKKS expansion, state verifier, mapped `.ckks_ops.B`/`.T`, and unchanged ABI/mock terminal lowering | Complete high-level-to-CKKS event map, 19 explicit refreshes, level/scale/key/rotation proof, old-reader/malformed tests, source-interleaved reopen, mock equivalence; details in the CKKS IR conformance gate |
+| S6-0a atomic CKKS expansion | Main/common completes the reviewed one-source/many-step mutation contract after read-only preflight; stage WN/ST/image/call-ABI/REGION edits and provide explicit rollback for late failure. | Six-group ReLU transaction, direct-kid and final-result evidence, fault injection at every mutation family, unchanged state on rejection, mapped reopen. |
+| S6-0b context-specialized PU interface | Main/common reuses legal `IPO_CLONE` behavior but atomically re-owns all DSL/FHE images, appends exact-TY B formals and caller actuals, and retargets call edges. FHE provides complete signature and bound identities. Static-B specialization is a reviewed fallback, not an implicit call-ordinal clone rule. | Equal signatures reuse a clone with distinct B actuals; incompatible CKKS states split. Verify source definition/provenance, two B values per block call, all formals/actuals and REGION rows, wrong-owner/TY negatives, rollback. |
+| S6-0c complete executable CKKS producer | FHE consumes only merged native transactions to expand all source contexts, bind per-result CKKS state, and certify the measured executable PU count. | All 147 source-context events mapped to explicit CKKS steps, 19 pre-ReLU bootstraps, complete key/rotation/depth census, no live ReLU/BN, `secure_resnet20.ckks_ops.B` and separate-process `ir_b2a -st -src` `.T`. |
+| S6-0d terminal lowering | FHE lowers the verified CKKS graph to the unchanged stable C ABI; main reviews standard-WHIRL compatibility. | Generated C and existing ABI mock agree with the SYNC-5 reference; malformed-state and failed-checkpoint tests leave no final or temporary artifacts. |
 | S6-1 Exact-provider admission | Pin ACE revision, source/patch hash, compiler ABI, options, dependencies, licenses, and prove evaluation-only public-context, keyset, ciphertext import/export plus every frozen SYNC-5 capability | Reproducible build; field-for-field manifest comparison; revision/patch mismatch; missing import/export, operation, rotation, key, or level negatives |
 | S6-2 Broker and supervised worker | Implement the ABI broker and one isolated ACE worker per public context; serialize calls within a context and expose no ACE object across IPC | Multiple-context isolation; launcher authorization; worker identity; no ACE symbols in generated C or broker |
 | S6-3 Client provisioning and transport | Implement versioned public-context, non-secret keyset, plaintext-model, ciphertext input, and ciphertext output envelopes with authenticated session binding | Client/server roundtrip; digest/config/session mismatch; secret-key-class rejection before worker dispatch |
@@ -328,6 +331,11 @@ and ciphertext transport are not yet demonstrated. That blocks ACE provider
 admission and S6-2 through S6-6, **not** S6-0 CKKS IR creation. The probe is
 not a full S6-1 build/capability pass. Do not interact with the ACE library
 from the compiler or generated program until S6-0 has certified its IR.
+The six source PUs are capture identities, not the executable-PU acceptance
+count. The reviewed ResNet state signatures require at least nine executable
+variants if B is a typed plaintext formal; all other CKKS steps must be
+included before freezing that count. The exact bound-interface and clone
+requirements are in `doc/FHE-SYNC6-CONTEXT-SPECIALIZATION-CONTRACT.md`.
 
 Retain evidence under `artifacts/fhe/sync6-ace-ant-client-server-o0/`.
 

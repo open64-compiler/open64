@@ -14,6 +14,55 @@
 /* Exercise 147 synthetic events over 19 contexts, including root callsite 0. */
 int main()
 {
+  VHO_FHE_CKKS_STATIC_SOURCE sources[2] = {
+    { 10, 100, 1, 1, 1 },
+    { 11, 200, 2, 6, 2 }
+  };
+  VHO_FHE_CKKS_CONTEXT_ROUTE routes[3] = {
+    { 10, 20, 0 }, { 11, 21, 4 }, { 11, 21, 5 }
+  };
+  VHO_FHE_CKKS_EVENT_IDENTITY expanded[13] = {};
+  expanded[0].owner_pu_st = 99;
+  size_t expanded_count = 777;
+  assert(VHO_FHE_CKKS_Expand_Source_Events(
+      sources, 2, routes, 3, expanded, 12, &expanded_count) ==
+      VHO_FHE_CKKS_COVERAGE_CAPACITY);
+  assert(expanded[0].owner_pu_st == 99 && expanded_count == 777);
+  assert(VHO_FHE_CKKS_Expand_Source_Events(
+      sources, 2, routes, 3, expanded, 13, &expanded_count) ==
+      VHO_FHE_CKKS_COVERAGE_OK);
+  assert(expanded_count == 13 && expanded[0].context_callsite_id == 0);
+  assert(expanded[1].source_static_ordinal == 2 &&
+         expanded[6].source_static_ordinal == 7 &&
+         expanded[7].context_callsite_id == 5 &&
+         expanded[12].source_static_ordinal == 7);
+
+  VHO_FHE_CKKS_CONTEXT_ROUTE saved_route = routes[2];
+  routes[2] = routes[1];
+  assert(VHO_FHE_CKKS_Expand_Source_Events(
+      sources, 2, routes, 3, expanded, 13, &expanded_count) ==
+      VHO_FHE_CKKS_COVERAGE_CONTEXT_ROUTE);
+  routes[2] = saved_route;
+  routes[2].context_pu_identity_id = 22;
+  assert(VHO_FHE_CKKS_Expand_Source_Events(
+      sources, 2, routes, 3, expanded, 13, &expanded_count) ==
+      VHO_FHE_CKKS_COVERAGE_CONTEXT_ROUTE);
+  routes[2] = saved_route;
+  routes[2].context_callsite_id = 0;
+  assert(VHO_FHE_CKKS_Expand_Source_Events(
+      sources, 2, routes, 3, expanded, 13, &expanded_count) ==
+      VHO_FHE_CKKS_COVERAGE_CONTEXT_ROUTE);
+  routes[2] = saved_route;
+  sources[1].execution_multiplicity = 3;
+  assert(VHO_FHE_CKKS_Expand_Source_Events(
+      sources, 2, routes, 3, expanded, 13, &expanded_count) ==
+      VHO_FHE_CKKS_COVERAGE_CONTEXT_ROUTE);
+  sources[1].execution_multiplicity = 2;
+  sources[1].first_static_ordinal = 1;
+  assert(VHO_FHE_CKKS_Expand_Source_Events(
+      sources, 2, routes, 3, expanded, 13, &expanded_count) ==
+      VHO_FHE_CKKS_COVERAGE_SOURCE_SCHEDULE);
+
   std::vector<VHO_FHE_CKKS_EVENT_IDENTITY> events;
   std::vector<VHO_FHE_CKKS_EVENT_STEP> steps;
   for (uint32_t i = 0; i < 147; ++i) {
@@ -114,7 +163,7 @@ int main()
   assert(VHO_FHE_CKKS_Verify_Event_Coverage(
       NULL, 1, 1, NULL, 0) ==
       VHO_FHE_CKKS_COVERAGE_INVALID_ARGUMENT);
-  printf("synthetic_events=147 contexts=19 steps=294 ");
+  printf("source_expansion=13 synthetic_events=147 contexts=19 steps=294 ");
   printf("owner_collision=accepted relu_static_ordinals=6 ");
   printf("malformed_cases=rejected\n");
   return 0;
