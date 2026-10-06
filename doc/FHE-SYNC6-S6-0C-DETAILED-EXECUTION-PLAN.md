@@ -396,6 +396,16 @@ typed value binding. Until those gates pass, reject stride-two emission;
 neither the original million-mask census nor the fused proof authorizes
 `secure_resnet20.ckks_ops.B` publication.
 
+The weight-derived typed-row API is not a mask-materialization API: these
+0/1 masks come from proved slot geometry, not an external rank-4 weight or
+implicit-zero source. A future admitted packer needs a separate reviewed,
+backend-safe transaction for source-free generated external tensor constants
+with canonical rank-1 F32 TY, side-file TCON/range/checksum, active-PU
+insertion and source position, and stable geometry/stage/diagonal provenance.
+FHE owns mask bytes, variant binding, and `ckks.encode` state/key checks.
+Do not attach false `converted_from` weight lineage, insert raw WN/ST nodes,
+or embed the full F32 masks in `.B` while that main/common contract is absent.
+
 | Slice | FHE-owned work | Focused exit evidence |
 | --- | --- | --- |
 | C0: replay/input gate | Add a deterministic input manifest and native read-only gate joining six-PU images, 87/147 events, 19 contexts, source/payload/coefficient hashes, and FHE/DSL validators. Reject the older `.fhe.B` and unsupported config before planning. | Stable hashed census, `-st -src` with six FUNC_ENTRYs/nine calls/nonzero source interleave; wrong hash or missing context rejects without output. |
