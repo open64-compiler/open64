@@ -1,8 +1,8 @@
 # Typed External Tensor Value Materialization Contract
 
-Status: FHE-reviewed main/common API direction for SYNC-6 S6-0c; native
-implementation and certification are pending. This is not approval of
-executable CKKS Conv. The FHE consumer
+Status: FHE-reviewed main/common API implemented and locally certified in
+commit `5d749bc3` for SYNC-6 S6-0c. This is not approval of executable CKKS
+Conv. The FHE consumer
 request is recorded in `FHE-SYNC6-TYPED-ROW-VALUE-HANDOFF.md` on the FHE
 branch.
 
@@ -229,5 +229,6 @@ The focused producer test must retain a `.B`, matching
 5. The existing same-TY caller-actual replacement test and a legacy artifact
    without typed-row lineage remain unchanged.
 
-Implementation should begin only after the FHE consumer reviews this revised
-API shape, especially the cross-PU capture lifetime and mapped-reopen join.
+The FHE consumer accepted the native API and cross-PU capture contract after
+review of `5d749bc3`. FHE still owns exact call-ABI actual proof, authenticated
+row bytes/digests, ordered transform selection, and variant-key separation.
