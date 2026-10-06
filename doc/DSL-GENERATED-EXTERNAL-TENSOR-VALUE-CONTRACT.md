@@ -1,7 +1,7 @@
 # Generated External Tensor Value Contract
 
-Status: proposed main/common contract for FHE SYNC-6 C2 review. No API or
-binary-image implementation is approved by this document alone. This is a
+Status: FHE-reviewed main/common contract for SYNC-6 C2. Implementation is
+pending. This is a
 separate transaction from the source-derived typed-row API on
 `codex/dsl-typed-row-value-contract`.
 
@@ -43,10 +43,10 @@ typedef struct {
     SRCPOS source_position;
     const char *generation_name;
     UINT32 generation_version;
-    const char *geometry_sha256;
+    const char *geometry_manifest_sha256;
     UINT32 stage_ordinal;
     UINT32 diagonal_ordinal;
-    const char *variant_key;
+    const char *variant_signature_sha256;
 } DSL_IR_GENERATED_EXTERNAL_TENSOR_REQUEST;
 
 typedef struct {
@@ -68,8 +68,8 @@ BOOL DSL_IR_Generated_External_Tensor_Validate_PU
 ```
 
 `DSL_IR_GENERATED_EXTERNAL_TENSOR_PROVENANCE` is a read-only result containing
-owner/value identity, generation name/version, geometry digest, stage and
-diagonal ordinals, and variant key. The returned strings are borrowed from
+owner/value identity, generation name/version, geometry-manifest digest,
+stage and diagonal ordinals, and variant-signature digest. The returned strings are borrowed from
 the current image and must not survive image reset or mutation. The precise
 declaration will follow the existing read-only reference and lineage structs.
 
@@ -79,8 +79,9 @@ The active `Current_pu`, local symbol table, and `PU_Info` must match. Every
 anchor must be an executable statement in that PU's structured BLOCK/REGION
 tree; insertion is immediately before that anchor and preserves request
 order for equal anchors. Names and the tuple `(generation_name,
-generation_version, geometry_sha256, stage_ordinal, diagonal_ordinal,
-variant_key)` must be unique within the result owner PU.
+generation_version, geometry_manifest_sha256, stage_ordinal,
+diagonal_ordinal, variant_signature_sha256)` must be unique within the
+result owner PU. Zero is a valid stage or diagonal ordinal.
 
 The result TY is an existing canonical, fully static TensorDescriptorIR with
 external-data memory and side-file placement. The generic service accepts
@@ -92,6 +93,7 @@ bytes; offset and length obey element alignment, bounds cannot overflow, and
 the checksum is lowercase 64-hex SHA-256. The source position must be real.
 The producer verifies the actual side-file bytes and digest before calling
 this service; common/com checks structured evidence, not external bytes.
+Both geometry and variant digests must be lowercase 64-hex SHA-256.
 
 Preflight the entire array before any WN, ST, string, TCON, or managed-image
 mutation. Clear all outputs on rejection. A rejected second request must
@@ -110,8 +112,9 @@ Use a new append-only node capability flag, tentatively
 The node has a closed attribute profile with `value_kind=external_data`, the
 URI and storage/TCON facts, `dsl.generated_external=1`, and structured
 generation/geometry/stage/diagonal/variant fields. It has **no**
-`dsl.converted_from_*` attributes and no source-value ID. In particular, it
-must not reuse the source-derived typed-row flag or query. Local ST metadata
+`dsl.converted_from_*` attributes, source-value ID, or typed-row marker/flag.
+Validation rejects any such mixed profile. In particular, it must not reuse
+the source-derived typed-row flag or query. Local ST metadata
 cannot carry these fields because ST_IDX can collide across PUs.
 
 Mapped-image validation requires the flag and marker together, the exact
@@ -140,12 +143,29 @@ There is no new ELF section, TY_KIND, opcode, or WHIRL row layout.
 5. Rebuild linked producer and `ir_b2a`; run the DSL native syntax/layout
    matrix. Retain `.B`, `.T`, source, commands, and diagnostics on the host.
 
-## Review Decisions Before Code
+## FHE Producer Contract
 
-- Is `geometry_sha256` the canonical digest of a producer-defined geometry
-  manifest, and where is its versioned grammar published?
-- Must `variant_key` be an opaque stable identifier, or should it be a
-  separately validated digest of the variant signature?
-- Is one source-free profile enough for both bit-move masks and any future
-  generated tensor, or does the producer need an additional generation-kind
-  field beyond `generation_name`?
+`geometry_manifest_sha256` hashes the exact bytes of an FHE-owned versioned
+geometry manifest. Its v1 canonical form is restricted UTF-8 JSON without
+BOM: ASCII schema fields, lexicographically sorted object keys, compact
+separators, canonical decimal integers, no floats or null, and one final LF.
+The FHE-owned `doc/FHE-SYNC6-GENERATED-MASK-GEOMETRY-MANIFEST.md` will publish
+the full grammar before consumer implementation. The manifest binds generator
+name/version, variant digest, slot count/dtype/layout/rotation convention,
+input/output geometry, and ordered stages/diagonals with signed rotation,
+tensor key, byte range, F32 mask SHA-256, and nonzero count. Common/com checks
+digest syntax and tuple uniqueness only; the FHE semantic gate hashes the
+manifest bytes and joins each generated value to its stage, diagonal,
+side-file evidence, and selected variant.
+
+`variant_signature_sha256` hashes the canonical complete
+`VHO_FHE_CKKS_SIGNATURE_VARIANT.signature_bytes` after structured event-plan
+validation. It is the executable artifact/plan identity, not a user label,
+state version, or call ordinal. Equal contexts may share it; distinct
+executable plans must not. Common/com checks syntax and tuple uniqueness;
+FHE proves equality to the active variant before materialization.
+
+`generation_name` is a stable dotted semantic kind, initially a name such as
+`fhe.ckks.stride_compaction.mask`. `generation_version` versions its grammar
+and algorithm. There is no additional common/com generation-kind enum.
+FHE publishes the manifest/report atomically with side payload and `.B`.
