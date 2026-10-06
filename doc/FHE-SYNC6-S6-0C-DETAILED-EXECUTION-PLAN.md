@@ -123,6 +123,23 @@ folded-byte hashes are retained in separate local manifests beside the
 test log. These are proof of the fixed stride-one recipe over three
 captured sizes, not graph-wide CKKS state or key certification.
 
+A separate FHE-owned native arithmetic fixture now exercises the actual
+WHIRL expansion and state-binding transaction on canonical `float32[2]`
+tensors. It lowers exact-shape `common.add.v1` to one `ckks.add.v1`,
+adds an explicit `ckks.encode -> ckks.add` case for plaintext tensor input,
+lowers `common.mul.v1` with a raw tensor constant to `ckks.encode ->
+ckks.mul -> ckks.rescale`, and lowers ciphertext-ciphertext
+`common.mul.v1` to `ckks.mul -> ckks.relin -> ckks.rescale`. The four
+mapped `.B` files reopen in a separate
+`ir_b2a -st -src` process with lowered source provenance and concrete
+value-state rows. An independent two-slot clear algebra oracle matches the
+four ordered CKKS step sequences; it does not execute encryption. Layout
+mismatch, an unrepaired terminal multiply, and a
+wrong relin key reject before native mutation. The retained focused traces
+are under `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/tensor-arithmetic/`.
+These certify four small operator transformations, not full ResNet event
+planning, Conv assets, runtime arithmetic, or `-O0` numerical accuracy.
+
 The producer-side recipe now also constructs one plaintext diagonal mask
 at a time by grouping every live OIHW term with the same *signed rotation*.
 It rejects overlapping coefficients at the same output slot; the
