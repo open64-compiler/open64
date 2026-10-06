@@ -489,21 +489,32 @@ DSL_Gatekeeper_Verify_External_Tensor
     const char *marker = NULL;
     BOOL typed_row = DSL_Gatekeeper_Node_Attribute
                          (node, "dsl.typed_external_row", &marker);
+    const char *generated_marker = NULL;
+    BOOL generated_row = DSL_Gatekeeper_Node_Attribute
+                             (node, "dsl.generated_external", &generated_marker);
     if (typed_row !=
-        ((node->flags & DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) != 0))
+            ((node->flags & DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) != 0) ||
+        generated_row !=
+            ((node->flags & DSL_IR_NODE_FLAG_GENERATED_EXTERNAL) != 0) ||
+        (typed_row && generated_row))
         return DSL_Gatekeeper_Report
                    (context, "typed external row flag/marker mismatch");
     if (typed_row &&
         (strcmp(marker, "1") != 0 || node->attribute_count != 15))
         return DSL_Gatekeeper_Report
                    (context, "typed external row attribute contract is invalid");
+    if (generated_row &&
+        (strcmp(generated_marker, "1") != 0 ||
+         node->attribute_count != 16))
+        return DSL_Gatekeeper_Report
+                   (context, "generated external attribute contract is invalid");
     const char *format = NULL;
     const char *file = NULL;
     const char *key = NULL;
     const char *offset_text = NULL;
     const char *length_text = NULL;
     const char *checksum = NULL;
-    if (typed_row) {
+    if (typed_row || generated_row) {
         if (!DSL_Gatekeeper_Node_Attribute
                  (node, "storage_format", &format) ||
             !DSL_Gatekeeper_Node_Attribute

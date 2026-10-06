@@ -60,6 +60,14 @@ for evidence in \
   'dsl.transformation_name=fhe.conv_feature_row' \
   'storage_byte_offset=256' \
   'storage_byte_offset=272' \
+  'name=pack_mask_0;dtype=float32;rank=1' \
+  'name=pack_mask_1;dtype=float32;rank=1' \
+  'dsl.generated_external=1' \
+  'dsl.generation_name=fhe.ckks.stride_compaction.mask' \
+  'dsl.geometry_manifest_sha256=' \
+  'dsl.variant_signature_sha256=' \
+  'storage_byte_offset=512' \
+  'storage_byte_offset=528' \
   'DSL Call ABI Argument Table: version=1 entries=4' \
   'DSL PU Interface Formal Table: version=1 entries=3' \
   'formal=0 value=' \

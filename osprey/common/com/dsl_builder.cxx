@@ -4249,6 +4249,10 @@ DSL_Builder_Verify_Program_Mode
             valid = FALSE;
             ++gatekeeper_result.error_count;
         }
+        if (!DSL_IR_Generated_External_Tensor_Validate_PU(pu, diagnostic)) {
+            valid = FALSE;
+            ++gatekeeper_result.error_count;
+        }
         if (!DSL_PU_Interface_Image_Validate_PU(pu, diagnostic)) {
             valid = FALSE;
             ++gatekeeper_result.error_count;
