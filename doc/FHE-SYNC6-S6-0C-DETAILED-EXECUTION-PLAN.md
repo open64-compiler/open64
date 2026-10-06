@@ -10,11 +10,10 @@ program policy or a complete real circuit producer. No
 
 Two C2 main/common prerequisites are implementation-complete and accepted by
 the FHE consumer. The source-derived typed-row transaction merged through PR
-#173. The source-free generated-mask transaction is published as PR #174 from
-`codex/dsl-generated-mask-contract` at `7f15d115` and is ready for review. Do
-not begin FHE mutating consumer work or publish mapped CKKS artifacts until PR
-#174 merges. Acceptance and publication of these prerequisites do not close
-C2; the FHE producer must still materialize and verify the complete recipes.
+#173. The source-free generated-mask transaction merged through PR #174 at
+`0325ce74`. The first FHE-owned admission fixture consumes both services and
+reopens mapped row/mask evidence. This does not close C2; the producer must
+still materialize and verify the complete real-model recipes.
 
 C2's first bounded column-first Conv recipe is implemented and checked
 against both a nonuniform stem-like fixture and the replay-authenticated
@@ -243,6 +242,22 @@ The selected F32 row contract and exact shared API gap are in
 `/private/tmp/open64-fhe-sync6-row-assets/first/ace-conv-rows.index.json`;
 its raw F32 side file is adjacent and is not checked into Git.
 
+After PRs #173 and #174 merged, the FHE-owned
+`fhe_ckks_conv_assets.{h,cxx}` admission layer became the only C2 entry point
+for these generic transactions. It proves the exact folded rank-4 F32 OIHW
+source, bounded recipe, dense feature-row ordinal sequence, rank-1 F32 result
+length, fixed transformation identity, and exact authenticated
+geometry/variant digests before delegating mutation. It does not create WN,
+ST, TY, TCON, or mapped rows directly. A linked fixture atomically rejects a
+bad row ordinal and wrong geometry digest, then materializes all nine rows for
+a legal `2x1x3x3`, `4x4` Conv plus two source-free masks. Separate-process
+`ir_b2a -st -src` shows owner-qualified typed-row lineage, generated-mask
+geometry/variant provenance, external ranges, canonical TYs, and nonzero
+source positions. Retained evidence is under
+`/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-assets/`.
+This is a bounded native integration fixture, not the 5,211-row ResNet
+materialization, an executable Conv DAG, or CKKS state/key certification.
+
 The next FHE-owned clear-schedule check follows ACE's **unblocked** feature
 row loop after input duplication. For every row it records the signed
 spatial/channel rotation, raw F32 coefficient row, and distinct nonzero
@@ -464,23 +479,22 @@ implicit-zero source. Main/common has implemented and FHE has accepted a
 separate backend-safe transaction for source-free generated external tensor
 constants with canonical rank-1 F32 TY, side-file TCON/range/checksum,
 active-PU insertion and source position, and stable
-geometry/stage/diagonal provenance. It is published as PR #174 and must merge
-before the FHE producer consumes it. FHE owns mask bytes, variant binding, and
-`ckks.encode` state/key checks.
+geometry/stage/diagonal provenance. It merged through PR #174 and is consumed
+only through the FHE admission layer above. FHE owns mask bytes, variant
+binding, and `ckks.encode` state/key checks.
 `FHE-SYNC6-GENERATED-MASK-GEOMETRY-MANIFEST.md` defines the canonical
 manifest bytes, exact geometry digest, variant-signature digest, and
 stage/diagonal coverage that the FHE producer must validate before invoking
 that transaction.
 Do not attach false `converted_from` weight lineage, insert raw WN/ST nodes,
-or embed the full F32 masks in `.B` until PR #174 merges. The typed-row
-prerequisite has already landed through PR #173, and PR #174 is rebased on that
-contract.
+or embed the full F32 masks in `.B`. PRs #173 and #174 provide the only native
+mutation paths for source-derived rows and source-free masks, respectively.
 
 | Slice | FHE-owned work | Focused exit evidence |
 | --- | --- | --- |
 | C0: replay/input gate | Add a deterministic input manifest and native read-only gate joining six-PU images, 87/147 events, 19 contexts, source/payload/coefficient hashes, and FHE/DSL validators. Reject the older `.fhe.B` and unsupported config before planning. | Stable hashed census, `-st -src` with six FUNC_ENTRYs/nine calls/nonzero source interleave; wrong hash or missing context rejects without output. |
 | C1: canonical plan serializer | Define a bounded structured per-event CKKS step plan and versioned byte encoding for operation/operand/group-output/TY/layout/state/key/rotation/B-role facts. Validate before encoding; opaque producer-supplied bytes alone are not a legal plan. | Equal semantics encode identically despite allocation/name order; changed non-ReLU operation/state/key/rotation changes bytes. Missing field, bad operand, duplicate event, or truncated encoding rejects. Retain decoded plan and hashes. |
-| C2: non-ReLU recipes | Use the selected ACE-aligned column-first, raw-F32 transformed feature rows as external plain operands of explicit `ckks.encode`. Join every row to verified folded bytes and exact source/call context; retain the independent signed-rotation clear oracle. Prove row-indexed rotations, accumulation, bias, and state before expanding the 13 Conv definitions/21 contexts. Do not silently substitute input im2col, fast blocking, or runtime mask derivation. Then cover residual/pool/flatten/linear. Unsupported cases fail closed. | Exact F32 bytes, row order, per-context digests, and tamper negatives first; PR #173 supplies typed-row materialization and PR #174 must supply generated-mask materialization; then add per-operator oracles and a measured materialized-IR rotation/key/state census. Stop for graph-wide layout changes or hidden state repair. |
+| C2: non-ReLU recipes | Use the selected ACE-aligned column-first, raw-F32 transformed feature rows as external plain operands of explicit `ckks.encode`. Join every row to verified folded bytes and exact source/call context; retain the independent signed-rotation clear oracle. Prove row-indexed rotations, accumulation, bias, and state before expanding the 13 Conv definitions/21 contexts. Do not silently substitute input im2col, fast blocking, or runtime mask derivation. Then cover residual/pool/flatten/linear. Unsupported cases fail closed. | PRs #173/#174 and the bounded FHE admission fixture certify native row/mask value creation. Next bind real per-context rows to explicit encode/rotate/multiply/add recipes and measure the materialized-IR rotation/key/state census. Stop for graph-wide layout changes or hidden state repair. |
 | C3: ReLU recipe | In each of 19 contexts generate `ckks.bootstrap` with `PRE_RELU_REFRESH` and target 15/17/18, actual B materialization/encode/normalization, approved ordered degree-7/15/13 Chebyshev/Clenshaw stages, and reconstruction. Bootstrap does not compute ReLU. | 19 refreshes with targets 15x16/17x1/18x2, stage depth 3+4+4=11, coefficient bytes/order/hash, and independent clear polynomial oracle. Wrong B/reason/target/stage/context rejects. |
 | C4: state/requirement propagation | Transfer exact descriptor/config, cipher/plain class, TY/layout/slots, level/scale/components/precision, pending actions, key class and signed rotation through every proposed result. Insert explicit alignment/rescale/relin/encode steps when the reviewed recipe requires them. Recompute depth/keys/rotations from the DAG. | Unary/binary and cross-operator positives; missing key, wrong rotation, depleted level, low precision, mismatched state/TY/slot, forward reference, or unresolved action rejects before mutation. Retain operation/key/rotation/depth report. |
 | C5: whole-PU policy | Group byte-identical complete PU plans, register with `DSL_PU_Transaction_Register_Policy`, map variants to source PU/value/static ordinal, add B formals, route nine calls and bind 18 called B actuals plus one root B TCON. Use owner-qualified clone-value results. Measure variant count after C2-C4. | Equal contexts reuse, changed non-ReLU plan splits, two ReLUs keep two B formals, and 129 existing call-ABI roles remain correct. Missing actual, wrong owner/TY, incomplete signature or duplicate route rejects before apply. Retain variant/call/origin report. |
@@ -504,9 +518,9 @@ WN/ST/TY or mapped rows to bridge a missing API.
 2. C2 selects ACE-style external F32 transformed rows and explicit
    `ckks.encode` for the O0 Conv plaintext path. The independent grouped
    mask oracle remains a correctness cross-check, not the asset format.
-   The rank-4 source to rank-1 row binding merged through PR #173. The
-   source-free generated-mask transaction passed FHE consumer review and is
-   published as PR #174; merge it before mapped IR publication. This does not
+   The rank-4 source to rank-1 row binding merged through PR #173 and the
+   source-free generated-mask transaction merged through PR #174. The bounded
+   FHE admission fixture consumes both without raw IR mutation. This does not
    admit ACE fast blocking or MetaKernel O2. If the row-indexed recipe needs
    graph-wide layout work,
    unexpected state repair, or proliferating cases, stop and quantify the

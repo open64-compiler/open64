@@ -167,6 +167,16 @@ bool Build_Rotation_Mask(const VHO_FHE_CKKS_CONV_RECIPE &recipe,
 
 }  // namespace
 
+/* Expose the complete fixed-recipe validator to later FHE semantic consumers
+ * without duplicating its shape, term, slot, and rotation invariants. */
+bool VHO_FHE_CKKS_Validate_Column_Conv_Recipe(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe, FILE *diagnostic)
+{
+  if (!Valid_Recipe(recipe))
+    return Report(diagnostic, "existing Conv recipe is malformed");
+  return true;
+}
+
 /* Preflight the bounded shape and finite folded bytes, then construct a
  * column-first mask/rotation schedule into local storage before publish. */
 bool VHO_FHE_CKKS_Build_Column_Conv_Recipe(

@@ -62,6 +62,12 @@ struct VHO_FHE_CKKS_CONV_ROW_SCHEDULE {
   std::vector<int32_t> required_signed_rotations;
 };
 
+/* Validate every fixed O0 shape, term, bias, slot, depth, and rotation
+ * invariant of an already constructed recipe without exposing internal
+ * helpers or changing the caller's recipe. */
+bool VHO_FHE_CKKS_Validate_Column_Conv_Recipe(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe, FILE *diagnostic);
+
 /* Build the intentionally narrow O0 correctness recipe from already verified
  * OIHW float32 folded weights and float32 bias. Input and output slots use
  * NCHW channel-major order. The outer construction dimension is each output

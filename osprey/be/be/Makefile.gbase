@@ -343,6 +343,7 @@ BE_VHO_CXX_SRCS = \
   fhe_ckks_transfer.cxx \
   fhe_ckks_plan_bytes.cxx \
   fhe_ckks_conv_recipe.cxx \
+  fhe_ckks_conv_assets.cxx \
   fhe_ckks_variant_signature.cxx \
   f90_lower.cxx           \
   f90_lower_dep.cxx     \
