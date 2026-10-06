@@ -95,7 +95,8 @@ VHO_FHE_CKKS_Materialize_Conv_Rows(
       !Tensor_Dimensions(source.ty, 4, source_shape) ||
       source_shape[0] != shape.output_channels ||
       source_shape[1] != shape.input_channels ||
-      source_shape[2] != 3 || source_shape[3] != 3)
+      source_shape[2] != shape.kernel_height ||
+      source_shape[3] != shape.kernel_width)
     return Report(diagnostic, "source is not the exact folded OIHW tensor");
 
   for (UINT32 i = 0; i < request_count; ++i) {
@@ -118,6 +119,48 @@ VHO_FHE_CKKS_Materialize_Conv_Rows(
   if (!DSL_IR_Materialize_Typed_External_Tensor_Values(
           pu_info, requests, request_count, results))
     return Report(diagnostic, "typed-row transaction rejected the batch");
+  return TRUE;
+}
+
+/* Validate the folded-bias source and exact ACE slot expansion before the
+ * generic one-value typed-external transaction mutates the active PU. */
+BOOL
+VHO_FHE_CKKS_Materialize_Conv_Bias(
+    PU_Info *pu_info, const VHO_FHE_CKKS_CONV_RECIPE *recipe,
+    const DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST *request,
+    DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_RESULT *result,
+    FILE *diagnostic)
+{
+  if (result != NULL)
+    memset(result, 0, sizeof(*result));
+  if (pu_info == NULL || recipe == NULL || request == NULL || result == NULL ||
+      !VHO_FHE_CKKS_Validate_Column_Conv_Recipe(*recipe, diagnostic))
+    return Report(diagnostic, "bias materialization input is incomplete");
+
+  const VHO_FHE_CKKS_CONV_SHAPE &shape = recipe->shape;
+  DSL_IR_VALUE_RECORD source;
+  UINT64 source_shape[1] = { 0 };
+  UINT64 result_shape[1] = { 0 };
+  const UINT64 expected_length = recipe->active_output_slots;
+  if (request->source_owner_pu_st == ST_IDX_ZERO ||
+      request->source_value_id == DSL_IR_VALUE_INVALID_ID ||
+      request->source_handle == 0 ||
+      !DSL_IR_Image_Get_Value(request->source_value_id, &source) ||
+      !Tensor_Dimensions(source.ty, 1, source_shape) ||
+      source_shape[0] != shape.output_channels ||
+      request->transformation_name == NULL ||
+      strcmp(request->transformation_name, "fhe.conv_expanded_bias") != 0 ||
+      request->transformation_version != 1 ||
+      request->transformation_ordinal != 0 ||
+      !Tensor_Dimensions(request->descriptor_ty, 1, result_shape) ||
+      result_shape[0] != expected_length ||
+      request->byte_length != expected_length * sizeof(float))
+    return Report(diagnostic,
+                  "expanded-bias type, shape, or provenance is invalid");
+
+  if (!DSL_IR_Materialize_Typed_External_Tensor_Values(
+          pu_info, request, 1, result))
+    return Report(diagnostic, "typed-bias transaction rejected the value");
   return TRUE;
 }
 

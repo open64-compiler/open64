@@ -141,11 +141,17 @@ main(int argc, char **argv)
       "parameter.folded_weight");
   TY_IDX row_ty = Create_Tensor_Type(
       "ckks_conv_asset_row_f32_32", 1, "[32]", "derived.feature_row");
+  TY_IDX bias_ty = Create_Tensor_Type(
+      "ckks_conv_asset_bias_f32_2", 1, "[2]", "parameter.folded_bias");
+  TY_IDX expanded_bias_ty = Create_Tensor_Type(
+      "ckks_conv_asset_expanded_bias_f32_32", 1, "[32]",
+      "derived.expanded_bias");
   DSL_BUILDER_PROGRAM_UNIT pu =
       DSL_Builder_Create_Minimal_PU("ckks_conv_asset_materialization");
   UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
-  if (weight_ty == TY_IDX_ZERO || row_ty == TY_IDX_ZERO || pu == NULL ||
-      file_id == 0)
+  if (weight_ty == TY_IDX_ZERO || row_ty == TY_IDX_ZERO ||
+      bias_ty == TY_IDX_ZERO || expanded_bias_ty == TY_IDX_ZERO ||
+      pu == NULL || file_id == 0)
     return Fail("canonical tensor types and PU");
 
   const char checksum[] =
@@ -167,26 +173,41 @@ main(int argc, char **argv)
   source_reference.checksum = checksum;
   DSL_BUILDER_VALUE source = DSL_Builder_Create_External_Tensor_Constant(
       "stem_folded_weight", weight_ty, &source_reference);
+  DSL_BUILDER_EXTERNAL_TENSOR_REFERENCE bias_reference = source_reference;
+  bias_reference.tensor_key = "stem.conv.folded_bias";
+  bias_reference.byte_offset = 18 * sizeof(float);
+  bias_reference.byte_length = 2 * sizeof(float);
+  DSL_BUILDER_VALUE bias_source = DSL_Builder_Create_External_Tensor_Constant(
+      "stem_folded_bias", bias_ty, &bias_reference);
   DSL_BUILDER_SOURCE_POSITION position;
   memset(&position, 0, sizeof(position));
   position.file_id = file_id;
   position.line = __LINE__;
   position.column = 1;
   position.statement_begin = 1;
-  if (source == NULL ||
+  if (source == NULL || bias_source == NULL ||
       !DSL_Builder_Set_Value_Source_Position(source, &position) ||
-      !DSL_Builder_Append_PU_Value(pu, source))
-    return Fail("source external folded weight");
+      !DSL_Builder_Set_Value_Source_Position(bias_source, &position) ||
+      !DSL_Builder_Append_PU_Value(pu, source) ||
+      !DSL_Builder_Append_PU_Value(pu, bias_source))
+    return Fail("source external folded weight and bias");
 
   WN *body = WN_func_body(PU_Info_tree_ptr(pu));
   WN *source_definition = Find_Definition(
       body, DSL_Builder_Get_Value_Result_Symbol(source));
   DSL_IR_VALUE_ID source_id = DSL_Builder_Get_Value_Image_Id(source);
+  DSL_IR_VALUE_ID bias_source_id =
+      DSL_Builder_Get_Value_Image_Id(bias_source);
   DSL_IR_EXTERNAL_TENSOR_SOURCE_HANDLE source_handle = 0;
+  DSL_IR_EXTERNAL_TENSOR_SOURCE_HANDLE bias_source_handle = 0;
   if (source_definition == NULL || source_id == DSL_IR_VALUE_INVALID_ID ||
       !DSL_IR_Capture_External_Tensor_Source(
-          pu, source_id, &source_handle) || source_handle == 0)
-    return Fail("typed source capture");
+          pu, source_id, &source_handle) || source_handle == 0 ||
+      bias_source_id == DSL_IR_VALUE_INVALID_ID ||
+      !DSL_IR_Capture_External_Tensor_Source(
+          pu, bias_source_id, &bias_source_handle) ||
+      bias_source_handle == 0)
+    return Fail("typed weight and bias source capture");
 
   VHO_FHE_CKKS_CONV_SHAPE shape = {
     1, 1, 2, 4, 4, 3, 3, 1, 1,
@@ -265,6 +286,59 @@ main(int argc, char **argv)
       lineage.transformation_ordinal != 8)
     return Fail("typed-row provenance query");
 
+  DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST bias_request;
+  DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_RESULT bias_result;
+  TCON_IDX bias_tcon = Create_External_TCON(
+      expanded_bias_ty, 32, 1408, 128);
+  if (bias_tcon == TCON_IDX_ZERO)
+    return Fail("expanded bias tensor TCON");
+  DSL_IR_Typed_External_Tensor_Value_Request_Init(&bias_request);
+  bias_request.name = "stem_conv_expanded_bias";
+  bias_request.source_owner_pu_st = PU_Info_proc_sym(pu);
+  bias_request.source_value_id = bias_source_id;
+  bias_request.source_handle = bias_source_handle;
+  bias_request.descriptor_ty = expanded_bias_ty;
+  bias_request.tensor_tcon = bias_tcon;
+  bias_request.insert_before = source_definition;
+  bias_request.source_position = WN_Get_Linenum(source_definition);
+  bias_request.storage_format = "raw_f32_le";
+  bias_request.side_file = "conv-assets.bin";
+  bias_request.tensor_key = "stem.conv.expanded_bias";
+  bias_request.byte_offset = 1408;
+  bias_request.byte_length = 128;
+  bias_request.checksum = checksum;
+  bias_request.transformation_name = "fhe.conv_expanded_bias";
+  bias_request.transformation_version = 1;
+  bias_request.transformation_ordinal = 0;
+  DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST bad_bias = bias_request;
+  bad_bias.byte_length = 124;
+  const UINT32 bias_nodes = DSL_IR_Image_Node_Count();
+  const UINT32 bias_values = DSL_IR_Image_Value_Count();
+  const UINT32 bias_sts = ST_Table_Size(CURRENT_SYMTAB);
+  bias_result.value_id = 99;
+  bias_result.st = ST_IDX(99);
+  bias_result.definition = source_definition;
+  if (VHO_FHE_CKKS_Materialize_Conv_Bias(
+          pu, &recipe, &bad_bias, &bias_result, NULL) ||
+      DSL_IR_Image_Node_Count() != bias_nodes ||
+      DSL_IR_Image_Value_Count() != bias_values ||
+      ST_Table_Size(CURRENT_SYMTAB) != bias_sts ||
+      bias_result.value_id != DSL_IR_VALUE_INVALID_ID ||
+      bias_result.st != ST_IDX_ZERO || bias_result.definition != NULL)
+    return Fail("expanded bias rejection before mutation");
+  if (!VHO_FHE_CKKS_Materialize_Conv_Bias(
+          pu, &recipe, &bias_request, &bias_result, stderr) ||
+      !DSL_IR_Typed_External_Tensor_Validate_PU(pu, stderr))
+    return Fail("expanded bias materialization");
+  DSL_IR_TYPED_EXTERNAL_TENSOR_LINEAGE bias_lineage;
+  if (!DSL_IR_Image_Get_Typed_External_Tensor_Lineage(
+          PU_Info_proc_sym(pu), bias_result.value_id, &bias_lineage) ||
+      bias_lineage.source_value_id != bias_source_id ||
+      bias_lineage.transformation_ordinal != 0 ||
+      strcmp(bias_lineage.transformation_name,
+             "fhe.conv_expanded_bias") != 0)
+    return Fail("expanded bias provenance query");
+
   DSL_IR_GENERATED_EXTERNAL_TENSOR_REQUEST mask_requests[2];
   DSL_IR_GENERATED_EXTERNAL_TENSOR_RESULT mask_results[2];
   const char *mask_names[2] = { "stride_mask_0", "stride_mask_1" };
@@ -333,7 +407,7 @@ main(int argc, char **argv)
   image.flags = 0;
   if (!DSL_Builder_Finalize_Mapped_Image(&image))
     return Fail("mapped WHIRL output");
-  printf("materialized %u typed rows and %u generated masks\n",
+  printf("materialized %u typed rows, one expanded bias, and %u generated masks\n",
          (unsigned)row_results.size(), 2U);
   return 0;
 }

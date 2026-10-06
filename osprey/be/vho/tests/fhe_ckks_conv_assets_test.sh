@@ -22,15 +22,17 @@ make -C "$tool_dir" -f Makefile -f "$fragment" \
 "$tool_dir/ir_b2a" -st -src "$image" "$trace" \
   >"$artifact_dir/ir_b2a.log" 2>&1
 
-test "$(grep -Fc 'dsl.typed_external_row=1' "$trace")" -eq 9
+test "$(grep -Fc 'dsl.typed_external_row=1' "$trace")" -eq 10
 test "$(grep -Fc 'dsl.generated_external=1' "$trace")" -eq 2
 grep -Fq 'dsl.transformation_name=fhe.conv_feature_row' "$trace"
 grep -Fq 'dsl.transformation_ordinal=8' "$trace"
+grep -Fq 'dsl.transformation_name=fhe.conv_expanded_bias' "$trace"
+grep -Fq 'name=stem_conv_expanded_bias' "$trace"
 grep -Fq 'dsl.generation_name=fhe.ckks.stride_compaction.mask' "$trace"
 grep -Fq 'dsl.geometry_manifest_sha256=0123456789abcdef' "$trace"
 grep -Fq 'dsl.variant_signature_sha256=1111111111111111' "$trace"
 grep -Fq 'storage_byte_offset=1280' "$trace"
-grep -Fq 'materialized 9 typed rows and 2 generated masks' \
+grep -Fq 'materialized 9 typed rows, one expanded bias, and 2 generated masks' \
   "$artifact_dir/producer.log"
 grep -Eq '^ LOC 1 [1-9][0-9]* ' "$trace"
 if grep -Eq 'OPR_DSL[[:space:]]|MDSL[[:space:]]' "$trace"; then

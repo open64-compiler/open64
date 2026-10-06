@@ -252,13 +252,15 @@ def publish(budget_path, payload_path, replay_path, asset_path, index_path,
                 for ordinal, data in enumerate(rows):
                     add_blob(asset, asset_hash, records, identity,
                              "ace_feature_row", ordinal,
-                             {"shape": [output_channels, width, width]}, data)
+                             {"shape": [output_channels * width * width]},
+                             data)
                     if fail_after_records == len(records):
                         raise ValueError("injected complete Conv asset failure")
                 bias_data = expanded_bias_bytes(bias, output_channels, width)
                 add_blob(asset, asset_hash, records, identity,
                          "expanded_bias", 0,
-                         {"shape": [output_channels, width, width]}, bias_data)
+                         {"shape": [output_channels * width * width]},
+                         bias_data)
                 if fail_after_records == len(records):
                     raise ValueError("injected complete Conv asset failure")
                 mask_count = 0

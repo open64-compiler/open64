@@ -29,6 +29,15 @@ BOOL VHO_FHE_CKKS_Materialize_Conv_Rows(
     DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_RESULT *results,
     FILE *diagnostic);
 
+/* Validate one folded Conv bias and its slot-expanded rank-1 result, then
+ * atomically create the external value through the reviewed typed-external
+ * transaction. */
+BOOL VHO_FHE_CKKS_Materialize_Conv_Bias(
+    PU_Info *pu_info, const VHO_FHE_CKKS_CONV_RECIPE *recipe,
+    const DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST *request,
+    DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_RESULT *result,
+    FILE *diagnostic);
+
 /* Validate one complete source-free generated-mask batch against the exact
  * authenticated geometry and variant digests, then atomically create values
  * through the reviewed common/com generated-external transaction. */

@@ -118,11 +118,11 @@ def verify(asset_path, index_path):
         require(len(feature_rows) == context["feature_row_count"] and
                 [row["ordinal"] for row in feature_rows] ==
                 list(range(len(feature_rows))) and
-                all(row["shape"] == [output_channels, width, width] and
+                all(row["shape"] == [output_channels * width * width] and
                     row["byte_length"] == output_channels * width * width * 4
                     for row in feature_rows) and
                 len(biases) == 1 and biases[0]["ordinal"] == 0 and
-                biases[0]["shape"] == [output_channels, width, width] and
+                biases[0]["shape"] == [output_channels * width * width] and
                 biases[0]["byte_length"] == output_channels * width * width * 4,
                 "feature-row or expanded-bias contract is invalid")
         if context["source_stride"] == [1, 1]:
