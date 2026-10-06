@@ -346,6 +346,110 @@ bool VHO_FHE_CKKS_Build_Column_Conv_F32_Row_Bytes(
   return true;
 }
 
+/* An unblocked ACE row r selects input channel r/9 and kernel offset r%9.
+ * Duplicating the input makes that one rotation valid for every output
+ * channel, whose row coefficient selects (r/9 + oc) modulo C_in. */
+bool VHO_FHE_CKKS_Build_Column_Conv_Row_Schedule(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe,
+    VHO_FHE_CKKS_CONV_ROW_SCHEDULE *schedule, FILE *diagnostic)
+{
+  if (schedule == NULL || !Valid_Recipe(recipe))
+    return Report(diagnostic, "row schedule recipe is incomplete");
+  const VHO_FHE_CKKS_CONV_SHAPE &shape = recipe.shape;
+  const uint32_t plane = shape.height * shape.width;
+  uint64_t copies =
+      (uint64_t(shape.output_channels) + shape.input_channels - 1) /
+          shape.input_channels + 1;
+  if ((recipe.active_input_slots & (recipe.active_input_slots - 1)) == 0)
+    copies = std::min(copies, uint64_t(shape.slot_count) /
+                                  recipe.active_input_slots);
+  if (uint64_t(recipe.active_input_slots) * 2 > shape.slot_count)
+    copies = 1;
+  if (copies * recipe.active_input_slots > shape.slot_count)
+    return Report(diagnostic, "ACE row input duplication exceeds slots");
+
+  VHO_FHE_CKKS_CONV_ROW_SCHEDULE built;
+  built.input_copy_count = static_cast<uint32_t>(copies);
+  std::set<int32_t> keys;
+  for (uint32_t copy = 1; copy < built.input_copy_count; ++copy) {
+    const int32_t rotation = -int32_t(copy * recipe.active_input_slots);
+    built.duplication_rotations.push_back(rotation);
+    keys.insert(rotation);
+  }
+  for (uint32_t row = 0; row < shape.input_channels * 9; ++row) {
+    const int32_t spatial =
+        (int32_t(row % 9 / 3) - 1) * int32_t(shape.width) +
+        int32_t(row % 3) - 1;
+    const int32_t rotation = int32_t(row / 9 * plane) + spatial;
+    built.row_rotations.push_back(rotation);
+    if (rotation != 0)
+      keys.insert(rotation);
+  }
+  built.required_signed_rotations.assign(keys.begin(), keys.end());
+  schedule->input_copy_count = built.input_copy_count;
+  schedule->duplication_rotations.swap(built.duplication_rotations);
+  schedule->row_rotations.swap(built.row_rotations);
+  schedule->required_signed_rotations.swap(built.required_signed_rotations);
+  return true;
+}
+
+/* Replay every explicit row rotation against the raw F32 coefficient bytes;
+ * no provider encoder, encrypted arithmetic, or hidden geometry is used. */
+bool VHO_FHE_CKKS_Evaluate_Column_Conv_Rows_Clear(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe,
+    const VHO_FHE_CKKS_CONV_ROW_SCHEDULE &schedule,
+    const std::vector<float> &input_slots,
+    std::vector<double> *output_slots, FILE *diagnostic)
+{
+  const VHO_FHE_CKKS_CONV_SHAPE &shape = recipe.shape;
+  VHO_FHE_CKKS_CONV_ROW_SCHEDULE expected;
+  if (output_slots == NULL || input_slots.size() != shape.slot_count ||
+      !VHO_FHE_CKKS_Build_Column_Conv_Row_Schedule(
+          recipe, &expected, diagnostic) ||
+      schedule.input_copy_count != expected.input_copy_count ||
+      schedule.duplication_rotations != expected.duplication_rotations ||
+      schedule.row_rotations != expected.row_rotations ||
+      schedule.required_signed_rotations != expected.required_signed_rotations)
+    return Report(diagnostic, "ACE row schedule or input is incomplete");
+  for (size_t i = 0; i < input_slots.size(); ++i)
+    if (!Finite(input_slots[i]) ||
+        (i >= recipe.active_input_slots && input_slots[i] != 0))
+      return Report(diagnostic, "ACE row input has invalid packed tail");
+
+  std::vector<float> duplicated(shape.slot_count, 0.0f);
+  for (uint32_t copy = 0; copy < schedule.input_copy_count; ++copy)
+    std::copy(input_slots.begin(),
+              input_slots.begin() + recipe.active_input_slots,
+              duplicated.begin() + size_t(copy) * recipe.active_input_slots);
+  const uint32_t plane = shape.height * shape.width;
+  std::vector<double> result(shape.slot_count, 0.0);
+  for (uint32_t column = 0; column < recipe.active_output_slots; ++column)
+    result[column] = recipe.folded_bias[column / plane];
+  for (uint32_t row = 0; row < schedule.row_rotations.size(); ++row) {
+    std::vector<unsigned char> bytes;
+    if (!VHO_FHE_CKKS_Build_Column_Conv_F32_Row_Bytes(
+            recipe, row, &bytes, diagnostic))
+      return Report(diagnostic, "ACE row bytes are unavailable");
+    const int64_t rotation = schedule.row_rotations[row];
+    for (uint32_t column = 0; column < recipe.active_output_slots; ++column) {
+      const size_t offset = size_t(column) * 4;
+      const uint32_t bits = uint32_t(bytes[offset]) |
+                            (uint32_t(bytes[offset + 1]) << 8) |
+                            (uint32_t(bytes[offset + 2]) << 16) |
+                            (uint32_t(bytes[offset + 3]) << 24);
+      float weight;
+      memcpy(&weight, &bits, sizeof(weight));
+      if (weight == 0)
+        continue;
+      const uint32_t source = static_cast<uint32_t>(
+          (int64_t(column) + rotation + shape.slot_count) % shape.slot_count);
+      result[column] += double(duplicated[source]) * weight;
+    }
+  }
+  output_slots->swap(result);
+  return true;
+}
+
 /* Keep grouped masks process-local and prove each diagonal contributes
  * exactly the same clear tensor value as the source OIHW Conv. */
 bool VHO_FHE_CKKS_Evaluate_Grouped_Column_Conv_Clear(

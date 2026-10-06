@@ -35,6 +35,18 @@ bias, and scale/level effects must still be proved before C2 expansion.
 This is not the ACE fast blocking/cost-model schedule and does not silently
 admit it as a MetaKernel optimization.
 
+The first provider-independent O0 schedule now has a clear oracle for the
+ACE unblocked row path. It duplicates the zero-tailed packed input into
+disjoint channel blocks, capped by available slots when the packed input
+size is a power of two, then for feature row `r` rotates that input by
+`(r/9)*H*W + (r%9/3-1)*W + (r%3-1)`, multiplies by the corresponding
+raw F32 row, and accumulates before the expanded bias. The nonzero signed
+duplication and row rotations form the prospective key census. This is
+validated against OIHW tensor Conv for the stem and all three captured
+stride-one block shape families; it has no CKKS state, key availability, rescale, or
+provider execution proof. It does not implement ACE's optional fast
+blocking/cost-model rearrangement.
+
 ## Open64 Identity And Publication
 
 One Open64 Conv source definition can be reused by callers with different

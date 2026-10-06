@@ -63,6 +63,11 @@ final number is measured after *all* event plans exist.
    compares full bytes; SHA-256 is only a review fingerprint. Exclude
    source positions, names, diagnostics, and per-caller B TCON bytes from
    equality only when exact formal/actual binding is proved.
+   Variant-local external Conv rows are constants, not formals: include their
+   ordered transform identities and authenticated content digests in plan
+   equality, and split variants whenever those bytes differ. Before
+   materialization, prove each caller-owned folded source is the exact
+   call-ABI actual for that Conv context.
 3. Specialize complete source PUs before executable mutation. Equal
    whole-PU signatures reuse one variant; any incompatible operation,
    layout, key, rotation, level, precision, or operand TY splits it. Use
@@ -207,6 +212,22 @@ The selected F32 row contract and exact shared API gap are in
 `FHE-SYNC6-TYPED-ROW-VALUE-HANDOFF.md`. The retained diagnostic index is
 `/private/tmp/open64-fhe-sync6-row-assets/first/ace-conv-rows.index.json`;
 its raw F32 side file is adjacent and is not checked into Git.
+
+The next FHE-owned clear-schedule check follows ACE's **unblocked** feature
+row loop after input duplication. For every row it records the signed
+spatial/channel rotation, raw F32 coefficient row, and distinct nonzero
+rotation requirements, then clear-evaluates rotate/multiply/accumulate plus
+bias. The independent OIHW tensor oracle matches all active outputs for the
+synthetic stem and replay-authenticated stem, call1 Conv2, call4 Conv2, and
+call7 Conv2 fixtures. Their input-copy counts are 7, 2, 2, and 2;
+distinct row/duplication signed rotations are 32, 144, 288, and 576.
+These four fixtures cover every admitted stride-one channel/width family.
+The retained trace is
+`/private/tmp/open64-fhe-sync6-row-schedule/run.log`. This does not yet
+serialize legal CKKS steps or prove scale, level, precision, encoded
+plaintext state, or runtime key availability. ACE fast blocking remains
+outside the O0 correctness schedule. The copy count follows ACE's power-of-two
+slot-cap rule; a `Cin=1, Cout=32, H=W=32` boundary uses 32 copies, not 33.
 
 ### C2 Stride-Two Mapping Decision
 
