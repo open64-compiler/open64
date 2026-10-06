@@ -344,19 +344,40 @@ the projection `cnn_conv2d_11`, normal-path `cnn_conv2d_16`, and
 `common.residual_add` contract has `shape_check=exact`. This proves a
 *layout/type* join, not ciphertext
 level/scale/precision compatibility of the two residual paths. The
-14-level compaction exceeds the level-7 input capacity; correctness requires
-an explicit reviewed capacity refresh, not an unrecorded level reduction.
+read-only `fhe_ckks_stride_all_contexts_proof.py` now authenticates the
+source trace, folded payload, and independently regenerated Conv budget,
+then checks all four captured stride-two contexts: both 1x1 projections
+and both 3x3 normal-path Convs at callsites 4 and 7. High-resolution
+Conv followed by the sequential compaction network matches an independent
+direct stride-two NCHW oracle with zero clear-slot error in all four
+contexts. The first shape has 8,192 active output slots and 14 symbolic
+mask levels; the second has 4,096 and 13. Duplicate, missing, or unknown
+context, wrong trace/weight hash, and changed payload reject without a report.
+Joining both branches to the approved static CKKS schedule proposes one
+`DEPTH_EXHAUSTION` refresh at level 18 for `layer2.0` and level 17 for
+`layer3.0`; the respective normal and projection outputs meet at symbolic
+level 3. A changed schedule level rejects before report publication.
+The retained proof and negative logs are under
+`/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/stride-all-four/`.
+This proves clear geometry only, not generated mask values in WHIRL.
+
+For the first shape, 14-level compaction exceeds the level-7 input
+capacity; correctness requires an explicit reviewed capacity refresh,
+not an unrecorded level reduction.
 The simple `-O0` proposal refreshes the block input once before the normal
 and projection branches fork, then applies the same sequential bit-move
 network to both stride-two Convs. The existing generic reason
 `DEPTH_EXHAUSTION` identifies this separate boundary; it is not one of the
 19 mandatory `PRE_RELU_REFRESH` boundaries and must not be merged with one.
 The read-only schedule join below proposes post-refresh levels 18 and 17
-for `layer2.0` and `layer3.0`, respectively. Current FHE unary transfer
-validation admits only `PRE_RELU_REFRESH`, so this new use needs an explicit
-FHE-side contract and tests before mutation. No implicit bootstrap or state
-repair is allowed. **Stop C2 stride-two emission here** pending capacity,
-precision, key, and numerical certification of this simple schedule. The
+for `layer2.0` and `layer3.0`, respectively. The FHE unary transfer now
+admits an explicit `DEPTH_EXHAUSTION` bootstrap with matching reason/state
+and key preflight; a separate mapped fixture proves bootstrap followed by
+addition. This does not certify the actual two ResNet refresh boundaries,
+provider target levels, precision, or numerical accuracy. No implicit
+bootstrap or state repair is allowed. **Stop C2 stride-two emission here**
+pending capacity, precision, key, and numerical certification of this
+simple schedule. The
 proof does not complete C2 or authorize `.ckks_ops.B` publication.
 
 #### O1 Fused-Diagonal Research
