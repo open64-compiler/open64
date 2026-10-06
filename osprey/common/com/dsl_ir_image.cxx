@@ -2899,6 +2899,7 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
             view->opcode_descriptors[record.opcode_descriptor_id - 1];
         BOOL typed_row_marker = FALSE;
         BOOL generated_marker = FALSE;
+        BOOL generated_field = FALSE;
         static const char *const generated_names[16] = {
             "value_kind", "value", "dsl.generated_external",
             "storage_format", "storage_file", "storage_tensor_key",
@@ -2932,6 +2933,13 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
                                (diagnostic, "invalid generated tensor marker", i + 1);
                 generated_marker = TRUE;
             }
+            if (strcmp(name, "dsl.generation_name") == 0 ||
+                strcmp(name, "dsl.generation_version") == 0 ||
+                strcmp(name, "dsl.geometry_manifest_sha256") == 0 ||
+                strcmp(name, "dsl.stage_ordinal") == 0 ||
+                strcmp(name, "dsl.diagonal_ordinal") == 0 ||
+                strcmp(name, "dsl.variant_signature_sha256") == 0)
+                generated_field = TRUE;
         }
         if (typed_row_marker !=
             ((record.flags & DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) != 0))
@@ -2939,7 +2947,8 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
                        (diagnostic, "typed row flag/marker mismatch", i + 1);
         if (generated_marker !=
             ((record.flags & DSL_IR_NODE_FLAG_GENERATED_EXTERNAL) != 0) ||
-            (generated_marker && typed_row_marker))
+            (generated_marker && typed_row_marker) ||
+            (generated_field && !generated_marker))
             return DSL_IR_Image_Report
                        (diagnostic, "generated tensor flag/marker mismatch", i + 1);
         if (generated_marker &&

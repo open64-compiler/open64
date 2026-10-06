@@ -2026,7 +2026,15 @@ DSL_IR_Generated_External_Tensor_Validate_PU
             !DSL_IR_Node_Attribute
                  (node, "dsl.geometry_manifest_sha256", &marker) &&
             !DSL_IR_Node_Attribute
-                 (node, "dsl.variant_signature_sha256", &marker))
+                 (node, "dsl.variant_signature_sha256", &marker) &&
+            !DSL_IR_Node_Attribute
+                 (node, "dsl.generation_name", &marker) &&
+            !DSL_IR_Node_Attribute
+                 (node, "dsl.generation_version", &marker) &&
+            !DSL_IR_Node_Attribute
+                 (node, "dsl.stage_ordinal", &marker) &&
+            !DSL_IR_Node_Attribute
+                 (node, "dsl.diagonal_ordinal", &marker))
             continue;
         DSL_IR_GENERATED_EXTERNAL_TENSOR_PROVENANCE provenance;
         if (!DSL_IR_Image_Get_Generated_External_Tensor_Provenance

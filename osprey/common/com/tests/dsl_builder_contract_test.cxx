@@ -8262,6 +8262,18 @@ Check_External_Tensor_Materialization(void)
               &mask_provenance),
          "mapped generated mask without marker rejects without mutation");
     mapped_mask_marker.value = saved_mask_marker;
+    STR_IDX saved_mask_marker_name = mapped_mask_marker.name;
+    mapped_mask_marker.name = mask_attributes
+        [mapped_mask.first_attribute_id - 1].name;
+    mapped_mask.flags &= ~DSL_IR_NODE_FLAG_GENERATED_EXTERNAL;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Image_Load_Mapped(mask_image, mask_image_size, NULL) &&
+         DSL_IR_Image_Get_Generated_External_Tensor_Provenance
+             (PU_Info_proc_sym(callee), mask_results[0].value_id,
+              &mask_provenance),
+         "orphan generated field rejects without mutation");
+    mapped_mask.flags |= DSL_IR_NODE_FLAG_GENERATED_EXTERNAL;
+    mapped_mask_marker.name = saved_mask_marker_name;
     delete [] mask_image;
     EXTERNAL_REWRITE_CHECK(DSL_Builder_Select_PU(caller),
                            "restore caller program unit");
