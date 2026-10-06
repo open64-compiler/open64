@@ -16,6 +16,14 @@ tampered recipe metadata without output mutation. This is a local recipe
 test, not materialized CKKS WHIRL, runtime execution, or certification of
 the remaining projection/stride/channel contexts.
 
+The next C2 preparation slice retains one diagnostic raw F32 side file and
+per-row index for the 17 replay-authenticated stride-one contexts. It checks
+all 5,211 row ranges/hashes, repeats byte-for-byte, and rejects mid-write
+failure without final files. These are host evidence only: the Python test
+fixture is not a backend producer, and the row values are not yet in WHIRL.
+The generic rank-4-source to rank-1-result value transaction requested in
+`FHE-SYNC6-TYPED-ROW-VALUE-HANDOFF.md` remains main/common-owned.
+
 ## Boundary And Inputs
 
 The current six-source-PU replay input is the retained
@@ -178,7 +186,10 @@ and `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/plan-bytes/run.log`.
 The budget test repeats the full analysis byte-for-byte and rejects a
 changed folded payload without publishing a report.
 The selected F32 row contract and exact shared API gap are in
-`FHE-SYNC6-CONV-MASK-ASSET-OPTIONS.md`.
+`FHE-SYNC6-CONV-MASK-ASSET-OPTIONS.md` and
+`FHE-SYNC6-TYPED-ROW-VALUE-HANDOFF.md`. The retained diagnostic index is
+`/private/tmp/open64-fhe-sync6-row-assets/first/ace-conv-rows.index.json`;
+its raw F32 side file is adjacent and is not checked into Git.
 
 ### C2 Stride-Two Mapping Decision
 

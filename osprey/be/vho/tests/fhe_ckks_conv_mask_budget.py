@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""Budget authenticated stride-one Conv masks without publishing CKKS assets.
+"""Budget authenticated Conv plaintexts and optionally retain raw row evidence.
 
 The managed-image joins and column-first mask rule follow
 doc/FHE-SYNC6-S6-0C-DETAILED-EXECUTION-PLAN.md. This is a read-only cost
-probe, not an event-plan producer or a provider encoding benchmark.
+probe, not a backend producer, mapped-IR writer, or provider encode benchmark.
 """
 
 import argparse
 import hashlib
 import json
 import math
+import os
 import re
 import struct
 import sys
+import tempfile
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -91,14 +93,13 @@ def mask_hashes(weights, shape, height, slot_count):
     return live, len(rotations), digests, sorted(rotations)
 
 
-def ace_row_hashes(weights, shape, height):
-    """Hash ACE's column-first transformed F32 feature rows."""
+def ace_row_bytes(weights, shape, height):
+    """Yield exact column-first transformed F32 rows in feature order."""
     output_channels, input_channels, _, _ = shape
     plane = height * height
     values = [value for (value,) in struct.iter_unpack("<f", weights)]
     if any(not math.isfinite(value) for value in values):
         raise ValueError("nonfinite folded weight")
-    digests = []
     for row in range(input_channels * 9):
         data = bytearray(output_channels * plane * 4)
         for oc in range(output_channels):
@@ -117,18 +118,123 @@ def ace_row_hashes(weights, shape, height):
                         struct.pack_into("<f", data,
                                          (oc * plane + y * height + x) * 4,
                                          weight)
-        digests.append(sha256(data))
-    return digests
+        yield bytes(data)
+
+
+def ace_row_hashes(weights, shape, height):
+    """Hash the selected ACE-style rows without retaining their bytes."""
+    return [sha256(row) for row in ace_row_bytes(weights, shape, height)]
+
+
+def emit_asset(asset_contexts, report, asset_path, index_path, report_path,
+               fail_after_rows):
+    """Publish diagnostic files with the index as the last commit marker."""
+    endpoints = (asset_path, report_path, index_path)
+    if len({path.resolve() for path in endpoints}) != 3 or \
+            any(path.exists() for path in endpoints):
+        raise ValueError("row asset endpoints must be distinct and unused")
+    asset_path.parent.mkdir(parents=True, exist_ok=True)
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    asset_tmp = index_tmp = report_tmp = None
+    published = []
+    try:
+        handle, asset_tmp = tempfile.mkstemp(prefix=asset_path.name + ".tmp.",
+                                             dir=asset_path.parent)
+        index_rows = []
+        digest = hashlib.sha256()
+        offset = 0
+        with os.fdopen(handle, "wb") as asset:
+            for context, weights, shape, height, expected in sorted(
+                    asset_contexts,
+                    key=lambda item: (item[0]["owner_pu"],
+                                      item[0]["context"],
+                                      item[0]["callsite"],
+                                      item[0]["conv_node"])):
+                for ordinal, row in enumerate(ace_row_bytes(weights, shape,
+                                                             height)):
+                    row_hash = sha256(row)
+                    if row_hash != expected[ordinal]:
+                        raise ValueError("ACE row differs from authenticated budget")
+                    asset.write(row)
+                    digest.update(row)
+                    index_rows.append({
+                        "owner_pu": context["owner_pu"],
+                        "source_node": context["conv_node"],
+                        "source_value": context["source_value"],
+                        "context": context["context"],
+                        "callsite": context["callsite"],
+                        "folded_weight_tcon": context["weight_tcon"],
+                        "folded_weight_sha256": context["weight_sha256"],
+                        "feature_row": ordinal,
+                        "shape": [context["ace_f32_row_length"]],
+                        "dtype": "F32",
+                        "byte_offset": offset,
+                        "byte_length": len(row),
+                        "sha256": row_hash,
+                    })
+                    offset += len(row)
+                    if fail_after_rows == len(index_rows):
+                        raise ValueError("injected row asset failure")
+            asset.flush()
+            os.fsync(asset.fileno())
+        if len(index_rows) != report["ace_feature_row_count"] or \
+                offset != report["ace_dense_f32_bytes_without_dedup"]:
+            raise ValueError("ACE row asset count or byte budget changed")
+        index = {
+            "schema": "open64.fhe.sync6.ace-f32-row-index.v1",
+            "status": "diagnostic_not_mapped_ir",
+            "asset_basename": asset_path.name,
+            "asset_sha256": digest.hexdigest(),
+            "asset_byte_length": offset,
+            "source_trace_sha256": report["source_trace_sha256"],
+            "folded_payload_sha256": report["folded_payload_sha256"],
+            "rows": index_rows,
+        }
+        handle, index_tmp = tempfile.mkstemp(prefix=index_path.name + ".tmp.",
+                                             dir=index_path.parent)
+        with os.fdopen(handle, "w", encoding="utf-8") as output:
+            json.dump(index, output, sort_keys=True, separators=(",", ":"))
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+        handle, report_tmp = tempfile.mkstemp(
+            prefix=report_path.name + ".tmp.", dir=report_path.parent)
+        with os.fdopen(handle, "w", encoding="utf-8") as output:
+            output.write(json.dumps(report, indent=2) + "\n")
+            output.flush()
+            os.fsync(output.fileno())
+        for temporary, final in ((asset_tmp, asset_path),
+                                 (report_tmp, report_path),
+                                 (index_tmp, index_path)):
+            os.link(temporary, final)
+            published.append(final)
+    except BaseException:
+        for path in reversed(published):
+            path.unlink()
+        raise
+    finally:
+        for path in (asset_tmp, report_tmp, index_tmp):
+            if path is not None and os.path.exists(path):
+                os.unlink(path)
 
 
 def main():
-    """Authenticate source evidence, join 21 contexts, and emit only costs."""
+    """Authenticate 21 contexts and emit a budget plus optional row evidence."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--trace", type=Path, required=True)
     parser.add_argument("--payload", type=Path, required=True)
     parser.add_argument("--replay", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--asset-output", type=Path)
+    parser.add_argument("--index-output", type=Path)
+    parser.add_argument("--fail-after-rows", type=int)
     args = parser.parse_args()
+    if (args.asset_output is None) != (args.index_output is None):
+        parser.error("--asset-output and --index-output must be paired")
+    if args.fail_after_rows is not None and (args.asset_output is None or
+                                             args.fail_after_rows <= 0):
+        parser.error("--fail-after-rows requires assets and a positive count")
     start = time.monotonic()
     replay = json.loads(args.replay.read_text(encoding="utf-8"))
     trace_bytes = args.trace.read_bytes()
@@ -192,6 +298,7 @@ def main():
     contexts = []
     mask_digests = set()
     ace_row_digests = set()
+    asset_contexts = []
     all_rotations = set()
     seen = set()
     for fold in folds:
@@ -254,6 +361,9 @@ def main():
                        candidate_steps=5 * len(digests))
             mask_digests.update(digests)
             ace_row_digests.update(feature_rows)
+            if args.asset_output is not None:
+                asset_contexts.append((row, weight, weight_shape,
+                                       input_shape[2], feature_rows))
             all_rotations.update(rotations)
         contexts.append(row)
     supported = [row for row in contexts if row["bounded_stride_one_recipe"]]
@@ -266,7 +376,9 @@ def main():
                        for row in supported)
     report = {
         "schema": "open64.fhe.sync6.conv-plaintext-budget.v2",
-        "status": "read_only_no_mask_asset_or_whirl_emission",
+        "status": ("diagnostic_raw_row_asset_no_whirl_emission"
+                   if args.asset_output is not None else
+                   "read_only_no_mask_asset_or_whirl_emission"),
         "source_trace_sha256": sha256(trace_bytes),
         "folded_payload_sha256": sha256(source),
         "physical_conv_definitions": len(dispositions),
@@ -300,9 +412,13 @@ def main():
                      for shape, count in sorted(by_shape.items())],
         "contexts": contexts,
     }
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2) + "\n",
-                           encoding="utf-8")
+    if args.asset_output is not None:
+        emit_asset(asset_contexts, report, args.asset_output,
+                   args.index_output, args.output, args.fail_after_rows)
+    else:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2) + "\n",
+                               encoding="utf-8")
     print(json.dumps({key: value for key, value in report.items()
                       if key not in ("contexts", "by_shape")}, indent=2))
     print(f"clear mask reconstruction/hash seconds: "
