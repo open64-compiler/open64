@@ -167,18 +167,20 @@ stable within the active image and may be used directly as a later
 unchanged. No call actual or call-ABI row is rewritten. No inactive local ST
 table is read or written during result materialization.
 
-The new ST's storage metadata records only its own side-file facts and TCON.
-It must not blindly copy source storage, type, CKKS state, or other metadata.
-Lineage uses the existing persisted ST metadata keys
+The new node carries its own storage facts and lineage as a fixed 15-attribute
+`common.tensor_const.v1` profile. It must not copy the caller's ST metadata:
+legacy tensor ST metadata is keyed by local ST_IDX and may collide across PUs.
+The node carries `dsl.typed_external_row=1` together with
+`DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW`. Storage attributes identify the new
+side-file range, checksum, and TCON. Lineage attributes include
 `dsl.converted_from_owner_pu_st`, `dsl.converted_from_value_id`,
-`dsl.transformation_name`,
-`dsl.transformation_version`, and `dsl.transformation_ordinal`. The typed
-lineage query checks all five keys, validates the result owner and the
-owner-qualified source identity without dereferencing an inactive local ST,
-and rejects an incomplete or malformed set. These are provenance, not tensor
-type equivalence. The logical printer exposes the source value and transform
-identity/ordinal alongside the typed external range and checksum in
-`ir_b2a -st -src`, without exposing physical `OPR_DSL` encoding.
+`dsl.transformation_name`, `dsl.transformation_version`, and
+`dsl.transformation_ordinal`. The typed query checks this profile, validates
+the result owner and owner-qualified source identity without dereferencing an
+inactive local ST, and rejects incomplete or malformed evidence. These are
+provenance, not tensor type equivalence. The logical printer exposes the
+source and transformation alongside the external range in `ir_b2a -st -src`
+without exposing physical `OPR_DSL` encoding.
 
 An invalid request returns `FALSE` with result outputs zeroed and no native
 or managed-table change. Batch preflight must include duplicate and
@@ -192,15 +194,15 @@ commit marker last. No final output is published after a terminal failure.
 ## Compatibility And Certification
 
 No new opcode, TY_KIND, ELF section, mapped row, or WHIRL revision is needed.
-Existing artifacts without the five lineage keys reopen unchanged. An
-artifact with a partial or malformed typed-row lineage must fail closed at
-the DSL gatekeeper. On mapped reopen, each source is validated while its own
-PU's local symtab is active; a program-image provenance join then checks
-cross-PU source/result relations using owner-qualified global value IDs. This
-is structural verification, not interprocedural optimization. The runtime
-capture handle is not persisted or required to reopen the image. Older
-readers remain able to reopen ordinary WHIRL and must not silently claim
-transformed-row semantics.
+The append-only node flag is a capability discriminator: the marker and flag
+must occur together, and the old reader rejects a new flagged image rather
+than silently accepting unrecognized row semantics. Existing unflagged images
+reopen unchanged. Malformed typed-row evidence must fail closed in mapped
+validation, the DSL gatekeeper, or the active-PU lineage verifier. Each source
+is validated while its own PU's local symtab is active; owner-qualified
+global value IDs carry cross-PU provenance. This is structural verification,
+not interprocedural optimization. The runtime capture handle is not persisted
+or required to reopen the image.
 
 The focused producer test must retain a `.B`, matching
 `ir_b2a -st -src` `.T`, and source file. It must prove:

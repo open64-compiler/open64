@@ -1940,6 +1940,8 @@ Read_Local_Info (MEM_POOL *pool, PU_Info *pu)
         ErrMsg (EC_IR_Scn_Read, "DSL PU interface", local_ir_file);
     if (!DSL_Call_ABI_Image_Validate_PU(pu, stderr))
         ErrMsg (EC_IR_Scn_Read, "DSL call ABI", local_ir_file);
+    if (!DSL_IR_Typed_External_Tensor_Validate_PU(pu, stderr))
+        ErrMsg (EC_IR_Scn_Read, "DSL typed external lineage", local_ir_file);
     if (PU_Info_state(pu, WT_REGIONS) == Subsect_Exists) {
         OFFSET_AND_SIZE pu_section = get_section
             (local_fhandle, SHT_MIPS_WHIRL, WT_PU_SECTION);

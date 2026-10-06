@@ -20,6 +20,7 @@ extern BOOL DSL_Runtime_Interface_Value_Record_Contract_Valid
 extern BOOL DSL_Program_Interface_Pointer_TY_Contract_Valid (TY_IDX);
 extern BOOL DSL_Program_Interface_Runtime_Input_Contract_Valid
                                 (const DSL_RUNTIME_INPUT_RECORD *);
+extern void DSL_IR_External_Tensor_Source_Reset (void);
 
 typedef struct wn_map_tab WN_MAP_TAB;
 extern WN_MAP_TAB *Current_Map_Tab;
@@ -185,6 +186,7 @@ DSL_IR_Table_Get (TABLE &table, UINT32 id, RECORD *record)
 void
 DSL_IR_Image_Reset (void)
 {
+    DSL_IR_External_Tensor_Source_Reset();
     DSL_ir_opcode_descriptor_table.Delete_down_to(0);
     DSL_ir_node_table.Delete_down_to(0);
     DSL_ir_attribute_table.Delete_down_to(0);
@@ -2856,6 +2858,7 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
         const UINT32 valid_node_flags = DSL_IR_NODE_FLAG_RETIRED |
                                         DSL_IR_NODE_FLAG_LOWERED |
                                         DSL_IR_NODE_FLAG_DEAD_ELIDED |
+                                        DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW |
                                         DSL_IR_NODE_REDIRECT_ORDINAL_MASK;
         active_attribute_count += record.attribute_count;
         active_value_reference_count += record.operand_count;
@@ -2893,6 +2896,29 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
 
         const DSL_IR_OPCODE_DESCRIPTOR_RECORD &descriptor =
             view->opcode_descriptors[record.opcode_descriptor_id - 1];
+        BOOL typed_row_marker = FALSE;
+        for (UINT32 j = 0; j < record.attribute_count; ++j) {
+            const DSL_IR_ATTRIBUTE_RECORD &attribute =
+                view->attributes[record.first_attribute_id - 1 + j];
+            if (strcmp(Index_To_Str(attribute.name),
+                       "dsl.typed_external_row") == 0) {
+                if (typed_row_marker ||
+                    !DSL_IR_Image_String_Id_Valid(attribute.value, TRUE) ||
+                    strcmp(Index_To_Str(attribute.value), "1") != 0)
+                    return DSL_IR_Image_Report
+                               (diagnostic, "invalid typed row marker", i + 1);
+                typed_row_marker = TRUE;
+            }
+        }
+        if (typed_row_marker !=
+            ((record.flags & DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) != 0))
+            return DSL_IR_Image_Report
+                       (diagnostic, "typed row flag/marker mismatch", i + 1);
+        if ((record.flags & DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) != 0 &&
+            (descriptor.logical_operator != OPR_DSLTENSORCONST ||
+             descriptor.version != 1 || record.attribute_count != 15))
+            return DSL_IR_Image_Report
+                       (diagnostic, "typed external row node mismatch", i + 1);
         if (descriptor.operand_count >= 0 &&
             (UINT32)descriptor.operand_count != record.operand_count)
             return DSL_IR_Image_Report
@@ -3058,7 +3084,8 @@ DSL_IR_Image_Redirect_And_Retire_Value
         if (reference.value_id == retiring_value_id)
             reference.value_id = replacement_value_id;
     }
-    node.flags = DSL_IR_NODE_FLAG_RETIRED |
+    node.flags = (node.flags & DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) |
+                 DSL_IR_NODE_FLAG_RETIRED |
         (replacement_operand_ordinal << DSL_IR_NODE_REDIRECT_ORDINAL_SHIFT);
     DSL_ir_value_table[retiring_value_id - 1].flags |=
         DSL_IR_VALUE_FLAG_REDIRECTED;
@@ -3078,13 +3105,14 @@ DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID value_id)
         DSL_ir_node_table[value.producer_node_id - 1];
     DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
     if (node.result_value_id != value_id ||
-        node.flags != DSL_IR_NODE_FLAG_NONE ||
+        (node.flags & ~DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) !=
+            DSL_IR_NODE_FLAG_NONE ||
         !DSL_IR_Table_Get
             (DSL_ir_opcode_descriptor_table, node.opcode_descriptor_id,
              &descriptor) ||
         descriptor.effect_model != DSL_EFFECT_MODEL_PURE)
         return FALSE;
-    node.flags = DSL_IR_NODE_FLAG_LOWERED;
+    node.flags |= DSL_IR_NODE_FLAG_LOWERED;
     DSL_ir_value_table[value_id - 1].flags = DSL_IR_VALUE_FLAG_LOWERED;
     return TRUE;
 }
@@ -3170,8 +3198,10 @@ DSL_IR_Image_Redirect_And_Lower_Value
         !DSL_IR_Table_Get
             (DSL_ir_node_table, replacement.producer_node_id,
              &replacement_node) ||
-        source_node.flags != DSL_IR_NODE_FLAG_NONE ||
-        replacement_node.flags != DSL_IR_NODE_FLAG_NONE ||
+        (source_node.flags & ~DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) !=
+            DSL_IR_NODE_FLAG_NONE ||
+        (replacement_node.flags & ~DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) !=
+            DSL_IR_NODE_FLAG_NONE ||
         source_node.result_value_id != source.id ||
         replacement_node.result_value_id != replacement.id ||
         !DSL_IR_Table_Get
@@ -3193,7 +3223,7 @@ DSL_IR_Image_Redirect_And_Lower_Value
             reference.value_id = replacement_value_id;
     }
     DSL_ir_node_table[source_node.id - 1].flags =
-        DSL_IR_NODE_FLAG_LOWERED;
+        source_node.flags | DSL_IR_NODE_FLAG_LOWERED;
     DSL_ir_value_table[source.id - 1].flags =
         DSL_IR_VALUE_FLAG_LOWERED;
     return TRUE;
@@ -3213,14 +3243,15 @@ DSL_IR_Image_Mark_Value_Dead_Elided (DSL_IR_VALUE_ID value_id)
         DSL_ir_node_table[value.producer_node_id - 1];
     DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
     if (node.result_value_id != value_id ||
-        node.flags != DSL_IR_NODE_FLAG_NONE || node.operand_count != 0 ||
+        (node.flags & ~DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) !=
+            DSL_IR_NODE_FLAG_NONE || node.operand_count != 0 ||
         !DSL_IR_Table_Get
             (DSL_ir_opcode_descriptor_table, node.opcode_descriptor_id,
              &descriptor) ||
         descriptor.logical_operator != OPR_DSLTENSORCONST ||
         descriptor.effect_model != DSL_EFFECT_MODEL_PURE)
         return FALSE;
-    node.flags = DSL_IR_NODE_FLAG_DEAD_ELIDED;
+    node.flags |= DSL_IR_NODE_FLAG_DEAD_ELIDED;
     DSL_ir_value_table[value_id - 1].flags =
         DSL_IR_VALUE_FLAG_DEAD_ELIDED;
     return TRUE;
