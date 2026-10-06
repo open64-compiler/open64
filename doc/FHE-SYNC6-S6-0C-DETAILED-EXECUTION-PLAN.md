@@ -34,7 +34,9 @@ implementation merged through PR #173 and is now the authoritative typed-row
 service for the FHE producer.
 The direct bit-move stride packer below is the simpler `-O0` semantic
 candidate. Fused-diagonal packing is retained only as `-O1` research.
-Neither is yet a CKKS state/key-certified executable recipe.
+The direct packer now has a provider-independent explicit CKKS event-plan
+constructor for every captured Conv shape. It is not yet bound to all live
+model identities or published as mapped WHIRL.
 
 ## Boundary And Inputs
 
@@ -140,6 +142,42 @@ folded-byte hashes are retained in separate local manifests beside the
 test log. These are proof of the fixed stride-one recipe over three
 captured sizes, not graph-wide CKKS state or key certification.
 
+The next FHE-owned slice constructs canonical executable event plans for all
+captured Conv shape families. `fhe_ckks_conv_plan.{h,cxx}` emits explicit
+input duplication, row rotation, external plaintext encode, plaintext
+multiply, rescale, accumulation, bias encode, and bias add operations. For
+stride-two source operators it first evaluates the admitted high-resolution
+1x1 or 3x3 Conv, then applies the accepted sequential selection/bit-move
+network with an explicit `DEPTH_EXHAUSTION` capacity refresh. No provider call
+or implicit state repair is hidden in the plan. The plan is accepted by the
+same canonical serializer used for whole-PU variant equality, and
+`fhe_ckks_conv_expand.{h,cxx}` is the only adapter to the reviewed native CKKS
+expansion/state-binding transaction.
+
+The focused plan census is:
+
+| Captured family | Canonical steps | Encoded plaintexts | Final level |
+| --- | ---: | ---: | ---: |
+| stride-one `3 -> 16`, width 32, 3x3 | 147 | 28 | input - 1 |
+| stride-one `16 -> 16`, width 32, 3x3 | 722 | 145 | input - 1 |
+| stride-one `32 -> 32`, width 16, 3x3 | 1,442 | 289 | input - 1 |
+| stride-one `64 -> 64`, width 8, 3x3 | 2,882 | 577 | input - 1 |
+| stride-two `16 -> 32`, width 32, 1x1 | 190 | 44 | 3 |
+| stride-two `16 -> 32`, width 32, 3x3 | 830 | 172 | 3 |
+| stride-two `32 -> 64`, width 16, 1x1 | 264 | 58 | 3 |
+| stride-two `32 -> 64`, width 16, 3x3 | 1,544 | 314 | 3 |
+
+`Encoded plaintexts` counts feature rows, the expanded bias, and
+stride-compaction masks. The four stride-two plans consume 27, 27, 25, and 25
+compaction masks respectively. This closes the per-shape algorithm and
+state-transition construction requirement; it does not close C2/C3
+publication. The remaining producer work is to derive and atomically publish
+every context-owned row, bias, and mask value, specialize shared PUs by
+complete plan bytes, remap clone-local provenance/state, execute native
+expansion for all 21 contexts, and reopen the resulting six-PU family.
+Retained plan evidence is under
+`/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-plan/`.
+
 A separate FHE-owned native arithmetic fixture now exercises the actual
 WHIRL expansion and state-binding transaction on canonical `float32[2]`
 tensors. It lowers exact-shape `common.add.v1` to one `ckks.add.v1`,
@@ -214,8 +252,11 @@ replay-authenticated folded bytes. The former signed-rotation-group
 alternative has 10,386 masks and would occupy 1.268 GiB as F32 or
 2.536 GiB as F8 at 32,768 slots. Its 5,715-step C1 serializer probe was
 only a capacity test with placeholder operators/states and is **not** the
-ACE-row execution schedule. No legal per-row rotation, accumulation,
-level, scale, key, or encoded-plaintext census has been certified yet.
+ACE-row execution schedule. The subsequent native Conv plan fixture now
+certifies the legal per-row rotation/encode/multiply/rescale/accumulation
+sequence and its concrete level/scale/component/precision tuples for all eight
+captured shape families. Full-model owner/context binding and mapped-image
+publication remain open.
 
 **Proceed with external F32 rows, not lazy runtime derivation.** Keep the
 raw slices and bounded index outside `.B`, authenticate each row and whole

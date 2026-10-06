@@ -77,7 +77,8 @@ VHO_FHE_CKKS_Materialize_Conv_Rows(
     return Report(diagnostic, "row materialization input is incomplete");
 
   const VHO_FHE_CKKS_CONV_SHAPE &shape = recipe->shape;
-  const UINT64 expected_rows = UINT64(shape.input_channels) * 9;
+  const UINT64 expected_rows = UINT64(shape.input_channels) *
+                               shape.kernel_height * shape.kernel_width;
   const UINT64 expected_length = recipe->active_output_slots;
   if (expected_rows > UINT_MAX || request_count != expected_rows)
     return Report(diagnostic, "feature-row count does not match Conv shape");
