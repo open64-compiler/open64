@@ -1959,6 +1959,7 @@ DSL_IR_Image_Get_Generated_External_Tensor_Provenance
     if (provenance == NULL ||
         !DSL_IR_Image_Get_External_Tensor_Reference
              (owner_pu_st, value_id, &reference) ||
+        !DSL_IR_Lowercase_SHA256_Valid(reference.checksum) ||
         !DSL_IR_Image_Get_Value(value_id, &value) ||
         !DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
         (node.flags & DSL_IR_NODE_FLAG_GENERATED_EXTERNAL) == 0 ||

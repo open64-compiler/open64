@@ -2747,6 +2747,23 @@ DSL_IR_Image_String_Id_Valid (STR_IDX id, BOOL required)
     return id < STR_Table_Size();
 }
 
+/* Generated payload and identity digests are canonical lowercase SHA-256. */
+static BOOL
+DSL_IR_Image_Lowercase_SHA256_Valid (STR_IDX id)
+{
+    if (!DSL_IR_Image_String_Id_Valid(id, TRUE))
+        return FALSE;
+    const char *digest = Index_To_Str(id);
+    if (strlen(digest) != 64)
+        return FALSE;
+    for (UINT32 i = 0; i < 64; ++i) {
+        if ((digest[i] < '0' || digest[i] > '9') &&
+            (digest[i] < 'a' || digest[i] > 'f'))
+            return FALSE;
+    }
+    return TRUE;
+}
+
 static BOOL
 DSL_IR_Image_Report (FILE *diagnostic, const char *message, UINT32 id)
 {
@@ -2917,6 +2934,11 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
                 (j >= 16 || strcmp(name, generated_names[j]) != 0))
                 return DSL_IR_Image_Report
                            (diagnostic, "generated tensor profile mismatch", i + 1);
+            if ((record.flags & DSL_IR_NODE_FLAG_GENERATED_EXTERNAL) != 0 &&
+                (j == 8 || j == 12 || j == 15) &&
+                !DSL_IR_Image_Lowercase_SHA256_Valid(attribute.value))
+                return DSL_IR_Image_Report
+                           (diagnostic, "generated tensor digest mismatch", i + 1);
             if (strcmp(name, "dsl.typed_external_row") == 0) {
                 if (typed_row_marker ||
                     !DSL_IR_Image_String_Id_Valid(attribute.value, TRUE) ||
