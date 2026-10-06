@@ -4,6 +4,10 @@ Status: ACE-aligned raw F32 feature rows selected for C2. This selects the
 plaintext asset representation, not an executable CKKS Conv schedule or a
 provider-specific file format inside WHIRL. The four stride-two contexts,
 value-specific state transfer, and full `.ckks_ops.B` remain open.
+The diagnostic raw-row side file and index are now produced and verified from
+the replay-authenticated model; the main-owned typed-value contract remains
+the next prerequisite for mapped IR. See
+`FHE-SYNC6-TYPED-ROW-VALUE-HANDOFF.md`.
 
 ## Source Basis
 
