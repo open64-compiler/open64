@@ -1,8 +1,10 @@
 # ACE CKKS-to-C Staging for SYNC-6
 
-Status: proposed S6-0d provider-private code-generation contract. It does not
-change the frozen Open64 public C ABI v1, certify a complete `.ckks_ops.B`, or
-claim that the pinned ACE ANT provider already executes CKKS-level generated C.
+Status: CKKS2C is the selected primary `-O0` S6-0d code-generation stage;
+the private ANT facade and concrete emitter contracts remain to be
+implemented and reviewed. This decision does not change the frozen Open64
+public C ABI v1, certify a complete `.ckks_ops.B`, or claim that the pinned
+ACE ANT provider already executes CKKS-level generated C.
 The ACE source authority is commit
 `fb76131171b9f82aa6387f84dd73684fba5277e8` in the local ACE checkout.
 
@@ -21,6 +23,22 @@ ACE's repository test script enables `-P2C:lib=ant` and comments out its SEAL
 and OpenFHE invocations as not fully implemented. A generated C file alone is
 therefore not evidence that the pinned ANT runtime accepts a pre-POLY CKKS
 circuit, especially the 19 required refreshes.
+
+## Selected Phase Order
+
+```text
+verified FHE/SIHE -> executable CKKS WHIRL -> CKKS2C -> private C evaluator
+                                            -> public ABI-v1 C application
+```
+
+CKKS2C is the default and required code-generation path for the first `-O0`
+ResNet-20 release. There is no CKKS-to-POLY pass, POLY IR, or POLY2C pass in
+that path. A missing CKKS emitter case, unsupported ANT facade operation, or
+failed state/key/asset obligation is a compilation error, not permission to
+fall back to POLY2C. Later optimization levels may still use CKKS2C; POLY2C
+is introduced only with an explicitly selected and separately reviewed
+POLY-level optimization/lowering pipeline. Its input must be verified POLY
+IR, not the `.ckks_ops.B` checkpoint directly.
 
 ## Open64 Stage Boundary
 
@@ -52,8 +70,8 @@ is new, versioned adapter work; it may not be represented as an existing ACE
 `rt_ant` API. Keep the existing Open64 ABI mock as the sole runtime test
 double through code generation. Compile-only facade declarations or a
 focused call stub may check C syntax and linkage but must not become a second
-required runtime mock or ciphertext-execution claim. POLY/RNS remains a later
-optional provider path, not an implicit step in this `-O0` output.
+required runtime mock or ciphertext-execution claim. POLY/RNS and POLY2C
+remain a later optimization path, never an implicit `-O0` fallback.
 
 ## Emitter and Adapter Contract
 
@@ -92,7 +110,7 @@ optional provider path, not an implicit step in this `-O0` output.
    requested by `FHE-SYNC6-CKKS-ABI-LOWERING-BOUNDARY.md`; FHE supplies the
    descriptor join and a two-output publication plan. Keep the public ABI v1
    untouched.
-3. Add a bounded read-only private CKKS-to-C emitter and a header-only or linkable
+3. Add the primary, bounded, read-only CKKS2C emitter and a header-only or linkable
    ACE-shaped facade contract. A focused add/mul-plain/rotate/encode/bootstrap
    fixture must compile as C against checked declarations. Static inspection
    must preserve exact state and operation order and reject a missing
@@ -110,6 +128,10 @@ optional provider path, not an implicit step in this `-O0` output.
    ciphertext result identities to the ABI mock; then run real encrypted
    client/server acceptance separately. Retain C, compile/link commands,
    `.B`/`ir_b2a -st -src` `.T`, side data, provenance report, and hashes.
+6. Add a selection negative: a valid CKKS input with one unsupported emitter
+   operation must fail without output. Instrument the `-O0` pipeline to prove
+   no POLY or POLY2C pass ran. A later POLY2C test belongs to the separate
+   POLY milestone and must begin from verified POLY IR.
 
 Negative tests must reject a CKKS node without a selected facade operation,
 wrong direct operand/result type, missing asset or checksum, missing rotation

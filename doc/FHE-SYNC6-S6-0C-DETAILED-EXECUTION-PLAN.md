@@ -396,3 +396,7 @@ complete executable steps/provenance/states, 19 explicit pre-ReLU refreshes,
 no live high-level Conv/BN/ReLU, exact typed B dataflow, and measured
 key/rotation/depth/PU-variant census. It neither certifies the frozen
 SYNC-5 C ABI mapping nor admits ACE `FHErt_ant`.
+Its next mandatory `-O0` consumer is CKKS2C, which emits a provider-private
+C evaluator alongside the unchanged public ABI-v1 application. POLY2C is
+not an S6-0c fallback or S6-0d pass; see
+`doc/FHE-SYNC6-ACE-CKKS-C-STAGING.md`.

@@ -639,12 +639,14 @@ encoded as value-state versions.
 | SYNC-7: Optimized-versus-`-O0` proof | FHE VHO and separate FHE interprocedural summaries before runtime-call lowering; ReSBM, boundary movement/fusion, HPOLY/HPAO | Every optimized transform has an independent option and proves source semantics, approximation error, CKKS scale/level legality, key availability, call-context validity, provenance, and tolerance against the retained `-O0` baseline. The existing C-oriented IPA remains unchanged. |
 | SYNC-8: Separate GPU architecture review | GPU capability/layout/cost and later POLY/RNS path | GPU work remains separate from the ACE ANT CPU/reference milestone; provider capability, target description, memory/lifetime, POLY/RNS contracts, toolchain, fallback, telemetry, and regression methodology are reviewed before implementation. |
 
-For SYNC-6 terminal staging, `doc/FHE-SYNC6-ACE-CKKS-C-STAGING.md` records
-the pinned ACE distinction: CKKS-to-C is selected for non-ANT providers,
-whereas ANT selects POLY-to-C. Open64's desired `-O0` pre-POLY generated C
-is therefore a provider-private CKKS evaluator behind the unchanged public
-ABI v1, with a new reviewed ANT CKKS facade. It is not an existing ACE ANT
-codegen mode, and neither a private primitive call nor a mock result closes
+For SYNC-6 terminal staging, **CKKS2C is the selected primary `-O0` path**.
+`doc/FHE-SYNC6-ACE-CKKS-C-STAGING.md` records the pinned ACE distinction:
+CKKS-to-C is selected for non-ANT providers, whereas ANT selects POLY-to-C.
+Open64's pre-POLY generated C is a provider-private CKKS evaluator behind
+the unchanged public ABI v1, with a new reviewed ANT CKKS facade. It is not
+an existing ACE ANT codegen mode. POLY2C enters only with a later explicit
+POLY-level optimization pipeline, never as a fallback for an unsupported
+CKKS2C operation; neither a private primitive call nor a mock result closes
 the client/server runtime gate.
 
 The historically completed Commit 17 policy checkpoint is

@@ -24,7 +24,7 @@ implementation of each ABI call is responsible for its certified internal
 circuit. This is not permission to skip CKKS state, key, depth, layout, or
 numerical-equivalence checks before the call is emitted.
 
-The selected pre-POLY C staging is a **provider-private** CKKS evaluator
+The selected primary `-O0` codegen is **CKKS2C**: a provider-private CKKS evaluator
 compiled into the ACE adapter, while the public generated-C application
 retains the nine ABI v1 semantic operations. The evaluator's primitive calls
 are internal adapter implementation details, not new public ABI calls. The
@@ -33,6 +33,9 @@ ANT; an ANT-linked CKKS-to-C evaluator therefore needs a reviewed new
 high-level facade over `rt_ant`, not an assertion that this path already
 exists. See `FHE-SYNC6-ACE-CKKS-C-STAGING.md` for source evidence, the
 plaintext-data contract, and the certification order.
+No POLY lowering or POLY2C runs in the first `-O0` path. An unsupported CKKS
+step or missing ANT facade capability fails closed; POLY2C is reserved for a
+future explicitly selected, verified POLY-level optimization pipeline.
 The private evaluator and canonical public-call output are siblings from the
 same reopened `.ckks_ops.B`; the private emitter must read the primitive
 graph before the separate grouped-lowering copy retires it. Their event and
