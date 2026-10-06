@@ -148,6 +148,21 @@ are under `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/tensor-arithmet
 These certify four small operator transformations, not full ResNet event
 planning, Conv assets, runtime arithmetic, or `-O0` numerical accuracy.
 
+The same producer now retains a fifth, separate capacity-refresh fixture.
+It lowers a `common.add` whose left ciphertext is level 7 with pending
+`DEPTH_EXHAUSTION` into explicit `ckks.bootstrap -> ckks.add`. The refresh
+targets level 17 and is followed by an aligned level-17 addition; the
+mapped `.B` reopens with the bootstrap reason, key requirement, source
+provenance, and both value states visible in `ir_b2a -st -src`. Mismatched
+reason or key rejects before native mutation. This validates the FHE
+adapter's generic reason/state/key plumbing only. The fixture reuses the
+existing `pre_relu_refresh_v1` key profile as a planning requirement; it
+does not certify an ACE provider bootstrap at this capacity boundary. It
+does not approve the
+two proposed ResNet stride-two refreshes, their numerical tolerance,
+provider target support, or the full packing network. Retained evidence is
+under `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/tensor-arithmetic-capacity/`.
+
 The producer-side recipe now also constructs one plaintext diagonal mask
 at a time by grouping every live OIHW term with the same *signed rotation*.
 It rejects overlapping coefficients at the same output slot; the

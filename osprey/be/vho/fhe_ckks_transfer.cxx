@@ -92,8 +92,10 @@ VHO_FHE_CKKS_Verify_Unary_State_Transfer(
   switch (step.dsl_operator) {
   case OPR_DSLCKKSBOOTSTRAP:
     if (input.pending_actions != DSL_FHE_CKKS_PENDING_BOOTSTRAP ||
-        input.pending_bootstrap_reason !=
-            DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH ||
+        (input.pending_bootstrap_reason !=
+             DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH &&
+         input.pending_bootstrap_reason !=
+             DSL_FHE_BOOTSTRAP_REASON_DEPTH_EXHAUSTION) ||
         output.pending_actions != 0 ||
         output.pending_bootstrap_reason !=
             DSL_FHE_BOOTSTRAP_REASON_NONE ||

@@ -85,7 +85,8 @@ Find_Definition(WN *block, ST_IDX result_st)
 static BOOL
 Bind_Input_State(DSL_IR_VALUE_ID value_id,
                  DSL_FHE_ENCRYPTION_DESCRIPTOR_ID descriptor_id,
-                 STR_IDX layout)
+                 STR_IDX layout, INT32 level, INT32 precision,
+                 UINT32 pending, UINT32 bootstrap_reason)
 {
   DSL_FHE_CKKS_VALUE_STATE_RECORD state;
   DSL_FHE_CKKS_Value_State_Record_Init(&state);
@@ -94,12 +95,14 @@ Bind_Input_State(DSL_IR_VALUE_ID value_id,
   state.state_version = 1;
   state.scheme = DSL_FHE_SCHEME_CKKS;
   state.value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
-  state.level = 8;
+  state.level = level;
   state.scale_bits = 56;
   state.component_count = 2;
-  state.precision_bits = 40;
+  state.precision_bits = precision;
   state.slot_count = 8;
   state.encrypted_layout_name = layout;
+  state.pending_actions = pending;
+  state.pending_bootstrap_reason = bootstrap_reason;
   return DSL_FHE_Plan_Add_CKKS_Value_State(&state) != 0;
 }
 
@@ -200,6 +203,7 @@ Check_Clear_Oracle(const DSL_CKKS_EXPANSION_STEP *steps,
       }
       switch (step.dsl_operator) {
       case OPR_DSLCKKSENCODE:
+      case OPR_DSLCKKSBOOTSTRAP:
       case OPR_DSLCKKSRELIN:
       case OPR_DSLCKKSRESCALE:
         results[step_index][slot] = values[0];
@@ -224,18 +228,21 @@ Check_Clear_Oracle(const DSL_CKKS_EXPANSION_STEP *steps,
   return TRUE;
 }
 
-/* Build, preflight, apply, and publish one of the three reviewed O0 recipes. */
+/* Build and publish one small O0 recipe, including an explicit capacity
+ * refresh when the source addition has a depleted ciphertext operand. */
 int
 main(int argc, char **argv)
 {
   const BOOL before = argc == 4 && strcmp(argv[3], "--before") == 0;
   if ((argc != 3 && !before) || (strcmp(argv[1], "add") != 0 &&
                     strcmp(argv[1], "add_plain") != 0 &&
+                    strcmp(argv[1], "add_capacity") != 0 &&
                     strcmp(argv[1], "mul_plain") != 0 &&
                     strcmp(argv[1], "mul_cipher") != 0))
-    return Fail("expected add|add_plain|mul_plain|mul_cipher, .B path, optional --before");
+    return Fail("expected add|add_plain|add_capacity|mul_plain|mul_cipher, .B path, optional --before");
+  const BOOL capacity = strcmp(argv[1], "add_capacity") == 0;
   const BOOL add = strcmp(argv[1], "add") == 0 ||
-                   strcmp(argv[1], "add_plain") == 0;
+                   strcmp(argv[1], "add_plain") == 0 || capacity;
   const BOOL plain = strcmp(argv[1], "add_plain") == 0 ||
                      strcmp(argv[1], "mul_plain") == 0;
   Initialize_Test_Context();
@@ -339,15 +346,25 @@ main(int argc, char **argv)
   if (config_id == 0 || cipher_id == 0 || plain_id == 0 ||
       DSL_FHE_Intern_Tensor_Binding(ty, cipher_id, 0) == 0 ||
       DSL_FHE_Intern_Tensor_Binding(ty, plain_id, 0) == 0 ||
-      !Bind_Input_State(left_id, cipher_id, layout) ||
-      (!plain && !Bind_Input_State(right_id, cipher_id, layout)))
+      !Bind_Input_State(
+          left_id, cipher_id, layout, capacity ? 7 : 8,
+          capacity ? 30 : 40,
+          capacity ? DSL_FHE_CKKS_PENDING_BOOTSTRAP : 0,
+          capacity ? DSL_FHE_BOOTSTRAP_REASON_DEPTH_EXHAUSTION :
+                     DSL_FHE_BOOTSTRAP_REASON_NONE) ||
+      (!plain && !Bind_Input_State(
+          right_id, cipher_id, layout, capacity ? 17 : 8, 40, 0,
+          DSL_FHE_BOOTSTRAP_REASON_NONE)))
     return Fail("FHE descriptors and input states");
-  if (!add && !plain) {
+  if (capacity || (!add && !plain)) {
     DSL_FHE_KEY_REQUIREMENT_RECORD key;
     DSL_FHE_Key_Requirement_Record_Init(&key);
     key.config_id = config_id;
     key.key_set_name = key_name;
-    key.key_class = DSL_FHE_KEY_RELINEARIZATION;
+    key.key_class = capacity ? DSL_FHE_KEY_BOOTSTRAP :
+                               DSL_FHE_KEY_RELINEARIZATION;
+    if (capacity)
+      key.bootstrap_profile = Save_Str("pre_relu_refresh_v1");
     if (DSL_FHE_Intern_Key_Requirement(&key) == 0)
       return Fail("relinearization key requirement");
   }
@@ -380,8 +397,29 @@ main(int argc, char **argv)
       { "attr.levels", "1" },
       { "attr.target_scale_bits", "56" }
   };
-  UINT32 step_count = add ? (plain ? 2 : 1) : 3;
-  if (add && plain) {
+  DSL_CKKS_EXPANSION_ATTRIBUTE capacity_attrs[3] = {
+    { "attr.target_level", "17" },
+    { "attr.reason", "DEPTH_EXHAUSTION" },
+    { "attr.key_id", "request_key" }
+  };
+  UINT32 step_count = capacity ? 2 : add ? (plain ? 2 : 1) : 3;
+  if (capacity) {
+    step_operands[0][0] = Existing(left_id);
+    Set_Step(&steps[0], OPR_DSLCKKSBOOTSTRAP,
+             "tensor_ckks_capacity_refresh", ty, source_position,
+             step_operands[0], 1, capacity_attrs, 3);
+    Set_Result_State(&states[0], cipher_id,
+                     DSL_FHE_VALUE_CLASS_CIPHERTEXT,
+                     17, 56, 2, 40, 0, layout);
+    step_operands[1][0] = Prior(0);
+    step_operands[1][1] = Existing(right_id);
+    Set_Step(&steps[1], OPR_DSLCKKSADD,
+             "tensor_ckks_capacity_add", ty, source_position,
+             step_operands[1], 2, NULL, 0);
+    Set_Result_State(&states[1], cipher_id,
+                     DSL_FHE_VALUE_CLASS_CIPHERTEXT,
+                     17, 56, 2, 40, 0, layout);
+  } else if (add && plain) {
     step_operands[0][0] = Existing(right_id);
     Set_Step(&steps[0], OPR_DSLCKKSENCODE,
              "tensor_ckks_encoded_plain", ty, source_position,
@@ -495,6 +533,23 @@ main(int argc, char **argv)
     return Fail("layout mismatch must reject before native mutation");
   fprintf(stderr, "rejected mismatched CKKS layout without mutation\n");
   states[0].state.encrypted_layout_name = good_layout;
+  if (capacity) {
+    capacity_attrs[1].value = "PRE_RELU_REFRESH";
+    if (VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+            pu, &request, states, step_count, NULL) ||
+        DSL_IR_Image_Node_Count() != original_nodes ||
+        DSL_CKKS_Event_Image_Count() != original_events)
+      return Fail("capacity reason mismatch must reject without mutation");
+    capacity_attrs[1].value = "DEPTH_EXHAUSTION";
+    capacity_attrs[2].value = "wrong_key";
+    if (VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+            pu, &request, states, step_count, NULL) ||
+        DSL_IR_Image_Node_Count() != original_nodes ||
+        DSL_CKKS_Event_Image_Count() != original_events)
+      return Fail("capacity bootstrap key mismatch must not mutate WHIRL");
+    capacity_attrs[2].value = "request_key";
+    fprintf(stderr, "rejected capacity reason and key mismatches without mutation\n");
+  }
   if (!add) {
     UINT32 final_index = request.final_step_index;
     request.final_step_index = plain ? 1 : 0;
@@ -529,7 +584,7 @@ main(int argc, char **argv)
   DSL_FHE_CKKS_VALUE_STATE_RECORD final_state;
   if (!DSL_FHE_Plan_Find_Latest_CKKS_Value_State(
           results[step_count - 1].value_id, &final_state) ||
-      final_state.level != (add ? 8 : 7) ||
+      final_state.level != (capacity ? 17 : add ? 8 : 7) ||
       final_state.scale_bits != 56 || final_state.pending_actions != 0)
     return Fail("concrete final CKKS state");
   DSL_GATEKEEPER_RESULT verification;

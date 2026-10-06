@@ -17,7 +17,7 @@ make -C "$tool_dir" -f Makefile -f "$fragment" \
   fhe_ckks_tensor_arithmetic_test ir_b2a \
   >"$artifact_dir/build.log" 2>&1
 
-for mode in add add_plain mul_plain mul_cipher; do
+for mode in add add_plain add_capacity mul_plain mul_cipher; do
   before_image="$artifact_dir/tensor_$mode.before.B"
   before_trace="$artifact_dir/tensor_$mode.before.T"
   image="$artifact_dir/tensor_$mode.B"
@@ -82,6 +82,13 @@ grep -Fq 'OPR_DSLCKKSENCODE' "$artifact_dir/tensor_add_plain.T"
 grep -Fq 'OPR_DSLCKKSADD' "$artifact_dir/tensor_add_plain.T"
 grep -Fq 'CKKS Event Image: version=1 records=2' "$artifact_dir/tensor_add_plain.T"
 grep -Fq 'value5(tensor_ckks_plain_add) state_version=1 encryption=1 scheme=1 class=1 level=8 scale_bits=56 components=2 precision_bits=40 slots=8 alignment_group=0 layout=ckks.packed pending=0x0' "$artifact_dir/tensor_add_plain.T"
+grep -Fq 'OPR_DSLCKKSBOOTSTRAP' "$artifact_dir/tensor_add_capacity.T"
+grep -Fq 'attr.reason=DEPTH_EXHAUSTION' "$artifact_dir/tensor_add_capacity.T"
+grep -Fq 'CKKS Event Image: version=1 records=2' "$artifact_dir/tensor_add_capacity.T"
+grep -Fq 'value4(tensor_ckks_capacity_refresh) state_version=1 encryption=1 scheme=1 class=1 level=17 scale_bits=56 components=2 precision_bits=40 slots=8 alignment_group=0 layout=ckks.packed pending=0x0' "$artifact_dir/tensor_add_capacity.T"
+grep -Fq 'value5(tensor_ckks_capacity_add) state_version=1 encryption=1 scheme=1 class=1 level=17 scale_bits=56 components=2 precision_bits=40 slots=8 alignment_group=0 layout=ckks.packed pending=0x0' "$artifact_dir/tensor_add_capacity.T"
+grep -Fq 'rejected capacity reason and key mismatches without mutation' \
+  "$artifact_dir/add_capacity.producer.log"
 grep -Fq 'OPR_DSLCKKSENCODE' "$artifact_dir/tensor_mul_plain.T"
 grep -Fq 'OPR_DSLCKKSMUL' "$artifact_dir/tensor_mul_plain.T"
 grep -Fq 'OPR_DSLCKKSRESCALE' "$artifact_dir/tensor_mul_plain.T"
