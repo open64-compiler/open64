@@ -131,7 +131,7 @@ def compact_fused(highres, width, channels, slots, moves_per_stage=5):
     assert width >= 4 and width & (width - 1) == 0
     assert channels >= 1 and channels & (channels - 1) == 0
     assert channels * width * width <= slots == len(highres)
-    assert 1 <= moves_per_stage <= 5
+    assert 1 <= moves_per_stage <= 7
     mapping = active_mapping(width, channels)
     current = list(highres)
     stages = []
@@ -263,6 +263,9 @@ def check_captured(payload, replay):
     actual, network = compact(highres, width, channels, slots)
     fused, fused_network = compact_fused(highres, width, channels, slots)
     assert fused == actual
+    shallow, shallow_network = compact_fused(
+        highres, width, channels, slots, 7)
+    assert shallow == actual
     half = width // 2
     max_error = 0.0
     for oc in range(channels):
@@ -293,9 +296,16 @@ def check_captured(payload, replay):
     fused_network["symbolic_total_depth_from_input"] = (
         1 + fused_network["symbolic_plaintext_mask_depth"])
     fused_network["provenance"] = provenance
+    shallow_network["oracle_max_abs_error"] = max_error
+    shallow_network["symbolic_total_depth_from_input"] = (
+        1 + shallow_network["symbolic_plaintext_mask_depth"])
+    shallow_network["provenance"] = provenance
     assert fused_network["stage_count"] == 3
     assert fused_network["plaintext_mask_count"] <= 96
-    return {"sequential": network, "fused": fused_network}
+    assert shallow_network["stage_count"] == 2
+    assert shallow_network["plaintext_mask_count"] <= 192
+    return {"sequential": network, "fused": fused_network,
+            "fused_depth2": shallow_network}
 
 
 def check_second_projection_shape():
@@ -316,7 +326,9 @@ def check_second_projection_shape():
                     for ci in range(input_channels))
     sequential, _ = compact(highres, width, channels, slots)
     fused, network = compact_fused(highres, width, channels, slots)
-    assert fused == sequential
+    shallow, shallow_network = compact_fused(
+        highres, width, channels, slots, 7)
+    assert fused == sequential == shallow
     half = width // 2
     max_error = 0.0
     for oc in range(channels):
@@ -332,9 +344,64 @@ def check_second_projection_shape():
     assert max_error == 0.0
     assert network["stage_count"] == 3
     assert network["plaintext_mask_count"] <= 96
+    assert shallow_network["stage_count"] == 2
+    assert shallow_network["plaintext_mask_count"] <= 128
     network["oracle_max_abs_error"] = max_error
     network["fixture"] = "deterministic synthetic 1x1 projection, no model bytes"
-    return network
+    shallow_network["oracle_max_abs_error"] = max_error
+    shallow_network["fixture"] = network["fixture"]
+    return {"fused": network, "fused_depth2": shallow_network}
+
+
+def check_downsample_level_ledger(path, call4, second):
+    """Join pack depth to approved context levels without claiming CKKS state."""
+    raw = path.read_bytes()
+    schedule = json.loads(raw)
+    if schedule.get("schema") != "open64.fhe.relu.ckks-schedule.v1" or \
+            schedule.get("status") != "approved_static_compiler_schedule" or \
+            schedule.get("total_multiplicative_depth") != 11:
+        raise ValueError("unapproved or incompatible CKKS schedule")
+    contexts = schedule.get("contexts")
+    if not isinstance(contexts, list):
+        raise ValueError("missing CKKS context schedule")
+    levels = {row["instance_path"]: row for row in contexts}
+    if len(levels) != len(contexts):
+        raise ValueError("duplicate CKKS context route")
+    transitions = (
+        ("layer2.0", "layer1.2.relu2", "layer2.0.relu1", call4),
+        ("layer3.0", "layer2.2.relu2", "layer3.0.relu1", second),
+    )
+    rows = []
+    for block, predecessor, first_relu, pack in transitions:
+        try:
+            source_level = levels[predecessor]["final_level"]
+            refresh_level = levels[first_relu]["post_refresh_level"]
+            first_relu_final = levels[first_relu]["final_level"]
+        except KeyError as exc:
+            raise ValueError("missing downsample CKKS context") from exc
+        pack_depth = pack["fused"]["symbolic_plaintext_mask_depth"]
+        projection_level = source_level - 1 - pack_depth
+        main_pre_refresh = source_level - 1 - pack_depth
+        main_post_conv2 = first_relu_final - 1
+        if source_level != 7 or refresh_level != 15 or \
+                first_relu_final != refresh_level - 11 or \
+                projection_level < 0 or \
+                projection_level != main_post_conv2 or \
+                main_pre_refresh != projection_level:
+            raise ValueError("downsample symbolic level join failed")
+        rows.append({
+            "block": block,
+            "predecessor": predecessor,
+            "source_level": source_level,
+            "main_conv1_before_refresh_level": main_pre_refresh,
+            "relu1_post_refresh_level": refresh_level,
+            "relu1_post_polynomial_level": first_relu_final,
+            "main_conv2_level": main_post_conv2,
+            "projection_level": projection_level,
+            "projection_pack_depth": pack_depth,
+            "join": "symbolic_level_only_scale_precision_and_keys_unproved",
+        })
+    return {"manifest_sha256": digest(raw), "blocks": rows}
 
 
 def main():
@@ -342,6 +409,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--payload", type=Path, required=True)
     parser.add_argument("--replay", type=Path, required=True)
+    parser.add_argument("--ckks-schedule", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     result = {
@@ -360,6 +428,12 @@ def main():
         "second_projection_shape_32x16x16_to_64x8x8":
             check_second_projection_shape(),
     }
+    if args.ckks_schedule is not None:
+        result["downsample_symbolic_level_ledger"] = \
+            check_downsample_level_ledger(
+                args.ckks_schedule,
+                result["captured_call4_1x1_projection"],
+                result["second_projection_shape_32x16x16_to_64x8x8"])
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n",
                            encoding="utf-8")

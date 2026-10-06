@@ -335,9 +335,9 @@ emission here** pending a separately reviewed lower-depth local packer,
 an approved state schedule, or a general layout planner decision. The
 proof does not complete C2 or authorize `.ckks_ops.B` publication.
 
-#### Bounded Fused-Diagonal Candidate
+#### Bounded Fused-Diagonal Candidates
 
-The same ordered bit moves can be composed in groups of at most five. For
+The same ordered bit moves can be composed in bounded groups. For
 each group, partition its selected input slots by their exact cumulative
 signed rotation. Multiply the input by one 0/1 plaintext mask per partition,
 rotate each masked ciphertext once, then add all terms. Every selected source
@@ -360,6 +360,30 @@ not model bytes. The `4x4 -> 2x2` counterexample composes into four masks
 and one packing level. Exact per-stage mask SHA-256 values, rotations,
 cardinalities, source-family hash, and zero-error clear checks are retained
 in `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-recipe/stride-compaction-fused-proof.json`.
+
+The explicit shallower candidate groups up to seven moves: call4 uses
+`6+7`, with 192 masks and 190 nonzero signed rotations, and the other
+projection shape uses `6+6`, with 128 masks and 126 rotations. Both have
+two symbolic packing levels and match the same clear oracles exactly.
+At 32,768 slots and F32 mask storage, these alternatives require about
+24 MiB and 16 MiB of uncompressed mask bytes respectively, before any
+runtime encoding or key material. They trade extra assets and rotation
+keys for one level of capacity; neither is selected for emission yet.
+
+The optional schedule-manifest join in the same proof pins
+`doc/fhe-policy/sync3-relu/ckks-schedule-manifest.json` at SHA-256
+`27fe104aa5a159baefd0255c82e0c9193c1ecdf28b73f97e2f8830bb1444ae62`.
+For both `layer2.0` and `layer3.0`, the preceding block's approved ReLU
+output is level 7. Assuming one high-resolution Conv plaintext multiply
+and the three-stage pack, both the main stride-two Conv1 and projection
+branches reach level 3. The main branch then refreshes to level 15,
+evaluates the approved depth-11 ReLU to level 4, and uses one level for
+Conv2, also reaching level 3 before residual add. This is an exact
+**symbolic level join**, not proof of compatible scales, noise, precision,
+plaintext encoding, or available rotation keys. The two-stage pack would
+leave the projection at level 4 and require an explicit, separately
+verified alignment action before that residual add; it is not a free
+optimization.
 
 This is **not** an executable CKKS schedule. Each group's masks must be
 encoded at a compatible level/scale, parallel products aligned before their
