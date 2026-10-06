@@ -23,8 +23,9 @@ failure without final files. These are host evidence only: the Python test
 fixture is not a backend producer, and the row values are not yet in WHIRL.
 The generic rank-4-source to rank-1-result value transaction requested in
 `FHE-SYNC6-TYPED-ROW-VALUE-HANDOFF.md` remains main/common-owned.
-The read-only fused-diagonal stride packer below reduces the projection
-packing-depth estimate but is not yet a CKKS state/key-certified recipe.
+The direct bit-move stride packer below is the simpler `-O0` semantic
+candidate. Fused-diagonal packing is retained only as `-O1` research.
+Neither is yet a CKKS state/key-certified executable recipe.
 
 ## Boundary And Inputs
 
@@ -266,7 +267,7 @@ offsets; runtime rotation-key generation may further canonicalize them.
 | `32x16x16 -> 64x8x8` | `1x1` | 2,048 | 131,072 | 12,031 | 64 |
 | `32x16x16 -> 64x8x8` | `3x3` | 18,432 | 1,083,392 | 12,153 | 64 |
 
-The bounded candidate for review is **high-resolution Conv followed by
+The `-O0` candidate for review is **high-resolution Conv followed by
 an explicit local stride compaction**. Perform the ordinary constant-
 rotation stride-one convolution into its sparse/high-resolution plane,
 then select and pack the even spatial coordinates into the declared dense
@@ -328,14 +329,22 @@ the projection `cnn_conv2d_11`, normal-path `cnn_conv2d_16`, and
 `common.residual_add` contract has `shape_check=exact`. This proves a
 *layout/type* join, not ciphertext
 level/scale/precision compatibility of the two residual paths. The
-14-level compaction is too costly to admit without checking the actual
-context-specific post-ReLU capacity and any explicit alignment steps.
-No implicit bootstrap or state repair is allowed. **Stop C2 stride-two
-emission here** pending a separately reviewed lower-depth local packer,
-an approved state schedule, or a general layout planner decision. The
+14-level compaction exceeds the level-7 input capacity; correctness requires
+an explicit reviewed capacity refresh, not an unrecorded level reduction.
+The simple `-O0` proposal refreshes the block input once before the normal
+and projection branches fork, then applies the same sequential bit-move
+network to both stride-two Convs. The existing generic reason
+`DEPTH_EXHAUSTION` identifies this separate boundary; it is not one of the
+19 mandatory `PRE_RELU_REFRESH` boundaries and must not be merged with one.
+The read-only schedule join below proposes post-refresh levels 18 and 17
+for `layer2.0` and `layer3.0`, respectively. Current FHE unary transfer
+validation admits only `PRE_RELU_REFRESH`, so this new use needs an explicit
+FHE-side contract and tests before mutation. No implicit bootstrap or state
+repair is allowed. **Stop C2 stride-two emission here** pending capacity,
+precision, key, and numerical certification of this simple schedule. The
 proof does not complete C2 or authorize `.ckks_ops.B` publication.
 
-#### Bounded Fused-Diagonal Candidates
+#### O1 Fused-Diagonal Research
 
 The same ordered bit moves can be composed in bounded groups. For
 each group, partition its selected input slots by their exact cumulative
@@ -359,7 +368,7 @@ three packing levels; its oracle uses deterministic synthetic 1x1 weights,
 not model bytes. The `4x4 -> 2x2` counterexample composes into four masks
 and one packing level. Exact per-stage mask SHA-256 values, rotations,
 cardinalities, source-family hash, and zero-error clear checks are retained
-in `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-recipe/stride-compaction-fused-proof.json`.
+in `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-recipe/stride-compaction-o0-vs-o1-proof.json`.
 
 The explicit shallower candidate groups up to seven moves: call4 uses
 `6+7`, with 192 masks and 190 nonzero signed rotations, and the other
@@ -368,33 +377,38 @@ two symbolic packing levels and match the same clear oracles exactly.
 At 32,768 slots and F32 mask storage, these alternatives require about
 24 MiB and 16 MiB of uncompressed mask bytes respectively, before any
 runtime encoding or key material. They trade extra assets and rotation
-keys for one level of capacity; neither is selected for emission yet.
+keys for one level of capacity. Neither fused grouping is selected for
+`-O0` emission; both require later `-O1` equivalence, state, and
+profitability review against the straightforward baseline.
 
 The optional schedule-manifest join in the same proof pins
 `doc/fhe-policy/sync3-relu/ckks-schedule-manifest.json` at SHA-256
 `27fe104aa5a159baefd0255c82e0c9193c1ecdf28b73f97e2f8830bb1444ae62`.
 For both `layer2.0` and `layer3.0`, the preceding block's approved ReLU
-output is level 7. Assuming one high-resolution Conv plaintext multiply
-and the three-stage pack, both the main stride-two Conv1 and projection
-branches reach level 3. The main branch then refreshes to level 15,
-evaluates the approved depth-11 ReLU to level 4, and uses one level for
-Conv2, also reaching level 3 before residual add. This is an exact
-**symbolic level join**, not proof of compatible scales, noise, precision,
-plaintext encoding, or available rotation keys. The two-stage pack would
-leave the projection at level 4 and require an explicit, separately
-verified alignment action before that residual add; it is not a free
-optimization.
+output is level 7. The proposed `-O0` `DEPTH_EXHAUSTION` bootstrap of the
+shared block input targets level 18 and 17 respectively. One high-resolution
+Conv plaintext multiply plus 14 or 13 sequential packing levels then leaves
+both the normal Conv1 and projection branches at level 3. The main branch
+separately performs its mandatory pre-ReLU refresh to level 15, evaluates
+the approved depth-11 ReLU to level 4, and uses one level for Conv2, also
+reaching level 3 before residual add. This is a **symbolic level join**, not
+proof of supported extra bootstrap targets, compatible scales, noise,
+precision, plaintext encoding, or available keys. It adds two proposed
+capacity refreshes to the 19 mandatory pre-ReLU refreshes; acceptance must
+measure their numerical effect and preserve both reasons in the IR.
 
-This is **not** an executable CKKS schedule. Each group's masks must be
-encoded at a compatible level/scale, parallel products aligned before their
-sum, and the stage rescaled with measured precision. The 61/45 signed
-rotation requirements must be joined to available keys. C4 must prove the
-remaining level/precision budget after the real context-specific refresh,
-the high-resolution Conv, all three pack stages, and residual-path
-alignment. C2 must also validate transformed row assets and producer-side
-typed value binding. Until those gates pass, reject stride-two emission;
-neither the original million-mask census nor the fused proof authorizes
-`secure_resnet20.ckks_ops.B` publication.
+The fused three-stage network can reach level 3 from the level-7 input
+without that extra capacity refresh, but reducing depth is an `-O1`
+optimization question. It does not displace the simpler `-O0` recipe.
+
+Neither path is **an executable CKKS schedule** yet. For `-O0`, C4 must
+prove the explicit extra bootstrap, all 14/13 individual mask/rotate/add
+transitions, result scales and precision, key availability, and residual
+alignment. C2 must validate transformed row and mask assets and
+producer-side typed value binding. The fused group's parallel masks,
+rotations, and rescale remain a later optimization proof. Until the `-O0`
+gates pass, reject stride-two emission; neither clear-slot oracle alone
+authorizes `secure_resnet20.ckks_ops.B` publication.
 
 The weight-derived typed-row API is not a mask-materialization API: these
 0/1 masks come from proved slot geometry, not an external rank-4 weight or
@@ -416,7 +430,7 @@ or embed the full F32 masks in `.B` while that main/common contract is absent.
 | C5: whole-PU policy | Group byte-identical complete PU plans, register with `DSL_PU_Transaction_Register_Policy`, map variants to source PU/value/static ordinal, add B formals, route nine calls and bind 18 called B actuals plus one root B TCON. Use owner-qualified clone-value results. Measure variant count after C2-C4. | Equal contexts reuse, changed non-ReLU plan splits, two ReLUs keep two B formals, and 129 existing call-ABI roles remain correct. Missing actual, wrong owner/TY, incomplete signature or duplicate route rejects before apply. Retain variant/call/origin report. |
 | C6: expansion/all-PU gate | Turn reviewed plans into `DSL_CKKS_EXPANSION_REQUEST`s and call `VHO_FHE_CKKS_Expand_And_Bind_States` for resident variants. Preserve source/group ordinals and returned value IDs. Verify 147 source-context events have complete step coverage, unique source finals, no live Conv/BN/`common.relu`, and concrete state/source position for every live result. | Two-PU shared-callee and full six-source-PU tests; late expansion/binding/image failure publishes nothing. Retain before/after traces and event-to-step/origin-to-clone maps. |
 | C7: mapped checkpoint | Use the existing whole-program checkpoint to write all executable PUs and managed images only after C6. Atomically publish `.ckks_ops.B`; reopen with separate-process `ir_b2a -st -src` and original source pathname. | Retain `.B`, `.T`, source/payload references, phase trace, commands, diagnostics, JSON census and SHA256SUMS. Inspect logical CKKS nodes/direct kids, states, keys/rotations, typed B ABI, origin and source lines. Induced failure leaves no final or `.tmp`. |
-| C8: independent certification | Compare mapped result with input manifest, independent 87/147 census, 19-context policy, clear tensor/slot and polynomial oracles, and fresh state/depth/key/rotation calculation. Run full native syntax/layout and backend-link lanes. | Signed-off report with measured PU/primitive counts, all event/group/final links, 19 bootstraps, no live high-level computation, negative results and artifact hashes. State explicitly that C ABI lowering/provider execution are untested. |
+| C8: independent certification | Compare mapped result with input manifest, independent 87/147 census, 19-context policy, clear tensor/slot and polynomial oracles, and fresh state/depth/key/rotation calculation. Run full native syntax/layout and backend-link lanes. | Signed-off report with measured PU/primitive counts, all event/group/final links, 19 mandatory pre-ReLU bootstraps plus any separately admitted and reason-tagged capacity refreshes, no live high-level computation, negative results and artifact hashes. State explicitly that C ABI lowering/provider execution are untested. |
 
 ## Ownership And Review Checkpoints
 

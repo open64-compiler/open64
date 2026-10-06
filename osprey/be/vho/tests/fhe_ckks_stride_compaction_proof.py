@@ -324,7 +324,7 @@ def check_second_projection_shape():
                     weights[oc * input_channels + ci] *
                     input_values[ci * width * width + y * width + x]
                     for ci in range(input_channels))
-    sequential, _ = compact(highres, width, channels, slots)
+    sequential, sequential_network = compact(highres, width, channels, slots)
     fused, network = compact_fused(highres, width, channels, slots)
     shallow, shallow_network = compact_fused(
         highres, width, channels, slots, 7)
@@ -350,11 +350,12 @@ def check_second_projection_shape():
     network["fixture"] = "deterministic synthetic 1x1 projection, no model bytes"
     shallow_network["oracle_max_abs_error"] = max_error
     shallow_network["fixture"] = network["fixture"]
-    return {"fused": network, "fused_depth2": shallow_network}
+    return {"sequential": sequential_network, "fused": network,
+            "fused_depth2": shallow_network}
 
 
 def check_downsample_level_ledger(path, call4, second):
-    """Join pack depth to approved context levels without claiming CKKS state."""
+    """Compare explicit O0 capacity refresh with O1 packing candidates."""
     raw = path.read_bytes()
     schedule = json.loads(raw)
     if schedule.get("schema") != "open64.fhe.relu.ckks-schedule.v1" or \
@@ -379,10 +380,12 @@ def check_downsample_level_ledger(path, call4, second):
             first_relu_final = levels[first_relu]["final_level"]
         except KeyError as exc:
             raise ValueError("missing downsample CKKS context") from exc
-        pack_depth = pack["fused"]["symbolic_plaintext_mask_depth"]
-        projection_level = source_level - 1 - pack_depth
-        main_pre_refresh = source_level - 1 - pack_depth
+        o0_pack_depth = pack["sequential"]["symbolic_plaintext_mask_depth"]
         main_post_conv2 = first_relu_final - 1
+        capacity_refresh_target = main_post_conv2 + 1 + o0_pack_depth
+        projection_level = capacity_refresh_target - 1 - o0_pack_depth
+        main_pre_refresh = capacity_refresh_target - 1 - o0_pack_depth
+        optimized_pack_depth = pack["fused"]["symbolic_plaintext_mask_depth"]
         if source_level != 7 or refresh_level != 15 or \
                 first_relu_final != refresh_level - 11 or \
                 projection_level < 0 or \
@@ -393,12 +396,18 @@ def check_downsample_level_ledger(path, call4, second):
             "block": block,
             "predecessor": predecessor,
             "source_level": source_level,
+            "o0_proposed_capacity_refresh_reason": "DEPTH_EXHAUSTION",
+            "o0_proposed_capacity_refresh_target": capacity_refresh_target,
+            "o0_capacity_refresh_contract": "symbolic_only_not_runtime_approved",
+            "o0_sequential_pack_depth": o0_pack_depth,
             "main_conv1_before_refresh_level": main_pre_refresh,
             "relu1_post_refresh_level": refresh_level,
             "relu1_post_polynomial_level": first_relu_final,
             "main_conv2_level": main_post_conv2,
             "projection_level": projection_level,
-            "projection_pack_depth": pack_depth,
+            "projection_pack_depth": o0_pack_depth,
+            "o1_fused_pack_depth_without_capacity_refresh":
+                optimized_pack_depth,
             "join": "symbolic_level_only_scale_precision_and_keys_unproved",
         })
     return {"manifest_sha256": digest(raw), "blocks": rows}
