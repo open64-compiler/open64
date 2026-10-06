@@ -1,7 +1,8 @@
 # Generated External Tensor Value Contract
 
-Status: FHE-reviewed main/common contract for SYNC-6 C2. Implementation is
-pending. This is a
+Status: FHE-reviewed main/common contract for SYNC-6 C2. A focused native
+producer/reader implementation and test are present on the local
+`codex/dsl-generated-mask-contract` branch. This is a
 separate transaction from the source-derived typed-row API on
 `codex/dsl-typed-row-value-contract`.
 
@@ -149,8 +150,8 @@ There is no new ELF section, TY_KIND, opcode, or WHIRL row layout.
 geometry manifest. Its v1 canonical form is restricted UTF-8 JSON without
 BOM: ASCII schema fields, lexicographically sorted object keys, compact
 separators, canonical decimal integers, no floats or null, and one final LF.
-The FHE-owned `doc/FHE-SYNC6-GENERATED-MASK-GEOMETRY-MANIFEST.md` will publish
-the full grammar before consumer implementation. The manifest binds generator
+The FHE-owned `doc/FHE-SYNC6-GENERATED-MASK-GEOMETRY-MANIFEST.md` publishes
+the full grammar for consumer implementation. The manifest binds generator
 name/version, variant digest, slot count/dtype/layout/rotation convention,
 input/output geometry, and ordered stages/diagonals with signed rotation,
 tensor key, byte range, F32 mask SHA-256, and nonzero count. Common/com checks
@@ -169,3 +170,6 @@ FHE proves equality to the active variant before materialization.
 `fhe.ckks.stride_compaction.mask`. `generation_version` versions its grammar
 and algorithm. There is no additional common/com generation-kind enum.
 FHE publishes the manifest/report atomically with side payload and `.B`.
+The focused common/com fixture uses synthetic digests and two tiny masks;
+it proves structural image behavior, not actual FHE mask bytes or an
+executable CKKS schedule.

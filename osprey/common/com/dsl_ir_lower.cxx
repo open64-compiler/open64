@@ -619,7 +619,8 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
             entry.opcode.effect_model != DSL_EFFECT_MODEL_PURE)
             return DSL_IR_Lower_Report
                        (diagnostic, i, "logical opcode contract mismatch");
-        if ((entry.node.flags & ~DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) !=
+        if ((entry.node.flags & ~(DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW |
+                                  DSL_IR_NODE_FLAG_GENERATED_EXTERNAL)) !=
                 DSL_IR_NODE_FLAG_NONE ||
             entry.value.flags != DSL_IR_VALUE_FLAG_NONE ||
             !DSL_Tensor_Has_Unique_Ownership(entry.value.st) ||

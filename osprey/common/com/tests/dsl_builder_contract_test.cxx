@@ -7562,6 +7562,12 @@ Check_External_Tensor_Materialization(void)
     DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST bad_rows[2];
     DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_RESULT row_results[2];
     DSL_IR_TYPED_EXTERNAL_TENSOR_LINEAGE row_lineage;
+    DSL_IR_GENERATED_EXTERNAL_TENSOR_REQUEST mask_requests[2];
+    DSL_IR_GENERATED_EXTERNAL_TENSOR_REQUEST bad_masks[2];
+    DSL_IR_GENERATED_EXTERNAL_TENSOR_RESULT mask_results[2];
+    DSL_IR_GENERATED_EXTERNAL_TENSOR_PROVENANCE mask_provenance;
+    DSL_IR_VALUE_RECORD mask_value;
+    DSL_IR_NODE_RECORD mask_node;
     DSL_IR_VALUE_RECORD row_value;
     DSL_IR_NODE_RECORD row_node;
     DSL_PU_FORMAL_RECORD formal_record;
@@ -8127,6 +8133,136 @@ Check_External_Tensor_Materialization(void)
          "mapped row without marker rejects without mutation");
     mapped_marker.value = saved_marker;
     delete [] typed_image;
+    TCON_IDX mask_tcons[2] = {
+        Create_External_Rewrite_TCON(row_ty, 2, 512, 8),
+        Create_External_Rewrite_TCON(row_ty, 2, 528, 8)
+    };
+    for (UINT32 i = 0; i < 2; ++i) {
+        DSL_IR_Generated_External_Tensor_Request_Init(&mask_requests[i]);
+        mask_requests[i].insert_before = row_anchor;
+        mask_requests[i].name = i == 0 ? "pack_mask_0" : "pack_mask_1";
+        mask_requests[i].descriptor_ty = row_ty;
+        mask_requests[i].tensor_tcon = mask_tcons[i];
+        mask_requests[i].storage_format = "safetensors";
+        mask_requests[i].side_file = "converted.safetensors";
+        mask_requests[i].tensor_key =
+            i == 0 ? "pack.mask.0" : "pack.mask.1";
+        mask_requests[i].byte_offset = 512 + i * 16;
+        mask_requests[i].byte_length = 8;
+        mask_requests[i].checksum_sha256 = checksum;
+        mask_requests[i].source_position = WN_Get_Linenum(calls[0]);
+        mask_requests[i].generation_name =
+            "fhe.ckks.stride_compaction.mask";
+        mask_requests[i].generation_version = 1;
+        mask_requests[i].geometry_manifest_sha256 = checksum;
+        mask_requests[i].stage_ordinal = 0;
+        mask_requests[i].diagonal_ordinal = i;
+        mask_requests[i].variant_signature_sha256 = checksum;
+    }
+    UINT32 mask_node_count = DSL_IR_Image_Node_Count();
+    UINT32 mask_value_count = DSL_IR_Image_Value_Count();
+    UINT32 mask_st_count = ST_Table_Size(CURRENT_SYMTAB);
+    memcpy(bad_masks, mask_requests, sizeof(bad_masks));
+    bad_masks[1].tensor_tcon = TCON_IDX_ZERO;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Materialize_Generated_External_Tensor_Values
+              (callee, bad_masks, 2, mask_results) &&
+         DSL_IR_Image_Node_Count() == mask_node_count &&
+         DSL_IR_Image_Value_Count() == mask_value_count &&
+         ST_Table_Size(CURRENT_SYMTAB) == mask_st_count,
+         "second invalid generated mask leaves batch unchanged");
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Materialize_Generated_External_Tensor_Values
+              (caller, mask_requests, 2, mask_results) &&
+         DSL_IR_Image_Value_Count() == mask_value_count,
+         "non-active generated result PU rejects batch");
+    memcpy(bad_masks, mask_requests, sizeof(bad_masks));
+    bad_masks[1].name = bad_masks[0].name;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Materialize_Generated_External_Tensor_Values
+              (callee, bad_masks, 2, mask_results) &&
+         DSL_IR_Image_Value_Count() == mask_value_count,
+         "duplicate generated name rejects batch");
+    memcpy(bad_masks, mask_requests, sizeof(bad_masks));
+    bad_masks[1].byte_length = 12;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Materialize_Generated_External_Tensor_Values
+              (callee, bad_masks, 2, mask_results) &&
+         DSL_IR_Image_Value_Count() == mask_value_count,
+         "generated range and tensor size mismatch rejects batch");
+    memcpy(bad_masks, mask_requests, sizeof(bad_masks));
+    bad_masks[1].diagonal_ordinal = 0;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Materialize_Generated_External_Tensor_Values
+              (callee, bad_masks, 2, mask_results) &&
+         DSL_IR_Image_Value_Count() == mask_value_count,
+         "duplicate generated provenance rejects batch");
+    memcpy(bad_masks, mask_requests, sizeof(bad_masks));
+    bad_masks[1].geometry_manifest_sha256 = "bad";
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Materialize_Generated_External_Tensor_Values
+              (callee, bad_masks, 2, mask_results) &&
+         DSL_IR_Image_Value_Count() == mask_value_count,
+         "malformed geometry digest rejects batch");
+    EXTERNAL_REWRITE_CHECK
+        (mask_tcons[0] != TCON_IDX_ZERO && mask_tcons[1] != TCON_IDX_ZERO &&
+         DSL_IR_Materialize_Generated_External_Tensor_Values
+             (callee, mask_requests, 2, mask_results) &&
+         DSL_IR_Generated_External_Tensor_Validate_PU(callee, stderr),
+         "materialize source-free generated masks");
+    EXTERNAL_REWRITE_CHECK
+        (DSL_IR_Image_Get_Generated_External_Tensor_Provenance
+             (PU_Info_proc_sym(callee), mask_results[0].value_id,
+              &mask_provenance) &&
+         mask_provenance.stage_ordinal == 0 &&
+         mask_provenance.diagonal_ordinal == 0 &&
+         strcmp(mask_provenance.generation_name,
+                "fhe.ckks.stride_compaction.mask") == 0 &&
+         DSL_IR_Image_Get_External_Tensor_Reference
+             (PU_Info_proc_sym(callee), mask_results[0].value_id,
+              &observed) &&
+         observed.tensor_tcon == mask_tcons[0] &&
+         strcmp(observed.checksum, checksum) == 0,
+         "generated mask query returns provenance and TCON");
+    EXTERNAL_REWRITE_CHECK
+        (DSL_IR_Image_Get_Value(mask_results[0].value_id, &mask_value) &&
+         DSL_IR_Image_Get_Node(mask_value.producer_node_id, &mask_node) &&
+         (mask_node.flags & DSL_IR_NODE_FLAG_GENERATED_EXTERNAL) != 0 &&
+         (mask_node.flags & DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) == 0,
+         "generated mask uses its own capability flag");
+    UINT64 mask_image_size = 0;
+    unsigned char *mask_image = Capture_DSL_IR_Image(&mask_image_size);
+    DSL_IR_IMAGE_HEADER *mask_header =
+        (DSL_IR_IMAGE_HEADER *)mask_image;
+    DSL_IR_NODE_RECORD *mask_nodes = (DSL_IR_NODE_RECORD *)
+        (mask_image + DSL_IR_IMAGE_HEADER_SIZE +
+         (UINT64)mask_header->opcode_descriptor_count *
+             DSL_IR_OPCODE_DESCRIPTOR_RECORD_SIZE);
+    DSL_IR_ATTRIBUTE_RECORD *mask_attributes =
+        (DSL_IR_ATTRIBUTE_RECORD *)
+            ((unsigned char *)mask_nodes +
+             (UINT64)mask_header->node_count * DSL_IR_NODE_RECORD_SIZE);
+    DSL_IR_NODE_RECORD &mapped_mask = mask_nodes[mask_node.id - 1];
+    mapped_mask.flags &= ~DSL_IR_NODE_FLAG_GENERATED_EXTERNAL;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Image_Load_Mapped(mask_image, mask_image_size, NULL) &&
+         DSL_IR_Image_Get_Generated_External_Tensor_Provenance
+             (PU_Info_proc_sym(callee), mask_results[0].value_id,
+              &mask_provenance),
+         "mapped generated mask without flag rejects without mutation");
+    mapped_mask.flags |= DSL_IR_NODE_FLAG_GENERATED_EXTERNAL;
+    DSL_IR_ATTRIBUTE_RECORD &mapped_mask_marker = mask_attributes
+        [mapped_mask.first_attribute_id - 1 + 2];
+    STR_IDX saved_mask_marker = mapped_mask_marker.value;
+    mapped_mask_marker.value = STR_IDX_ZERO;
+    EXTERNAL_REWRITE_CHECK
+        (!DSL_IR_Image_Load_Mapped(mask_image, mask_image_size, NULL) &&
+         DSL_IR_Image_Get_Generated_External_Tensor_Provenance
+             (PU_Info_proc_sym(callee), mask_results[0].value_id,
+              &mask_provenance),
+         "mapped generated mask without marker rejects without mutation");
+    mapped_mask_marker.value = saved_mask_marker;
+    delete [] mask_image;
     EXTERNAL_REWRITE_CHECK(DSL_Builder_Select_PU(caller),
                            "restore caller program unit");
     EXTERNAL_REWRITE_CHECK

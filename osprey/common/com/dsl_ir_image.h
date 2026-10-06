@@ -510,7 +510,8 @@ typedef enum {
     DSL_IR_NODE_FLAG_RETIRED = 0x00000001,
     DSL_IR_NODE_FLAG_LOWERED = 0x00000002,
     DSL_IR_NODE_FLAG_DEAD_ELIDED = 0x00000004,
-    DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW = 0x00000008
+    DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW = 0x00000008,
+    DSL_IR_NODE_FLAG_GENERATED_EXTERNAL = 0x00000010
 } DSL_IR_NODE_FLAG;
 
 #define DSL_IR_NODE_REDIRECT_ORDINAL_SHIFT 16
@@ -684,6 +685,65 @@ extern BOOL DSL_IR_Image_Get_Typed_External_Tensor_Lineage
                                  DSL_IR_TYPED_EXTERNAL_TENSOR_LINEAGE
                                      *lineage);
 extern BOOL DSL_IR_Typed_External_Tensor_Validate_PU
+                                (PU_Info *pu_info, FILE *diagnostic);
+
+/* Source-free external value request; input strings are borrowed for the call. */
+typedef struct {
+    WN *insert_before;
+    const char *name;
+    TY_IDX descriptor_ty;
+    TCON_IDX tensor_tcon;
+    const char *storage_format;
+    const char *side_file;
+    const char *tensor_key;
+    UINT64 byte_offset;
+    UINT64 byte_length;
+    const char *checksum_sha256;
+    SRCPOS source_position;
+    const char *generation_name;
+    UINT32 generation_version;
+    const char *geometry_manifest_sha256;
+    UINT32 stage_ordinal;
+    UINT32 diagonal_ordinal;
+    const char *variant_signature_sha256;
+} DSL_IR_GENERATED_EXTERNAL_TENSOR_REQUEST;
+
+typedef struct {
+    DSL_IR_VALUE_ID value_id;
+    ST_IDX st;
+    WN *definition;
+} DSL_IR_GENERATED_EXTERNAL_TENSOR_RESULT;
+
+typedef struct {
+    DSL_IR_VALUE_ID value_id;
+    ST_IDX owner_pu_st;
+    const char *generation_name;
+    UINT32 generation_version;
+    const char *geometry_manifest_sha256;
+    UINT32 stage_ordinal;
+    UINT32 diagonal_ordinal;
+    const char *variant_signature_sha256;
+} DSL_IR_GENERATED_EXTERNAL_TENSOR_PROVENANCE;
+
+extern void DSL_IR_Generated_External_Tensor_Request_Init
+                                (DSL_IR_GENERATED_EXTERNAL_TENSOR_REQUEST
+                                     *request);
+/* Rejects the complete array without mutation, or commits every result. */
+extern BOOL DSL_IR_Materialize_Generated_External_Tensor_Values
+                                (PU_Info *pu_info,
+                                 const DSL_IR_GENERATED_EXTERNAL_TENSOR_REQUEST
+                                     *requests,
+                                 UINT32 request_count,
+                                 DSL_IR_GENERATED_EXTERNAL_TENSOR_RESULT
+                                     *results);
+/* Returned strings are borrowed until the next image mutation or reset. */
+extern BOOL DSL_IR_Image_Get_Generated_External_Tensor_Provenance
+                                (ST_IDX owner_pu_st,
+                                 DSL_IR_VALUE_ID value_id,
+                                 DSL_IR_GENERATED_EXTERNAL_TENSOR_PROVENANCE
+                                     *provenance);
+/* Check generated values while the owning PU's local symbols are active. */
+extern BOOL DSL_IR_Generated_External_Tensor_Validate_PU
                                 (PU_Info *pu_info, FILE *diagnostic);
 
 extern void DSL_IR_External_Tensor_Materialization_Request_Init

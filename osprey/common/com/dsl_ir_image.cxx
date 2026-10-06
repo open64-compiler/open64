@@ -2859,6 +2859,7 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
                                         DSL_IR_NODE_FLAG_LOWERED |
                                         DSL_IR_NODE_FLAG_DEAD_ELIDED |
                                         DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW |
+                                        DSL_IR_NODE_FLAG_GENERATED_EXTERNAL |
                                         DSL_IR_NODE_REDIRECT_ORDINAL_MASK;
         active_attribute_count += record.attribute_count;
         active_value_reference_count += record.operand_count;
@@ -2897,11 +2898,25 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
         const DSL_IR_OPCODE_DESCRIPTOR_RECORD &descriptor =
             view->opcode_descriptors[record.opcode_descriptor_id - 1];
         BOOL typed_row_marker = FALSE;
+        BOOL generated_marker = FALSE;
+        static const char *const generated_names[16] = {
+            "value_kind", "value", "dsl.generated_external",
+            "storage_format", "storage_file", "storage_tensor_key",
+            "storage_byte_offset", "storage_byte_length",
+            "storage_checksum", "tensor_tcon_idx",
+            "dsl.generation_name", "dsl.generation_version",
+            "dsl.geometry_manifest_sha256", "dsl.stage_ordinal",
+            "dsl.diagonal_ordinal", "dsl.variant_signature_sha256"
+        };
         for (UINT32 j = 0; j < record.attribute_count; ++j) {
             const DSL_IR_ATTRIBUTE_RECORD &attribute =
                 view->attributes[record.first_attribute_id - 1 + j];
-            if (strcmp(Index_To_Str(attribute.name),
-                       "dsl.typed_external_row") == 0) {
+            const char *name = Index_To_Str(attribute.name);
+            if ((record.flags & DSL_IR_NODE_FLAG_GENERATED_EXTERNAL) != 0 &&
+                (j >= 16 || strcmp(name, generated_names[j]) != 0))
+                return DSL_IR_Image_Report
+                           (diagnostic, "generated tensor profile mismatch", i + 1);
+            if (strcmp(name, "dsl.typed_external_row") == 0) {
                 if (typed_row_marker ||
                     !DSL_IR_Image_String_Id_Valid(attribute.value, TRUE) ||
                     strcmp(Index_To_Str(attribute.value), "1") != 0)
@@ -2909,11 +2924,31 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
                                (diagnostic, "invalid typed row marker", i + 1);
                 typed_row_marker = TRUE;
             }
+            if (strcmp(name, "dsl.generated_external") == 0) {
+                if (generated_marker ||
+                    !DSL_IR_Image_String_Id_Valid(attribute.value, TRUE) ||
+                    strcmp(Index_To_Str(attribute.value), "1") != 0)
+                    return DSL_IR_Image_Report
+                               (diagnostic, "invalid generated tensor marker", i + 1);
+                generated_marker = TRUE;
+            }
         }
         if (typed_row_marker !=
             ((record.flags & DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) != 0))
             return DSL_IR_Image_Report
                        (diagnostic, "typed row flag/marker mismatch", i + 1);
+        if (generated_marker !=
+            ((record.flags & DSL_IR_NODE_FLAG_GENERATED_EXTERNAL) != 0) ||
+            (generated_marker && typed_row_marker))
+            return DSL_IR_Image_Report
+                       (diagnostic, "generated tensor flag/marker mismatch", i + 1);
+        if (generated_marker &&
+            (descriptor.logical_operator != OPR_DSLTENSORCONST ||
+             descriptor.version != 1 ||
+             descriptor.effect_model != DSL_EFFECT_MODEL_PURE ||
+             record.attribute_count != 16))
+            return DSL_IR_Image_Report
+                       (diagnostic, "generated tensor node mismatch", i + 1);
         if ((record.flags & DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) != 0 &&
             (descriptor.logical_operator != OPR_DSLTENSORCONST ||
              descriptor.version != 1 || record.attribute_count != 15))
@@ -3084,7 +3119,8 @@ DSL_IR_Image_Redirect_And_Retire_Value
         if (reference.value_id == retiring_value_id)
             reference.value_id = replacement_value_id;
     }
-    node.flags = (node.flags & DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) |
+    node.flags = (node.flags & (DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW |
+                                DSL_IR_NODE_FLAG_GENERATED_EXTERNAL)) |
                  DSL_IR_NODE_FLAG_RETIRED |
         (replacement_operand_ordinal << DSL_IR_NODE_REDIRECT_ORDINAL_SHIFT);
     DSL_ir_value_table[retiring_value_id - 1].flags |=
@@ -3105,7 +3141,8 @@ DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID value_id)
         DSL_ir_node_table[value.producer_node_id - 1];
     DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
     if (node.result_value_id != value_id ||
-        (node.flags & ~DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) !=
+        (node.flags & ~(DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW |
+                        DSL_IR_NODE_FLAG_GENERATED_EXTERNAL)) !=
             DSL_IR_NODE_FLAG_NONE ||
         !DSL_IR_Table_Get
             (DSL_ir_opcode_descriptor_table, node.opcode_descriptor_id,
@@ -3198,9 +3235,11 @@ DSL_IR_Image_Redirect_And_Lower_Value
         !DSL_IR_Table_Get
             (DSL_ir_node_table, replacement.producer_node_id,
              &replacement_node) ||
-        (source_node.flags & ~DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) !=
+        (source_node.flags & ~(DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW |
+                               DSL_IR_NODE_FLAG_GENERATED_EXTERNAL)) !=
             DSL_IR_NODE_FLAG_NONE ||
-        (replacement_node.flags & ~DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) !=
+        (replacement_node.flags & ~(DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW |
+                                    DSL_IR_NODE_FLAG_GENERATED_EXTERNAL)) !=
             DSL_IR_NODE_FLAG_NONE ||
         source_node.result_value_id != source.id ||
         replacement_node.result_value_id != replacement.id ||
@@ -3243,7 +3282,8 @@ DSL_IR_Image_Mark_Value_Dead_Elided (DSL_IR_VALUE_ID value_id)
         DSL_ir_node_table[value.producer_node_id - 1];
     DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
     if (node.result_value_id != value_id ||
-        (node.flags & ~DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) !=
+        (node.flags & ~(DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW |
+                        DSL_IR_NODE_FLAG_GENERATED_EXTERNAL)) !=
             DSL_IR_NODE_FLAG_NONE || node.operand_count != 0 ||
         !DSL_IR_Table_Get
             (DSL_ir_opcode_descriptor_table, node.opcode_descriptor_id,
