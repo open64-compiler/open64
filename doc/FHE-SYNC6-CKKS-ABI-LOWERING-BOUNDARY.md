@@ -33,9 +33,14 @@ ANT; an ANT-linked CKKS-to-C evaluator therefore needs a reviewed new
 high-level facade over `rt_ant`, not an assertion that this path already
 exists. See `FHE-SYNC6-ACE-CKKS-C-STAGING.md` for source evidence, the
 plaintext-data contract, and the certification order.
-No POLY lowering or POLY2C runs in the first `-O0` path. An unsupported CKKS
-step or missing ANT facade capability fails closed; POLY2C is reserved for a
-future explicitly selected, verified POLY-level optimization pipeline.
+The first `-O0` `openpy` invocation selects a CKKS2C early exit, so no POLY
+lowering or POLY2C runs on that invocation. The backend path itself is
+continuous: with the early exit unselected, the same CKKS gate continues
+through CKKS-to-POLY lowering and POLY2C once those phases are implemented
+and verified. An unsupported CKKS step or missing ANT facade capability
+fails closed; it must not trigger an implicit POLY2C retry. The proposed
+`-FHE:codegen=ckks2c|poly2c` selector is not implemented yet and needs
+main/driver contract review; see `FHE-SYNC6-ACE-CKKS-C-STAGING.md`.
 The private evaluator and canonical public-call output are siblings from the
 same reopened `.ckks_ops.B`; the private emitter must read the primitive
 graph before the separate grouped-lowering copy retires it. Their event and

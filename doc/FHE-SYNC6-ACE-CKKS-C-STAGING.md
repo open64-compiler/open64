@@ -1,6 +1,7 @@
 # ACE CKKS-to-C Staging for SYNC-6
 
-Status: CKKS2C is the selected primary `-O0` S6-0d code-generation stage;
+Status: CKKS2C is the selected `-O0` early exit from one continuous
+CKKS-to-POLY backend pipeline;
 the private ANT facade and concrete emitter contracts remain to be
 implemented and reviewed. This decision does not change the frozen Open64
 public C ABI v1, certify a complete `.ckks_ops.B`, or claim that the pinned
@@ -27,18 +28,33 @@ circuit, especially the 19 required refreshes.
 ## Selected Phase Order
 
 ```text
-verified FHE/SIHE -> executable CKKS WHIRL -> CKKS2C -> private C evaluator
-                                            -> public ABI-v1 C application
+verified FHE/SIHE -> executable CKKS WHIRL -> CKKS gate
+                                           | openpy selects early exit
+                                           +-> CKKS2C -> private C evaluator -> exit
+                                           | otherwise continue
+                                           +-> CKKS-to-POLY -> POLY passes
+                                               -> POLY2C -> private C evaluator -> exit
+same certified CKKS image -> grouped ABI-v1 lowering -> public C application
 ```
 
-CKKS2C is the default and required code-generation path for the first `-O0`
-ResNet-20 release. There is no CKKS-to-POLY pass, POLY IR, or POLY2C pass in
-that path. A missing CKKS emitter case, unsupported ANT facade operation, or
-failed state/key/asset obligation is a compilation error, not permission to
-fall back to POLY2C. Later optimization levels may still use CKKS2C; POLY2C
-is introduced only with an explicitly selected and separately reviewed
-POLY-level optimization/lowering pipeline. Its input must be verified POLY
-IR, not the `.ckks_ops.B` checkpoint directly.
+This is one backend path with a selected exit point, not two unrelated
+pipelines. For the first `-O0` ResNet-20 release, `openpy` must select the
+CKKS2C early exit, so no CKKS-to-POLY, POLY, or POLY2C phase executes on
+that invocation. When the continuation is implemented and selected, the
+same verified CKKS graph proceeds to CKKS-to-POLY lowering and POLY2C;
+POLY2C consumes verified POLY IR, never the `.ckks_ops.B` image directly.
+Neither selection may silently substitute for the other after an operation,
+state, key, asset, or provider failure.
+
+Proposed driver contract (not yet implemented): `openpy` accepts
+`-FHE:codegen=ckks2c|poly2c`, forwards the complete option set through the
+normal Open64 driver path, and the backend owns the single post-CKKS choice.
+`ckks2c` requests the early exit; `poly2c` requests continuation. The
+initial `-O0` FHE invocation explicitly selects `ckks2c`. The option spelling,
+default, and unsupported-mode diagnostics require main/driver review before
+being treated as a shipped interface. The current `config_fhe` group has no
+such selector, and `openpy` currently ends after `be`; this paragraph is a
+design/implementation requirement, not a claim that the command works today.
 
 ## Open64 Stage Boundary
 
@@ -71,7 +87,8 @@ is new, versioned adapter work; it may not be represented as an existing ACE
 double through code generation. Compile-only facade declarations or a
 focused call stub may check C syntax and linkage but must not become a second
 required runtime mock or ciphertext-execution claim. POLY/RNS and POLY2C
-remain a later optimization path, never an implicit `-O0` fallback.
+remain the not-yet-implemented continuation of this backend path, never an
+implicit `-O0` fallback.
 
 ## Emitter and Adapter Contract
 
@@ -128,10 +145,12 @@ remain a later optimization path, never an implicit `-O0` fallback.
    ciphertext result identities to the ABI mock; then run real encrypted
    client/server acceptance separately. Retain C, compile/link commands,
    `.B`/`ir_b2a -st -src` `.T`, side data, provenance report, and hashes.
-6. Add a selection negative: a valid CKKS input with one unsupported emitter
-   operation must fail without output. Instrument the `-O0` pipeline to prove
-   no POLY or POLY2C pass ran. A later POLY2C test belongs to the separate
-   POLY milestone and must begin from verified POLY IR.
+6. Add driver/backend selection tests: `openpy` must forward the selected
+   mode, `ckks2c` must exit before CKKS-to-POLY, and an unsupported emitter
+   operation must fail without output or a POLY2C retry. Once the continuing
+   path exists, test that `poly2c` starts from the same verified CKKS gate,
+   enters CKKS-to-POLY exactly once, and reaches POLY2C only with verified
+   POLY IR. Neither mode may publish partial output on failure.
 
 Negative tests must reject a CKKS node without a selected facade operation,
 wrong direct operand/result type, missing asset or checksum, missing rotation

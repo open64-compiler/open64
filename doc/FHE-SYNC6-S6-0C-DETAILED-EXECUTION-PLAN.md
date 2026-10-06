@@ -396,7 +396,9 @@ complete executable steps/provenance/states, 19 explicit pre-ReLU refreshes,
 no live high-level Conv/BN/ReLU, exact typed B dataflow, and measured
 key/rotation/depth/PU-variant census. It neither certifies the frozen
 SYNC-5 C ABI mapping nor admits ACE `FHErt_ant`.
-Its next mandatory `-O0` consumer is CKKS2C, which emits a provider-private
-C evaluator alongside the unchanged public ABI-v1 application. POLY2C is
-not an S6-0c fallback or S6-0d pass; see
+Its next mandatory `-O0` consumer is the `openpy`-selected CKKS2C early
+exit, which emits a provider-private C evaluator alongside the unchanged
+public ABI-v1 application. Without that early exit, the same verified CKKS
+stage later continues through CKKS-to-POLY lowering and POLY2C. POLY2C is
+not an S6-0c failure fallback; see
 `doc/FHE-SYNC6-ACE-CKKS-C-STAGING.md`.
