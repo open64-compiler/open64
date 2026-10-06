@@ -453,6 +453,10 @@ backend-safe transaction for source-free generated external tensor constants
 with canonical rank-1 F32 TY, side-file TCON/range/checksum, active-PU
 insertion and source position, and stable geometry/stage/diagonal provenance.
 FHE owns mask bytes, variant binding, and `ckks.encode` state/key checks.
+`FHE-SYNC6-GENERATED-MASK-GEOMETRY-MANIFEST.md` defines the canonical
+manifest bytes, exact geometry digest, variant-signature digest, and
+stage/diagonal coverage that the FHE producer must validate before invoking
+that transaction.
 Do not attach false `converted_from` weight lineage, insert raw WN/ST nodes,
 or embed the full F32 masks in `.B` while that main/common contract is absent.
 
