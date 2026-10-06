@@ -53,6 +53,13 @@ for evidence in \
   'converted.safetensors#stem.conv.folded_bias' \
   'side_file=converted.safetensors' \
   'dsl.converted_from_value_id' \
+  'name=conv_row_0;dtype=float32;rank=1' \
+  'name=conv_row_1;dtype=float32;rank=1' \
+  'dsl.typed_external_row=1' \
+  'dsl.converted_from_owner_pu_st=' \
+  'dsl.transformation_name=fhe.conv_feature_row' \
+  'storage_byte_offset=256' \
+  'storage_byte_offset=272' \
   'DSL Call ABI Argument Table: version=1 entries=4' \
   'DSL PU Interface Formal Table: version=1 entries=3' \
   'formal=0 value=' \

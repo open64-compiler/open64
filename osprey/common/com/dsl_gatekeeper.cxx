@@ -486,15 +486,46 @@ DSL_Gatekeeper_Verify_External_Tensor
         return DSL_Gatekeeper_Report
                    (context, "external tensor has no storage reference");
 
-    const char *format = ST_tensor_metadata(result_st, "storage_format");
-    const char *file = ST_tensor_metadata(result_st, "storage_file");
-    const char *key = ST_tensor_metadata(result_st, "storage_tensor_key");
-    const char *offset_text =
-        ST_tensor_metadata(result_st, "storage_byte_offset");
-    const char *length_text =
-        ST_tensor_metadata(result_st, "storage_byte_length");
-    const char *checksum =
-        ST_tensor_metadata(result_st, "storage_checksum");
+    const char *marker = NULL;
+    BOOL typed_row = DSL_Gatekeeper_Node_Attribute
+                         (node, "dsl.typed_external_row", &marker);
+    if (typed_row !=
+        ((node->flags & DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) != 0))
+        return DSL_Gatekeeper_Report
+                   (context, "typed external row flag/marker mismatch");
+    if (typed_row &&
+        (strcmp(marker, "1") != 0 || node->attribute_count != 15))
+        return DSL_Gatekeeper_Report
+                   (context, "typed external row attribute contract is invalid");
+    const char *format = NULL;
+    const char *file = NULL;
+    const char *key = NULL;
+    const char *offset_text = NULL;
+    const char *length_text = NULL;
+    const char *checksum = NULL;
+    if (typed_row) {
+        if (!DSL_Gatekeeper_Node_Attribute
+                 (node, "storage_format", &format) ||
+            !DSL_Gatekeeper_Node_Attribute
+                 (node, "storage_file", &file) ||
+            !DSL_Gatekeeper_Node_Attribute
+                 (node, "storage_tensor_key", &key) ||
+            !DSL_Gatekeeper_Node_Attribute
+                 (node, "storage_byte_offset", &offset_text) ||
+            !DSL_Gatekeeper_Node_Attribute
+                 (node, "storage_byte_length", &length_text) ||
+            !DSL_Gatekeeper_Node_Attribute
+                 (node, "storage_checksum", &checksum))
+            return DSL_Gatekeeper_Report
+                       (context, "typed external row storage is incomplete");
+    } else {
+        format = ST_tensor_metadata(result_st, "storage_format");
+        file = ST_tensor_metadata(result_st, "storage_file");
+        key = ST_tensor_metadata(result_st, "storage_tensor_key");
+        offset_text = ST_tensor_metadata(result_st, "storage_byte_offset");
+        length_text = ST_tensor_metadata(result_st, "storage_byte_length");
+        checksum = ST_tensor_metadata(result_st, "storage_checksum");
+    }
     UINT64 offset = 0;
     UINT64 length = 0;
     UINT64 element_size = 0;

@@ -2470,6 +2470,7 @@ Process_DSL_PU_Specialization_Checkpoint (PU_Info *program)
     Current_Map_Tab = PU_Info_maptab(pu);
     valid = DSL_PU_Interface_Image_Validate_PU(pu, stderr) &&
             DSL_Call_ABI_Image_Validate_PU(pu, stderr) &&
+            DSL_IR_Typed_External_Tensor_Validate_PU(pu, stderr) &&
             DSL_Region_Verify_PU(pu, stderr);
   }
   FmtAssert(valid,

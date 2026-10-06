@@ -509,7 +509,8 @@ typedef enum {
     DSL_IR_NODE_FLAG_NONE = 0,
     DSL_IR_NODE_FLAG_RETIRED = 0x00000001,
     DSL_IR_NODE_FLAG_LOWERED = 0x00000002,
-    DSL_IR_NODE_FLAG_DEAD_ELIDED = 0x00000004
+    DSL_IR_NODE_FLAG_DEAD_ELIDED = 0x00000004,
+    DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW = 0x00000008
 } DSL_IR_NODE_FLAG;
 
 #define DSL_IR_NODE_REDIRECT_ORDINAL_SHIFT 16
@@ -623,6 +624,67 @@ typedef struct {
     ST_IDX st;
     WN *definition;
 } DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_RESULT;
+
+/* Runtime-only proof captured while a source PU's local symtab is active. */
+typedef UINT64 DSL_IR_EXTERNAL_TENSOR_SOURCE_HANDLE;
+
+typedef struct {
+    const char *name;
+    ST_IDX source_owner_pu_st;
+    DSL_IR_VALUE_ID source_value_id;
+    DSL_IR_EXTERNAL_TENSOR_SOURCE_HANDLE source_handle;
+    TY_IDX descriptor_ty;
+    TCON_IDX tensor_tcon;
+    WN *insert_before;
+    SRCPOS source_position;
+    const char *storage_format;
+    const char *side_file;
+    const char *tensor_key;
+    UINT64 byte_offset;
+    UINT64 byte_length;
+    const char *checksum;
+    const char *transformation_name;
+    UINT32 transformation_version;
+    UINT32 transformation_ordinal;
+} DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST;
+
+typedef struct {
+    DSL_IR_VALUE_ID value_id;
+    ST_IDX st;
+    WN *definition;
+} DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_RESULT;
+
+typedef struct {
+    DSL_IR_VALUE_ID value_id;
+    ST_IDX source_owner_pu_st;
+    DSL_IR_VALUE_ID source_value_id;
+    const char *transformation_name;
+    UINT32 transformation_version;
+    UINT32 transformation_ordinal;
+} DSL_IR_TYPED_EXTERNAL_TENSOR_LINEAGE;
+
+extern BOOL DSL_IR_Capture_External_Tensor_Source
+                                (PU_Info *source_pu_info,
+                                 DSL_IR_VALUE_ID source_value_id,
+                                 DSL_IR_EXTERNAL_TENSOR_SOURCE_HANDLE
+                                     *source_handle);
+extern void DSL_IR_Typed_External_Tensor_Value_Request_Init
+                                (DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST
+                                     *request);
+extern BOOL DSL_IR_Materialize_Typed_External_Tensor_Values
+                                (PU_Info *pu_info,
+                                 const DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST
+                                     *requests,
+                                 UINT32 request_count,
+                                 DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_RESULT
+                                     *results);
+extern BOOL DSL_IR_Image_Get_Typed_External_Tensor_Lineage
+                                (ST_IDX owner_pu_st,
+                                 DSL_IR_VALUE_ID value_id,
+                                 DSL_IR_TYPED_EXTERNAL_TENSOR_LINEAGE
+                                     *lineage);
+extern BOOL DSL_IR_Typed_External_Tensor_Validate_PU
+                                (PU_Info *pu_info, FILE *diagnostic);
 
 extern void DSL_IR_External_Tensor_Materialization_Request_Init
                                 (DSL_IR_EXTERNAL_TENSOR_MATERIALIZATION_REQUEST
