@@ -12,6 +12,7 @@
 #include <stdio.h>
 
 #include "dsl_pu_specialize_internal.h"
+#include "mempool.h"
 #include "pu_info.h"
 #include "srcpos.h"
 
@@ -72,6 +73,13 @@ extern BOOL DSL_PU_Transaction_Register_Policy
                 (const DSL_PU_TRANSACTION_POLICY *policy);
 extern BOOL DSL_PU_Transaction_Get_Policy
                 (DSL_PU_TRANSACTION_POLICY *policy);
+
+/* A freshly mapped program still has subsection sizes in PU_Info pointer
+ * slots.  Load each local image, then replace that transitional value with
+ * a live saved scope before any resident transaction or PU switch.  The
+ * caller keeps both PU pools and the WN pool active through output. */
+extern BOOL DSL_PU_Transaction_Load_Mapped_Program
+                (PU_Info *program, MEM_POOL *pool, FILE *diagnostic);
 
 /* All affected PU trees/local tables/map tables must be resident.  This
  * read-only image preflight switches the active PU scope but allocates no

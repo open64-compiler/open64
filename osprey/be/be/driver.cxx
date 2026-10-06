@@ -2432,14 +2432,12 @@ Process_DSL_PU_Specialization_Checkpoint (PU_Info *program)
   FmtAssert(program != NULL,
             ("DSL PU specialization requires at least one PU"));
 
+  WN_Mem_Push();
   MEM_POOL_Push(MEM_pu_nz_pool_ptr);
   MEM_POOL_Push(MEM_pu_pool_ptr);
-  for (PU_Info *pu = program; pu != NULL; pu = PU_Info_next(pu)) {
-    FmtAssert(PU_Info_child(pu) == NULL,
-              ("DSL PU specialization does not support nested PUs"));
-    Read_Local_Info(MEM_pu_nz_pool_ptr, pu);
-    Save_Local_Symtab(CURRENT_SYMTAB, pu);
-  }
+  FmtAssert(DSL_PU_Transaction_Load_Mapped_Program
+                (program, MEM_pu_nz_pool_ptr, stderr),
+            ("could not load DSL PU specialization program"));
 
   DSL_PU_TRANSACTION_PLAN plan;
   memset(&plan, 0, sizeof(plan));
@@ -2521,6 +2519,9 @@ Process_DSL_PU_Specialization_Checkpoint (PU_Info *program)
   dsl_pu_checkpoint_temp_name = NULL;
   fprintf(stderr, "DSL PU specialization checkpoint: output=%s pu=%u\n",
           output, pu_count);
+  MEM_POOL_Pop(MEM_pu_pool_ptr);
+  MEM_POOL_Pop(MEM_pu_nz_pool_ptr);
+  WN_Mem_Pop();
 }
 
 static void Print_Tlog_Header(INT argc, char **argv)

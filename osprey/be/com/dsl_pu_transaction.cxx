@@ -19,6 +19,7 @@
 #include "dsl_region_internal.h"
 #include "dwarf_DST_mem.h"
 #include "errors.h"
+#include "ir_bread.h"
 #include "mempool.h"
 #include "strtab.h"
 #include "symtab.h"
@@ -64,6 +65,28 @@ DSL_PU_Transaction_Report (FILE *diagnostic, const char *message)
     if (diagnostic != NULL)
         fprintf(diagnostic, "DSL PU transaction: %s\n", message);
     return FALSE;
+}
+
+BOOL
+DSL_PU_Transaction_Load_Mapped_Program
+        (PU_Info *program, MEM_POOL *pool, FILE *diagnostic)
+{
+    if (program == NULL || pool == NULL)
+        return DSL_PU_Transaction_Report
+                   (diagnostic, "missing mapped program or pool");
+    for (PU_Info *pu = program; pu != NULL; pu = PU_Info_next(pu)) {
+        if (PU_Info_child(pu) != NULL ||
+            PU_Info_state(pu, WT_TREE) != Subsect_Exists ||
+            PU_Info_state(pu, WT_SYMTAB) != Subsect_Exists)
+            return DSL_PU_Transaction_Report
+                       (diagnostic, "program PU is not freshly mapped");
+    }
+    for (PU_Info *pu = program; pu != NULL; pu = PU_Info_next(pu)) {
+        Read_Local_Info(pool, pu);
+        Set_PU_Info_symtab_ptr(pu, NULL);
+        Save_Local_Symtab(CURRENT_SYMTAB, pu);
+    }
+    return TRUE;
 }
 
 static BOOL
