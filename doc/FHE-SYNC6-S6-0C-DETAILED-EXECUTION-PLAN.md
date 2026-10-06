@@ -178,6 +178,27 @@ expansion for all 21 contexts, and reopen the resulting six-PU family.
 Retained plan evidence is under
 `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-plan/`.
 
+The complete C2 plaintext family is now produced and independently verified
+for all 21 Conv contexts. The native read-only collector joins each dynamic
+source event to its live `OPR_DSLCONV2D.v2` node, exact callee-identity
+BatchNorm-fold provenance, folded weight/bias TCONs, canonical tensor shapes,
+and source attributes. It preserves source stride while normalizing the
+executable Conv recipe to high-resolution stride one; legal `padding=0,0` for
+1x1 projections remains distinct from nonzero shape/stride/group invariants.
+The side asset contains 5,691 ACE column-first F32 feature rows, 21 expanded
+F32 biases, and 104 explicit F32 stride-compaction masks. Its 5,816 byte
+ranges are contiguous and individually hashed in a deterministic index bound
+to the source replay, source `.B`/`.T`, folded payload, Conv budget, source
+node/value/context/callsite, and folded TCON identities. The retained asset is
+209,436,672 bytes with SHA-256
+`1902378db8d8a9a607616e7f85005b9892d160d0be5deb741e9fc3ed7d648c88`.
+Repeated generation is byte-identical; injected mid-write failure publishes
+no endpoint; modified bytes fail whole-file and range verification. This
+closes plaintext asset completeness for C2, but the values are not yet
+materialized into mapped WHIRL and no Conv source node has yet been replaced.
+Retained evidence is under
+`/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-all-plaintext-test/`.
+
 A separate FHE-owned native arithmetic fixture now exercises the actual
 WHIRL expansion and state-binding transaction on canonical `float32[2]`
 tensors. It lowers exact-shape `common.add.v1` to one `ckks.add.v1`,

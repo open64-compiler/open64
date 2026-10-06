@@ -95,25 +95,33 @@ def mask_hashes(weights, shape, height, slot_count):
 
 def ace_row_bytes(weights, shape, height):
     """Yield exact column-first transformed F32 rows in feature order."""
-    output_channels, input_channels, _, _ = shape
+    output_channels, input_channels, kernel_height, kernel_width = shape
+    if kernel_height not in (1, 3) or kernel_width != kernel_height:
+        raise ValueError("ACE row transform requires a square 1x1 or 3x3 kernel")
+    feature_count = input_channels * kernel_height * kernel_width
+    pad = kernel_height // 2
     plane = height * height
     values = [value for (value,) in struct.iter_unpack("<f", weights)]
+    if len(values) != output_channels * feature_count:
+        raise ValueError("folded weight byte count disagrees with OIHW shape")
     if any(not math.isfinite(value) for value in values):
         raise ValueError("nonfinite folded weight")
-    for row in range(input_channels * 9):
+    for row in range(feature_count):
         data = bytearray(output_channels * plane * 4)
         for oc in range(output_channels):
-            feature = (row + oc * 9) % (input_channels * 9)
-            ky, kx = divmod(feature % 9, 3)
-            weight = values[oc * input_channels * 9 + feature]
+            feature = (row + oc * kernel_height * kernel_width) % \
+                feature_count
+            ky, kx = divmod(feature % (kernel_height * kernel_width),
+                            kernel_width)
+            weight = values[oc * feature_count + feature]
             if weight == 0:
                 continue
             for y in range(height):
-                iy = y + ky - 1
+                iy = y + ky - pad
                 if not 0 <= iy < height:
                     continue
                 for x in range(height):
-                    ix = x + kx - 1
+                    ix = x + kx - pad
                     if 0 <= ix < height:
                         struct.pack_into("<f", data,
                                          (oc * plane + y * height + x) * 4,
