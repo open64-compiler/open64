@@ -634,6 +634,7 @@ DSL_IR_Image_Get_External_Tensor_Reference
     const char *checksum;
     const char *tensor_tcon_text;
     const char *tensor_tcon_path;
+    const char *typed_row_marker = NULL;
     UINT64 offset;
     UINT64 length;
     UINT64 element_size;
@@ -664,13 +665,36 @@ DSL_IR_Image_Get_External_Tensor_Reference
         !TY_get_tensor_descriptor_record(value.ty, &descriptor))
         return FALSE;
 
-    format = ST_tensor_metadata(value.st, "storage_format");
-    file = ST_tensor_metadata(value.st, "storage_file");
-    key = ST_tensor_metadata(value.st, "storage_tensor_key");
-    offset_text = ST_tensor_metadata(value.st, "storage_byte_offset");
-    length_text = ST_tensor_metadata(value.st, "storage_byte_length");
-    checksum = ST_tensor_metadata(value.st, "storage_checksum");
-    tensor_tcon_text = ST_tensor_metadata(value.st, "tensor_tcon_idx");
+    BOOL typed_row = DSL_IR_Node_Attribute
+                         (node, "dsl.typed_external_row", &typed_row_marker);
+    if (typed_row !=
+        ((node.flags & DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) != 0))
+        return FALSE;
+    if (typed_row &&
+        (strcmp(typed_row_marker, "1") != 0 ||
+         node.attribute_count != 15))
+        return FALSE;
+    if (typed_row) {
+        if (!DSL_IR_Node_Attribute(node, "storage_format", &format) ||
+            !DSL_IR_Node_Attribute(node, "storage_file", &file) ||
+            !DSL_IR_Node_Attribute(node, "storage_tensor_key", &key) ||
+            !DSL_IR_Node_Attribute
+                 (node, "storage_byte_offset", &offset_text) ||
+            !DSL_IR_Node_Attribute
+                 (node, "storage_byte_length", &length_text) ||
+            !DSL_IR_Node_Attribute(node, "storage_checksum", &checksum) ||
+            !DSL_IR_Node_Attribute(node, "tensor_tcon_idx",
+                                   &tensor_tcon_text))
+            return FALSE;
+    } else {
+        format = ST_tensor_metadata(value.st, "storage_format");
+        file = ST_tensor_metadata(value.st, "storage_file");
+        key = ST_tensor_metadata(value.st, "storage_tensor_key");
+        offset_text = ST_tensor_metadata(value.st, "storage_byte_offset");
+        length_text = ST_tensor_metadata(value.st, "storage_byte_length");
+        checksum = ST_tensor_metadata(value.st, "storage_checksum");
+        tensor_tcon_text = ST_tensor_metadata(value.st, "tensor_tcon_idx");
+    }
     if (format == NULL || format[0] == '\0' || file == NULL ||
         file[0] == '\0' || key == NULL || key[0] == '\0' ||
         !DSL_IR_Parse_Unsigned(offset_text, &offset) ||
@@ -743,6 +767,95 @@ DSL_IR_Image_Get_External_Tensor_Reference
     reference->logical_shape = Index_To_Str(descriptor.logical_shape);
     reference->layout = Index_To_Str(descriptor.layout);
     return TRUE;
+}
+
+/* Keep source-local facts after its PU symtab is no longer active. */
+typedef struct {
+    ST_IDX owner_pu_st;
+    DSL_IR_VALUE_ID value_id;
+    DSL_IR_NODE_ID producer_node_id;
+    ST_IDX st;
+    TY_IDX descriptor_ty;
+    TCON_IDX tensor_tcon;
+    SRCPOS source_position;
+    std::string storage_format;
+    std::string side_file;
+    std::string tensor_key;
+    std::string checksum;
+    UINT64 byte_offset;
+    UINT64 byte_length;
+} DSL_IR_EXTERNAL_SOURCE_SNAPSHOT;
+
+static std::vector<DSL_IR_EXTERNAL_SOURCE_SNAPSHOT>
+    DSL_ir_external_source_snapshots;
+static UINT32 DSL_ir_external_source_generation = 1;
+
+void
+DSL_IR_External_Tensor_Source_Reset (void)
+{
+    DSL_ir_external_source_snapshots.clear();
+    ++DSL_ir_external_source_generation;
+    if (DSL_ir_external_source_generation == 0)
+        ++DSL_ir_external_source_generation;
+}
+
+/* Capture a caller-owned external value before switching local symtabs. */
+BOOL
+DSL_IR_Capture_External_Tensor_Source
+        (PU_Info *source_pu_info,
+         DSL_IR_VALUE_ID source_value_id,
+         DSL_IR_EXTERNAL_TENSOR_SOURCE_HANDLE *source_handle)
+{
+    if (source_handle != NULL)
+        *source_handle = 0;
+    ST_IDX owner = source_pu_info == NULL ? ST_IDX_ZERO :
+        PU_Info_proc_sym(source_pu_info);
+    DSL_IR_EXTERNAL_TENSOR_REFERENCE reference;
+    if (source_handle == NULL || source_pu_info != Current_PU_Info ||
+        !DSL_IR_Image_Current_PU_Is(owner) ||
+        !DSL_IR_Image_Get_External_Tensor_Reference
+             (owner, source_value_id, &reference) ||
+        reference.tensor_tcon == TCON_IDX_ZERO ||
+        reference.checksum == NULL ||
+        strlen(reference.checksum) != 64 ||
+        DSL_ir_external_source_snapshots.size() >= 0xffffffffu)
+        return FALSE;
+    for (UINT32 i = 0; i < 64; ++i) {
+        if (!isdigit((unsigned char)reference.checksum[i]) &&
+            (reference.checksum[i] < 'a' || reference.checksum[i] > 'f'))
+            return FALSE;
+    }
+
+    DSL_IR_EXTERNAL_SOURCE_SNAPSHOT snapshot;
+    snapshot.owner_pu_st = owner;
+    snapshot.value_id = source_value_id;
+    snapshot.producer_node_id = reference.producer_node_id;
+    snapshot.st = reference.st;
+    snapshot.descriptor_ty = reference.descriptor_ty;
+    snapshot.tensor_tcon = reference.tensor_tcon;
+    snapshot.source_position = ST_Srcpos(St_Table[reference.st]);
+    snapshot.storage_format = reference.storage_format;
+    snapshot.side_file = reference.side_file;
+    snapshot.tensor_key = reference.tensor_key;
+    snapshot.checksum = reference.checksum;
+    snapshot.byte_offset = reference.byte_offset;
+    snapshot.byte_length = reference.byte_length;
+    DSL_ir_external_source_snapshots.push_back(snapshot);
+    *source_handle = ((UINT64)DSL_ir_external_source_generation << 32) |
+                     (UINT64)DSL_ir_external_source_snapshots.size();
+    return TRUE;
+}
+
+static const DSL_IR_EXTERNAL_SOURCE_SNAPSHOT *
+DSL_IR_External_Tensor_Source_Snapshot
+        (DSL_IR_EXTERNAL_TENSOR_SOURCE_HANDLE handle)
+{
+    UINT32 generation = (UINT32)(handle >> 32);
+    UINT32 index = (UINT32)handle;
+    if (generation != DSL_ir_external_source_generation || index == 0 ||
+        index > DSL_ir_external_source_snapshots.size())
+        return NULL;
+    return &DSL_ir_external_source_snapshots[index - 1];
 }
 
 /*
@@ -1242,6 +1355,454 @@ DSL_IR_Materialize_External_Tensor_Values
             }
         }
 
+        results[i].value_id = value_id;
+        results[i].st = result_st;
+        results[i].definition = definition;
+    }
+    return TRUE;
+}
+
+void
+DSL_IR_Typed_External_Tensor_Value_Request_Init
+        (DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST *request)
+{
+    if (request != NULL)
+        memset(request, 0, sizeof(*request));
+}
+
+/* A transformation label is lineage, never an executable opcode. */
+static BOOL
+DSL_IR_Transformation_Name_Valid (const char *name)
+{
+    if (name == NULL || name[0] == '\0' || strchr(name, '.') == NULL)
+        return FALSE;
+    for (const char *cursor = name; *cursor != '\0'; ++cursor) {
+        if (!isalnum((unsigned char)*cursor) && *cursor != '_' &&
+            *cursor != '.')
+            return FALSE;
+    }
+    return TRUE;
+}
+
+/* Read-only active-PU query for one owner-qualified persisted lineage. */
+BOOL
+DSL_IR_Image_Get_Typed_External_Tensor_Lineage
+        (ST_IDX owner_pu_st,
+         DSL_IR_VALUE_ID value_id,
+         DSL_IR_TYPED_EXTERNAL_TENSOR_LINEAGE *lineage)
+{
+    if (lineage != NULL)
+        memset(lineage, 0, sizeof(*lineage));
+    DSL_IR_VALUE_RECORD value;
+    DSL_IR_EXTERNAL_TENSOR_REFERENCE reference;
+    DSL_IR_NODE_RECORD node;
+    const char *marker = NULL;
+    if (lineage == NULL || !DSL_IR_Image_Current_PU_Is(owner_pu_st) ||
+        !DSL_IR_Image_Get_External_Tensor_Reference
+             (owner_pu_st, value_id, &reference) ||
+        !DSL_IR_Image_Get_Value(value_id, &value) ||
+        !DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
+        (node.flags & DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) == 0 ||
+        !DSL_IR_Node_Attribute(node, "dsl.typed_external_row", &marker) ||
+        strcmp(marker, "1") != 0 || node.attribute_count != 15)
+        return FALSE;
+
+    const char *owner_text = NULL;
+    const char *source_text = NULL;
+    const char *name = NULL;
+    const char *version_text = NULL;
+    const char *ordinal_text = NULL;
+    if (!DSL_IR_Node_Attribute
+             (node, "dsl.converted_from_owner_pu_st", &owner_text) ||
+        !DSL_IR_Node_Attribute
+             (node, "dsl.converted_from_value_id", &source_text) ||
+        !DSL_IR_Node_Attribute
+             (node, "dsl.transformation_name", &name) ||
+        !DSL_IR_Node_Attribute
+             (node, "dsl.transformation_version", &version_text) ||
+        !DSL_IR_Node_Attribute
+             (node, "dsl.transformation_ordinal", &ordinal_text))
+        return FALSE;
+    UINT64 source_owner;
+    UINT64 source_id;
+    UINT64 version;
+    UINT64 ordinal;
+    if (!DSL_IR_Parse_Unsigned(owner_text, &source_owner) ||
+        !DSL_IR_Parse_Unsigned(source_text, &source_id) ||
+        !DSL_IR_Parse_Unsigned(version_text, &version) ||
+        !DSL_IR_Parse_Unsigned(ordinal_text, &ordinal) ||
+        source_owner == 0 || source_owner > 0xffffffffu ||
+        source_id == 0 || source_id > 0xffffffffu ||
+        version == 0 || version > 0xffffffffu ||
+        ordinal > 0xffffffffu ||
+        !DSL_IR_Transformation_Name_Valid(name))
+        return FALSE;
+
+    DSL_IR_VALUE_RECORD source;
+    ST_IDX source_owner_pu_st = (ST_IDX)source_owner;
+    if (!DSL_IR_Image_Get_Value((DSL_IR_VALUE_ID)source_id, &source) ||
+        !DSL_IR_Image_Value_Belongs_To_PU(source, source_owner_pu_st))
+        return FALSE;
+    DSL_IR_NODE_RECORD source_node;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD source_opcode;
+    const char *source_kind = NULL;
+    if (source.value_kind != DSL_IR_VALUE_CONSTANT ||
+        !DSL_IR_Image_Get_Node(source.producer_node_id, &source_node) ||
+        source_node.result_value_id != source.id ||
+        !DSL_IR_Image_Get_Opcode_Descriptor
+             (source_node.opcode_descriptor_id, &source_opcode) ||
+        source_opcode.logical_operator != OPR_DSLTENSORCONST ||
+        source_opcode.version != 1 ||
+        source_opcode.effect_model != DSL_EFFECT_MODEL_PURE ||
+        !DSL_IR_Node_Attribute(source_node, "value_kind", &source_kind) ||
+        strcmp(source_kind, "external_data") != 0)
+        return FALSE;
+
+    lineage->value_id = value_id;
+    lineage->source_owner_pu_st = source_owner_pu_st;
+    lineage->source_value_id = (DSL_IR_VALUE_ID)source_id;
+    lineage->transformation_name = name;
+    lineage->transformation_version = (UINT32)version;
+    lineage->transformation_ordinal = (UINT32)ordinal;
+    return TRUE;
+}
+
+/* Check complete typed-row lineage while this PU's local STs are active. */
+BOOL
+DSL_IR_Typed_External_Tensor_Validate_PU
+        (PU_Info *pu_info, FILE *diagnostic)
+{
+    ST_IDX owner_pu_st = pu_info == NULL ? ST_IDX_ZERO :
+        PU_Info_proc_sym(pu_info);
+    if (pu_info == NULL || !DSL_IR_Image_Current_PU_Is(owner_pu_st))
+        return FALSE;
+    for (DSL_IR_VALUE_ID id = 1; id <= DSL_IR_Image_Value_Count(); ++id) {
+        DSL_IR_VALUE_RECORD value;
+        if (!DSL_IR_Image_Get_Value(id, &value) ||
+            !DSL_IR_Image_Value_Belongs_To_PU(value, owner_pu_st))
+            continue;
+        if (ST_IDX_level(value.st) != CURRENT_SYMTAB ||
+            ST_IDX_index(value.st) == 0 ||
+            ST_IDX_index(value.st) >= ST_Table_Size(CURRENT_SYMTAB))
+            return FALSE;
+        DSL_IR_NODE_RECORD node;
+        if (value.producer_node_id == DSL_IR_NODE_INVALID_ID)
+            continue;
+        if (!DSL_IR_Image_Get_Node(value.producer_node_id, &node))
+            return FALSE;
+        const char *field = NULL;
+        if ((node.flags & DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW) == 0 &&
+            !DSL_IR_Node_Attribute
+                 (node, "dsl.typed_external_row", &field) &&
+            !DSL_IR_Node_Attribute
+                 (node, "dsl.converted_from_owner_pu_st", &field) &&
+            !DSL_IR_Node_Attribute
+                 (node, "dsl.converted_from_value_id", &field) &&
+            !DSL_IR_Node_Attribute
+                 (node, "dsl.transformation_name", &field) &&
+            !DSL_IR_Node_Attribute
+                 (node, "dsl.transformation_version", &field) &&
+            !DSL_IR_Node_Attribute
+                 (node, "dsl.transformation_ordinal", &field))
+            continue;
+        DSL_IR_TYPED_EXTERNAL_TENSOR_LINEAGE lineage;
+        if (!DSL_IR_Image_Get_Typed_External_Tensor_Lineage
+                 (owner_pu_st, id, &lineage)) {
+            if (diagnostic != NULL)
+                fprintf(diagnostic,
+                        "DSL typed external lineage error: value id=%u\n",
+                        id);
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+/* Validate a typed result and captured source without inactive local STs. */
+static BOOL
+DSL_IR_Typed_External_Tensor_Request_Valid
+        (const DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST &request,
+         const WN *insertion_block,
+         std::string *uri,
+         std::string *payload)
+{
+    const DSL_IR_EXTERNAL_SOURCE_SNAPSHOT *snapshot =
+        DSL_IR_External_Tensor_Source_Snapshot(request.source_handle);
+    DSL_IR_VALUE_RECORD source;
+    DSL_IR_NODE_RECORD source_node;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD source_opcode;
+    TENSOR_DESCRIPTOR_RECORD descriptor;
+    DSL_TENSOR_TCON_RECORD tensor_tcon;
+    const char *side_path;
+    UINT32 side_path_length;
+    UINT64 element_size;
+    UINT64 tensor_size;
+    if (snapshot == NULL || request.name == NULL ||
+        request.name[0] == '\0' || request.source_position == 0 ||
+        insertion_block == NULL || request.insert_before == NULL ||
+        request.source_owner_pu_st != snapshot->owner_pu_st ||
+        request.source_value_id != snapshot->value_id ||
+        !DSL_IR_Image_Get_Value(snapshot->value_id, &source) ||
+        source.st != snapshot->st || source.ty != snapshot->descriptor_ty ||
+        source.producer_node_id != snapshot->producer_node_id ||
+        !DSL_IR_Image_Value_Belongs_To_PU
+             (source, snapshot->owner_pu_st) ||
+        !DSL_IR_Image_Get_Node(source.producer_node_id, &source_node) ||
+        source_node.result_value_id != source.id ||
+        !DSL_IR_Image_Get_Opcode_Descriptor
+             (source_node.opcode_descriptor_id, &source_opcode) ||
+        source_opcode.logical_operator != OPR_DSLTENSORCONST ||
+        source_opcode.version != 1 ||
+        source_opcode.effect_model != DSL_EFFECT_MODEL_PURE ||
+        request.descriptor_ty == TY_IDX_ZERO ||
+        request.tensor_tcon == TCON_IDX_ZERO ||
+        !TY_get_tensor_descriptor_record(request.descriptor_ty, &descriptor) ||
+        !DSL_IR_Static_Tensor_Byte_Size
+             (descriptor, &element_size, &tensor_size) ||
+        request.byte_length != tensor_size ||
+        request.byte_offset % element_size != 0 ||
+        request.byte_offset + request.byte_length < request.byte_offset ||
+        !DSL_Tensor_TCON_Get(request.tensor_tcon, &tensor_tcon) ||
+        tensor_tcon.storage_kind != DSL_TENSOR_TCON_STORAGE_SIDE_FILE_DENSE ||
+        tensor_tcon.descriptor_ty != request.descriptor_ty ||
+        tensor_tcon.element_mtype != TY_mtype(descriptor.element_ty) ||
+        tensor_tcon.element_size != element_size ||
+        tensor_tcon.element_count != tensor_size / element_size ||
+        tensor_tcon.logical_bytes != tensor_size ||
+        tensor_tcon.required_alignment < TY_align(request.descriptor_ty) ||
+        tensor_tcon.byte_offset != request.byte_offset ||
+        tensor_tcon.byte_length != request.byte_length ||
+        !DSL_Tensor_TCON_Get_Side_Path
+             (request.tensor_tcon, &side_path, &side_path_length) ||
+        request.storage_format == NULL ||
+        request.storage_format[0] == '\0' || request.side_file == NULL ||
+        request.side_file[0] == '\0' ||
+        strlen(request.side_file) != side_path_length ||
+        memcmp(request.side_file, side_path, side_path_length) != 0 ||
+        request.tensor_key == NULL || request.tensor_key[0] == '\0' ||
+        request.checksum == NULL || strlen(request.checksum) != 64 ||
+        !DSL_IR_Checksum_Valid(request.checksum) ||
+        !DSL_IR_Transformation_Name_Valid(request.transformation_name) ||
+        request.transformation_version == 0)
+        return FALSE;
+    for (UINT32 i = 0; i < 64; ++i) {
+        if (!isdigit((unsigned char)request.checksum[i]) &&
+            (request.checksum[i] < 'a' || request.checksum[i] > 'f'))
+            return FALSE;
+    }
+    const char *placement = descriptor.placement == STR_IDX_ZERO ? NULL :
+                            Index_To_Str(descriptor.placement);
+    const char *memory = descriptor.memory == STR_IDX_ZERO ? NULL :
+                         Index_To_Str(descriptor.memory);
+    if (descriptor.dtype == STR_IDX_ZERO ||
+        descriptor.logical_shape == STR_IDX_ZERO ||
+        descriptor.layout == STR_IDX_ZERO || placement == NULL ||
+        strcmp(placement, "side_file") != 0 || memory == NULL ||
+        strcmp(memory, "external_data") != 0)
+        return FALSE;
+
+    char offset_text[32];
+    char length_text[32];
+    snprintf(offset_text, sizeof(offset_text), "%llu",
+             (unsigned long long)request.byte_offset);
+    snprintf(length_text, sizeof(length_text), "%llu",
+             (unsigned long long)request.byte_length);
+    size_t uri_size = strlen(request.storage_format) +
+                      strlen(request.side_file) +
+                      strlen(request.tensor_key) +
+                      strlen(request.checksum) + 96;
+    std::vector<char> uri_text(uri_size);
+    snprintf(&uri_text[0], uri_size,
+             "%s://%s#%s?offset=%s&length=%s&checksum=%s",
+             request.storage_format, request.side_file, request.tensor_key,
+             offset_text, length_text, request.checksum);
+    *uri = &uri_text[0];
+
+    const char *dtype = Index_To_Str(descriptor.dtype);
+    const char *shape = Index_To_Str(descriptor.logical_shape);
+    size_t payload_size =
+        strlen("name=;dtype=;rank=;shape=;value_kind=external_data;value=") +
+        strlen(request.name) + strlen(dtype) + strlen(shape) + uri->size() +
+        16;
+    std::vector<char> payload_text(payload_size);
+    snprintf(&payload_text[0], payload_size,
+             "name=%s;dtype=%s;rank=%d;shape=%s;"
+             "value_kind=external_data;value=%s",
+             request.name, dtype, descriptor.rank, shape, uri->c_str());
+    *payload = &payload_text[0];
+    return TRUE;
+}
+
+/* Create a preflighted batch without changing calls or source definitions. */
+BOOL
+DSL_IR_Materialize_Typed_External_Tensor_Values
+        (PU_Info *pu_info,
+         const DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST *requests,
+         UINT32 request_count,
+         DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_RESULT *results)
+{
+    ST_IDX owner_pu_st = pu_info == NULL ? ST_IDX_ZERO :
+        PU_Info_proc_sym(pu_info);
+    WN *pu_root = pu_info == NULL ? NULL : PU_Info_tree_ptr(pu_info);
+    if (pu_info != Current_PU_Info || pu_root == NULL ||
+        !DSL_IR_Image_Current_PU_Is(owner_pu_st) || requests == NULL ||
+        request_count == 0 || results == NULL ||
+        !DSL_IR_Typed_External_Tensor_Validate_PU(pu_info, NULL))
+        return FALSE;
+
+    memset(results, 0, request_count * sizeof(*results));
+    std::vector<DSL_IR_TYPED_EXTERNAL_TENSOR_LINEAGE> existing_lineage;
+    for (DSL_IR_VALUE_ID id = 1; id <= DSL_IR_Image_Value_Count(); ++id) {
+        DSL_IR_VALUE_RECORD value;
+        if (!DSL_IR_Image_Get_Value(id, &value) ||
+            !DSL_IR_Image_Value_Belongs_To_PU(value, owner_pu_st) ||
+            ST_IDX_level(value.st) != CURRENT_SYMTAB ||
+            ST_IDX_index(value.st) == 0 ||
+            ST_IDX_index(value.st) >= ST_Table_Size(CURRENT_SYMTAB))
+            continue;
+        DSL_IR_NODE_RECORD node;
+        const char *marker = NULL;
+        if (!DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
+            !DSL_IR_Node_Attribute
+                 (node, "dsl.typed_external_row", &marker))
+            continue;
+        DSL_IR_TYPED_EXTERNAL_TENSOR_LINEAGE lineage;
+        if (!DSL_IR_Image_Get_Typed_External_Tensor_Lineage
+                 (owner_pu_st, id, &lineage))
+            return FALSE;
+        existing_lineage.push_back(lineage);
+    }
+    std::vector<WN *> blocks(request_count, NULL);
+    std::vector<std::string> uris(request_count);
+    std::vector<std::string> payloads(request_count);
+    for (UINT32 i = 0; i < request_count; ++i) {
+        const DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST &request =
+            requests[i];
+        blocks[i] = DSL_IR_Find_Containing_Block
+                        (pu_root, request.insert_before);
+        if (!DSL_IR_Typed_External_Tensor_Request_Valid
+                 (request, blocks[i], &uris[i], &payloads[i]) ||
+            DSL_IR_PU_Value_Name_Exists(owner_pu_st, request.name))
+            return FALSE;
+        for (UINT32 prior = 0; prior < existing_lineage.size(); ++prior) {
+            const DSL_IR_TYPED_EXTERNAL_TENSOR_LINEAGE &other =
+                existing_lineage[prior];
+            if (other.source_owner_pu_st == request.source_owner_pu_st &&
+                other.source_value_id == request.source_value_id &&
+                other.transformation_version ==
+                    request.transformation_version &&
+                other.transformation_ordinal ==
+                    request.transformation_ordinal &&
+                strcmp(other.transformation_name,
+                       request.transformation_name) == 0)
+                return FALSE;
+        }
+        for (UINT32 prior = 0; prior < i; ++prior) {
+            const DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST &other =
+                requests[prior];
+            if (strcmp(other.name, request.name) == 0 ||
+                (other.source_owner_pu_st == request.source_owner_pu_st &&
+                 other.source_value_id == request.source_value_id &&
+                 other.transformation_version ==
+                     request.transformation_version &&
+                 other.transformation_ordinal ==
+                     request.transformation_ordinal &&
+                 strcmp(other.transformation_name,
+                        request.transformation_name) == 0))
+                return FALSE;
+        }
+    }
+    DSL_IR_OPCODE_DESCRIPTOR_ID descriptor_id =
+        DSL_IR_Image_Find_Opcode_Descriptor(OPR_DSLTENSORCONST, 1);
+    if (descriptor_id == DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID)
+        return FALSE;
+
+    for (UINT32 i = 0; i < request_count; ++i) {
+        const DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST &request =
+            requests[i];
+        ST_IDX result_st = DSL_Tensor_Create_Result_Symbol
+                               (request.name, request.descriptor_ty,
+                                SCLASS_AUTO, EXPORT_LOCAL);
+        Set_ST_Srcpos(St_Table[result_st], request.source_position);
+
+        char offset_text[32];
+        char length_text[32];
+        char tcon_text[32];
+        char source_owner_text[32];
+        char source_text[32];
+        char version_text[32];
+        char ordinal_text[32];
+        snprintf(offset_text, sizeof(offset_text), "%llu",
+                 (unsigned long long)request.byte_offset);
+        snprintf(length_text, sizeof(length_text), "%llu",
+                 (unsigned long long)request.byte_length);
+        snprintf(tcon_text, sizeof(tcon_text), "%u", (UINT32)request.tensor_tcon);
+        snprintf(source_owner_text, sizeof(source_owner_text), "%u",
+                 (UINT32)request.source_owner_pu_st);
+        snprintf(source_text, sizeof(source_text), "%u",
+                 request.source_value_id);
+        snprintf(version_text, sizeof(version_text), "%u",
+                 request.transformation_version);
+        snprintf(ordinal_text, sizeof(ordinal_text), "%u",
+                 request.transformation_ordinal);
+
+        WN *expression = DSL_WN_Create_Native
+                             (OPR_DSLTENSORCONST, 1, payloads[i].c_str(),
+                              NULL, 0);
+        WN *definition = WN_CreateStid
+                             (OPR_STID, MTYPE_V, MTYPE_M, 0, result_st,
+                              request.descriptor_ty, expression);
+        WN_Set_Linenum(definition, request.source_position);
+        DSL_IR_NODE_RECORD node;
+        DSL_IR_Node_Record_Init(&node);
+        node.flags = DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW;
+        node.opcode_descriptor_id = descriptor_id;
+        node.payload = Save_Str(payloads[i].c_str());
+        DSL_IR_NODE_ID node_id = DSL_IR_Image_Add_Node(&node);
+        const char *attribute_names[15] = {
+            "value_kind", "value", "dsl.typed_external_row",
+            "storage_format", "storage_file", "storage_tensor_key",
+            "storage_byte_offset", "storage_byte_length",
+            "storage_checksum", "tensor_tcon_idx",
+            "dsl.converted_from_owner_pu_st",
+            "dsl.converted_from_value_id", "dsl.transformation_name",
+            "dsl.transformation_version", "dsl.transformation_ordinal"
+        };
+        const char *attribute_values[15] = {
+            "external_data", uris[i].c_str(), "1",
+            request.storage_format, request.side_file, request.tensor_key,
+            offset_text, length_text, request.checksum, tcon_text,
+            source_owner_text, source_text, request.transformation_name,
+            version_text, ordinal_text
+        };
+        DSL_IR_ATTRIBUTE_ID first_attribute =
+            DSL_IR_ATTRIBUTE_INVALID_ID;
+        for (UINT32 attr = 0; attr < 15; ++attr) {
+            DSL_IR_ATTRIBUTE_RECORD attribute;
+            DSL_IR_Attribute_Record_Init(&attribute);
+            attribute.owner_node_id = node_id;
+            attribute.value_kind = DSL_IR_ATTRIBUTE_VALUE_STRING;
+            attribute.name = Save_Str(attribute_names[attr]);
+            attribute.value = Save_Str(attribute_values[attr]);
+            DSL_IR_ATTRIBUTE_ID id = DSL_IR_Image_Add_Attribute(&attribute);
+            if (attr == 0)
+                first_attribute = id;
+        }
+        DSL_IR_VALUE_RECORD value;
+        DSL_IR_Value_Record_Init(&value);
+        value.value_kind = DSL_IR_VALUE_CONSTANT;
+        value.producer_node_id = node_id;
+        value.ty = request.descriptor_ty;
+        value.st = result_st;
+        value.name = Save_Str(request.name);
+        std::string owner = "owner_pu=";
+        owner += ST_name(St_Table[owner_pu_st]);
+        value.metadata = Save_Str(owner.c_str());
+        DSL_IR_VALUE_ID value_id = DSL_IR_Image_Add_Value(&value);
+        DSL_IR_Image_Set_Node_Links
+            (node_id, DSL_IR_VALUE_REFERENCE_INVALID_ID, 0,
+             first_attribute, 15, value_id);
+        WN_INSERT_BlockBefore(blocks[i], request.insert_before, definition);
         results[i].value_id = value_id;
         results[i].st = result_st;
         results[i].definition = definition;
