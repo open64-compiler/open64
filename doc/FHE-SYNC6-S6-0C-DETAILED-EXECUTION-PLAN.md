@@ -23,6 +23,8 @@ failure without final files. These are host evidence only: the Python test
 fixture is not a backend producer, and the row values are not yet in WHIRL.
 The generic rank-4-source to rank-1-result value transaction requested in
 `FHE-SYNC6-TYPED-ROW-VALUE-HANDOFF.md` remains main/common-owned.
+The read-only fused-diagonal stride packer below reduces the projection
+packing-depth estimate but is not yet a CKKS state/key-certified recipe.
 
 ## Boundary And Inputs
 
@@ -332,6 +334,43 @@ No implicit bootstrap or state repair is allowed. **Stop C2 stride-two
 emission here** pending a separately reviewed lower-depth local packer,
 an approved state schedule, or a general layout planner decision. The
 proof does not complete C2 or authorize `.ckks_ops.B` publication.
+
+#### Bounded Fused-Diagonal Candidate
+
+The same ordered bit moves can be composed in groups of at most five. For
+each group, partition its selected input slots by their exact cumulative
+signed rotation. Multiply the input by one 0/1 plaintext mask per partition,
+rotate each masked ciphertext once, then add all terms. Every selected source
+slot belongs to exactly one partition and every selected output slot has
+exactly one predecessor. This is a linear masked-rotation transform, not a
+change to Conv semantics or an implicit bootstrap. The first group includes
+the even-position selection, so it needs no separate selection level.
+
+The read-only `fhe_ckks_stride_compaction_proof.py` compares this fused
+transform both with the original 13-move network and an independent
+stride-two Conv oracle. It balances 13 moves as `4+4+5` for the replay-
+authenticated call4 `16x32x32 -> 32x16x16` projection: 16, 16, and 32
+diagonals, 64 exact masks, 61 distinct nonzero signed rotations, and three
+symbolic plaintext-mask levels. With the preceding high-resolution Conv
+multiply, the symbolic total is four levels, versus fifteen for the
+sequential proof. The other captured projection shape
+`32x16x16 -> 64x8x8` uses `4+4+4`: 48 masks, 45 nonzero rotations, and
+three packing levels; its oracle uses deterministic synthetic 1x1 weights,
+not model bytes. The `4x4 -> 2x2` counterexample composes into four masks
+and one packing level. Exact per-stage mask SHA-256 values, rotations,
+cardinalities, source-family hash, and zero-error clear checks are retained
+in `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-recipe/stride-compaction-fused-proof.json`.
+
+This is **not** an executable CKKS schedule. Each group's masks must be
+encoded at a compatible level/scale, parallel products aligned before their
+sum, and the stage rescaled with measured precision. The 61/45 signed
+rotation requirements must be joined to available keys. C4 must prove the
+remaining level/precision budget after the real context-specific refresh,
+the high-resolution Conv, all three pack stages, and residual-path
+alignment. C2 must also validate transformed row assets and producer-side
+typed value binding. Until those gates pass, reject stride-two emission;
+neither the original million-mask census nor the fused proof authorizes
+`secure_resnet20.ckks_ops.B` publication.
 
 | Slice | FHE-owned work | Focused exit evidence |
 | --- | --- | --- |

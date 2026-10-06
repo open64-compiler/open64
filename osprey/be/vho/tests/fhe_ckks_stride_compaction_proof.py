@@ -25,31 +25,55 @@ def mask_hash(indices, slots):
     return hashlib.sha256(mask).hexdigest()
 
 
-def compact(highres, width, channels, slots):
-    """Delete the two spatial low bits with a bitwise mask/rotate network."""
-    assert width >= 4 and width & (width - 1) == 0
-    assert channels >= 1 and channels & (channels - 1) == 0
-    assert channels * width * width <= slots == len(highres)
-    half = width // 2
-    mapping = {
-        oc * width * width + 2 * y * width + 2 * x:
-        oc * width * width + 2 * y * width + 2 * x
-        for oc in range(channels) for y in range(half) for x in range(half)
-    }
-    active = set(mapping.values())
-    current = [value if index in active else 0.0
-               for index, value in enumerate(highres)]
-    stages = []
+def bit_moves(width, channels):
+    """Return the ordered slot-bit moves used by the clear compaction proof."""
     spatial_bits = int(math.log(width, 2))
     channel_bits = int(math.log(channels, 2))
-    bit_moves = (
+    return (
         [(1 + bit, bit) for bit in range(spatial_bits - 1)] +
         [(spatial_bits + 1 + bit, spatial_bits - 1 + bit)
          for bit in range(spatial_bits - 1)] +
         [(2 * spatial_bits + bit, 2 * spatial_bits - 2 + bit)
          for bit in range(channel_bits)]
     )
-    for ordinal, (source_bit, target_bit) in enumerate(bit_moves):
+
+
+def active_mapping(width, channels):
+    """Map every selected high-resolution slot to its initial slot."""
+    half = width // 2
+    return {
+        oc * width * width + 2 * y * width + 2 * x:
+        oc * width * width + 2 * y * width + 2 * x
+        for oc in range(channels) for y in range(half) for x in range(half)
+    }
+
+
+def expected_mapping(width, original_indices):
+    """Compute dense NCHW positions independently of the bit-move network."""
+    half = width // 2
+    return {
+        original: oc * half * half + y * half + x
+        for original in original_indices
+        for oc, y, x in [(
+            original // (width * width),
+            (original % (width * width)) // width // 2,
+            (original % width) // 2)]
+    }
+
+
+def compact(highres, width, channels, slots):
+    """Delete the two spatial low bits with a bitwise mask/rotate network."""
+    assert width >= 4 and width & (width - 1) == 0
+    assert channels >= 1 and channels & (channels - 1) == 0
+    assert channels * width * width <= slots == len(highres)
+    half = width // 2
+    mapping = active_mapping(width, channels)
+    active = set(mapping.values())
+    current = [value if index in active else 0.0
+               for index, value in enumerate(highres)]
+    stages = []
+    for ordinal, (source_bit, target_bit) in enumerate(
+            bit_moves(width, channels)):
         rotation = (1 << source_bit) - (1 << target_bit)
         selected_indices = {
             current_index for original, current_index in mapping.items()
@@ -84,14 +108,7 @@ def compact(highres, width, channels, slots):
             "complement_mask_ones": slots - len(selected_indices),
             "symbolic_level_after_if_mask_consumes_one": -(ordinal + 2),
         })
-    expected = {
-        original: oc * half * half + y * half + x
-        for original in mapping
-        for oc, y, x in [(
-            original // (width * width),
-            (original % (width * width)) // width // 2,
-            (original % width) // 2)]
-    }
+    expected = expected_mapping(width, mapping)
     assert mapping == expected
     assert active == set(range(channels * half * half))
     return current, {
@@ -105,6 +122,74 @@ def compact(highres, width, channels, slots):
         "unique_signed_rotation_keys": sorted({
             row["signed_left_rotation"] for row in stages}),
         "symbolic_plaintext_mask_depth": 1 + len(stages),
+        "stages": stages,
+    }
+
+
+def compact_fused(highres, width, channels, slots, moves_per_stage=5):
+    """Compose bounded bit moves into parallel masked-rotation diagonals."""
+    assert width >= 4 and width & (width - 1) == 0
+    assert channels >= 1 and channels & (channels - 1) == 0
+    assert channels * width * width <= slots == len(highres)
+    assert 1 <= moves_per_stage <= 5
+    mapping = active_mapping(width, channels)
+    current = list(highres)
+    stages = []
+    moves = bit_moves(width, channels)
+    stage_count = (len(moves) + moves_per_stage - 1) // moves_per_stage
+    base, extra = divmod(len(moves), stage_count)
+    stage_sizes = [base] * (stage_count - extra) + [base + 1] * extra
+    first = 0
+    for stage_size in stage_sizes:
+        before = mapping.copy()
+        for source_bit, target_bit in moves[first:first + stage_size]:
+            rotation = (1 << source_bit) - (1 << target_bit)
+            mapping = {
+                original: index - rotation
+                if original & (1 << source_bit) else index
+                for original, index in mapping.items()
+            }
+        assert len(set(mapping.values())) == len(mapping)
+        assert all(0 <= index < slots for index in mapping.values())
+        diagonals = {}
+        for original, source_index in before.items():
+            rotation = source_index - mapping[original]
+            diagonals.setdefault(rotation, set()).add(source_index)
+        assert len(diagonals) <= 1 << stage_size
+        assert sum(len(indices) for indices in diagonals.values()) == \
+            len(before)
+        assert set().union(*diagonals.values()) == set(before.values())
+        next_values = [0.0] * slots
+        for rotation, indices in diagonals.items():
+            for source_index in indices:
+                next_values[(source_index - rotation) % slots] += \
+                    current[source_index]
+        current = next_values
+        stages.append({
+            "ordinal": len(stages),
+            "first_bit_move": first,
+            "bit_move_count": stage_size,
+            "diagonal_count": len(diagonals),
+            "diagonals": [
+                {"signed_left_rotation": rotation,
+                 "mask_sha256": mask_hash(indices, slots),
+                 "mask_ones": len(indices)}
+                for rotation, indices in sorted(diagonals.items())
+            ],
+        })
+        first += stage_size
+    expected = expected_mapping(width, mapping)
+    assert mapping == expected
+    assert all(value == 0.0 for value in current[len(mapping):])
+    return current, {
+        "stage_count": len(stages),
+        "plaintext_mask_count": sum(stage["diagonal_count"]
+                                    for stage in stages),
+        "unique_signed_rotation_keys": sorted({
+            diagonal["signed_left_rotation"]
+            for stage in stages for diagonal in stage["diagonals"]
+            if diagonal["signed_left_rotation"] != 0}),
+        "symbolic_plaintext_mask_depth": len(stages),
         "stages": stages,
     }
 
@@ -153,7 +238,11 @@ def check_small():
     assert actual[:4] == expected and actual[4:] == [0.0] * 12
     assert network["unique_signed_rotation_keys"] == [1, 6]
     assert network["plaintext_mask_count"] == 5
-    return network
+    fused, fused_network = compact_fused(highres, 4, 1, 16)
+    assert fused == actual
+    assert fused_network["stage_count"] == 1
+    assert fused_network["plaintext_mask_count"] <= 4
+    return {"sequential": network, "fused": fused_network}
 
 
 def check_captured(payload, replay):
@@ -172,6 +261,8 @@ def check_captured(payload, replay):
                         input_values[ci * width * width + y * width + x]
                 highres[oc * width * width + y * width + x] = total
     actual, network = compact(highres, width, channels, slots)
+    fused, fused_network = compact_fused(highres, width, channels, slots)
+    assert fused == actual
     half = width // 2
     max_error = 0.0
     for oc in range(channels):
@@ -198,6 +289,51 @@ def check_captured(payload, replay):
     network["state_compatibility"] = (
         "unproved_scale_precision_and_residual_branch_alignment")
     network["provenance"] = provenance
+    fused_network["oracle_max_abs_error"] = max_error
+    fused_network["symbolic_total_depth_from_input"] = (
+        1 + fused_network["symbolic_plaintext_mask_depth"])
+    fused_network["provenance"] = provenance
+    assert fused_network["stage_count"] == 3
+    assert fused_network["plaintext_mask_count"] <= 96
+    return {"sequential": network, "fused": fused_network}
+
+
+def check_second_projection_shape():
+    """Check the second shape against a deterministic stride-two Conv oracle."""
+    width, channels, input_channels, slots = 16, 64, 32, 32768
+    input_values = [float((index * 11) % 31 - 15) / 16.0
+                    for index in range(input_channels * width * width)]
+    weights = [float((index * 7) % 17 - 8) / 32.0
+               for index in range(channels * input_channels)]
+    bias = [float(index % 9 - 4) / 8.0 for index in range(channels)]
+    highres = [0.0] * slots
+    for oc in range(channels):
+        for y in range(width):
+            for x in range(width):
+                highres[oc * width * width + y * width + x] = bias[oc] + sum(
+                    weights[oc * input_channels + ci] *
+                    input_values[ci * width * width + y * width + x]
+                    for ci in range(input_channels))
+    sequential, _ = compact(highres, width, channels, slots)
+    fused, network = compact_fused(highres, width, channels, slots)
+    assert fused == sequential
+    half = width // 2
+    max_error = 0.0
+    for oc in range(channels):
+        for oy in range(half):
+            for ox in range(half):
+                expected = bias[oc] + sum(
+                    weights[oc * input_channels + ci] *
+                    input_values[ci * width * width + 2 * oy * width +
+                                 2 * ox]
+                    for ci in range(input_channels))
+                index = oc * half * half + oy * half + ox
+                max_error = max(max_error, abs(fused[index] - expected))
+    assert max_error == 0.0
+    assert network["stage_count"] == 3
+    assert network["plaintext_mask_count"] <= 96
+    network["oracle_max_abs_error"] = max_error
+    network["fixture"] = "deterministic synthetic 1x1 projection, no model bytes"
     return network
 
 
@@ -213,12 +349,16 @@ def main():
         "status": "read_only_clear_slot_proof_not_executable_ckks_ir",
         "mask_encoding": "sha256 of slot-order uint8 0-or-1 vector",
         "rotation_convention": "dest[s]=source[(s+r) mod slot_count]",
-        "symbolic_state": "each parallel complementary plaintext-mask pair "
-                          "consumes one level if rescaled; component count "
-                          "unchanged; exact scale/precision/alignment unproved",
+        "symbolic_state": "sequential branch masks consume one level per "
+                          "move; fused parallel diagonal masks consume one "
+                          "level per stage if jointly rescaled; component "
+                          "count unchanged; exact scale/precision and "
+                          "residual-branch alignment unproved",
         "small_4x4_to_2x2": check_small(),
         "captured_call4_1x1_projection": check_captured(
             args.payload, args.replay),
+        "second_projection_shape_32x16x16_to_64x8x8":
+            check_second_projection_shape(),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n",
