@@ -91,6 +91,76 @@ for mode in primitive apply; do
   done
 done
 
+mapped_image="$artifact_dir/pu_transaction_mapped.B"
+mapped_trace="$artifact_dir/pu_transaction_mapped.T"
+mapped_log="$artifact_dir/pu_transaction_mapped.log"
+printf '%s\n' \
+  "$producer --mapped-checkpoint $artifact_dir/pu_transaction_apply.B $mapped_image" \
+  "$ir_b2a -st -src $mapped_image $mapped_trace" \
+  "$producer --reopen $mapped_image" >>"$artifact_dir/commands.txt"
+if ! "$producer" --mapped-checkpoint \
+       "$artifact_dir/pu_transaction_apply.B" "$mapped_image" \
+       >"$mapped_log" 2>&1 ||
+   ! "$ir_b2a" -st -src "$mapped_image" "$mapped_trace" \
+       >>"$mapped_log" 2>&1 ||
+   ! "$producer" --reopen "$mapped_image" \
+       >>"$mapped_log" 2>&1; then
+  cat "$mapped_log" >&2
+  exit 1
+fi
+if [[ "$(grep -Ec '^FUNC_ENTRY ' "$mapped_trace")" -ne 3 ]] ||
+   [[ "$(grep -Ec 'VCALL .*pu_transaction_variant' "$mapped_trace")" -ne 2 ]] ||
+   ! grep -Fq 'DSL PU transaction mapped scalar TCON proof passed' \
+      "$mapped_log"; then
+  echo "mapped specialization checkpoint changed PU/call evidence" >&2
+  exit 1
+fi
+
+clone_image="$artifact_dir/pu_transaction_mapped_clone.B"
+clone_trace="$artifact_dir/pu_transaction_mapped_clone.T"
+clone_log="$artifact_dir/pu_transaction_mapped_clone.log"
+printf '%s\n' \
+  "$producer --mapped-clone-checkpoint $artifact_dir/pu_transaction_apply.B $clone_image 4" \
+  "$ir_b2a -st -src $clone_image $clone_trace" \
+  "$producer --reopen $clone_image" >>"$artifact_dir/commands.txt"
+if ! "$producer" --mapped-clone-checkpoint \
+       "$artifact_dir/pu_transaction_apply.B" "$clone_image" 4 \
+       >"$clone_log" 2>&1 ||
+   ! "$ir_b2a" -st -src "$clone_image" "$clone_trace" \
+       >>"$clone_log" 2>&1 ||
+   ! "$producer" --reopen "$clone_image" \
+       >>"$clone_log" 2>&1; then
+  cat "$clone_log" >&2
+  exit 1
+fi
+if [[ "$(grep -Ec '^FUNC_ENTRY ' "$clone_trace")" -ne 4 ]] ||
+   ! grep -Fq 'pu_transaction_mapped_clone' "$clone_trace"; then
+  echo "mapped clone checkpoint lost the cloned PU" >&2
+  exit 1
+fi
+
+if [[ -n "${OPEN64_DSL_PU_TRANSACTION_SIX_PU_INPUT:-}" ]]; then
+  six_image="$artifact_dir/pu_transaction_six.B"
+  six_trace="$artifact_dir/pu_transaction_six.T"
+  six_log="$artifact_dir/pu_transaction_six.log"
+  printf '%s\n' \
+    "$producer --mapped-checkpoint $OPEN64_DSL_PU_TRANSACTION_SIX_PU_INPUT $six_image 6" \
+    "$ir_b2a -st -src $six_image $six_trace" \
+    >>"$artifact_dir/commands.txt"
+  if ! "$producer" --mapped-checkpoint \
+         "$OPEN64_DSL_PU_TRANSACTION_SIX_PU_INPUT" "$six_image" 6 \
+         >"$six_log" 2>&1 ||
+     ! "$ir_b2a" -st -src "$six_image" "$six_trace" \
+         >>"$six_log" 2>&1; then
+    cat "$six_log" >&2
+    exit 1
+  fi
+  if [[ "$(grep -Ec '^FUNC_ENTRY ' "$six_trace")" -ne 6 ]]; then
+    echo "six-PU mapped checkpoint changed the PU census" >&2
+    exit 1
+  fi
+fi
+
 if [[ -n "$whirl2c" ]]; then
   image="$artifact_dir/pu_transaction_w2c.B"
   trace="$artifact_dir/pu_transaction_w2c.T"
