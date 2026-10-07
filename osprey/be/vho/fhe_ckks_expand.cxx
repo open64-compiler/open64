@@ -194,7 +194,16 @@ VHO_FHE_CKKS_Can_Expand_And_Bind_States(
              step, 0, i, states, &unary_input)))
       return VHO_FHE_CKKS_Expand_Report(
           diagnostic, "unary CKKS input state is unavailable", i, FALSE);
-    if (state.id != DSL_FHE_CKKS_VALUE_STATE_INVALID_ID ||
+    const BOOL descriptor_found = DSL_FHE_Get_Encryption_Descriptor(
+        state.encryption_descriptor_id, &descriptor);
+    const BOOL binding_found = DSL_FHE_Find_Tensor_Binding(
+        step.result_ty, state.encryption_descriptor_id, &binding);
+    const BOOL attributes_valid = descriptor_found &&
+        VHO_FHE_CKKS_Step_Attributes_Valid(
+            step, state, descriptor,
+            unary_step ? &unary_input : NULL);
+    const BOOL result_state_invalid =
+        state.id != DSL_FHE_CKKS_VALUE_STATE_INVALID_ID ||
         state.value_id != DSL_IR_VALUE_INVALID_ID ||
         state.state_version != 1 ||
         state.scheme != DSL_FHE_SCHEME_CKKS ||
@@ -221,21 +230,31 @@ VHO_FHE_CKKS_Can_Expand_And_Bind_States(
         (step.dsl_operator == OPR_DSLCKKSRESCALE &&
          (state.pending_actions & DSL_FHE_CKKS_PENDING_RESCALE) != 0) ||
         step.result_ty == TY_IDX_ZERO ||
-        !DSL_FHE_Get_Encryption_Descriptor(
-            state.encryption_descriptor_id, &descriptor) ||
+        !descriptor_found ||
         descriptor.scheme != DSL_FHE_SCHEME_CKKS ||
         descriptor.value_class != expected_class ||
         descriptor.config_id == DSL_FHE_CONFIG_INVALID_ID ||
         (descriptor.slot_count != 0 &&
          descriptor.slot_count != state.slot_count) ||
-        !DSL_FHE_Find_Tensor_Binding(
-            step.result_ty, state.encryption_descriptor_id, &binding) ||
-        !VHO_FHE_CKKS_Step_Attributes_Valid(
-            step, state, descriptor,
-            unary_step ? &unary_input : NULL))
+        !binding_found || !attributes_valid;
+    if (result_state_invalid) {
+      if (diagnostic != NULL)
+        fprintf(diagnostic,
+                "CFHEIR-STATE-001 detail: step=%u op=%u ty=%u "
+                "descriptor=%u found=%d binding=%d attributes=%d "
+                "class=%u level=%d scale=%d components=%u precision=%d "
+                "slots=%u pending=0x%x reason=%u terminal=%d\n",
+                i, step.dsl_operator, step.result_ty,
+                state.encryption_descriptor_id, descriptor_found,
+                binding_found, attributes_valid, state.value_class,
+                state.level, state.scale_bits, state.component_count,
+                state.precision_bits, state.slot_count,
+                state.pending_actions, state.pending_bootstrap_reason,
+                terminal_step);
       return VHO_FHE_CKKS_Expand_Report(
           diagnostic, "result lacks a concrete compatible CKKS state",
           i, FALSE);
+    }
     if (unary_step) {
       if (!VHO_FHE_CKKS_Verify_Unary_State_Transfer(
               step, unary_input, state, diagnostic))

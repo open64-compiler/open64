@@ -175,8 +175,16 @@ BOOL VHO_FHE_CKKS_Expand_Conv_Event(
   std::vector<DSL_CKKS_EXPANSION_STEP_RESULT> produced(count);
   if (!VHO_FHE_CKKS_Expand_And_Bind_States(
           pu_info, &request, &states[0], static_cast<UINT32>(states.size()),
-          diagnostic, &produced[0]))
+          diagnostic, &produced[0])) {
+    if (diagnostic != NULL)
+      fprintf(diagnostic,
+              "CFHEIR-CONV-EXPAND-001: owner=%u source=value%u "
+              "ordinal=%u first_operator=%u state binding failed\n",
+              PU_Info_proc_sym(pu_info), source.source_value_id,
+              plan.source_static_ordinal,
+              plan.steps[0].logical_operator);
     return FALSE;
+  }
   results->swap(produced);
   return TRUE;
 }

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <vector>
 
 #include "defs.h"
 #include "config.h"
@@ -183,6 +184,74 @@ DSL_PU_Transaction_Reopen_Artifact (const char *path)
     return 0;
 }
 
+static int
+DSL_PU_Transaction_Mapped_Checkpoint
+        (const char *input, const char *output, UINT32 expected_pu_count,
+         BOOL clone_source)
+{
+    if (Open_Input_Info(const_cast<char *>(input)) == NULL)
+        return 1;
+    Initialize_Symbol_Tables(FALSE);
+    New_Scope(GLOBAL_SYMTAB, Malloc_Mem_Pool, FALSE);
+    PU_Info *program = Read_Global_Info(NULL);
+    if (program == NULL ||
+        PU_Info_state(program, WT_TREE) != Subsect_Exists ||
+        PU_Info_symtab_ptr(program) == NULL)
+        return 1;
+
+    WN_Mem_Push();
+    MEM_POOL_Push(MEM_pu_nz_pool_ptr);
+    MEM_POOL_Push(MEM_pu_pool_ptr);
+    if (!DSL_PU_Transaction_Load_Mapped_Program
+             (program, MEM_pu_nz_pool_ptr, stderr))
+        return 1;
+
+    if (clone_source) {
+        Restore_Local_Symtab(program);
+        Current_pu = &PU_Info_pu(program);
+        Current_Map_Tab = PU_Info_maptab(program);
+        UINT32 capacity = DSL_IR_Image_Value_Count();
+        std::vector<DSL_PU_CLONE_VALUE_PAIR> value_map(capacity);
+        UINT32 value_count = 0;
+        PU_Info *clone = NULL;
+        if (capacity == 0 ||
+            !DSL_PU_Transaction_Clone_Active
+                (program, "pu_transaction_mapped_clone",
+                 &value_map[0], capacity, &value_count, &clone, stderr) ||
+            clone == NULL || value_count == 0)
+            return 1;
+    }
+
+    UINT32 pu_count = 0;
+    for (PU_Info *pu = program; pu != NULL; pu = PU_Info_next(pu)) {
+        if (PU_Info_state(pu, WT_TREE) != Subsect_InMem ||
+            PU_Info_state(pu, WT_SYMTAB) != Subsect_InMem ||
+            PU_Info_symtab_ptr(pu) == NULL ||
+            PU_Info_tree_ptr(pu) == NULL)
+            return 1;
+        ++pu_count;
+    }
+    if (pu_count != expected_pu_count)
+        return 1;
+
+    Irb_File_Name = const_cast<char *>(output);
+    if (Open_Output_Info(Irb_File_Name) == NULL)
+        return 1;
+    for (PU_Info *pu = program; pu != NULL; pu = PU_Info_next(pu)) {
+        Restore_Local_Symtab(pu);
+        Current_pu = &PU_Info_pu(pu);
+        Current_Map_Tab = PU_Info_maptab(pu);
+        Write_PU_Info(pu);
+    }
+    Write_Global_Info(program);
+    Close_Output_Info();
+    MEM_POOL_Pop(MEM_pu_pool_ptr);
+    MEM_POOL_Pop(MEM_pu_nz_pool_ptr);
+    WN_Mem_Pop();
+    printf("DSL PU transaction mapped checkpoint passed: pu=%u\n", pu_count);
+    return 0;
+}
+
 int
 main (int argc, char **argv)
 {
@@ -193,10 +262,24 @@ main (int argc, char **argv)
             return 1; \
         } \
     } while (0)
-    DSL_PU_Transaction_Test_Init
-        (!(argc == 3 && strcmp(argv[1], "--reopen") == 0));
+    BOOL mapped_input =
+        (argc == 3 && strcmp(argv[1], "--reopen") == 0) ||
+        ((argc == 4 || argc == 5) &&
+         (strcmp(argv[1], "--mapped-checkpoint") == 0 ||
+          strcmp(argv[1], "--mapped-clone-checkpoint") == 0));
+    DSL_PU_Transaction_Test_Init(!mapped_input);
     if (argc == 3 && strcmp(argv[1], "--reopen") == 0)
         return DSL_PU_Transaction_Reopen_Artifact(argv[2]);
+    if ((argc == 4 || argc == 5) &&
+        (strcmp(argv[1], "--mapped-checkpoint") == 0 ||
+         strcmp(argv[1], "--mapped-clone-checkpoint") == 0)) {
+        UINT32 expected_pu_count = argc == 5 ? atoi(argv[4]) : 3;
+        if (expected_pu_count == 0)
+            return 1;
+        return DSL_PU_Transaction_Mapped_Checkpoint
+                   (argv[2], argv[3], expected_pu_count,
+                    strcmp(argv[1], "--mapped-clone-checkpoint") == 0);
+    }
     BOOL w2c_view = argc == 2 && strcmp(argv[1], "--w2c-view") == 0;
     DSL_PU_TRANSACTION_POLICY policy;
     memset(&policy, 0, sizeof(policy));

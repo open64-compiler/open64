@@ -3996,8 +3996,7 @@ DSL_IR_Image_Clone_PU_Values
         clone_pu_name == NULL || clone_pu_name[0] == '\0' ||
         strcmp(source_pu_name, clone_pu_name) == 0 ||
         !DSL_IR_Image_Validate(NULL) ||
-        !DSL_PU_Interface_Image_Validate(NULL) ||
-        !DSL_Runtime_Interface_Image_Validate(NULL))
+        !DSL_PU_Interface_Image_Validate(NULL))
         return FALSE;
 
     std::string source_owner("owner_pu=");
@@ -4246,8 +4245,7 @@ DSL_IR_Image_Clone_PU_Values
     if (valid)
         valid = DSL_IR_Image_Validate(NULL) &&
                 DSL_PU_Interface_Image_Validate(NULL) &&
-                DSL_Call_Image_Validate(NULL) &&
-                DSL_Runtime_Interface_Image_Validate(NULL);
+                DSL_Call_Image_Validate(NULL);
     if (!valid) {
         DSL_IR_Image_Clone_PU_Restore(savepoint);
         return FALSE;

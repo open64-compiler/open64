@@ -19,6 +19,7 @@
 #include "dsl_region_internal.h"
 #include "dwarf_DST_mem.h"
 #include "errors.h"
+#include "ir_bread.h"
 #include "mempool.h"
 #include "strtab.h"
 #include "symtab.h"
@@ -64,6 +65,28 @@ DSL_PU_Transaction_Report (FILE *diagnostic, const char *message)
     if (diagnostic != NULL)
         fprintf(diagnostic, "DSL PU transaction: %s\n", message);
     return FALSE;
+}
+
+BOOL
+DSL_PU_Transaction_Load_Mapped_Program
+        (PU_Info *program, MEM_POOL *pool, FILE *diagnostic)
+{
+    if (program == NULL || pool == NULL)
+        return DSL_PU_Transaction_Report
+                   (diagnostic, "missing mapped program or pool");
+    for (PU_Info *pu = program; pu != NULL; pu = PU_Info_next(pu)) {
+        if (PU_Info_child(pu) != NULL ||
+            PU_Info_state(pu, WT_TREE) != Subsect_Exists ||
+            PU_Info_state(pu, WT_SYMTAB) != Subsect_Exists)
+            return DSL_PU_Transaction_Report
+                       (diagnostic, "program PU is not freshly mapped");
+    }
+    for (PU_Info *pu = program; pu != NULL; pu = PU_Info_next(pu)) {
+        Read_Local_Info(pool, pu);
+        Set_PU_Info_symtab_ptr(pu, NULL);
+        Save_Local_Symtab(CURRENT_SYMTAB, pu);
+    }
+    return TRUE;
 }
 
 static BOOL
@@ -219,21 +242,25 @@ DSL_PU_Transaction_Clone_Active
                              ST_name(*clone_st), value_map,
                              value_map_capacity, value_map_count,
                              &savepoint);
-    if (!cloned_image ||
-        !DSL_Region_Clone_PU_Store(source, clone_info) ||
-        !DSL_IR_Image_Validate(diagnostic) ||
-        !DSL_PU_Interface_Image_Validate_PU(clone_info, diagnostic) ||
-        (DSL_Program_Interface_Image_Has_Records() &&
-         !DSL_Program_Interface_Validate_PU(clone_info, diagnostic)) ||
-        !DSL_Region_Verify_PU(clone_info, diagnostic)) {
+    const char *clone_failure = NULL;
+    if (!cloned_image)
+        clone_failure = "logical value image clone failed";
+    else if (!DSL_Region_Clone_PU_Store(source, clone_info))
+        clone_failure = "REGION store clone failed";
+    else if (!DSL_IR_Image_Validate(diagnostic))
+        clone_failure = "logical value image validation failed";
+    else if (!DSL_PU_Interface_Image_Validate_PU(clone_info, diagnostic))
+        clone_failure = "clone formal interface validation failed";
+    else if (!DSL_Region_Verify_PU(clone_info, diagnostic))
+        clone_failure = "clone REGION validation failed";
+    if (clone_failure != NULL) {
         DSL_Region_Discard_PU_Store(clone_info);
         if (cloned_image)
             DSL_IR_Image_Clone_PU_Restore(&savepoint);
         Restore_Local_Symtab(source);
         Current_pu = &PU_Info_pu(source);
         Current_Map_Tab = PU_Info_maptab(source);
-        return DSL_PU_Transaction_Report
-                   (diagnostic, "clone construction failed; stop process");
+        return DSL_PU_Transaction_Report(diagnostic, clone_failure);
     }
 
     PU_Info_next(clone_info) = PU_Info_next(source);
@@ -1181,9 +1208,7 @@ DSL_PU_Transaction_Apply_Resident
     if (!DSL_IR_Image_Validate(diagnostic) ||
         !DSL_Call_Image_Validate(diagnostic) ||
         !DSL_Call_ABI_Image_Validate(diagnostic) ||
-        !DSL_PU_Interface_Image_Validate(diagnostic) ||
-        !DSL_Runtime_Interface_Image_Validate(diagnostic) ||
-        !DSL_Program_Interface_Image_Validate(diagnostic)) {
+        !DSL_PU_Interface_Image_Validate(diagnostic)) {
         delete applied;
         return DSL_PU_Transaction_Report
                    (diagnostic, "final image failed; stop process");
@@ -1192,8 +1217,6 @@ DSL_PU_Transaction_Apply_Resident
         DSL_PU_Transaction_Activate(pu);
         if (!DSL_PU_Interface_Image_Validate_PU(pu, diagnostic) ||
             !DSL_Call_ABI_Image_Validate_PU(pu, diagnostic) ||
-            (DSL_Program_Interface_Image_Has_Records() &&
-             !DSL_Program_Interface_Validate_PU(pu, diagnostic)) ||
             !DSL_Region_Verify_PU(pu, diagnostic)) {
             delete applied;
             return DSL_PU_Transaction_Report

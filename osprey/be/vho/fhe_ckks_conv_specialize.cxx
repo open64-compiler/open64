@@ -772,14 +772,3 @@ BOOL VHO_FHE_CKKS_Register_Conv_Specialization(void)
   policy.release = Release;
   return DSL_PU_Transaction_Register_Policy(&policy);
 }
-
-namespace {
-struct Default_Registration {
-  Default_Registration()
-  {
-    (void)VHO_FHE_CKKS_Register_Conv_Specialization();
-  }
-};
-
-static Default_Registration default_registration;
-}

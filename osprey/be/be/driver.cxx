@@ -140,7 +140,9 @@
 #include "dsl_ir_image.h"
 #include "dsl_region.h"
 #include "fhe_checkpoint.h"
+#include "fhe_ckks_conv_specialize.h"
 #include "fhe_convert.h"
+#include "fhe_image.h"
 #include "fhe_materialize.h"
 #include "fhe_runtime_lower.h"
 #include "fhe_unlowered_gate.h"
@@ -2426,22 +2428,21 @@ Preorder_Process_PUs (PU_Info *current_pu)
 static void
 Process_DSL_PU_Specialization_Checkpoint (PU_Info *program)
 {
+  if (DSL_FHE_Image_Has_Records())
+    FmtAssert(VHO_FHE_CKKS_Register_Conv_Specialization(),
+              ("could not register FHE Conv specialization policy"));
   DSL_PU_TRANSACTION_POLICY policy;
   FmtAssert(DSL_PU_Transaction_Get_Policy(&policy),
             ("DSL PU specialization has no registered policy"));
   FmtAssert(program != NULL,
             ("DSL PU specialization requires at least one PU"));
 
+  WN_Mem_Push();
   MEM_POOL_Push(MEM_pu_nz_pool_ptr);
   MEM_POOL_Push(MEM_pu_pool_ptr);
-  WN_Mem_Push();
-  for (PU_Info *pu = program; pu != NULL; pu = PU_Info_next(pu)) {
-    FmtAssert(PU_Info_child(pu) == NULL,
-              ("DSL PU specialization does not support nested PUs"));
-    Read_Local_Info(MEM_pu_nz_pool_ptr, pu);
-    Set_PU_Info_symtab_ptr(pu, NULL);
-    Save_Local_Symtab(CURRENT_SYMTAB, pu);
-  }
+  FmtAssert(DSL_PU_Transaction_Load_Mapped_Program
+                (program, MEM_pu_nz_pool_ptr, stderr),
+            ("could not load DSL PU specialization program"));
 
   DSL_PU_TRANSACTION_PLAN plan;
   memset(&plan, 0, sizeof(plan));
@@ -2472,6 +2473,8 @@ Process_DSL_PU_Specialization_Checkpoint (PU_Info *program)
     Current_Map_Tab = PU_Info_maptab(pu);
     valid = DSL_PU_Interface_Image_Validate_PU(pu, stderr) &&
             DSL_Call_ABI_Image_Validate_PU(pu, stderr) &&
+            (!DSL_Program_Interface_Image_Has_Records() ||
+             DSL_Program_Interface_Validate_PU(pu, stderr)) &&
             DSL_IR_Typed_External_Tensor_Validate_PU(pu, stderr) &&
             DSL_IR_Generated_External_Tensor_Validate_PU(pu, stderr) &&
             DSL_Region_Verify_PU(pu, stderr);
@@ -2523,6 +2526,8 @@ Process_DSL_PU_Specialization_Checkpoint (PU_Info *program)
   dsl_pu_checkpoint_temp_name = NULL;
   fprintf(stderr, "DSL PU specialization checkpoint: output=%s pu=%u\n",
           output, pu_count);
+  MEM_POOL_Pop(MEM_pu_pool_ptr);
+  MEM_POOL_Pop(MEM_pu_nz_pool_ptr);
   WN_Mem_Pop();
 }
 
