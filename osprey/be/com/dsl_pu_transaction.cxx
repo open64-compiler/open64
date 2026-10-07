@@ -223,6 +223,8 @@ DSL_PU_Transaction_Clone_Active
         !DSL_Region_Clone_PU_Store(source, clone_info) ||
         !DSL_IR_Image_Validate(diagnostic) ||
         !DSL_PU_Interface_Image_Validate_PU(clone_info, diagnostic) ||
+        (DSL_Program_Interface_Image_Has_Records() &&
+         !DSL_Program_Interface_Validate_PU(clone_info, diagnostic)) ||
         !DSL_Region_Verify_PU(clone_info, diagnostic)) {
         DSL_Region_Discard_PU_Store(clone_info);
         if (cloned_image)
@@ -676,6 +678,68 @@ DSL_PU_Transaction_Parent_Block (WN *tree, const WN *target)
     return NULL;
 }
 
+/* Reconstruct the stable marker text for one managed callsite. */
+static std::string
+DSL_PU_Transaction_Call_Comment_Text
+        (const DSL_CALLSITE_METADATA_RECORD &callsite, ST_IDX callee)
+{
+    std::string text("__WHIRL_DSL_CALL__:callee=");
+    text += ST_name(St_Table[callee]);
+    text += ";class=";
+    text += Index_To_Str(callsite.canonical_class_name);
+    text += ";instance=";
+    text += Index_To_Str(callsite.instance_path);
+    text += ";context=";
+    text += Index_To_Str(callsite.context_identity);
+    char ordinal[32];
+    snprintf(ordinal, sizeof(ordinal), "%u", callsite.source_call_ordinal);
+    text += ";ordinal=";
+    text += ordinal;
+    return text;
+}
+
+/* Find the nearest preceding managed-call marker in the same physical BLOCK.
+ * Runtime-interface initialization and argument materialization may legally
+ * separate the marker from its CALL, so adjacency is not an invariant. */
+static WN *
+DSL_PU_Transaction_Find_Call_Comment
+        (WN *parent, WN *call,
+         const DSL_CALLSITE_METADATA_RECORD &callsite)
+{
+    if (parent == NULL || call == NULL || WN_operator(parent) != OPR_BLOCK)
+        return NULL;
+    const std::string expected =
+        DSL_PU_Transaction_Call_Comment_Text(callsite,
+                                             callsite.callee_pu_st);
+    for (WN *stmt = WN_prev(call); stmt != NULL; stmt = WN_prev(stmt)) {
+        if (WN_operator(stmt) != OPR_COMMENT)
+            continue;
+        const char *text = Index_To_Str(WN_GetComment(stmt));
+        if (strncmp(text, "__WHIRL_DSL_CALL__:", 19) != 0)
+            continue;
+        return expected == text ? stmt : NULL;
+    }
+    return NULL;
+}
+
+/* Recognize one post-projection operand threaded by the program-interface
+ * transaction rather than represented in the source-level call-ABI table. */
+static BOOL
+DSL_PU_Transaction_Runtime_Call_At
+        (DSL_CALLSITE_METADATA_ID callsite_id, UINT32 actual_ordinal)
+{
+    UINT32 matches = 0;
+    for (UINT32 i = 1;
+         i <= DSL_Program_Interface_Image_Runtime_Call_Count(); ++i) {
+        DSL_RUNTIME_INPUT_CALL_RECORD record;
+        if (DSL_Program_Interface_Image_Get_Runtime_Call(i, &record) &&
+            record.callsite_id == callsite_id &&
+            record.final_actual_ordinal == actual_ordinal)
+            ++matches;
+    }
+    return matches == 1;
+}
+
 static void
 DSL_PU_Transaction_Find_Value_Definition
         (PU_Info *owner, WN *tree, DSL_IR_VALUE_ID value_id,
@@ -873,7 +937,8 @@ DSL_PU_Transaction_Route_Call_Active
         (DSL_Call_Image_Get_Call_WN(callsite_id));
     WN *parent = DSL_PU_Transaction_Parent_Block
                      (PU_Info_tree_ptr(caller), old_call);
-    WN *old_comment = old_call == NULL ? NULL : WN_prev(old_call);
+    WN *old_comment = DSL_PU_Transaction_Find_Call_Comment
+                          (parent, old_call, callsite);
     UINT32 old_count = old_call == NULL ? 0 : WN_kid_count(old_call);
     if (old_call == NULL || WN_operator(old_call) != OPR_CALL ||
         WN_st_idx(old_call) != callsite.callee_pu_st ||
@@ -913,15 +978,27 @@ DSL_PU_Transaction_Route_Call_Active
             (!WN_Parm_Out(WN_kid(old_call, i)) &&
              (!DSL_Call_ABI_Image_Find_Argument_By_Id
                   (callsite_id, i, &argument) ||
-              argument.callee_formal_ordinal != i)))
+              argument.callee_formal_ordinal != i) &&
+             !DSL_PU_Transaction_Runtime_Call_At(callsite_id, i)))
             return DSL_PU_Transaction_Report
                        (diagnostic, "old call ABI is incomplete");
     }
+    if (request_count != 0) {
+        for (UINT32 i = insert_at; i < old_count; ++i) {
+            if (DSL_PU_Transaction_Runtime_Call_At(callsite_id, i))
+                return DSL_PU_Transaction_Report
+                    (diagnostic,
+                     "runtime-threaded call insertion is unsupported");
+        }
+    }
+    TY_IDX variant_prototype =
+        PU_prototype(Pu_Table[ST_pu(St_Table[variant_pu_st])]);
     UINT32 variant_formals = 0;
-    for (UINT32 i = 1; i <= DSL_PU_Interface_Image_Formal_Count(); ++i) {
-        DSL_PU_FORMAL_RECORD formal;
-        if (DSL_PU_Interface_Image_Get_Formal(i, &formal) &&
-            formal.owner_pu_st == variant_pu_st)
+    if (variant_prototype != TY_IDX_ZERO &&
+        TY_kind(variant_prototype) == KIND_FUNCTION) {
+        TYLIST_IDX tylist = TY_tylist(variant_prototype);
+        for (TYLIST_IDX i = tylist + 1;
+             TYLIST_type(Tylist_Table[i]) != TY_IDX_ZERO; ++i)
             ++variant_formals;
     }
     if (variant_formals != old_count + request_count)
@@ -1001,19 +1078,8 @@ DSL_PU_Transaction_Route_Call_Active
             return DSL_PU_Transaction_Report
                        (diagnostic, "could not register actual ABI row");
     }
-    std::string comment_text("__WHIRL_DSL_CALL__:callee=");
-    comment_text += ST_name(St_Table[variant_pu_st]);
-    comment_text += ";class=";
-    comment_text += Index_To_Str(callsite.canonical_class_name);
-    comment_text += ";instance=";
-    comment_text += Index_To_Str(callsite.instance_path);
-    comment_text += ";context=";
-    comment_text += Index_To_Str(callsite.context_identity);
-    char ordinal_text[32];
-    snprintf(ordinal_text, sizeof(ordinal_text), "%u",
-             callsite.source_call_ordinal);
-    comment_text += ";ordinal=";
-    comment_text += ordinal_text;
+    std::string comment_text =
+        DSL_PU_Transaction_Call_Comment_Text(callsite, variant_pu_st);
     Set_ST_name_idx(ST_ptr(WN_st_idx(old_comment)),
                     Save_Str(comment_text.c_str()));
     WN_EXTRACT_FromBlock(parent, old_call);
@@ -1115,7 +1181,9 @@ DSL_PU_Transaction_Apply_Resident
     if (!DSL_IR_Image_Validate(diagnostic) ||
         !DSL_Call_Image_Validate(diagnostic) ||
         !DSL_Call_ABI_Image_Validate(diagnostic) ||
-        !DSL_PU_Interface_Image_Validate(diagnostic)) {
+        !DSL_PU_Interface_Image_Validate(diagnostic) ||
+        !DSL_Runtime_Interface_Image_Validate(diagnostic) ||
+        !DSL_Program_Interface_Image_Validate(diagnostic)) {
         delete applied;
         return DSL_PU_Transaction_Report
                    (diagnostic, "final image failed; stop process");
@@ -1124,6 +1192,8 @@ DSL_PU_Transaction_Apply_Resident
         DSL_PU_Transaction_Activate(pu);
         if (!DSL_PU_Interface_Image_Validate_PU(pu, diagnostic) ||
             !DSL_Call_ABI_Image_Validate_PU(pu, diagnostic) ||
+            (DSL_Program_Interface_Image_Has_Records() &&
+             !DSL_Program_Interface_Validate_PU(pu, diagnostic)) ||
             !DSL_Region_Verify_PU(pu, diagnostic)) {
             delete applied;
             return DSL_PU_Transaction_Report

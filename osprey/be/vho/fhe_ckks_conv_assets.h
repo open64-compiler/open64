@@ -13,11 +13,24 @@
 #define fhe_ckks_conv_assets_INCLUDED
 
 #include <stdio.h>
+#include <vector>
 
 #include "defs.h"
 #include "pu_info.h"
 #include "dsl_ir_image.h"
 #include "fhe_ckks_conv_recipe.h"
+
+/* Serialize the folded channel bias over every high-resolution output slot
+ * as canonical little-endian IEEE F32 bytes. */
+BOOL VHO_FHE_CKKS_Build_Conv_Expanded_Bias_F32(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe,
+    std::vector<unsigned char> *bytes, FILE *diagnostic);
+
+/* Build the selection mask followed by selected/complement pairs for every
+ * sequential stride-two bit move. Each mask contains slot_count F32 values. */
+BOOL VHO_FHE_CKKS_Build_Stride_Compaction_F32_Masks(
+    UINT32 width, UINT32 channels, UINT32 slot_count,
+    std::vector<std::vector<unsigned char> > *masks, FILE *diagnostic);
 
 /* Validate one complete ACE feature-row batch against its source OIHW tensor
  * and bounded Conv recipe, then atomically create the external row values by

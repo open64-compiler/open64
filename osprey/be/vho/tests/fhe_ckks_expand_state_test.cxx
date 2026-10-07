@@ -105,7 +105,8 @@ BOOL DSL_FHE_Get_Encryption_Descriptor(
   memset(record, 0, sizeof(*record));
   record->scheme = DSL_FHE_SCHEME_CKKS;
   record->config_id = 1;
-  record->key_set_name = wrong_key_set ? 3 : 2;
+  record->key_set_name = id == 1 ? STR_IDX_ZERO :
+                         wrong_key_set ? 3 : 2;
   record->value_class = id == 1 ?
       DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT :
       DSL_FHE_VALUE_CLASS_CIPHERTEXT;

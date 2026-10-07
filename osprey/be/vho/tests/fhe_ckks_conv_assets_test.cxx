@@ -125,6 +125,39 @@ Create_Tensor_Type(const char *name, INT32 rank, const char *shape,
       name, MTYPE_To_TY(MTYPE_F4), &descriptor);
 }
 
+/* Read one canonical F32 mask slot without depending on host endianness. */
+static BOOL
+F32_Slot_Is(const std::vector<unsigned char> &bytes, UINT32 slot,
+            UINT32 expected_bits)
+{
+  const size_t offset = size_t(slot) * sizeof(float);
+  if (offset + sizeof(float) > bytes.size())
+    return FALSE;
+  const UINT32 bits = UINT32(bytes[offset]) |
+                      (UINT32(bytes[offset + 1]) << 8) |
+                      (UINT32(bytes[offset + 2]) << 16) |
+                      (UINT32(bytes[offset + 3]) << 24);
+  return bits == expected_bits;
+}
+
+/* Verify one binary mask against an independently listed selected-slot set. */
+static BOOL
+Mask_Matches(const std::vector<unsigned char> &bytes,
+             const UINT32 *selected, UINT32 selected_count,
+             BOOL complement)
+{
+  for (UINT32 slot = 0; slot < 32; ++slot) {
+    BOOL found = FALSE;
+    for (UINT32 i = 0; i < selected_count; ++i)
+      if (selected[i] == slot)
+        found = TRUE;
+    const BOOL one = complement ? !found : found;
+    if (!F32_Slot_Is(bytes, slot, one ? 0x3f800000U : 0U))
+      return FALSE;
+  }
+  return TRUE;
+}
+
 /* Exercise FHE admission, common atomic mutation, and mapped publication. */
 int
 main(int argc, char **argv)
@@ -221,6 +254,33 @@ main(int argc, char **argv)
   if (!VHO_FHE_CKKS_Build_Column_Conv_Recipe(
           shape, weights, 18, bias, 2, &recipe, stderr))
     return Fail("bounded Conv recipe");
+
+  std::vector<unsigned char> expanded_bias;
+  if (!VHO_FHE_CKKS_Build_Conv_Expanded_Bias_F32(
+          recipe, &expanded_bias, stderr) || expanded_bias.size() != 128)
+    return Fail("expanded bias byte construction");
+  for (UINT32 slot = 0; slot < 32; ++slot) {
+    const UINT32 expected = slot < 16 ? 0x3e800000U : 0xbf000000U;
+    if (!F32_Slot_Is(expanded_bias, slot, expected))
+      return Fail("expanded bias canonical bytes");
+  }
+
+  std::vector<std::vector<unsigned char> > compact_masks;
+  if (!VHO_FHE_CKKS_Build_Stride_Compaction_F32_Masks(
+          4, 2, 32, &compact_masks, stderr) || compact_masks.size() != 7)
+    return Fail("stride compaction byte construction");
+  const UINT32 selection[] = { 0, 2, 8, 10, 16, 18, 24, 26 };
+  const UINT32 move_x[] = { 2, 10, 18, 26 };
+  const UINT32 move_y[] = { 8, 9, 24, 25 };
+  const UINT32 move_c[] = { 16, 17, 18, 19 };
+  if (!Mask_Matches(compact_masks[0], selection, 8, FALSE) ||
+      !Mask_Matches(compact_masks[1], move_x, 4, FALSE) ||
+      !Mask_Matches(compact_masks[2], move_x, 4, TRUE) ||
+      !Mask_Matches(compact_masks[3], move_y, 4, FALSE) ||
+      !Mask_Matches(compact_masks[4], move_y, 4, TRUE) ||
+      !Mask_Matches(compact_masks[5], move_c, 4, FALSE) ||
+      !Mask_Matches(compact_masks[6], move_c, 4, TRUE))
+    return Fail("stride compaction canonical bytes");
 
   std::vector<DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST> row_requests(9);
   std::vector<DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_RESULT> row_results(9);

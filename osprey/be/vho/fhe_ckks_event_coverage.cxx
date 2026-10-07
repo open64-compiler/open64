@@ -10,7 +10,6 @@
 
 #include <map>
 #include <set>
-#include <tuple>
 #include <vector>
 
 namespace {
@@ -34,6 +33,46 @@ struct Event_Less {
 
 struct Event_Steps {
   std::set<uint32_t> ordinals;
+};
+
+struct Route_Key {
+  uint32_t owner;
+  uint32_t identity;
+  uint32_t callsite;
+
+  Route_Key(uint32_t owner_value, uint32_t identity_value,
+            uint32_t callsite_value)
+      : owner(owner_value), identity(identity_value),
+        callsite(callsite_value) {}
+
+  /* Order complete called-context identities in C++98 builds. */
+  bool operator<(const Route_Key &other) const
+  {
+    if (owner != other.owner) return owner < other.owner;
+    if (identity != other.identity) return identity < other.identity;
+    return callsite < other.callsite;
+  }
+};
+
+struct Result_Key {
+  uint32_t owner;
+  uint32_t identity;
+  uint32_t callsite;
+  uint32_t value;
+
+  Result_Key(uint32_t owner_value, uint32_t identity_value,
+             uint32_t callsite_value, uint32_t result_value)
+      : owner(owner_value), identity(identity_value),
+        callsite(callsite_value), value(result_value) {}
+
+  /* Order result identities without requiring the C++11 tuple library. */
+  bool operator<(const Result_Key &other) const
+  {
+    if (owner != other.owner) return owner < other.owner;
+    if (identity != other.identity) return identity < other.identity;
+    if (callsite != other.callsite) return callsite < other.callsite;
+    return value < other.value;
+  }
 };
 
 /* Reject zero IDs while allowing callsite zero for an entry-owned event. */
@@ -68,7 +107,7 @@ VHO_FHE_CKKS_Expand_Source_Events(
   typedef std::vector<VHO_FHE_CKKS_CONTEXT_ROUTE> Route_List;
   std::map<uint32_t, Route_List> routes_by_owner;
   std::map<uint32_t, uint32_t> identity_by_owner;
-  std::set<std::tuple<uint32_t, uint32_t, uint32_t> > route_keys;
+  std::set<Route_Key> route_keys;
   for (size_t i = 0; i < route_count; ++i) {
     std::map<uint32_t, uint32_t>::const_iterator identity =
         identity_by_owner.find(routes[i].owner_pu_st);
@@ -76,7 +115,7 @@ VHO_FHE_CKKS_Expand_Source_Events(
         routes[i].context_pu_identity_id == 0 ||
         (identity != identity_by_owner.end() &&
          identity->second != routes[i].context_pu_identity_id) ||
-        !route_keys.insert(std::make_tuple(
+        !route_keys.insert(Route_Key(
             routes[i].owner_pu_st,
             routes[i].context_pu_identity_id,
             routes[i].context_callsite_id)).second)
@@ -165,7 +204,7 @@ VHO_FHE_CKKS_Verify_Event_Coverage(
     return VHO_FHE_CKKS_COVERAGE_EVENT_COUNT;
 
   std::map<VHO_FHE_CKKS_EVENT_IDENTITY, Event_Steps, Event_Less> coverage;
-  std::set<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t> > results;
+  std::set<Result_Key> results;
   for (size_t i = 0; i < event_count; ++i) {
     if (!Event_Valid(events[i]))
       return VHO_FHE_CKKS_COVERAGE_INVALID_ARGUMENT;
@@ -182,7 +221,7 @@ VHO_FHE_CKKS_Verify_Event_Coverage(
       return VHO_FHE_CKKS_COVERAGE_UNKNOWN_EVENT;
     if (!found->second.ordinals.insert(steps[i].step_ordinal).second)
       return VHO_FHE_CKKS_COVERAGE_DUPLICATE_STEP;
-    if (!results.insert(std::make_tuple(
+    if (!results.insert(Result_Key(
             steps[i].event.owner_pu_st,
             steps[i].event.context_pu_identity_id,
             steps[i].event.context_callsite_id,

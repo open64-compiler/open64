@@ -247,6 +247,11 @@ static void Check_ResNet_Stride_Two_Families()
     assert(plan.steps.size() == item.expected_steps &&
            plan.steps[0].logical_operator == OPR_DSLCKKSBOOTSTRAP &&
            plan.steps[0].result_state.level == item.refresh_level &&
+           plan.steps[1].logical_operator == OPR_DSLCKKSROTATE &&
+           plan.steps[1].operands.size() == 1 &&
+           plan.steps[1].operands[0].kind ==
+               VHO_FHE_CKKS_PLAN_PRIOR_STEP &&
+           plan.steps[1].operands[0].reference == 0 &&
            plan.steps.back().logical_operator == OPR_DSLCKKSADD &&
            plan.steps.back().result_ty == policy.result_ty &&
            plan.steps.back().result_state.level == 3);

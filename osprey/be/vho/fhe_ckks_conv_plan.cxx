@@ -50,6 +50,16 @@ VHO_FHE_CKKS_PLAN_OPERAND Prior(uint32_t step_index)
   return operand;
 }
 
+/* Construct one canonical attribute without C++11 initializer syntax. */
+VHO_FHE_CKKS_PLAN_ATTRIBUTE Attribute(const char *name,
+                                      const std::string &value)
+{
+  VHO_FHE_CKKS_PLAN_ATTRIBUTE attribute;
+  attribute.name = name;
+  attribute.value = value;
+  return attribute;
+}
+
 /* Materialize a complete value-state tuple for one proposed result. */
 VHO_FHE_CKKS_PLAN_STATE State(
     const VHO_FHE_CKKS_CONV_PLAN_POLICY &policy, bool plaintext,
@@ -87,11 +97,8 @@ uint32_t Append_Rotate(
   step.result_ty = policy.result_ty;
   step.operands.push_back(input);
   step.attributes.push_back(
-      VHO_FHE_CKKS_PLAN_ATTRIBUTE{
-          "attr.signed_steps", Decimal(rotation)});
-  step.attributes.push_back(
-      VHO_FHE_CKKS_PLAN_ATTRIBUTE{
-          "attr.key_id", policy.rotation_key_id});
+      Attribute("attr.signed_steps", Decimal(rotation)));
+  step.attributes.push_back(Attribute("attr.key_id", policy.rotation_key_id));
   step.result_state = state;
   step.required_keys.push_back(policy.rotation_key_id);
   step.signed_rotations.push_back(rotation);
@@ -165,11 +172,9 @@ uint32_t Append_Rescale(
   step.operator_version = 1;
   step.result_ty = policy.result_ty;
   step.operands.push_back(Prior(multiplied_step));
+  step.attributes.push_back(Attribute("attr.levels", "1"));
   step.attributes.push_back(
-      VHO_FHE_CKKS_PLAN_ATTRIBUTE{"attr.levels", "1"});
-  step.attributes.push_back(
-      VHO_FHE_CKKS_PLAN_ATTRIBUTE{
-          "attr.target_scale_bits", Decimal(policy.scale_bits)});
+      Attribute("attr.target_scale_bits", Decimal(policy.scale_bits)));
   step.result_state = state;
   plan->steps.push_back(step);
   return static_cast<uint32_t>(plan->steps.size() - 1);
@@ -187,12 +192,11 @@ uint32_t Append_Bootstrap(
   step.operator_version = 1;
   step.result_ty = policy.result_ty;
   step.operands.push_back(input);
-  step.attributes.push_back(VHO_FHE_CKKS_PLAN_ATTRIBUTE{
-      "attr.target_level", Decimal(policy.capacity_refresh_target_level)});
-  step.attributes.push_back(VHO_FHE_CKKS_PLAN_ATTRIBUTE{
-      "attr.reason", policy.capacity_refresh_reason});
-  step.attributes.push_back(VHO_FHE_CKKS_PLAN_ATTRIBUTE{
-      "attr.key_id", policy.bootstrap_key_id});
+  step.attributes.push_back(Attribute(
+      "attr.target_level", Decimal(policy.capacity_refresh_target_level)));
+  step.attributes.push_back(
+      Attribute("attr.reason", policy.capacity_refresh_reason));
+  step.attributes.push_back(Attribute("attr.key_id", policy.bootstrap_key_id));
   step.result_state = state;
   step.required_keys.push_back(policy.bootstrap_key_id);
   plan->steps.push_back(step);
@@ -269,9 +273,10 @@ bool VHO_FHE_CKKS_Build_Stride_One_Conv_Event_Plan(
         &built, duplicated, policy, input_state);
     duplicated = Prior(refreshed);
   }
+  const VHO_FHE_CKKS_PLAN_OPERAND duplication_source = duplicated;
   for (size_t i = 0; i < schedule.duplication_rotations.size(); ++i) {
     const uint32_t rotated = Append_Rotate(
-        &built, Source(policy.input_value_id),
+        &built, duplication_source,
         schedule.duplication_rotations[i], policy, input_state);
     const uint32_t added = Append_Add(
         &built, duplicated, Prior(rotated), policy, input_state);

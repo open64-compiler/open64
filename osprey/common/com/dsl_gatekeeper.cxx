@@ -25,6 +25,7 @@
 typedef struct {
     std::vector<ST_IDX> result_symbols;
     std::vector<UINT32> input_ordinals;
+    ST_IDX owner_pu_st;
     FILE *diagnostic;
     DSL_GATEKEEPER_MODE mode;
     DSL_GATEKEEPER_RESULT result;
@@ -238,7 +239,8 @@ DSL_Gatekeeper_Has_Unique_Ownership (ST_IDX st)
 
 static BOOL
 DSL_Gatekeeper_Find_Image_Node
-        (ST_IDX result_st,
+        (ST_IDX owner_pu_st,
+         ST_IDX result_st,
          const char *result_name,
          DSL_OPERATOR dsl_operator,
          UINT16 version,
@@ -246,28 +248,24 @@ DSL_Gatekeeper_Find_Image_Node
          DSL_IR_NODE_RECORD *node,
          DSL_IR_OPCODE_DESCRIPTOR_RECORD *descriptor)
 {
-    for (UINT32 i = 1; i <= DSL_IR_Image_Value_Count(); ++i) {
-        DSL_IR_VALUE_RECORD value;
-        if (!DSL_IR_Image_Get_Value(i, &value) || value.st != result_st ||
-            (value.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0 ||
-            value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
-            result_name == NULL ||
-            value.name == STR_IDX_ZERO ||
-            strcmp(Index_To_Str(value.name), result_name) != 0)
-            continue;
-        if (!DSL_IR_Image_Get_Node(value.producer_node_id, node))
-            return FALSE;
-        if (!DSL_IR_Image_Get_Opcode_Descriptor
-                 (node->opcode_descriptor_id, descriptor))
-            return FALSE;
-        if (descriptor->logical_operator != (UINT32)dsl_operator ||
-            descriptor->version != version ||
-            node->payload == STR_IDX_ZERO || payload == NULL ||
-            strcmp(Index_To_Str(node->payload), payload) != 0)
-            continue;
-        return TRUE;
-    }
-    return FALSE;
+    DSL_IR_VALUE_RECORD value;
+    if (!DSL_Gatekeeper_ST_Valid(owner_pu_st) ||
+        ST_IDX_level(owner_pu_st) != GLOBAL_SYMTAB ||
+        ST_class(St_Table[owner_pu_st]) != CLASS_FUNC ||
+        result_name == NULL ||
+        !DSL_IR_Image_Find_PU_Value
+             (result_st, result_name, ST_name(St_Table[owner_pu_st]),
+              &value) ||
+        value.flags != DSL_IR_VALUE_FLAG_NONE ||
+        value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
+        !DSL_IR_Image_Get_Node(value.producer_node_id, node) ||
+        !DSL_IR_Image_Get_Opcode_Descriptor
+             (node->opcode_descriptor_id, descriptor) ||
+        descriptor->logical_operator != (UINT32)dsl_operator ||
+        descriptor->version != version || node->payload == STR_IDX_ZERO ||
+        payload == NULL || strcmp(Index_To_Str(node->payload), payload) != 0)
+        return FALSE;
+    return TRUE;
 }
 
 static BOOL
@@ -747,6 +745,7 @@ DSL_Gatekeeper_Verify_Native_Node
     DSL_IR_OPCODE_DESCRIPTOR_RECORD image_descriptor;
     ST_IDX result_st = WN_st_idx(assignment);
     TY_IDX result_ty = WN_ty(assignment);
+    ST_IDX owner_pu_st = context->owner_pu_st;
     BOOL valid = TRUE;
     BOOL image_valid;
     const char *result_name = DSL_Gatekeeper_ST_Valid(result_st) ?
@@ -784,7 +783,7 @@ DSL_Gatekeeper_Verify_Native_Node
     image_valid = DSL_WN_Get_Opcode_Annotation(expression, &annotation) &&
                   annotation.payload != NULL &&
                   DSL_Gatekeeper_Find_Image_Node
-                      (result_st, result_name, dsl_operator,
+                      (owner_pu_st, result_st, result_name, dsl_operator,
                        logical_opcode.effective_version, annotation.payload,
                        &image_node, &image_descriptor);
     if (!image_valid)
@@ -830,8 +829,7 @@ DSL_Gatekeeper_Verify_Native_Node
             DSL_IR_VALUE_REFERENCE_RECORD reference;
             DSL_IR_VALUE_RECORD source;
             DSL_IR_VALUE_RECORD owned;
-            ST_IDX owner_pu_st = Current_PU_Info == NULL ? ST_IDX_ZERO :
-                PU_Info_proc_sym(Current_PU_Info);
+            ST_IDX owner_pu_st = context->owner_pu_st;
             if (!DSL_IR_Image_Get_Value_Reference
                      (image_node.first_operand_reference_id + i,
                       &reference) ||
@@ -864,8 +862,7 @@ DSL_Gatekeeper_Verify_Native_Node
             DSL_IR_VALUE_REFERENCE_RECORD reference;
             DSL_IR_VALUE_RECORD source;
             DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
-            ST_IDX owner_pu_st = Current_PU_Info == NULL ? ST_IDX_ZERO :
-                PU_Info_proc_sym(Current_PU_Info);
+            ST_IDX owner_pu_st = context->owner_pu_st;
             if (!image_valid || operand == NULL ||
                 WN_operator(operand) != OPR_LDID ||
                 !DSL_IR_Image_Get_Value_Reference
@@ -889,9 +886,10 @@ DSL_Gatekeeper_Verify_Native_Node
                 DSL_Gatekeeper_ST_Valid(source.st) &&
                 ST_type(St_Table[source.st]) == source.ty;
             BOOL projected_operand = FALSE;
-            if (!canonical_operand &&
+            BOOL has_projection = !canonical_operand &&
                 DSL_Runtime_Interface_Image_Find_Value
-                    (owner_pu_st, source.id, &projection))
+                    (owner_pu_st, source.id, &projection);
+            if (has_projection)
                 projected_operand =
                     projection.source_st == source.st &&
                     projection.source_ty == source.ty &&
@@ -902,8 +900,19 @@ DSL_Gatekeeper_Verify_Native_Node
             if (!canonical_operand && !projected_operand) {
                 valid = DSL_Gatekeeper_Report
                             (context, "%s kid%u matches neither its "
-                             "canonical value nor runtime projection",
-                             DSL_OPERATOR_name(dsl_operator), i);
+                             "canonical value nor runtime projection "
+                             "(owner=%s value=%u name=%s source_st=%u "
+                             "operand_st=%u "
+                             "source_ty=%u operand_ty=%u projection=%u "
+                             "handle_st=%u handle_ty=%u)",
+                             DSL_OPERATOR_name(dsl_operator), i,
+                             ST_name(St_Table[owner_pu_st]), source.id,
+                             source.name == STR_IDX_ZERO ? "" :
+                                 Index_To_Str(source.name),
+                             source.st, WN_st_idx(operand), source.ty,
+                             WN_ty(operand), has_projection ? projection.id : 0,
+                             has_projection ? projection.handle_st : 0,
+                             has_projection ? projection.handle_ty : 0);
                 continue;
             }
             operand_types[i] = source.ty;
@@ -1173,6 +1182,7 @@ DSL_Gatekeeper_Verify_PU_Mode
 {
     DSL_GATEKEEPER_CONTEXT context;
     memset (&context.result, 0, sizeof(context.result));
+    context.owner_pu_st = pu == NULL ? ST_IDX_ZERO : PU_Info_proc_sym(pu);
     context.diagnostic = diagnostic;
     context.mode = mode;
 
@@ -1268,6 +1278,7 @@ DSL_Gatekeeper_Verify_Program_Mode
 {
     DSL_GATEKEEPER_CONTEXT context;
     memset (&context.result, 0, sizeof(context.result));
+    context.owner_pu_st = ST_IDX_ZERO;
     context.diagnostic = diagnostic;
     context.mode = mode;
 
@@ -1308,10 +1319,12 @@ DSL_Gatekeeper_Verify_Program_Mode
     context.result.result_symbol_count = context.result_symbols.size();
 
     for (PU_Info *pu = pu_tree; pu != NULL; pu = PU_Info_next(pu)) {
-        if (PU_Info_state(pu, WT_TREE) == Subsect_InMem &&
-            !DSL_Gatekeeper_Verify_Tree
-                 (PU_Info_tree_ptr(pu), NULL, -1, &context))
-            valid = FALSE;
+        if (PU_Info_state(pu, WT_TREE) == Subsect_InMem) {
+            context.owner_pu_st = PU_Info_proc_sym(pu);
+            if (!DSL_Gatekeeper_Verify_Tree
+                     (PU_Info_tree_ptr(pu), NULL, -1, &context))
+                valid = FALSE;
+        }
     }
 
     if (context.result.native_node_count !=

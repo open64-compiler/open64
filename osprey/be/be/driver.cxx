@@ -2101,12 +2101,12 @@ Preprocess_PU (PU_Info *current_pu)
   }
 #endif
 
-  if (need_fhe_runtime_lower_output) {
+  if (need_fhe_runtime_lower_output || need_fhe_materialization_output) {
     Set_Error_Phase ( "FHE Projected-IR Admission" );
     FmtAssert(!VHO_DSL_Enable_WOPT &&
               DSL_Program_Interface_PU_Is_Committed
                   (PU_Info_proc_sym(current_pu)),
-              ("FHE runtime checkpoint requires a committed projected "
+              ("FHE projected checkpoint requires a committed projected "
                "interface and -O0 DSL pipeline"));
     Check_for_IR_Dump(TP_GLOBOPT, pu, "FHE_PROJECTED_INPUT");
   } else {
@@ -2434,10 +2434,12 @@ Process_DSL_PU_Specialization_Checkpoint (PU_Info *program)
 
   MEM_POOL_Push(MEM_pu_nz_pool_ptr);
   MEM_POOL_Push(MEM_pu_pool_ptr);
+  WN_Mem_Push();
   for (PU_Info *pu = program; pu != NULL; pu = PU_Info_next(pu)) {
     FmtAssert(PU_Info_child(pu) == NULL,
               ("DSL PU specialization does not support nested PUs"));
     Read_Local_Info(MEM_pu_nz_pool_ptr, pu);
+    Set_PU_Info_symtab_ptr(pu, NULL);
     Save_Local_Symtab(CURRENT_SYMTAB, pu);
   }
 
@@ -2521,6 +2523,7 @@ Process_DSL_PU_Specialization_Checkpoint (PU_Info *program)
   dsl_pu_checkpoint_temp_name = NULL;
   fprintf(stderr, "DSL PU specialization checkpoint: output=%s pu=%u\n",
           output, pu_count);
+  WN_Mem_Pop();
 }
 
 static void Print_Tlog_Header(INT argc, char **argv)

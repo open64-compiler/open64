@@ -418,11 +418,27 @@ DSL_Call_Image_Retarget_Call_WN
     DSL_CALLSITE_METADATA_RECORD &record =
         DSL_callsite_metadata_table[callsite_id - 1];
     ST_IDX old_callee = record.callee_pu_st;
+    std::vector<UINT32> retargeted_runtime_calls;
+    for (UINT32 i = 0; i < DSL_runtime_input_call_table.Size(); ++i) {
+        const DSL_RUNTIME_INPUT_CALL_RECORD &runtime_call =
+            DSL_runtime_input_call_table[i];
+        if (runtime_call.callsite_id != callsite_id)
+            continue;
+        if (runtime_call.callee_owner_pu_st != old_callee)
+            return FALSE;
+        retargeted_runtime_calls.push_back(i);
+    }
     if (!DSL_Call_Image_Replace_Call_WN
             (callsite_id, expected, replacement))
         return FALSE;
     record.callee_pu_st = new_callee;
+    for (UINT32 i = 0; i < retargeted_runtime_calls.size(); ++i)
+        DSL_runtime_input_call_table[retargeted_runtime_calls[i]]
+            .callee_owner_pu_st = new_callee;
     if (!DSL_Call_Image_Validate(NULL)) {
+        for (UINT32 i = 0; i < retargeted_runtime_calls.size(); ++i)
+            DSL_runtime_input_call_table[retargeted_runtime_calls[i]]
+                .callee_owner_pu_st = old_callee;
         record.callee_pu_st = old_callee;
         DSL_Call_Image_Replace_Call_WN
             (callsite_id, replacement, const_cast<WN *>(expected));
@@ -1269,6 +1285,66 @@ DSL_Runtime_Interface_Image_Find_Call
         }
     }
     return FALSE;
+}
+
+/*
+ * Commit-only support for an atomic native-value replacement. A local runtime
+ * handle remains stable while its canonical source value/ST moves to the
+ * replacement. Associated call projections follow the same logical value;
+ * callers reach this helper only through a transaction that owns rollback.
+ */
+BOOL
+DSL_Runtime_Interface_Image_Redirect_Value
+        (ST_IDX owner_pu_st, DSL_IR_VALUE_ID source_value_id,
+         DSL_IR_VALUE_ID replacement_value_id)
+{
+    DSL_IR_VALUE_RECORD source;
+    DSL_IR_VALUE_RECORD replacement;
+    if (source_value_id == replacement_value_id ||
+        !DSL_IR_Image_Get_Value(source_value_id, &source) ||
+        !DSL_IR_Image_Get_Value(replacement_value_id, &replacement) ||
+        source.ty != replacement.ty)
+        return FALSE;
+
+    UINT32 projection_index = DSL_runtime_value_projection_table.Size();
+    for (UINT32 i = 0; i < DSL_runtime_value_projection_table.Size(); ++i) {
+        const DSL_RUNTIME_VALUE_PROJECTION_RECORD &current =
+            DSL_runtime_value_projection_table[i];
+        if (current.owner_pu_st != owner_pu_st ||
+            current.source_value_id != source_value_id)
+            continue;
+        if (projection_index != DSL_runtime_value_projection_table.Size() ||
+            current.source_st != source.st || current.source_ty != source.ty ||
+            current.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE)
+            return FALSE;
+        projection_index = i;
+    }
+    if (projection_index == DSL_runtime_value_projection_table.Size())
+        return TRUE;
+
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD redirected =
+        DSL_runtime_value_projection_table[projection_index];
+    redirected.source_value_id = replacement.id;
+    redirected.source_st = replacement.st;
+    redirected.source_ty = replacement.ty;
+    if (!DSL_Runtime_Interface_Value_Record_Contract_Valid(&redirected))
+        return FALSE;
+    for (UINT32 i = 0; i < DSL_runtime_call_projection_table.Size(); ++i) {
+        const DSL_RUNTIME_CALL_PROJECTION_RECORD &call =
+            DSL_runtime_call_projection_table[i];
+        if (call.value_projection_id == redirected.id &&
+            call.source_value_id != source_value_id)
+            return FALSE;
+    }
+
+    DSL_runtime_value_projection_table[projection_index] = redirected;
+    for (UINT32 i = 0; i < DSL_runtime_call_projection_table.Size(); ++i) {
+        DSL_RUNTIME_CALL_PROJECTION_RECORD &call =
+            DSL_runtime_call_projection_table[i];
+        if (call.value_projection_id == redirected.id)
+            call.source_value_id = replacement.id;
+    }
+    return TRUE;
 }
 
 DSL_RUNTIME_VALUE_PROJECTION_ID
@@ -3876,6 +3952,19 @@ DSL_IR_Image_Clone_PU_Restore
 {
     if (savepoint == NULL)
         return;
+    DSL_runtime_input_call_table.Delete_down_to
+        (savepoint->runtime_input_call_count);
+    DSL_runtime_input_binding_table.Delete_down_to
+        (savepoint->runtime_input_binding_count);
+    DSL_runtime_input_table.Delete_down_to(savepoint->runtime_input_count);
+    DSL_retired_call_argument_table.Delete_down_to
+        (savepoint->retired_call_argument_count);
+    DSL_retired_formal_table.Delete_down_to
+        (savepoint->retired_formal_count);
+    DSL_runtime_call_projection_table.Delete_down_to
+        (savepoint->runtime_call_projection_count);
+    DSL_runtime_value_projection_table.Delete_down_to
+        (savepoint->runtime_value_projection_count);
     DSL_pu_formal_table.Delete_down_to(savepoint->formal_count);
     DSL_pu_source_identity_table.Delete_down_to
         (savepoint->pu_identity_count);
@@ -3907,7 +3996,8 @@ DSL_IR_Image_Clone_PU_Values
         clone_pu_name == NULL || clone_pu_name[0] == '\0' ||
         strcmp(source_pu_name, clone_pu_name) == 0 ||
         !DSL_IR_Image_Validate(NULL) ||
-        !DSL_PU_Interface_Image_Validate(NULL))
+        !DSL_PU_Interface_Image_Validate(NULL) ||
+        !DSL_Runtime_Interface_Image_Validate(NULL))
         return FALSE;
 
     std::string source_owner("owner_pu=");
@@ -3954,6 +4044,18 @@ DSL_IR_Image_Clone_PU_Values
     savepoint->reference_count = DSL_ir_value_reference_table.Size();
     savepoint->formal_count = DSL_pu_formal_table.Size();
     savepoint->pu_identity_count = DSL_pu_source_identity_table.Size();
+    savepoint->runtime_value_projection_count =
+        DSL_runtime_value_projection_table.Size();
+    savepoint->runtime_call_projection_count =
+        DSL_runtime_call_projection_table.Size();
+    savepoint->retired_formal_count = DSL_retired_formal_table.Size();
+    savepoint->retired_call_argument_count =
+        DSL_retired_call_argument_table.Size();
+    savepoint->runtime_input_count = DSL_runtime_input_table.Size();
+    savepoint->runtime_input_binding_count =
+        DSL_runtime_input_binding_table.Size();
+    savepoint->runtime_input_call_count =
+        DSL_runtime_input_call_table.Size();
 
     BOOL valid = TRUE;
     for (UINT32 i = 0; valid && i < source_nodes.size(); ++i) {
@@ -4032,6 +4134,8 @@ DSL_IR_Image_Clone_PU_Values
                      value_map[source.result_value_id]);
     }
     UINT32 original_formal_count = savepoint->formal_count;
+    std::vector<DSL_PU_FORMAL_ID> formal_map
+        (original_formal_count + 1, DSL_PU_FORMAL_INVALID_ID);
     for (UINT32 i = 0; valid && i < original_formal_count; ++i) {
         DSL_PU_FORMAL_RECORD formal = DSL_pu_formal_table[i];
         if (formal.owner_pu_st != source_pu_st)
@@ -4044,8 +4148,94 @@ DSL_IR_Image_Clone_PU_Values
         formal.id = DSL_PU_FORMAL_INVALID_ID;
         formal.owner_pu_st = clone_pu_st;
         formal.formal_value_id = value_map[formal.formal_value_id];
-        valid = DSL_PU_Interface_Image_Add_Formal(&formal) !=
-                DSL_PU_FORMAL_INVALID_ID;
+        formal_map[i + 1] = DSL_PU_Interface_Image_Add_Formal(&formal);
+        valid = formal_map[i + 1] != DSL_PU_FORMAL_INVALID_ID;
+    }
+    /* Owner-local calls require callsite cloning, which this transaction does
+     * not yet support. Callee-only specialization is still complete because
+     * incoming calls are retargeted later by the program transaction. */
+    UINT32 original_runtime_call_count =
+        savepoint->runtime_call_projection_count;
+    for (UINT32 i = 0; valid && i < original_runtime_call_count; ++i) {
+        if (DSL_runtime_call_projection_table[i].owner_pu_st ==
+                source_pu_st)
+            valid = FALSE;
+    }
+    UINT32 original_runtime_value_count =
+        savepoint->runtime_value_projection_count;
+    for (UINT32 i = 0; valid && i < original_runtime_value_count; ++i) {
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD projection =
+            DSL_runtime_value_projection_table[i];
+        if (projection.owner_pu_st != source_pu_st)
+            continue;
+        if (projection.source_value_id >= value_map.size() ||
+            value_map[projection.source_value_id] ==
+                DSL_IR_VALUE_INVALID_ID) {
+            valid = FALSE;
+            break;
+        }
+        projection.id = DSL_RUNTIME_VALUE_PROJECTION_INVALID_ID;
+        projection.owner_pu_st = clone_pu_st;
+        projection.source_value_id = value_map[projection.source_value_id];
+        valid = DSL_Runtime_Interface_Image_Add_Value(&projection) !=
+                DSL_RUNTIME_VALUE_PROJECTION_INVALID_ID;
+    }
+    /* Preserve the post-projection physical ABI: canonical dead formals and
+     * threaded runtime-resource formals are owner-qualified clone state. */
+    UINT32 original_retired_formal_count = savepoint->retired_formal_count;
+    for (UINT32 i = 0; valid && i < original_retired_formal_count; ++i) {
+        DSL_RETIRED_FORMAL_RECORD retired = DSL_retired_formal_table[i];
+        if (retired.owner_pu_st != source_pu_st)
+            continue;
+        if (retired.pu_formal_id >= formal_map.size() ||
+            formal_map[retired.pu_formal_id] ==
+                DSL_PU_FORMAL_INVALID_ID ||
+            retired.formal_value_id >= value_map.size() ||
+            value_map[retired.formal_value_id] ==
+                DSL_IR_VALUE_INVALID_ID) {
+            valid = FALSE;
+            break;
+        }
+        retired.id = DSL_RETIRED_FORMAL_INVALID_ID;
+        retired.pu_formal_id = formal_map[retired.pu_formal_id];
+        retired.owner_pu_st = clone_pu_st;
+        retired.formal_value_id = value_map[retired.formal_value_id];
+        valid = DSL_Program_Interface_Image_Add_Retired_Formal(&retired) !=
+                DSL_RETIRED_FORMAL_INVALID_ID;
+    }
+    UINT32 original_retired_call_count =
+        savepoint->retired_call_argument_count;
+    for (UINT32 i = 0; valid && i < original_retired_call_count; ++i) {
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        const DSL_RETIRED_CALL_ARGUMENT_RECORD &retired =
+            DSL_retired_call_argument_table[i];
+        if (!DSL_Call_Image_Get_Callsite(retired.callsite_id, &callsite) ||
+            callsite.owner_pu_st == source_pu_st)
+            valid = FALSE;
+    }
+    UINT32 original_runtime_input_count = savepoint->runtime_input_count;
+    for (UINT32 i = 0; valid && i < original_runtime_input_count; ++i) {
+        if (DSL_runtime_input_table[i].source_owner_pu_st == source_pu_st)
+            valid = FALSE;
+    }
+    UINT32 original_runtime_binding_count =
+        savepoint->runtime_input_binding_count;
+    for (UINT32 i = 0; valid && i < original_runtime_binding_count; ++i) {
+        DSL_RUNTIME_INPUT_BINDING_RECORD binding =
+            DSL_runtime_input_binding_table[i];
+        if (binding.owner_pu_st != source_pu_st)
+            continue;
+        binding.id = DSL_RUNTIME_INPUT_BINDING_INVALID_ID;
+        binding.owner_pu_st = clone_pu_st;
+        valid = DSL_Program_Interface_Image_Add_Runtime_Binding(&binding) !=
+                DSL_RUNTIME_INPUT_BINDING_INVALID_ID;
+    }
+    UINT32 original_runtime_input_call_count =
+        savepoint->runtime_input_call_count;
+    for (UINT32 i = 0; valid && i < original_runtime_input_call_count; ++i) {
+        if (DSL_runtime_input_call_table[i].caller_owner_pu_st ==
+                source_pu_st)
+            valid = FALSE;
     }
     if (valid) {
         source_identity.id = DSL_PU_SOURCE_IDENTITY_INVALID_ID;
@@ -4056,7 +4246,8 @@ DSL_IR_Image_Clone_PU_Values
     if (valid)
         valid = DSL_IR_Image_Validate(NULL) &&
                 DSL_PU_Interface_Image_Validate(NULL) &&
-                DSL_Call_Image_Validate(NULL);
+                DSL_Call_Image_Validate(NULL) &&
+                DSL_Runtime_Interface_Image_Validate(NULL);
     if (!valid) {
         DSL_IR_Image_Clone_PU_Restore(savepoint);
         return FALSE;

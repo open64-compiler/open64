@@ -13,9 +13,15 @@
 
 #include <string.h>
 
+#include <map>
+#include <set>
+#include <utility>
+#include <vector>
+
 #include "mtypes.h"
 #include "symtab.h"
 #include "dsl_shape.h"
+#include "dsl_tensor_fold.h"
 
 namespace {
 
@@ -122,6 +128,126 @@ VHO_FHE_CKKS_Materialize_Conv_Rows(
   return TRUE;
 }
 
+/* Store one F32 value in the canonical little-endian side-asset encoding. */
+static void
+Store_F32(std::vector<unsigned char> *bytes, UINT32 index, float value)
+{
+  const size_t offset = size_t(index) * sizeof(float);
+  UINT32 bits = 0;
+  memcpy(&bits, &value, sizeof(bits));
+  (*bytes)[offset] = static_cast<unsigned char>(bits & 0xff);
+  (*bytes)[offset + 1] = static_cast<unsigned char>((bits >> 8) & 0xff);
+  (*bytes)[offset + 2] = static_cast<unsigned char>((bits >> 16) & 0xff);
+  (*bytes)[offset + 3] = static_cast<unsigned char>((bits >> 24) & 0xff);
+}
+
+/* Serialize folded bias by repeating each channel value over its plane. */
+BOOL
+VHO_FHE_CKKS_Build_Conv_Expanded_Bias_F32(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe,
+    std::vector<unsigned char> *bytes, FILE *diagnostic)
+{
+  if (bytes == NULL ||
+      !VHO_FHE_CKKS_Validate_Column_Conv_Recipe(recipe, diagnostic) ||
+      recipe.folded_bias.size() != recipe.shape.output_channels)
+    return Report(diagnostic, "expanded-bias recipe is invalid");
+  const UINT32 plane = recipe.shape.height * recipe.shape.width;
+  std::vector<unsigned char> built(
+      size_t(recipe.active_output_slots) * sizeof(float), 0);
+  for (UINT32 channel = 0; channel < recipe.shape.output_channels; ++channel) {
+    const float value = recipe.folded_bias[channel];
+    for (UINT32 spatial = 0; spatial < plane; ++spatial)
+      Store_F32(&built, channel * plane + spatial, value);
+  }
+  bytes->swap(built);
+  return TRUE;
+}
+
+/* Construct the exact sequential bit-deletion masks used by the O0 plan. */
+BOOL
+VHO_FHE_CKKS_Build_Stride_Compaction_F32_Masks(
+    UINT32 width, UINT32 channels, UINT32 slot_count,
+    std::vector<std::vector<unsigned char> > *masks, FILE *diagnostic)
+{
+  if (masks == NULL || width < 4 || channels == 0 || slot_count == 0 ||
+      (width & (width - 1)) != 0 || (channels & (channels - 1)) != 0 ||
+      UINT64(channels) * width * width > slot_count)
+    return Report(diagnostic, "stride-compaction geometry is invalid");
+  UINT32 spatial_bits = 0;
+  UINT32 channel_bits = 0;
+  for (UINT32 value = width; value > 1; value >>= 1)
+    ++spatial_bits;
+  for (UINT32 value = channels; value > 1; value >>= 1)
+    ++channel_bits;
+  std::vector<std::pair<UINT32, UINT32> > moves;
+  for (UINT32 bit = 0; bit + 1 < spatial_bits; ++bit)
+    moves.push_back(std::make_pair(1 + bit, bit));
+  for (UINT32 bit = 0; bit + 1 < spatial_bits; ++bit)
+    moves.push_back(std::make_pair(
+        spatial_bits + 1 + bit, spatial_bits - 1 + bit));
+  for (UINT32 bit = 0; bit < channel_bits; ++bit)
+    moves.push_back(std::make_pair(
+        2 * spatial_bits + bit, 2 * spatial_bits - 2 + bit));
+
+  std::map<UINT32, UINT32> mapping;
+  const UINT32 half = width / 2;
+  for (UINT32 channel = 0; channel < channels; ++channel)
+    for (UINT32 y = 0; y < half; ++y)
+      for (UINT32 x = 0; x < half; ++x) {
+        const UINT32 index = channel * width * width +
+                             2 * y * width + 2 * x;
+        mapping[index] = index;
+      }
+
+  std::vector<std::vector<unsigned char> > built;
+  built.push_back(std::vector<unsigned char>(
+      size_t(slot_count) * sizeof(float), 0));
+  for (std::map<UINT32, UINT32>::const_iterator item = mapping.begin();
+       item != mapping.end(); ++item)
+    Store_F32(&built.back(), item->second, 1.0f);
+
+  for (size_t move = 0; move < moves.size(); ++move) {
+    const UINT32 source_bit = moves[move].first;
+    const UINT32 target_bit = moves[move].second;
+    const UINT32 rotation = (1U << source_bit) - (1U << target_bit);
+    std::set<UINT32> selected;
+    for (std::map<UINT32, UINT32>::const_iterator item = mapping.begin();
+         item != mapping.end(); ++item)
+      if ((item->first & (1U << source_bit)) != 0)
+        selected.insert(item->second);
+    std::vector<unsigned char> selected_mask(
+        size_t(slot_count) * sizeof(float), 0);
+    std::vector<unsigned char> complement_mask(
+        size_t(slot_count) * sizeof(float), 0);
+    for (UINT32 slot = 0; slot < slot_count; ++slot) {
+      if (selected.find(slot) != selected.end())
+        Store_F32(&selected_mask, slot, 1.0f);
+      else
+        Store_F32(&complement_mask, slot, 1.0f);
+    }
+    built.push_back(selected_mask);
+    built.push_back(complement_mask);
+    for (std::map<UINT32, UINT32>::iterator item = mapping.begin();
+         item != mapping.end(); ++item)
+      if (selected.find(item->second) != selected.end())
+        item->second -= rotation;
+  }
+  std::set<UINT32> dense;
+  for (std::map<UINT32, UINT32>::const_iterator item = mapping.begin();
+       item != mapping.end(); ++item)
+    dense.insert(item->second);
+  UINT32 expected = 0;
+  for (std::set<UINT32>::const_iterator item = dense.begin();
+       item != dense.end(); ++item, ++expected)
+    if (*item != expected)
+      return Report(diagnostic,
+                    "stride-compaction masks do not produce dense slots");
+  if (dense.size() != size_t(channels) * half * half)
+    return Report(diagnostic, "stride-compaction dense extent is invalid");
+  masks->swap(built);
+  return TRUE;
+}
+
 /* Validate the folded-bias source and exact ACE slot expansion before the
  * generic one-value typed-external transaction mutates the active PU. */
 BOOL
@@ -202,9 +328,40 @@ VHO_FHE_CKKS_Materialize_Conv_Masks(
                     "mask type, generator, or authenticated identity is invalid");
   }
 
+  if (pu_info != Current_PU_Info)
+    return Report(diagnostic, "mask owner is not the active PU");
+  if (!DSL_IR_Generated_External_Tensor_Validate_PU(pu_info, diagnostic))
+    return Report(diagnostic,
+                  "existing generated external values are invalid");
+
   if (!DSL_IR_Materialize_Generated_External_Tensor_Values(
-          pu_info, requests, request_count, results))
+          pu_info, requests, request_count, results)) {
+    if (diagnostic != NULL) {
+      for (UINT32 i = 0; i < request_count; ++i) {
+        DSL_TENSOR_TCON_RECORD tcon;
+        const DSL_IR_GENERATED_EXTERNAL_TENSOR_REQUEST &request = requests[i];
+        if (!DSL_Tensor_TCON_Get(request.tensor_tcon, &tcon)) {
+          fprintf(diagnostic,
+                  "CFHE-CKKS-CONV-ASSET-001: mask[%u] has invalid "
+                  "tensor_tcon=%u\n", i, (UINT32)request.tensor_tcon);
+          continue;
+        }
+        if (tcon.descriptor_ty != request.descriptor_ty ||
+            tcon.byte_offset != request.byte_offset ||
+            tcon.byte_length != request.byte_length) {
+          fprintf(diagnostic,
+                  "CFHE-CKKS-CONV-ASSET-001: mask[%u] TCON mismatch "
+                  "ty=%u/%u offset=%llu/%llu length=%llu/%llu\n",
+                  i, tcon.descriptor_ty, request.descriptor_ty,
+                  (unsigned long long)tcon.byte_offset,
+                  (unsigned long long)request.byte_offset,
+                  (unsigned long long)tcon.byte_length,
+                  (unsigned long long)request.byte_length);
+        }
+      }
+    }
     return Report(diagnostic,
                   "generated-external transaction rejected the batch");
+  }
   return TRUE;
 }
