@@ -46,6 +46,7 @@ The team must read these files from the same `develop` revision before coding:
 | `doc/FHE-RUNTIME-C-ABI-V1-CONTRACT.md` | Sole public runtime ABI, schedule, transport, ownership, and failure contract for SYNC-5 and SYNC-6 |
 | `doc/FHE-SYNC3-COMMIT19-CERTIFICATION.md` | Historical SYNC-3 Pass record and current re-certification requirements |
 | `doc/FHE-SYNC3-CONTEXT-CKKS-STATE-CONTRACT.md` | Context-specific CKKS state and callee-identity contract |
+| `doc/FHE-SYNC6-RAW-TO-CKKS-PLAINTEXT-FLOW.md` | Onboarding execution flow for immutable model parameters, derived plaintext side assets, WHIRL lineage, CKKS encoding, and atomic publication |
 
 At kickoff, verify the fixed v0.10 content hash above and record the active Git
 baseline and subordinate-document blob IDs with:
