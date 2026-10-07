@@ -340,6 +340,7 @@ main(int argc, char **argv)
   DSL_FHE_ENCRYPTION_DESCRIPTOR_ID cipher_id =
       DSL_FHE_Intern_Encryption_Descriptor(&descriptor);
   descriptor.value_class = DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT;
+  descriptor.key_set_name = STR_IDX_ZERO;
   descriptor.encoding_policy = DSL_FHE_ENCODING_CKKS_PACKED;
   DSL_FHE_ENCRYPTION_DESCRIPTOR_ID plain_id =
       DSL_FHE_Intern_Encryption_Descriptor(&descriptor);

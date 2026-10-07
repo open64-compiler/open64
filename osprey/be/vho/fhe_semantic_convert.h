@@ -13,8 +13,10 @@
 
 #define VHO_FHE_ACE_RELU_PROFILE_NAME \
     "ace.chebyshev.sign.7x15x13.depth11"
-#define VHO_FHE_ACE_RELU_PROFILE_VERSION 1U
+#define VHO_FHE_ACE_RELU_PROFILE_VERSION 2U
 #define VHO_FHE_ACE_RELU_PROFILE_IDENTITY \
+    "ace.chebyshev.sign.7x15x13.depth11.v2"
+#define VHO_FHE_ACE_RELU_CALIBRATION_PROFILE_IDENTITY \
     "ace.chebyshev.sign.7x15x13.depth11.v1"
 #define VHO_FHE_ACE_RELU_MANIFEST_SHA256 \
     "75132d449852303ec3e44e86c8a5b5ffc196c0643cf7fadff453d797c2266931"

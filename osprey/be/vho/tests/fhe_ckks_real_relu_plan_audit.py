@@ -44,7 +44,7 @@ def read_stage_depths(path):
         require(int(field(line, "degree", r"\d+")) ==
                 {0: 7, 1: 15, 2: 13}.get(ordinal) and
                 field(line, "basis") == "chebyshev" and
-                field(line, "evaluation") == "clenshaw" and
+                field(line, "evaluation") == "addition_chain" and
                 field(line, "input_class") == "ciphertext" and
                 field(line, "output_scale") == "preserve_input" and
                 field(line, "output_components") == "relinearized_two" and

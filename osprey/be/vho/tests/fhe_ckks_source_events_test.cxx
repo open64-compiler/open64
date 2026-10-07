@@ -181,7 +181,8 @@ int main()
     stages[stage].stage_ordinal = stage;
     stages[stage].degree = stage_degrees[stage];
     stages[stage].basis = DSL_FHE_APPROX_BASIS_CHEBYSHEV;
-    stages[stage].evaluation_scheme = DSL_FHE_APPROX_EVAL_CLENSHAW;
+    stages[stage].evaluation_scheme =
+        DSL_FHE_APPROX_EVAL_ADDITION_CHAIN;
     stages[stage].required_input_value_class =
         DSL_FHE_VALUE_CLASS_CIPHERTEXT;
     stages[stage].output_scale_policy =

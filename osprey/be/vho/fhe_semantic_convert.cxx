@@ -851,7 +851,7 @@ VHO_FHE_Parse_Approved_Calibration
     if (!VHO_FHE_JSON_String(root, "schema", &text) ||
         text != "open64.fhe.relu.context-ranges.v1" ||
         !VHO_FHE_JSON_String(root, "profile_name", &text) ||
-        text != VHO_FHE_ACE_RELU_PROFILE_IDENTITY ||
+        text != VHO_FHE_ACE_RELU_CALIBRATION_PROFILE_IDENTITY ||
         !VHO_FHE_JSON_SHA256
             (root, "coefficient_manifest_sha256", &text) ||
         text != VHO_FHE_ACE_RELU_MANIFEST_SHA256)
@@ -1306,7 +1306,7 @@ VHO_FHE_Intern_Approved_Ace_Relu_Profile
         stages[i].approximation_family = DSL_FHE_APPROXIMATION_CHEBYSHEV;
         stages[i].basis = DSL_FHE_APPROX_BASIS_CHEBYSHEV;
         stages[i].degree = manifest->stages[i].degree;
-        stages[i].evaluation_scheme = DSL_FHE_APPROX_EVAL_CLENSHAW;
+        stages[i].evaluation_scheme = DSL_FHE_APPROX_EVAL_ADDITION_CHAIN;
         stages[i].required_input_value_class =
             DSL_FHE_VALUE_CLASS_CIPHERTEXT;
         stages[i].input_scale_policy =

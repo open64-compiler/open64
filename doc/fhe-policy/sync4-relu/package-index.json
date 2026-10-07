@@ -5,7 +5,7 @@
     {
       "gate": "ace_ant_relu_subset_capability",
       "path": "doc/fhe-policy/sync4-relu/ace-ant-subset-capability.json",
-      "sha256": "5c7c072b90c1461cb5278b2beb38fdad1713815dc048e68cef8dd94d99731b58",
+      "sha256": "48617ea13ac68540f8bc9a2c179811951e5c48a1d252386e38ef4980c3a948a6",
       "status": "approved_static_subset_evidence"
     }
   ],

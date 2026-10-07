@@ -23,6 +23,7 @@
 #include "dsl_ir_image.h"
 #include "fhe_materialize.h"
 #include "fhe_ckks_conv_materialize.h"
+#include "fhe_ckks_residual_materialize.h"
 #include "fhe_semantic_materialize.h"
 #include "pu_info.h"
 #include "strtab.h"
@@ -33,13 +34,13 @@
 #define VHO_FHE_SYNC4_PROVIDER_STATUS \
     "approved_static_subset_evidence"
 #define VHO_FHE_SYNC4_PROVIDER_SHA256 \
-    "5c7c072b90c1461cb5278b2beb38fdad1713815dc048e68cef8dd94d99731b58"
+    "48617ea13ac68540f8bc9a2c179811951e5c48a1d252386e38ef4980c3a948a6"
 #define VHO_FHE_SYNC4_PROVIDER_REVISION \
     "fb76131171b9f82aa6387f84dd73684fba5277e8"
 #define VHO_FHE_SYNC4_PROFILE_NAME \
     "ace.chebyshev.sign.7x15x13.depth11"
 #define VHO_FHE_SYNC4_PROFILE_IDENTITY \
-    "ace.chebyshev.sign.7x15x13.depth11.v1"
+    "ace.chebyshev.sign.7x15x13.depth11.v2"
 #define VHO_FHE_SYNC4_COEFFICIENT_MANIFEST_SHA256 \
     "75132d449852303ec3e44e86c8a5b5ffc196c0643cf7fadff453d797c2266931"
 #define VHO_FHE_SYNC4_COEFFICIENT_BUNDLE_SHA256 \
@@ -301,7 +302,7 @@ VHO_FHE_SYNC4_Parse_Provider
         !VHO_FHE_SYNC4_JSON_Uint_Equals
             (profile, "total_multiplicative_depth", 11) ||
         !VHO_FHE_SYNC4_JSON_String_Equals
-            (profile, "evaluation_scheme", "clenshaw") ||
+            (profile, "evaluation_scheme", "ace_bsgs_addition_chain") ||
         !profile.HasMember("stage_degrees") ||
         !profile["stage_degrees"].IsArray() ||
         profile["stage_degrees"].Size() != 3 ||
@@ -338,7 +339,7 @@ VHO_FHE_SYNC4_Parse_Provider
         "bootstrap_to_target_level", "ciphertext_add",
         "ciphertext_multiply", "plaintext_multiply", "scalar_multiply",
         "rescale", "relinearize", "constant_encode",
-        "clenshaw_chebyshev_evaluation"
+        "ace_bsgs_chebyshev_addition_chain"
     };
     for (UINT32 i = 0; i < sizeof(required) / sizeof(required[0]); ++i) {
         if (!VHO_FHE_SYNC4_Has_Primitive(root["required_primitives"],
@@ -473,7 +474,8 @@ VHO_FHE_SYNC4_Profile_Valid
         DSL_FHE_APPROX_STAGE_RECORD stage;
         if (!DSL_FHE_Approx_Stage_Find(profile_id, i, &stage) ||
             stage.degree != degrees[i] ||
-            stage.evaluation_scheme != DSL_FHE_APPROX_EVAL_CLENSHAW ||
+            stage.evaluation_scheme !=
+                DSL_FHE_APPROX_EVAL_ADDITION_CHAIN ||
             stage.level_consumption != consumptions[i] ||
             stage.minimum_precision_bits < 30 ||
             stage.output_component_policy !=
@@ -667,6 +669,8 @@ VHO_FHE_SYNC4_Gatekeeper
                (PU_Info_proc_sym(pu_info), options->bootstrap_mode, FALSE,
                 NULL, diagnostic) &&
            VHO_FHE_CKKS_Conv_Materialization_Gatekeeper
+               (pu_info, tree, options, diagnostic) &&
+           VHO_FHE_CKKS_Residual_Materialization_Gatekeeper
                (pu_info, tree, options, diagnostic);
 }
 
@@ -696,6 +700,8 @@ VHO_FHE_SYNC4_Pass
     result->operation_count += contexts * 6;
     result->refresh_count += contexts;
     return VHO_FHE_CKKS_Conv_Materialization_Pass
+               (pu_info, tree, options, diagnostic) &&
+           VHO_FHE_CKKS_Residual_Materialization_Pass
                (pu_info, tree, options, diagnostic);
 }
 
@@ -809,6 +815,7 @@ VHO_FHE_SYNC4_Finalizer
             "FHE-SYNC4-MATERIALIZATION: contexts=19 operations=114 "
             "refresh_levels=15:16,17:1,18:2\n");
     return VHO_FHE_CKKS_Conv_Materialization_Finalize(diagnostic) &&
+           VHO_FHE_CKKS_Residual_Materialization_Finalize(diagnostic) &&
            VHO_FHE_SYNC4_Write_Reports(aggregate, diagnostic);
 }
 
@@ -816,6 +823,7 @@ static void
 VHO_FHE_SYNC4_Completion (BOOL committed)
 {
     VHO_FHE_CKKS_Conv_Materialization_Complete(committed);
+    VHO_FHE_CKKS_Residual_Materialization_Complete(committed);
     VHO_FHE_sync4_state = VHO_FHE_SYNC4_STATE();
 }
 
