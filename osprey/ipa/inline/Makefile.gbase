@@ -169,6 +169,7 @@ IPA_COMMON_CXX_SRCS = \
 	ipc_bread.cxx \
 	ipc_file.cxx \
 	ip_graph.cxx \
+	ipa_context.cxx \
 	ipc_symtab_merge.cxx \
 	ipc_symtab.cxx \
 	ipc_type_merge.cxx \

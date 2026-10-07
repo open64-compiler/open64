@@ -90,12 +90,12 @@
 
 #include "ipc_symtab_merge.h"
 
-AUX_ST_TAB Aux_St_Tab;
-AUX_ST_TABLE Aux_St_Table;
+static AUX_ST_TAB Aux_St_Tab_impl;
+static AUX_ST_TABLE Aux_St_Table_impl;
 static UINT32 num_predefined_st;	// number of predefined symbols (pregs)
 
 
-AUX_PU_TAB Aux_Pu_Table;
+static AUX_PU_TAB Aux_Pu_Table_impl;
 
 static IP_FILE_HDR* current_file_hdr;
 
@@ -194,10 +194,10 @@ static TCON_IDX_MAP    *New_Tcon_Idx;
 static ST_TO_INITO_MAP *St_To_Inito_Map;
 
 // map from ST_IDX to corresponding INITO -- used for constant propagation
-ST_TO_INITO_MAP ST_To_INITO_Map;
+static ST_TO_INITO_MAP ST_To_INITO_Map_impl;
 
 // map from a common block ST_IDX to the array of its elements
-COMMON_BLOCK_ELEMENTS_MAP *Common_Block_Elements_Map = NULL;
+static COMMON_BLOCK_ELEMENTS_MAP *Common_Block_Elements_Map_impl = NULL;
 static MEM_POOL Common_map_pool;
 
 #if (defined(_STANDALONE_INLINER) || defined(_LIGHTWEIGHT_INLINER))
@@ -234,13 +234,19 @@ get_global_st(char* symname)
 void
 Initialize_Auxiliary_Tables ()
 {
+    /* Wire up context pointers to the file-static objects */
+    g_ipa_ctx->merge.aux_st_tab = &Aux_St_Tab_impl;
+    g_ipa_ctx->merge.aux_st_table = &Aux_St_Table_impl;
+    g_ipa_ctx->merge.aux_pu_table = &Aux_Pu_Table_impl;
+    g_ipa_ctx->merge.st_to_inito_map = &ST_To_INITO_Map_impl;
+
     const UINT32 st_size = ST_Table_Size (GLOBAL_SYMTAB);
 #if (defined(_STANDALONE_INLINER) || defined(_LIGHTWEIGHT_INLINER))
     num_predefined_st = count_pregs()+1;
 #else // _STANDALONE_INLINER
     num_predefined_st = st_size;
 #endif // _STANDALONE_INLINER
-    
+
     Scope_tab[GLOBAL_SYMTAB].st_tab->Register (Aux_St_Tab);
 
     const AUX_PU aux_pu;

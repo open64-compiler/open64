@@ -959,4 +959,4 @@ IPA_PCG::Get_siloed_references(IPA_NODE *ipa_node) const
 	return cit->second->_siloed_ref_set;
 }
 
-IPA_PCG *IPA_Concurrency_Graph = NULL;
+// IPA_Concurrency_Graph migrated to g_ipa_ctx->chg.concurrency_graph (ipa_context.h).

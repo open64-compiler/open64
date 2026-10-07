@@ -94,6 +94,10 @@ public:
 	void Print(FILE *fout = stderr);
 };
 
-extern IPA_PCG *IPA_Concurrency_Graph;
+// IPA_Concurrency_Graph now lives in IPA_Context (ipa_context.h).
+#ifndef cxx_ipa_context_INCLUDED
+#include "ipa_context.h"
+#endif
+#define IPA_Concurrency_Graph (g_ipa_ctx->chg.concurrency_graph)
 
 #endif  // ipa_pcg_INCLUDED
