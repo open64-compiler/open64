@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterable, List
 
 SCHEMA = "open64.fhe.sync4.relu-provider-capability.v1"
 STATUS = "approved_static_subset_evidence"
-PROFILE = "ace.chebyshev.sign.7x15x13.depth11.v1"
+PROFILE = "ace.chebyshev.sign.7x15x13.depth11.v2"
 ACE_REVISION = "fb76131171b9f82aa6387f84dd73684fba5277e8"
 REQUIRED_PRIMITIVES = frozenset(
     {
@@ -22,7 +22,7 @@ REQUIRED_PRIMITIVES = frozenset(
         "rescale",
         "relinearize",
         "constant_encode",
-        "clenshaw_chebyshev_evaluation",
+        "ace_bsgs_chebyshev_addition_chain",
     }
 )
 
@@ -72,6 +72,9 @@ def validate_manifest(manifest: Dict[str, Any]) -> None:
              "composite stage order is invalid")
     _require(profile.get("total_multiplicative_depth") == 11,
              "composite depth is invalid")
+    _require(profile.get("evaluation_scheme") ==
+             "ace_bsgs_addition_chain",
+             "composite evaluation scheme is not the pinned ACE algorithm")
     _lower_hex_digest(profile.get("coefficient_manifest_sha256"),
                       "coefficient_manifest_sha256")
     _lower_hex_digest(profile.get("coefficient_bundle_sha256"),

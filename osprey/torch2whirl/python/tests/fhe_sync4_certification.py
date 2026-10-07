@@ -178,7 +178,7 @@ def certify_reports(binary_path: Path, mode: str) -> None:
         "operations": "114",
         "refreshes": "19",
         "post_refresh_levels": "15:16,17:1,18:2",
-        "profile": "ace.chebyshev.sign.7x15x13.depth11.v1",
+        "profile": "ace.chebyshev.sign.7x15x13.depth11.v2",
         "stage_degrees": "7,15,13",
         "stage_level_consumption": "3,4,4",
     }

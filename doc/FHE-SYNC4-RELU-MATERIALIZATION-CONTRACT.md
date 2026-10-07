@@ -24,8 +24,10 @@ common.relu(x)
   -> reconstruct 0.5*x*sign(x/B) + 0.5*x
 ```
 
-The accepted profile is
-`ace.chebyshev.sign.7x15x13.depth11.v1`. No movement, merging,
+The accepted coefficient/range profile was
+`ace.chebyshev.sign.7x15x13.depth11.v1`. Executable recaptures use
+`ace.chebyshev.sign.7x15x13.depth11.v2` to record the exact pinned ACE
+addition-chain evaluator. No movement, merging,
 deduplication, or profitability placement is legal at `-O0`.
 
 ## Central Context Requirement
@@ -232,7 +234,8 @@ The authenticated provider manifest must prove:
 - slot count at least 32768;
 - bootstrap support for target levels 15, 17, and 18;
 - multiplication, addition, plaintext/scalar multiplication, rescale,
-  relinearization, and Chebyshev/Clenshaw support needed by the stages;
+  relinearization, and the pinned ACE BSGS-style Chebyshev addition-chain
+  needed by the stages;
 - composite depth at least 11;
 - accepted coefficient/profile manifest hashes; and
 - no logical materialization operation requires a secret key or decryption.
@@ -393,7 +396,8 @@ Completion evidence:
   target levels distributed `15:16,17:1,18:2`;
 - S4-4: all 19 contexts contain the dense six-operation sequence `refresh`,
   `normalize`, stages `7`, `15`, `13`, and `reconstruct_relu`; direct
-  Chebyshev recurrence and Clenshaw evaluation agree within `2e-12`, and the
+  direct Chebyshev recurrence and the independent Clenshaw numerical oracle
+  agree within `2e-12`, and the
   20,001-point normalized ReLU oracle has maximum error at most `7.24e-4`;
 - S4-5: `auto`, `on`, and complete `manual` pass; `off`, missing-manual, and
   bad provider hash fail with stable diagnostics and no published artifact;

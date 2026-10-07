@@ -199,7 +199,8 @@ BOOL VHO_FHE_CKKS_Collect_Relu_Plan_Steps(
             stage.id != profile.first_stage_id + ordinal - 2 ||
             stage.degree != expected_degree[ordinal - 2] ||
             stage.basis != DSL_FHE_APPROX_BASIS_CHEBYSHEV ||
-            stage.evaluation_scheme != DSL_FHE_APPROX_EVAL_CLENSHAW ||
+            stage.evaluation_scheme !=
+                DSL_FHE_APPROX_EVAL_ADDITION_CHAIN ||
             stage.required_input_value_class !=
                 DSL_FHE_VALUE_CLASS_CIPHERTEXT ||
             stage.output_scale_policy !=

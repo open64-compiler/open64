@@ -532,7 +532,9 @@ common.relu(x)
 ```
 
 The selected architecture profile is
-`ace.chebyshev.sign.7x15x13.depth11.v1`. Degree 3 is retained only as a future
+`ace.chebyshev.sign.7x15x13.depth11.v1`; executable SYNC-6 recaptures use
+version 2 to identify the exact ACE addition-chain evaluator while reusing the
+authenticated v1 coefficient/range evidence. Degree 3 is retained only as a future
 experimental low-depth profile. The append-only composite-profile,
 context-state, and materialization images preserve the ordered composition.
 Exact coefficient bytes, all 19 identity-bound normalization ranges,
@@ -586,7 +588,8 @@ contexts, and enforces exact final coverage. The retained six-PU artifact at
 `/private/tmp/open64-fhe-sync4-final` reopens with `ir_b2a -st -src` and proves
 114 operations, 19 refreshes, and post-refresh levels `15:16,17:1,18:2`.
 `auto`, `on`, and complete `manual` pass; `off`, missing-manual, bad hash, and
-stale-output cases fail atomically. Independent recurrence-versus-Clenshaw and
+stale-output cases fail atomically. Independent recurrence-versus-Clenshaw
+numerical-oracle and
 dense normalized-ReLU checks certify the three-stage numerical policy.
 
 This closes the SYNC-4 materialization-planning gate only. The output retains

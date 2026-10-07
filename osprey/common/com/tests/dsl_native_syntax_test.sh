@@ -84,6 +84,7 @@ sources=(
   "osprey/be/vho/fhe_ckks_conv_assets.cxx"
   "osprey/be/vho/fhe_ckks_conv_materialize.cxx"
   "osprey/be/vho/fhe_ckks_residual_materialize.cxx"
+  "osprey/be/vho/fhe_ckks_relu_recipe.cxx"
   "osprey/be/vho/tests/fhe_ckks_conv_assets_test.cxx"
   "osprey/be/vho/fhe_ckks_conv_plan.cxx"
   "osprey/be/vho/tests/fhe_ckks_conv_plan_test.cxx"

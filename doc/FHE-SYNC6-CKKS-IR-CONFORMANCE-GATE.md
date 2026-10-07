@@ -227,7 +227,8 @@ levels 15 (16 contexts), 17 (1), and 18 (2). This is inspection evidence,
 not a replacement for the native mapped-image and CKKS-state gate.
 
 The FHE read-only consumer now also checks that the accepted three ordered
-Chebyshev/Clenshaw degree-7/15/13 stage rows consume levels `3+4+4=11`
+Chebyshev degree-7/15/13 stage rows use the pinned ACE BSGS-style
+addition-chain and retain the reviewed profile allocation `3+4+4=11`
 per context under the required pre-refresh and positive-bound profile;
 stage references are resolved from the profile's first-stage ID and ordered
 ordinals, never from a presumed image-global stage ID of one;

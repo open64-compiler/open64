@@ -11,7 +11,8 @@ from typing import Any, Dict, Iterable, List, Optional
 from fhe_sync4_capability_manifest import validate_manifest as validate_capability
 
 
-PROFILE = "ace.chebyshev.sign.7x15x13.depth11.v1"
+PROFILE = "ace.chebyshev.sign.7x15x13.depth11.v2"
+EVIDENCE_PROFILE = "ace.chebyshev.sign.7x15x13.depth11.v1"
 OPERATION_KINDS = (
     "refresh",
     "normalize",
@@ -101,15 +102,17 @@ def build_schedule(
     validate_capability(capability)
 
     _require(ranges.get("status") == "approved", "range manifest is unapproved")
-    _require(ranges.get("profile_name") == PROFILE, "range profile mismatch")
+    _require(ranges.get("profile_name") == EVIDENCE_PROFILE,
+             "range profile mismatch")
     _require(ckks.get("status") == "approved_static_compiler_schedule",
              "CKKS schedule is unapproved")
-    _require(ckks.get("profile_name") == PROFILE, "CKKS profile mismatch")
+    _require(ckks.get("profile_name") == EVIDENCE_PROFILE,
+             "CKKS profile mismatch")
     _require(coefficients.get("status") == "approved_empirical_ace",
              "coefficient manifest is unapproved")
     coefficient_profile = coefficients.get("profile")
     _require(isinstance(coefficient_profile, dict) and
-             coefficient_profile.get("name") == PROFILE,
+             coefficient_profile.get("name") == EVIDENCE_PROFILE,
              "coefficient profile mismatch")
     _require(capability["profile"]["name"] == PROFILE,
              "capability profile mismatch")
