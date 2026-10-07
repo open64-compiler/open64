@@ -70,12 +70,18 @@ Chebyshev decomposition. It is not Clenshaw and is not the ANT runtime's
 separate generic `Eval_chebyshev_ps` entry point.
 
 `VHO_FHE_CKKS_Build_Ace_Relu_Recipe()` ports this algorithm without mutating
-WHIRL. The pinned fixture currently produces 94 algebraic steps, divided
-18/35/39 among the three polynomial stages plus two reconstruction steps.
-Its conservative dependency counter is not a CKKS level schedule because it
-counts every scalar multiplication uniformly. The executable materializer
-must add explicit encode/rescale/relinearize/modswitch nodes according to the
-pinned generated program and prove the approved final levels independently.
+WHIRL. The pinned fixture produces 94 algebraic steps, divided 18/35/39 among
+the three polynomial stages plus two reconstruction steps. Its exact outer
+stage ordering is `(x * encoded_coefficient) * T_degree`, including the `T0`
+term. It must not be reassociated to `(T_degree * coefficient) * x`: that
+apparently equivalent clear expression consumes one extra CKKS multiplication
+layer. The resulting critical-path allocation is exactly `3+4+4=11`, matching
+the pinned ACE `App_relu` profile. ACE's preceding `x/B` normalization is an
+additional encoded-plaintext multiply and rescale, so the complete path from
+the post-bootstrap value to the ReLU result consumes 12 levels. The executable
+materializer must add explicit encode/rescale/relinearize/modswitch nodes
+according to the pinned generated program and prove each concrete context's
+final level independently.
 
 ## Compatibility Rule
 
@@ -111,3 +117,39 @@ operation schedule.
 Any mismatch in coefficient bytes, evaluator tag, B, target level, key,
 operation order, or final state fails before source retirement and leaves no
 published checkpoint.
+
+## Executable Event Plan
+
+`VHO_FHE_CKKS_Build_Ace_Relu_Event_Plan()` now converts the corrected
+94-step algebraic recipe into a canonical explicit CKKS event plan without
+mutating WHIRL. For each approved refresh target (15, 17, or 18), the plan has
+the same 223-step shape:
+
+| CKKS operation | Count |
+| --- | ---: |
+| bootstrap | 1 |
+| encode | 31 |
+| multiply | 50 |
+| relinearize | 27 |
+| rescale | 50 |
+| modswitch | 27 |
+| add | 37 |
+
+The final levels are respectively 3, 5, and 6 after the complete 12-level
+post-refresh path. Every multiply has an explicit rescale; each ciphertext
+product additionally has an explicit relinearization; and additions receive
+explicit modulus alignment where dependency depths differ. The plan uses
+authenticated external scalar-value IDs for `1/B`, coefficients, `-1`, `2`,
+and `0.5`. Creating those values, invoking the native expansion transaction
+for all nineteen contexts, and retiring the source `common.relu` definitions
+remain the next milestone.
+
+The checked-in SYNC-3 `ckks-schedule-manifest.json` remains immutable
+historical conversion-planning evidence. It modeled normalization as
+level-neutral and records final levels 4/6/7; it is not executable schedule
+authority for this SYNC-6 path. SYNC-6 uses the explicit O0 operations above,
+whose additional normalization rescale yields 3/5/6. Before replacing all
+nineteen ReLUs, the producer must reflow these concrete results into
+downstream Conv planning rather than consuming the historical predicted
+states. This reflow and topological materialization ordering are part of the
+next mutation milestone.

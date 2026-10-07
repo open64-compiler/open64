@@ -539,8 +539,8 @@ VHO_FHE_SYNC4_Context_Schedule_Valid
     };
     static const UINT32 versions[6] = { 1, 1, 2, 3, 4, 1 };
     const INT32 levels[6] = {
-        refresh.level, refresh.level, refresh.level - 3,
-        refresh.level - 7, refresh.level - 11, refresh.level - 11
+        refresh.level, refresh.level - 1, refresh.level - 4,
+        refresh.level - 8, refresh.level - 12, refresh.level - 12
     };
     for (UINT32 ordinal = 0; ordinal < 6; ++ordinal) {
         DSL_FHE_MATERIALIZATION_OPERATION_RECORD operation;
@@ -587,8 +587,8 @@ VHO_FHE_SYNC4_Create_Context
     };
     static const UINT32 versions[5] = { 1, 2, 3, 4, 1 };
     const INT32 levels[5] = {
-        refresh.level, refresh.level - 3, refresh.level - 7,
-        refresh.level - 11, refresh.level - 11
+        refresh.level - 1, refresh.level - 4, refresh.level - 8,
+        refresh.level - 12, refresh.level - 12
     };
     DSL_FHE_CONTEXT_CKKS_STATE_RECORD states[5];
     for (UINT32 i = 0; i < 5; ++i) {
@@ -735,6 +735,8 @@ VHO_FHE_SYNC4_Write_Reports
     fprintf(report, "profile=%s\n", VHO_FHE_SYNC4_PROFILE_IDENTITY);
     fprintf(report, "stage_degrees=7,15,13\n");
     fprintf(report, "stage_level_consumption=3,4,4\n");
+    fprintf(report, "normalization_level_consumption=1\n");
+    fprintf(report, "post_refresh_level_consumption=12\n");
     BOOL valid = fclose(report) == 0;
 
     FILE *capability = valid ? fopen(capability_temp.c_str(), "w") : NULL;

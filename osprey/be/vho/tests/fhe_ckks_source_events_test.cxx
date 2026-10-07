@@ -257,10 +257,9 @@ int main()
       states[index].scheme = DSL_FHE_SCHEME_CKKS;
       states[index].value_class = DSL_FHE_VALUE_CLASS_CIPHERTEXT;
       states[index].encryption_descriptor_id = 1;
+      const INT32 level_offsets[6] = {0, 1, 4, 8, 12, 12};
       states[index].level =
-          (context == 0 ? 15 : 18) -
-          (ordinal >= 4 ? 11 : ordinal == 3 ? 7 :
-           ordinal == 2 ? 3 : 0);
+          (context == 0 ? 15 : 18) - level_offsets[ordinal];
       states[index].scale_bits = 56;
       states[index].component_count = 2;
       states[index].precision_bits = 30;
