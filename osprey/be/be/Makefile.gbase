@@ -346,6 +346,7 @@ BE_VHO_CXX_SRCS = \
   fhe_ckks_conv_recipe.cxx \
   fhe_ckks_conv_assets.cxx \
   fhe_ckks_conv_materialize.cxx \
+  fhe_ckks_residual_materialize.cxx \
   fhe_ckks_conv_plan.cxx \
   fhe_ckks_conv_expand.cxx \
   fhe_ckks_conv_context.cxx \

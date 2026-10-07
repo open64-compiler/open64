@@ -23,6 +23,7 @@
 #include "dsl_ir_image.h"
 #include "fhe_materialize.h"
 #include "fhe_ckks_conv_materialize.h"
+#include "fhe_ckks_residual_materialize.h"
 #include "fhe_semantic_materialize.h"
 #include "pu_info.h"
 #include "strtab.h"
@@ -667,6 +668,8 @@ VHO_FHE_SYNC4_Gatekeeper
                (PU_Info_proc_sym(pu_info), options->bootstrap_mode, FALSE,
                 NULL, diagnostic) &&
            VHO_FHE_CKKS_Conv_Materialization_Gatekeeper
+               (pu_info, tree, options, diagnostic) &&
+           VHO_FHE_CKKS_Residual_Materialization_Gatekeeper
                (pu_info, tree, options, diagnostic);
 }
 
@@ -696,6 +699,8 @@ VHO_FHE_SYNC4_Pass
     result->operation_count += contexts * 6;
     result->refresh_count += contexts;
     return VHO_FHE_CKKS_Conv_Materialization_Pass
+               (pu_info, tree, options, diagnostic) &&
+           VHO_FHE_CKKS_Residual_Materialization_Pass
                (pu_info, tree, options, diagnostic);
 }
 
@@ -809,6 +814,7 @@ VHO_FHE_SYNC4_Finalizer
             "FHE-SYNC4-MATERIALIZATION: contexts=19 operations=114 "
             "refresh_levels=15:16,17:1,18:2\n");
     return VHO_FHE_CKKS_Conv_Materialization_Finalize(diagnostic) &&
+           VHO_FHE_CKKS_Residual_Materialization_Finalize(diagnostic) &&
            VHO_FHE_SYNC4_Write_Reports(aggregate, diagnostic);
 }
 
@@ -816,6 +822,7 @@ static void
 VHO_FHE_SYNC4_Completion (BOOL committed)
 {
     VHO_FHE_CKKS_Conv_Materialization_Complete(committed);
+    VHO_FHE_CKKS_Residual_Materialization_Complete(committed);
     VHO_FHE_sync4_state = VHO_FHE_SYNC4_STATE();
 }
 

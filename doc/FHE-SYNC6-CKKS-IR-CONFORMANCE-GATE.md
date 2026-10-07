@@ -1,8 +1,11 @@
 # SYNC-6 CKKS Semantic IR Conformance Gate
 
-Status: S6-0a merged in PR #165. The FHE S6-0b producer/state-binding
-adapter has a focused linked test; complete circuit generation and the
-mapped `.ckks_ops.B` remain pending.
+Status: S6-0a and S6-0b are merged. The real ten-PU S6-0c checkpoint now
+contains executable CKKS Conv and residual-add subgraphs: 28,927 Conv events
+plus seven explicit residual level alignments and nine residual adds. The
+separate-process mapped reopen proves no live Conv or residual-add node.
+ReLU, global-average pool, flatten, linear, and final all-operator
+certification remain pending.
 The reviewable S6-0c producer and certification sequence is in
 `FHE-SYNC6-S6-0C-DETAILED-EXECUTION-PLAN.md`.
 
@@ -90,6 +93,15 @@ source/CNN and FHE conversion
    context-specific states, key/rotation requirements, and source positions.
    Existing readers, non-FHE artifacts, and the SYNC-5 mock path retain their
    established compatibility behavior.
+7. `common.residual_add.v2` is an exact-shape semantic join, not permission
+   for implicit CKKS repair. After its producer branches are executable, both
+   operands must have equal canonical TY, encryption config/key-set,
+   encrypted layout, scale, slot count, and alignment group. If levels differ,
+   the higher-level branch receives an explicit `ckks.modswitch` value before
+   `ckks.add`; scale mismatch is not repaired silently. The first ResNet path
+   certifies nine joins: seven level-4/level-3 identity joins and two already
+   aligned level-3 projection joins. All source residual rows remain
+   inspectable as lowered `ckks_expansion` provenance.
 
 ## Ownership And Review Sequence
 
@@ -97,7 +109,7 @@ source/CNN and FHE conversion
 | --- | --- | --- |
 | S6-0a semantic census/physical contract | Merged PR #165 publishes nine logical CKKS operators, an optional typed event image, grouped atomic expansion, and typed F8 scalar kid1. | Linked opcode/event/expansion/PU tests and retained mapped `ir_b2a -st -src` traces pass. This certifies structure, not FHE circuit semantics. |
 | S6-0b opaque producer and per-value state | FHE task consumes the merged native expansion API and binds existing FHE CKKS value-state records to each new result value. The FHE adapter preflights canonical TY/encryption association and concrete result state; post-expansion state failure is terminal. | Linked adapter test passes. Focused executable add/sub/mul/rotate/rescale/relin/bootstrap `.B`/`.T` fixtures and complete operand-state/key legality remain open. |
-| S6-0c full ResNet expansion | Main/common's generic process-terminal clone/formal/call checkpoint merged in PR #164. FHE must register the policy, derive complete signatures, route approved B values, then expand the six source PUs and 19 context-specific ReLU sequences. | Clone-aware `.ckks_ops.B`/`.T` with measured PU count, exact F8 B formal/actual evidence, origin-to-clone/event-to-step maps, key/rotation/depth census, and independent numerical checks. |
+| S6-0c full ResNet expansion | Main/common's generic process-terminal clone/formal/call checkpoint merged in PR #164. FHE registers the policy, derives complete signatures, routes approved B values, and expands resident source operators. Conv and all nine residual joins are complete; ReLU, pool, flatten, and linear remain. | Current clone-aware `.ckks_ops.B`/`.T` has 10 PUs, 28,943 CKKS events, 21+9 lowered Conv/residual provenance rows, zero live Conv/residual, seven explicit residual modswitches, nine adds, and the unchanged atomic plaintext asset. Final evidence still needs exact F8 B formal/actual dataflow, complete ReLU event-to-step maps, key/rotation/depth census, remaining operators, and independent numerical checks. |
 | S6-0d gate and terminal lowering | FHE task verifies the complete IR and lowers it through the existing stable C ABI; main reviews standard-WHIRL boundary. | Negative malformed-state/ownership/depth/key tests and generated-C/mock equivalence to SYNC-5. |
 | S6-1 and later | ACE provider and runtime owners, after S6-0 certification. | New exact ACE pin/capability admission, then broker/worker/client-server execution. |
 
