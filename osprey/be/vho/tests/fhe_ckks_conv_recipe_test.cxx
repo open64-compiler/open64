@@ -69,6 +69,44 @@ static double Tensor_Oracle(const VHO_FHE_CKKS_CONV_SHAPE &shape,
   return sum;
 }
 
+/* Certify ACE's row-indexed rotation schedule independently against OIHW
+ * convolution; the model input tail must be zero before duplication. */
+static VHO_FHE_CKKS_CONV_ROW_SCHEDULE Check_Row_Schedule(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe,
+    const std::vector<float> &weights,
+    const std::vector<float> &bias,
+    const std::vector<float> &input)
+{
+  VHO_FHE_CKKS_CONV_ROW_SCHEDULE schedule;
+  assert(VHO_FHE_CKKS_Build_Column_Conv_Row_Schedule(
+      recipe, &schedule, stderr));
+  const VHO_FHE_CKKS_CONV_SHAPE &shape = recipe.shape;
+  assert(schedule.row_rotations.size() == shape.input_channels * 9);
+  assert(schedule.duplication_rotations.size() + 1 ==
+         schedule.input_copy_count);
+  assert(schedule.row_rotations[0] == -int32_t(shape.width) - 1);
+  assert(schedule.row_rotations[4] == 0);
+  std::vector<float> packed = input;
+  std::fill(packed.begin() + recipe.active_input_slots,
+            packed.end(), 0.0f);
+  std::vector<double> actual;
+  assert(VHO_FHE_CKKS_Evaluate_Column_Conv_Rows_Clear(
+      recipe, schedule, packed, &actual, stderr));
+  for (uint32_t oc = 0; oc < shape.output_channels; ++oc)
+    for (uint32_t y = 0; y < shape.height; ++y)
+      for (uint32_t x = 0; x < shape.width; ++x) {
+        const size_t index = size_t(oc) * shape.height * shape.width +
+                             y * shape.width + x;
+        const double expected = Tensor_Oracle(
+            shape, oc, y, x, weights, bias, packed);
+        assert(fabs(actual[index] - expected) <
+               1e-7 * (1.0 + fabs(expected)));
+      }
+  for (size_t i = recipe.active_output_slots; i < actual.size(); ++i)
+    assert(actual[i] == 0.0);
+  return schedule;
+}
+
 /* Check the complete 16-channel output and its inactive slot tail against
  * the independent tensor oracle, plus exact rotation/key summaries. */
 static void Check_Stem_Like_Conv()
@@ -144,10 +182,19 @@ static void Check_Stem_Like_Conv()
       }
   for (size_t i = 16384; i < actual.size(); ++i)
     assert(actual[i] == 0.0 && grouped[i] == 0.0);
+  const VHO_FHE_CKKS_CONV_ROW_SCHEDULE schedule =
+      Check_Row_Schedule(recipe, weights, bias, input);
+  assert(schedule.input_copy_count == 7 &&
+         schedule.duplication_rotations[0] == -3072 &&
+         schedule.row_rotations[9] == 991 &&
+         schedule.required_signed_rotations.size() == 32);
   printf("synthetic stem: terms=%zu live=%u signed_rotation_keys=%zu "
-         "input_slots=%u output_slots=%u plaintext_depth=%u\n",
+         "ACE_row_keys=%zu input_copies=%u input_slots=%u "
+         "output_slots=%u plaintext_depth=%u\n",
          recipe.terms.size(), recipe.live_term_count,
          recipe.required_signed_rotations.size(),
+         schedule.required_signed_rotations.size(),
+         schedule.input_copy_count,
          recipe.active_input_slots, recipe.active_output_slots,
          recipe.plaintext_multiply_depth);
 }
@@ -194,6 +241,33 @@ static void Check_Fail_Closed()
   assert(!VHO_FHE_CKKS_Build_Column_Conv_F32_Row_Bytes(
       recipe, shape.input_channels * 9, &prior_f32, NULL));
   assert(prior_f32.size() == 1 && prior_f32[0] == 77);
+  VHO_FHE_CKKS_CONV_ROW_SCHEDULE schedule;
+  assert(VHO_FHE_CKKS_Build_Column_Conv_Row_Schedule(
+      recipe, &schedule, stderr));
+  std::vector<double> prior_rows(1, 77.0);
+  assert(!VHO_FHE_CKKS_Evaluate_Column_Conv_Rows_Clear(
+      recipe, schedule, input, &prior_rows, NULL));
+  assert(prior_rows.size() == 1 && prior_rows[0] == 77.0);
+  std::fill(input.begin() + recipe.active_input_slots,
+            input.end(), 0.0f);
+  ++schedule.row_rotations[0];
+  assert(!VHO_FHE_CKKS_Evaluate_Column_Conv_Rows_Clear(
+      recipe, schedule, input, &prior_rows, NULL));
+  assert(prior_rows.size() == 1 && prior_rows[0] == 77.0);
+  VHO_FHE_CKKS_CONV_SHAPE crowded = Stem_Shape();
+  crowded.input_channels = 1;
+  crowded.output_channels = 32;
+  std::vector<float> crowded_weights(32 * 9, 1.0f);
+  std::vector<float> crowded_bias(32, 0.0f);
+  VHO_FHE_CKKS_CONV_RECIPE crowded_recipe;
+  assert(VHO_FHE_CKKS_Build_Column_Conv_Recipe(
+      crowded, &crowded_weights[0], crowded_weights.size(),
+      &crowded_bias[0], crowded_bias.size(), &crowded_recipe, stderr));
+  VHO_FHE_CKKS_CONV_ROW_SCHEDULE capped_schedule;
+  assert(VHO_FHE_CKKS_Build_Column_Conv_Row_Schedule(
+      crowded_recipe, &capped_schedule, stderr));
+  assert(capped_schedule.input_copy_count == 32 &&
+         capped_schedule.duplication_rotations.size() == 31);
   ++recipe.terms[0].signed_rotation;
   assert(!VHO_FHE_CKKS_Evaluate_Column_Conv_Clear(
       recipe, input, &previous, NULL));
@@ -245,10 +319,15 @@ static void Check_Captured_Folded_Conv(
         }
   for (size_t i = recipe.active_output_slots; i < actual.size(); ++i)
     assert(actual[i] == 0.0 && grouped[i] == 0.0);
+  const VHO_FHE_CKKS_CONV_ROW_SCHEDULE schedule =
+      Check_Row_Schedule(recipe, weights, bias, input);
   printf("captured folded %s: terms=%zu live=%u "
-         "signed_rotation_keys=%zu diagonals=%zu output_slots=%u\n",
+         "signed_rotation_keys=%zu ACE_row_keys=%zu input_copies=%u "
+         "diagonals=%zu output_slots=%u\n",
          label, recipe.terms.size(), recipe.live_term_count,
          recipe.required_signed_rotations.size(),
+         schedule.required_signed_rotations.size(),
+         schedule.input_copy_count,
          recipe.required_signed_rotations.size() + 1,
          recipe.active_output_slots);
 }

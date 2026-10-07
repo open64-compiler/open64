@@ -105,7 +105,8 @@ BOOL DSL_FHE_Get_Encryption_Descriptor(
   memset(record, 0, sizeof(*record));
   record->scheme = DSL_FHE_SCHEME_CKKS;
   record->config_id = 1;
-  record->key_set_name = wrong_key_set ? 3 : 2;
+  record->key_set_name = id == 1 ? STR_IDX_ZERO :
+                         wrong_key_set ? 3 : 2;
   record->value_class = id == 1 ?
       DSL_FHE_VALUE_CLASS_ENCODED_PLAINTEXT :
       DSL_FHE_VALUE_CLASS_CIPHERTEXT;
@@ -181,6 +182,16 @@ static void Check_Unary_Transfers()
       step, input, output, NULL));
   output.level = 15;
   input.pending_actions = 0;
+  assert(!VHO_FHE_CKKS_Verify_Unary_State_Transfer(
+      step, input, output, NULL));
+  input = existing_state;
+  input.pending_bootstrap_reason =
+      DSL_FHE_BOOTSTRAP_REASON_DEPTH_EXHAUSTION;
+  output.level = 17;
+  assert(VHO_FHE_CKKS_Verify_Unary_State_Transfer(
+      step, input, output, NULL));
+  input.pending_bootstrap_reason =
+      DSL_FHE_BOOTSTRAP_REASON_MANUAL_BOUNDARY_REQUIRED;
   assert(!VHO_FHE_CKKS_Verify_Unary_State_Transfer(
       step, input, output, NULL));
 
@@ -412,6 +423,24 @@ int main()
   assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
       pu, &request, states, 2, NULL));
   wrong_bootstrap_profile = FALSE;
+  existing_state.pending_bootstrap_reason =
+      DSL_FHE_BOOTSTRAP_REASON_DEPTH_EXHAUSTION;
+  bootstrap_attrs[0].value = "17";
+  bootstrap_attrs[1].value = "DEPTH_EXHAUSTION";
+  states[1].state.level = 17;
+  assert(VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  bootstrap_attrs[1].value = "PRE_RELU_REFRESH";
+  assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  bootstrap_attrs[1].value = "DEPTH_EXHAUSTION";
+  existing_state.pending_bootstrap_reason =
+      DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH;
+  assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+      pu, &request, states, 2, NULL));
+  bootstrap_attrs[0].value = "15";
+  bootstrap_attrs[1].value = "PRE_RELU_REFRESH";
+  states[1].state.level = 15;
   steps[1].attributes = NULL;
   assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
       pu, &request, states, 2, NULL));
@@ -521,7 +550,7 @@ int main()
   steps[1].attributes = bootstrap_attrs;
   steps[1].attribute_count = 3;
   Set_Existing_Input(10, 56, 2, DSL_FHE_CKKS_PENDING_BOOTSTRAP);
-  assert(preflight_count == 6 && expansion_count == 0);
+  assert(preflight_count == 7 && expansion_count == 0);
 
   fail_native = TRUE;
   assert(!VHO_FHE_CKKS_Expand_And_Bind_States(

@@ -11,6 +11,7 @@
 
 #include "dsl_domain.h"
 #include "fhe_plan.h"
+#include "fhe_plan_specialize_internal.h"
 #include "dsl_opcode.h"
 #include "dsl_tensor_fold.h"
 #include "segmented_array.h"
@@ -52,6 +53,11 @@ static DSL_FHE_MATERIALIZATION_OPERATION_TABLE
     DSL_fhe_materialization_operation_table;
 
 static BOOL DSL_FHE_Approx_Profile_Cross_Validate (FILE *diagnostic);
+static BOOL DSL_FHE_Context_Range_Basic_Valid
+                (const DSL_FHE_CONTEXT_RANGE_RECORD &record,
+                 UINT32 profile_limit);
+static BOOL DSL_FHE_Context_State_Basic_Valid
+                (const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &record);
 
 typedef struct {
     const DSL_FHE_PLAN_IMAGE_HEADER *header;
@@ -921,6 +927,62 @@ DSL_FHE_Plan_Add_Conversion_Disposition
     UINT32 index = DSL_fhe_disposition_table.Insert(copy);
     DSL_fhe_disposition_table[index].id = index + 1;
     return index + 1;
+}
+
+/* Commit one preflighted ownership move inside the terminal specialization
+ * transaction. The caller validates the complete plan after all moves. */
+BOOL
+DSL_FHE_Plan_Specialize_BN_Fold
+        (DSL_FHE_BN_FOLD_PROVENANCE_ID id,
+         const DSL_FHE_BN_FOLD_PROVENANCE_RECORD *expected,
+         ST_IDX owner_pu_st, DSL_IR_NODE_ID conv_node_id,
+         DSL_IR_NODE_ID batch_norm_node_id,
+         DSL_PU_SOURCE_IDENTITY_ID context_pu_identity_id)
+{
+    if (expected == NULL || id == DSL_FHE_BN_FOLD_PROVENANCE_INVALID_ID ||
+        id > DSL_fhe_bn_fold_table.Size())
+        return FALSE;
+    DSL_FHE_BN_FOLD_PROVENANCE_RECORD &current =
+        DSL_fhe_bn_fold_table[id - 1];
+    if (memcmp(&current, expected, sizeof(current)) != 0)
+        return FALSE;
+    DSL_FHE_BN_FOLD_PROVENANCE_RECORD replacement = current;
+    replacement.owner_pu_st = owner_pu_st;
+    replacement.conv_node_id = conv_node_id;
+    replacement.batch_norm_node_id = batch_norm_node_id;
+    replacement.context_pu_identity_id = context_pu_identity_id;
+    if (!DSL_FHE_Plan_BN_Fold_Valid(replacement))
+        return FALSE;
+    current = replacement;
+    return TRUE;
+}
+
+/* Commit the source definition's surviving context range without changing
+ * disposition identity or any CKKS/operator contract. */
+BOOL
+DSL_FHE_Plan_Specialize_Disposition_BN_Range
+        (DSL_FHE_CONVERSION_DISPOSITION_ID id,
+         DSL_FHE_BN_FOLD_PROVENANCE_ID expected_first,
+         UINT32 expected_count,
+         DSL_FHE_BN_FOLD_PROVENANCE_ID first,
+         UINT32 count)
+{
+    if (id == DSL_FHE_CONVERSION_DISPOSITION_INVALID_ID ||
+        id > DSL_fhe_disposition_table.Size() ||
+        first == DSL_FHE_BN_FOLD_PROVENANCE_INVALID_ID || count == 0)
+        return FALSE;
+    DSL_FHE_CONVERSION_DISPOSITION_RECORD &current =
+        DSL_fhe_disposition_table[id - 1];
+    if (current.first_bn_fold_id != expected_first ||
+        current.bn_fold_count != expected_count)
+        return FALSE;
+    DSL_FHE_CONVERSION_DISPOSITION_RECORD replacement = current;
+    replacement.first_bn_fold_id = first;
+    replacement.bn_fold_count = count;
+    if (!DSL_FHE_Plan_Disposition_Valid(replacement, NULL))
+        return FALSE;
+    current = replacement;
+    return TRUE;
 }
 
 UINT32 DSL_FHE_Plan_Conversion_Disposition_Count (void)
@@ -2688,4 +2750,139 @@ DSL_FHE_Materialization_Intern_Complete_Context
         DSL_fhe_materialization_operation_table.Insert(operation);
     }
     return old_operation_count + 1;
+}
+
+/* Rebind one complete persisted ReLU schedule to a context-specialized clone.
+ * Stable range/state/operation IDs are retained because materialization rows
+ * refer to each other by ID; only definition ownership and value identity
+ * change. The source definition's other call contexts remain untouched. */
+BOOL
+DSL_FHE_Plan_Specialize_Composite_Context
+        (const DSL_FHE_CONTEXT_RANGE_RECORD *expected_range,
+         ST_IDX owner_pu_st, DSL_IR_NODE_ID relu_node_id,
+         DSL_IR_VALUE_ID relu_value_id,
+         DSL_PU_SOURCE_IDENTITY_ID context_pu_identity_id,
+         DSL_FHE_CKKS_VALUE_STATE_ID result_ckks_value_state_id)
+{
+    if (expected_range == NULL || expected_range->id == 0 ||
+        expected_range->id > DSL_fhe_context_range_table.Size())
+        return FALSE;
+    const DSL_FHE_CONTEXT_RANGE_RECORD &current_range =
+        DSL_fhe_context_range_table[expected_range->id - 1];
+    if (memcmp(&current_range, expected_range,
+               sizeof(current_range)) != 0)
+        return FALSE;
+
+    DSL_FHE_APPROX_ASSOCIATION_RECORD source_association;
+    DSL_FHE_CONVERSION_DISPOSITION_RECORD source_disposition;
+    UINT32 association_matches = 0;
+    for (UINT32 i = 0; i < DSL_fhe_approx_association_table.Size(); ++i) {
+        const DSL_FHE_APPROX_ASSOCIATION_RECORD &association =
+            DSL_fhe_approx_association_table[i];
+        if (association.profile_id != expected_range->profile_id ||
+            association.source_relu_value_id !=
+                expected_range->source_relu_value_id)
+            continue;
+        source_association = association;
+        ++association_matches;
+    }
+    if (association_matches != 1 ||
+        !DSL_FHE_Plan_Get_Conversion_Disposition
+            (source_association.disposition_id, &source_disposition))
+        return FALSE;
+
+    const UINT32 schedule_size =
+        DSL_FHE_MATERIALIZATION_OPERATIONS_PER_CONTEXT;
+    DSL_FHE_CONTEXT_CKKS_STATE_RECORD replacement_states[6];
+    UINT32 state_indices[6];
+    UINT32 state_count = 0;
+    for (UINT32 i = 0; i < DSL_fhe_context_ckks_state_table.Size(); ++i) {
+        const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &state =
+            DSL_fhe_context_ckks_state_table[i];
+        if (state.owner_pu_st != expected_range->owner_pu_st ||
+            state.source_value_id != expected_range->source_relu_value_id ||
+            state.context_pu_identity_id !=
+                expected_range->context_pu_identity_id ||
+            state.context_callsite_id !=
+                expected_range->context_callsite_id)
+            continue;
+        if (state_count == schedule_size)
+            return FALSE;
+        state_indices[state_count] = i;
+        replacement_states[state_count] = state;
+        replacement_states[state_count].owner_pu_st = owner_pu_st;
+        replacement_states[state_count].source_value_id = relu_value_id;
+        replacement_states[state_count].context_pu_identity_id =
+            context_pu_identity_id;
+        ++state_count;
+    }
+
+    DSL_FHE_MATERIALIZATION_OPERATION_RECORD replacement_operations[6];
+    UINT32 operation_indices[6];
+    BOOL seen_ordinals[6] = { FALSE, FALSE, FALSE, FALSE, FALSE, FALSE };
+    UINT32 operation_count = 0;
+    for (UINT32 i = 0;
+         i < DSL_fhe_materialization_operation_table.Size(); ++i) {
+        const DSL_FHE_MATERIALIZATION_OPERATION_RECORD &operation =
+            DSL_fhe_materialization_operation_table[i];
+        if (operation.range_id != expected_range->id)
+            continue;
+        if (operation_count == schedule_size ||
+            operation.operation_ordinal >= schedule_size ||
+            seen_ordinals[operation.operation_ordinal])
+            return FALSE;
+        seen_ordinals[operation.operation_ordinal] = TRUE;
+        operation_indices[operation_count] = i;
+        replacement_operations[operation_count] = operation;
+        replacement_operations[operation_count].owner_pu_st = owner_pu_st;
+        replacement_operations[operation_count].source_relu_value_id =
+            relu_value_id;
+        replacement_operations[operation_count].context_pu_identity_id =
+            context_pu_identity_id;
+        ++operation_count;
+    }
+    if (state_count != schedule_size || operation_count != schedule_size)
+        return FALSE;
+
+    DSL_FHE_CONVERSION_DISPOSITION_RECORD clone_disposition =
+        source_disposition;
+    clone_disposition.id = DSL_FHE_CONVERSION_DISPOSITION_INVALID_ID;
+    clone_disposition.source_node_id = relu_node_id;
+    clone_disposition.result_value_id = relu_value_id;
+    clone_disposition.owner_pu_st = owner_pu_st;
+    clone_disposition.result_ckks_value_state_id =
+        result_ckks_value_state_id;
+    const UINT32 old_disposition_count = DSL_fhe_disposition_table.Size();
+    const UINT32 old_association_count =
+        DSL_fhe_approx_association_table.Size();
+    if (DSL_FHE_Plan_Add_Composite_Disposition
+            (&clone_disposition, expected_range->profile_id) ==
+        DSL_FHE_CONVERSION_DISPOSITION_INVALID_ID)
+        return FALSE;
+
+    DSL_FHE_CONTEXT_RANGE_RECORD replacement_range = *expected_range;
+    replacement_range.owner_pu_st = owner_pu_st;
+    replacement_range.source_relu_value_id = relu_value_id;
+    replacement_range.context_pu_identity_id = context_pu_identity_id;
+    BOOL valid = DSL_FHE_Context_Range_Basic_Valid
+                     (replacement_range,
+                      DSL_fhe_composite_profile_table.Size());
+    for (UINT32 i = 0; valid && i < state_count; ++i)
+        valid = DSL_FHE_Context_State_Basic_Valid(replacement_states[i]);
+    if (!valid) {
+        DSL_fhe_approx_association_table.Delete_down_to
+            (old_association_count);
+        DSL_fhe_disposition_table.Delete_down_to(old_disposition_count);
+        return FALSE;
+    }
+
+    DSL_fhe_context_range_table[expected_range->id - 1] =
+        replacement_range;
+    for (UINT32 i = 0; i < state_count; ++i)
+        DSL_fhe_context_ckks_state_table[state_indices[i]] =
+            replacement_states[i];
+    for (UINT32 i = 0; i < operation_count; ++i)
+        DSL_fhe_materialization_operation_table[operation_indices[i]] =
+            replacement_operations[i];
+    return TRUE;
 }

@@ -38,6 +38,8 @@ extern BOOL DSL_Call_ABI_Image_Update_Argument_Value
                                  DSL_IR_VALUE_ID);
 extern BOOL DSL_IR_Image_Redirect_And_Retire_Value
                                 (DSL_IR_VALUE_ID, DSL_IR_VALUE_ID, UINT32);
+extern BOOL DSL_Runtime_Interface_Image_Redirect_Value
+                                (ST_IDX, DSL_IR_VALUE_ID, DSL_IR_VALUE_ID);
 extern UINT32 DSL_Region_Symbol_Use_Count (PU_Info *, ST_IDX);
 extern BOOL DSL_Region_Can_Redirect_Symbol (PU_Info *, ST_IDX, ST_IDX);
 extern BOOL DSL_Region_Redirect_Symbol (PU_Info *, ST_IDX, ST_IDX);
@@ -2924,10 +2926,16 @@ DSL_IR_CKKS_Preflight
     for (UINT32 i = 1;
          i <= DSL_Runtime_Interface_Image_Value_Count(); ++i) {
         DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
-        if (!DSL_Runtime_Interface_Image_Get_Value(i, &projection) ||
-            projection.source_value_id == source_value->id)
+        if (!DSL_Runtime_Interface_Image_Get_Value(i, &projection))
             return DSL_IR_CKKS_Report
-                       (diagnostic, "source has runtime projection", i);
+                       (diagnostic, "invalid runtime projection", i);
+        if (projection.source_value_id == source_value->id &&
+            (projection.owner_pu_st != owner_pu_st ||
+             projection.source_st != source_value->st ||
+             projection.source_ty != source_value->ty ||
+             projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE))
+            return DSL_IR_CKKS_Report
+                       (diagnostic, "source runtime projection mismatch", i);
     }
     for (UINT32 i = 1;
          i <= DSL_Program_Interface_Image_Runtime_Input_Count(); ++i) {
@@ -3195,6 +3203,12 @@ DSL_IR_CKKS_Add_Image_Step
     return TRUE;
 }
 
+/*
+ * Atomically replace one owner-qualified native DSL value with its complete
+ * CKKS event expansion. The transaction redirects physical reads, call ABI,
+ * REGION, optional runtime projections, and managed-image references together;
+ * every late failure restores all of them before returning FALSE.
+ */
 BOOL
 DSL_IR_Expand_Native_Value_To_CKKS_Events
         (PU_Info *pu_info, const DSL_CKKS_EXPANSION_REQUEST *request,
@@ -3221,6 +3235,8 @@ DSL_IR_Expand_Native_Value_To_CKKS_Events
     UINT32 metadata_count = St_tensor_metadata.Size();
     UINT32 kv_count = Tensor_dsl_kv_table.Size();
     ST_IDX owner_pu_st = PU_Info_proc_sym(pu_info);
+    BOOL has_runtime_interface =
+        DSL_Runtime_Interface_Image_Has_Records();
     std::vector<std::string> payloads;
     std::vector<DSL_CKKS_EXPANSION_STEP_RESULT> produced
         (request->step_count);
@@ -3234,6 +3250,7 @@ DSL_IR_Expand_Native_Value_To_CKKS_Events
     BOOL region_redirected = FALSE;
     BOOL source_extracted = FALSE;
     BOOL physical_redirected = FALSE;
+    BOOL runtime_redirected = FALSE;
     BOOL committed = FALSE;
     do {
         for (UINT32 i = 0; i < request->step_count; ++i) {
@@ -3381,6 +3398,12 @@ DSL_IR_Expand_Native_Value_To_CKKS_Events
                 break;
             region_redirected = TRUE;
         }
+        if (has_runtime_interface) {
+            if (!DSL_Runtime_Interface_Image_Redirect_Value(
+                    owner_pu_st, source.id, final_result.value_id))
+                break;
+            runtime_redirected = TRUE;
+        }
         if (DSL_ckks_expand_test_fault_stage == 2)
             break;
         if (!DSL_IR_Image_Redirect_And_Lower_Value
@@ -3394,6 +3417,8 @@ DSL_IR_Expand_Native_Value_To_CKKS_Events
         if (DSL_ckks_expand_test_fault_stage == 3 ||
             !DSL_IR_Image_Validate(diagnostic) ||
             !DSL_CKKS_Event_Image_Validate(diagnostic) ||
+            (has_runtime_interface &&
+             !DSL_Runtime_Interface_Image_Validate(diagnostic)) ||
             !DSL_Region_Verify_PU(pu_info, diagnostic) ||
             !DSL_Call_ABI_Image_Validate_PU(pu_info, diagnostic))
             break;
@@ -3401,6 +3426,15 @@ DSL_IR_Expand_Native_Value_To_CKKS_Events
     } while (FALSE);
 
     if (committed) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic,
+                    "DSL CKKS expansion: owner=%s source=value%u "
+                    "replacement=value%u redirected_reads=%u "
+                    "redirected_addresses=%u\n",
+                    ST_name(St_Table[owner_pu_st]), source.id,
+                    produced[request->final_step_index].value_id,
+                    (UINT32)scan.reads.size(),
+                    (UINT32)scan.addresses.size());
         WN_DELETE_Tree(request->source_definition);
         for (UINT32 i = 0; i < request->step_count; ++i)
             results[i] = produced[i];
@@ -3410,17 +3444,37 @@ DSL_IR_Expand_Native_Value_To_CKKS_Events
     const DSL_CKKS_EXPANSION_STEP_RESULT &final_result =
         produced[request->final_step_index];
     BOOL restored = TRUE;
+    BOOL region_restored = TRUE;
+    BOOL runtime_restored = TRUE;
+    BOOL calls_restored = TRUE;
+    BOOL definitions_restored = TRUE;
+    BOOL strings_restored = TRUE;
+    BOOL image_valid = TRUE;
+    BOOL events_valid = TRUE;
+    BOOL runtime_valid = TRUE;
+    BOOL region_valid = TRUE;
+    BOOL calls_valid = TRUE;
     if (source_extracted && !definitions.empty())
         WN_INSERT_BlockAfter
             (source_block, definitions.back(), request->source_definition);
-    if (region_redirected)
-        restored = DSL_Region_Redirect_Symbol
-                       (pu_info, final_result.result_st, source.st) &&
-                   restored;
-    for (UINT32 i = updated_calls; i != 0; --i)
-        restored = DSL_Call_ABI_Image_Update_Argument_Value
-                       (calls[i - 1].call, calls[i - 1].actual_ordinal,
-                        final_result.value_id, source.id) && restored;
+    if (region_redirected) {
+        region_restored = DSL_Region_Redirect_Symbol
+                              (pu_info, final_result.result_st, source.st);
+        restored = region_restored && restored;
+    }
+    if (runtime_redirected) {
+        runtime_restored = DSL_Runtime_Interface_Image_Redirect_Value(
+                               owner_pu_st, final_result.value_id, source.id);
+        restored = runtime_restored && restored;
+    }
+    for (UINT32 i = updated_calls; i != 0; --i) {
+        BOOL call_restored = DSL_Call_ABI_Image_Update_Argument_Value
+                                 (calls[i - 1].call,
+                                  calls[i - 1].actual_ordinal,
+                                  final_result.value_id, source.id);
+        calls_restored = call_restored && calls_restored;
+        restored = call_restored && restored;
+    }
     if (physical_redirected) {
         for (UINT32 i = 0; i < scan.reads.size(); ++i)
             WN_st_idx(scan.reads[i]) = source.st;
@@ -3428,9 +3482,11 @@ DSL_IR_Expand_Native_Value_To_CKKS_Events
             WN_st_idx(scan.addresses[i]) = source.st;
     }
     for (UINT32 i = 0; i < definitions.size(); ++i) {
-        restored = WN_EXTRACT_FromBlock
-                       (source_block, definitions[i]) == definitions[i] &&
-                   restored;
+        BOOL definition_restored = WN_EXTRACT_FromBlock
+                                       (source_block, definitions[i]) ==
+                                   definitions[i];
+        definitions_restored = definition_restored && definitions_restored;
+        restored = definition_restored && restored;
         WN_DELETE_Tree(definitions[i]);
     }
     DSL_CKKS_Event_Image_Trim(event_count);
@@ -3440,14 +3496,28 @@ DSL_IR_Expand_Native_Value_To_CKKS_Events
     Tensor_dsl_kv_table.Delete_down_to(kv_count);
     while (ST_Table_Size(CURRENT_SYMTAB) > symbol_count)
         Scope_tab[CURRENT_SYMTAB].st_tab->Delete_last();
-    restored = DSL_CKKS_Strtab_Restore(&string_savepoint) && restored;
-    restored = DSL_IR_Image_Validate(NULL) &&
-               DSL_CKKS_Event_Image_Validate(NULL) &&
-               DSL_Region_Verify_PU(pu_info, NULL) &&
-               DSL_Call_ABI_Image_Validate_PU(pu_info, NULL) && restored;
+    strings_restored = DSL_CKKS_Strtab_Restore(&string_savepoint);
+    restored = strings_restored && restored;
+    image_valid = DSL_IR_Image_Validate(NULL);
+    events_valid = DSL_CKKS_Event_Image_Validate(NULL);
+    runtime_valid = !has_runtime_interface ||
+                    DSL_Runtime_Interface_Image_Validate(NULL);
+    if (!runtime_valid)
+        DSL_Runtime_Interface_Image_Validate
+            (diagnostic != NULL ? diagnostic : stderr);
+    region_valid = DSL_Region_Verify_PU(pu_info, NULL);
+    calls_valid = DSL_Call_ABI_Image_Validate_PU(pu_info, NULL);
+    restored = image_valid && events_valid && runtime_valid && region_valid &&
+               calls_valid && restored;
     if (!restored)
         Fail_FmtAssertion
-            ("CKKS expansion rollback failed; compilation must stop");
+            ("CKKS expansion rollback failed: region=%u runtime=%u "
+             "calls=%u definitions=%u strings=%u image=%u events=%u "
+             "runtime_image=%u region_verify=%u call_abi=%u; "
+             "compilation must stop",
+             region_restored, runtime_restored, calls_restored,
+             definitions_restored, strings_restored, image_valid,
+             events_valid, runtime_valid, region_valid, calls_valid);
     memset(results, 0, request->step_count * sizeof(*results));
     return DSL_IR_CKKS_Report
                (diagnostic, "transaction rolled back", 0);

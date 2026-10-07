@@ -24,6 +24,28 @@ implementation of each ABI call is responsible for its certified internal
 circuit. This is not permission to skip CKKS state, key, depth, layout, or
 numerical-equivalence checks before the call is emitted.
 
+The selected primary `-O0` codegen is **CKKS2C**: a provider-private CKKS evaluator
+compiled into the ACE adapter, while the public generated-C application
+retains the nine ABI v1 semantic operations. The evaluator's primitive calls
+are internal adapter implementation details, not new public ABI calls. The
+pinned ACE compiler uses CKKS-to-C for non-ANT providers and POLY-to-C for
+ANT; an ANT-linked CKKS-to-C evaluator therefore needs a reviewed new
+high-level facade over `rt_ant`, not an assertion that this path already
+exists. See `FHE-SYNC6-ACE-CKKS-C-STAGING.md` for source evidence, the
+plaintext-data contract, and the certification order.
+The first `-O0` `openpy` invocation selects a CKKS2C early exit, so no POLY
+lowering or POLY2C runs on that invocation. The backend path itself is
+continuous: with the early exit unselected, the same CKKS gate continues
+through CKKS-to-POLY lowering and POLY2C once those phases are implemented
+and verified. An unsupported CKKS step or missing ANT facade capability
+fails closed; it must not trigger an implicit POLY2C retry. The proposed
+`-FHE:codegen=ckks2c|poly2c` selector is not implemented yet and needs
+main/driver contract review; see `FHE-SYNC6-ACE-CKKS-C-STAGING.md`.
+The private evaluator and canonical public-call output are siblings from the
+same reopened `.ckks_ops.B`; the private emitter must read the primitive
+graph before the separate grouped-lowering copy retires it. Their event and
+descriptor identities are cross-checked before either output is published.
+
 The FHE-owned `fhe_ckks_abi_origin_audit.py` is the read-only precursor to
 this gate. It joins the separately reopened six-PU source `.B` trace, its
 87-static/147-dynamic schedule, the >=9-variant/19-bound context plan, and the

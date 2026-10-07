@@ -79,19 +79,29 @@ static BOOL
 VHO_FHE_CKKS_Step_Attributes_Valid(
     const DSL_CKKS_EXPANSION_STEP &step,
     const DSL_FHE_CKKS_VALUE_STATE_RECORD &state,
-    const DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD &descriptor)
+    const DSL_FHE_ENCRYPTION_DESCRIPTOR_RECORD &descriptor,
+    const DSL_FHE_CKKS_VALUE_STATE_RECORD *unary_input)
 {
   INT32 number = 0;
   switch (step.dsl_operator) {
-  case OPR_DSLCKKSBOOTSTRAP:
+  case OPR_DSLCKKSBOOTSTRAP: {
+    if (unary_input == NULL)
+      return FALSE;
+    const char *reason =
+        VHO_FHE_CKKS_Step_Attribute(step, "attr.reason");
     return VHO_FHE_CKKS_Step_Integer(
                step, "attr.target_level", &number) &&
            number == state.level &&
-           VHO_FHE_CKKS_Step_Attribute(step, "attr.reason") != NULL &&
-           strcmp(VHO_FHE_CKKS_Step_Attribute(step, "attr.reason"),
-                  "PRE_RELU_REFRESH") == 0 &&
+           reason != NULL &&
+           ((unary_input->pending_bootstrap_reason ==
+                 DSL_FHE_BOOTSTRAP_REASON_PRE_RELU_REFRESH &&
+             strcmp(reason, "PRE_RELU_REFRESH") == 0) ||
+            (unary_input->pending_bootstrap_reason ==
+                 DSL_FHE_BOOTSTRAP_REASON_DEPTH_EXHAUSTION &&
+             strcmp(reason, "DEPTH_EXHAUSTION") == 0)) &&
            VHO_FHE_CKKS_Key_Available(
                step, descriptor, DSL_FHE_KEY_BOOTSTRAP, 0);
+  }
   case OPR_DSLCKKSROTATE:
     return VHO_FHE_CKKS_Step_Integer(
                step, "attr.signed_steps", &number) &&
@@ -172,7 +182,28 @@ VHO_FHE_CKKS_Can_Expand_And_Bind_States(
     BOOL no_pending = state.pending_actions == 0 &&
                       state.pending_bootstrap_reason ==
                           DSL_FHE_BOOTSTRAP_REASON_NONE;
-    if (state.id != DSL_FHE_CKKS_VALUE_STATE_INVALID_ID ||
+    DSL_FHE_CKKS_VALUE_STATE_RECORD unary_input;
+    const BOOL unary_step = step.dsl_operator == OPR_DSLCKKSBOOTSTRAP ||
+                            step.dsl_operator == OPR_DSLCKKSROTATE ||
+                            step.dsl_operator == OPR_DSLCKKSRELIN ||
+                            step.dsl_operator == OPR_DSLCKKSRESCALE ||
+                            step.dsl_operator == OPR_DSLCKKSMODSWITCH;
+    if (unary_step &&
+        (step.operand_count != 1 ||
+         !VHO_FHE_CKKS_Operand_State(
+             step, 0, i, states, &unary_input)))
+      return VHO_FHE_CKKS_Expand_Report(
+          diagnostic, "unary CKKS input state is unavailable", i, FALSE);
+    const BOOL descriptor_found = DSL_FHE_Get_Encryption_Descriptor(
+        state.encryption_descriptor_id, &descriptor);
+    const BOOL binding_found = DSL_FHE_Find_Tensor_Binding(
+        step.result_ty, state.encryption_descriptor_id, &binding);
+    const BOOL attributes_valid = descriptor_found &&
+        VHO_FHE_CKKS_Step_Attributes_Valid(
+            step, state, descriptor,
+            unary_step ? &unary_input : NULL);
+    const BOOL result_state_invalid =
+        state.id != DSL_FHE_CKKS_VALUE_STATE_INVALID_ID ||
         state.value_id != DSL_IR_VALUE_INVALID_ID ||
         state.state_version != 1 ||
         state.scheme != DSL_FHE_SCHEME_CKKS ||
@@ -199,30 +230,34 @@ VHO_FHE_CKKS_Can_Expand_And_Bind_States(
         (step.dsl_operator == OPR_DSLCKKSRESCALE &&
          (state.pending_actions & DSL_FHE_CKKS_PENDING_RESCALE) != 0) ||
         step.result_ty == TY_IDX_ZERO ||
-        !DSL_FHE_Get_Encryption_Descriptor(
-            state.encryption_descriptor_id, &descriptor) ||
+        !descriptor_found ||
         descriptor.scheme != DSL_FHE_SCHEME_CKKS ||
         descriptor.value_class != expected_class ||
         descriptor.config_id == DSL_FHE_CONFIG_INVALID_ID ||
         (descriptor.slot_count != 0 &&
          descriptor.slot_count != state.slot_count) ||
-        !DSL_FHE_Find_Tensor_Binding(
-            step.result_ty, state.encryption_descriptor_id, &binding) ||
-        !VHO_FHE_CKKS_Step_Attributes_Valid(step, state, descriptor))
+        !binding_found || !attributes_valid;
+    if (result_state_invalid) {
+      if (diagnostic != NULL)
+        fprintf(diagnostic,
+                "CFHEIR-STATE-001 detail: step=%u op=%u ty=%u "
+                "descriptor=%u found=%d binding=%d attributes=%d "
+                "class=%u level=%d scale=%d components=%u precision=%d "
+                "slots=%u pending=0x%x reason=%u terminal=%d\n",
+                i, step.dsl_operator, step.result_ty,
+                state.encryption_descriptor_id, descriptor_found,
+                binding_found, attributes_valid, state.value_class,
+                state.level, state.scale_bits, state.component_count,
+                state.precision_bits, state.slot_count,
+                state.pending_actions, state.pending_bootstrap_reason,
+                terminal_step);
       return VHO_FHE_CKKS_Expand_Report(
           diagnostic, "result lacks a concrete compatible CKKS state",
           i, FALSE);
-    if (step.dsl_operator == OPR_DSLCKKSBOOTSTRAP ||
-        step.dsl_operator == OPR_DSLCKKSROTATE ||
-        step.dsl_operator == OPR_DSLCKKSRELIN ||
-        step.dsl_operator == OPR_DSLCKKSRESCALE ||
-        step.dsl_operator == OPR_DSLCKKSMODSWITCH) {
-      DSL_FHE_CKKS_VALUE_STATE_RECORD input;
-      if (step.operand_count != 1 ||
-          !VHO_FHE_CKKS_Operand_State(
-              step, 0, i, states, &input) ||
-          !VHO_FHE_CKKS_Verify_Unary_State_Transfer(
-              step, input, state, diagnostic))
+    }
+    if (unary_step) {
+      if (!VHO_FHE_CKKS_Verify_Unary_State_Transfer(
+              step, unary_input, state, diagnostic))
         return VHO_FHE_CKKS_Expand_Report(
             diagnostic, "unary CKKS state transfer failed", i, FALSE);
     }

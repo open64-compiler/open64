@@ -22,6 +22,13 @@ typedef struct {
     UINT32 reference_count;
     UINT32 formal_count;
     UINT32 pu_identity_count;
+    UINT32 runtime_value_projection_count;
+    UINT32 runtime_call_projection_count;
+    UINT32 retired_formal_count;
+    UINT32 retired_call_argument_count;
+    UINT32 runtime_input_count;
+    UINT32 runtime_input_binding_count;
+    UINT32 runtime_input_call_count;
 } DSL_PU_CLONE_IMAGE_SAVEPOINT;
 
 extern BOOL DSL_IR_Image_Clone_PU_Values

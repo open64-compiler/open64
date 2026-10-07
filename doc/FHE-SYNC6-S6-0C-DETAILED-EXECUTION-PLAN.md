@@ -1,12 +1,72 @@
 # S6-0c Detailed Execution Plan: Complete CKKS Semantic IR
 
-Status: execution in progress, not certification. S6-0a and the generic
-resident whole-PU transaction are merged. C0 has a retained, independently
-rerun source-family artifact replay; C1 has a structured canonical event-plan
-serializer and linked whole-PU grouping fixture. Neither is yet the native
-program policy or a complete real circuit producer. No
-`secure_resnet20.ckks_ops.B` exists. The normative gate is
-`FHE-SYNC6-CKKS-IR-CONFORMANCE-GATE.md`.
+Status: execution in progress, with the full Conv subgraph certified as
+CKKS-conforming. S6-0a and the generic resident whole-PU transaction are
+merged. C0 has a retained, independently rerun source-family artifact replay;
+C1 has a structured canonical event-plan serializer and linked whole-PU
+grouping fixture. The 2026-10-06 Conv checkpoint described below closes the
+Conv portion of C2 and C6/C7, but it is not the complete S6-0c circuit: ReLU,
+residual add, pooling, flatten, and linear still require executable CKKS
+expansion. The normative gate is `FHE-SYNC6-CKKS-IR-CONFORMANCE-GATE.md`.
+The end-to-end copy-on-write parameter path, from immutable source SafeTensors
+through derived plaintext side assets and explicit `ckks.encode` nodes, is
+documented for implementers in
+`FHE-SYNC6-RAW-TO-CKKS-PLAINTEXT-FLOW.md`.
+
+## Conv CKKS Conformance Checkpoint
+
+The real ten-PU specialized ResNet artifact now lowers all 21 physical Conv
+definitions to explicit CKKS semantic WHIRL. The all-PU materialization
+checkpoint reports 5,691 authenticated column-first feature rows, 21 expanded
+biases, 104 logical stride-compaction masks, and 28,927 CKKS operations. A
+separate rebuilt `ir_b2a -st -src` process reopens the published binary and
+proves:
+
+- 10 `FUNC_ENTRY`s and nonzero `secure_resnet20.py` source locations;
+- zero executable physical `OPR_DSLCONV2D` nodes;
+- exactly 21 retained Conv image rows marked `status=lowered` with
+  `relation=ckks_expansion`;
+- 28,927 executable physical CKKS nodes; and
+- context-owned external row/bias/mask references to the atomically published
+  plaintext side asset.
+
+Retained evidence is under
+`/private/tmp/open64-fhe-sync6-s6-0c/artifacts/conv-ckks-materialized-final/`.
+The principal hashes are:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `secure_resnet20.ckks_ops.B` | `f7c4c3eff5dbff0af6d1fb5aecf149ae0c8fbaffb4a697db68842e575d1d6bd6` |
+| `secure_resnet20.ckks_ops.B.conv-plaintexts.f32` | `50772c653e1c4a5fbd6ff253a5799d418a4f2fa8f61f55ffa389fae391f24e2e` |
+| `secure_resnet20.ckks_ops.T` | `58cd605273b1b4b14f46b2b78ef194cdbb98bbc97e0e6c2c6a3edbe02c953dd8` |
+
+The side asset is 202,620,928 bytes. Tensor TCON interning is semantic, so
+byte-identical masks in different Conv contexts intentionally share one
+canonical physical range. The producer must use the physical range returned
+by the interned TCON and omit duplicate bytes; it must not retain a later
+candidate offset that disagrees with the canonical TCON. Generated values
+remain context-distinct through geometry/variant/stage provenance even when
+their bytes and TCON are shared.
+
+The grouped-expansion fault-injection regression also proves that a late
+failure restores physical reads, call ABI values, REGION interfaces, managed
+DSL/CKKS rows, strings, symbols, and runtime projections. Runtime projection
+redirection is strict when the optional runtime-interface image is present;
+its absence remains legal for pre-projection fixtures. The stale-destination
+negative rejects with `CFHEMAT-CHECKPOINT-006`, preserves the published
+binary hash, and leaves no `.tmp` file.
+
+This artifact name records the intended stage, not completion of every model
+operator. Its trace still contains 19 executable `common.relu` definitions,
+9 residual adds, one global-average pool, flatten, and linear. It therefore
+must not be used as the final S6-0c gate or passed to CKKS2C yet.
+
+Two C2 main/common prerequisites are implementation-complete and accepted by
+the FHE consumer. The source-derived typed-row transaction merged through PR
+#173. The source-free generated-mask transaction merged through PR #174 at
+`0325ce74`. The first FHE-owned admission fixture consumes both services and
+reopens mapped row/mask evidence. This does not close C2; the producer must
+still materialize and verify the complete real-model recipes.
 
 C2's first bounded column-first Conv recipe is implemented and checked
 against both a nonuniform stem-like fixture and the replay-authenticated
@@ -22,7 +82,14 @@ all 5,211 row ranges/hashes, repeats byte-for-byte, and rejects mid-write
 failure without final files. These are host evidence only: the Python test
 fixture is not a backend producer, and the row values are not yet in WHIRL.
 The generic rank-4-source to rank-1-result value transaction requested in
-`FHE-SYNC6-TYPED-ROW-VALUE-HANDOFF.md` remains main/common-owned.
+`FHE-SYNC6-TYPED-ROW-VALUE-HANDOFF.md` remains main/common-owned. Its reviewed
+implementation merged through PR #173 and is now the authoritative typed-row
+service for the FHE producer.
+The direct bit-move stride packer below is the simpler `-O0` semantic
+candidate. Fused-diagonal packing is retained only as `-O1` research.
+The direct packer now has a provider-independent explicit CKKS event-plan
+constructor for every captured Conv shape. It is not yet bound to all live
+model identities or published as mapped WHIRL.
 
 ## Boundary And Inputs
 
@@ -63,6 +130,11 @@ final number is measured after *all* event plans exist.
    compares full bytes; SHA-256 is only a review fingerprint. Exclude
    source positions, names, diagnostics, and per-caller B TCON bytes from
    equality only when exact formal/actual binding is proved.
+   Variant-local external Conv rows are constants, not formals: include their
+   ordered transform identities and authenticated content digests in plan
+   equality, and split variants whenever those bytes differ. Before
+   materialization, prove each caller-owned folded source is the exact
+   call-ABI actual for that Conv context.
 3. Specialize complete source PUs before executable mutation. Equal
    whole-PU signatures reuse one variant; any incompatible operation,
    layout, key, rotation, level, precision, or operand TY splits it. Use
@@ -123,6 +195,63 @@ folded-byte hashes are retained in separate local manifests beside the
 test log. These are proof of the fixed stride-one recipe over three
 captured sizes, not graph-wide CKKS state or key certification.
 
+The next FHE-owned slice constructs canonical executable event plans for all
+captured Conv shape families. `fhe_ckks_conv_plan.{h,cxx}` emits explicit
+input duplication, row rotation, external plaintext encode, plaintext
+multiply, rescale, accumulation, bias encode, and bias add operations. For
+stride-two source operators it first evaluates the admitted high-resolution
+1x1 or 3x3 Conv, then applies the accepted sequential selection/bit-move
+network with an explicit `DEPTH_EXHAUSTION` capacity refresh. No provider call
+or implicit state repair is hidden in the plan. The plan is accepted by the
+same canonical serializer used for whole-PU variant equality, and
+`fhe_ckks_conv_expand.{h,cxx}` is the only adapter to the reviewed native CKKS
+expansion/state-binding transaction.
+
+The focused plan census is:
+
+| Captured family | Canonical steps | Encoded plaintexts | Final level |
+| --- | ---: | ---: | ---: |
+| stride-one `3 -> 16`, width 32, 3x3 | 147 | 28 | input - 1 |
+| stride-one `16 -> 16`, width 32, 3x3 | 722 | 145 | input - 1 |
+| stride-one `32 -> 32`, width 16, 3x3 | 1,442 | 289 | input - 1 |
+| stride-one `64 -> 64`, width 8, 3x3 | 2,882 | 577 | input - 1 |
+| stride-two `16 -> 32`, width 32, 1x1 | 190 | 44 | 3 |
+| stride-two `16 -> 32`, width 32, 3x3 | 830 | 172 | 3 |
+| stride-two `32 -> 64`, width 16, 1x1 | 264 | 58 | 3 |
+| stride-two `32 -> 64`, width 16, 3x3 | 1,544 | 314 | 3 |
+
+`Encoded plaintexts` counts feature rows, the expanded bias, and
+stride-compaction masks. The four stride-two plans consume 27, 27, 25, and 25
+compaction masks respectively. This closes the per-shape algorithm and
+state-transition construction requirement; it does not close C2/C3
+publication. The remaining producer work is to derive and atomically publish
+every context-owned row, bias, and mask value, specialize shared PUs by
+complete plan bytes, remap clone-local provenance/state, execute native
+expansion for all 21 contexts, and reopen the resulting six-PU family.
+Retained plan evidence is under
+`/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-plan/`.
+
+The complete C2 plaintext family is now produced and independently verified
+for all 21 Conv contexts. The native read-only collector joins each dynamic
+source event to its live `OPR_DSLCONV2D.v2` node, exact callee-identity
+BatchNorm-fold provenance, folded weight/bias TCONs, canonical tensor shapes,
+and source attributes. It preserves source stride while normalizing the
+executable Conv recipe to high-resolution stride one; legal `padding=0,0` for
+1x1 projections remains distinct from nonzero shape/stride/group invariants.
+The side asset contains 5,691 ACE column-first F32 feature rows, 21 expanded
+F32 biases, and 104 explicit F32 stride-compaction masks. Its 5,816 byte
+ranges are contiguous and individually hashed in a deterministic index bound
+to the source replay, source `.B`/`.T`, folded payload, Conv budget, source
+node/value/context/callsite, and folded TCON identities. The retained asset is
+209,436,672 bytes with SHA-256
+`1902378db8d8a9a607616e7f85005b9892d160d0be5deb741e9fc3ed7d648c88`.
+Repeated generation is byte-identical; injected mid-write failure publishes
+no endpoint; modified bytes fail whole-file and range verification. This
+closes plaintext asset completeness for C2, but the values are not yet
+materialized into mapped WHIRL and no Conv source node has yet been replaced.
+Retained evidence is under
+`/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-all-plaintext-test/`.
+
 A separate FHE-owned native arithmetic fixture now exercises the actual
 WHIRL expansion and state-binding transaction on canonical `float32[2]`
 tensors. It lowers exact-shape `common.add.v1` to one `ckks.add.v1`,
@@ -139,6 +268,21 @@ wrong relin key reject before native mutation. The retained focused traces
 are under `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/tensor-arithmetic/`.
 These certify four small operator transformations, not full ResNet event
 planning, Conv assets, runtime arithmetic, or `-O0` numerical accuracy.
+
+The same producer now retains a fifth, separate capacity-refresh fixture.
+It lowers a `common.add` whose left ciphertext is level 7 with pending
+`DEPTH_EXHAUSTION` into explicit `ckks.bootstrap -> ckks.add`. The refresh
+targets level 17 and is followed by an aligned level-17 addition; the
+mapped `.B` reopens with the bootstrap reason, key requirement, source
+provenance, and both value states visible in `ir_b2a -st -src`. Mismatched
+reason or key rejects before native mutation. This validates the FHE
+adapter's generic reason/state/key plumbing only. The fixture reuses the
+existing `pre_relu_refresh_v1` key profile as a planning requirement; it
+does not certify an ACE provider bootstrap at this capacity boundary. It
+does not approve the
+two proposed ResNet stride-two refreshes, their numerical tolerance,
+provider target support, or the full packing network. Retained evidence is
+under `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/tensor-arithmetic-capacity/`.
 
 The producer-side recipe now also constructs one plaintext diagonal mask
 at a time by grouping every live OIHW term with the same *signed rotation*.
@@ -182,17 +326,22 @@ replay-authenticated folded bytes. The former signed-rotation-group
 alternative has 10,386 masks and would occupy 1.268 GiB as F32 or
 2.536 GiB as F8 at 32,768 slots. Its 5,715-step C1 serializer probe was
 only a capacity test with placeholder operators/states and is **not** the
-ACE-row execution schedule. No legal per-row rotation, accumulation,
-level, scale, key, or encoded-plaintext census has been certified yet.
+ACE-row execution schedule. The subsequent native Conv plan fixture now
+certifies the legal per-row rotation/encode/multiply/rescale/accumulation
+sequence and its concrete level/scale/component/precision tuples for all eight
+captured shape families. Full-model owner/context binding and mapped-image
+publication remain open.
 
 **Proceed with external F32 rows, not lazy runtime derivation.** Keep the
 raw slices and bounded index outside `.B`, authenticate each row and whole
 file, and publish them transactionally before `.ckks_ops.B`. The mapped IR
 must bind each rank-1 F32 external value to its exact source Conv/context
-and make it the direct operand of explicit `ckks.encode`. The current
-same-TY materialization API cannot transform a rank-4 folded weight into
-rank-1 row values; request an atomic typed external-constant service from
-main/common before mapped publication. The ACE worker's `RT_DATA_WRITER`
+and make it the direct operand of explicit `ckks.encode`. The merged same-TY
+materialization API cannot transform a rank-4 folded weight into rank-1 row
+values. Main/common implemented and merged a separate atomic typed
+external-constant service through PR #173. Consume only its returned
+owner-qualified value IDs during mapped publication. The ACE worker's
+`RT_DATA_WRITER`
 envelope and `Pt_from_msg` encoding are S6-0d adapter concerns, not a
 reason to link ACE in this provider-independent stage. The four stride-two
 contexts, C3 evaluator identity, and C4 state alignment remain separate.
@@ -207,6 +356,38 @@ The selected F32 row contract and exact shared API gap are in
 `FHE-SYNC6-TYPED-ROW-VALUE-HANDOFF.md`. The retained diagnostic index is
 `/private/tmp/open64-fhe-sync6-row-assets/first/ace-conv-rows.index.json`;
 its raw F32 side file is adjacent and is not checked into Git.
+
+After PRs #173 and #174 merged, the FHE-owned
+`fhe_ckks_conv_assets.{h,cxx}` admission layer became the only C2 entry point
+for these generic transactions. It proves the exact folded rank-4 F32 OIHW
+source, bounded recipe, dense feature-row ordinal sequence, rank-1 F32 result
+length, fixed transformation identity, and exact authenticated
+geometry/variant digests before delegating mutation. It does not create WN,
+ST, TY, TCON, or mapped rows directly. A linked fixture atomically rejects a
+bad row ordinal and wrong geometry digest, then materializes all nine rows for
+a legal `2x1x3x3`, `4x4` Conv plus two source-free masks. Separate-process
+`ir_b2a -st -src` shows owner-qualified typed-row lineage, generated-mask
+geometry/variant provenance, external ranges, canonical TYs, and nonzero
+source positions. Retained evidence is under
+`/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-assets/`.
+This is a bounded native integration fixture, not the 5,211-row ResNet
+materialization, an executable Conv DAG, or CKKS state/key certification.
+
+The next FHE-owned clear-schedule check follows ACE's **unblocked** feature
+row loop after input duplication. For every row it records the signed
+spatial/channel rotation, raw F32 coefficient row, and distinct nonzero
+rotation requirements, then clear-evaluates rotate/multiply/accumulate plus
+bias. The independent OIHW tensor oracle matches all active outputs for the
+synthetic stem and replay-authenticated stem, call1 Conv2, call4 Conv2, and
+call7 Conv2 fixtures. Their input-copy counts are 7, 2, 2, and 2;
+distinct row/duplication signed rotations are 32, 144, 288, and 576.
+These four fixtures cover every admitted stride-one channel/width family.
+The retained trace is
+`/private/tmp/open64-fhe-sync6-row-schedule/run.log`. This does not yet
+serialize legal CKKS steps or prove scale, level, precision, encoded
+plaintext state, or runtime key availability. ACE fast blocking remains
+outside the O0 correctness schedule. The copy count follows ACE's power-of-two
+slot-cap rule; a `Cin=1, Cout=32, H=W=32` boundary uses 32 copies, not 33.
 
 ### C2 Stride-Two Mapping Decision
 
@@ -243,7 +424,7 @@ offsets; runtime rotation-key generation may further canonicalize them.
 | `32x16x16 -> 64x8x8` | `1x1` | 2,048 | 131,072 | 12,031 | 64 |
 | `32x16x16 -> 64x8x8` | `3x3` | 18,432 | 1,083,392 | 12,153 | 64 |
 
-The bounded candidate for review is **high-resolution Conv followed by
+The `-O0` candidate for review is **high-resolution Conv followed by
 an explicit local stride compaction**. Perform the ordinary constant-
 rotation stride-one convolution into its sparse/high-resolution plane,
 then select and pack the even spatial coordinates into the declared dense
@@ -305,24 +486,136 @@ the projection `cnn_conv2d_11`, normal-path `cnn_conv2d_16`, and
 `common.residual_add` contract has `shape_check=exact`. This proves a
 *layout/type* join, not ciphertext
 level/scale/precision compatibility of the two residual paths. The
-14-level compaction is too costly to admit without checking the actual
-context-specific post-ReLU capacity and any explicit alignment steps.
-No implicit bootstrap or state repair is allowed. **Stop C2 stride-two
-emission here** pending a separately reviewed lower-depth local packer,
-an approved state schedule, or a general layout planner decision. The
+read-only `fhe_ckks_stride_all_contexts_proof.py` now authenticates the
+source trace, folded payload, and independently regenerated Conv budget,
+then checks all four captured stride-two contexts: both 1x1 projections
+and both 3x3 normal-path Convs at callsites 4 and 7. High-resolution
+Conv followed by the sequential compaction network matches an independent
+direct stride-two NCHW oracle with zero clear-slot error in all four
+contexts. The first shape has 8,192 active output slots and 14 symbolic
+mask levels; the second has 4,096 and 13. Duplicate, missing, or unknown
+context, wrong trace/weight hash, and changed payload reject without a report.
+Joining both branches to the approved static CKKS schedule proposes one
+`DEPTH_EXHAUSTION` refresh at level 18 for `layer2.0` and level 17 for
+`layer3.0`; the respective normal and projection outputs meet at symbolic
+level 3. A changed schedule level rejects before report publication.
+The retained proof and negative logs are under
+`/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/stride-all-four/`.
+This proves clear geometry only, not generated mask values in WHIRL.
+
+For the first shape, 14-level compaction exceeds the level-7 input
+capacity; correctness requires an explicit reviewed capacity refresh,
+not an unrecorded level reduction.
+The simple `-O0` proposal refreshes the block input once before the normal
+and projection branches fork, then applies the same sequential bit-move
+network to both stride-two Convs. The existing generic reason
+`DEPTH_EXHAUSTION` identifies this separate boundary; it is not one of the
+19 mandatory `PRE_RELU_REFRESH` boundaries and must not be merged with one.
+The read-only schedule join below proposes post-refresh levels 18 and 17
+for `layer2.0` and `layer3.0`, respectively. The FHE unary transfer now
+admits an explicit `DEPTH_EXHAUSTION` bootstrap with matching reason/state
+and key preflight; a separate mapped fixture proves bootstrap followed by
+addition. This does not certify the actual two ResNet refresh boundaries,
+provider target levels, precision, or numerical accuracy. No implicit
+bootstrap or state repair is allowed. **Stop C2 stride-two emission here**
+pending capacity, precision, key, and numerical certification of this
+simple schedule. The
 proof does not complete C2 or authorize `.ckks_ops.B` publication.
+
+#### O1 Fused-Diagonal Research
+
+The same ordered bit moves can be composed in bounded groups. For
+each group, partition its selected input slots by their exact cumulative
+signed rotation. Multiply the input by one 0/1 plaintext mask per partition,
+rotate each masked ciphertext once, then add all terms. Every selected source
+slot belongs to exactly one partition and every selected output slot has
+exactly one predecessor. This is a linear masked-rotation transform, not a
+change to Conv semantics or an implicit bootstrap. The first group includes
+the even-position selection, so it needs no separate selection level.
+
+The read-only `fhe_ckks_stride_compaction_proof.py` compares this fused
+transform both with the original 13-move network and an independent
+stride-two Conv oracle. It balances 13 moves as `4+4+5` for the replay-
+authenticated call4 `16x32x32 -> 32x16x16` projection: 16, 16, and 32
+diagonals, 64 exact masks, 61 distinct nonzero signed rotations, and three
+symbolic plaintext-mask levels. With the preceding high-resolution Conv
+multiply, the symbolic total is four levels, versus fifteen for the
+sequential proof. The other captured projection shape
+`32x16x16 -> 64x8x8` uses `4+4+4`: 48 masks, 45 nonzero rotations, and
+three packing levels; its oracle uses deterministic synthetic 1x1 weights,
+not model bytes. The `4x4 -> 2x2` counterexample composes into four masks
+and one packing level. Exact per-stage mask SHA-256 values, rotations,
+cardinalities, source-family hash, and zero-error clear checks are retained
+in `/private/tmp/open64-fhe-sync6-s6-0c/artifacts/focused/conv-recipe/stride-compaction-o0-vs-o1-proof.json`.
+
+The explicit shallower candidate groups up to seven moves: call4 uses
+`6+7`, with 192 masks and 190 nonzero signed rotations, and the other
+projection shape uses `6+6`, with 128 masks and 126 rotations. Both have
+two symbolic packing levels and match the same clear oracles exactly.
+At 32,768 slots and F32 mask storage, these alternatives require about
+24 MiB and 16 MiB of uncompressed mask bytes respectively, before any
+runtime encoding or key material. They trade extra assets and rotation
+keys for one level of capacity. Neither fused grouping is selected for
+`-O0` emission; both require later `-O1` equivalence, state, and
+profitability review against the straightforward baseline.
+
+The optional schedule-manifest join in the same proof pins
+`doc/fhe-policy/sync3-relu/ckks-schedule-manifest.json` at SHA-256
+`27fe104aa5a159baefd0255c82e0c9193c1ecdf28b73f97e2f8830bb1444ae62`.
+For both `layer2.0` and `layer3.0`, the preceding block's approved ReLU
+output is level 7. The proposed `-O0` `DEPTH_EXHAUSTION` bootstrap of the
+shared block input targets level 18 and 17 respectively. One high-resolution
+Conv plaintext multiply plus 14 or 13 sequential packing levels then leaves
+both the normal Conv1 and projection branches at level 3. The main branch
+separately performs its mandatory pre-ReLU refresh to level 15, evaluates
+the approved depth-11 ReLU to level 4, and uses one level for Conv2, also
+reaching level 3 before residual add. This is a **symbolic level join**, not
+proof of supported extra bootstrap targets, compatible scales, noise,
+precision, plaintext encoding, or available keys. It adds two proposed
+capacity refreshes to the 19 mandatory pre-ReLU refreshes; acceptance must
+measure their numerical effect and preserve both reasons in the IR.
+
+The fused three-stage network can reach level 3 from the level-7 input
+without that extra capacity refresh, but reducing depth is an `-O1`
+optimization question. It does not displace the simpler `-O0` recipe.
+
+Neither path is **an executable CKKS schedule** yet. For `-O0`, C4 must
+prove the explicit extra bootstrap, all 14/13 individual mask/rotate/add
+transitions, result scales and precision, key availability, and residual
+alignment. C2 must validate transformed row and mask assets and
+producer-side typed value binding. The fused group's parallel masks,
+rotations, and rescale remain a later optimization proof. Until the `-O0`
+gates pass, reject stride-two emission; neither clear-slot oracle alone
+authorizes `secure_resnet20.ckks_ops.B` publication.
+
+The weight-derived typed-row API is not a mask-materialization API: these
+0/1 masks come from proved slot geometry, not an external rank-4 weight or
+implicit-zero source. Main/common has implemented and FHE has accepted a
+separate backend-safe transaction for source-free generated external tensor
+constants with canonical rank-1 F32 TY, side-file TCON/range/checksum,
+active-PU insertion and source position, and stable
+geometry/stage/diagonal provenance. It merged through PR #174 and is consumed
+only through the FHE admission layer above. FHE owns mask bytes, variant
+binding, and `ckks.encode` state/key checks.
+`FHE-SYNC6-GENERATED-MASK-GEOMETRY-MANIFEST.md` defines the canonical
+manifest bytes, exact geometry digest, variant-signature digest, and
+stage/diagonal coverage that the FHE producer must validate before invoking
+that transaction.
+Do not attach false `converted_from` weight lineage, insert raw WN/ST nodes,
+or embed the full F32 masks in `.B`. PRs #173 and #174 provide the only native
+mutation paths for source-derived rows and source-free masks, respectively.
 
 | Slice | FHE-owned work | Focused exit evidence |
 | --- | --- | --- |
 | C0: replay/input gate | Add a deterministic input manifest and native read-only gate joining six-PU images, 87/147 events, 19 contexts, source/payload/coefficient hashes, and FHE/DSL validators. Reject the older `.fhe.B` and unsupported config before planning. | Stable hashed census, `-st -src` with six FUNC_ENTRYs/nine calls/nonzero source interleave; wrong hash or missing context rejects without output. |
 | C1: canonical plan serializer | Define a bounded structured per-event CKKS step plan and versioned byte encoding for operation/operand/group-output/TY/layout/state/key/rotation/B-role facts. Validate before encoding; opaque producer-supplied bytes alone are not a legal plan. | Equal semantics encode identically despite allocation/name order; changed non-ReLU operation/state/key/rotation changes bytes. Missing field, bad operand, duplicate event, or truncated encoding rejects. Retain decoded plan and hashes. |
-| C2: non-ReLU recipes | Use the selected ACE-aligned column-first, raw-F32 transformed feature rows as external plain operands of explicit `ckks.encode`. Join every row to verified folded bytes and exact source/call context; retain the independent signed-rotation clear oracle. Prove row-indexed rotations, accumulation, bias, and state before expanding the 13 Conv definitions/21 contexts. Do not silently substitute input im2col, fast blocking, or runtime mask derivation. Then cover residual/pool/flatten/linear. Unsupported cases fail closed. | Exact F32 bytes, row order, per-context digests, and tamper negatives first; main-owned typed external-value binding next; then per-operator oracles and measured materialized-IR rotation/key/state census. Stop for graph-wide layout changes or hidden state repair. |
+| C2: non-ReLU recipes | Use the selected ACE-aligned column-first, raw-F32 transformed feature rows as external plain operands of explicit `ckks.encode`. Join every row to verified folded bytes and exact source/call context; retain the independent signed-rotation clear oracle. Prove row-indexed rotations, accumulation, bias, and state before expanding the 21 specialized Conv definitions. Do not silently substitute input im2col, fast blocking, or runtime mask derivation. Then cover residual/pool/flatten/linear. Unsupported cases fail closed. | **Conv portion complete:** PRs #173/#174 provide native row/mask creation; the real ten-PU checkpoint materializes 5,691 rows, 21 biases, 104 logical masks, and 28,927 CKKS operations. Separate-process inspection proves zero live Conv and 21 lowered Conv provenance rows. Residual/pool/flatten/linear remain open. |
 | C3: ReLU recipe | In each of 19 contexts generate `ckks.bootstrap` with `PRE_RELU_REFRESH` and target 15/17/18, actual B materialization/encode/normalization, approved ordered degree-7/15/13 Chebyshev/Clenshaw stages, and reconstruction. Bootstrap does not compute ReLU. | 19 refreshes with targets 15x16/17x1/18x2, stage depth 3+4+4=11, coefficient bytes/order/hash, and independent clear polynomial oracle. Wrong B/reason/target/stage/context rejects. |
 | C4: state/requirement propagation | Transfer exact descriptor/config, cipher/plain class, TY/layout/slots, level/scale/components/precision, pending actions, key class and signed rotation through every proposed result. Insert explicit alignment/rescale/relin/encode steps when the reviewed recipe requires them. Recompute depth/keys/rotations from the DAG. | Unary/binary and cross-operator positives; missing key, wrong rotation, depleted level, low precision, mismatched state/TY/slot, forward reference, or unresolved action rejects before mutation. Retain operation/key/rotation/depth report. |
 | C5: whole-PU policy | Group byte-identical complete PU plans, register with `DSL_PU_Transaction_Register_Policy`, map variants to source PU/value/static ordinal, add B formals, route nine calls and bind 18 called B actuals plus one root B TCON. Use owner-qualified clone-value results. Measure variant count after C2-C4. | Equal contexts reuse, changed non-ReLU plan splits, two ReLUs keep two B formals, and 129 existing call-ABI roles remain correct. Missing actual, wrong owner/TY, incomplete signature or duplicate route rejects before apply. Retain variant/call/origin report. |
-| C6: expansion/all-PU gate | Turn reviewed plans into `DSL_CKKS_EXPANSION_REQUEST`s and call `VHO_FHE_CKKS_Expand_And_Bind_States` for resident variants. Preserve source/group ordinals and returned value IDs. Verify 147 source-context events have complete step coverage, unique source finals, no live Conv/BN/`common.relu`, and concrete state/source position for every live result. | Two-PU shared-callee and full six-source-PU tests; late expansion/binding/image failure publishes nothing. Retain before/after traces and event-to-step/origin-to-clone maps. |
-| C7: mapped checkpoint | Use the existing whole-program checkpoint to write all executable PUs and managed images only after C6. Atomically publish `.ckks_ops.B`; reopen with separate-process `ir_b2a -st -src` and original source pathname. | Retain `.B`, `.T`, source/payload references, phase trace, commands, diagnostics, JSON census and SHA256SUMS. Inspect logical CKKS nodes/direct kids, states, keys/rotations, typed B ABI, origin and source lines. Induced failure leaves no final or `.tmp`. |
-| C8: independent certification | Compare mapped result with input manifest, independent 87/147 census, 19-context policy, clear tensor/slot and polynomial oracles, and fresh state/depth/key/rotation calculation. Run full native syntax/layout and backend-link lanes. | Signed-off report with measured PU/primitive counts, all event/group/final links, 19 bootstraps, no live high-level computation, negative results and artifact hashes. State explicitly that C ABI lowering/provider execution are untested. |
+| C6: expansion/all-PU gate | Turn reviewed plans into `DSL_CKKS_EXPANSION_REQUEST`s and call the native CKKS expansion/state adapter for resident variants. Preserve source/group ordinals and returned value IDs. Verify 147 source-context events have complete step coverage, unique source finals, no live Conv/BN/`common.relu`, and concrete state/source position for every live result. | **Conv portion complete:** all 21 specialized Conv definitions expand transactionally and redirect their runtime projections. The complete all-operator event gate remains open for ReLU, residual/pool/flatten/linear. |
+| C7: mapped checkpoint | Use the existing whole-program checkpoint to write all executable PUs and managed images only after the selected expansion slice validates. Atomically publish `.ckks_ops.B`; reopen with separate-process `ir_b2a -st -src` and original source pathname. | **Conv checkpoint complete:** retained `.B`, `.T`, source positions, side payload and reports reopen cleanly; 21 Conv rows are lowered and no physical Conv remains. Final all-operator C7 evidence remains open, and induced/stale publication failures must continue to leave no final or `.tmp`. |
+| C8: independent certification | Compare mapped result with input manifest, independent 87/147 census, 19-context policy, clear tensor/slot and polynomial oracles, and fresh state/depth/key/rotation calculation. Run full native syntax/layout and backend-link lanes. | Signed-off report with measured PU/primitive counts, all event/group/final links, 19 mandatory pre-ReLU bootstraps plus any separately admitted and reason-tagged capacity refreshes, no live high-level computation, negative results and artifact hashes. State explicitly that C ABI lowering/provider execution are untested. |
 
 ## Ownership And Review Checkpoints
 
@@ -340,9 +633,11 @@ WN/ST/TY or mapped rows to bridge a missing API.
 2. C2 selects ACE-style external F32 transformed rows and explicit
    `ckks.encode` for the O0 Conv plaintext path. The independent grouped
    mask oracle remains a correctness cross-check, not the asset format.
-   Review the rank-4 source to rank-1 row binding with main/common before
-   mapped IR publication. This does not admit ACE fast blocking or
-   MetaKernel O2. If the row-indexed recipe needs graph-wide layout work,
+   The rank-4 source to rank-1 row binding merged through PR #173 and the
+   source-free generated-mask transaction merged through PR #174. The bounded
+   FHE admission fixture consumes both without raw IR mutation. This does not
+   admit ACE fast blocking or MetaKernel O2. If the row-indexed recipe needs
+   graph-wide layout work,
    unexpected state repair, or proliferating cases, stop and quantify the
    gap. After C2-C4, review the complete Conv/ReLU DAG and depth/key/rotation
    census before mutation.
@@ -375,3 +670,9 @@ complete executable steps/provenance/states, 19 explicit pre-ReLU refreshes,
 no live high-level Conv/BN/ReLU, exact typed B dataflow, and measured
 key/rotation/depth/PU-variant census. It neither certifies the frozen
 SYNC-5 C ABI mapping nor admits ACE `FHErt_ant`.
+Its next mandatory `-O0` consumer is the `openpy`-selected CKKS2C early
+exit, which emits a provider-private C evaluator alongside the unchanged
+public ABI-v1 application. Without that early exit, the same verified CKKS
+stage later continues through CKKS-to-POLY lowering and POLY2C. POLY2C is
+not an S6-0c failure fallback; see
+`doc/FHE-SYNC6-ACE-CKKS-C-STAGING.md`.

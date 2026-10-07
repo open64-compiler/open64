@@ -55,6 +55,19 @@ struct VHO_FHE_CKKS_CONV_RECIPE {
   uint32_t plaintext_multiply_depth;
 };
 
+struct VHO_FHE_CKKS_CONV_ROW_SCHEDULE {
+  uint32_t input_copy_count;
+  std::vector<int32_t> duplication_rotations;
+  std::vector<int32_t> row_rotations;
+  std::vector<int32_t> required_signed_rotations;
+};
+
+/* Validate every fixed O0 shape, term, bias, slot, depth, and rotation
+ * invariant of an already constructed recipe without exposing internal
+ * helpers or changing the caller's recipe. */
+bool VHO_FHE_CKKS_Validate_Column_Conv_Recipe(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe, FILE *diagnostic);
+
 /* Build the intentionally narrow O0 correctness recipe from already verified
  * OIHW float32 folded weights and float32 bias. Input and output slots use
  * NCHW channel-major order. The outer construction dimension is each output
@@ -91,6 +104,22 @@ bool VHO_FHE_CKKS_Build_Column_Conv_Rotation_Mask(
 bool VHO_FHE_CKKS_Build_Column_Conv_F32_Row_Bytes(
     const VHO_FHE_CKKS_CONV_RECIPE &recipe, uint32_t feature_row,
     std::vector<unsigned char> *bytes, FILE *diagnostic);
+
+/* Derive ACE's unblocked row-indexed rotation schedule. The input is copied
+ * into disjoint channel blocks before one spatial/channel rotation per F32
+ * feature row. This is structural clear evidence, not CKKS state planning. */
+bool VHO_FHE_CKKS_Build_Column_Conv_Row_Schedule(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe,
+    VHO_FHE_CKKS_CONV_ROW_SCHEDULE *schedule, FILE *diagnostic);
+
+/* Execute the row schedule over zero-tailed clear slots. Reject a malformed
+ * schedule or input before changing the caller's prior output. The distinct
+ * tensor oracle in the focused test certifies the resulting slots. */
+bool VHO_FHE_CKKS_Evaluate_Column_Conv_Rows_Clear(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe,
+    const VHO_FHE_CKKS_CONV_ROW_SCHEDULE &schedule,
+    const std::vector<float> &input_slots,
+    std::vector<double> *output_slots, FILE *diagnostic);
 
 /* Simulate the rotate-then-multiply-by-group-mask accumulation plus bias.
  * Compare this independently with the direct tensor and per-term oracles;

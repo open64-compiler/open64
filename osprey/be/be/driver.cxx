@@ -140,7 +140,9 @@
 #include "dsl_ir_image.h"
 #include "dsl_region.h"
 #include "fhe_checkpoint.h"
+#include "fhe_ckks_conv_specialize.h"
 #include "fhe_convert.h"
+#include "fhe_image.h"
 #include "fhe_materialize.h"
 #include "fhe_runtime_lower.h"
 #include "fhe_unlowered_gate.h"
@@ -2101,12 +2103,12 @@ Preprocess_PU (PU_Info *current_pu)
   }
 #endif
 
-  if (need_fhe_runtime_lower_output) {
+  if (need_fhe_runtime_lower_output || need_fhe_materialization_output) {
     Set_Error_Phase ( "FHE Projected-IR Admission" );
     FmtAssert(!VHO_DSL_Enable_WOPT &&
               DSL_Program_Interface_PU_Is_Committed
                   (PU_Info_proc_sym(current_pu)),
-              ("FHE runtime checkpoint requires a committed projected "
+              ("FHE projected checkpoint requires a committed projected "
                "interface and -O0 DSL pipeline"));
     Check_for_IR_Dump(TP_GLOBOPT, pu, "FHE_PROJECTED_INPUT");
   } else {
@@ -2426,6 +2428,9 @@ Preorder_Process_PUs (PU_Info *current_pu)
 static void
 Process_DSL_PU_Specialization_Checkpoint (PU_Info *program)
 {
+  if (DSL_FHE_Image_Has_Records())
+    FmtAssert(VHO_FHE_CKKS_Register_Conv_Specialization(),
+              ("could not register FHE Conv specialization policy"));
   DSL_PU_TRANSACTION_POLICY policy;
   FmtAssert(DSL_PU_Transaction_Get_Policy(&policy),
             ("DSL PU specialization has no registered policy"));
@@ -2468,6 +2473,8 @@ Process_DSL_PU_Specialization_Checkpoint (PU_Info *program)
     Current_Map_Tab = PU_Info_maptab(pu);
     valid = DSL_PU_Interface_Image_Validate_PU(pu, stderr) &&
             DSL_Call_ABI_Image_Validate_PU(pu, stderr) &&
+            (!DSL_Program_Interface_Image_Has_Records() ||
+             DSL_Program_Interface_Validate_PU(pu, stderr)) &&
             DSL_IR_Typed_External_Tensor_Validate_PU(pu, stderr) &&
             DSL_IR_Generated_External_Tensor_Validate_PU(pu, stderr) &&
             DSL_Region_Verify_PU(pu, stderr);

@@ -32,17 +32,21 @@ bool Finite(float value)
 }
 
 /* Keep the first recipe deliberately smaller than graph-wide layout work:
- * batch one, square spatial plane, 3x3 same Conv, groups one, and one CKKS
- * ciphertext for the complete input and output. This is not a model claim. */
+ * batch one, square spatial plane, admitted 1x1 or 3x3 same Conv, groups one,
+ * and one CKKS ciphertext for the complete input and output. */
 bool Supported(const VHO_FHE_CKKS_CONV_SHAPE &shape)
 {
   if (shape.batch != 1 || shape.input_channels == 0 ||
-      shape.output_channels == 0 || shape.height < 3 ||
-      shape.height != shape.width || shape.kernel_height != 3 ||
-      shape.kernel_width != 3 || shape.stride_height != 1 ||
-      shape.stride_width != 1 || shape.pad_top != 1 ||
-      shape.pad_bottom != 1 || shape.pad_left != 1 ||
-      shape.pad_right != 1 || shape.dilation_height != 1 ||
+      shape.output_channels == 0 || shape.height < shape.kernel_height ||
+      shape.height != shape.width ||
+      (shape.kernel_height != 1 && shape.kernel_height != 3) ||
+      shape.kernel_width != shape.kernel_height ||
+      shape.stride_height != 1 ||
+      shape.stride_width != 1 ||
+      shape.pad_bottom != shape.pad_top ||
+      shape.pad_left != shape.pad_top || shape.pad_right != shape.pad_top ||
+      shape.pad_top != shape.kernel_height / 2 ||
+      shape.dilation_height != 1 ||
       shape.dilation_width != 1 || shape.groups != 1 ||
       shape.slot_count == 0 ||
       (shape.slot_count & (shape.slot_count - 1)) != 0 ||
@@ -56,7 +60,8 @@ bool Supported(const VHO_FHE_CKKS_CONV_SHAPE &shape)
   const uint64_t input = plane * shape.input_channels;
   const uint64_t output = plane * shape.output_channels;
   const uint64_t terms = uint64_t(shape.input_channels) *
-                         shape.output_channels * 9;
+                         shape.output_channels * shape.kernel_height *
+                         shape.kernel_width;
   return input <= shape.slot_count && output <= shape.slot_count &&
          terms <= 65536 &&
          input <= std::numeric_limits<uint32_t>::max() &&
@@ -67,19 +72,20 @@ bool Supported(const VHO_FHE_CKKS_CONV_SHAPE &shape)
 size_t Term_Index(const VHO_FHE_CKKS_CONV_SHAPE &shape,
                   uint32_t oc, uint32_t ci, uint32_t ky, uint32_t kx)
 {
-  return (((size_t(oc) * shape.input_channels + ci) * 3 + ky) * 3 + kx);
+  return (((size_t(oc) * shape.input_channels + ci) *
+           shape.kernel_height + ky) * shape.kernel_width + kx);
 }
 
 /* A rectangular mask excludes spatial wrap; the input channel is selected
  * by the term's rotation, so invalid row/column slots never contribute. */
 bool Valid_Output_Position(uint32_t y, uint32_t x,
                            uint32_t ky, uint32_t kx,
-                           uint32_t height, uint32_t width)
+                           const VHO_FHE_CKKS_CONV_SHAPE &shape)
 {
-  const int64_t input_y = int64_t(y) + ky - 1;
-  const int64_t input_x = int64_t(x) + kx - 1;
-  return input_y >= 0 && input_y < height &&
-         input_x >= 0 && input_x < width;
+  const int64_t input_y = int64_t(y) + ky - shape.pad_top;
+  const int64_t input_x = int64_t(x) + kx - shape.pad_left;
+  return input_y >= 0 && input_y < shape.height &&
+         input_x >= 0 && input_x < shape.width;
 }
 
 /* A recipe is a process-local plan, but reject stale or modified terms before
@@ -93,7 +99,8 @@ bool Valid_Recipe(const VHO_FHE_CKKS_CONV_RECIPE &recipe)
       recipe.active_output_slots !=
           shape.output_channels * shape.height * shape.width ||
       recipe.terms.size() != size_t(shape.output_channels) *
-                             shape.input_channels * 9 ||
+                             shape.input_channels * shape.kernel_height *
+                             shape.kernel_width ||
       recipe.folded_bias.size() != shape.output_channels ||
       recipe.plaintext_multiply_depth != 1)
     return false;
@@ -105,19 +112,22 @@ bool Valid_Recipe(const VHO_FHE_CKKS_CONV_RECIPE &recipe)
   const int64_t plane = int64_t(shape.height) * shape.width;
   for (uint32_t oc = 0; oc < shape.output_channels; ++oc)
     for (uint32_t ci = 0; ci < shape.input_channels; ++ci)
-      for (uint32_t ky = 0; ky < 3; ++ky)
-        for (uint32_t kx = 0; kx < 3; ++kx) {
+      for (uint32_t ky = 0; ky < shape.kernel_height; ++ky)
+        for (uint32_t kx = 0; kx < shape.kernel_width; ++kx) {
           const VHO_FHE_CKKS_CONV_TERM &term =
               recipe.terms[Term_Index(shape, oc, ci, ky, kx)];
-          const uint32_t valid_rows = shape.height - (ky != 1);
-          const uint32_t valid_columns = shape.width - (kx != 1);
+          uint32_t active = 0;
+          for (uint32_t y = 0; y < shape.height; ++y)
+            for (uint32_t x = 0; x < shape.width; ++x)
+              active += Valid_Output_Position(y, x, ky, kx, shape);
           const int32_t rotation = static_cast<int32_t>(
               (int64_t(ci) - oc) * plane +
-              (int64_t(ky) - 1) * shape.width + (int64_t(kx) - 1));
+              (int64_t(ky) - shape.pad_top) * shape.width +
+              (int64_t(kx) - shape.pad_left));
           if (term.output_channel != oc || term.input_channel != ci ||
               term.kernel_y != ky || term.kernel_x != kx ||
               term.signed_rotation != rotation ||
-              term.active_output_slots != valid_rows * valid_columns ||
+              term.active_output_slots != active ||
               !Finite(term.folded_weight))
             return false;
           if (term.folded_weight != 0) {
@@ -149,8 +159,8 @@ bool Build_Rotation_Mask(const VHO_FHE_CKKS_CONV_RECIPE &recipe,
     found = true;
     for (uint32_t y = 0; y < shape.height; ++y)
       for (uint32_t x = 0; x < shape.width; ++x) {
-        if (!Valid_Output_Position(y, x, term.kernel_y, term.kernel_x,
-                                   shape.height, shape.width))
+        if (!Valid_Output_Position(
+                y, x, term.kernel_y, term.kernel_x, shape))
           continue;
         const size_t column = size_t(term.output_channel) * plane +
                               y * shape.width + x;
@@ -167,6 +177,16 @@ bool Build_Rotation_Mask(const VHO_FHE_CKKS_CONV_RECIPE &recipe,
 
 }  // namespace
 
+/* Expose the complete fixed-recipe validator to later FHE semantic consumers
+ * without duplicating its shape, term, slot, and rotation invariants. */
+bool VHO_FHE_CKKS_Validate_Column_Conv_Recipe(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe, FILE *diagnostic)
+{
+  if (!Valid_Recipe(recipe))
+    return Report(diagnostic, "existing Conv recipe is malformed");
+  return true;
+}
+
 /* Preflight the bounded shape and finite folded bytes, then construct a
  * column-first mask/rotation schedule into local storage before publish. */
 bool VHO_FHE_CKKS_Build_Column_Conv_Recipe(
@@ -178,7 +198,8 @@ bool VHO_FHE_CKKS_Build_Column_Conv_Recipe(
   if (recipe == NULL || !Supported(shape))
     return Report(diagnostic, "shape or packing exceeds fixed O0 domain");
   const size_t count = size_t(shape.output_channels) *
-                       shape.input_channels * 9;
+                       shape.input_channels * shape.kernel_height *
+                       shape.kernel_width;
   if (folded_weights == NULL || folded_bias == NULL ||
       weight_count != count || bias_count != shape.output_channels)
     return Report(diagnostic, "folded weight/bias shape disagrees");
@@ -200,8 +221,8 @@ bool VHO_FHE_CKKS_Build_Column_Conv_Recipe(
   const int64_t plane = int64_t(shape.height) * shape.width;
   for (uint32_t oc = 0; oc < shape.output_channels; ++oc)
     for (uint32_t ci = 0; ci < shape.input_channels; ++ci)
-      for (uint32_t ky = 0; ky < 3; ++ky)
-        for (uint32_t kx = 0; kx < 3; ++kx) {
+      for (uint32_t ky = 0; ky < shape.kernel_height; ++ky)
+        for (uint32_t kx = 0; kx < shape.kernel_width; ++kx) {
           const size_t index = Term_Index(shape, oc, ci, ky, kx);
           VHO_FHE_CKKS_CONV_TERM &term = built.terms[index];
           term.output_channel = oc;
@@ -210,7 +231,8 @@ bool VHO_FHE_CKKS_Build_Column_Conv_Recipe(
           term.kernel_x = kx;
           term.signed_rotation = static_cast<int32_t>(
               (int64_t(ci) - oc) * plane +
-              (int64_t(ky) - 1) * shape.width + (int64_t(kx) - 1));
+              (int64_t(ky) - shape.pad_top) * shape.width +
+              (int64_t(kx) - shape.pad_left));
           term.folded_weight = folded_weights[index];
           term.active_output_slots = 0;
         }
@@ -222,10 +244,9 @@ bool VHO_FHE_CKKS_Build_Column_Conv_Recipe(
     const uint32_t y = (column / shape.width) % shape.height;
     const uint32_t x = column % shape.width;
     for (uint32_t ci = 0; ci < shape.input_channels; ++ci)
-      for (uint32_t ky = 0; ky < 3; ++ky)
-        for (uint32_t kx = 0; kx < 3; ++kx)
-          if (Valid_Output_Position(y, x, ky, kx,
-                                    shape.height, shape.width))
+      for (uint32_t ky = 0; ky < shape.kernel_height; ++ky)
+        for (uint32_t kx = 0; kx < shape.kernel_width; ++kx)
+          if (Valid_Output_Position(y, x, ky, kx, shape))
             ++built.terms[Term_Index(shape, oc, ci, ky, kx)]
                   .active_output_slots;
   }
@@ -274,13 +295,12 @@ bool VHO_FHE_CKKS_Evaluate_Column_Conv_Clear(
     const uint32_t x = column % shape.width;
     double sum = recipe.folded_bias[oc];
     for (uint32_t ci = 0; ci < shape.input_channels; ++ci)
-      for (uint32_t ky = 0; ky < 3; ++ky)
-        for (uint32_t kx = 0; kx < 3; ++kx) {
+      for (uint32_t ky = 0; ky < shape.kernel_height; ++ky)
+        for (uint32_t kx = 0; kx < shape.kernel_width; ++kx) {
           const VHO_FHE_CKKS_CONV_TERM &term =
               recipe.terms[Term_Index(shape, oc, ci, ky, kx)];
           if (term.folded_weight == 0 ||
-              !Valid_Output_Position(y, x, ky, kx,
-                                     shape.height, shape.width))
+              !Valid_Output_Position(y, x, ky, kx, shape))
             continue;
           const int64_t rotated =
               (int64_t(column) + term.signed_rotation +
@@ -314,16 +334,20 @@ bool VHO_FHE_CKKS_Build_Column_Conv_F32_Row_Bytes(
   const VHO_FHE_CKKS_CONV_SHAPE &shape = recipe.shape;
   if (bytes == NULL || sizeof(float) != 4 ||
       !std::numeric_limits<float>::is_iec559 || !Valid_Recipe(recipe) ||
-      feature_row >= shape.input_channels * 9)
+      feature_row >= shape.input_channels * shape.kernel_height *
+                         shape.kernel_width)
     return Report(diagnostic, "F32 feature row or recipe is invalid");
   const uint32_t plane = shape.height * shape.width;
   std::vector<unsigned char> result(recipe.active_output_slots * 4, 0);
   for (uint32_t oc = 0; oc < shape.output_channels; ++oc) {
-    const uint32_t feature =
-        (feature_row + oc * 9) % (shape.input_channels * 9);
-    const uint32_t ci = feature / 9;
-    const uint32_t ky = (feature % 9) / 3;
-    const uint32_t kx = feature % 3;
+    const uint32_t kernel_size =
+        shape.kernel_height * shape.kernel_width;
+    const uint32_t feature = (feature_row + oc * kernel_size) %
+                             (shape.input_channels * kernel_size);
+    const uint32_t ci = feature / kernel_size;
+    const uint32_t ky =
+        (feature % kernel_size) / shape.kernel_width;
+    const uint32_t kx = feature % shape.kernel_width;
     const float weight = recipe.terms[Term_Index(shape, oc, ci, ky, kx)]
                              .folded_weight;
     if (weight == 0)
@@ -332,8 +356,7 @@ bool VHO_FHE_CKKS_Build_Column_Conv_F32_Row_Bytes(
     memcpy(&bits, &weight, sizeof(bits));
     for (uint32_t y = 0; y < shape.height; ++y)
       for (uint32_t x = 0; x < shape.width; ++x) {
-        if (!Valid_Output_Position(y, x, ky, kx,
-                                   shape.height, shape.width))
+        if (!Valid_Output_Position(y, x, ky, kx, shape))
           continue;
         const size_t offset =
             (size_t(oc) * plane + y * shape.width + x) * 4;
@@ -343,6 +366,114 @@ bool VHO_FHE_CKKS_Build_Column_Conv_F32_Row_Bytes(
       }
   }
   bytes->swap(result);
+  return true;
+}
+
+/* An unblocked ACE row r selects its input channel and kernel offset.
+ * Duplicating the input makes that one rotation valid for every output
+ * channel, whose row coefficient selects the rotated feature for each output
+ * channel modulo the complete input-feature row count. */
+bool VHO_FHE_CKKS_Build_Column_Conv_Row_Schedule(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe,
+    VHO_FHE_CKKS_CONV_ROW_SCHEDULE *schedule, FILE *diagnostic)
+{
+  if (schedule == NULL || !Valid_Recipe(recipe))
+    return Report(diagnostic, "row schedule recipe is incomplete");
+  const VHO_FHE_CKKS_CONV_SHAPE &shape = recipe.shape;
+  const uint32_t plane = shape.height * shape.width;
+  uint64_t copies =
+      (uint64_t(shape.output_channels) + shape.input_channels - 1) /
+          shape.input_channels + 1;
+  if ((recipe.active_input_slots & (recipe.active_input_slots - 1)) == 0)
+    copies = std::min(copies, uint64_t(shape.slot_count) /
+                                  recipe.active_input_slots);
+  if (uint64_t(recipe.active_input_slots) * 2 > shape.slot_count)
+    copies = 1;
+  if (copies * recipe.active_input_slots > shape.slot_count)
+    return Report(diagnostic, "ACE row input duplication exceeds slots");
+
+  VHO_FHE_CKKS_CONV_ROW_SCHEDULE built;
+  built.input_copy_count = static_cast<uint32_t>(copies);
+  std::set<int32_t> keys;
+  for (uint32_t copy = 1; copy < built.input_copy_count; ++copy) {
+    const int32_t rotation = -int32_t(copy * recipe.active_input_slots);
+    built.duplication_rotations.push_back(rotation);
+    keys.insert(rotation);
+  }
+  const uint32_t kernel_size =
+      shape.kernel_height * shape.kernel_width;
+  for (uint32_t row = 0; row < shape.input_channels * kernel_size; ++row) {
+    const int32_t spatial =
+        (int32_t(row % kernel_size / shape.kernel_width) -
+         int32_t(shape.pad_top)) * int32_t(shape.width) +
+        int32_t(row % shape.kernel_width) - int32_t(shape.pad_left);
+    const int32_t rotation = int32_t(row / kernel_size * plane) + spatial;
+    built.row_rotations.push_back(rotation);
+    if (rotation != 0)
+      keys.insert(rotation);
+  }
+  built.required_signed_rotations.assign(keys.begin(), keys.end());
+  schedule->input_copy_count = built.input_copy_count;
+  schedule->duplication_rotations.swap(built.duplication_rotations);
+  schedule->row_rotations.swap(built.row_rotations);
+  schedule->required_signed_rotations.swap(built.required_signed_rotations);
+  return true;
+}
+
+/* Replay every explicit row rotation against the raw F32 coefficient bytes;
+ * no provider encoder, encrypted arithmetic, or hidden geometry is used. */
+bool VHO_FHE_CKKS_Evaluate_Column_Conv_Rows_Clear(
+    const VHO_FHE_CKKS_CONV_RECIPE &recipe,
+    const VHO_FHE_CKKS_CONV_ROW_SCHEDULE &schedule,
+    const std::vector<float> &input_slots,
+    std::vector<double> *output_slots, FILE *diagnostic)
+{
+  const VHO_FHE_CKKS_CONV_SHAPE &shape = recipe.shape;
+  VHO_FHE_CKKS_CONV_ROW_SCHEDULE expected;
+  if (output_slots == NULL || input_slots.size() != shape.slot_count ||
+      !VHO_FHE_CKKS_Build_Column_Conv_Row_Schedule(
+          recipe, &expected, diagnostic) ||
+      schedule.input_copy_count != expected.input_copy_count ||
+      schedule.duplication_rotations != expected.duplication_rotations ||
+      schedule.row_rotations != expected.row_rotations ||
+      schedule.required_signed_rotations != expected.required_signed_rotations)
+    return Report(diagnostic, "ACE row schedule or input is incomplete");
+  for (size_t i = 0; i < input_slots.size(); ++i)
+    if (!Finite(input_slots[i]) ||
+        (i >= recipe.active_input_slots && input_slots[i] != 0))
+      return Report(diagnostic, "ACE row input has invalid packed tail");
+
+  std::vector<float> duplicated(shape.slot_count, 0.0f);
+  for (uint32_t copy = 0; copy < schedule.input_copy_count; ++copy)
+    std::copy(input_slots.begin(),
+              input_slots.begin() + recipe.active_input_slots,
+              duplicated.begin() + size_t(copy) * recipe.active_input_slots);
+  const uint32_t plane = shape.height * shape.width;
+  std::vector<double> result(shape.slot_count, 0.0);
+  for (uint32_t column = 0; column < recipe.active_output_slots; ++column)
+    result[column] = recipe.folded_bias[column / plane];
+  for (uint32_t row = 0; row < schedule.row_rotations.size(); ++row) {
+    std::vector<unsigned char> bytes;
+    if (!VHO_FHE_CKKS_Build_Column_Conv_F32_Row_Bytes(
+            recipe, row, &bytes, diagnostic))
+      return Report(diagnostic, "ACE row bytes are unavailable");
+    const int64_t rotation = schedule.row_rotations[row];
+    for (uint32_t column = 0; column < recipe.active_output_slots; ++column) {
+      const size_t offset = size_t(column) * 4;
+      const uint32_t bits = uint32_t(bytes[offset]) |
+                            (uint32_t(bytes[offset + 1]) << 8) |
+                            (uint32_t(bytes[offset + 2]) << 16) |
+                            (uint32_t(bytes[offset + 3]) << 24);
+      float weight;
+      memcpy(&weight, &bits, sizeof(weight));
+      if (weight == 0)
+        continue;
+      const uint32_t source = static_cast<uint32_t>(
+          (int64_t(column) + rotation + shape.slot_count) % shape.slot_count);
+      result[column] += double(duplicated[source]) * weight;
+    }
+  }
+  output_slots->swap(result);
   return true;
 }
 

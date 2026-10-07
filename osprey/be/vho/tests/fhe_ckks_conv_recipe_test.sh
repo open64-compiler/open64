@@ -21,6 +21,14 @@ if [[ $# -ge 3 ]]; then
         "$out_dir/stem_folded_oihw_f32.bin" >"$out_dir/run.log" 2>&1
     python3 "$repo_root/osprey/be/vho/tests/fhe_ckks_conv_payload_fixture.py" \
         --payload "$2" --replay "$3" --output "$out_dir" \
+        --tensor-prefix call1_cnn_basic_block_conv2_folded_ \
+        --input-channels 16 --output-channels 16 --name call1_conv2 \
+        >>"$out_dir/extraction.log" 2>&1
+    "$out_dir/fhe_ckks_conv_recipe_test" \
+        "$out_dir/call1_conv2_folded_oihw_f32.bin" call1_conv2 16 16 32 \
+        >>"$out_dir/run.log" 2>&1
+    python3 "$repo_root/osprey/be/vho/tests/fhe_ckks_conv_payload_fixture.py" \
+        --payload "$2" --replay "$3" --output "$out_dir" \
         --tensor-prefix call4_cnn_basic_block_conv2_folded_ \
         --input-channels 32 --output-channels 32 --name call4_conv2 \
         >>"$out_dir/extraction.log" 2>&1

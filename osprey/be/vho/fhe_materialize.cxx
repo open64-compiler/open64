@@ -15,6 +15,7 @@
 #include "fhe_plan.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_ir_image.h"
+#include "dsl_program_interface_internal.h"
 #include "errors.h"
 #include "pu_info.h"
 #include "wn.h"
@@ -93,8 +94,11 @@ VHO_FHE_Materialize_Structural_Gatekeeper
          VHO_FHE_MATERIALIZE_RESULT *result)
 {
     DSL_GATEKEEPER_RESULT dsl_result;
-    BOOL valid = DSL_Gatekeeper_Verify_PU
-                     (pu_info, diagnostic, &dsl_result);
+    DSL_GATEKEEPER_MODE mode =
+        DSL_Program_Interface_PU_Is_Committed(PU_Info_proc_sym(pu_info)) ?
+            DSL_GATEKEEPER_PROJECTED : DSL_GATEKEEPER_STRICT;
+    BOOL valid = DSL_Gatekeeper_Verify_PU_Mode
+                     (pu_info, mode, diagnostic, &dsl_result);
     if (!DSL_FHE_Image_Validate(diagnostic) ||
         !DSL_FHE_Plan_Image_Validate_Partial(diagnostic) ||
         !DSL_FHE_Approx_Profile_Image_Validate(diagnostic) ||

@@ -46,6 +46,7 @@ The team must read these files from the same `develop` revision before coding:
 | `doc/FHE-RUNTIME-C-ABI-V1-CONTRACT.md` | Sole public runtime ABI, schedule, transport, ownership, and failure contract for SYNC-5 and SYNC-6 |
 | `doc/FHE-SYNC3-COMMIT19-CERTIFICATION.md` | Historical SYNC-3 Pass record and current re-certification requirements |
 | `doc/FHE-SYNC3-CONTEXT-CKKS-STATE-CONTRACT.md` | Context-specific CKKS state and callee-identity contract |
+| `doc/FHE-SYNC6-RAW-TO-CKKS-PLAINTEXT-FLOW.md` | Onboarding execution flow for immutable model parameters, derived plaintext side assets, WHIRL lineage, CKKS encoding, and atomic publication |
 
 At kickoff, verify the fixed v0.10 content hash above and record the active Git
 baseline and subordinate-document blob IDs with:
@@ -287,8 +288,12 @@ client/server trust boundary.
 ```text
 FHE-CNN and context-sensitive materialization
   -> provider-independent executable CKKS WHIRL (.ckks_ops.B)
-  -> final CKKS semantic gate and standard-call lowering
-  -> secure_resnet20.c
+  -> final CKKS semantic gate
+       -> openpy-selected CKKS2C early exit
+            -> provider-private C evaluator -> ANT CKKS facade
+       -> otherwise CKKS-to-POLY -> POLY passes -> POLY2C
+            -> provider-private C evaluator (future continuation)
+  -> sibling grouped standard-call lowering -> secure_resnet20.c (ABI v1)
   -> Open64 FHE ABI v1 broker
   -> one supervised worker per imported public context
   -> libopen64_fhe_ace_ant
@@ -296,6 +301,16 @@ FHE-CNN and context-sensitive materialization
   -> ciphertext output envelope
   -> separate client validation
 ```
+
+The two C outputs are sibling derivations from the same reopened `.ckks_ops.B`,
+not successive rewrites of one tree. The private evaluator is compiled into
+the adapter; it does not add public primitive calls to `secure_resnet20.c`.
+The two backend exits share the same verified CKKS prefix. `openpy` selects
+the CKKS2C early exit for the first `-O0` path, which does not run POLY;
+without that exit, the continuous path later reaches POLY2C through verified
+POLY IR. This is not a failure fallback. The proposed driver selector
+`-FHE:codegen=ckks2c|poly2c` is not implemented yet and needs main/driver
+review.
 
 A separate client or provisioner owns the secret key, context/key provisioning,
 input encryption, output import, and decryption. The server imports only the
@@ -311,7 +326,7 @@ embedded harness remains useful for bring-up but cannot close SYNC-6.
 | S6-0a atomic CKKS expansion | Main/common completes the reviewed one-source/many-step mutation contract after read-only preflight; stage WN/ST/image/call-ABI/REGION edits and provide explicit rollback for late failure. | Six-group ReLU transaction, direct-kid and final-result evidence, fault injection at every mutation family, unchanged state on rejection, mapped reopen. |
 | S6-0b context-specialized PU interface | Main/common reuses legal `IPO_CLONE` behavior but atomically re-owns all DSL/FHE images, appends exact-TY B formals and caller actuals, and retargets call edges. FHE provides complete signature and bound identities. Static-B specialization is a reviewed fallback, not an implicit call-ordinal clone rule. | Equal signatures reuse a clone with distinct B actuals; incompatible CKKS states split. Verify source definition/provenance, two B values per block call, all formals/actuals and REGION rows, wrong-owner/TY negatives, rollback. |
 | S6-0c complete executable CKKS producer | FHE consumes only merged native transactions to expand all source contexts, bind per-result CKKS state, and certify the measured executable PU count. | All 147 source-context events mapped to explicit CKKS steps, 19 pre-ReLU bootstraps, complete key/rotation/depth census, no live ReLU/BN, `secure_resnet20.ckks_ops.B` and separate-process `ir_b2a -st -src` `.T`. |
-| S6-0d terminal lowering | FHE lowers the verified CKKS graph to the unchanged stable C ABI; main reviews standard-WHIRL compatibility. | Generated C and existing ABI mock agree with the SYNC-5 reference; malformed-state and failed-checkpoint tests leave no final or temporary artifacts. |
+| S6-0d CKKS2C early exit | Main/driver adds an `openpy`-propagated selection after the CKKS gate. FHE emits a provider-private C evaluator directly from verified CKKS and separately lowers the same image to the unchanged public C ABI; main reviews grouped standard-WHIRL/image compatibility. The ANT facade is new reviewed adapter work. The selected `-O0` exit runs no POLY/POLY2C pass; the unselected route continues toward POLY2C when implemented. | Both C outputs join to the same event/descriptor evidence; public C and the existing ABI mock agree with SYNC-5. Driver tests prove exactly one backend exit and no implicit fallback. Unsupported CKKS or ANT facade cases fail closed; malformed-state and failed-checkpoint tests leave no final or temporary artifacts. |
 | S6-1 Exact-provider admission | Pin ACE revision, source/patch hash, compiler ABI, options, dependencies, licenses, and prove evaluation-only public-context, keyset, ciphertext import/export plus every frozen SYNC-5 capability | Reproducible build; field-for-field manifest comparison; revision/patch mismatch; missing import/export, operation, rotation, key, or level negatives |
 | S6-2 Broker and supervised worker | Implement the ABI broker and one isolated ACE worker per public context; serialize calls within a context and expose no ACE object across IPC | Multiple-context isolation; launcher authorization; worker identity; no ACE symbols in generated C or broker |
 | S6-3 Client provisioning and transport | Implement versioned public-context, non-secret keyset, plaintext-model, ciphertext input, and ciphertext output envelopes with authenticated session binding | Client/server roundtrip; digest/config/session mismatch; secret-key-class rejection before worker dispatch |
