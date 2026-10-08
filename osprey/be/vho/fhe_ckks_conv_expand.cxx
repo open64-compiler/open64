@@ -67,16 +67,16 @@ VHO_FHE_CKKS_STEP_STATE State(
 /* Keep all pointer-backed native rows local until the complete request is
  * assembled. The shared transaction performs both physical and logical IR
  * preflight; FHE then appends one concrete state row per produced value. */
-BOOL VHO_FHE_CKKS_Expand_Conv_Event(
+BOOL VHO_FHE_CKKS_Expand_Event(
     PU_Info *pu_info, const VHO_FHE_CKKS_EVENT_PLAN &plan,
-    const VHO_FHE_CKKS_CONV_EXPANSION_SOURCE &source,
+    const VHO_FHE_CKKS_EXPANSION_SOURCE &source,
     FILE *diagnostic,
     std::vector<DSL_CKKS_EXPANSION_STEP_RESULT> *results)
 {
   std::vector<unsigned char> canonical;
   if (pu_info == NULL || results == NULL || plan.steps.empty() ||
-      plan.group_output_steps.size() != 1 ||
-      plan.group_output_steps[0] != plan.source_final_step_index ||
+      plan.group_output_steps.empty() ||
+      plan.group_output_steps.back() != plan.source_final_step_index ||
       source.source_definition == NULL || source.source_value_id == 0 ||
       source.expected_source_operator == OPR_DSLUNKNOWN ||
       source.expected_source_version == 0 ||
@@ -147,11 +147,17 @@ BOOL VHO_FHE_CKKS_Expand_Conv_Event(
     states[i] = State(planned.result_state, source.encrypted_layout_name);
   }
 
-  DSL_CKKS_EXPANSION_GROUP group;
-  memset(&group, 0, sizeof(group));
-  group.source_static_ordinal = plan.source_static_ordinal;
-  group.origin_static_ordinal = plan.source_static_ordinal;
-  group.step_count = static_cast<UINT32>(count);
+  std::vector<DSL_CKKS_EXPANSION_GROUP> groups(
+      plan.group_output_steps.size());
+  UINT32 first_step = 0;
+  for (UINT32 i = 0; i < groups.size(); ++i) {
+    memset(&groups[i], 0, sizeof(groups[i]));
+    groups[i].source_static_ordinal = plan.source_static_ordinal + i;
+    groups[i].origin_static_ordinal = plan.source_static_ordinal + i;
+    groups[i].first_step = first_step;
+    groups[i].step_count = plan.group_output_steps[i] - first_step + 1;
+    first_step = plan.group_output_steps[i] + 1;
+  }
   DSL_CKKS_EXPANSION_CONTEXT context;
   memset(&context, 0, sizeof(context));
   context.context_pu_identity_id = source.context_pu_identity_id;
@@ -164,8 +170,8 @@ BOOL VHO_FHE_CKKS_Expand_Conv_Event(
   request.source_value_id = source.source_value_id;
   request.expected_source_operator = source.expected_source_operator;
   request.expected_source_version = source.expected_source_version;
-  request.groups = &group;
-  request.group_count = 1;
+  request.groups = &groups[0];
+  request.group_count = static_cast<UINT32>(groups.size());
   request.steps = &steps[0];
   request.step_count = static_cast<UINT32>(count);
   request.contexts = &context;
@@ -187,4 +193,15 @@ BOOL VHO_FHE_CKKS_Expand_Conv_Event(
   }
   results->swap(produced);
   return TRUE;
+}
+
+/* Preserve the original Conv-facing API while sharing the generic adapter. */
+BOOL VHO_FHE_CKKS_Expand_Conv_Event(
+    PU_Info *pu_info, const VHO_FHE_CKKS_EVENT_PLAN &plan,
+    const VHO_FHE_CKKS_CONV_EXPANSION_SOURCE &source,
+    FILE *diagnostic,
+    std::vector<DSL_CKKS_EXPANSION_STEP_RESULT> *results)
+{
+  return VHO_FHE_CKKS_Expand_Event(
+      pu_info, plan, source, diagnostic, results);
 }

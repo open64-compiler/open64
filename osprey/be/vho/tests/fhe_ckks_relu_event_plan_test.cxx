@@ -102,9 +102,11 @@ int main()
     VHO_FHE_CKKS_EVENT_PLAN plan;
     assert(VHO_FHE_CKKS_Build_Ace_Relu_Event_Plan(
         recipe, policy, &plan, stderr));
-    assert(!plan.steps.empty() && plan.group_output_steps.size() == 1);
+    assert(!plan.steps.empty() && plan.group_output_steps.size() == 6);
     assert(plan.steps[0].logical_operator == OPR_DSLCKKSBOOTSTRAP);
-    assert(plan.source_final_step_index == plan.group_output_steps[0]);
+    assert(plan.group_output_steps[0] == 0);
+    assert(plan.group_output_steps[1] == 3);
+    assert(plan.source_final_step_index == plan.group_output_steps.back());
     assert(plan.steps[plan.source_final_step_index].result_state.level ==
            targets[target] - 12);
     assert(plan.steps[plan.source_final_step_index].result_state.scale_bits ==

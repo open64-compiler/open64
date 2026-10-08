@@ -338,6 +338,7 @@ BOOL VHO_FHE_CKKS_Build_Ace_Relu_Event_Plan(
   built.steps.back().attributes.push_back(
       Attribute("attr.key_id", policy.bootstrap_key_id));
   built.steps.back().required_keys.push_back(policy.bootstrap_key_id);
+  built.group_output_steps.push_back(0);
 
   PLANNED_VALUE reciprocal = Encode(
       &built, policy.reciprocal_bound_value_id,
@@ -346,6 +347,8 @@ BOOL VHO_FHE_CKKS_Build_Ace_Relu_Event_Plan(
   if (!Multiply(&built, original, reciprocal, policy, &normalized) ||
       normalized.state.level != policy.post_refresh_level - 1)
     return Report(diagnostic, "normalization did not consume one level");
+  built.group_output_steps.push_back(
+      static_cast<UINT32>(built.steps.size() - 1));
 
   std::vector<PLANNED_VALUE> results;
   results.reserve(recipe.steps.size());
@@ -385,6 +388,11 @@ BOOL VHO_FHE_CKKS_Build_Ace_Relu_Event_Plan(
       }
     }
     results.push_back(output);
+    for (UINT32 stage = 0; stage < recipe.stages.size(); ++stage)
+      if (i == recipe.stages[stage].first_step +
+                   recipe.stages[stage].step_count - 1)
+        built.group_output_steps.push_back(
+            static_cast<UINT32>(built.steps.size() - 1));
   }
 
   PLANNED_VALUE final_value;

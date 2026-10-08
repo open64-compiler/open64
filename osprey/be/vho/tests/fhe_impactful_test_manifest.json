@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "lanes": {
+    "hygiene": {
+      "status": "automated",
+      "command": "git diff --check"
+    },
+    "selector-self-test": {
+      "status": "automated",
+      "command": "python3 osprey/be/vho/tests/fhe_impactful_test_selector_test.py"
+    },
+    "tail-plan": {
+      "status": "automated",
+      "command": "sh osprey/be/vho/tests/fhe_ckks_tail_plan_test.sh /private/tmp/open64-fhe-impactful/tail"
+    },
+    "relu-recipe": {
+      "status": "automated",
+      "command": "sh osprey/be/vho/tests/fhe_ckks_relu_recipe_test.sh /private/tmp/open64-fhe-impactful/relu-recipe"
+    },
+    "relu-event-plan": {
+      "status": "automated",
+      "command": "sh osprey/be/vho/tests/fhe_ckks_relu_event_plan_test.sh /private/tmp/open64-fhe-impactful/relu-event"
+    },
+    "expand-state": {
+      "status": "automated",
+      "command": "sh osprey/be/vho/tests/fhe_ckks_expand_state_test.sh /private/tmp/open64-fhe-impactful/expand-state"
+    },
+    "common-ckks-transaction": {
+      "status": "automated",
+      "command": "sh osprey/common/com/tests/dsl_ckks_expand_transaction_test.sh"
+    },
+    "view-retirement": {
+      "status": "automated",
+      "command": "sh osprey/common/com/tests/dsl_view_retirement_test.sh"
+    },
+    "syntax-layout-matrix": {
+      "status": "automated",
+      "command": "sh osprey/common/com/tests/dsl_native_syntax_test.sh"
+    },
+    "backend-link-boundary": {
+      "status": "environment",
+      "command": "rebuild be.so, be, and lw_inline; check forbidden symbols"
+    },
+    "mapped-reopen": {
+      "status": "environment",
+      "command": "reopen the affected focused .B with rebuilt ir_b2a -st -src"
+    },
+    "artifact-audit": {
+      "status": "environment",
+      "command": "run the affected independent audit against a receipt-matched retained .T"
+    },
+    "frontend-native-smoke": {
+      "status": "environment",
+      "command": "run the established torch2whirl native Docker smoke lane"
+    },
+    "miniature-checkpoint": {
+      "status": "planned",
+      "command": "implement and run the representative multi-PU CKKS checkpoint"
+    },
+    "full-s6-0c-certification": {
+      "status": "manual-expensive",
+      "command": "run the complete ten-PU ResNet materialization only at a justified boundary"
+    }
+  },
+  "rules": [
+    {
+      "name": "documentation",
+      "patterns": ["AGENTS.md", "doc/**", "**/*.md"],
+      "lanes": ["hygiene"]
+    },
+    {
+      "name": "impact-selector",
+      "patterns": [
+        "osprey/be/vho/tests/fhe_impactful_test_manifest.json",
+        "osprey/be/vho/tests/fhe_impactful_test_selector.py",
+        "osprey/be/vho/tests/fhe_impactful_test_selector_test.py"
+      ],
+      "lanes": ["hygiene", "selector-self-test"]
+    },
+    {
+      "name": "artifact-auditor",
+      "patterns": ["osprey/be/vho/tests/*audit.py"],
+      "lanes": ["hygiene", "artifact-audit"]
+    },
+    {
+      "name": "tail-plan",
+      "patterns": [
+        "osprey/be/vho/fhe_ckks_tail_plan.*",
+        "osprey/be/vho/tests/fhe_ckks_tail_plan_test.*"
+      ],
+      "lanes": ["hygiene", "tail-plan"]
+    },
+    {
+      "name": "relu-planning",
+      "patterns": [
+        "osprey/be/vho/fhe_ckks_relu_plan.*",
+        "osprey/be/vho/fhe_ckks_relu_recipe.*",
+        "osprey/be/vho/fhe_ckks_relu_event_plan.*",
+        "osprey/be/vho/tests/fhe_ckks_relu_*test.*",
+        "osprey/be/vho/tests/fhe_ckks_source_events_test.*"
+      ],
+      "lanes": ["hygiene", "relu-recipe", "relu-event-plan"]
+    },
+    {
+      "name": "ckks-state-transfer",
+      "patterns": [
+        "osprey/be/vho/fhe_ckks_expand.*",
+        "osprey/be/vho/fhe_ckks_transfer.*",
+        "osprey/be/vho/tests/fhe_ckks_expand_state_test.*"
+      ],
+      "lanes": ["hygiene", "expand-state", "common-ckks-transaction"]
+    },
+    {
+      "name": "fhe-materializer",
+      "patterns": [
+        "osprey/be/vho/fhe_ckks_*materialize.*",
+        "osprey/be/vho/fhe_ckks_conv_expand.*",
+        "osprey/be/vho/fhe_ckks_conv_specialize.*",
+        "osprey/be/vho/fhe_semantic_materialize.*"
+      ],
+      "lanes": [
+        "hygiene",
+        "tail-plan",
+        "relu-event-plan",
+        "expand-state",
+        "backend-link-boundary",
+        "miniature-checkpoint",
+        "full-s6-0c-certification"
+      ]
+    },
+    {
+      "name": "common-native-transaction",
+      "patterns": [
+        "osprey/common/com/dsl_ir_rewrite.*",
+        "osprey/common/com/dsl_ir_image.*",
+        "osprey/common/com/dsl_shape.*",
+        "osprey/common/com/dsl_builder.*",
+        "osprey/common/fhe/fhe_plan.*",
+        "osprey/common/com/tests/dsl_builder_contract_test.*",
+        "osprey/common/com/tests/dsl_ckks_expand_transaction_test.*",
+        "osprey/common/com/tests/dsl_view_retirement_test.*"
+      ],
+      "lanes": [
+        "hygiene",
+        "common-ckks-transaction",
+        "view-retirement",
+        "mapped-reopen",
+        "miniature-checkpoint",
+        "full-s6-0c-certification"
+      ]
+    },
+    {
+      "name": "logical-printer-reader",
+      "patterns": [
+        "osprey/common/com/dsl_ir_print.*",
+        "osprey/ir_tools/**",
+        "osprey/common/com/ir_*"
+      ],
+      "lanes": ["hygiene", "mapped-reopen", "artifact-audit"]
+    },
+    {
+      "name": "build-link-wiring",
+      "patterns": [
+        "osprey/be/be/Makefile*",
+        "osprey/be/vho/Makefile*",
+        "osprey/torch2whirl/Makefile*"
+      ],
+      "lanes": ["hygiene", "backend-link-boundary"]
+    },
+    {
+      "name": "frontend-bridge",
+      "patterns": ["osprey/torch2whirl/**"],
+      "lanes": ["hygiene", "frontend-native-smoke"]
+    },
+    {
+      "name": "native-syntax-dispatch",
+      "patterns": ["osprey/common/com/tests/dsl_native_syntax_test.sh"],
+      "lanes": ["hygiene", "syntax-layout-matrix"]
+    }
+  ],
+  "unknown_file_lanes": [
+    "hygiene",
+    "syntax-layout-matrix",
+    "miniature-checkpoint",
+    "full-s6-0c-certification"
+  ]
+}

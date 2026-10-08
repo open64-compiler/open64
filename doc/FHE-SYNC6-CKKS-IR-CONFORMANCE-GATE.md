@@ -1,11 +1,10 @@
 # SYNC-6 CKKS Semantic IR Conformance Gate
 
-Status: S6-0a and S6-0b are merged. The real ten-PU S6-0c checkpoint now
-contains executable CKKS Conv and residual-add subgraphs: 28,927 Conv events
-plus seven explicit residual level alignments and nine residual adds. The
-separate-process mapped reopen proves no live Conv or residual-add node.
-ReLU, global-average pool, flatten, linear, and final all-operator
-certification remain pending.
+Status: **S6-0c complete.** The real ten-PU checkpoint contains 33,367
+executable provider-independent CKKS operations: 28,927 Conv, 18 residual,
+4,237 ReLU, and 185 tail operations. A separate-process mapped reopen and
+independent audit prove 23 reason-tagged bootstraps, complete states and key
+requirements, and zero live high-level computation. S6-0d CKKS2C is next.
 The reviewable S6-0c producer and certification sequence is in
 `FHE-SYNC6-S6-0C-DETAILED-EXECUTION-PLAN.md`.
 
@@ -99,8 +98,8 @@ source/CNN and FHE conversion
    encrypted layout, scale, slot count, and alignment group. If levels differ,
    the higher-level branch receives an explicit `ckks.modswitch` value before
    `ckks.add`; scale mismatch is not repaired silently. The first ResNet path
-   certifies nine joins: seven level-4/level-3 identity joins and two already
-   aligned level-3 projection joins. All source residual rows remain
+   certifies nine joins. The final topological state reflow emits nine explicit
+   level-alignment operations and nine adds. All source residual rows remain
    inspectable as lowered `ckks_expansion` provenance.
 
 ## Ownership And Review Sequence
@@ -108,8 +107,8 @@ source/CNN and FHE conversion
 | Slice | Owner | Reviewable result |
 | --- | --- | --- |
 | S6-0a semantic census/physical contract | Merged PR #165 publishes nine logical CKKS operators, an optional typed event image, grouped atomic expansion, and typed F8 scalar kid1. | Linked opcode/event/expansion/PU tests and retained mapped `ir_b2a -st -src` traces pass. This certifies structure, not FHE circuit semantics. |
-| S6-0b opaque producer and per-value state | FHE task consumes the merged native expansion API and binds existing FHE CKKS value-state records to each new result value. The FHE adapter preflights canonical TY/encryption association and concrete result state; post-expansion state failure is terminal. | Linked adapter test passes. Focused executable add/sub/mul/rotate/rescale/relin/bootstrap `.B`/`.T` fixtures and complete operand-state/key legality remain open. |
-| S6-0c full ResNet expansion | Main/common's generic process-terminal clone/formal/call checkpoint merged in PR #164. FHE registers the policy, derives complete signatures, routes approved B values, and expands resident source operators. Conv and all nine residual joins are complete; ReLU, pool, flatten, and linear remain. | Current clone-aware `.ckks_ops.B`/`.T` has 10 PUs, 28,943 CKKS events, 21+9 lowered Conv/residual provenance rows, zero live Conv/residual, seven explicit residual modswitches, nine adds, and the unchanged atomic plaintext asset. Final evidence still needs exact F8 B formal/actual dataflow, complete ReLU event-to-step maps, key/rotation/depth census, remaining operators, and independent numerical checks. |
+| S6-0b opaque producer and per-value state | **Complete.** FHE consumes the merged native expansion API and binds existing FHE CKKS value-state records to each new result value. The FHE adapter preflights canonical TY/encryption association and concrete result state; post-expansion state failure is terminal. | Linked adapter, focused arithmetic/state, grouped rollback, mapped reopen, and final whole-model state/key legality pass. |
+| S6-0c full ResNet expansion | **Complete.** FHE registers the merged policy, derives complete signatures, routes approved B values, and expands every resident source operator without raw WN/ST/TY/image mutation. | The clone-aware `.ckks_ops.B`/`.T` has 10 PUs and 33,367 events: 28,927 Conv, 18 residual, 4,237 ReLU, and 185 tail operations. It proves 23 bootstraps, 954 rotation keys, complete concrete states, atomic side assets, source interleave, and zero live high-level computation. |
 | S6-0d gate and terminal lowering | FHE task verifies the complete IR and lowers it through the existing stable C ABI; main reviews standard-WHIRL boundary. | Negative malformed-state/ownership/depth/key tests and generated-C/mock equivalence to SYNC-5. |
 | S6-1 and later | ACE provider and runtime owners, after S6-0 certification. | New exact ACE pin/capability admission, then broker/worker/client-server execution. |
 

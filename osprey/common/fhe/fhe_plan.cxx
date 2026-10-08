@@ -2349,6 +2349,9 @@ static BOOL
 DSL_FHE_Materialization_Transitions_Valid
         (const DSL_FHE_MATERIALIZATION_OPERATION_RECORD operations[6])
 {
+    DSL_FHE_COMPOSITE_PROFILE_RECORD profile;
+    if (!DSL_FHE_Approx_Profile_Get(operations[0].profile_id, &profile))
+        return FALSE;
     DSL_FHE_CONTEXT_CKKS_STATE_RECORD states[6];
     for (UINT32 ordinal = 0;
          ordinal < DSL_FHE_MATERIALIZATION_OPERATIONS_PER_CONTEXT;
@@ -2371,6 +2374,8 @@ DSL_FHE_Materialization_Transitions_Valid
             states[ordinal - 1];
         const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &output = states[ordinal];
         INT32 expected_level = input.level;
+        if (ordinal == 1 && profile.profile_version >= 2)
+            --expected_level;
         if (output.encryption_descriptor_id !=
                 states[0].encryption_descriptor_id ||
             output.scale_bits != input.scale_bits ||
@@ -2687,6 +2692,8 @@ DSL_FHE_Materialization_Intern_Complete_Context
         const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &next =
             post_operation_states[i];
         INT32 expected_level = prior->level;
+        if (i == 0 && profile.profile_version >= 2)
+            --expected_level;
         if (i >= 1 && i <= 3)
             expected_level -= stages[i - 1].level_consumption;
         if (next.level != expected_level ||

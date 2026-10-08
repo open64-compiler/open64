@@ -349,6 +349,9 @@ BE_VHO_CXX_SRCS = \
   fhe_ckks_residual_materialize.cxx \
   fhe_ckks_relu_recipe.cxx \
   fhe_ckks_relu_event_plan.cxx \
+  fhe_ckks_tail_plan.cxx \
+  fhe_ckks_tail_materialize.cxx \
+  fhe_ckks_relu_materialize.cxx \
   fhe_ckks_conv_plan.cxx \
   fhe_ckks_conv_expand.cxx \
   fhe_ckks_conv_context.cxx \

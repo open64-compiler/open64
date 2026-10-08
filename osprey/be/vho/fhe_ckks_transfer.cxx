@@ -73,8 +73,10 @@ VHO_FHE_CKKS_Transfer_Report(FILE *diagnostic, const char *reason)
   return FALSE;
 }
 
-/* All unary operations preserve representation identity and packed layout;
- * only bootstrap may restore level, scale, precision, and noise capacity. */
+/* All unary operations preserve representation identity and packed layout.
+ * A depth-exhaustion bootstrap must increase remaining level. A mandatory
+ * pre-ReLU bootstrap may reset to a smaller certified output chain while
+ * still restoring noise capacity, which is not a separate v1 state field. */
 BOOL
 VHO_FHE_CKKS_Verify_Unary_State_Transfer(
     const DSL_CKKS_EXPANSION_STEP &step,
@@ -108,7 +110,10 @@ VHO_FHE_CKKS_Verify_Unary_State_Transfer(
         output.pending_actions != 0 ||
         output.pending_bootstrap_reason !=
             DSL_FHE_BOOTSTRAP_REASON_NONE ||
-        output.component_count != 2 || output.level <= input.level)
+        output.component_count != 2 ||
+        (input.pending_bootstrap_reason ==
+             DSL_FHE_BOOTSTRAP_REASON_DEPTH_EXHAUSTION &&
+         output.level <= input.level))
       return VHO_FHE_CKKS_Transfer_Report(
           diagnostic, "bootstrap did not restore the requested state");
     return TRUE;

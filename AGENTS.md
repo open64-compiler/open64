@@ -421,6 +421,24 @@ model family and link it to `doc/WHIRL-DSL-INFRASTRUCTURE.md`. The frontend plan
 owns capture, mapping, artifacts, and diagnostics; the infrastructure plan owns
 native representation, compatibility, verification, inspection, and lowering.
 
+## Impactful Test Selection
+
+1. Follow `doc/IMPACTFUL-TEST-STRATEGY.md` for FHE and other expensive DSL
+   validation. Select tests from the changed contract and its reverse
+   dependencies before launching a broad suite.
+2. Do not use the largest available model as the default edit-loop test. Run
+   focused semantic and transaction regressions first; reserve full-model
+   execution for an explicitly invalidated whole-program boundary, final PR
+   head, milestone closure, or scheduled certification.
+3. Before starting a test expected to exceed ten minutes, state the affected
+   contract, why smaller evidence is insufficient, and the expected duration.
+4. Reuse expensive artifacts only when content-addressed producer, trace, and
+   audit receipts prove all relevant inputs unchanged. Documentation, printer,
+   and auditor changes invalidate only their respective downstream evidence.
+5. Unknown source impact broadens the selected tests. It never justifies
+   skipping validation. A full-model pass supplements rather than replaces
+   focused rollback, malformed-input, and semantic-oracle tests.
+
 ## Reviewable Test Artifacts
 
 1. Human review of compiler artifacts is part of the development and
