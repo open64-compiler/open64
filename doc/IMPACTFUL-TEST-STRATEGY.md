@@ -67,12 +67,12 @@ materializer and generic-transaction changes.
 | Markdown only | T0 | none |
 | Auditor only | T0 plus audit retained `.T` | none |
 | `ir_b2a`/printer only | T0 plus retained `.B` to fresh `.T` and audit | compatibility reopen when format-visible |
-| Pure recipe or event-plan code | T0 plus focused oracle/negative tests | full model only at milestone or PR head |
+| Pure recipe or event-plan code | T0 plus focused oracle/negative tests | full model only when impact proof shows the complete receipt is invalidated |
 | Per-value state transfer | T0 plus focused state and transaction tests | miniature checkpoint |
-| One operator materializer | focused planner plus T2 | one T4 run at final PR head |
-| Generic native rewrite/image transaction | rollback, mapped reopen, T2 | one T4 run at final PR head |
+| One operator materializer | focused planner plus T2 | T4 only when the change invalidates the complete producer receipt |
+| Generic native rewrite/image transaction | rollback, mapped reopen, T2 | T4 only when the change invalidates the complete producer receipt |
 | Reader/writer/ELF/image layout | mapped malformed/legacy matrix | T4 and previous-reader reopen |
-| Checkpoint lifecycle/publication | focused atomic success/failure and T2 | one T4 run at final PR head |
+| Checkpoint lifecycle/publication | focused atomic success/failure and T2 | T4 only when focused evidence cannot prove the affected whole-program publication property |
 | Make or link wiring | rebuild affected products and symbol boundary | no T4 unless producer bits changed |
 | Frontend bridge/capture | affected native/Python capture fixtures | full capture only when graph/artifact changes |
 | Unknown production source | selected focused lanes plus T4 | T4 required |
@@ -134,9 +134,12 @@ skipped workflow can remain pending, and platform diff limits can omit a
 relevant path. Unknown files cause conservative escalation in the selector.
 
 T1 and T2 lanes may run in parallel. T4 must be serialized per artifact family
-and should run once per final PR head, on demand, or nightly on `develop`.
-Changing only documentation or downstream evidence consumers must reuse the
-matching producer receipt rather than launch T4 again.
+and runs only when impact analysis proves that a changed input invalidates the
+matching complete-certification receipt, on explicit demand, or in a separately
+scheduled nightly lane. A PR head alone is not an invalidation event. Changing
+only documentation or downstream evidence consumers must reuse the matching
+producer receipt rather than launch T4 again. Milestone closure requires a
+valid matching receipt, which may be inherited when all recorded inputs match.
 
 ## Review Checklist
 

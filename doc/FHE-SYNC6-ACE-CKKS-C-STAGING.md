@@ -121,6 +121,9 @@ implicit `-O0` fallback.
 
 ## Reviewable Implementation Sequence
 
+The executable commit-by-commit form of this sequence is maintained in
+`FHE-SYNC6-S6-0D-DETAILED-EXECUTION-PLAN.md`.
+
 1. Finish S6-0c and freeze `.ckks_ops.B`/`.T`, side assets, and the complete
    source-to-step/state/key census. No code generation from a partial graph.
 2. Publish the main/common grouped terminal/image-disposition transaction
