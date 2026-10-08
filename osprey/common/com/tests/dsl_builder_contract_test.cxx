@@ -10525,11 +10525,15 @@ Check_CKKS_Expansion_Call_Region (BOOL projected_call)
     position.statement_begin = 1;
     DSL_BUILDER_VALUE formal = DSL_Builder_Declare_PU_Formal
         (callee, "callee_input", 0, ty, &position);
+    DSL_BUILDER_VALUE dead_formal = projected_call ?
+        DSL_Builder_Declare_PU_Formal
+            (callee, "callee_dead_input", 1, ty, &position) : NULL;
     DSL_BUILDER_VALUE callee_result = DSL_Builder_Declare_PU_Result
         (callee, "callee_result", 0, ty, DSL_PU_RESULT_TENSOR,
          &position);
     CKKS_REGION_CHECK(ty != TY_IDX_ZERO && callee != NULL &&
                       formal != NULL && callee_result != NULL &&
+                      (!projected_call || dead_formal != NULL) &&
                       DSL_Builder_Return_PU_Values(callee, &formal, 1),
                       "callee signature and return");
 
@@ -10572,11 +10576,15 @@ Check_CKKS_Expansion_Call_Region (BOOL projected_call)
     callsite.source_position = position;
     ++callsite.source_position.line;
     const char *result_names[1] = { "region_call_result" };
+    DSL_BUILDER_VALUE call_arguments[2] = { source, one };
     DSL_BUILDER_CALL call = DSL_Builder_Create_PU_Call
-        (caller, callee, &source, 1, result_names, 1, &callsite);
+        (caller, callee, call_arguments,
+         projected_call ? 2 : 1, result_names, 1, &callsite);
     CKKS_REGION_CHECK
         (call != NULL && DSL_Builder_Set_PU_Call_Argument_Role
-             (call, 0, 0, "input.tensor"),
+             (call, 0, 0, "input.tensor") &&
+         (!projected_call || DSL_Builder_Set_PU_Call_Argument_Role
+             (call, 1, 1, "dead.input")),
          "managed call ABI actual");
     DSL_BUILDER_VALUE consumer = DSL_Builder_Create_Operator_With_Result
         (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
@@ -10648,7 +10656,7 @@ Check_CKKS_Expansion_Call_Region (BOOL projected_call)
             value_requests[i].expected_source_ty = ty;
             value_requests[i].handle_ty = handle_ty;
             value_requests[i].binding_kind = kinds[i];
-            value_requests[i].formal_ordinal = i < 2 ? i :
+            value_requests[i].formal_ordinal = i == 1 ? 2 : i == 0 ? 0 :
                 DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
         }
         DSL_RUNTIME_CALL_PROJECTION_REQUEST call_requests[2];
@@ -10658,8 +10666,8 @@ Check_CKKS_Expansion_Call_Region (BOOL projected_call)
             call_requests[i].callsite_id = callsite_record.id;
             call_requests[i].source_value_id =
                 value_requests[i + 2].source_value_id;
-            call_requests[i].actual_ordinal = i;
-            call_requests[i].callee_formal_ordinal = i;
+            call_requests[i].actual_ordinal = i == 0 ? 0 : 2;
+            call_requests[i].callee_formal_ordinal = i == 0 ? 0 : 2;
             call_requests[i].direction = i == 0 ?
                 DSL_RUNTIME_CALL_INPUT : DSL_RUNTIME_CALL_RESULT;
         }
@@ -10669,15 +10677,36 @@ Check_CKKS_Expansion_Call_Region (BOOL projected_call)
         plan.value_count = 4;
         plan.calls = call_requests;
         plan.call_count = 2;
-        DSL_RUNTIME_INTERFACE_RESULT apply_result;
+        DSL_PU_FORMAL_RECORD dead_formal_row;
+        DSL_CALL_ARGUMENT_RECORD dead_argument_row;
+        DSL_RETIRED_FORMAL_REQUEST retired_formal;
+        DSL_RETIRED_CALL_ARGUMENT_REQUEST retired_argument;
+        DSL_PROGRAM_INTERFACE_PLAN program_plan;
+        memset(&program_plan, 0, sizeof(program_plan));
         CKKS_REGION_CHECK
-            (DSL_Runtime_Interface_Plan_Validate(&plan, stderr) &&
+            (DSL_PU_Interface_Image_Find_Formal
+                (PU_Info_proc_sym(callee), 1, &dead_formal_row) &&
+             DSL_Call_ABI_Image_Find_Argument
+                (call, 1, &dead_argument_row),
+             "retired input relationship");
+        retired_formal.pu_formal_id = dead_formal_row.id;
+        retired_formal.semantic_role = "dead.input";
+        retired_argument.call_argument_id = dead_argument_row.id;
+        retired_argument.semantic_role = "dead.input";
+        program_plan.retired_formals = &retired_formal;
+        program_plan.retired_formal_count = 1;
+        program_plan.retired_call_arguments = &retired_argument;
+        program_plan.retired_call_argument_count = 1;
+        DSL_PROGRAM_INTERFACE_RESULT apply_result;
+        CKKS_REGION_CHECK
+            (DSL_Program_Interface_Plan_Validate
+                (&program_plan, &plan, stderr) &&
              DSL_Builder_Select_PU(caller) &&
-             DSL_Runtime_Interface_Apply_PU
-                 (caller, &plan, stderr, &apply_result) &&
+             DSL_Program_Interface_Apply_PU
+                 (caller, &program_plan, &plan, stderr, &apply_result) &&
              DSL_Builder_Select_PU(callee) &&
-             DSL_Runtime_Interface_Apply_PU
-                 (callee, &plan, stderr, &apply_result) &&
+             DSL_Program_Interface_Apply_PU
+                 (callee, &program_plan, &plan, stderr, &apply_result) &&
              DSL_Builder_Select_PU(caller) &&
              DSL_Runtime_Interface_Image_Validate(stderr) &&
              DSL_Call_ABI_Image_Validate_PU(caller, stderr),
@@ -10697,8 +10726,14 @@ Check_CKKS_Expansion_Call_Region (BOOL projected_call)
                 (PU_Info_proc_sym(caller), source_value_id, &projection) &&
              DSL_Runtime_Interface_Image_Find_Call
                 (callsite_record.id, 0, &runtime_call) &&
+             DSL_Call_ABI_Image_Find_Argument_By_Id
+                 (callsite_record.id, 0, &argument) &&
+             !DSL_Program_Interface_Image_Find_Retired_Call
+                 (argument.id, NULL) &&
+             argument.argument_value_id == source_value_id &&
              runtime_call.value_projection_id == projection.id &&
              actual != NULL && WN_operator(actual) == OPR_LDID &&
+             source_st != projection.handle_st &&
              WN_st_idx(actual) == projection.handle_st,
              "projected source call binding");
 
@@ -10744,10 +10779,17 @@ Check_CKKS_Expansion_Call_Region (BOOL projected_call)
 
         ST_IDX handle_st = projection.handle_st;
         WN_st_idx(actual) = source_st;
+        WN *active_call = const_cast<WN *>
+            (DSL_Call_Image_Get_Call_WN(callsite_record.id));
+        WN *active_actual = active_call == NULL ? NULL :
+            WN_kid0(WN_kid(active_call, 0));
         CKKS_REGION_CHECK
-            (!DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
-                (caller, &request, NULL) &&
-             DSL_Call_ABI_Image_Find_Argument(call, 0, &argument) &&
+            (active_actual == actual &&
+             WN_st_idx(active_actual) == source_st &&
+             !DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                 (caller, &request, NULL) &&
+             DSL_Call_ABI_Image_Find_Argument_By_Id
+                 (callsite_record.id, 0, &argument) &&
              argument.argument_value_id == source_value_id,
              "malformed runtime actual rejects without mutation");
         WN_st_idx(actual) = handle_st;
@@ -10766,7 +10808,8 @@ Check_CKKS_Expansion_Call_Region (BOOL projected_call)
              DSL_CKKS_Event_Image_Count() == 0 &&
              Find_STID_In_Block(body, source_st) == source_definition &&
              WN_st_idx(actual) == handle_st &&
-             DSL_Call_ABI_Image_Find_Argument(call, 0, &argument) &&
+             DSL_Call_ABI_Image_Find_Argument_By_Id
+                 (callsite_record.id, 0, &argument) &&
              argument.argument_value_id == source_value_id &&
              DSL_Runtime_Interface_Image_Find_Value
                 (PU_Info_proc_sym(caller), source_value_id, &projection) &&
@@ -10782,7 +10825,8 @@ Check_CKKS_Expansion_Call_Region (BOOL projected_call)
         CKKS_REGION_CHECK
             (Find_STID_In_Block(body, source_st) == NULL &&
              WN_st_idx(actual) == handle_st &&
-             DSL_Call_ABI_Image_Find_Argument(call, 0, &argument) &&
+             DSL_Call_ABI_Image_Find_Argument_By_Id
+                 (callsite_record.id, 0, &argument) &&
              argument.argument_value_id == result.value_id &&
              DSL_Runtime_Interface_Image_Find_Value
                 (PU_Info_proc_sym(caller), result.value_id, &projection) &&
@@ -10827,8 +10871,10 @@ Check_CKKS_Expansion_Call_Region (BOOL projected_call)
         DSL_RUNTIME_CALL_PROJECTION_RECORD result_runtime_call;
         CKKS_REGION_CHECK
             (DSL_Runtime_Interface_Image_Find_Call
-                (callsite_record.id, 1, &result_runtime_call) &&
-             result_runtime_call.direction == DSL_RUNTIME_CALL_RESULT,
+                (callsite_record.id, 2, &result_runtime_call) &&
+             result_runtime_call.direction == DSL_RUNTIME_CALL_RESULT &&
+             DSL_Program_Interface_Image_Retired_Call_Count() == 1 &&
+             WN_kid_count(physical_call) == 2,
              "projected result call direction");
         UINT64 runtime_image_size = 0;
         unsigned char *runtime_image =
@@ -10867,7 +10913,7 @@ Check_CKKS_Expansion_Call_Region (BOOL projected_call)
         call_rows[result_runtime_call.id - 1].direction = saved_direction;
         delete [] runtime_image;
         WN *result_actual = WN_kid0
-            (WN_kid(physical_call, result_runtime_call.actual_ordinal));
+            (WN_kid(physical_call, 1));
         ST_IDX saved_handle_st = WN_st_idx(result_actual);
         WN_st_idx(result_actual) = source_st;
         CKKS_REGION_CHECK
@@ -10882,7 +10928,7 @@ Check_CKKS_Expansion_Call_Region (BOOL projected_call)
                 (caller, &request, NULL),
              "wrong projected result TY rejects");
         WN_set_ty(result_actual, saved_handle_ty);
-        WN *projected_call = WN_EXTRACT_FromBlock(body, call);
+        WN *projected_call = WN_EXTRACT_FromBlock(body, physical_call);
         WN_INSERT_BlockAfter(body, result_source_definition, projected_call);
         CKKS_REGION_CHECK
             (!DSL_IR_Can_Expand_Native_Value_To_CKKS_Events

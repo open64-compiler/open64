@@ -3081,14 +3081,27 @@ DSL_IR_CKKS_Resolve_Existing_Operand
 
     DSL_CALLSITE_METADATA_RECORD callsite;
     const WN *call = DSL_Call_Image_Get_Call_WN(result_call.callsite_id);
+    UINT32 effective_ordinal = result_call.actual_ordinal;
+    for (UINT32 i = 1;
+         i <= DSL_Program_Interface_Image_Retired_Call_Count(); ++i) {
+        DSL_RETIRED_CALL_ARGUMENT_RECORD retired;
+        if (!DSL_Program_Interface_Image_Get_Retired_Call(i, &retired))
+            return FALSE;
+        if (retired.callsite_id == result_call.callsite_id &&
+            retired.old_actual_ordinal < result_call.actual_ordinal) {
+            if (effective_ordinal == 0)
+                return FALSE;
+            --effective_ordinal;
+        }
+    }
     if (!DSL_Call_Image_Get_Callsite
              (result_call.callsite_id, &callsite) ||
         callsite.owner_pu_st != owner_pu_st || call == NULL ||
         WN_operator(call) != OPR_CALL ||
         WN_st_idx(call) != callsite.callee_pu_st ||
-        result_call.actual_ordinal >= (UINT32)WN_kid_count(call))
+        effective_ordinal >= (UINT32)WN_kid_count(call))
         return FALSE;
-    const WN *parm = WN_kid(call, result_call.actual_ordinal);
+    const WN *parm = WN_kid(call, effective_ordinal);
     const WN *address = parm == NULL || WN_operator(parm) != OPR_PARM ?
                         NULL : WN_kid0(parm);
     if (address == NULL || WN_operator(address) != OPR_LDA ||
