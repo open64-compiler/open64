@@ -2711,7 +2711,7 @@ DSL_IR_CKKS_Payload
 
 typedef struct {
     WN *call;
-    WN *address;
+    WN *address; /* NULL for an exact by-value runtime projection. */
     UINT32 actual_ordinal;
 } DSL_IR_CKKS_CALL_USE;
 
@@ -2818,22 +2818,66 @@ DSL_IR_CKKS_Preflight_Calls
             }
         }
         DSL_IR_VALUE_RECORD actual;
-        if (effective_ordinal >= (UINT32)WN_kid_count(call) ||
-            !DSL_IR_Value_From_Call_Actual
-                (owner_pu_st, call, effective_ordinal, &actual) ||
-            actual.id != source.id)
+        if (WN_operator(call) != OPR_CALL ||
+            WN_st_idx(call) != callsite.callee_pu_st ||
+            effective_ordinal >= (UINT32)WN_kid_count(call))
             return DSL_IR_CKKS_Report
                        (diagnostic, "call actual mismatch", i);
         const WN *parm = WN_kid(call, effective_ordinal);
-        const WN *address = WN_kid0(parm);
-        if (WN_Parm_Out(parm) ||
-            TY_kind(WN_ty(parm)) != KIND_POINTER ||
-            TY_pointed(WN_ty(parm)) != source.ty ||
-            WN_st_idx(address) != source.st)
-            return DSL_IR_CKKS_Report
-                       (diagnostic, "call actual is not read-only", i);
+        const WN *address = parm == NULL || WN_operator(parm) != OPR_PARM ?
+                            NULL : WN_kid0(parm);
+        DSL_RUNTIME_CALL_PROJECTION_RECORD runtime_call;
+        BOOL projected = DSL_Runtime_Interface_Image_Find_Call
+                             (callsite.id, argument.actual_ordinal,
+                              &runtime_call);
+        if (projected) {
+            DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+            if (runtime_call.owner_pu_st != owner_pu_st ||
+                runtime_call.source_value_id != source.id ||
+                runtime_call.actual_ordinal != argument.actual_ordinal ||
+                runtime_call.callee_formal_ordinal !=
+                    argument.callee_formal_ordinal ||
+                runtime_call.direction != DSL_RUNTIME_CALL_INPUT ||
+                !DSL_Runtime_Interface_Image_Get_Value
+                    (runtime_call.value_projection_id, &projection) ||
+                projection.owner_pu_st != owner_pu_st ||
+                projection.source_value_id != source.id ||
+                projection.source_st != source.st ||
+                projection.source_ty != source.ty ||
+                projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE ||
+                projection.formal_ordinal !=
+                    DSL_RUNTIME_INTERFACE_INVALID_ORDINAL ||
+                ST_IDX_level(projection.handle_st) != CURRENT_SYMTAB ||
+                ST_IDX_index(projection.handle_st) == 0 ||
+                ST_IDX_index(projection.handle_st) >=
+                    ST_Table_Size(CURRENT_SYMTAB) ||
+                ST_type(St_Table[projection.handle_st]) !=
+                    projection.handle_ty ||
+                address == NULL || WN_operator(address) != OPR_LDID ||
+                WN_st_idx(address) != projection.handle_st ||
+                WN_ty(address) != projection.handle_ty ||
+                WN_ty(parm) != projection.handle_ty ||
+                WN_parm_flag(parm) !=
+                    (WN_PARM_BY_VALUE | WN_PARM_READ_ONLY |
+                     WN_PARM_PASSED_NOT_SAVED))
+                return DSL_IR_CKKS_Report
+                           (diagnostic, "runtime call actual mismatch", i);
+            address = NULL;
+        } else {
+            if (!DSL_IR_Value_From_Call_Actual
+                    (owner_pu_st, call, effective_ordinal, &actual) ||
+                actual.id != source.id || address == NULL ||
+                WN_Parm_Out(parm) ||
+                TY_kind(WN_ty(parm)) != KIND_POINTER ||
+                TY_pointed(WN_ty(parm)) != source.ty ||
+                WN_st_idx(address) != source.st)
+                return DSL_IR_CKKS_Report
+                           (diagnostic, "call actual is not read-only", i);
+        }
         for (UINT32 j = 0; j < uses->size(); ++j) {
-            if ((*uses)[j].address == address)
+            if (((*uses)[j].call == call &&
+                 (*uses)[j].actual_ordinal == argument.actual_ordinal) ||
+                (address != NULL && (*uses)[j].address == address))
                 return DSL_IR_CKKS_Report
                            (diagnostic, "duplicate call actual", i);
         }
@@ -2889,7 +2933,9 @@ DSL_IR_CKKS_Preflight
             (~(UINT32)0 - DSL_CKKS_Event_Image_Count()) /
                 request->context_count ||
         !DSL_IR_Image_Validate(NULL) ||
-        !DSL_CKKS_Event_Image_Validate(NULL))
+        !DSL_CKKS_Event_Image_Validate(NULL) ||
+        (DSL_Runtime_Interface_Image_Has_Records() &&
+         !DSL_Runtime_Interface_Image_Validate(NULL)))
         return DSL_IR_CKKS_Report
                    (diagnostic, "invalid request or PU", 0);
     *source_block = DSL_IR_Find_Containing_Block
@@ -3098,9 +3144,14 @@ DSL_IR_CKKS_Preflight
     scan->valid = TRUE;
     scan->definition_count = 0;
     DSL_IR_CKKS_Scan_Tree(*source_block, scan);
+    UINT32 direct_calls = 0;
+    for (UINT32 i = 0; i < calls->size(); ++i) {
+        if ((*calls)[i].address != NULL)
+            ++direct_calls;
+    }
     if (!scan->valid || !scan->source_seen ||
         scan->definition_count != 1 ||
-        scan->addresses.size() != calls->size() ||
+        scan->addresses.size() != direct_calls ||
         DSL_IR_Retire_Has_Use_Outside_Block
             (pu_root, *source_block, source_value->st))
         return DSL_IR_CKKS_Report
