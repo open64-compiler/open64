@@ -414,12 +414,24 @@ VHO_FHE_CKKS_Residual_Materialization_Finalize(FILE *diagnostic)
                             DSL_IR_NODE_FLAG_DEAD_ELIDED)) == 0)
       ++live;
   }
+  const BOOL event_image_valid =
+      DSL_CKKS_Event_Image_Validate(diagnostic);
+  const BOOL plan_image_valid =
+      DSL_FHE_Plan_Image_Validate(diagnostic);
   if (processed != 9 || Residual_state.add_count != 9 ||
-      Residual_state.modswitch_count != 7 || live != 0 || lowered != 9 ||
-      !DSL_CKKS_Event_Image_Validate(diagnostic) ||
-      !DSL_FHE_Plan_Image_Validate(diagnostic))
+      Residual_state.modswitch_count != 9 || live != 0 || lowered != 9 ||
+      !event_image_valid || !plan_image_valid) {
+    if (diagnostic != NULL)
+      fprintf(diagnostic,
+              "CFHEIR-RESIDUAL-001: measured processed=%u adds=%u "
+              "modswitches=%u live=%u lowered=%u event_image=%u "
+              "plan_image=%u\n",
+              processed, Residual_state.add_count,
+              Residual_state.modswitch_count, live, lowered,
+              event_image_valid, plan_image_valid);
     return Report(diagnostic,
-                  "coverage is not 9 adds, 7 alignments, and 9 lowered sources");
+                  "coverage is not 9 adds, 9 alignments, and 9 lowered sources");
+  }
 
   const char *output = VHO_FHE_Materialization_Checkpoint_Output;
   if (output == NULL || output[0] == '\0')
@@ -433,8 +445,8 @@ VHO_FHE_CKKS_Residual_Materialization_Finalize(FILE *diagnostic)
   fprintf(report, "FHE SYNC-6 residual materialization report\n");
   fprintf(report, "source_contexts=9\n");
   fprintf(report, "ckks_adds=9\n");
-  fprintf(report, "ckks_modswitches=7\n");
-  fprintf(report, "projection_joins_already_aligned=2\n");
+  fprintf(report, "ckks_modswitches=9\n");
+  fprintf(report, "projection_joins_already_aligned=0\n");
   fprintf(report, "source_residual_nodes_live=0\n");
   BOOL valid = fclose(report) == 0;
   if (!valid || !VHO_FHE_Materialize_Checkpoint_Register_Artifact(
@@ -444,7 +456,7 @@ VHO_FHE_CKKS_Residual_Materialization_Finalize(FILE *diagnostic)
     return Report(diagnostic, "residual report cannot join checkpoint");
   }
   fprintf(diagnostic,
-          "FHE-SYNC6-RESIDUAL: contexts=9 adds=9 modswitches=7 live=0\n");
+          "FHE-SYNC6-RESIDUAL: contexts=9 adds=9 modswitches=9 live=0\n");
   return TRUE;
 }
 

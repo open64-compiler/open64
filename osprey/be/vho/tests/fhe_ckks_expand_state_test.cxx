@@ -177,9 +177,11 @@ static void Check_Unary_Transfers()
   step.dsl_operator = OPR_DSLCKKSBOOTSTRAP;
   assert(VHO_FHE_CKKS_Verify_Unary_State_Transfer(
       step, input, output, NULL));
+  input.level = 20;
   output.level = 10;
-  assert(!VHO_FHE_CKKS_Verify_Unary_State_Transfer(
+  assert(VHO_FHE_CKKS_Verify_Unary_State_Transfer(
       step, input, output, NULL));
+  input.level = 10;
   output.level = 15;
   input.pending_actions = 0;
   assert(!VHO_FHE_CKKS_Verify_Unary_State_Transfer(
@@ -190,6 +192,10 @@ static void Check_Unary_Transfers()
   output.level = 17;
   assert(VHO_FHE_CKKS_Verify_Unary_State_Transfer(
       step, input, output, NULL));
+  output.level = 9;
+  assert(!VHO_FHE_CKKS_Verify_Unary_State_Transfer(
+      step, input, output, NULL));
+  output.level = 17;
   input.pending_bootstrap_reason =
       DSL_FHE_BOOTSTRAP_REASON_MANUAL_BOUNDARY_REQUIRED;
   assert(!VHO_FHE_CKKS_Verify_Unary_State_Transfer(
@@ -509,7 +515,7 @@ int main()
       pu, &request, states, 2, NULL));
   existing_state_available = TRUE;
   existing_state.level = 15;
-  assert(!VHO_FHE_CKKS_Can_Expand_And_Bind_States(
+  assert(VHO_FHE_CKKS_Can_Expand_And_Bind_States(
       pu, &request, states, 2, NULL));
   existing_state.level = 10;
   steps[1].operand_count = 0;
@@ -550,7 +556,7 @@ int main()
   steps[1].attributes = bootstrap_attrs;
   steps[1].attribute_count = 3;
   Set_Existing_Input(10, 56, 2, DSL_FHE_CKKS_PENDING_BOOTSTRAP);
-  assert(preflight_count == 7 && expansion_count == 0);
+  assert(preflight_count == 8 && expansion_count == 0);
 
   fail_native = TRUE;
   assert(!VHO_FHE_CKKS_Expand_And_Bind_States(

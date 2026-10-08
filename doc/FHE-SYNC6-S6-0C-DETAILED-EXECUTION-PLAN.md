@@ -1,18 +1,53 @@
 # S6-0c Detailed Execution Plan: Complete CKKS Semantic IR
 
-Status: execution in progress, with the full Conv and residual-add subgraphs
-certified as CKKS-conforming. S6-0a and the generic resident whole-PU transaction are
-merged. C0 has a retained, independently rerun source-family artifact replay;
-C1 has a structured canonical event-plan serializer and linked whole-PU
-grouping fixture. The 2026-10-06 Conv checkpoint described below closes the
-Conv portion of C2 and C6/C7. The 2026-10-07 residual checkpoint closes all
-nine exact-shape residual joins. The circuit remains incomplete: ReLU,
-pooling, flatten, and linear still require executable CKKS
-expansion. The normative gate is `FHE-SYNC6-CKKS-IR-CONFORMANCE-GATE.md`.
+Status: **S6-0c complete and independently certified.** The final ten-PU
+checkpoint contains 33,367 explicit provider-independent CKKS operations and
+no live Conv, BatchNorm, residual-add, ReLU, pool, flatten, linear, or
+output-logits computation. S6-0a, S6-0b, C0-C8, and the generic resident
+whole-PU transaction are complete. The normative gate is
+`FHE-SYNC6-CKKS-IR-CONFORMANCE-GATE.md`; S6-0d CKKS2C is the next milestone.
 The end-to-end copy-on-write parameter path, from immutable source SafeTensors
 through derived plaintext side assets and explicit `ckks.encode` nodes, is
 documented for implementers in
 `FHE-SYNC6-RAW-TO-CKKS-PLAINTEXT-FLOW.md`.
+
+## Final S6-0c Closure Evidence
+
+The retained artifact family is
+`/private/tmp/open64-fhe-sync6-fresh-pipeline/final-s6-0c-v8/`. A separate
+rebuilt `ir_b2a -st -src` process reopened the atomically published binary.
+The independent auditor then proved:
+
+- 10 executable PUs and nonzero `secure_resnet20.py` source interleave;
+- 33,367 physical CKKS operations with 33,367 unique event/result/state joins;
+- 28,927 Conv, 18 residual, 4,237 ReLU, and 185 tail operations;
+- 23 explicit bootstraps: 19 `PRE_RELU_REFRESH` and four
+  `DEPTH_EXHAUSTION` repairs on the two stride-two paths;
+- 954 exact signed-rotation key requirements plus public, relinearization,
+  and bootstrap requirements;
+- zero live high-level computation and complete lowered/retired provenance;
+- atomically published 202,620,928-byte Conv, 4,712-byte ReLU, and
+  1,572,864-byte tail plaintext assets; and
+- no temporary artifact after success.
+
+The final state reflow exposes nine residual level alignments and nine adds.
+The earlier seven-alignment/two-already-aligned result below remains a useful
+historical partial checkpoint; it is not the final whole-model count.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `secure_resnet20.ckks_ops.B` | `d7bccc537c422b2266add7437040cac14ef7b33af93c9f5e65eb7ebb5f89876f` |
+| `secure_resnet20.ckks_ops.T` | `7f97cca89b20ff1654ff6486010a086d61b9cabe1ec5e8048188045a59dda629` |
+| `secure_resnet20.ckks_ops.B.conv-plaintexts.f32` | `50772c653e1c4a5fbd6ff253a5799d418a4f2fa8f61f55ffa389fae391f24e2e` |
+| `secure_resnet20.ckks_ops.B.relu-scalars.f64` | `725e7d741be3ac8b58c624aae6871d79e468fe7eb81d7cde5f2bfc02f29372ca` |
+| `secure_resnet20.ckks_ops.B.tail-plaintexts.f32` | `44d0ca870a1c879c95ba36886fef26fcef640e6c77286b99ea6d9319ebead81c` |
+| `complete-audit.json` | `d47f51c9626e2e3d16f21e578df6b4467147c8b87ca27c258179532991d55074` |
+
+The stale-destination negative rejects in about one second with
+`CFHEMAT-CHECKPOINT-006`, preserves the published binary hash, and creates no
+`.tmp`. Test selection and receipt reuse now follow
+`doc/IMPACTFUL-TEST-STRATEGY.md`; this final producer run must not be repeated
+unless a producer-impacting input changes.
 
 ## Conv CKKS Conformance Checkpoint
 
@@ -374,8 +409,9 @@ only a capacity test with placeholder operators/states and is **not** the
 ACE-row execution schedule. The subsequent native Conv plan fixture now
 certifies the legal per-row rotation/encode/multiply/rescale/accumulation
 sequence and its concrete level/scale/component/precision tuples for all eight
-captured shape families. Full-model owner/context binding and mapped-image
-publication remain open.
+captured shape families. At that historical bounded stage, full-model
+owner/context binding and mapped-image publication remained open; the final
+S6-0c artifact above closes both.
 
 **Proceed with external F32 rows, not lazy runtime derivation.** Keep the
 raw slices and bounded index outside `.B`, authenticate each row and whole
@@ -612,8 +648,9 @@ output is level 7. The proposed `-O0` `DEPTH_EXHAUSTION` bootstrap of the
 shared block input targets level 18 and 17 respectively. One high-resolution
 Conv plaintext multiply plus 14 or 13 sequential packing levels then leaves
 both the normal Conv1 and projection branches at level 3. The main branch
-separately performs its mandatory pre-ReLU refresh to level 15, evaluates
-the approved depth-11 ReLU to level 4, and uses one level for Conv2, also
+separately performs its mandatory pre-ReLU refresh to level 15, consumes one
+level normalizing `x/B`, evaluates the approved depth-11 `App_relu` body to
+level 3, and uses one level for Conv2, also
 reaching level 3 before residual add. This is a **symbolic level join**, not
 proof of supported extra bootstrap targets, compatible scales, noise,
 precision, plaintext encoding, or available keys. It adds two proposed
@@ -654,13 +691,13 @@ mutation paths for source-derived rows and source-free masks, respectively.
 | --- | --- | --- |
 | C0: replay/input gate | Add a deterministic input manifest and native read-only gate joining six-PU images, 87/147 events, 19 contexts, source/payload/coefficient hashes, and FHE/DSL validators. Reject the older `.fhe.B` and unsupported config before planning. | Stable hashed census, `-st -src` with six FUNC_ENTRYs/nine calls/nonzero source interleave; wrong hash or missing context rejects without output. |
 | C1: canonical plan serializer | Define a bounded structured per-event CKKS step plan and versioned byte encoding for operation/operand/group-output/TY/layout/state/key/rotation/B-role facts. Validate before encoding; opaque producer-supplied bytes alone are not a legal plan. | Equal semantics encode identically despite allocation/name order; changed non-ReLU operation/state/key/rotation changes bytes. Missing field, bad operand, duplicate event, or truncated encoding rejects. Retain decoded plan and hashes. |
-| C2: non-ReLU recipes | Use the selected ACE-aligned column-first, raw-F32 transformed feature rows as external plain operands of explicit `ckks.encode`. Join every row to verified folded bytes and exact source/call context; retain the independent signed-rotation clear oracle. Prove row-indexed rotations, accumulation, bias, and state before expanding the 21 specialized Conv definitions. Do not silently substitute input im2col, fast blocking, or runtime mask derivation. Then cover residual/pool/flatten/linear. Unsupported cases fail closed. | **Conv and residual portions complete:** PRs #173/#174 provide native row/mask creation; the real ten-PU checkpoint materializes 5,691 rows, 21 biases, 104 logical masks, and 28,927 Conv CKKS operations, then seven explicit level alignments and nine residual adds. Separate-process inspection proves zero live Conv or residual-add nodes and preserves 21+9 lowered provenance rows. Pool/flatten/linear remain open. |
-| C3: ReLU recipe | In each of 19 contexts generate `ckks.bootstrap` with `PRE_RELU_REFRESH` and target 15/17/18, actual B materialization/encode/normalization, the pinned ACE BSGS-style Chebyshev addition-chain for ordered degree-7/15/13 stages, and reconstruction. Bootstrap does not compute ReLU. The original ciphertext and normalized ciphertext are distinct recipe roots, matching ACE `App_relu(input_ct0,input_ct1)`. | 19 refreshes with targets 15x16/17x1/18x2, profile depth allocation 3+4+4=11, coefficient bytes/order/hash, exact addition-chain DAG, and independent direct-Chebyshev oracle. Wrong B/reason/target/stage/context rejects. Legacy Clenshaw-tagged planning artifacts fail closed and must be recaptured before executable expansion. |
-| C4: state/requirement propagation | Transfer exact descriptor/config, cipher/plain class, TY/layout/slots, level/scale/components/precision, pending actions, key class and signed rotation through every proposed result. Insert explicit alignment/rescale/relin/encode steps when the reviewed recipe requires them. Recompute depth/keys/rotations from the DAG. | Unary/binary and cross-operator positives; missing key, wrong rotation, depleted level, low precision, mismatched state/TY/slot, forward reference, or unresolved action rejects before mutation. Retain operation/key/rotation/depth report. |
-| C5: whole-PU policy | Group byte-identical complete PU plans, register with `DSL_PU_Transaction_Register_Policy`, map variants to source PU/value/static ordinal, add B formals, route nine calls and bind 18 called B actuals plus one root B TCON. Use owner-qualified clone-value results. Measure variant count after C2-C4. | Equal contexts reuse, changed non-ReLU plan splits, two ReLUs keep two B formals, and 129 existing call-ABI roles remain correct. Missing actual, wrong owner/TY, incomplete signature or duplicate route rejects before apply. Retain variant/call/origin report. |
-| C6: expansion/all-PU gate | Turn reviewed plans into `DSL_CKKS_EXPANSION_REQUEST`s and call the native CKKS expansion/state adapter for resident variants. Preserve source/group ordinals and returned value IDs. Verify 147 source-context events have complete step coverage, unique source finals, no live Conv/BN/`common.relu`, and concrete state/source position for every live result. | **Conv and residual portions complete:** all 21 specialized Conv definitions and all 9 resident residual definitions expand transactionally and redirect downstream reads. The residual slice adds 16 explicit CKKS events and proves 9/7 add/alignment coverage. The complete all-operator event gate remains open for ReLU, pool, flatten, and linear. |
-| C7: mapped checkpoint | Use the existing whole-program checkpoint to write all executable PUs and managed images only after the selected expansion slice validates. Atomically publish `.ckks_ops.B`; reopen with separate-process `ir_b2a -st -src` and original source pathname. | **Conv plus residual checkpoint complete:** retained `.B`, `.T`, source positions, side payload and reports reopen cleanly; 21 Conv and 9 residual rows are lowered, no physical Conv/residual remains, and 28,943 CKKS events are mapped. Final all-operator C7 evidence remains open, and induced/stale publication failures must continue to leave no final or `.tmp`. |
-| C8: independent certification | Compare mapped result with input manifest, independent 87/147 census, 19-context policy, clear tensor/slot and polynomial oracles, and fresh state/depth/key/rotation calculation. Run full native syntax/layout and backend-link lanes. | Signed-off report with measured PU/primitive counts, all event/group/final links, 19 mandatory pre-ReLU bootstraps plus any separately admitted and reason-tagged capacity refreshes, no live high-level computation, negative results and artifact hashes. State explicitly that C ABI lowering/provider execution are untested. |
+| C2: non-ReLU recipes | Use the selected ACE-aligned column-first, raw-F32 transformed feature rows as external plain operands of explicit `ckks.encode`. Join every row to verified folded bytes and exact source/call context; retain the independent signed-rotation clear oracle. Prove row-indexed rotations, accumulation, bias, and state before expanding the 21 specialized Conv definitions. Do not silently substitute input im2col, fast blocking, or runtime mask derivation. Then cover residual/pool/flatten/linear. Unsupported cases fail closed. | **Complete:** 5,691 rows, 21 biases, 104 logical masks, 28,927 Conv operations, nine residual modswitches, nine residual adds, 15 pool operations, and 170 linear operations. Flatten and output markers retire by identity redirection. No high-level source computation remains live. |
+| C3: ReLU recipe | In each of 19 contexts generate `ckks.bootstrap` with `PRE_RELU_REFRESH` and target 15/17/18, actual B materialization/encode/normalization, the pinned ACE BSGS-style Chebyshev addition-chain for ordered degree-7/15/13 stages, and reconstruction. Bootstrap does not compute ReLU. The original ciphertext and normalized ciphertext are distinct recipe roots, matching ACE `App_relu(input_ct0,input_ct1)`. | **Complete:** the corrected 94-step algebra has exact depth `3+4+4=11`; outer terms use `(x*coefficient)*T_degree`. Each context materializes 223 events for 4,237 total operations, including 19 mandatory pre-ReLU bootstraps. Concrete 3/5/6 results reflow into downstream Conv planning and no live ReLU remains. |
+| C4: state/requirement propagation | Transfer exact descriptor/config, cipher/plain class, TY/layout/slots, level/scale/components/precision, pending actions, key class and signed rotation through every proposed result. Insert explicit alignment/rescale/relin/encode steps when the reviewed recipe requires them. Recompute depth/keys/rotations from the DAG. | **Complete:** focused unary/binary/cross-operator tests pass, every one of 33,367 event results has concrete state, all pending actions resolve, and the mapped physical rotation set equals the 954 persisted rotation-key requirements. |
+| C5: whole-PU policy | Group byte-identical complete PU plans, register with `DSL_PU_Transaction_Register_Policy`, map variants to source PU/value/static ordinal, add B formals, route nine calls and bind 18 called B actuals plus one root B TCON. Use owner-qualified clone-value results. Measure variant count after C2-C4. | **Complete:** ten measured executable PUs preserve source definitions, exact caller/callee identities, complete call ABI, typed B routing, and result ordinals. Equal schedules reuse while incompatible context state remains specialized. |
+| C6: expansion/all-PU gate | Turn reviewed plans into `DSL_CKKS_EXPANSION_REQUEST`s and call the native CKKS expansion/state adapter for resident variants. Preserve source/group ordinals and returned value IDs. Verify 147 source-context events have complete step coverage, unique source finals, no live Conv/BN/`common.relu`, and concrete state/source position for every live result. | **Complete:** all ten resident specialized PUs expand transactionally to 33,367 events. Every result has concrete state and source position; no live high-level computation remains. |
+| C7: mapped checkpoint | Use the existing whole-program checkpoint to write all executable PUs and managed images only after the selected expansion slice validates. Atomically publish `.ckks_ops.B`; reopen with separate-process `ir_b2a -st -src` and original source pathname. | **Complete:** `.B`, three side assets, reports, source, and 86 MB `.T` are retained. Separate-process reopen passes; stale publication preserves the existing hash and leaves no `.tmp`. |
+| C8: independent certification | Compare mapped result with input manifest, independent 87/147 census, 19-context policy, clear tensor/slot and polynomial oracles, and fresh state/depth/key/rotation calculation. Run the impact-selected focused, syntax/layout, backend-link, frontend, and artifact lanes. | **Complete:** the independent audit checks all 33,367 physical/event/state joins, 23 reason-tagged bootstraps, 954 rotation keys, reports/assets, ten PUs, source interleave, and zero live high-level computations in 4.4 seconds. C ABI lowering/provider execution remain outside S6-0c. |
 
 ## Ownership And Review Checkpoints
 
@@ -696,6 +733,13 @@ required fact, pause C5-C7 for a narrow main-owned contract request. Do not
 invent a local physical opcode or bypass the binary WHIRL boundary.
 
 ## Test Matrix And Exit
+
+Test selection follows `doc/IMPACTFUL-TEST-STRATEGY.md`. During development,
+run the focused recipe, state-transfer, transaction, and miniature-checkpoint
+lanes selected by the actual diff. Reuse a content-addressed full-model
+artifact for printer or audit changes. Run the expensive ten-PU materializer
+only when producer-impacting code invalidates its receipt and once at the final
+PR or milestone boundary; state that reason and expected duration first.
 
 Run focused serializer, Conv mapping, ReLU, state-transfer, signature,
 expansion, and checkpoint tests first; then the native syntax/target-layout

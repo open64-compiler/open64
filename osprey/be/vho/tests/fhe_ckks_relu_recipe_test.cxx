@@ -119,11 +119,17 @@ main()
          recipe.stages[2].step_count == 39);
   assert(recipe.result.step_index == 93);
   assert(recipe.result.kind == VHO_FHE_RELU_VALUE_PRIOR_STEP);
+  assert(recipe.stages[0].output_depth - recipe.stages[0].input_depth == 3);
+  assert(recipe.stages[1].output_depth - recipe.stages[1].input_depth == 4);
+  assert(recipe.stages[2].output_depth - recipe.stages[2].input_depth == 4);
+  assert(recipe.steps[recipe.result.step_index].algebraic_depth == 11);
   for (UINT32 i = 0; i < recipe.steps.size(); ++i) {
     assert(recipe.steps[i].operation >= VHO_FHE_RELU_RECIPE_ADD);
     assert(recipe.steps[i].operation <=
            VHO_FHE_RELU_RECIPE_SCALAR_CONSTANT);
     assert(recipe.steps[i].stage_ordinal <= 3);
+    if (recipe.steps[i].operation == VHO_FHE_RELU_RECIPE_SCALAR_CONSTANT)
+      assert(recipe.steps[i].left.kind != VHO_FHE_RELU_VALUE_INVALID);
   }
 
   static const double inputs[] = {

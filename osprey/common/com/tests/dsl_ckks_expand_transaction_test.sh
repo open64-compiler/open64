@@ -12,6 +12,8 @@ image="$artifact_dir/ckks_expand.B"
 trace="$artifact_dir/ckks_expand.T"
 region_image="$artifact_dir/ckks_region.B"
 region_trace="$artifact_dir/ckks_region.T"
+runtime_image="$artifact_dir/ckks_runtime_call.B"
+runtime_trace="$artifact_dir/ckks_runtime_call.T"
 
 for executable in "$producer" "$ir_b2a"; do
   if [[ ! -x "$executable" ]]; then
@@ -29,6 +31,8 @@ printf '%s\n' \
   "$ir_b2a -st -src $image $trace" \
   "OPEN64_DSL_CKKS_REGION_ONLY=1 OPEN64_DSL_CKKS_REGION_ARTIFACT=$region_image $producer" \
   "$ir_b2a -st -src $region_image $region_trace" \
+  "OPEN64_DSL_CKKS_RUNTIME_CALL_ONLY=1 OPEN64_DSL_CKKS_RUNTIME_CALL_ARTIFACT=$runtime_image $producer" \
+  "$ir_b2a -st -src $runtime_image $runtime_trace" \
   >"$artifact_dir/commands.txt"
 
 OPEN64_DSL_CKKS_EXPAND_ONLY=1 \
@@ -41,6 +45,11 @@ OPEN64_DSL_CKKS_REGION_ARTIFACT="$region_image" \
   "$producer" >"$artifact_dir/region-producer.log" 2>&1
 "$ir_b2a" -st -src "$region_image" "$region_trace" \
   >"$artifact_dir/region-ir_b2a.log" 2>&1
+OPEN64_DSL_CKKS_RUNTIME_CALL_ONLY=1 \
+OPEN64_DSL_CKKS_RUNTIME_CALL_ARTIFACT="$runtime_image" \
+  "$producer" >"$artifact_dir/runtime-producer.log" 2>&1
+"$ir_b2a" -st -src "$runtime_image" "$runtime_trace" \
+  >"$artifact_dir/runtime-ir_b2a.log" 2>&1
 
 test "$(grep -c '^FUNC_ENTRY' "$trace")" -eq 1
 grep -Fq 'CKKS Event Image: version=1 records=6' "$trace"
@@ -67,6 +76,17 @@ grep -Fq 'DSL Call ABI Argument Table: version=1 entries=1' "$region_trace"
 grep -Fq 'CKKS Event Image: version=1 records=1' "$region_trace"
 grep -Fq 'status=lowered relation=ckks_expansion' "$region_trace"
 test ! -e "$region_image.tmp"
+test "$(grep -c '^FUNC_ENTRY' "$runtime_trace")" -eq 2
+grep -Fq 'CKKS Event Image: version=1 records=2' "$runtime_trace"
+grep -Fq 'DSL Runtime Interface Image: version=1' "$runtime_trace"
+grep -Fq 'retired_formals=1 retired_call_arguments=1' "$runtime_trace"
+grep -Fq 'old_actual=1 old_formal=1' "$runtime_trace"
+grep -Fq 'actual=2 formal=2 direction=result' "$runtime_trace"
+grep -Fq 'runtime_call_encoded' "$runtime_trace"
+grep -Fq 'runtime_result_encoded' "$runtime_trace"
+grep -Fq 'status=lowered relation=ckks_expansion' "$runtime_trace"
+grep -Fq 'redirected_addresses=0' "$artifact_dir/runtime-producer.log"
+test ! -e "$runtime_image.tmp"
 
 if command -v readelf >/dev/null 2>&1; then
   readelf -SW "$image" >"$artifact_dir/section-headers.txt"
@@ -75,20 +95,29 @@ if command -v readelf >/dev/null 2>&1; then
     >"$artifact_dir/region-section-headers.txt"
   grep -Fq '.WHIRL.dsl_ckks_event' \
     "$artifact_dir/region-section-headers.txt"
+  readelf -SW "$runtime_image" \
+    >"$artifact_dir/runtime-section-headers.txt"
+  grep -Fq '.WHIRL.dsl_runtime' \
+    "$artifact_dir/runtime-section-headers.txt"
 fi
 
 if command -v sha256sum >/dev/null 2>&1; then
   (cd "$artifact_dir" && sha256sum \
     ckks_expand.B ckks_expand.T ckks_region.B ckks_region.T \
+    ckks_runtime_call.B ckks_runtime_call.T \
     dsl_builder_contract_test.cxx producer.log ir_b2a.log \
-    region-producer.log region-ir_b2a.log commands.txt >SHA256SUMS)
+    region-producer.log region-ir_b2a.log \
+    runtime-producer.log runtime-ir_b2a.log commands.txt >SHA256SUMS)
 else
   (cd "$artifact_dir" && shasum -a 256 \
     ckks_expand.B ckks_expand.T ckks_region.B ckks_region.T \
+    ckks_runtime_call.B ckks_runtime_call.T \
     dsl_builder_contract_test.cxx producer.log ir_b2a.log \
-    region-producer.log region-ir_b2a.log commands.txt >SHA256SUMS)
+    region-producer.log region-ir_b2a.log \
+    runtime-producer.log runtime-ir_b2a.log commands.txt >SHA256SUMS)
 fi
 
 echo "CKKS grouped expansion transaction passed"
 echo "review trace: $trace"
 echo "call/REGION trace: $region_trace"
+echo "runtime-projected call trace: $runtime_trace"

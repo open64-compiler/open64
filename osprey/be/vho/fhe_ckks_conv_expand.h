@@ -18,7 +18,7 @@
 #include "fhe_ckks_conv_plan.h"
 #include "pu_info.h"
 
-struct VHO_FHE_CKKS_CONV_EXPANSION_SOURCE {
+struct VHO_FHE_CKKS_EXPANSION_SOURCE {
   WN *source_definition;
   DSL_IR_VALUE_ID source_value_id;
   DSL_OPERATOR expected_source_operator;
@@ -30,12 +30,22 @@ struct VHO_FHE_CKKS_CONV_EXPANSION_SOURCE {
   STR_IDX encrypted_layout_name;
 };
 
+typedef VHO_FHE_CKKS_EXPANSION_SOURCE
+    VHO_FHE_CKKS_CONV_EXPANSION_SOURCE;
+
 /* Convert one complete process-local plan into native request rows, run the
  * shared preflight/mutation transaction, and bind every result CKKS state.
  * The layout STR_IDX must already exist and equal the plan's stable layout;
  * this adapter never mutates the string table before native preflight.
  * Failure leaves results unchanged. A failure after native expansion is
  * terminal for the enclosing checkpoint, as documented by the transaction. */
+BOOL VHO_FHE_CKKS_Expand_Event(
+    PU_Info *pu_info, const VHO_FHE_CKKS_EVENT_PLAN &plan,
+    const VHO_FHE_CKKS_EXPANSION_SOURCE &source,
+    FILE *diagnostic,
+    std::vector<DSL_CKKS_EXPANSION_STEP_RESULT> *results);
+
+/* Compatibility spelling retained for the Conv producer. */
 BOOL VHO_FHE_CKKS_Expand_Conv_Event(
     PU_Info *pu_info, const VHO_FHE_CKKS_EVENT_PLAN &plan,
     const VHO_FHE_CKKS_CONV_EXPANSION_SOURCE &source,

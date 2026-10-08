@@ -217,7 +217,7 @@ private:
       VHO_FHE_RELU_VALUE_REF doubled)
   {
     return Append(VHO_FHE_RELU_RECIPE_SCALAR_CONSTANT,
-                  Invalid_Reference(), Invalid_Reference(), -1.0, 0,
+                  doubled, Invalid_Reference(), -1.0, 0,
                   &doubled);
   }
 
@@ -235,12 +235,21 @@ private:
         if (outermost)
           coefficient *= 0.5;
         VHO_FHE_RELU_VALUE_REF item;
-        if (degree == 0)
+        if (outermost) {
+          /*
+           * ACE multiplies the refreshed original input by the encoded
+           * coefficient before multiplying by T_degree. This ordering is
+           * semantically significant for CKKS depth: (x*c)*T_degree avoids
+           * the extra layer introduced by (T_degree*c)*x and also makes the
+           * outer T0 term part of 0.5*x*sign(x/B).
+           */
+          item = Multiply_Scalar(original, coefficient);
+          if (degree > 0)
+            item = Multiply(_precomputed[degree], item);
+        } else if (degree == 0) {
           item = Scalar_Constant(coefficient);
-        else {
+        } else {
           item = Multiply_Scalar(_precomputed[degree], coefficient);
-          if (outermost)
-            item = Multiply(original, item);
         }
         sum = sum.kind == VHO_FHE_RELU_VALUE_INVALID ? item : Add(item, sum);
       }

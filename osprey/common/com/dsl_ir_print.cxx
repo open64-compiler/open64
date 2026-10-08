@@ -203,6 +203,8 @@ DSL_IR_Image_Print (FILE *file)
             DSL_IR_VALUE_ID target = DSL_IR_VALUE_INVALID_ID;
             DSL_IR_Image_Value_Redirect_Target(node.result_value_id, &target);
             fprintf(file, " status=retired redirected_to=value%u", target);
+            if ((node.flags & DSL_IR_NODE_FLAG_RETIRED_VIEW) != 0)
+                fprintf(file, " relation=representation_view");
         }
         if ((node.flags & DSL_IR_NODE_FLAG_DEAD_ELIDED) != 0)
             fprintf(file, " status=dead_elided relation=none");
@@ -424,7 +426,11 @@ DSL_IR_Image_Print (FILE *file)
             fprintf(file, "<none>");
         else
             fprintf(file, "%u", record.formal_ordinal);
-        fprintf(file, " flags=0x%x\n", record.flags);
+        fprintf(file, " flags=0x%x", record.flags);
+        if ((record.flags &
+             DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW) != 0)
+            fprintf(file, " status=retired_view");
+        fprintf(file, "\n");
     }
     fprintf(file, "DSL Runtime Call Projection Table:\n");
     for (UINT32 i = 1; i <= runtime_header.call_projection_count; ++i) {

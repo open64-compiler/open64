@@ -167,11 +167,16 @@ checks the ACE-specific levels, scale 56, two components, minimum precision 30,
 32768 slots, depth 11, and reconstruction policy.
 
 The merged profile contract is authoritative: its ordered stage
-`level_consumption` values are `{3,4,4}` and sum to depth 11. The final
-degree-13 stage already includes the reconstruction cost assigned by the
-profile. Therefore `RECONSTRUCT_RELU` consumes zero additional level and its
-`RESULT.v1` state has the same level as `POST_OPERATION.v4`. Materialization
-must not reinterpret the profile as `{3,4,3}+1`.
+`level_consumption` values are `{3,4,4}` and sum to the depth-11 `App_relu`
+body. ACE performs normalization before that body as an encoded `1/B`
+plaintext multiplication followed by one rescale. Consequently the complete
+post-refresh path consumes 12 levels: one for normalization and eleven for
+the profile. The final degree-13 stage already includes the reconstruction
+cost assigned by the profile, so `RECONSTRUCT_RELU` consumes zero additional
+level and its `RESULT.v1` state has the same level as `POST_OPERATION.v4`.
+For a post-refresh level `L`, the six outputs are therefore
+`L, L-1, L-4, L-8, L-12, L-12`. Materialization must not reinterpret the
+profile as `{3,4,3}+1` or treat normalization as level-neutral.
 
 ## Complete-Context Invariants
 

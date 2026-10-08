@@ -1942,6 +1942,23 @@ full-sequence causal prompt evaluation with no KV cache.
    reserved fixed-row field. The detailed compatibility and atomicity contract
    is in `doc/FHE-SYNC3-EXTERNAL-TENSOR-REWRITE-CONTRACT.md`.
 
+   A separate `DSL_IR_Redirect_And_Retire_Native_View` transaction admits a
+   cross-`TY_IDX` zero-motion `common.flatten.v2` only after pure-view,
+   static element-count, element type, alignment, and exact stored
+   representation-field checks. It preserves both immutable TY identities,
+   redirects executable reads and DSL references to the dominating source,
+   and retains the rank-changing result as retired provenance. A local
+   runtime projection becomes explicitly retired provenance only when a live
+   source projection of the same handle type exists and no call or physical
+   handle use depends on the old one. REGION collision, alias, and dominance
+   rejection use the same atomic preflight as same-TY retirement. The new
+   node/projection flags reuse existing fixed rows and section sizes; prior
+   readers reject unknown flags rather than treating cross-TY redirection as
+   a same-TY contract. `ir_b2a -st -src` prints
+   `relation=representation_view`. Transpose, slice, and reshape remain
+   ineligible until their zero-motion legality is separately proved. Domain
+   passes still own physical packing proofs such as CKKS slot identity.
+
 42. [x] Publish durable PU-formal value identity.
 
    Add optional `.WHIRL.dsl_pu_interface` fixed rows mapping each ordered

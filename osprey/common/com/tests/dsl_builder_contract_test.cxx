@@ -10490,8 +10490,10 @@ Check_CKKS_Expansion_Transaction (void)
 #undef CKKS_EXPAND_CHECK
 }
 
+static unsigned char *Capture_Runtime_Interface_Image (UINT64 *image_size);
+
 static int
-Check_CKKS_Expansion_Call_Region (void)
+Check_CKKS_Expansion_Call_Region (BOOL projected_call)
 {
 #define CKKS_REGION_CHECK(condition, stage) \
     do { \
@@ -10523,11 +10525,15 @@ Check_CKKS_Expansion_Call_Region (void)
     position.statement_begin = 1;
     DSL_BUILDER_VALUE formal = DSL_Builder_Declare_PU_Formal
         (callee, "callee_input", 0, ty, &position);
+    DSL_BUILDER_VALUE dead_formal = projected_call ?
+        DSL_Builder_Declare_PU_Formal
+            (callee, "callee_dead_input", 1, ty, &position) : NULL;
     DSL_BUILDER_VALUE callee_result = DSL_Builder_Declare_PU_Result
         (callee, "callee_result", 0, ty, DSL_PU_RESULT_TENSOR,
          &position);
     CKKS_REGION_CHECK(ty != TY_IDX_ZERO && callee != NULL &&
                       formal != NULL && callee_result != NULL &&
+                      (!projected_call || dead_formal != NULL) &&
                       DSL_Builder_Return_PU_Values(callee, &formal, 1),
                       "callee signature and return");
 
@@ -10570,11 +10576,15 @@ Check_CKKS_Expansion_Call_Region (void)
     callsite.source_position = position;
     ++callsite.source_position.line;
     const char *result_names[1] = { "region_call_result" };
+    DSL_BUILDER_VALUE call_arguments[2] = { source, one };
     DSL_BUILDER_CALL call = DSL_Builder_Create_PU_Call
-        (caller, callee, &source, 1, result_names, 1, &callsite);
+        (caller, callee, call_arguments,
+         projected_call ? 2 : 1, result_names, 1, &callsite);
     CKKS_REGION_CHECK
         (call != NULL && DSL_Builder_Set_PU_Call_Argument_Role
-             (call, 0, 0, "input.tensor"),
+             (call, 0, 0, "input.tensor") &&
+         (!projected_call || DSL_Builder_Set_PU_Call_Argument_Role
+             (call, 1, 1, "dead.input")),
          "managed call ABI actual");
     DSL_BUILDER_VALUE consumer = DSL_Builder_Create_Operator_With_Result
         (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
@@ -10594,6 +10604,394 @@ Check_CKKS_Expansion_Call_Region (void)
         (body, DSL_Builder_Get_Value_Result_Symbol(consumer));
     CKKS_REGION_CHECK(one_definition != NULL && source_definition != NULL &&
                       consumer_definition != NULL, "caller definitions");
+
+    if (projected_call) {
+        DSL_BUILDER_VALUE call_result;
+        DSL_CALLSITE_METADATA_RECORD callsite_record;
+        TY_IDX handle_ty = Create_Runtime_Interface_Handle_TY
+                               ("ckks_expansion_runtime_handle_v1");
+        CKKS_REGION_CHECK
+            (handle_ty != TY_IDX_ZERO &&
+             DSL_Builder_Get_PU_Call_Result(call, 0, &call_result) &&
+             DSL_Call_Image_Find_Callsite(call, &callsite_record),
+             "runtime call result");
+        DSL_BUILDER_VALUE result_source =
+            DSL_Builder_Create_Operator_With_Result
+                (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                 "common.relu", 2),
+                 2, &call_result, 1, NULL, 0,
+                 "runtime_result_source", ty);
+        ++position.line;
+        CKKS_REGION_CHECK
+            (result_source != NULL &&
+             DSL_Builder_Set_Value_Source_Position
+                 (result_source, &position) &&
+             DSL_Builder_Append_PU_Value(caller, result_source),
+             "runtime result consumer");
+        WN *result_source_definition = Find_STID_In_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(result_source));
+        CKKS_REGION_CHECK(result_source_definition != NULL,
+                          "runtime result source definition");
+        DSL_BUILDER_VALUE projected_values[4] = {
+            formal, callee_result, source, call_result
+        };
+        ST_IDX owners[4] = {
+            PU_Info_proc_sym(callee), PU_Info_proc_sym(callee),
+            PU_Info_proc_sym(caller), PU_Info_proc_sym(caller)
+        };
+        const UINT32 kinds[4] = {
+            DSL_RUNTIME_BINDING_INPUT_FORMAL,
+            DSL_RUNTIME_BINDING_RESULT_FORMAL,
+            DSL_RUNTIME_BINDING_LOCAL_VALUE,
+            DSL_RUNTIME_BINDING_LOCAL_VALUE
+        };
+        DSL_RUNTIME_VALUE_PROJECTION_REQUEST value_requests[4];
+        memset(value_requests, 0, sizeof(value_requests));
+        for (UINT32 i = 0; i < 4; ++i) {
+            value_requests[i].owner_pu_st = owners[i];
+            value_requests[i].source_value_id =
+                DSL_Builder_Get_Value_Image_Id(projected_values[i]);
+            value_requests[i].expected_source_st =
+                DSL_Builder_Get_Value_Result_Symbol(projected_values[i]);
+            value_requests[i].expected_source_ty = ty;
+            value_requests[i].handle_ty = handle_ty;
+            value_requests[i].binding_kind = kinds[i];
+            value_requests[i].formal_ordinal = i == 1 ? 2 : i == 0 ? 0 :
+                DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
+        }
+        DSL_RUNTIME_CALL_PROJECTION_REQUEST call_requests[2];
+        memset(call_requests, 0, sizeof(call_requests));
+        for (UINT32 i = 0; i < 2; ++i) {
+            call_requests[i].owner_pu_st = PU_Info_proc_sym(caller);
+            call_requests[i].callsite_id = callsite_record.id;
+            call_requests[i].source_value_id =
+                value_requests[i + 2].source_value_id;
+            call_requests[i].actual_ordinal = i == 0 ? 0 : 2;
+            call_requests[i].callee_formal_ordinal = i == 0 ? 0 : 2;
+            call_requests[i].direction = i == 0 ?
+                DSL_RUNTIME_CALL_INPUT : DSL_RUNTIME_CALL_RESULT;
+        }
+        DSL_RUNTIME_INTERFACE_PLAN plan;
+        memset(&plan, 0, sizeof(plan));
+        plan.values = value_requests;
+        plan.value_count = 4;
+        plan.calls = call_requests;
+        plan.call_count = 2;
+        DSL_PU_FORMAL_RECORD dead_formal_row;
+        DSL_CALL_ARGUMENT_RECORD dead_argument_row;
+        DSL_RETIRED_FORMAL_REQUEST retired_formal;
+        DSL_RETIRED_CALL_ARGUMENT_REQUEST retired_argument;
+        DSL_PROGRAM_INTERFACE_PLAN program_plan;
+        memset(&program_plan, 0, sizeof(program_plan));
+        CKKS_REGION_CHECK
+            (DSL_PU_Interface_Image_Find_Formal
+                (PU_Info_proc_sym(callee), 1, &dead_formal_row) &&
+             DSL_Call_ABI_Image_Find_Argument
+                (call, 1, &dead_argument_row),
+             "retired input relationship");
+        retired_formal.pu_formal_id = dead_formal_row.id;
+        retired_formal.semantic_role = "dead.input";
+        retired_argument.call_argument_id = dead_argument_row.id;
+        retired_argument.semantic_role = "dead.input";
+        program_plan.retired_formals = &retired_formal;
+        program_plan.retired_formal_count = 1;
+        program_plan.retired_call_arguments = &retired_argument;
+        program_plan.retired_call_argument_count = 1;
+        DSL_PROGRAM_INTERFACE_RESULT apply_result;
+        CKKS_REGION_CHECK
+            (DSL_Program_Interface_Plan_Validate
+                (&program_plan, &plan, stderr) &&
+             DSL_Builder_Select_PU(caller) &&
+             DSL_Program_Interface_Apply_PU
+                 (caller, &program_plan, &plan, stderr, &apply_result) &&
+             DSL_Builder_Select_PU(callee) &&
+             DSL_Program_Interface_Apply_PU
+                 (callee, &program_plan, &plan, stderr, &apply_result) &&
+             DSL_Builder_Select_PU(caller) &&
+             DSL_Runtime_Interface_Image_Validate(stderr) &&
+             DSL_Call_ABI_Image_Validate_PU(caller, stderr),
+             "projected two-PU runtime call");
+
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+        DSL_RUNTIME_CALL_PROJECTION_RECORD runtime_call;
+        DSL_CALL_ARGUMENT_RECORD argument;
+        DSL_IR_VALUE_ID source_value_id =
+            DSL_Builder_Get_Value_Image_Id(source);
+        WN *physical_call = const_cast<WN *>
+            (DSL_Call_Image_Get_Call_WN(callsite_record.id));
+        WN *actual = physical_call == NULL ? NULL :
+            WN_kid0(WN_kid(physical_call, 0));
+        CKKS_REGION_CHECK
+            (DSL_Runtime_Interface_Image_Find_Value
+                (PU_Info_proc_sym(caller), source_value_id, &projection) &&
+             DSL_Runtime_Interface_Image_Find_Call
+                (callsite_record.id, 0, &runtime_call) &&
+             DSL_Call_ABI_Image_Find_Argument_By_Id
+                 (callsite_record.id, 0, &argument) &&
+             !DSL_Program_Interface_Image_Find_Retired_Call
+                 (argument.id, NULL) &&
+             argument.argument_value_id == source_value_id &&
+             runtime_call.value_projection_id == projection.id &&
+             actual != NULL && WN_operator(actual) == OPR_LDID &&
+             source_st != projection.handle_st &&
+             WN_st_idx(actual) == projection.handle_st,
+             "projected source call binding");
+
+        DSL_CKKS_EXPANSION_OPERAND operand;
+        memset(&operand, 0, sizeof(operand));
+        operand.kind = DSL_CKKS_EXPANSION_EXISTING_VALUE;
+        operand.value_id = DSL_Builder_Get_Value_Image_Id(one);
+        DSL_CKKS_EXPANSION_STEP step;
+        memset(&step, 0, sizeof(step));
+        step.dsl_operator = OPR_DSLCKKSENCODE;
+        step.version = 1;
+        step.operands = &operand;
+        step.operand_count = 1;
+        step.result_name = "runtime_call_encoded";
+        step.result_ty = ty;
+        step.source_position = WN_Get_Linenum(source_definition);
+        DSL_CKKS_EXPANSION_GROUP group;
+        memset(&group, 0, sizeof(group));
+        group.source_static_ordinal = 1;
+        group.origin_static_ordinal = 1;
+        group.step_count = 1;
+        DSL_CKKS_EXPANSION_CONTEXT context;
+        memset(&context, 0, sizeof(context));
+        context.context_pu_identity_id = identity.id;
+        context.origin_owner_pu_st = PU_Info_proc_sym(caller);
+        context.origin_source_value_id = source_value_id;
+        DSL_CKKS_EXPANSION_REQUEST request;
+        memset(&request, 0, sizeof(request));
+        request.source_definition = source_definition;
+        request.source_value_id = source_value_id;
+        request.expected_source_operator = OPR_DSLRELU;
+        request.expected_source_version = 2;
+        request.groups = &group;
+        request.group_count = 1;
+        request.steps = &step;
+        request.step_count = 1;
+        request.contexts = &context;
+        request.context_count = 1;
+        CKKS_REGION_CHECK
+            (DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, stderr),
+             "runtime-projected call preflight");
+
+        ST_IDX handle_st = projection.handle_st;
+        WN_st_idx(actual) = source_st;
+        WN *active_call = const_cast<WN *>
+            (DSL_Call_Image_Get_Call_WN(callsite_record.id));
+        WN *active_actual = active_call == NULL ? NULL :
+            WN_kid0(WN_kid(active_call, 0));
+        CKKS_REGION_CHECK
+            (active_actual == actual &&
+             WN_st_idx(active_actual) == source_st &&
+             !DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                 (caller, &request, NULL) &&
+             DSL_Call_ABI_Image_Find_Argument_By_Id
+                 (callsite_record.id, 0, &argument) &&
+             argument.argument_value_id == source_value_id,
+             "malformed runtime actual rejects without mutation");
+        WN_st_idx(actual) = handle_st;
+
+        UINT32 symbol_count = ST_Table_Size(CURRENT_SYMTAB);
+        UINT32 node_count = DSL_IR_Image_Node_Count();
+        DSL_CKKS_EXPANSION_STEP_RESULT result;
+        memset(&result, 0, sizeof(result));
+        DSL_CKKS_Expand_Set_Test_Fault(2);
+        BOOL rejected = !DSL_IR_Expand_Native_Value_To_CKKS_Events
+            (caller, &request, NULL, &result);
+        DSL_CKKS_Expand_Set_Test_Fault(0);
+        CKKS_REGION_CHECK
+            (rejected && ST_Table_Size(CURRENT_SYMTAB) == symbol_count &&
+             DSL_IR_Image_Node_Count() == node_count &&
+             DSL_CKKS_Event_Image_Count() == 0 &&
+             Find_STID_In_Block(body, source_st) == source_definition &&
+             WN_st_idx(actual) == handle_st &&
+             DSL_Call_ABI_Image_Find_Argument_By_Id
+                 (callsite_record.id, 0, &argument) &&
+             argument.argument_value_id == source_value_id &&
+             DSL_Runtime_Interface_Image_Find_Value
+                (PU_Info_proc_sym(caller), source_value_id, &projection) &&
+             DSL_Runtime_Interface_Image_Find_Call
+                (callsite_record.id, 0, &runtime_call) &&
+             runtime_call.source_value_id == source_value_id &&
+             DSL_Runtime_Interface_Image_Validate(stderr),
+             "projected call late-failure rollback");
+        CKKS_REGION_CHECK
+            (DSL_IR_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, stderr, &result),
+             "projected call commit");
+        CKKS_REGION_CHECK
+            (Find_STID_In_Block(body, source_st) == NULL &&
+             WN_st_idx(actual) == handle_st &&
+             DSL_Call_ABI_Image_Find_Argument_By_Id
+                 (callsite_record.id, 0, &argument) &&
+             argument.argument_value_id == result.value_id &&
+             DSL_Runtime_Interface_Image_Find_Value
+                (PU_Info_proc_sym(caller), result.value_id, &projection) &&
+             projection.handle_st == handle_st &&
+             DSL_Runtime_Interface_Image_Find_Call
+                (callsite_record.id, 0, &runtime_call) &&
+             runtime_call.source_value_id == result.value_id &&
+             DSL_Runtime_Interface_Image_Validate(stderr) &&
+             DSL_Call_ABI_Image_Validate_PU(caller, stderr),
+             "projected call ABI and runtime redirect");
+
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD result_projection;
+        DSL_IR_VALUE_ID call_result_id =
+            DSL_Builder_Get_Value_Image_Id(call_result);
+        CKKS_REGION_CHECK
+            (DSL_Runtime_Interface_Image_Find_Value
+                (PU_Info_proc_sym(caller), call_result_id,
+                 &result_projection),
+             "projected result identity");
+        WN *result_expression = WN_kid0(result_source_definition);
+        WN *semantic_load = WN_kid0(result_expression);
+        WN *handle_load = WN_CreateLdid
+            (OPR_LDID, TY_mtype(handle_ty), TY_mtype(handle_ty), 0,
+             result_projection.handle_st, handle_ty);
+        CKKS_REGION_CHECK
+            (semantic_load != NULL && handle_load != NULL &&
+             WN_operator(semantic_load) == OPR_LDID,
+             "projected result physical load");
+        WN_kid0(result_expression) = handle_load;
+        WN_DELETE_Tree(semantic_load);
+
+        operand.value_id = call_result_id;
+        step.result_name = "runtime_result_encoded";
+        request.source_definition = result_source_definition;
+        request.source_value_id =
+            DSL_Builder_Get_Value_Image_Id(result_source);
+        context.origin_source_value_id = request.source_value_id;
+        CKKS_REGION_CHECK
+            (DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, stderr),
+             "projected result operand preflight");
+        DSL_RUNTIME_CALL_PROJECTION_RECORD result_runtime_call;
+        CKKS_REGION_CHECK
+            (DSL_Runtime_Interface_Image_Find_Call
+                (callsite_record.id, 2, &result_runtime_call) &&
+             result_runtime_call.direction == DSL_RUNTIME_CALL_RESULT &&
+             DSL_Program_Interface_Image_Retired_Call_Count() == 1 &&
+             WN_kid_count(physical_call) == 2,
+             "projected result call direction");
+        UINT64 runtime_image_size = 0;
+        unsigned char *runtime_image =
+            Capture_Runtime_Interface_Image(&runtime_image_size);
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD *value_rows =
+            (DSL_RUNTIME_VALUE_PROJECTION_RECORD *)
+                (runtime_image + DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE);
+        DSL_RUNTIME_INTERFACE_IMAGE_HEADER *runtime_header =
+            (DSL_RUNTIME_INTERFACE_IMAGE_HEADER *)runtime_image;
+        DSL_RUNTIME_CALL_PROJECTION_RECORD *call_rows =
+            (DSL_RUNTIME_CALL_PROJECTION_RECORD *)
+                ((unsigned char *)value_rows +
+                 (UINT64)runtime_header->value_projection_count *
+                     DSL_RUNTIME_VALUE_PROJECTION_RECORD_SIZE);
+        ST_IDX saved_owner =
+            value_rows[result_projection.id - 1].owner_pu_st;
+        value_rows[result_projection.id - 1].owner_pu_st =
+            PU_Info_proc_sym(callee);
+        CKKS_REGION_CHECK
+            (!DSL_Runtime_Interface_Image_Load_Mapped
+                (runtime_image, runtime_image_size, NULL) &&
+             DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, stderr),
+             "wrong projected result owner rejects without mutation");
+        value_rows[result_projection.id - 1].owner_pu_st = saved_owner;
+        UINT32 saved_direction =
+            call_rows[result_runtime_call.id - 1].direction;
+        call_rows[result_runtime_call.id - 1].direction =
+            DSL_RUNTIME_CALL_INPUT;
+        CKKS_REGION_CHECK
+            (!DSL_Runtime_Interface_Image_Load_Mapped
+                (runtime_image, runtime_image_size, NULL) &&
+             DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, stderr),
+             "wrong projected result direction rejects without mutation");
+        call_rows[result_runtime_call.id - 1].direction = saved_direction;
+        delete [] runtime_image;
+        WN *result_actual = WN_kid0
+            (WN_kid(physical_call, 1));
+        ST_IDX saved_handle_st = WN_st_idx(result_actual);
+        WN_st_idx(result_actual) = source_st;
+        CKKS_REGION_CHECK
+            (!DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, NULL),
+             "wrong projected result handle rejects");
+        WN_st_idx(result_actual) = saved_handle_st;
+        TY_IDX saved_handle_ty = WN_ty(result_actual);
+        WN_set_ty(result_actual, ty);
+        CKKS_REGION_CHECK
+            (!DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, NULL),
+             "wrong projected result TY rejects");
+        WN_set_ty(result_actual, saved_handle_ty);
+        WN *projected_call = WN_EXTRACT_FromBlock(body, physical_call);
+        WN_INSERT_BlockAfter(body, result_source_definition, projected_call);
+        CKKS_REGION_CHECK
+            (!DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, NULL),
+             "non-dominating projected result rejects");
+        WN_EXTRACT_FromBlock(body, projected_call);
+        WN_INSERT_BlockBefore(body, result_source_definition,
+                              projected_call);
+        CKKS_REGION_CHECK
+            (DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, stderr),
+             "restored projected result preflight");
+        symbol_count = ST_Table_Size(CURRENT_SYMTAB);
+        node_count = DSL_IR_Image_Node_Count();
+        UINT32 prior_events = DSL_CKKS_Event_Image_Count();
+        DSL_CKKS_Expand_Set_Test_Fault(2);
+        rejected = !DSL_IR_Expand_Native_Value_To_CKKS_Events
+            (caller, &request, NULL, &result);
+        DSL_CKKS_Expand_Set_Test_Fault(0);
+        CKKS_REGION_CHECK
+            (rejected && ST_Table_Size(CURRENT_SYMTAB) == symbol_count &&
+             DSL_IR_Image_Node_Count() == node_count &&
+             DSL_CKKS_Event_Image_Count() == prior_events &&
+             Find_STID_In_Block
+                 (body, DSL_Builder_Get_Value_Result_Symbol(result_source)) ==
+                 result_source_definition &&
+             DSL_Runtime_Interface_Image_Validate(stderr),
+             "projected result late-failure rollback");
+        CKKS_REGION_CHECK
+            (DSL_IR_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, stderr, &result),
+             "projected result operand commit");
+        WN *result_definition = Find_STID_In_Block
+            (body, result.result_st);
+        WN *result_load = result_definition == NULL ? NULL :
+            WN_kid0(WN_kid0(result_definition));
+        DSL_IR_NODE_RECORD result_node;
+        DSL_IR_VALUE_REFERENCE_RECORD result_reference;
+        CKKS_REGION_CHECK
+            (result_load != NULL &&
+             WN_operator(result_load) == OPR_LDID &&
+             WN_st_idx(result_load) == result_projection.handle_st &&
+             WN_ty(result_load) == result_projection.handle_ty &&
+             DSL_IR_Image_Get_Node(result.node_id, &result_node) &&
+             DSL_IR_Image_Get_Value_Reference
+                 (result_node.first_operand_reference_id,
+                  &result_reference) &&
+             result_reference.value_id == call_result_id &&
+             DSL_IR_Image_Validate(stderr) &&
+             DSL_Runtime_Interface_Image_Validate(stderr),
+             "projected result handle load and logical image");
+        const char *artifact = getenv("OPEN64_DSL_CKKS_RUNTIME_CALL_ARTIFACT");
+        if (artifact != NULL && artifact[0] != '\0') {
+            CKKS_REGION_CHECK
+                (DSL_Builder_Select_PU(callee) &&
+                 DSL_PU_Interface_Image_Validate_PU(callee, stderr) &&
+                 DSL_Builder_Select_PU(caller) &&
+                 DSL_Runtime_Interface_Image_Validate(stderr) &&
+                 Write_Runtime_Interface_Artifact(artifact, callee, caller),
+                 "projected call mapped image");
+        }
+        return 0;
+    }
 
     DSL_REGION region = DSL_Region_Create
         (caller, NULL, "cnn.basic_block", 1);
@@ -12693,6 +13091,289 @@ Check_DSL_Value_Retirement(void)
 }
 
 static int
+Check_DSL_View_Retirement(BOOL region_collision_only)
+{
+#define VIEW_CHECK(condition, stage) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "DSL view retirement failed: %s\n", stage); \
+            return 1; \
+        } \
+    } while (0)
+
+    const char *artifact = getenv("OPEN64_DSL_VIEW_RETIRE_ARTIFACT");
+    VIEW_CHECK(DSL_Builder_Begin_Program(), "program initialization");
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 4;
+    descriptor.type_core.logical_shape = "[1,64,1,1]";
+    descriptor.traits.traits = "activation";
+    descriptor.representation.layout = "NCHW";
+    descriptor.representation.sharding = "replicated";
+    descriptor.representation.placement = "host";
+    descriptor.representation.memory = "contiguous";
+    descriptor.representation.quantization = "none";
+    TY_IDX pool_ty = DSL_Builder_Intern_Tensor_Type
+        ("view_pool_f32_1x64x1x1", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    descriptor.type_core.rank = 2;
+    descriptor.type_core.logical_shape = "[1,64]";
+    TY_IDX flatten_ty = DSL_Builder_Intern_Tensor_Type
+        ("view_flatten_f32_1x64", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    descriptor.type_core.logical_shape = "[1,63]";
+    TY_IDX wrong_count_ty = DSL_Builder_Intern_Tensor_Type
+        ("view_bad_f32_1x63", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    descriptor.type_core.logical_shape = "[1,64]";
+    descriptor.representation.layout = "NC";
+    TY_IDX wrong_layout_ty = DSL_Builder_Intern_Tensor_Type
+        ("view_bad_layout_f32_1x64", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    descriptor.type_core.dtype = "float64";
+    descriptor.representation.layout = "NCHW";
+    TY_IDX wrong_dtype_ty = DSL_Builder_Intern_Tensor_Type
+        ("view_bad_dtype_f64_1x64", MTYPE_To_TY(MTYPE_F8), &descriptor);
+    VIEW_CHECK(pool_ty != TY_IDX_ZERO && flatten_ty != TY_IDX_ZERO &&
+               pool_ty != flatten_ty &&
+               DSL_Shape_Representation_Preserving_View
+                   (pool_ty, flatten_ty) &&
+               !DSL_Shape_Representation_Preserving_View
+                   (pool_ty, wrong_count_ty) &&
+               !DSL_Shape_Representation_Preserving_View
+                   (pool_ty, wrong_layout_ty),
+               "static representation contract");
+    VIEW_CHECK(wrong_dtype_ty != TY_IDX_ZERO &&
+               !DSL_Shape_Representation_Preserving_View
+                   (pool_ty, wrong_dtype_ty) &&
+               !DSL_Shape_Zero_Motion_View_Operator
+                   (OPR_DSLTRANSPOSE, 1),
+               "static representation contract");
+
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU("dsl_cross_ty_view_retirement");
+    UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    DSL_BUILDER_VALUE input =
+        DSL_Builder_Create_Model_Input("pool_input", pool_ty, 0);
+    DSL_BUILDER_VALUE kids[1] = { input };
+    DSL_BUILDER_VALUE pool = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, kids, 1, NULL, 0, "pool_result", pool_ty);
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attrs[2] = {
+        { "attr.start_dim", "1" }, { "attr.end_dim", "-1" }
+    };
+    kids[0] = pool;
+    DSL_BUILDER_VALUE view = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.flatten", 2),
+         2, kids, 1, attrs, 2, "flatten_view", flatten_ty);
+    kids[0] = view;
+    DSL_BUILDER_VALUE consumer = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.flatten", 2),
+         2, kids, 1, attrs, 2, "view_consumer", flatten_ty);
+    VIEW_CHECK(pu != NULL && file_id != 0 && input != NULL && pool != NULL &&
+               view != NULL && consumer != NULL,
+               "view chain creation");
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = __LINE__ + 1;
+    position.statement_begin = 1;
+    DSL_Builder_Set_Value_Source_Position(input, &position);
+    ++position.line;
+    DSL_Builder_Set_Value_Source_Position(pool, &position);
+    ++position.line;
+    DSL_Builder_Set_Value_Source_Position(view, &position);
+    ++position.line;
+    DSL_Builder_Set_Value_Source_Position(consumer, &position);
+    VIEW_CHECK(DSL_Builder_Append_PU_Value(pu, consumer),
+               "materialize view chain");
+
+    DSL_RUNTIME_VALUE_PROJECTION_REQUEST projected[2];
+    memset(projected, 0, sizeof(projected));
+    DSL_BUILDER_VALUE projected_values[2] = { pool, view };
+    TY_IDX handle_ty = Create_Runtime_Interface_Handle_TY
+        ("view_runtime_handle_v1");
+    for (UINT32 i = 0; i < 2; ++i) {
+        projected[i].owner_pu_st = PU_Info_proc_sym(pu);
+        projected[i].source_value_id =
+            DSL_Builder_Get_Value_Image_Id(projected_values[i]);
+        projected[i].expected_source_st =
+            DSL_Builder_Get_Value_Result_Symbol(projected_values[i]);
+        projected[i].expected_source_ty = i == 0 ? pool_ty : flatten_ty;
+        projected[i].handle_ty = handle_ty;
+        projected[i].binding_kind = DSL_RUNTIME_BINDING_LOCAL_VALUE;
+        projected[i].formal_ordinal =
+            DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
+    }
+    DSL_RUNTIME_INTERFACE_PLAN plan;
+    memset(&plan, 0, sizeof(plan));
+    plan.values = projected;
+    plan.value_count = 2;
+    DSL_RUNTIME_INTERFACE_RESULT applied;
+    VIEW_CHECK(handle_ty != TY_IDX_ZERO &&
+               DSL_Runtime_Interface_Plan_Validate(&plan, stderr) &&
+               DSL_Runtime_Interface_Apply_PU(pu, &plan, stderr, &applied) &&
+               DSL_Runtime_Interface_Image_Validate(stderr),
+               "local runtime projections");
+
+    WN *body = WN_func_body(PU_Info_tree_ptr(pu));
+    ST_IDX view_st = DSL_Builder_Get_Value_Result_Symbol(view);
+    ST_IDX pool_st = DSL_Builder_Get_Value_Result_Symbol(pool);
+    WN *pool_def = Find_STID_In_Block(body, pool_st);
+    WN *view_def = Find_STID_In_Block(body, view_st);
+    WN *consumer_def = Find_STID_In_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(consumer));
+    VIEW_CHECK(pool_def != NULL && view_def != NULL && consumer_def != NULL,
+               "physical definitions");
+    DSL_IR_NATIVE_VALUE_RETIRE_REQUEST request;
+    memset(&request, 0, sizeof(request));
+    request.replacement_definition = pool_def;
+    request.replacement_value_id = DSL_Builder_Get_Value_Image_Id(pool);
+    request.retiring_definition = view_def;
+    request.retiring_value_id = DSL_Builder_Get_Value_Image_Id(view);
+    request.expected_retiring_operator = OPR_DSLFLATTEN;
+    request.expected_retiring_version = 2;
+    request.replacement_operand_ordinal = 0;
+    request.expected_retiring_version = 1;
+    VIEW_CHECK(!DSL_IR_Redirect_And_Retire_Native_View(pu, &request) &&
+               Find_STID_In_Block(body, view_st) == view_def &&
+               WN_st_idx(WN_kid0(WN_kid0(consumer_def))) == view_st,
+               "malformed request leaves tree unchanged");
+    request.expected_retiring_version = 2;
+    if (region_collision_only) {
+        DSL_REGION collision = DSL_Region_Create
+            (pu, NULL, "cnn.basic_block", 1);
+        VIEW_CHECK(collision != NULL &&
+                   DSL_Region_Declare_Symbol
+                       (collision, pool_st, DSL_REGION_VALUE_INPUT, 0,
+                        DSL_REGION_INTERFACE_FLAG_NONE) &&
+                   DSL_Region_Declare_Symbol
+                       (collision, view_st, DSL_REGION_VALUE_INPUT, 1,
+                        DSL_REGION_INTERFACE_FLAG_NONE) &&
+                   DSL_Region_Append_To_PU(collision) &&
+                   DSL_Region_Verify_PU(pu, stderr),
+                   "REGION collision setup");
+        VIEW_CHECK(!DSL_IR_Redirect_And_Retire_Native_View(pu, &request) &&
+                   Find_STID_In_Block(body, view_st) == view_def &&
+                   WN_st_idx(WN_kid0(WN_kid0(consumer_def))) == view_st &&
+                   DSL_IR_Image_Validate(stderr) &&
+                   DSL_Runtime_Interface_Image_Validate(stderr) &&
+                   DSL_Region_Verify_PU(pu, stderr),
+                   "REGION collision leaves all owners unchanged");
+        printf("DSL cross-TY view REGION rollback passed\n");
+        return 0;
+    }
+    DSL_REGION region = DSL_Region_Create
+        (pu, NULL, "cnn.basic_block", 1);
+    VIEW_CHECK(region != NULL &&
+               DSL_Region_Declare_Symbol
+                   (region, view_st, DSL_REGION_VALUE_INPUT, 0,
+                    DSL_REGION_INTERFACE_FLAG_NONE) &&
+               DSL_Region_Append_To_PU(region) &&
+               DSL_Region_Verify_PU(pu, stderr) &&
+               DSL_Region_Symbol_Use_Count(pu, view_st) == 1,
+               "single view REGION interface");
+    VIEW_CHECK(DSL_IR_Redirect_And_Retire_Native_View(pu, &request),
+               "commit cross-TY view retirement");
+    WN *consumer_operand = WN_kid0(WN_kid0(consumer_def));
+    DSL_IR_VALUE_RECORD retired_value;
+    DSL_IR_NODE_RECORD retired_node;
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+    VIEW_CHECK(Find_STID_In_Block(body, view_st) == NULL &&
+               WN_st_idx(consumer_operand) == pool_st &&
+               WN_ty(consumer_operand) == pool_ty &&
+               DSL_IR_Image_Get_Value(request.retiring_value_id,
+                                      &retired_value) &&
+               DSL_IR_Image_Get_Node(retired_value.producer_node_id,
+                                     &retired_node) &&
+               (retired_node.flags & DSL_IR_NODE_FLAG_RETIRED_VIEW) != 0 &&
+               (retired_value.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0 &&
+               DSL_Runtime_Interface_Image_Get_Value(2, &projection) &&
+               (projection.flags &
+                DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW) != 0 &&
+               !DSL_Runtime_Interface_Image_Find_Value
+                   (PU_Info_proc_sym(pu), retired_value.id, NULL) &&
+               DSL_Region_Symbol_Use_Count(pu, view_st) == 0 &&
+               DSL_Region_Symbol_Use_Count(pu, pool_st) == 1 &&
+               DSL_Region_Verify_PU(pu, stderr) &&
+               DSL_IR_Image_Validate(stderr) &&
+               DSL_Runtime_Interface_Image_Validate(stderr),
+               "view provenance and live use");
+    DSL_GATEKEEPER_RESULT gatekeeper;
+    VIEW_CHECK(DSL_Gatekeeper_Verify_Program(pu, stderr, &gatekeeper),
+               "post-retirement gatekeeper");
+
+    UINT64 runtime_size = 0;
+    unsigned char *runtime =
+        Capture_Runtime_Interface_Image(&runtime_size);
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD *runtime_values =
+        (DSL_RUNTIME_VALUE_PROJECTION_RECORD *)
+            (runtime + DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE);
+
+    UINT64 image_size = 0;
+    unsigned char *image = Capture_DSL_IR_Image(&image_size);
+    DSL_IR_IMAGE_HEADER *header = (DSL_IR_IMAGE_HEADER *)image;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD *descriptors =
+        (DSL_IR_OPCODE_DESCRIPTOR_RECORD *)
+            (image + DSL_IR_IMAGE_HEADER_SIZE);
+    DSL_IR_NODE_RECORD *nodes = (DSL_IR_NODE_RECORD *)
+        ((unsigned char *)descriptors +
+         (UINT64)header->opcode_descriptor_count *
+             DSL_IR_OPCODE_DESCRIPTOR_RECORD_SIZE);
+    DSL_IR_ATTRIBUTE_RECORD *attributes = (DSL_IR_ATTRIBUTE_RECORD *)
+        ((unsigned char *)nodes +
+         (UINT64)header->node_count * DSL_IR_NODE_RECORD_SIZE);
+    DSL_IR_VALUE_RECORD *image_values = (DSL_IR_VALUE_RECORD *)
+        ((unsigned char *)attributes +
+         (UINT64)header->attribute_count *
+             DSL_IR_ATTRIBUTE_RECORD_SIZE);
+    DSL_IR_NODE_RECORD &view_node =
+        nodes[retired_value.producer_node_id - 1];
+    UINT32 saved_flags = view_node.flags;
+    view_node.flags &= ~DSL_IR_NODE_FLAG_RETIRED_VIEW;
+    VIEW_CHECK(!DSL_IR_Image_Load_Mapped(image, image_size, NULL) &&
+               DSL_IR_Image_Validate(stderr),
+               "unmarked cross-TY mapped redirect rejects atomically");
+    view_node.flags = saved_flags;
+    TY_IDX saved_ty =
+        image_values[request.replacement_value_id - 1].ty;
+    image_values[request.replacement_value_id - 1].ty = wrong_count_ty;
+    VIEW_CHECK(!DSL_IR_Image_Load_Mapped(image, image_size, NULL) &&
+               DSL_IR_Image_Validate(stderr),
+               "wrong-element-count mapped view rejects atomically");
+    image_values[request.replacement_value_id - 1].ty = saved_ty;
+    image_values[request.replacement_value_id - 1].ty = wrong_layout_ty;
+    VIEW_CHECK(!DSL_IR_Image_Load_Mapped(image, image_size, NULL) &&
+               DSL_IR_Image_Validate(stderr),
+               "wrong-layout mapped view rejects atomically");
+    image_values[request.replacement_value_id - 1].ty = saved_ty;
+    VIEW_CHECK(DSL_IR_Image_Load_Mapped(image, image_size, stderr),
+               "valid cross-TY image reopens");
+    delete [] image;
+
+    VIEW_CHECK(DSL_Runtime_Interface_Image_Load_Mapped
+                   (runtime, runtime_size, stderr),
+               "valid runtime view reopens");
+    runtime_values[1].flags = 0;
+    VIEW_CHECK(!DSL_Runtime_Interface_Image_Load_Mapped
+                   (runtime, runtime_size, NULL) &&
+               DSL_Runtime_Interface_Image_Validate(stderr),
+               "unmarked runtime view rejects atomically");
+    runtime_values[1].flags =
+        DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW;
+    VIEW_CHECK(DSL_Runtime_Interface_Image_Load_Mapped
+                   (runtime, runtime_size, stderr),
+               "valid runtime view reopens");
+    delete [] runtime;
+    if (artifact != NULL && artifact[0] != '\0') {
+        VIEW_CHECK(Write_Runtime_Interface_Artifact(artifact, pu, NULL),
+                   "mapped view artifact");
+    }
+    printf("DSL cross-TY view retirement passed\n");
+#undef VIEW_CHECK
+    return 0;
+}
+
+static int
 Check_PU_Clone_Image_Rows(void)
 {
 #define CLONE_IMAGE_CHECK(condition, stage) \
@@ -13028,7 +13709,9 @@ main(void)
     if (getenv("OPEN64_DSL_CKKS_EXPAND_ONLY") != NULL)
         return Check_CKKS_Expansion_Transaction();
     if (getenv("OPEN64_DSL_CKKS_REGION_ONLY") != NULL)
-        return Check_CKKS_Expansion_Call_Region();
+        return Check_CKKS_Expansion_Call_Region(FALSE);
+    if (getenv("OPEN64_DSL_CKKS_RUNTIME_CALL_ONLY") != NULL)
+        return Check_CKKS_Expansion_Call_Region(TRUE);
     if (getenv("OPEN64_DSL_LLAMA2_COMMON_ONLY") != NULL)
         return Check_Llama2_Common_Substrate();
     if (getenv("OPEN64_DSL_LLAMA2_TRANSFORMER_ONLY") != NULL)
@@ -13080,6 +13763,10 @@ main(void)
         return Check_External_Tensor_Materialization();
     if (getenv("OPEN64_DSL_VALUE_RETIRE_ONLY") != NULL)
         return Check_DSL_Value_Retirement();
+    if (getenv("OPEN64_DSL_VIEW_RETIRE_ONLY") != NULL)
+        return Check_DSL_View_Retirement(FALSE);
+    if (getenv("OPEN64_DSL_VIEW_REGION_ONLY") != NULL)
+        return Check_DSL_View_Retirement(TRUE);
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();

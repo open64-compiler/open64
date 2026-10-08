@@ -189,7 +189,9 @@ BOOL VHO_FHE_CKKS_Collect_Relu_Plan_Steps(
     if (ordinal > 0) {
       const DSL_FHE_CONTEXT_CKKS_STATE_RECORD &input =
           previous_payload[key];
-      INT32 level_consumption = 0;
+      /* ACE normalizes x/B before App_relu with MulPlain+Rescale. The
+       * profile-owned 3+4+4 depth starts after that one-level operation. */
+      INT32 level_consumption = ordinal == 1 ? 1 : 0;
       if (ordinal >= 2 && ordinal <= 4) {
         DSL_FHE_APPROX_STAGE_RECORD stage;
         if (!DSL_FHE_Approx_Stage_Get(operation.stage_id, &stage) ||
@@ -227,7 +229,8 @@ BOOL VHO_FHE_CKKS_Collect_Relu_Plan_Steps(
           (ordinal == 5 && output_state.precision_bits <
                                precision_floor[key]))
         return Report(diagnostic, "ReLU CKKS state transfer disagrees");
-      consumed_depth[key] += level_consumption;
+      if (ordinal >= 2 && ordinal <= 4)
+        consumed_depth[key] += level_consumption;
     }
 
     previous_state[key] = operation.output_state_id;

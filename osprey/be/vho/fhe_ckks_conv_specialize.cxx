@@ -24,6 +24,7 @@
 #include "fhe_ckks_source_events.h"
 #include "fhe_plan.h"
 #include "fhe_plan_specialize_internal.h"
+#include "fhe_semantic_materialize.h"
 #include "fhe_sha256.h"
 #include "strtab.h"
 #include "symtab.h"
@@ -447,6 +448,17 @@ BOOL Build_Plan(PU_Info *, DSL_PU_TRANSACTION_PLAN *plan,
 {
   if (plan == NULL || policy_state == NULL)
     return Report(diagnostic, "transaction output is missing");
+  UINT32 prepared_contexts = 0;
+  for (DSL_FHE_CONTEXT_RANGE_ID id = 1;
+       id <= DSL_FHE_Context_Range_Count(); ++id) {
+    if (!VHO_FHE_Ensure_Relu_Materialization_Context(id, diagnostic))
+      return Report(diagnostic,
+                    "ReLU planning schedule cannot be prepared");
+    ++prepared_contexts;
+  }
+  if (prepared_contexts != 19)
+    return Report(diagnostic,
+                  "ResNet ReLU context census is not nineteen");
   std::vector<VHO_FHE_CKKS_EVENT_IDENTITY> events;
   std::vector<VHO_FHE_CKKS_CONV_CONTEXT> contexts;
   if (!VHO_FHE_CKKS_Collect_Source_Events(&events, diagnostic) ||

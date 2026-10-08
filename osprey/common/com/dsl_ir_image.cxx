@@ -11,6 +11,7 @@
 #include "dsl_ckks_expand_internal.h"
 #include "dsl_ckks_event.h"
 #include "dsl_opcode.h"
+#include "dsl_shape.h"
 #include "dsl_program_interface_internal.h"
 #include "segmented_array.h"
 #include "strtab.h"
@@ -996,7 +997,9 @@ DSL_Runtime_Interface_View_Validate
                               DSL_RUNTIME_INTERFACE_INVALID_ORDINAL) ||
             (!is_formal && record.formal_ordinal !=
                                DSL_RUNTIME_INTERFACE_INVALID_ORDINAL) ||
-            record.flags != 0 || record.reserved0 != 0 ||
+            (record.flags &
+             ~DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW) != 0 ||
+            record.reserved0 != 0 ||
             record.reserved1 != 0)
             return DSL_Runtime_Interface_Report
                        (diagnostic, "invalid value projection", i + 1);
@@ -1024,6 +1027,45 @@ DSL_Runtime_Interface_View_Validate
         if (retired)
             return DSL_Runtime_Interface_Report
                        (diagnostic, "formal provenance mismatch", i + 1);
+        DSL_IR_VALUE_RECORD source_value;
+        DSL_IR_NODE_RECORD source_node;
+        BOOL view_retired = FALSE;
+        if (!DSL_IR_Image_Get_Value(record.source_value_id, &source_value) ||
+            (source_value.producer_node_id != DSL_IR_NODE_INVALID_ID &&
+             !DSL_IR_Image_Get_Node
+                 (source_value.producer_node_id, &source_node)))
+            return DSL_Runtime_Interface_Report
+                       (diagnostic, "invalid projection source", i + 1);
+        if (source_value.producer_node_id != DSL_IR_NODE_INVALID_ID)
+            view_retired =
+                (source_node.flags & DSL_IR_NODE_FLAG_RETIRED_VIEW) != 0;
+        if (view_retired !=
+            ((record.flags &
+              DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW) != 0))
+            return DSL_Runtime_Interface_Report
+                       (diagnostic, "projection retirement mismatch", i + 1);
+        if ((record.flags &
+             DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW) != 0) {
+            DSL_IR_VALUE_ID target = DSL_IR_VALUE_INVALID_ID;
+            if (!DSL_IR_Image_Value_Redirect_Target
+                    (source_value.id, &target))
+                return DSL_Runtime_Interface_Report
+                           (diagnostic, "invalid retired view projection",
+                            i + 1);
+            BOOL target_projection = FALSE;
+            for (UINT32 j = 0; j < value_count; ++j) {
+                if (values[j].owner_pu_st == record.owner_pu_st &&
+                    values[j].source_value_id == target &&
+                    (values[j].flags &
+                     DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW) == 0 &&
+                    values[j].handle_ty == record.handle_ty)
+                    target_projection = TRUE;
+            }
+            if (is_formal || !target_projection)
+                return DSL_Runtime_Interface_Report
+                           (diagnostic, "invalid retired view projection",
+                            i + 1);
+        }
         for (UINT32 j = 0; j < i; ++j) {
             if (values[j].owner_pu_st == record.owner_pu_st &&
                 (values[j].source_value_id == record.source_value_id ||
@@ -1067,6 +1109,8 @@ DSL_Runtime_Interface_View_Validate
                                  callsite.callee_pu_st,
                                  formal.formal_value_id);
         if (formal_projection == NULL ||
+            (value->flags &
+             DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW) != 0 ||
             formal_projection->formal_ordinal !=
                 record.callee_formal_ordinal ||
             formal_projection->handle_ty != value->handle_ty ||
@@ -1260,6 +1304,8 @@ DSL_Runtime_Interface_Image_Find_Value
         const DSL_RUNTIME_VALUE_PROJECTION_RECORD &current =
             DSL_runtime_value_projection_table[i];
         if (current.owner_pu_st == owner_pu_st &&
+            (current.flags &
+             DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW) == 0 &&
             current.source_value_id == source_value_id) {
             if (record != NULL)
                 *record = current;
@@ -1267,6 +1313,60 @@ DSL_Runtime_Interface_Image_Find_Value
         }
     }
     return FALSE;
+}
+
+BOOL
+DSL_Runtime_Interface_Image_Can_Retire_View
+        (ST_IDX owner_pu_st, DSL_IR_VALUE_ID source_value_id,
+         DSL_IR_VALUE_ID replacement_value_id)
+{
+    UINT32 matches = 0;
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD source_projection;
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD replacement_projection;
+    for (UINT32 i = 0; i < DSL_runtime_value_projection_table.Size(); ++i) {
+        const DSL_RUNTIME_VALUE_PROJECTION_RECORD &value =
+            DSL_runtime_value_projection_table[i];
+        if (value.owner_pu_st != owner_pu_st ||
+            value.source_value_id != source_value_id)
+            continue;
+        if (++matches != 1 ||
+            value.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE ||
+            value.flags != 0)
+            return FALSE;
+        source_projection = value;
+        for (UINT32 j = 0; j < DSL_runtime_call_projection_table.Size(); ++j) {
+            if (DSL_runtime_call_projection_table[j].value_projection_id ==
+                value.id)
+                return FALSE;
+        }
+    }
+    if (matches != 0 &&
+        (!DSL_Runtime_Interface_Image_Find_Value
+             (owner_pu_st, replacement_value_id,
+              &replacement_projection) ||
+         replacement_projection.handle_ty != source_projection.handle_ty))
+        return FALSE;
+    return TRUE;
+}
+
+BOOL
+DSL_Runtime_Interface_Image_Retire_View
+        (ST_IDX owner_pu_st, DSL_IR_VALUE_ID source_value_id,
+         DSL_IR_VALUE_ID replacement_value_id)
+{
+    if (!DSL_Runtime_Interface_Image_Can_Retire_View
+             (owner_pu_st, source_value_id, replacement_value_id))
+        return FALSE;
+    for (UINT32 i = 0; i < DSL_runtime_value_projection_table.Size(); ++i) {
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD &value =
+            DSL_runtime_value_projection_table[i];
+        if (value.owner_pu_st == owner_pu_st &&
+            value.source_value_id == source_value_id) {
+            value.flags |= DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW;
+            break;
+        }
+    }
+    return TRUE;
 }
 
 BOOL
@@ -2953,6 +3053,7 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
                                         DSL_IR_NODE_FLAG_DEAD_ELIDED |
                                         DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW |
                                         DSL_IR_NODE_FLAG_GENERATED_EXTERNAL |
+                                        DSL_IR_NODE_FLAG_RETIRED_VIEW |
                                         DSL_IR_NODE_REDIRECT_ORDINAL_MASK;
         active_attribute_count += record.attribute_count;
         active_value_reference_count += record.operand_count;
@@ -2965,7 +3066,8 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
              ((record.flags & DSL_IR_NODE_FLAG_LOWERED) != 0) +
              ((record.flags & DSL_IR_NODE_FLAG_DEAD_ELIDED) != 0) > 1) ||
             ((record.flags & DSL_IR_NODE_FLAG_RETIRED) == 0 &&
-             (record.flags & DSL_IR_NODE_REDIRECT_ORDINAL_MASK) != 0) ||
+             (record.flags & (DSL_IR_NODE_REDIRECT_ORDINAL_MASK |
+                              DSL_IR_NODE_FLAG_RETIRED_VIEW)) != 0) ||
             !DSL_IR_Image_String_Id_Valid(record.payload, FALSE))
             return DSL_IR_Image_Report(diagnostic, "invalid node", i + 1);
 
@@ -3104,7 +3206,14 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
                 target_reference->owner_node_id != record.id ||
                 target_reference->ordinal != ordinal ||
                 target == NULL || target->id == result.id ||
-                target->ty != result.ty ||
+                (((record.flags & DSL_IR_NODE_FLAG_RETIRED_VIEW) != 0) ?
+                 (target->ty == result.ty ||
+                  descriptor.shape_rule != DSL_SHAPE_RULE_VIEW ||
+                  !DSL_Shape_Zero_Motion_View_Operator
+                      (descriptor.logical_operator, descriptor.version) ||
+                  !DSL_Shape_Representation_Preserving_View
+                      (target->ty, result.ty)) :
+                 target->ty != result.ty) ||
                 (target->flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0)
                 return DSL_IR_Image_Report
                            (diagnostic, "invalid retired node", i + 1);
@@ -3185,7 +3294,7 @@ BOOL
 DSL_IR_Image_Redirect_And_Retire_Value
         (DSL_IR_VALUE_ID replacement_value_id,
          DSL_IR_VALUE_ID retiring_value_id,
-         UINT32 replacement_operand_ordinal)
+         UINT32 replacement_operand_ordinal, BOOL view_redirect)
 {
     DSL_IR_VALUE_RECORD replacement;
     DSL_IR_VALUE_RECORD retiring;
@@ -3194,7 +3303,11 @@ DSL_IR_Image_Redirect_And_Retire_Value
         !DSL_IR_Table_Get
             (DSL_ir_value_table, retiring_value_id, &retiring) ||
         replacement_value_id == retiring_value_id ||
-        replacement.ty != retiring.ty ||
+        (view_redirect ?
+         (replacement.ty == retiring.ty ||
+          !DSL_Shape_Representation_Preserving_View
+              (replacement.ty, retiring.ty)) :
+         replacement.ty != retiring.ty) ||
         retiring.producer_node_id == DSL_IR_NODE_INVALID_ID ||
         retiring.producer_node_id > DSL_ir_node_table.Size() ||
         (retiring.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0)
@@ -3206,6 +3319,17 @@ DSL_IR_Image_Redirect_And_Retire_Value
         node.result_value_id != retiring_value_id ||
         replacement_operand_ordinal >= node.operand_count)
         return FALSE;
+    if (view_redirect) {
+        DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
+        if (!DSL_IR_Table_Get
+                 (DSL_ir_opcode_descriptor_table,
+                  node.opcode_descriptor_id, &descriptor) ||
+            descriptor.shape_rule != DSL_SHAPE_RULE_VIEW ||
+            !DSL_Shape_Zero_Motion_View_Operator
+                (descriptor.logical_operator, descriptor.version) ||
+            descriptor.effect_model != DSL_EFFECT_MODEL_PURE)
+            return FALSE;
+    }
     DSL_IR_VALUE_REFERENCE_RECORD &replacement_reference =
         DSL_ir_value_reference_table
             [node.first_operand_reference_id - 1 + replacement_operand_ordinal];
@@ -3229,6 +3353,7 @@ DSL_IR_Image_Redirect_And_Retire_Value
     node.flags = (node.flags & (DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW |
                                 DSL_IR_NODE_FLAG_GENERATED_EXTERNAL)) |
                  DSL_IR_NODE_FLAG_RETIRED |
+        (view_redirect ? DSL_IR_NODE_FLAG_RETIRED_VIEW : 0) |
         (replacement_operand_ordinal << DSL_IR_NODE_REDIRECT_ORDINAL_SHIFT);
     DSL_ir_value_table[retiring_value_id - 1].flags |=
         DSL_IR_VALUE_FLAG_REDIRECTED;

@@ -228,6 +228,11 @@ typedef struct {
     UINT32 reserved1;
 } DSL_RUNTIME_VALUE_PROJECTION_RECORD;
 
+typedef enum {
+    DSL_RUNTIME_VALUE_PROJECTION_FLAG_NONE = 0,
+    DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW = 0x00000001
+} DSL_RUNTIME_VALUE_PROJECTION_FLAG;
+
 typedef struct {
     DSL_RUNTIME_CALL_PROJECTION_ID id;
     ST_IDX owner_pu_st;
@@ -511,7 +516,8 @@ typedef enum {
     DSL_IR_NODE_FLAG_LOWERED = 0x00000002,
     DSL_IR_NODE_FLAG_DEAD_ELIDED = 0x00000004,
     DSL_IR_NODE_FLAG_TYPED_EXTERNAL_ROW = 0x00000008,
-    DSL_IR_NODE_FLAG_GENERATED_EXTERNAL = 0x00000010
+    DSL_IR_NODE_FLAG_GENERATED_EXTERNAL = 0x00000010,
+    DSL_IR_NODE_FLAG_RETIRED_VIEW = 0x00000020
 } DSL_IR_NODE_FLAG;
 
 #define DSL_IR_NODE_REDIRECT_ORDINAL_SHIFT 16
@@ -1248,6 +1254,11 @@ extern BOOL DSL_IR_Rewrite_Native_Value
  * uses, then commits without accepting caller-supplied physical ownership.
  */
 extern BOOL DSL_IR_Redirect_And_Retire_Native_Value
+                                (PU_Info *pu_info,
+                                 const DSL_IR_NATIVE_VALUE_RETIRE_REQUEST
+                                     *request);
+/* Cross-TY zero-motion view retirement; canonical TY records stay immutable. */
+extern BOOL DSL_IR_Redirect_And_Retire_Native_View
                                 (PU_Info *pu_info,
                                  const DSL_IR_NATIVE_VALUE_RETIRE_REQUEST
                                      *request);
