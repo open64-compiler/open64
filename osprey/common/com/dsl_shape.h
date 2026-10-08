@@ -123,6 +123,11 @@ extern BOOL DSL_Shape_Tensor_Compatible
                                 (TY_IDX ty0,
                                  TY_IDX ty1,
                                  BOOL require_shape);
+/* Exact static storage equivalence for a zero-motion tensor view. */
+extern BOOL DSL_Shape_Representation_Preserving_View
+                                (TY_IDX source_ty, TY_IDX view_ty);
+extern BOOL DSL_Shape_Zero_Motion_View_Operator
+                                (UINT32 dsl_operator, UINT16 version);
 extern BOOL DSL_Shape_Has_Operator_Rule
                                 (DSL_OPERATOR dsl_operator,
                                  UINT16 version);

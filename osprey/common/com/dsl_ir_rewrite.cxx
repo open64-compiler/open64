@@ -26,6 +26,7 @@
 #include "dsl_ir_transaction_internal.h"
 #include "dsl_runtime_interface_internal.h"
 #include "dsl_region.h"
+#include "dsl_shape.h"
 #include "pu_info.h"
 #include "strtab.h"
 #include "symtab.h"
@@ -37,7 +38,12 @@ extern BOOL DSL_Call_ABI_Image_Update_Argument_Value
                                 (const WN *, UINT32, DSL_IR_VALUE_ID,
                                  DSL_IR_VALUE_ID);
 extern BOOL DSL_IR_Image_Redirect_And_Retire_Value
-                                (DSL_IR_VALUE_ID, DSL_IR_VALUE_ID, UINT32);
+                                (DSL_IR_VALUE_ID, DSL_IR_VALUE_ID, UINT32,
+                                 BOOL);
+extern BOOL DSL_Runtime_Interface_Image_Can_Retire_View
+                                (ST_IDX, DSL_IR_VALUE_ID, DSL_IR_VALUE_ID);
+extern BOOL DSL_Runtime_Interface_Image_Retire_View
+                                (ST_IDX, DSL_IR_VALUE_ID, DSL_IR_VALUE_ID);
 extern BOOL DSL_Runtime_Interface_Image_Redirect_Value
                                 (ST_IDX, DSL_IR_VALUE_ID, DSL_IR_VALUE_ID);
 extern UINT32 DSL_Region_Symbol_Use_Count (PU_Info *, ST_IDX);
@@ -2491,15 +2497,38 @@ DSL_IR_Retire_Has_Use_Outside_Block
     return FALSE;
 }
 
+static BOOL
+DSL_IR_Retire_Has_Symbol_Use (const WN *wn, ST_IDX st)
+{
+    if (wn == NULL)
+        return FALSE;
+    if (WN_has_sym(wn) && WN_st_idx(wn) == st)
+        return TRUE;
+    if (WN_operator(wn) == OPR_BLOCK) {
+        for (const WN *statement = WN_first(wn); statement != NULL;
+             statement = WN_next(statement)) {
+            if (DSL_IR_Retire_Has_Symbol_Use(statement, st))
+                return TRUE;
+        }
+        return FALSE;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(wn); ++kid) {
+        if (DSL_IR_Retire_Has_Symbol_Use(WN_kid(wn, kid), st))
+            return TRUE;
+    }
+    return FALSE;
+}
+
 /*
  * Atomically redirect all owner-safe uses to a dominating replacement and
  * retire one pure native definition. Tree, REGION interfaces, logical value
  * references, and status flags commit only after exhaustive preflight.
  */
-BOOL
-DSL_IR_Redirect_And_Retire_Native_Value
+static BOOL
+DSL_IR_Redirect_And_Retire_Native_Value_Internal
         (PU_Info *pu_info,
-         const DSL_IR_NATIVE_VALUE_RETIRE_REQUEST *request)
+         const DSL_IR_NATIVE_VALUE_RETIRE_REQUEST *request,
+         BOOL view_redirect)
 {
     ST_IDX owner_pu_st = pu_info == NULL ? ST_IDX_ZERO :
         PU_Info_proc_sym(pu_info);
@@ -2524,7 +2553,11 @@ DSL_IR_Redirect_And_Retire_Native_Value
             (pu_info, request->retiring_definition, &retiring) ||
         replacement.id != request->replacement_value_id ||
         retiring.id != request->retiring_value_id ||
-        replacement.ty != retiring.ty ||
+        (view_redirect ?
+         (replacement.ty == retiring.ty ||
+          !DSL_Shape_Representation_Preserving_View
+              (replacement.ty, retiring.ty)) :
+         replacement.ty != retiring.ty) ||
         !DSL_Tensor_Has_Unique_Ownership(retiring.st))
         return FALSE;
 
@@ -2538,6 +2571,11 @@ DSL_IR_Redirect_And_Retire_Native_Value
             request->expected_retiring_operator ||
         retiring_opcode.version != request->expected_retiring_version ||
         retiring_opcode.effect_model != DSL_EFFECT_MODEL_PURE ||
+        (view_redirect &&
+         (retiring_opcode.shape_rule != DSL_SHAPE_RULE_VIEW ||
+          !DSL_Shape_Zero_Motion_View_Operator
+              (retiring_opcode.logical_operator,
+               retiring_opcode.version))) ||
         request->replacement_operand_ordinal >= retiring_node.operand_count)
         return FALSE;
     DSL_IR_VALUE_REFERENCE_RECORD replacement_reference;
@@ -2591,6 +2629,27 @@ DSL_IR_Redirect_And_Retire_Native_Value
             (pu_root, containing_block, retiring.st))
         return FALSE;
 
+    if (view_redirect) {
+        if (!DSL_Runtime_Interface_Image_Can_Retire_View
+                 (owner_pu_st, retiring.id, replacement.id))
+            return FALSE;
+        for (UINT32 i = 0; i < scan.reads.size(); ++i) {
+            if (WN_ty(scan.reads[i]) != retiring.ty)
+                return FALSE;
+        }
+        for (UINT32 i = 1;
+             i <= DSL_Runtime_Interface_Image_Value_Count(); ++i) {
+            DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+            if (!DSL_Runtime_Interface_Image_Get_Value(i, &projection))
+                return FALSE;
+            if (projection.owner_pu_st == owner_pu_st &&
+                projection.source_value_id == retiring.id &&
+                DSL_IR_Retire_Has_Symbol_Use
+                    (pu_root, projection.handle_st))
+                return FALSE;
+        }
+    }
+
     UINT32 region_uses = DSL_Region_Symbol_Use_Count
                              (Current_PU_Info, retiring.st);
     if (region_uses != 0 &&
@@ -2598,16 +2657,26 @@ DSL_IR_Redirect_And_Retire_Native_Value
              (Current_PU_Info, retiring.st, replacement.st))
         return FALSE;
 
-    for (UINT32 i = 0; i < scan.reads.size(); ++i)
+    for (UINT32 i = 0; i < scan.reads.size(); ++i) {
         WN_st_idx(scan.reads[i]) = replacement.st;
+        if (view_redirect)
+            WN_set_ty(scan.reads[i], replacement.ty);
+    }
     if (region_uses != 0) {
         BOOL redirected = DSL_Region_Redirect_Symbol
                               (Current_PU_Info, retiring.st, replacement.st);
         FmtAssert(redirected, ("preflighted REGION redirect failed"));
     }
     BOOL image_redirected = DSL_IR_Image_Redirect_And_Retire_Value
-        (replacement.id, retiring.id, request->replacement_operand_ordinal);
+        (replacement.id, retiring.id, request->replacement_operand_ordinal,
+         view_redirect);
     FmtAssert(image_redirected, ("preflighted DSL value redirect failed"));
+    if (view_redirect) {
+        BOOL projection_retired = DSL_Runtime_Interface_Image_Retire_View
+            (owner_pu_st, retiring.id, replacement.id);
+        FmtAssert(projection_retired,
+                  ("preflighted runtime view retirement failed"));
+    }
     WN *removed = WN_EXTRACT_FromBlock
                       (containing_block,
                        request->retiring_definition);
@@ -2615,9 +2684,29 @@ DSL_IR_Redirect_And_Retire_Native_Value
               ("preflighted DSL definition retirement failed"));
     WN_DELETE_Tree(removed);
     FmtAssert(DSL_IR_Image_Validate(NULL) &&
+              (!view_redirect ||
+               DSL_Runtime_Interface_Image_Validate(NULL)) &&
               DSL_Region_Verify_PU(Current_PU_Info, NULL),
               ("retired DSL value failed postcondition"));
     return TRUE;
+}
+
+BOOL
+DSL_IR_Redirect_And_Retire_Native_Value
+        (PU_Info *pu_info,
+         const DSL_IR_NATIVE_VALUE_RETIRE_REQUEST *request)
+{
+    return DSL_IR_Redirect_And_Retire_Native_Value_Internal
+               (pu_info, request, FALSE);
+}
+
+BOOL
+DSL_IR_Redirect_And_Retire_Native_View
+        (PU_Info *pu_info,
+         const DSL_IR_NATIVE_VALUE_RETIRE_REQUEST *request)
+{
+    return DSL_IR_Redirect_And_Retire_Native_Value_Internal
+               (pu_info, request, TRUE);
 }
 
 static BOOL

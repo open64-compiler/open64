@@ -296,6 +296,72 @@ DSL_Shape_Parse_Static_Dimensions
 }
 
 BOOL
+DSL_Shape_Representation_Preserving_View
+        (TY_IDX source_ty, TY_IDX view_ty)
+{
+    if (!DSL_Shape_TY_Valid(source_ty) || !DSL_Shape_TY_Valid(view_ty) ||
+        !TY_is_tensor_extension(source_ty) ||
+        !TY_is_tensor_extension(view_ty) ||
+        TY_tensor_element_ty(source_ty) != TY_tensor_element_ty(view_ty) ||
+        TY_align(source_ty) != TY_align(view_ty) ||
+        TY_size(source_ty) != TY_size(view_ty))
+        return FALSE;
+
+    static const TY_TENSOR_SCHEMA_KEY representation[] = {
+        TY_TENSOR_SCHEMA_KIND, TY_TENSOR_SCHEMA_DTYPE,
+        TY_TENSOR_SCHEMA_LAYOUT, TY_TENSOR_SCHEMA_SHARDING,
+        TY_TENSOR_SCHEMA_PLACEMENT, TY_TENSOR_SCHEMA_MEMORY,
+        TY_TENSOR_SCHEMA_QUANTIZATION
+    };
+    for (UINT32 i = 0; i < sizeof(representation) /
+                            sizeof(representation[0]); ++i) {
+        const char *source = TY_tensor_attribute(source_ty, representation[i]);
+        const char *view = TY_tensor_attribute(view_ty, representation[i]);
+        if ((source == NULL) != (view == NULL) ||
+            (source != NULL && strcmp(source, view) != 0) ||
+            (i < 3 && source == NULL))
+            return FALSE;
+    }
+
+    UINT64 source_dimensions[DSL_SHAPE_MAX_RANK];
+    UINT64 view_dimensions[DSL_SHAPE_MAX_RANK];
+    UINT32 source_rank = 0;
+    UINT32 view_rank = 0;
+    if (!DSL_Shape_Parse_Static_Dimensions
+             (TY_tensor_attribute(source_ty, TY_TENSOR_SCHEMA_SHAPE),
+              source_dimensions, DSL_SHAPE_MAX_RANK, &source_rank) ||
+        !DSL_Shape_Parse_Static_Dimensions
+             (TY_tensor_attribute(view_ty, TY_TENSOR_SCHEMA_SHAPE),
+              view_dimensions, DSL_SHAPE_MAX_RANK, &view_rank) ||
+        source_rank != (UINT32)TY_tensor_rank(source_ty) ||
+        view_rank != (UINT32)TY_tensor_rank(view_ty))
+        return FALSE;
+
+    UINT64 source_count = 1;
+    UINT64 view_count = 1;
+    for (UINT32 i = 0; i < source_rank; ++i) {
+        if (source_dimensions[i] == 0 ||
+            source_count > ~0ULL / source_dimensions[i])
+            return FALSE;
+        source_count *= source_dimensions[i];
+    }
+    for (UINT32 i = 0; i < view_rank; ++i) {
+        if (view_dimensions[i] == 0 ||
+            view_count > ~0ULL / view_dimensions[i])
+            return FALSE;
+        view_count *= view_dimensions[i];
+    }
+    return source_count == view_count;
+}
+
+BOOL
+DSL_Shape_Zero_Motion_View_Operator
+        (UINT32 dsl_operator, UINT16 version)
+{
+    return dsl_operator == OPR_DSLFLATTEN && version == 2;
+}
+
+BOOL
 DSL_Shape_Format_Static_Dimensions
         (const UINT64 *dimensions,
          UINT32 rank,

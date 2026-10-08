@@ -12885,6 +12885,289 @@ Check_DSL_Value_Retirement(void)
 }
 
 static int
+Check_DSL_View_Retirement(BOOL region_collision_only)
+{
+#define VIEW_CHECK(condition, stage) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "DSL view retirement failed: %s\n", stage); \
+            return 1; \
+        } \
+    } while (0)
+
+    const char *artifact = getenv("OPEN64_DSL_VIEW_RETIRE_ARTIFACT");
+    VIEW_CHECK(DSL_Builder_Begin_Program(), "program initialization");
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    memset(&descriptor, 0, sizeof(descriptor));
+    descriptor.type_core.kind = "tensor";
+    descriptor.type_core.dtype = "float32";
+    descriptor.type_core.rank = 4;
+    descriptor.type_core.logical_shape = "[1,64,1,1]";
+    descriptor.traits.traits = "activation";
+    descriptor.representation.layout = "NCHW";
+    descriptor.representation.sharding = "replicated";
+    descriptor.representation.placement = "host";
+    descriptor.representation.memory = "contiguous";
+    descriptor.representation.quantization = "none";
+    TY_IDX pool_ty = DSL_Builder_Intern_Tensor_Type
+        ("view_pool_f32_1x64x1x1", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    descriptor.type_core.rank = 2;
+    descriptor.type_core.logical_shape = "[1,64]";
+    TY_IDX flatten_ty = DSL_Builder_Intern_Tensor_Type
+        ("view_flatten_f32_1x64", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    descriptor.type_core.logical_shape = "[1,63]";
+    TY_IDX wrong_count_ty = DSL_Builder_Intern_Tensor_Type
+        ("view_bad_f32_1x63", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    descriptor.type_core.logical_shape = "[1,64]";
+    descriptor.representation.layout = "NC";
+    TY_IDX wrong_layout_ty = DSL_Builder_Intern_Tensor_Type
+        ("view_bad_layout_f32_1x64", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    descriptor.type_core.dtype = "float64";
+    descriptor.representation.layout = "NCHW";
+    TY_IDX wrong_dtype_ty = DSL_Builder_Intern_Tensor_Type
+        ("view_bad_dtype_f64_1x64", MTYPE_To_TY(MTYPE_F8), &descriptor);
+    VIEW_CHECK(pool_ty != TY_IDX_ZERO && flatten_ty != TY_IDX_ZERO &&
+               pool_ty != flatten_ty &&
+               DSL_Shape_Representation_Preserving_View
+                   (pool_ty, flatten_ty) &&
+               !DSL_Shape_Representation_Preserving_View
+                   (pool_ty, wrong_count_ty) &&
+               !DSL_Shape_Representation_Preserving_View
+                   (pool_ty, wrong_layout_ty),
+               "static representation contract");
+    VIEW_CHECK(wrong_dtype_ty != TY_IDX_ZERO &&
+               !DSL_Shape_Representation_Preserving_View
+                   (pool_ty, wrong_dtype_ty) &&
+               !DSL_Shape_Zero_Motion_View_Operator
+                   (OPR_DSLTRANSPOSE, 1),
+               "static representation contract");
+
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU("dsl_cross_ty_view_retirement");
+    UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    DSL_BUILDER_VALUE input =
+        DSL_Builder_Create_Model_Input("pool_input", pool_ty, 0);
+    DSL_BUILDER_VALUE kids[1] = { input };
+    DSL_BUILDER_VALUE pool = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.relu", 2),
+         2, kids, 1, NULL, 0, "pool_result", pool_ty);
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attrs[2] = {
+        { "attr.start_dim", "1" }, { "attr.end_dim", "-1" }
+    };
+    kids[0] = pool;
+    DSL_BUILDER_VALUE view = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.flatten", 2),
+         2, kids, 1, attrs, 2, "flatten_view", flatten_ty);
+    kids[0] = view;
+    DSL_BUILDER_VALUE consumer = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), "common.flatten", 2),
+         2, kids, 1, attrs, 2, "view_consumer", flatten_ty);
+    VIEW_CHECK(pu != NULL && file_id != 0 && input != NULL && pool != NULL &&
+               view != NULL && consumer != NULL,
+               "view chain creation");
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = __LINE__ + 1;
+    position.statement_begin = 1;
+    DSL_Builder_Set_Value_Source_Position(input, &position);
+    ++position.line;
+    DSL_Builder_Set_Value_Source_Position(pool, &position);
+    ++position.line;
+    DSL_Builder_Set_Value_Source_Position(view, &position);
+    ++position.line;
+    DSL_Builder_Set_Value_Source_Position(consumer, &position);
+    VIEW_CHECK(DSL_Builder_Append_PU_Value(pu, consumer),
+               "materialize view chain");
+
+    DSL_RUNTIME_VALUE_PROJECTION_REQUEST projected[2];
+    memset(projected, 0, sizeof(projected));
+    DSL_BUILDER_VALUE projected_values[2] = { pool, view };
+    TY_IDX handle_ty = Create_Runtime_Interface_Handle_TY
+        ("view_runtime_handle_v1");
+    for (UINT32 i = 0; i < 2; ++i) {
+        projected[i].owner_pu_st = PU_Info_proc_sym(pu);
+        projected[i].source_value_id =
+            DSL_Builder_Get_Value_Image_Id(projected_values[i]);
+        projected[i].expected_source_st =
+            DSL_Builder_Get_Value_Result_Symbol(projected_values[i]);
+        projected[i].expected_source_ty = i == 0 ? pool_ty : flatten_ty;
+        projected[i].handle_ty = handle_ty;
+        projected[i].binding_kind = DSL_RUNTIME_BINDING_LOCAL_VALUE;
+        projected[i].formal_ordinal =
+            DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
+    }
+    DSL_RUNTIME_INTERFACE_PLAN plan;
+    memset(&plan, 0, sizeof(plan));
+    plan.values = projected;
+    plan.value_count = 2;
+    DSL_RUNTIME_INTERFACE_RESULT applied;
+    VIEW_CHECK(handle_ty != TY_IDX_ZERO &&
+               DSL_Runtime_Interface_Plan_Validate(&plan, stderr) &&
+               DSL_Runtime_Interface_Apply_PU(pu, &plan, stderr, &applied) &&
+               DSL_Runtime_Interface_Image_Validate(stderr),
+               "local runtime projections");
+
+    WN *body = WN_func_body(PU_Info_tree_ptr(pu));
+    ST_IDX view_st = DSL_Builder_Get_Value_Result_Symbol(view);
+    ST_IDX pool_st = DSL_Builder_Get_Value_Result_Symbol(pool);
+    WN *pool_def = Find_STID_In_Block(body, pool_st);
+    WN *view_def = Find_STID_In_Block(body, view_st);
+    WN *consumer_def = Find_STID_In_Block
+        (body, DSL_Builder_Get_Value_Result_Symbol(consumer));
+    VIEW_CHECK(pool_def != NULL && view_def != NULL && consumer_def != NULL,
+               "physical definitions");
+    DSL_IR_NATIVE_VALUE_RETIRE_REQUEST request;
+    memset(&request, 0, sizeof(request));
+    request.replacement_definition = pool_def;
+    request.replacement_value_id = DSL_Builder_Get_Value_Image_Id(pool);
+    request.retiring_definition = view_def;
+    request.retiring_value_id = DSL_Builder_Get_Value_Image_Id(view);
+    request.expected_retiring_operator = OPR_DSLFLATTEN;
+    request.expected_retiring_version = 2;
+    request.replacement_operand_ordinal = 0;
+    request.expected_retiring_version = 1;
+    VIEW_CHECK(!DSL_IR_Redirect_And_Retire_Native_View(pu, &request) &&
+               Find_STID_In_Block(body, view_st) == view_def &&
+               WN_st_idx(WN_kid0(WN_kid0(consumer_def))) == view_st,
+               "malformed request leaves tree unchanged");
+    request.expected_retiring_version = 2;
+    if (region_collision_only) {
+        DSL_REGION collision = DSL_Region_Create
+            (pu, NULL, "cnn.basic_block", 1);
+        VIEW_CHECK(collision != NULL &&
+                   DSL_Region_Declare_Symbol
+                       (collision, pool_st, DSL_REGION_VALUE_INPUT, 0,
+                        DSL_REGION_INTERFACE_FLAG_NONE) &&
+                   DSL_Region_Declare_Symbol
+                       (collision, view_st, DSL_REGION_VALUE_INPUT, 1,
+                        DSL_REGION_INTERFACE_FLAG_NONE) &&
+                   DSL_Region_Append_To_PU(collision) &&
+                   DSL_Region_Verify_PU(pu, stderr),
+                   "REGION collision setup");
+        VIEW_CHECK(!DSL_IR_Redirect_And_Retire_Native_View(pu, &request) &&
+                   Find_STID_In_Block(body, view_st) == view_def &&
+                   WN_st_idx(WN_kid0(WN_kid0(consumer_def))) == view_st &&
+                   DSL_IR_Image_Validate(stderr) &&
+                   DSL_Runtime_Interface_Image_Validate(stderr) &&
+                   DSL_Region_Verify_PU(pu, stderr),
+                   "REGION collision leaves all owners unchanged");
+        printf("DSL cross-TY view REGION rollback passed\n");
+        return 0;
+    }
+    DSL_REGION region = DSL_Region_Create
+        (pu, NULL, "cnn.basic_block", 1);
+    VIEW_CHECK(region != NULL &&
+               DSL_Region_Declare_Symbol
+                   (region, view_st, DSL_REGION_VALUE_INPUT, 0,
+                    DSL_REGION_INTERFACE_FLAG_NONE) &&
+               DSL_Region_Append_To_PU(region) &&
+               DSL_Region_Verify_PU(pu, stderr) &&
+               DSL_Region_Symbol_Use_Count(pu, view_st) == 1,
+               "single view REGION interface");
+    VIEW_CHECK(DSL_IR_Redirect_And_Retire_Native_View(pu, &request),
+               "commit cross-TY view retirement");
+    WN *consumer_operand = WN_kid0(WN_kid0(consumer_def));
+    DSL_IR_VALUE_RECORD retired_value;
+    DSL_IR_NODE_RECORD retired_node;
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+    VIEW_CHECK(Find_STID_In_Block(body, view_st) == NULL &&
+               WN_st_idx(consumer_operand) == pool_st &&
+               WN_ty(consumer_operand) == pool_ty &&
+               DSL_IR_Image_Get_Value(request.retiring_value_id,
+                                      &retired_value) &&
+               DSL_IR_Image_Get_Node(retired_value.producer_node_id,
+                                     &retired_node) &&
+               (retired_node.flags & DSL_IR_NODE_FLAG_RETIRED_VIEW) != 0 &&
+               (retired_value.flags & DSL_IR_VALUE_FLAG_REDIRECTED) != 0 &&
+               DSL_Runtime_Interface_Image_Get_Value(2, &projection) &&
+               (projection.flags &
+                DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW) != 0 &&
+               !DSL_Runtime_Interface_Image_Find_Value
+                   (PU_Info_proc_sym(pu), retired_value.id, NULL) &&
+               DSL_Region_Symbol_Use_Count(pu, view_st) == 0 &&
+               DSL_Region_Symbol_Use_Count(pu, pool_st) == 1 &&
+               DSL_Region_Verify_PU(pu, stderr) &&
+               DSL_IR_Image_Validate(stderr) &&
+               DSL_Runtime_Interface_Image_Validate(stderr),
+               "view provenance and live use");
+    DSL_GATEKEEPER_RESULT gatekeeper;
+    VIEW_CHECK(DSL_Gatekeeper_Verify_Program(pu, stderr, &gatekeeper),
+               "post-retirement gatekeeper");
+
+    UINT64 runtime_size = 0;
+    unsigned char *runtime =
+        Capture_Runtime_Interface_Image(&runtime_size);
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD *runtime_values =
+        (DSL_RUNTIME_VALUE_PROJECTION_RECORD *)
+            (runtime + DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE);
+
+    UINT64 image_size = 0;
+    unsigned char *image = Capture_DSL_IR_Image(&image_size);
+    DSL_IR_IMAGE_HEADER *header = (DSL_IR_IMAGE_HEADER *)image;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD *descriptors =
+        (DSL_IR_OPCODE_DESCRIPTOR_RECORD *)
+            (image + DSL_IR_IMAGE_HEADER_SIZE);
+    DSL_IR_NODE_RECORD *nodes = (DSL_IR_NODE_RECORD *)
+        ((unsigned char *)descriptors +
+         (UINT64)header->opcode_descriptor_count *
+             DSL_IR_OPCODE_DESCRIPTOR_RECORD_SIZE);
+    DSL_IR_ATTRIBUTE_RECORD *attributes = (DSL_IR_ATTRIBUTE_RECORD *)
+        ((unsigned char *)nodes +
+         (UINT64)header->node_count * DSL_IR_NODE_RECORD_SIZE);
+    DSL_IR_VALUE_RECORD *image_values = (DSL_IR_VALUE_RECORD *)
+        ((unsigned char *)attributes +
+         (UINT64)header->attribute_count *
+             DSL_IR_ATTRIBUTE_RECORD_SIZE);
+    DSL_IR_NODE_RECORD &view_node =
+        nodes[retired_value.producer_node_id - 1];
+    UINT32 saved_flags = view_node.flags;
+    view_node.flags &= ~DSL_IR_NODE_FLAG_RETIRED_VIEW;
+    VIEW_CHECK(!DSL_IR_Image_Load_Mapped(image, image_size, NULL) &&
+               DSL_IR_Image_Validate(stderr),
+               "unmarked cross-TY mapped redirect rejects atomically");
+    view_node.flags = saved_flags;
+    TY_IDX saved_ty =
+        image_values[request.replacement_value_id - 1].ty;
+    image_values[request.replacement_value_id - 1].ty = wrong_count_ty;
+    VIEW_CHECK(!DSL_IR_Image_Load_Mapped(image, image_size, NULL) &&
+               DSL_IR_Image_Validate(stderr),
+               "wrong-element-count mapped view rejects atomically");
+    image_values[request.replacement_value_id - 1].ty = saved_ty;
+    image_values[request.replacement_value_id - 1].ty = wrong_layout_ty;
+    VIEW_CHECK(!DSL_IR_Image_Load_Mapped(image, image_size, NULL) &&
+               DSL_IR_Image_Validate(stderr),
+               "wrong-layout mapped view rejects atomically");
+    image_values[request.replacement_value_id - 1].ty = saved_ty;
+    VIEW_CHECK(DSL_IR_Image_Load_Mapped(image, image_size, stderr),
+               "valid cross-TY image reopens");
+    delete [] image;
+
+    VIEW_CHECK(DSL_Runtime_Interface_Image_Load_Mapped
+                   (runtime, runtime_size, stderr),
+               "valid runtime view reopens");
+    runtime_values[1].flags = 0;
+    VIEW_CHECK(!DSL_Runtime_Interface_Image_Load_Mapped
+                   (runtime, runtime_size, NULL) &&
+               DSL_Runtime_Interface_Image_Validate(stderr),
+               "unmarked runtime view rejects atomically");
+    runtime_values[1].flags =
+        DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW;
+    VIEW_CHECK(DSL_Runtime_Interface_Image_Load_Mapped
+                   (runtime, runtime_size, stderr),
+               "valid runtime view reopens");
+    delete [] runtime;
+    if (artifact != NULL && artifact[0] != '\0') {
+        VIEW_CHECK(Write_Runtime_Interface_Artifact(artifact, pu, NULL),
+                   "mapped view artifact");
+    }
+    printf("DSL cross-TY view retirement passed\n");
+#undef VIEW_CHECK
+    return 0;
+}
+
+static int
 Check_PU_Clone_Image_Rows(void)
 {
 #define CLONE_IMAGE_CHECK(condition, stage) \
@@ -13274,6 +13557,10 @@ main(void)
         return Check_External_Tensor_Materialization();
     if (getenv("OPEN64_DSL_VALUE_RETIRE_ONLY") != NULL)
         return Check_DSL_Value_Retirement();
+    if (getenv("OPEN64_DSL_VIEW_RETIRE_ONLY") != NULL)
+        return Check_DSL_View_Retirement(FALSE);
+    if (getenv("OPEN64_DSL_VIEW_REGION_ONLY") != NULL)
+        return Check_DSL_View_Retirement(TRUE);
 
     failed |= Check_Tensor_Type_And_Descriptor();
     failed |= Check_Symbol_Metadata();
