@@ -10490,6 +10490,8 @@ Check_CKKS_Expansion_Transaction (void)
 #undef CKKS_EXPAND_CHECK
 }
 
+static unsigned char *Capture_Runtime_Interface_Image (UINT64 *image_size);
+
 static int
 Check_CKKS_Expansion_Call_Region (BOOL projected_call)
 {
@@ -10605,6 +10607,23 @@ Check_CKKS_Expansion_Call_Region (BOOL projected_call)
              DSL_Builder_Get_PU_Call_Result(call, 0, &call_result) &&
              DSL_Call_Image_Find_Callsite(call, &callsite_record),
              "runtime call result");
+        DSL_BUILDER_VALUE result_source =
+            DSL_Builder_Create_Operator_With_Result
+                (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                 "common.relu", 2),
+                 2, &call_result, 1, NULL, 0,
+                 "runtime_result_source", ty);
+        ++position.line;
+        CKKS_REGION_CHECK
+            (result_source != NULL &&
+             DSL_Builder_Set_Value_Source_Position
+                 (result_source, &position) &&
+             DSL_Builder_Append_PU_Value(caller, result_source),
+             "runtime result consumer");
+        WN *result_source_definition = Find_STID_In_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(result_source));
+        CKKS_REGION_CHECK(result_source_definition != NULL,
+                          "runtime result source definition");
         DSL_BUILDER_VALUE projected_values[4] = {
             formal, callee_result, source, call_result
         };
@@ -10774,6 +10793,147 @@ Check_CKKS_Expansion_Call_Region (BOOL projected_call)
              DSL_Runtime_Interface_Image_Validate(stderr) &&
              DSL_Call_ABI_Image_Validate_PU(caller, stderr),
              "projected call ABI and runtime redirect");
+
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD result_projection;
+        DSL_IR_VALUE_ID call_result_id =
+            DSL_Builder_Get_Value_Image_Id(call_result);
+        CKKS_REGION_CHECK
+            (DSL_Runtime_Interface_Image_Find_Value
+                (PU_Info_proc_sym(caller), call_result_id,
+                 &result_projection),
+             "projected result identity");
+        WN *result_expression = WN_kid0(result_source_definition);
+        WN *semantic_load = WN_kid0(result_expression);
+        WN *handle_load = WN_CreateLdid
+            (OPR_LDID, TY_mtype(handle_ty), TY_mtype(handle_ty), 0,
+             result_projection.handle_st, handle_ty);
+        CKKS_REGION_CHECK
+            (semantic_load != NULL && handle_load != NULL &&
+             WN_operator(semantic_load) == OPR_LDID,
+             "projected result physical load");
+        WN_kid0(result_expression) = handle_load;
+        WN_DELETE_Tree(semantic_load);
+
+        operand.value_id = call_result_id;
+        step.result_name = "runtime_result_encoded";
+        request.source_definition = result_source_definition;
+        request.source_value_id =
+            DSL_Builder_Get_Value_Image_Id(result_source);
+        context.origin_source_value_id = request.source_value_id;
+        CKKS_REGION_CHECK
+            (DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, stderr),
+             "projected result operand preflight");
+        DSL_RUNTIME_CALL_PROJECTION_RECORD result_runtime_call;
+        CKKS_REGION_CHECK
+            (DSL_Runtime_Interface_Image_Find_Call
+                (callsite_record.id, 1, &result_runtime_call) &&
+             result_runtime_call.direction == DSL_RUNTIME_CALL_RESULT,
+             "projected result call direction");
+        UINT64 runtime_image_size = 0;
+        unsigned char *runtime_image =
+            Capture_Runtime_Interface_Image(&runtime_image_size);
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD *value_rows =
+            (DSL_RUNTIME_VALUE_PROJECTION_RECORD *)
+                (runtime_image + DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE);
+        DSL_RUNTIME_INTERFACE_IMAGE_HEADER *runtime_header =
+            (DSL_RUNTIME_INTERFACE_IMAGE_HEADER *)runtime_image;
+        DSL_RUNTIME_CALL_PROJECTION_RECORD *call_rows =
+            (DSL_RUNTIME_CALL_PROJECTION_RECORD *)
+                ((unsigned char *)value_rows +
+                 (UINT64)runtime_header->value_projection_count *
+                     DSL_RUNTIME_VALUE_PROJECTION_RECORD_SIZE);
+        ST_IDX saved_owner =
+            value_rows[result_projection.id - 1].owner_pu_st;
+        value_rows[result_projection.id - 1].owner_pu_st =
+            PU_Info_proc_sym(callee);
+        CKKS_REGION_CHECK
+            (!DSL_Runtime_Interface_Image_Load_Mapped
+                (runtime_image, runtime_image_size, NULL) &&
+             DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, stderr),
+             "wrong projected result owner rejects without mutation");
+        value_rows[result_projection.id - 1].owner_pu_st = saved_owner;
+        UINT32 saved_direction =
+            call_rows[result_runtime_call.id - 1].direction;
+        call_rows[result_runtime_call.id - 1].direction =
+            DSL_RUNTIME_CALL_INPUT;
+        CKKS_REGION_CHECK
+            (!DSL_Runtime_Interface_Image_Load_Mapped
+                (runtime_image, runtime_image_size, NULL) &&
+             DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, stderr),
+             "wrong projected result direction rejects without mutation");
+        call_rows[result_runtime_call.id - 1].direction = saved_direction;
+        delete [] runtime_image;
+        WN *result_actual = WN_kid0
+            (WN_kid(physical_call, result_runtime_call.actual_ordinal));
+        ST_IDX saved_handle_st = WN_st_idx(result_actual);
+        WN_st_idx(result_actual) = source_st;
+        CKKS_REGION_CHECK
+            (!DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, NULL),
+             "wrong projected result handle rejects");
+        WN_st_idx(result_actual) = saved_handle_st;
+        TY_IDX saved_handle_ty = WN_ty(result_actual);
+        WN_set_ty(result_actual, ty);
+        CKKS_REGION_CHECK
+            (!DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, NULL),
+             "wrong projected result TY rejects");
+        WN_set_ty(result_actual, saved_handle_ty);
+        WN *projected_call = WN_EXTRACT_FromBlock(body, call);
+        WN_INSERT_BlockAfter(body, result_source_definition, projected_call);
+        CKKS_REGION_CHECK
+            (!DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, NULL),
+             "non-dominating projected result rejects");
+        WN_EXTRACT_FromBlock(body, projected_call);
+        WN_INSERT_BlockBefore(body, result_source_definition,
+                              projected_call);
+        CKKS_REGION_CHECK
+            (DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, stderr),
+             "restored projected result preflight");
+        symbol_count = ST_Table_Size(CURRENT_SYMTAB);
+        node_count = DSL_IR_Image_Node_Count();
+        UINT32 prior_events = DSL_CKKS_Event_Image_Count();
+        DSL_CKKS_Expand_Set_Test_Fault(2);
+        rejected = !DSL_IR_Expand_Native_Value_To_CKKS_Events
+            (caller, &request, NULL, &result);
+        DSL_CKKS_Expand_Set_Test_Fault(0);
+        CKKS_REGION_CHECK
+            (rejected && ST_Table_Size(CURRENT_SYMTAB) == symbol_count &&
+             DSL_IR_Image_Node_Count() == node_count &&
+             DSL_CKKS_Event_Image_Count() == prior_events &&
+             Find_STID_In_Block
+                 (body, DSL_Builder_Get_Value_Result_Symbol(result_source)) ==
+                 result_source_definition &&
+             DSL_Runtime_Interface_Image_Validate(stderr),
+             "projected result late-failure rollback");
+        CKKS_REGION_CHECK
+            (DSL_IR_Expand_Native_Value_To_CKKS_Events
+                (caller, &request, stderr, &result),
+             "projected result operand commit");
+        WN *result_definition = Find_STID_In_Block
+            (body, result.result_st);
+        WN *result_load = result_definition == NULL ? NULL :
+            WN_kid0(WN_kid0(result_definition));
+        DSL_IR_NODE_RECORD result_node;
+        DSL_IR_VALUE_REFERENCE_RECORD result_reference;
+        CKKS_REGION_CHECK
+            (result_load != NULL &&
+             WN_operator(result_load) == OPR_LDID &&
+             WN_st_idx(result_load) == result_projection.handle_st &&
+             WN_ty(result_load) == result_projection.handle_ty &&
+             DSL_IR_Image_Get_Node(result.node_id, &result_node) &&
+             DSL_IR_Image_Get_Value_Reference
+                 (result_node.first_operand_reference_id,
+                  &result_reference) &&
+             result_reference.value_id == call_result_id &&
+             DSL_IR_Image_Validate(stderr) &&
+             DSL_Runtime_Interface_Image_Validate(stderr),
+             "projected result handle load and logical image");
         const char *artifact = getenv("OPEN64_DSL_CKKS_RUNTIME_CALL_ARTIFACT");
         if (artifact != NULL && artifact[0] != '\0') {
             CKKS_REGION_CHECK

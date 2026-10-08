@@ -2999,12 +2999,145 @@ DSL_IR_CKKS_Operand_Dominates
     return FALSE;
 }
 
+struct DSL_IR_CKKS_PHYSICAL_OPERAND {
+    ST_IDX st;
+    TY_IDX ty;
+};
+
+static BOOL
+DSL_IR_CKKS_Has_Handle_Address_Use (const WN *wn, ST_IDX handle_st)
+{
+    if (wn == NULL)
+        return FALSE;
+    if (WN_operator(wn) == OPR_LDA && WN_st_idx(wn) == handle_st)
+        return TRUE;
+    if (WN_operator(wn) == OPR_BLOCK) {
+        for (const WN *statement = WN_first(wn); statement != NULL;
+             statement = WN_next(statement)) {
+            if (DSL_IR_CKKS_Has_Handle_Address_Use(statement, handle_st))
+                return TRUE;
+        }
+        return FALSE;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(wn); ++kid) {
+        if (DSL_IR_CKKS_Has_Handle_Address_Use
+                (WN_kid(wn, kid), handle_st))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+/* A projected result is defined by its exact by-reference call, not its
+ * semantic tensor ST. Keep the logical value ID in the DSL image. */
+static BOOL
+DSL_IR_CKKS_Resolve_Existing_Operand
+        (WN *block, WN *source_definition, ST_IDX owner_pu_st,
+         const DSL_IR_VALUE_RECORD &value,
+         DSL_IR_CKKS_PHYSICAL_OPERAND *physical)
+{
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+    physical->st = value.st;
+    physical->ty = value.ty;
+    if (!DSL_Runtime_Interface_Image_Find_Value
+             (owner_pu_st, value.id, &projection))
+        return DSL_IR_CKKS_Operand_Dominates
+                   (block, source_definition, value);
+
+    DSL_RUNTIME_CALL_PROJECTION_RECORD result_call;
+    UINT32 result_count = 0;
+    for (UINT32 i = 1; i <= DSL_Runtime_Interface_Image_Call_Count(); ++i) {
+        DSL_RUNTIME_CALL_PROJECTION_RECORD current;
+        if (!DSL_Runtime_Interface_Image_Get_Call(i, &current))
+            return FALSE;
+        if (current.source_value_id == value.id &&
+            current.value_projection_id == projection.id &&
+            current.direction == DSL_RUNTIME_CALL_RESULT) {
+            result_call = current;
+            ++result_count;
+        }
+    }
+    if (result_count == 0)
+        return DSL_IR_CKKS_Operand_Dominates
+                   (block, source_definition, value);
+    if (result_count != 1 || projection.flags != 0 ||
+        projection.owner_pu_st != owner_pu_st ||
+        projection.source_value_id != value.id ||
+        projection.source_st != value.st ||
+        projection.source_ty != value.ty ||
+        projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE ||
+        projection.formal_ordinal !=
+            DSL_RUNTIME_INTERFACE_INVALID_ORDINAL ||
+        ST_IDX_level(projection.handle_st) != CURRENT_SYMTAB ||
+        ST_IDX_index(projection.handle_st) == 0 ||
+        ST_IDX_index(projection.handle_st) >=
+            ST_Table_Size(CURRENT_SYMTAB) ||
+        ST_type(St_Table[projection.handle_st]) != projection.handle_ty ||
+        ST_sclass(St_Table[projection.handle_st]) != SCLASS_AUTO ||
+        result_call.owner_pu_st != owner_pu_st ||
+        result_call.source_value_id != value.id ||
+        result_call.value_projection_id != projection.id ||
+        result_call.actual_ordinal != result_call.callee_formal_ordinal)
+        return FALSE;
+
+    DSL_CALLSITE_METADATA_RECORD callsite;
+    const WN *call = DSL_Call_Image_Get_Call_WN(result_call.callsite_id);
+    if (!DSL_Call_Image_Get_Callsite
+             (result_call.callsite_id, &callsite) ||
+        callsite.owner_pu_st != owner_pu_st || call == NULL ||
+        WN_operator(call) != OPR_CALL ||
+        WN_st_idx(call) != callsite.callee_pu_st ||
+        result_call.actual_ordinal >= (UINT32)WN_kid_count(call))
+        return FALSE;
+    const WN *parm = WN_kid(call, result_call.actual_ordinal);
+    const WN *address = parm == NULL || WN_operator(parm) != OPR_PARM ?
+                        NULL : WN_kid0(parm);
+    if (address == NULL || WN_operator(address) != OPR_LDA ||
+        WN_st_idx(address) != projection.handle_st ||
+        WN_ty(parm) != WN_ty(address) ||
+        TY_kind(WN_ty(parm)) != KIND_POINTER ||
+        TY_pointed(WN_ty(parm)) != projection.handle_ty ||
+        WN_parm_flag(parm) !=
+            (WN_PARM_BY_REFERENCE | WN_PARM_OUT |
+             WN_PARM_PASSED_NOT_SAVED))
+        return FALSE;
+
+    BOOL initialized = FALSE;
+    BOOL called = FALSE;
+    for (WN *statement = WN_first(block); statement != NULL;
+         statement = WN_next(statement)) {
+        if (statement == source_definition)
+            break;
+        if (WN_operator(statement) == OPR_STID &&
+            WN_st_idx(statement) == projection.handle_st) {
+            if (called || WN_ty(statement) != projection.handle_ty)
+                return FALSE;
+            initialized = TRUE;
+        }
+        if (statement == call) {
+            if (!initialized || called)
+                return FALSE;
+            called = TRUE;
+        } else if (called &&
+                   DSL_IR_CKKS_Has_Handle_Address_Use
+                       (statement, projection.handle_st)) {
+            return FALSE;
+        }
+    }
+    if (!called)
+        return FALSE;
+    physical->st = projection.handle_st;
+    physical->ty = projection.handle_ty;
+    return TRUE;
+}
+
 static BOOL
 DSL_IR_CKKS_Preflight
         (PU_Info *pu_info, const DSL_CKKS_EXPANSION_REQUEST *request,
          DSL_IR_VALUE_RECORD *source_value, WN **source_block,
          std::vector<DSL_IR_CKKS_CALL_USE> *calls,
-         DSL_IR_CKKS_USE_SCAN *scan, FILE *diagnostic)
+         DSL_IR_CKKS_USE_SCAN *scan,
+         std::vector<DSL_IR_CKKS_PHYSICAL_OPERAND> *physical_operands,
+         FILE *diagnostic)
 {
     ST_IDX owner_pu_st = pu_info == NULL ? ST_IDX_ZERO :
                          PU_Info_proc_sym(pu_info);
@@ -3021,7 +3154,7 @@ DSL_IR_CKKS_Preflight
         request->step_count >
             (~(UINT32)0 - DSL_CKKS_Event_Image_Count()) /
                 request->context_count ||
-        !DSL_IR_Image_Validate(NULL) ||
+        physical_operands == NULL || !DSL_IR_Image_Validate(NULL) ||
         !DSL_CKKS_Event_Image_Validate(NULL) ||
         (DSL_Runtime_Interface_Image_Has_Records() &&
          !DSL_Runtime_Interface_Image_Validate(NULL)))
@@ -3082,6 +3215,7 @@ DSL_IR_CKKS_Preflight
     }
 
     UINT32 next_step = 0;
+    physical_operands->clear();
     UINT32 prior_static_ordinal = 0;
     for (UINT32 i = 0; i < request->group_count; ++i) {
         const DSL_CKKS_EXPANSION_GROUP &group = request->groups[i];
@@ -3135,9 +3269,13 @@ DSL_IR_CKKS_Preflight
                 if (operand.step_index >= i || operand.value_id != 0)
                     return DSL_IR_CKKS_Report
                                (diagnostic, "forward step operand", i);
+                DSL_IR_CKKS_PHYSICAL_OPERAND physical =
+                    { ST_IDX_ZERO, TY_IDX_ZERO };
+                physical_operands->push_back(physical);
                 continue;
             }
             DSL_IR_VALUE_RECORD value;
+            DSL_IR_CKKS_PHYSICAL_OPERAND physical;
             if (operand.kind != DSL_CKKS_EXPANSION_EXISTING_VALUE ||
                 operand.step_index != 0 ||
                 operand.value_id == source_value->id ||
@@ -3155,10 +3293,12 @@ DSL_IR_CKKS_Preflight
                 ST_IDX_index(value.st) == 0 ||
                 ST_IDX_index(value.st) >= ST_Table_Size(CURRENT_SYMTAB) ||
                 ST_type(St_Table[value.st]) != value.ty ||
-                !DSL_IR_CKKS_Operand_Dominates
-                     (*source_block, request->source_definition, value))
+                !DSL_IR_CKKS_Resolve_Existing_Operand
+                     (*source_block, request->source_definition,
+                      owner_pu_st, value, &physical))
                 return DSL_IR_CKKS_Report
                            (diagnostic, "invalid existing operand", i);
+            physical_operands->push_back(physical);
         }
     }
 
@@ -3257,9 +3397,10 @@ DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
     WN *source_block = NULL;
     std::vector<DSL_IR_CKKS_CALL_USE> calls;
     DSL_IR_CKKS_USE_SCAN scan;
+    std::vector<DSL_IR_CKKS_PHYSICAL_OPERAND> physical_operands;
     return DSL_IR_CKKS_Preflight
                (pu_info, request, &source_value, &source_block,
-                &calls, &scan, diagnostic);
+                &calls, &scan, &physical_operands, diagnostic);
 }
 
 static UINT32 DSL_ckks_expand_test_fault_stage = 0;
@@ -3358,10 +3499,11 @@ DSL_IR_Expand_Native_Value_To_CKKS_Events
     WN *source_block = NULL;
     std::vector<DSL_IR_CKKS_CALL_USE> calls;
     DSL_IR_CKKS_USE_SCAN scan;
+    std::vector<DSL_IR_CKKS_PHYSICAL_OPERAND> physical_operands;
     if (results == NULL ||
         !DSL_IR_CKKS_Preflight
             (pu_info, request, &source, &source_block,
-             &calls, &scan, diagnostic))
+             &calls, &scan, &physical_operands, diagnostic))
         return FALSE;
 
     DSL_CKKS_IMAGE_SAVEPOINT image_savepoint;
@@ -3392,6 +3534,7 @@ DSL_IR_Expand_Native_Value_To_CKKS_Events
     BOOL physical_redirected = FALSE;
     BOOL runtime_redirected = FALSE;
     BOOL committed = FALSE;
+    UINT32 physical_cursor = 0;
     do {
         for (UINT32 i = 0; i < request->step_count; ++i) {
             const DSL_CKKS_EXPANSION_STEP &step = request->steps[i];
@@ -3412,10 +3555,18 @@ DSL_IR_Expand_Native_Value_To_CKKS_Events
                                (operand.value_id, &value)) {
                     break;
                 }
-                TYPE_ID mtype = TY_is_tensor_extension(value.ty) ?
-                                MTYPE_M : TY_mtype(value.ty);
+                DSL_IR_CKKS_PHYSICAL_OPERAND physical =
+                    physical_operands[physical_cursor++];
+                ST_IDX load_st = operand.kind ==
+                    DSL_CKKS_EXPANSION_EXISTING_VALUE ? physical.st :
+                    value.st;
+                TY_IDX load_ty = operand.kind ==
+                    DSL_CKKS_EXPANSION_EXISTING_VALUE ? physical.ty :
+                    value.ty;
+                TYPE_ID mtype = TY_is_tensor_extension(load_ty) ?
+                                MTYPE_M : TY_mtype(load_ty);
                 WN *load = WN_CreateLdid
-                    (OPR_LDID, mtype, mtype, 0, value.st, value.ty);
+                    (OPR_LDID, mtype, mtype, 0, load_st, load_ty);
                 if (load == NULL)
                     break;
                 kids.push_back(load);
