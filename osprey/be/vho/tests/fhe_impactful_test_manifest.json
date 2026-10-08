@@ -25,6 +25,34 @@
       "status": "automated",
       "command": "sh osprey/be/vho/tests/fhe_ckks_expand_state_test.sh /private/tmp/open64-fhe-impactful/expand-state"
     },
+    "ckks2c-emitter": {
+      "status": "automated",
+      "command": "sh osprey/be/vho/tests/fhe_ckks2c_emit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-emitter"
+    },
+    "ckks2c-collector": {
+      "status": "planned",
+      "command": "sh osprey/be/vho/tests/fhe_ckks2c_collect_test.sh /private/tmp/open64-fhe-impactful/ckks2c-collector"
+    },
+    "ckks2c-checkpoint": {
+      "status": "planned",
+      "command": "sh osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.sh /private/tmp/open64-fhe-impactful/ckks2c-checkpoint"
+    },
+    "ckks2c-group-join": {
+      "status": "planned",
+      "command": "sh osprey/be/vho/tests/fhe_ckks2c_group_join_test.sh /private/tmp/open64-fhe-impactful/ckks2c-group-join"
+    },
+    "ckks2c-driver-exit": {
+      "status": "planned",
+      "command": "sh osprey/driver/tests/openpy_fhe_ckks2c_exit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-driver"
+    },
+    "ckks2c-ant-admission": {
+      "status": "planned",
+      "command": "sh osprey/libopen64fhe/tests/fhe_ckks2c_ant_admission_test.sh /private/tmp/open64-fhe-impactful/ckks2c-ant"
+    },
+    "full-s6-0d-certification": {
+      "status": "manual-expensive",
+      "command": "run content-addressed ResNet CKKS2C certification only after documented impact proof invalidates the matching receipt"
+    },
     "common-ckks-transaction": {
       "status": "automated",
       "command": "sh osprey/common/com/tests/dsl_ckks_expand_transaction_test.sh"
@@ -109,6 +137,62 @@
         "osprey/be/vho/tests/fhe_ckks_expand_state_test.*"
       ],
       "lanes": ["hygiene", "expand-state", "common-ckks-transaction"]
+    },
+    {
+      "name": "ckks2c-emitter",
+      "patterns": [
+        "osprey/be/vho/fhe_ckks2c_emit.*",
+        "osprey/include/open64_fhe_ckks2c_facade.h",
+        "osprey/be/vho/tests/fhe_ckks2c_*"
+      ],
+      "lanes": ["hygiene", "ckks2c-emitter"]
+    },
+    {
+      "name": "ckks2c-collector",
+      "patterns": [
+        "osprey/be/vho/fhe_ckks2c_collect.*",
+        "osprey/be/vho/tests/fhe_ckks2c_collect_test.*"
+      ],
+      "lanes": [
+        "hygiene",
+        "ckks2c-collector",
+        "artifact-audit"
+      ]
+    },
+    {
+      "name": "ckks2c-checkpoint",
+      "patterns": [
+        "osprey/be/vho/fhe_ckks2c_checkpoint.*",
+        "osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.*"
+      ],
+      "lanes": ["hygiene", "ckks2c-checkpoint", "artifact-audit"]
+    },
+    {
+      "name": "ckks2c-group-join",
+      "patterns": [
+        "osprey/be/vho/fhe_ckks2c_group_join.*",
+        "osprey/be/vho/tests/fhe_ckks2c_group_join_test.*"
+      ],
+      "lanes": [
+        "hygiene",
+        "ckks2c-group-join",
+        "artifact-audit"
+      ]
+    },
+    {
+      "name": "ckks2c-driver-exit",
+      "patterns": [
+        "osprey/driver/tests/openpy_fhe_ckks2c_exit_test.*"
+      ],
+      "lanes": ["hygiene", "ckks2c-driver-exit"]
+    },
+    {
+      "name": "ckks2c-ant-admission",
+      "patterns": [
+        "osprey/libopen64fhe/*ckks2c*",
+        "osprey/libopen64fhe/tests/fhe_ckks2c_ant_admission_test.*"
+      ],
+      "lanes": ["hygiene", "ckks2c-ant-admission"]
     },
     {
       "name": "fhe-materializer",
