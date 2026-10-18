@@ -81,6 +81,10 @@
       "status": "environment",
       "command": "run the affected independent audit against a receipt-matched retained .T"
     },
+    "complete-audit-format": {
+      "status": "automated",
+      "command": "python3 osprey/be/vho/tests/test_fhe_ckks_complete_checkpoint_audit.py"
+    },
     "frontend-native-smoke": {
       "status": "environment",
       "command": "run the established torch2whirl native Docker smoke lane"
@@ -112,7 +116,7 @@
     {
       "name": "artifact-auditor",
       "patterns": ["osprey/be/vho/tests/*audit.py"],
-      "lanes": ["hygiene", "artifact-audit"]
+      "lanes": ["hygiene", "complete-audit-format", "artifact-audit"]
     },
     {
       "name": "tail-plan",

@@ -118,6 +118,7 @@ The complete S6-0c CKKS-semantic WHIRL family is examined at:
   payloads/secure_resnet20.ckks_ops.B.relu-scalars.f64
   payloads/secure_resnet20.ckks_ops.B.tail-plaintexts.f32
   reports/complete-audit.json
+  reports/complete-audit.txt
   logs/commands.txt
   SHA256SUMS
   receipt.json

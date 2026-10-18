@@ -14,6 +14,7 @@ rm -f "$out_dir/secure_resnet20.ckks2c.c" \
       "$out_dir/secure_resnet20.ckks2c.o" \
       "$out_dir/secure_resnet20.ckks2c-report.txt" \
       "$out_dir/complete-audit.json" \
+      "$out_dir/complete-audit.txt" \
       "$out_dir/run.log"
 
 actual=$(sha256sum "$input" | awk '{print $1}')
@@ -41,10 +42,12 @@ grep -qx 'emitted_operation_count=33367' \
 
 artifact_dir=$(dirname "$input")
 python3 "$repo_root/osprey/be/vho/tests/fhe_ckks_complete_checkpoint_audit.py" \
+    --text-output "$out_dir/complete-audit.txt" \
     "$artifact_dir/secure_resnet20.ckks_ops.T" "$artifact_dir" \
     >"$out_dir/complete-audit.json"
 
 printf 'FHE CKKS2C cached-image collection passed.\n'
 printf 'Generated C: %s\n' "$out_dir/secure_resnet20.ckks2c.c"
 printf 'Census: %s\n' "$out_dir/secure_resnet20.ckks2c-report.txt"
+printf 'Readable audit: %s\n' "$out_dir/complete-audit.txt"
 printf 'Evidence: %s\n' "$out_dir/run.log"

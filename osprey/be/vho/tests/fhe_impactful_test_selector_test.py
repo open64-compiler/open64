@@ -40,7 +40,11 @@ class ImpactfulTestSelectorTest(unittest.TestCase):
         """An auditor change selects cached evidence, not materialization."""
 
         lanes = self.lanes("osprey/be/vho/tests/example_audit.py")
-        self.assertEqual(lanes, {"artifact-audit", "hygiene"})
+        self.assertEqual(lanes, {
+            "artifact-audit",
+            "complete-audit-format",
+            "hygiene",
+        })
 
     def test_pure_tail_plan_stays_focused(self) -> None:
         """A pure tail-plan change runs its oracle without full ResNet."""
