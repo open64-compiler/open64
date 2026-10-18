@@ -83,10 +83,15 @@ permitted only when the local file hashes match this receipt:
 | Tail plaintext side payload | `44d0ca870a1c879c95ba36886fef26fcef640e6c77286b99ea6d9319ebead81c` |
 | Independent audit JSON | `d47f51c9626e2e3d16f21e578df6b4467147c8b87ca27c258179532991d55074` |
 
-The retained local family used during development is
-`/private/tmp/open64-fhe-sync6-fresh-pipeline/final-s6-0c-v8/`. A missing local
-copy is an artifact-retrieval problem, not automatic permission to rerun the
-one-hour producer.
+The historical retained family used during S6-0c development was
+`/private/tmp/open64-fhe-sync6-fresh-pipeline/final-s6-0c-v8/`. That temporary
+copy was subsequently lost. Its replacement must be promoted after
+recertification to the permanent, Git-ignored review location
+`/Users/shinmingliu/open64/artifacts/review/fhe/sync-6/s6-0c/` under the full
+primary-artifact SHA-256 receipt ID. See
+`doc/REVIEW-ARTIFACT-RETENTION-POLICY.md`. A missing durable copy is an
+artifact-retention failure, not automatic permission to rerun the one-hour
+producer.
 
 Fresh S6-0c materialization is required only when a change can alter the input
 CKKS graph or its persisted contracts: a CKKS materializer, expansion/native
