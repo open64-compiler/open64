@@ -93,6 +93,15 @@ primary-artifact SHA-256 receipt ID. See
 artifact-retention failure, not automatic permission to rerun the one-hour
 producer.
 
+After promotion, reviewers use the stable paths
+`artifacts/review/fhe/sync-6/s6-0c/current/binary/secure_resnet20.ckks_ops.B`
+and
+`artifacts/review/fhe/sync-6/s6-0c/current/traces/secure_resnet20.ckks_ops.T`.
+The D3 generated C is retained separately at
+`artifacts/review/fhe/sync-6/s6-0d/d3/current/generated-c/secure_resnet20.ckks2c.c`
+with its checkpoint `.B`, reopened `.T`, compile evidence, and group report in
+the same immutable D3 receipt.
+
 Fresh S6-0c materialization is required only when a change can alter the input
 CKKS graph or its persisted contracts: a CKKS materializer, expansion/native
 transaction, CKKS event/state/key/image writer, source capture, authenticated

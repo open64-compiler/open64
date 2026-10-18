@@ -50,6 +50,8 @@ artifacts/review/
           binary/
           traces/
           payloads/
+          generated-c/
+          compile/
           reports/
           logs/
 ```
@@ -98,6 +100,47 @@ An expensive compiler milestone receipt retains, as applicable:
   times;
 - generated C or other review products and their compile/run evidence;
 - `SHA256SUMS` and `receipt.json`.
+
+## Stable Human Review Paths
+
+Each milestone directory maintains a `current` symlink after successful
+promotion. The symlink is a convenience; the immutable full-digest receipt is
+the authority. Updating `current` never removes the older receipt.
+
+The complete S6-0c CKKS-semantic WHIRL family is examined at:
+
+```text
+/Users/shinmingliu/open64/artifacts/review/fhe/sync-6/s6-0c/current/
+  binary/secure_resnet20.ckks_ops.B
+  traces/secure_resnet20.ckks_ops.T
+  source/secure_resnet20.py
+  payloads/secure_resnet20.ckks_ops.B.conv-plaintexts.f32
+  payloads/secure_resnet20.ckks_ops.B.relu-scalars.f64
+  payloads/secure_resnet20.ckks_ops.B.tail-plaintexts.f32
+  reports/complete-audit.json
+  logs/commands.txt
+  SHA256SUMS
+  receipt.json
+```
+
+The S6-0d D3 CKKS2C transactional output is a separate derived receipt:
+
+```text
+/Users/shinmingliu/open64/artifacts/review/fhe/sync-6/s6-0d/d3/current/
+  binary/secure_resnet20.ckks2c.B
+  traces/secure_resnet20.ckks2c.T
+  generated-c/secure_resnet20.ckks2c.c
+  compile/secure_resnet20.ckks2c.o
+  reports/secure_resnet20.ckks2c-report.txt
+  reports/group-manifest.json
+  logs/commands.txt
+  logs/compile.log
+  SHA256SUMS
+  receipt.json
+```
+
+The D3 receipt records the exact S6-0c source receipt and `.ckks_ops.B` digest,
+so a reviewer can move from generated C back to its complete typed WHIRL input.
 
 The receipt records whether evidence is focused, cached-artifact inspection,
 or fresh whole-model certification. It must not upgrade historical or partial
