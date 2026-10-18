@@ -197,6 +197,9 @@ LDIRT += fhe_convert_contract_test fhe_convert_contract_test.o \
 LDIRT += fhe_materialize_contract_test fhe_materialize_contract_test.o
 LDIRT += fhe_semantic_convert_test fhe_semantic_convert_test.o
 LDIRT += fhe_semantic_convert.o
+LDIRT += fhe_ckks2c_collect_image_test fhe_ckks2c_collect_image_test.o \
+	fhe_ckks2c_collect.o fhe_ckks2c_emit.o fhe_ckks_plan_bytes.o \
+	fhe_sha256.o
 LDIRT += dsl_wopt_bridge_test dsl_wopt_bridge_test.o
 LDIRT += opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 
@@ -691,6 +694,29 @@ fhe_semantic_convert.o: $(BE_VHO_DIR)/fhe_semantic_convert.cxx
 
 fhe_semantic_convert_test.o: \
 	$(BE_VHO_DIR)/tests/fhe_semantic_convert_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+fhe_ckks2c_collect_image_test: $(OBJECTS) controls.o \
+		fhe_ckks2c_collect.o fhe_ckks2c_emit.o fhe_ckks_plan_bytes.o \
+		fhe_sha256.o fhe_ckks2c_collect_image_test.o
+	$(link.c++f) -o $@ fhe_ckks2c_collect_image_test.o controls.o \
+		fhe_ckks2c_collect.o fhe_ckks2c_emit.o fhe_ckks_plan_bytes.o \
+		fhe_sha256.o $(OBJECTS) $(LDFLAGS)
+
+fhe_ckks2c_collect.o: $(BE_VHO_DIR)/fhe_ckks2c_collect.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+fhe_ckks2c_emit.o: $(BE_VHO_DIR)/fhe_ckks2c_emit.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+fhe_ckks_plan_bytes.o: $(BE_VHO_DIR)/fhe_ckks_plan_bytes.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+fhe_sha256.o: $(BE_VHO_DIR)/fhe_sha256.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+fhe_ckks2c_collect_image_test.o: \
+	$(BE_VHO_DIR)/tests/fhe_ckks2c_collect_image_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_wopt_bridge_test: $(OBJECTS) controls.o dsl_wopt_bridge_test.o \

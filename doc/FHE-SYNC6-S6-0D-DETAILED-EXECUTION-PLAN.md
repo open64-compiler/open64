@@ -5,11 +5,16 @@ S6-0d starts from the separately reopenable, gatekeeper-approved
 `secure_resnet20.ckks_ops.B`; it does not rematerialize Conv, residual, ReLU,
 or tail semantics.
 
-Current checkpoint: **D1 implemented and focused-certified.** The private v1
-facade, deterministic event-plan emitter, all-nine-primitive fixture,
-fail-closed negatives, generated-C compilation/link, and backend link boundary
-pass. D2-D6 remain open; no whole-image private C or S6-0d terminal artifact is
-claimed yet.
+Current checkpoint: **D1 is complete; D2 implementation and focused
+certification are complete.** The D2 collector is wired into the backend and
+`ir_tools`, its two-PU positive and malformed-image contracts pass, the linked
+mapped-image driver builds, and the affected backend/syntax boundaries pass.
+Formal D2 closure still requires S6D-T4 to be rerun against the exact accepted
+content-addressed S6-0c `.B`. The prior successful T4 run consumed 10 PUs,
+146 groups, and all 33,367 events, but that retained local artifact family was
+subsequently cleaned. Recover the accepted artifact matching the hashes below;
+do not rematerialize the model merely to replace a missing review copy. D3-D6
+remain open, and no S6-0d terminal artifact is claimed yet.
 
 ## Objective
 
@@ -144,8 +149,8 @@ not be replaced silently with a full model run.
 | Lane | Command or artifact action |
 | --- | --- |
 | S6D-T0 | `python3 osprey/be/vho/tests/fhe_impactful_test_selector_test.py`; selector command above; `git diff --check` |
-| S6D-T1 | `sh osprey/be/vho/tests/fhe_ckks2c_emit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-emitter` |
-| S6D-T2 | `sh osprey/be/vho/tests/fhe_ckks2c_collect_test.sh /private/tmp/open64-fhe-impactful/ckks2c-collector` |
+| S6D-T1 | `bash osprey/be/vho/tests/fhe_ckks2c_emit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-emitter` |
+| S6D-T2 | `bash osprey/be/vho/tests/fhe_ckks2c_collect_test.sh /private/tmp/open64-fhe-impactful/ckks2c-collector` |
 | S6D-T3 | `sh osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.sh /private/tmp/open64-fhe-impactful/ckks2c-checkpoint` |
 | S6D-T4 | Verify accepted hashes, reopen cached `.B`, emit private C/report, compile, and run the independent complete-image audit |
 | S6D-T5 | `sh osprey/be/vho/tests/fhe_ckks2c_group_join_test.sh /private/tmp/open64-fhe-impactful/ckks2c-group-join` |
@@ -234,6 +239,25 @@ CKKS2C artifact.
 
 Every emitted function maps to one complete certified group, and all 33,367
 events are consumed exactly once without changing the input `.B`.
+
+**Current D2 checkpoint**
+
+- Implementation complete: the all-PU collector, deterministic semantic
+  group identity, mapped-image driver, backend/`ir_tools` wiring, and impact
+  selector classification are present.
+- Focused certification complete: the two-PU fixture covers direct and called
+  contexts, source/prior-step/bound operands, external assets, keys, allocation
+  order independence, terminal-session rejection, and malformed joins.
+- A prior complete-image run observed 10 PUs, 146 groups, 51 terminal source
+  groups, 33,367 events, 6,417 external assets, and 6,359 key uses; it also
+  compiled the approximately 17 MiB generated C translation unit.
+- Formal exit pending: recover `secure_resnet20.ckks_ops.B` with SHA-256
+  `d7bccc537c422b2266add7437040cac14ef7b33af93c9f5e65eb7ebb5f89876f`
+  and rerun `fhe_ckks2c_cached_image_test.sh`. The prior local evidence was
+  cleaned, so these counts are historical checkpoint evidence rather than the
+  currently retained S6D-T4 receipt.
+- D3 must not treat the historical counts as a publishable transaction input;
+  it starts only after the content-addressed T4 receipt is retained again.
 
 ### D3: Add transactional private-output publication
 

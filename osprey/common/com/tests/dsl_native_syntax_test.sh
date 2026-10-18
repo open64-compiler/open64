@@ -98,6 +98,7 @@ sources=(
   "osprey/be/vho/fhe_ckks_conv_context.cxx"
   "osprey/be/vho/fhe_ckks_event_coverage.cxx"
   "osprey/be/vho/fhe_ckks_source_events.cxx"
+  "osprey/be/vho/fhe_ckks2c_collect.cxx"
   "osprey/be/vho/fhe_ckks_conv_specialize.cxx"
   "osprey/be/vho/fhe_sha256.cxx"
   "osprey/be/vho/tests/dsl_lower_contract_test.cxx"

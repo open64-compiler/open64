@@ -27,11 +27,15 @@
     },
     "ckks2c-emitter": {
       "status": "automated",
-      "command": "sh osprey/be/vho/tests/fhe_ckks2c_emit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-emitter"
+      "command": "bash osprey/be/vho/tests/fhe_ckks2c_emit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-emitter"
     },
     "ckks2c-collector": {
-      "status": "planned",
-      "command": "sh osprey/be/vho/tests/fhe_ckks2c_collect_test.sh /private/tmp/open64-fhe-impactful/ckks2c-collector"
+      "status": "automated",
+      "command": "bash osprey/be/vho/tests/fhe_ckks2c_collect_test.sh /private/tmp/open64-fhe-impactful/ckks2c-collector"
+    },
+    "ckks2c-cached-image": {
+      "status": "environment",
+      "command": "bash osprey/be/vho/tests/fhe_ckks2c_cached_image_test.sh <output-dir> <cached-secure_resnet20.ckks_ops.B> <linked-collector>"
     },
     "ckks2c-checkpoint": {
       "status": "planned",
@@ -143,7 +147,8 @@
       "patterns": [
         "osprey/be/vho/fhe_ckks2c_emit.*",
         "osprey/include/open64_fhe_ckks2c_facade.h",
-        "osprey/be/vho/tests/fhe_ckks2c_*"
+        "osprey/be/vho/tests/fhe_ckks2c_emit_test.*",
+        "osprey/be/vho/tests/fhe_ckks2c_facade_link_stub.c"
       ],
       "lanes": ["hygiene", "ckks2c-emitter"]
     },
@@ -151,11 +156,14 @@
       "name": "ckks2c-collector",
       "patterns": [
         "osprey/be/vho/fhe_ckks2c_collect.*",
-        "osprey/be/vho/tests/fhe_ckks2c_collect_test.*"
+        "osprey/be/vho/tests/fhe_ckks2c_collect_test.*",
+        "osprey/be/vho/tests/fhe_ckks2c_collect_image_test.*",
+        "osprey/be/vho/tests/fhe_ckks2c_cached_image_test.*"
       ],
       "lanes": [
         "hygiene",
         "ckks2c-collector",
+        "ckks2c-cached-image",
         "artifact-audit"
       ]
     },

@@ -48,6 +48,19 @@ class ImpactfulTestSelectorTest(unittest.TestCase):
         lanes = self.lanes("osprey/be/vho/fhe_ckks_tail_plan.cxx")
         self.assertEqual(lanes, {"hygiene", "tail-plan"})
 
+    def test_ckks2c_collector_reuses_cached_image(self) -> None:
+        """D2 collection selects focused and retained-image lanes only."""
+
+        lanes = self.lanes(
+            "osprey/be/vho/tests/fhe_ckks2c_collect_image_test.cxx"
+        )
+        self.assertEqual(lanes, {
+            "artifact-audit",
+            "ckks2c-cached-image",
+            "ckks2c-collector",
+            "hygiene",
+        })
+
     def test_materializer_requires_miniature_and_final_certification(self) -> None:
         """Executable mutation selects focused, miniature, and final gates."""
 

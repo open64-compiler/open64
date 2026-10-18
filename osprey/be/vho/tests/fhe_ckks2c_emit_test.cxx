@@ -132,6 +132,17 @@ static std::string Check_Positive()
          first.find("pre_relu_refresh") != std::string::npos &&
          first.find("ckks_slots_v1") != std::string::npos &&
          first.find("source_value_v1(execution, 20u") == std::string::npos);
+
+  /* A nonterminal static group returns its declared group output even though
+   * another group will later replace the high-level source result. */
+  std::vector<VHO_FHE_CKKS2C_GROUP> nonterminal = groups;
+  nonterminal[0].plan.source_final_step_index = UINT32_MAX;
+  std::string nonterminal_output;
+  VHO_FHE_CKKS2C_EMIT_RESULT nonterminal_result = {0, 0, 0, 0};
+  assert(VHO_FHE_CKKS2C_Emit_Module(
+      "fixture", nonterminal, &nonterminal_output,
+      &nonterminal_result, stderr));
+  assert(nonterminal_output == first && nonterminal_result.group_count == 1);
   return first;
 }
 

@@ -206,9 +206,7 @@ bool Prepare_Group(const VHO_FHE_CKKS2C_GROUP &group,
   if (!C_Identifier(group.function_name) || !SHA256(group.identity_sha256) ||
       group.owner_pu_st == 0 || group.source_value_id == 0 ||
       group.context_pu_identity_id == 0 ||
-      group.plan.group_output_steps.size() != 1 ||
-      group.plan.source_final_step_index ==
-          std::numeric_limits<uint32_t>::max())
+      group.plan.group_output_steps.size() != 1)
     return Report(diagnostic, "group identity or single-output contract is invalid");
   std::vector<unsigned char> canonical;
   if (!VHO_FHE_CKKS_Serialize_Event_Plan(
@@ -370,7 +368,7 @@ void Emit_Group(std::ostringstream *text, const VHO_FHE_CKKS2C_GROUP &group,
     Emit_State(text, i, group.plan.steps[i].result_state);
     Emit_Operation(text, group.plan.steps[i], i, sources, bounds);
   }
-  const size_t final_step = group.plan.source_final_step_index;
+  const size_t final_step = group.plan.group_output_steps[0];
   *text << "  *out_value = step_" << final_step << ";\n"
         << "  step_" << final_step << " = 0;\n"
         << "cleanup:\n";
