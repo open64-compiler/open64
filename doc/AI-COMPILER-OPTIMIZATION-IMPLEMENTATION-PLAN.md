@@ -2,7 +2,9 @@
 
 ## Status
 
-Execution plan for `AI_compiler_optimization_design_v0.1.md`.
+Execution plan for `AI_compiler_optimization_design_v0.3.md`. The completed
+AIO-0 through AIO-13 queue below records the analysis and planning rollout;
+the Current Matmul Execution Queue defines the next action-gated work.
 
 The architecture document is authoritative for the `AI-P0` through `AI-P11`
 phase order, the TensorEvolutionGraph-centered design, common-versus-domain
@@ -17,15 +19,21 @@ telemetry contracts. Target device compilation, AOT/late/hybrid publication,
 module loading, serving integration, and provider execution consume these
 outputs through the umbrella architecture and their target-specific plans.
 
-The first implementation is deliberately narrow: one PU, one fixed-shape
+The first implementation was deliberately narrow: one PU, one fixed-shape
 `common.matmul`, check-only analysis, and no binary WHIRL layout change. Later
 milestones expand the same services to CNN, Transformer, distributed
 placement, target tiling, asynchronous movement, runtime variants, and
 telemetry.
 
+The next case keeps standalone matmul and multi-level tiling in scope, but
+excludes fusion. Existing AIO-9 tile and AIO-10 pipeline records are
+check-only; the first generated tile must produce a verified executable
+rewrite and measured baseline-versus-tiled result before it is reported as
+an implemented optimization.
+
 ## Adoption Decision
 
-Open64 adopts the following design rules from v0.1:
+Open64 adopts the following design rules from the versioned design:
 
 1. Tensor identity is preserved through a TensorEvolutionGraph rather than
    being replaced by unrelated layout, shard, tile, buffer, and fragment
@@ -921,19 +929,84 @@ common.matmul micro fixture
   -> distributed and runtime-adaptive cases
 ```
 
-## Review Artifacts
+## Trace, Reports, And Review Artifacts
 
-Retain each completed lane in a host-visible directory:
+The compiler uses the existing WOPT trace convention: after confirming the
+bit is unused, reserve `AI_OPT_TRACE_FLAG = 0x00800000` under `TP_WOPT2`,
+query `Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG)`, and write compact positional
+`AI_OPT` records to `TFile`. The compiler switch is
+`-Wb,-ttOP2:0x00800000`; `-trOP2` separately requests IR dumps. This is a
+proposed implementation gate, not a claim that the switch already emits AI
+records. The raw `.t` file is retained unchanged. `ai-opt-report` parses its
+versioned `AI_OPT` records and fails visibly on an unknown schema or broken
+candidate/plan lineage.
+
+From `m1-trace-report` onward, each accepted receipt derives the following
+files from the same raw trace:
 
 ```text
-artifacts/ai_optimization/<fixture>/<milestone>/
+traces/compile.t
+reports/optimization.log
+reports/optimization-summary.log
+reports/phases/semantic.log
+reports/phases/locality.log
+reports/phases/fusion.log
+reports/phases/layout.log
+reports/phases/placement.log
+reports/phases/communication.log
+reports/phases/residency.log
+reports/phases/tile.log
+reports/phases/fetch-pipeline.log
+reports/phases/physical-plan.log
+reports/phases/runtime-variant.log
+reports/phases/feedback.log
 ```
 
-The family includes the source, input `.B`, input `.T`, selected phase
-checkpoints, output `.B` when mutation occurs, output `.T`, candidate/plan
-trace, diagnostics, command transcript, target profile, cost evidence, runtime
-result, and checksums. Clean the directory at the beginning of the next run,
-not at the end of the current run.
+Design Section 9.7 fixes the phase-to-file mapping and exact first-line
+descriptions. Every `.log` begins `# What it summarizes: ...`, before any
+metadata. `optimization.log` includes the complete content of every phase
+log in P0-P11 order, including rejected and non-invoked phases;
+`optimization-summary.log` provides one concise row per phase. Candidate,
+cost, and rewrite evidence stays in the owning phase log instead of being
+duplicated into separate cross-cutting logs.
+
+The driver emits phase coverage even when a phase is not invoked. The
+summary distinguishes `disabled_by_option`, `disabled_by_policy`,
+`not_applicable`, `no_eligible_region`, `analyzed_no_rewrite`, `rewritten`,
+and `failed`, with reason, region/candidate counts, selected plan, rewrite
+count, and next blocker. Missing coverage is a trace error, not an inferred
+status. The analyzer also rejects duplicate terminal decisions, missing
+baseline or cost, unknown units, mismatched IDs, and SELECT/REWRITE or
+verification inconsistency. AIO-9 currently emits low-confidence relative
+scores, not cycles; keep them separate from measured runtime.
+
+Mirror the FHE effort's durable receipt convention under an AI-specific namespace:
+
+```text
+/Users/shinmingliu/open64/artifacts/review/ai-optimization/
+  matmul-f32-v1/<target-id>/<milestone>/
+    sha256-<full-primary-artifact-digest>/
+      receipt.json
+      SHA256SUMS
+      source/ binary/ traces/ plans/ reports/ measurements/ logs/
+    current -> sha256-...
+```
+
+The first milestones are `m0-baseline`, `m1-trace-report`,
+`m2-multilevel-tiling`, and `m3-prefetch-pipeline`. The pre-trace `m0`
+receipt retains source, input `.B`, separate-process `ir_b2a -st -src` `.T`,
+correctness and timing evidence, and an explicit AI-trace-unavailable status.
+From `m1` onward retain raw `.t`, every derived log, plan and cost evidence,
+and transformed `.B`/`.T` where applicable. Every receipt retains exact
+commands, target/driver identity, correctness results, raw timing samples
+when available, and hashes. Each
+receipt identifies its predecessor so baseline, trace, rewrite, and pipeline
+evidence remain linked. Produce in fresh staging, complete verification,
+hash every file, publish to an immutable digest directory without replacing
+existing content, reopen it, then update `INDEX.md`, `index.json`, and
+`current`. Never delete, overwrite, or prune accepted receipts without
+explicit path-specific user approval. Existing `artifacts/ai_optimization/`
+output remains legacy evidence and must not be moved or cleaned by this work.
 
 For the staged GEMM ladder, continue using the reviewed `G*` suffix contract
 from `CUDA-HOPPER-BLACKWELL-MATMUL-OPTIMIZATION-PLAN.md`. General AI phase
@@ -1063,13 +1136,43 @@ artifact.
     instrumentation and reviewed durable profile transport remain a later
     versioned milestone.
 
+## Current Matmul Execution Queue
+
+These gates are specific to the first standalone rank-2 F32 matmul. Fusion,
+distributed placement, and runtime variants are out of scope; their
+phase-status rows still appear in the trace-derived summary.
+
+1. [ ] Certify the direct fixed-shape baseline and publish `m0-baseline`
+   with source, `.B`/`.T`, correctness, measured runtime, commands, target
+   identity, and checksums.
+2. [ ] Implement the WOPT-convention AI trace bit, explicit phase coverage,
+   and `ai-opt-report`. Publish `m1-trace-report` with the raw `.t`, complete
+   and summary logs, all P0-P11 phase logs, a selected candidate, a skipped
+   candidate, and malformed/incomplete-trace negative tests.
+3. [ ] Reuse AIO-9 G0-G11 plans. Cost the unchanged baseline and at least
+   two M/N/K tile families with explicit units, target resources, confidence,
+   and rejection reasons. Keep stable plan IDs through selection and rewrite.
+4. [ ] Implement one generated matmul tile path, atomically apply the
+   cost-selected plan, verify before/after IR, compare numerically with the
+   direct baseline, and measure on the same target. Publish
+   `m2-multilevel-tiling` only with an actual tiled rewrite; cuBLASLt
+   dispatch alone does not satisfy this gate.
+5. [ ] Extend the selected tile with P7.4/P8 staging and a reviewed
+   fetch/pipeline plan. Retain movement engine, stages, issue/wait, barriers,
+   hidden versus unhidden movement, fallback, correctness, and measurement
+   in `m3-prefetch-pipeline`.
+6. [ ] Calibrate the cost model against the retained measurements. Report
+   prediction error by compute, memory, synchronization, launch, and
+   occupancy term without presenting relative scores as cycles.
+
 ## Related Documents
 
 - `OPEN64-AI-COMPILATION-AND-RUNTIME-ARCHITECTURE.md` - umbrella architecture
   for frontend artifacts, optimization plans, target lowering, AOT and late
   compilation, executable packages, runtime providers, serving adapters, and
   telemetry attribution.
-- `AI_compiler_optimization_design_v0.1.md` - authoritative architecture.
+- `AI_compiler_optimization_design_v0.3.md` - living architecture, phase
+  report contract, and matmul trace/artifact convention.
 - `AI-COMPILER-OPTIMIZATION-AIO0-INVENTORY.md` - merged-source inventory,
   ownership matrix, gap analysis, and fixed-shape baseline evidence.
 - `AI-COMPILER-OPTIMIZATION-AIO1-TENSOR-EVOLUTION.md` - runtime-only graph
