@@ -5,6 +5,8 @@
 Execution plan for `AI_compiler_optimization_design_v0.3.md`. The completed
 AIO-0 through AIO-13 queue below records the analysis and planning rollout;
 the Current Matmul Execution Queue defines the next action-gated work.
+The running [AI optimization progress ledger](AI-COMPILER-OPTIMIZATION-PROGRESS.md)
+summarizes phase maturity, option status, and accepted execution evidence.
 
 The architecture document is authoritative for the `AI-P0` through `AI-P11`
 phase order, the TensorEvolutionGraph-centered design, common-versus-domain
@@ -1167,6 +1169,8 @@ phase-status rows still appear in the trace-derived summary.
 
 ## Related Documents
 
+- `AI-COMPILER-OPTIMIZATION-PROGRESS.md` - running status, execution gates,
+  option maturity, and evidence index.
 - `OPEN64-AI-COMPILATION-AND-RUNTIME-ARCHITECTURE.md` - umbrella architecture
   for frontend artifacts, optimization plans, target lowering, AOT and late
   compilation, executable packages, runtime providers, serving adapters, and
