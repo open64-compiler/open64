@@ -5,13 +5,14 @@ S6-0d starts from the separately reopenable, gatekeeper-approved
 `secure_resnet20.ckks_ops.B`; it does not rematerialize Conv, residual, ReLU,
 or tail semantics.
 
-Current checkpoint: **D1 and D2 are complete. D3 implementation is active.**
+Current checkpoint: **D1, D2, and D3 are complete. D4 is next.**
 The D2 collector is wired into the backend and `ir_tools`, its two-PU positive
 and malformed-image contracts pass, and its complete cached-image receipt is
 retained under the durable review root. That receipt consumed 10 PUs, 146
-groups, and all 33,367 events without rematerializing the model. D3 adds the
-transactional private-output family on top of that immutable receipt. D4-D6
-remain open, and no S6-0d terminal artifact is claimed yet.
+groups, and all 33,367 events without rematerializing the model. D3 now
+publishes the transactional private-output family from that immutable receipt,
+compiles the generated C, and reopens the last-published binary. D4-D6 remain
+open, and no S6-0d terminal artifact is claimed yet.
 
 ## Objective
 
@@ -272,7 +273,7 @@ events are consumed exactly once without changing the input `.B`.
 
 ### D3: Add transactional private-output publication
 
-**Current implementation checkpoint**
+**Closure evidence**
 
 - `fhe_ckks2c_publish` builds and stages deterministic private C, facade
   manifest, group report, and compile-command auxiliaries without publishing
@@ -281,8 +282,26 @@ events are consumed exactly once without changing the input `.B`.
   complete emitter census to the existing no-replace checkpoint lifecycle.
 - The conversion checkpoint remains the commit marker and is published only
   after all four auxiliaries.
-- S6D-T3 is an automated six-case transaction lane. Cached S6D-T4 publication
-  evidence and the durable D3 receipt remain the final review gate for D3.
+- S6D-T3 is an automated six-case transaction lane covering success, stale
+  destination, write failure, compile failure, incomplete PU coverage, and
+  abort cleanup.
+- Commit `97a1c7df4350a2a61b971efda781cdfb0554fa0e` consumed the immutable S6-0c
+  binary with SHA-256
+  `bce7f16f06492933dac9a563f22c2c81e85920f210bf7e576dbfd1d14042132f`.
+  It published 10 PUs, 146 groups, 33,367 operations, 6,417 external assets,
+  and 6,359 key uses.
+- Generated C SHA-256
+  `ded9b9e271d6f3b39c0cbe786efc423e1324f1bbb5cd1d608f25ac11495f5c83`
+  compiled as C11 with `-Wall -Wextra -Werror`. The last-published `.B` has
+  SHA-256
+  `e12206d6d06121056ec7be308e8fe09f7d1b2af7d0c183b191cfd8b60cd4e77c`
+  and reopened separately with `ir_b2a -st -src`.
+- The independent complete audit proves 23 explicit bootstraps, 954 rotation
+  key requirements, and zero live high-level computations. A repeated run
+  rejected the occupied commit marker with `CFHE-CHECKPOINT-006`, preserved
+  its checksum, and left no `.tmp` file.
+- The immutable receipt and human-readable summary are at
+  `/Users/shinmingliu/open64/artifacts/review/fhe/sync-6/s6-0d/d3/current/`.
 
 **Code**
 
