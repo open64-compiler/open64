@@ -330,8 +330,16 @@ bool Build_Group(uint32_t owner, const std::vector<DSL_CKKS_EVENT_RECORD> &rows,
     return Report(diagnostic, "empty event group", 0);
   const DSL_CKKS_EVENT_RECORD &first = rows[0];
   DSL_IR_VALUE_RECORD source;
+  DSL_IR_NODE_RECORD source_node;
+  DSL_IR_OPCODE_DESCRIPTOR_RECORD source_opcode;
+  std::string source_name;
   if (first.owner_pu_st != owner ||
-      !DSL_IR_Image_Get_Value(first.source_value_id, &source))
+      !DSL_IR_Image_Get_Value(first.source_value_id, &source) ||
+      !DSL_IR_Image_Get_Node(source.producer_node_id, &source_node) ||
+      !DSL_IR_Image_Get_Opcode_Descriptor(
+          source_node.opcode_descriptor_id, &source_opcode) ||
+      source_node.result_value_id != source.id ||
+      !String_Value(source.name, &source_name))
     return Report(diagnostic, "source value join failed", first.id);
 
   std::map<uint32_t, uint32_t> local_steps;
@@ -344,8 +352,16 @@ bool Build_Group(uint32_t owner, const std::vector<DSL_CKKS_EVENT_RECORD> &rows,
   VHO_FHE_CKKS2C_GROUP candidate;
   candidate.owner_pu_st = owner;
   candidate.source_value_id = first.source_value_id;
+  candidate.source_node_id = source_node.id;
+  candidate.source_logical_operator = source_opcode.logical_operator;
+  candidate.source_operator_version = source_opcode.version;
+  candidate.source_value_name = source_name;
   candidate.context_pu_identity_id = first.context_pu_identity_id;
   candidate.context_callsite_id = first.context_callsite_id;
+  candidate.origin_owner_pu_st = first.origin_owner_pu_st;
+  candidate.origin_source_value_id = first.origin_source_value_id;
+  candidate.origin_static_ordinal = first.origin_static_ordinal;
+  candidate.group_output_value_id = rows.back().result_value_id;
   candidate.plan.source_static_ordinal = first.source_static_ordinal;
   candidate.plan.source_final_step_index =
       std::numeric_limits<uint32_t>::max();
@@ -357,7 +373,15 @@ bool Build_Group(uint32_t owner, const std::vector<DSL_CKKS_EVENT_RECORD> &rows,
     DSL_IR_VALUE_RECORD result_value;
     DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
     VHO_FHE_CKKS_PLAN_STEP step;
-    if (event.step_ordinal != i ||
+    if (event.owner_pu_st != first.owner_pu_st ||
+        event.source_value_id != first.source_value_id ||
+        event.source_static_ordinal != first.source_static_ordinal ||
+        event.context_pu_identity_id != first.context_pu_identity_id ||
+        event.context_callsite_id != first.context_callsite_id ||
+        event.origin_owner_pu_st != first.origin_owner_pu_st ||
+        event.origin_source_value_id != first.origin_source_value_id ||
+        event.origin_static_ordinal != first.origin_static_ordinal ||
+        event.step_ordinal != i ||
         !DSL_IR_Image_Get_Node(event.result_node_id, &node) ||
         !DSL_IR_Image_Get_Value(event.result_value_id, &result_value) ||
         node.result_value_id != event.result_value_id ||
@@ -370,6 +394,9 @@ bool Build_Group(uint32_t owner, const std::vector<DSL_CKKS_EVENT_RECORD> &rows,
         !Result_State(event.result_value_id, latest_states,
                       &step.result_state))
       return Report(diagnostic, "node, opcode, or state join failed", event.id);
+    candidate.event_ids.push_back(event.id);
+    candidate.result_node_ids.push_back(event.result_node_id);
+    candidate.result_value_ids.push_back(event.result_value_id);
     step.logical_operator = opcode.logical_operator;
     step.operator_version = opcode.version;
     step.result_ty = result_value.ty;

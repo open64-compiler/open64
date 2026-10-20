@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Reopen the accepted S6-0c binary and certify D2 collection and C emission.
-# Design: doc/FHE-SYNC6-S6-0D-DETAILED-EXECUTION-PLAN.md, D2/S6D-T4.
+# Reopen the accepted S6-0c binary and certify D2 collection, D4 public-join
+# census, and private C emission. Design:
+# doc/FHE-SYNC6-S6-0D-DETAILED-EXECUTION-PLAN.md, D2/D4/S6D-T4.
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "$0")/../../../.." && pwd)
@@ -38,6 +39,20 @@ fi
 grep -qx 'pu_count=10' "$out_dir/secure_resnet20.ckks2c-report.txt"
 grep -qx 'event_count=33367' "$out_dir/secure_resnet20.ckks2c-report.txt"
 grep -qx 'emitted_operation_count=33367' \
+    "$out_dir/secure_resnet20.ckks2c-report.txt"
+grep -qx 'canonical_pu_count=6' \
+    "$out_dir/secure_resnet20.ckks2c-report.txt"
+grep -qx 'canonical_source_count=32' \
+    "$out_dir/secure_resnet20.ckks2c-report.txt"
+grep -qx 'public_static_descriptor_count=87' \
+    "$out_dir/secure_resnet20.ckks2c-report.txt"
+grep -qx 'public_dynamic_binding_count=147' \
+    "$out_dir/secure_resnet20.ckks2c-report.txt"
+grep -qx 'private_group_binding_count=146' \
+    "$out_dir/secure_resnet20.ckks2c-report.txt"
+grep -qx 'representation_binding_count=1' \
+    "$out_dir/secure_resnet20.ckks2c-report.txt"
+grep -Eq '^public_join_sha256=[0-9a-f]{64}$' \
     "$out_dir/secure_resnet20.ckks2c-report.txt"
 
 binary_dir=$(dirname "$input")

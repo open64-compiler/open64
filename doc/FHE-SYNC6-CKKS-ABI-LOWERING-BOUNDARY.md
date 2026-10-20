@@ -1,8 +1,9 @@
 # SYNC-6 CKKS-to-ABI v1 Lowering Boundary
 
-Status: ABI v1 surface decision accepted; the S6-0c artifact and S6-0d
-grouped-mutation and image-disposition contracts remain open. No terminal
-lowering from a complete `secure_resnet20.ckks_ops.B` is certified yet.
+Status: ABI v1 surface decision accepted. The S6-0c artifact and S6-0d
+read-only public join are certified; grouped mutation, canonical-PU collapse,
+and image-disposition contracts remain open. No terminal lowering from a
+complete `secure_resnet20.ckks_ops.B` is certified yet.
 
 ## Fixed Contracts
 
@@ -56,7 +57,14 @@ visits. Its report is a source-origin *template*, not a certificate for a
 specialized CKKS `.B`; the clone-value/origin, CKKS-group/descriptor, and
 six-PU terminal-collapse joins remain explicit pending proofs.
 
-## Proposed Read-Only Gate
+## Read-Only Gate
+
+The FHE-owned D4 implementation now performs this gate without changing the
+input image. Cached whole-image evidence reconstructs 6 canonical PUs, 32
+canonical source definitions, 87 public static descriptors, and 147 dynamic
+bindings from 146 private groups plus one representation-only flatten binding.
+The join is authenticated as one deterministic SHA-256 identity. These facts
+certify selection and coverage, not terminal tree mutation.
 
 For every source-context semantic event, before any terminal mutation:
 
@@ -127,6 +135,16 @@ This request changes no opcode, canonical tensor TY, or public C ABI.
 Main/common owns the generic transaction and mapped-image compatibility;
 FHE owns CKKS-group legality and ABI descriptor selection.
 
+The real image also contains ten physical specialized PUs while the frozen
+public surface has six PUs. Group lowering alone cannot produce that surface.
+Main/common must additionally provide an owner-safe whole-program transaction
+that redirects callsites from each structurally equivalent specialized clone
+to its reviewed representative, proves exact formal/result ABI equality,
+retires the redundant FUNC_ENTRY/PU without dangling WN or managed-image
+references, and commits or rolls back all call, PU, interface, source-identity,
+REGION, and call-ABI changes together. FHE supplies only the already-certified
+representative/clone map; it must not mutate PU tables or local ST identities.
+
 The current `DSL_CKKS_Event_Image_Validate()` requires every event result
 node/value to have `flags == NONE`. It will reject a post-lowering image that
 retains these rows while marking their results `LOWERED`. Main/common must
@@ -149,6 +167,14 @@ prerequisite to proving that each specialized group maps reversibly to one
 source-context event and one canonical call. Merely relabeling clone
 callsites as source-origin callsites is insufficient. No representation may
 alter the ordered 147 successful evaluations or public ABI v1.
+
+The implemented canonicalization uses structured source-definition identity
+plus the complete ordered formal TY signature to find clone-equivalent PUs.
+Within one canonical PU family it groups source instances by stable value name,
+logical operator/version, and result TY. Private groups enumerate dynamic
+instances, while one disposition on the representative owner authorizes the
+canonical source. The mapping is therefore independent of transient CKKS event
+ordinals and does not assume every clone duplicates every disposition row.
 
 ## Exit Evidence
 

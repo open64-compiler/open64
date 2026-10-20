@@ -411,12 +411,19 @@ static void Initialize_Fixture()
     opcode.stable_name = names[i];
     opcodes[opcode.id] = opcode;
   }
+  DSL_IR_OPCODE_DESCRIPTOR_RECORD source_opcode;
+  memset(&source_opcode, 0, sizeof(source_opcode));
+  source_opcode.id = 6;
+  source_opcode.logical_operator = OPR_DSLCONV2D;
+  source_opcode.version = 2;
+  source_opcode.stable_name = S_ROOT_SOURCE;
+  opcodes[source_opcode.id] = source_opcode;
   Add_Value(20, 0, 600, S_ROOT_SOURCE);
   Add_Value(30, 0, 500, S_ROOT_SOURCE);
   Add_Value(40, 0, 500, S_CALLEE_SOURCE);
   Add_Value(41, 0, 500, S_CALLEE_SOURCE);
-  Add_Value(50, 0, 500, S_ROOT_SOURCE);
-  Add_Value(51, 0, 500, S_CALLEE_SOURCE);
+  Add_Node(5000, 6, 50, {}, {});
+  Add_Node(5001, 6, 51, {}, {});
   Add_Node(1000, 1, 100, std::vector<UINT32>(1, 20), {});
   Add_Node(1001, 2, 101, std::vector<UINT32>(1, 100),
            {{S_SIGNED_STEPS, S_ONE}, {S_KEY_ID, S_KEY}});

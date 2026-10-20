@@ -5,14 +5,20 @@ S6-0d starts from the separately reopenable, gatekeeper-approved
 `secure_resnet20.ckks_ops.B`; it does not rematerialize Conv, residual, ReLU,
 or tail semantics.
 
-Current checkpoint: **D1, D2, and D3 are complete. D4 is next.**
+Current checkpoint: **D1, D2, and D3 are complete. D4's read-only public join
+is implemented and whole-image certified; D4 mutation is next.**
 The D2 collector is wired into the backend and `ir_tools`, its two-PU positive
 and malformed-image contracts pass, and its complete cached-image receipt is
 retained under the durable review root. That receipt consumed 10 PUs, 146
 groups, and all 33,367 events without rematerializing the model. D3 now
 publishes the transactional private-output family from that immutable receipt,
-compiles the generated C, and reopens the last-published binary. D4-D6 remain
-open, and no S6-0d terminal artifact is claimed yet.
+compiles the generated C, and reopens the last-published binary. The D4 join
+reconstructs 6 canonical PUs, 32 canonical source definitions, 87 static
+public ABI descriptors, and 147 dynamic bindings from the immutable S6-0c
+image. Those bindings comprise 146 private CKKS groups plus one zero-primitive
+representation-only `common.flatten`; a CKKS group must not be fabricated for
+that view operation. D4-D6 remain open, and no S6-0d terminal artifact is
+claimed yet.
 
 ## Objective
 
@@ -349,6 +355,34 @@ as one transaction.
 
 Private C and public ABI-v1 C are independently derived siblings with a complete
 authenticated join and no ABI change.
+
+**Current D4 checkpoint**
+
+- FHE-owned read-only join is complete. It canonicalizes clone-equivalent PUs
+  with structured source-definition identity plus the full ordered formal TY
+  signature. Dynamic source instances come from certified private groups;
+  representative FHE dispositions authorize the canonical source family.
+  Clone-only source instances need not duplicate a disposition row.
+- Canonical source identity is definition signature, stable source value name,
+  logical operator/version, and result TY. Canonical schedule order is the
+  representative PU identity followed by representative source-node order.
+- The exact expansion is Conv=1, residual-add=1, ReLU=bootstrap + normalize +
+  three ordered polynomial stages + reconstruct, pool=1, flatten=one
+  representation-only binding, and linear=1.
+- The focused miniature proves deterministic ordering, caller-output atomicity,
+  representative-only disposition authorization, and rejection of duplicate
+  groups, ordinal drift, context mismatch, and missing flatten evidence.
+- Cached inspection of the accepted S6-0c image proves 10 specialized input
+  PUs, 146 private groups, 6 canonical public PUs, 32 canonical source
+  definitions, 87 static descriptors, 147 dynamic bindings, and exactly one
+  representation-only binding. This reuses the accepted `.ckks_ops.B`; it does
+  not rematerialize the 33,367 CKKS events.
+- D4 is not closed by that read-only proof. Main/common must still publish the
+  generic grouped native-value lowering transaction, canonical-PU clone
+  collapse/callsite rewrite transaction, and terminal CKKS-event image policy
+  specified in `FHE-SYNC6-D4-GROUPED-LOWERING-HANDOFF.md`. After those contracts
+  merge, FHE builds the checked standard-WHIRL blocks, invokes the transactions,
+  and completes S6D-T5 against the existing public ABI mock.
 
 ### D5: Add the continuous backend selector
 

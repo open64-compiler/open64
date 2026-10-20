@@ -46,7 +46,7 @@
       "command": "rebuild and run the linked ir_tools fhe_semantic_convert_test"
     },
     "ckks2c-group-join": {
-      "status": "planned",
+      "status": "automated",
       "command": "sh osprey/be/vho/tests/fhe_ckks2c_group_join_test.sh /private/tmp/open64-fhe-impactful/ckks2c-group-join"
     },
     "ckks2c-driver-exit": {
@@ -205,11 +205,14 @@
       "name": "ckks2c-group-join",
       "patterns": [
         "osprey/be/vho/fhe_ckks2c_group_join.*",
-        "osprey/be/vho/tests/fhe_ckks2c_group_join_test.*"
+        "osprey/be/vho/fhe_ckks2c_public_join.*",
+        "osprey/be/vho/tests/fhe_ckks2c_group_join_test.*",
+        "osprey/be/vho/tests/fhe_ckks2c_public_join_test.*"
       ],
       "lanes": [
         "hygiene",
         "ckks2c-group-join",
+        "ckks2c-cached-image",
         "artifact-audit"
       ]
     },

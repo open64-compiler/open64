@@ -1,11 +1,13 @@
 /*
  * Copyright (C) 2026 Open64 Project
  *
- * Read-only mapped-image driver for the S6-0d D2 CKKS2C collector.  It opens
+ * Read-only mapped-image driver for the S6-0d D2 collector and D4 public join.
+ * It opens
  * an existing CKKS-semantic WHIRL file, visits each PU while its local symbol
  * table is active, emits deterministic provider-private C, and records the
- * collection census.  It does not publish checkpoint artifacts or mutate the
- * input image.  See doc/FHE-SYNC6-S6-0D-DETAILED-EXECUTION-PLAN.md, D2.
+ * collection and canonical public-selector census. It does not publish
+ * checkpoint artifacts or mutate the input image. See
+ * doc/FHE-SYNC6-S6-0D-DETAILED-EXECUTION-PLAN.md, D2 and D4.
  */
 
 #include <stdio.h>
@@ -14,6 +16,7 @@
 
 #include <fstream>
 #include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -29,6 +32,7 @@
 #include "errors.h"
 #include "err_host.tab"
 #include "fhe_ckks2c_collect.h"
+#include "fhe_ckks2c_public_join.h"
 #include "glob.h"
 #include "ir_bread.h"
 #include "ir_bwrite.h"
@@ -146,6 +150,12 @@ static bool Collect_Image(const char *input_path, const char *c_path,
           VHO_FHE_CKKS2C_Finish_Collection(
               &collection, &groups, &collected, stderr);
 
+  VHO_FHE_CKKS2C_PUBLIC_JOIN_PLAN public_join;
+  VHO_FHE_CKKS2C_PUBLIC_JOIN_RESULT joined;
+  memset(&joined, 0, sizeof(joined));
+  valid = valid && VHO_FHE_CKKS2C_Build_Public_Join(
+                       groups, &public_join, &joined, stderr);
+
   std::string generated;
   VHO_FHE_CKKS2C_EMIT_RESULT emitted;
   memset(&emitted, 0, sizeof(emitted));
@@ -164,32 +174,46 @@ static bool Collect_Image(const char *input_path, const char *c_path,
 
   std::string report;
   if (valid) {
-    char header[512];
-    snprintf(header, sizeof(header),
-             "format=open64.ckks2c.collection.v1\n"
-             "pu_count=%u\nsource_count=%u\ngroup_count=%u\n"
-             "terminal_group_count=%u\nevent_count=%u\n"
-             "external_asset_count=%u\nkey_use_count=%u\n"
-             "emitted_operation_count=%u\nemitted_source_value_count=%u\n"
-             "emitted_bound_value_count=%u\n",
-             collected.pu_count, collected.source_count,
-             collected.group_count, terminal_groups, collected.event_count,
-             collected.external_asset_count, collected.key_use_count,
-             emitted.operation_count, emitted.source_value_count,
-             emitted.bound_value_count);
-    report = header;
+    std::ostringstream report_stream;
+    report_stream << "format=open64.ckks2c.collection.v1\n"
+                  << "pu_count=" << collected.pu_count << '\n'
+                  << "source_count=" << collected.source_count << '\n'
+                  << "group_count=" << collected.group_count << '\n'
+                  << "terminal_group_count=" << terminal_groups << '\n'
+                  << "event_count=" << collected.event_count << '\n'
+                  << "external_asset_count="
+                  << collected.external_asset_count << '\n'
+                  << "key_use_count=" << collected.key_use_count << '\n'
+                  << "canonical_pu_count=" << joined.canonical_pu_count << '\n'
+                  << "canonical_source_count="
+                  << joined.canonical_source_count << '\n'
+                  << "public_static_descriptor_count="
+                  << joined.static_descriptor_count << '\n'
+                  << "public_dynamic_binding_count="
+                  << joined.dynamic_binding_count << '\n'
+                  << "private_group_binding_count="
+                  << joined.private_group_binding_count << '\n'
+                  << "representation_binding_count="
+                  << joined.representation_binding_count << '\n'
+                  << "public_join_sha256="
+                  << public_join.identity_sha256 << '\n'
+                  << "emitted_operation_count=" << emitted.operation_count
+                  << '\n'
+                  << "emitted_source_value_count="
+                  << emitted.source_value_count << '\n'
+                  << "emitted_bound_value_count="
+                  << emitted.bound_value_count << '\n';
     for (std::map<uint32_t, uint32_t>::const_iterator operation =
              operation_counts.begin(); operation != operation_counts.end();
          ++operation) {
-      char row[96];
-      snprintf(row, sizeof(row), "operator.%u=%u\n", operation->first,
-               operation->second);
-      report += row;
+      report_stream << "operator." << operation->first << '='
+                    << operation->second << '\n';
     }
     for (size_t group_index = 0; group_index < groups.size(); ++group_index) {
-      report += "group." + groups[group_index].identity_sha256 + "=" +
-                groups[group_index].function_name + "\n";
+      report_stream << "group." << groups[group_index].identity_sha256 << '='
+                    << groups[group_index].function_name << '\n';
     }
+    report = report_stream.str();
   }
 
   valid = valid && Write_Text(c_path, generated) &&
