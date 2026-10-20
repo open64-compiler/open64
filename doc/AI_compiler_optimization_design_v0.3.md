@@ -444,6 +444,10 @@ The important boundary is that CommonTilePlanIR records the alternatives and con
 
 Blackwell FP4 and NVFP4 should be modeled as a tiling and pipeline change, not merely as a smaller dtype. Native FP4 Tensor Core throughput can make compute much cheaper relative to movement, so the winning plan may shift from compute-maximizing tiles toward tiles that better hide value movement, scale metadata movement, synchronization, and epilogue work.
 
+Precision-changing GEMM candidates require explicit compiler-option authorization. The proposed `-DSL:gemm_precision=preserve|allow_narrow` mode defaults to `preserve`; `allow_narrow` admits numerically permitted, target-supported formats such as FP8, MXFP4, or NVFP4 for consideration but never forces the smallest bit width. A higher-precision source also requires a region-specific numerical acceptance contract or validated quantization recipe. Hardware capability, `-DSL:quant`, and cost-model preference alone do not authorize reduced precision. The source-format plan remains the baseline and fallback.
+
+The target profile describes supported input/scale/accumulator/output formats, instruction shapes, layouts, movement requirements, and resource/cost terms. Common candidate and plan records carry option provenance and legality evidence, while AI policy owns the model-quality criterion. The hardware detail design specifies the proposed option and its gates; neither the option nor operand conversion is implemented yet.
+
 For Blackwell-class NVFP4 candidates, CandidateCostIR should add a LowPrecisionFormatCostExtension with:
 
 - value dtype: NVFP4, MXFP4, FP8, BF16, FP16, or fallback format.

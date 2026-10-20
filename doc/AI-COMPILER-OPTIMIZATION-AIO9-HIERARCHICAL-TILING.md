@@ -108,6 +108,15 @@ model records low-confidence relative compute, unhidden-memory, and
 synchronization terms. It exists to exercise deterministic plan composition
 and selection; it is not cycles, elapsed time, occupancy, or achieved FLOP/s.
 
+The future executable P7/P8 gate is specified in
+`AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.1.md`: a complete
+per-CTA SMEM allocation ledger must include separately laid-out A/B slots,
+barriers, metadata, epilogue storage, static/dynamic bytes, and proven
+lifetimes. Target per-block admission and at least one resident CTA are hard
+legality checks; stage depth, residency, carveout, bank behavior, and hidden
+transfer time enter a separate profitability comparison. The current
+`shared_bytes_per_stage` check is provisional evidence, not that full gate.
+
 ## Scope And Compatibility
 
 All APIs require the owning PU and local symbol table to be active. The

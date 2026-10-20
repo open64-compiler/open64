@@ -203,7 +203,10 @@ PYTHONPATH=osprey/torch2whirl/python \
 ## Run The Combined `openpy` Artifact Lane
 
 The full Python DSL driver path requires a full Open64 build tree containing
-`openpy`.  If the base build used the default host root, that build tree is:
+`openpy`. AI optimization maturity, proposed options, and the next executable
+matmul gate are tracked in
+[AI Compiler Optimization Progress](AI-COMPILER-OPTIMIZATION-PROGRESS.md).
+If the base build used the default host root, that build tree is:
 
 ```text
 ~/work/open64/build
