@@ -38,8 +38,12 @@
       "command": "bash osprey/be/vho/tests/fhe_ckks2c_cached_image_test.sh <output-dir> <cached-secure_resnet20.ckks_ops.B> <linked-collector>"
     },
     "ckks2c-checkpoint": {
-      "status": "planned",
-      "command": "sh osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.sh /private/tmp/open64-fhe-impactful/ckks2c-checkpoint"
+      "status": "automated",
+      "command": "bash osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.sh /private/tmp/open64-fhe-impactful/ckks2c-checkpoint"
+    },
+    "fhe-semantic-conversion": {
+      "status": "environment",
+      "command": "rebuild and run the linked ir_tools fhe_semantic_convert_test"
     },
     "ckks2c-group-join": {
       "status": "planned",
@@ -90,8 +94,8 @@
       "command": "run the established torch2whirl native Docker smoke lane"
     },
     "miniature-checkpoint": {
-      "status": "planned",
-      "command": "implement and run the representative multi-PU CKKS checkpoint"
+      "status": "automated",
+      "command": "bash osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.sh /private/tmp/open64-fhe-impactful/ckks2c-checkpoint"
     },
     "full-s6-0c-certification": {
       "status": "manual-expensive",
@@ -175,9 +179,27 @@
       "name": "ckks2c-checkpoint",
       "patterns": [
         "osprey/be/vho/fhe_ckks2c_checkpoint.*",
+        "osprey/be/vho/fhe_ckks2c_publish.*",
         "osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.*"
       ],
-      "lanes": ["hygiene", "ckks2c-checkpoint", "artifact-audit"]
+      "lanes": [
+        "hygiene",
+        "ckks2c-checkpoint",
+        "miniature-checkpoint",
+        "artifact-audit"
+      ]
+    },
+    {
+      "name": "fhe-semantic-conversion",
+      "patterns": [
+        "osprey/be/vho/fhe_semantic_convert.*"
+      ],
+      "lanes": [
+        "hygiene",
+        "fhe-semantic-conversion",
+        "ckks2c-checkpoint",
+        "miniature-checkpoint"
+      ]
     },
     {
       "name": "ckks2c-group-join",
@@ -262,6 +284,17 @@
         "osprey/torch2whirl/Makefile*"
       ],
       "lanes": ["hygiene", "backend-link-boundary"]
+    },
+    {
+      "name": "fhe-backend-checkpoint-driver",
+      "patterns": ["osprey/be/be/driver.cxx"],
+      "lanes": [
+        "hygiene",
+        "backend-link-boundary",
+        "ckks2c-checkpoint",
+        "miniature-checkpoint",
+        "mapped-reopen"
+      ]
     },
     {
       "name": "frontend-bridge",

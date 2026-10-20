@@ -106,6 +106,15 @@ def require_report(actual: dict[str, str], expected: dict[str, str],
                 f"{name} fact {key} is not {value}")
 
 
+def retained_path(artifact_dir: Path, category: str, name: str) -> Path:
+    """Resolve a legacy flat artifact or the durable receipt hierarchy."""
+
+    flat = artifact_dir / name
+    if flat.is_file():
+        return flat
+    return artifact_dir / category / name
+
+
 def audit(trace_path: Path, artifact_dir: Path) -> dict[str, object]:
     """Cross-check the full physical/logical census and published artifacts."""
 
@@ -167,15 +176,30 @@ def audit(trace_path: Path, artifact_dir: Path) -> dict[str, object]:
             "bootstrap_profile=pre_relu_refresh_v1" in trace,
             "pre-ReLU bootstrap-key requirement is absent")
 
-    stem = artifact_dir / "secure_resnet20.ckks_ops.B"
+    stem = retained_path(
+        artifact_dir, "binary", "secure_resnet20.ckks_ops.B")
     paths = {
-        "conv_asset": Path(f"{stem}.conv-plaintexts.f32"),
-        "relu_asset": Path(f"{stem}.relu-scalars.f64"),
-        "tail_asset": Path(f"{stem}.tail-plaintexts.f32"),
-        "conv_report": Path(f"{stem}.conv-report.txt"),
-        "residual_report": Path(f"{stem}.residual-report.txt"),
-        "relu_report": Path(f"{stem}.relu-report.txt"),
-        "tail_report": Path(f"{stem}.tail-report.txt"),
+        "conv_asset": retained_path(
+            artifact_dir, "payloads",
+            "secure_resnet20.ckks_ops.B.conv-plaintexts.f32"),
+        "relu_asset": retained_path(
+            artifact_dir, "payloads",
+            "secure_resnet20.ckks_ops.B.relu-scalars.f64"),
+        "tail_asset": retained_path(
+            artifact_dir, "payloads",
+            "secure_resnet20.ckks_ops.B.tail-plaintexts.f32"),
+        "conv_report": retained_path(
+            artifact_dir, "reports",
+            "secure_resnet20.ckks_ops.B.conv-report.txt"),
+        "residual_report": retained_path(
+            artifact_dir, "reports",
+            "secure_resnet20.ckks_ops.B.residual-report.txt"),
+        "relu_report": retained_path(
+            artifact_dir, "reports",
+            "secure_resnet20.ckks_ops.B.relu-report.txt"),
+        "tail_report": retained_path(
+            artifact_dir, "reports",
+            "secure_resnet20.ckks_ops.B.tail-report.txt"),
     }
     require(stem.is_file(), "published .ckks_ops.B is absent")
     for name, path in paths.items():
@@ -186,7 +210,7 @@ def audit(trace_path: Path, artifact_dir: Path) -> dict[str, object]:
             "ReLU scalar asset size disagrees")
     require(paths["tail_asset"].stat().st_size == 1572864,
             "tail plaintext asset size disagrees")
-    require(not list(artifact_dir.glob("*.tmp")),
+    require(not list(artifact_dir.rglob("*.tmp")),
             "published artifact family contains a temporary file")
 
     require_report(parse_report(paths["conv_report"]), {

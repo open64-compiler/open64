@@ -146,6 +146,8 @@
 #include "fhe_image.h"
 #include "fhe_materialize.h"
 #include "fhe_runtime_lower.h"
+#include "dsl_ckks_event.h"
+#include "fhe_ckks2c_checkpoint.h"
 #include "fhe_unlowered_gate.h"
 #include "iter.h"		    /* PU iterator for loops */
 #include "dra_export.h"             /* for DRA routines */
@@ -511,6 +513,18 @@ FHE_Checkpoint_Output_Active (void)
 {
   return need_fhe_checkpoint_output || need_fhe_materialization_output ||
          need_fhe_runtime_lower_output;
+}
+
+/* A conversion checkpoint over a certified CKKS event image is a terminal
+ * read-only code-generation checkpoint.  Its committed projected interface
+ * has already passed tensor shape refinement, so rerunning that earlier stage
+ * would reinterpret CKKS operands as source-level tensor expressions.  See
+ * doc/FHE-SYNC6-S6-0D-DETAILED-EXECUTION-PLAN.md, D3. */
+static BOOL
+FHE_CKKS2C_Checkpoint_Input_Active (void)
+{
+  return need_fhe_checkpoint_output &&
+         DSL_CKKS_Event_Image_Count() != 0;
 }
 
 static void
@@ -2127,7 +2141,8 @@ Preprocess_PU (PU_Info *current_pu)
   }
 #endif
 
-  if (need_fhe_runtime_lower_output || need_fhe_materialization_output) {
+  if (need_fhe_runtime_lower_output || need_fhe_materialization_output ||
+      FHE_CKKS2C_Checkpoint_Input_Active()) {
     Set_Error_Phase ( "FHE Projected-IR Admission" );
     FmtAssert(!VHO_DSL_Enable_WOPT &&
               DSL_Program_Interface_PU_Is_Committed
@@ -2204,22 +2219,45 @@ Preprocess_PU (PU_Info *current_pu)
       Check_for_IR_Dump(TP_GLOBOPT, pu, "FHE_MATERIALIZE");
     }
     else {
-      Set_Error_Phase ( "FHE VHO Conversion" );
       if (need_fhe_checkpoint_output) {
-        BOOL converted = VHO_FHE_Convert_Driver_Try
-                             (current_pu, &pu, &convert_result);
+        BOOL converted;
+        if (FHE_CKKS2C_Checkpoint_Input_Active()) {
+          Set_Error_Phase ( "FHE CKKS2C Collection" );
+          converted = VHO_FHE_CKKS2C_Checkpoint_Collect_Active_PU
+                          (PU_Info_proc_sym(current_pu),
+                           VHO_FHE_Conversion_Checkpoint_Output,
+                           stderr);
+          if (converted)
+            convert_result.conversion_pass_count = 1;
+          else
+            convert_result.error_count = 1;
+        }
+        else {
+          Set_Error_Phase ( "FHE VHO Conversion" );
+          converted = VHO_FHE_Convert_Driver_Try
+                          (current_pu, &pu, &convert_result);
+        }
         VHO_FHE_Convert_Result_Accumulate
             (&fhe_checkpoint_result, &convert_result);
         if (!converted) {
-          fprintf(stderr,
-                  "CFHE-CHECKPOINT-002: conversion failed before all-PU "
-                  "checkpoint completion\n");
+          if (FHE_CKKS2C_Checkpoint_Input_Active())
+            fprintf(stderr,
+                    "CFHECKKS2C-004: collection failed before all-PU "
+                    "checkpoint completion\n");
+          else
+            fprintf(stderr,
+                    "CFHE-CHECKPOINT-002: conversion failed before all-PU "
+                    "checkpoint completion\n");
           Cleanup_FHE_Conversion_Checkpoint();
-          FmtAssert(FALSE, ("FHE conversion checkpoint failed"));
+          FmtAssert(FALSE,
+                    (FHE_CKKS2C_Checkpoint_Input_Active() ?
+                         "FHE CKKS2C checkpoint collection failed" :
+                         "FHE conversion checkpoint failed"));
         }
         ++fhe_checkpoint_pu_count;
       }
       else {
+        Set_Error_Phase ( "FHE VHO Conversion" );
         pu = VHO_FHE_Convert_Driver_With_Result
                  (current_pu, pu, &convert_result);
       }
@@ -2227,7 +2265,8 @@ Preprocess_PU (PU_Info *current_pu)
       Check_for_IR_Dump(TP_GLOBOPT, pu, "FHE_CONVERT");
     }
 
-    if (convert_result.conversion_pass_count != 0) {
+    if (convert_result.conversion_pass_count != 0 &&
+        !FHE_CKKS2C_Checkpoint_Input_Active()) {
       FmtAssert(VHO_DSL_Shape_Refinement_Invalidate
                     (current_pu, pu,
                      VHO_DSL_SHAPE_TRIGGER_FHE_CONVERSION, stderr),

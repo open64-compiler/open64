@@ -5,15 +5,12 @@ S6-0d starts from the separately reopenable, gatekeeper-approved
 `secure_resnet20.ckks_ops.B`; it does not rematerialize Conv, residual, ReLU,
 or tail semantics.
 
-Current checkpoint: **D1 is complete; D2 implementation and focused
-certification are complete.** The D2 collector is wired into the backend and
-`ir_tools`, its two-PU positive and malformed-image contracts pass, the linked
-mapped-image driver builds, and the affected backend/syntax boundaries pass.
-Formal D2 closure still requires S6D-T4 to be rerun against the exact accepted
-content-addressed S6-0c `.B`. The prior successful T4 run consumed 10 PUs,
-146 groups, and all 33,367 events, but that retained local artifact family was
-subsequently cleaned. Recover the accepted artifact matching the hashes below;
-do not rematerialize the model merely to replace a missing review copy. D3-D6
+Current checkpoint: **D1 and D2 are complete. D3 implementation is active.**
+The D2 collector is wired into the backend and `ir_tools`, its two-PU positive
+and malformed-image contracts pass, and its complete cached-image receipt is
+retained under the durable review root. That receipt consumed 10 PUs, 146
+groups, and all 33,367 events without rematerializing the model. D3 adds the
+transactional private-output family on top of that immutable receipt. D4-D6
 remain open, and no S6-0d terminal artifact is claimed yet.
 
 ## Objective
@@ -71,13 +68,16 @@ actually justified.
 
 ### Reusable S6-0c baseline
 
-The accepted producer boundary is the PR #178 ten-PU artifact. Reuse is
-permitted only when the local file hashes match this receipt:
+The accepted producer boundary is the PR #178-equivalent ten-PU artifact in
+the durable S6-0c receipt. The regenerated binary differs from the lost
+historical file only in capture-path/provenance evidence and has passed the
+same semantic census and side-payload checks. Reuse is permitted only when the
+local file hashes match the active durable receipt:
 
 | Artifact | Accepted SHA-256 |
 | --- | --- |
-| `secure_resnet20.ckks_ops.B` | `d7bccc537c422b2266add7437040cac14ef7b33af93c9f5e65eb7ebb5f89876f` |
-| `secure_resnet20.ckks_ops.T` | `7f97cca89b20ff1654ff6486010a086d61b9cabe1ec5e8048188045a59dda629` |
+| `secure_resnet20.ckks_ops.B` | `bce7f16f06492933dac9a563f22c2c81e85920f210bf7e576dbfd1d14042132f` |
+| `secure_resnet20.ckks_ops.T` | `c37554fe689a290f7900a6d4a90384381f1d7d996f1d9a35d69ddcc6e01ae56e` |
 | Conv plaintext side payload | `50772c653e1c4a5fbd6ff253a5799d418a4f2fa8f61f55ffa389fae391f24e2e` |
 | ReLU plaintext side payload | `725e7d741be3ac8b58c624aae6871d79e468fe7eb81d7cde5f2bfc02f29372ca` |
 | Tail plaintext side payload | `44d0ca870a1c879c95ba36886fef26fcef640e6c77286b99ea6d9319ebead81c` |
@@ -165,7 +165,7 @@ not be replaced silently with a full model run.
 | S6D-T0 | `python3 osprey/be/vho/tests/fhe_impactful_test_selector_test.py`; selector command above; `git diff --check` |
 | S6D-T1 | `bash osprey/be/vho/tests/fhe_ckks2c_emit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-emitter` |
 | S6D-T2 | `bash osprey/be/vho/tests/fhe_ckks2c_collect_test.sh /private/tmp/open64-fhe-impactful/ckks2c-collector` |
-| S6D-T3 | `sh osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.sh /private/tmp/open64-fhe-impactful/ckks2c-checkpoint` |
+| S6D-T3 | `bash osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.sh /private/tmp/open64-fhe-impactful/ckks2c-checkpoint` |
 | S6D-T4 | Verify accepted hashes, reopen cached `.B`, emit private C/report, compile, and run the independent complete-image audit |
 | S6D-T5 | `sh osprey/be/vho/tests/fhe_ckks2c_group_join_test.sh /private/tmp/open64-fhe-impactful/ckks2c-group-join` |
 | S6D-T6 | `sh osprey/driver/tests/openpy_fhe_ckks2c_exit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-driver` |
@@ -262,18 +262,27 @@ events are consumed exactly once without changing the input `.B`.
 - Focused certification complete: the two-PU fixture covers direct and called
   contexts, source/prior-step/bound operands, external assets, keys, allocation
   order independence, terminal-session rejection, and malformed joins.
-- A prior complete-image run observed 10 PUs, 146 groups, 51 terminal source
-  groups, 33,367 events, 6,417 external assets, and 6,359 key uses; it also
-  compiled the approximately 17 MiB generated C translation unit.
-- Formal exit pending: recover `secure_resnet20.ckks_ops.B` with SHA-256
-  `d7bccc537c422b2266add7437040cac14ef7b33af93c9f5e65eb7ebb5f89876f`
-  and rerun `fhe_ckks2c_cached_image_test.sh`. The prior local evidence was
-  cleaned, so these counts are historical checkpoint evidence rather than the
-  currently retained S6D-T4 receipt.
-- D3 must not treat the historical counts as a publishable transaction input;
-  it starts only after the content-addressed T4 receipt is retained again.
+- Complete-image certification is retained under the durable review root. It
+  observes 10 PUs, 146 groups, 51 terminal source groups, 33,367 events,
+  6,417 external assets, and 6,359 key uses; it also compiles the approximately
+  17 MiB generated C translation unit.
+- D3 consumes this retained content-addressed T4 receipt at
+  `/Users/shinmingliu/open64/artifacts/review/fhe/sync-6/s6-0c/current/`;
+  it does not rely on the lost historical temporary family.
 
 ### D3: Add transactional private-output publication
+
+**Current implementation checkpoint**
+
+- `fhe_ckks2c_publish` builds and stages deterministic private C, facade
+  manifest, group report, and compile-command auxiliaries without publishing
+  or mutating WHIRL.
+- `fhe_ckks2c_checkpoint` preserves active-PU collection state and joins the
+  complete emitter census to the existing no-replace checkpoint lifecycle.
+- The conversion checkpoint remains the commit marker and is published only
+  after all four auxiliaries.
+- S6D-T3 is an automated six-case transaction lane. Cached S6D-T4 publication
+  evidence and the durable D3 receipt remain the final review gate for D3.
 
 **Code**
 

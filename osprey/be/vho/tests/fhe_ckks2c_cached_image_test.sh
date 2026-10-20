@@ -7,7 +7,7 @@ repo_root=$(cd "$(dirname "$0")/../../../.." && pwd)
 out_dir=${1:?usage: $0 output-dir cached-input.B linked-collector}
 input=${2:?usage: $0 output-dir cached-input.B linked-collector}
 collector=${3:?usage: $0 output-dir cached-input.B linked-collector}
-expected=d7bccc537c422b2266add7437040cac14ef7b33af93c9f5e65eb7ebb5f89876f
+expected=bce7f16f06492933dac9a563f22c2c81e85920f210bf7e576dbfd1d14042132f
 
 mkdir -p "$out_dir"
 rm -f "$out_dir/secure_resnet20.ckks2c.c" \
@@ -40,10 +40,11 @@ grep -qx 'event_count=33367' "$out_dir/secure_resnet20.ckks2c-report.txt"
 grep -qx 'emitted_operation_count=33367' \
     "$out_dir/secure_resnet20.ckks2c-report.txt"
 
-artifact_dir=$(dirname "$input")
+binary_dir=$(dirname "$input")
+artifact_dir=$(dirname "$binary_dir")
 python3 "$repo_root/osprey/be/vho/tests/fhe_ckks_complete_checkpoint_audit.py" \
     --text-output "$out_dir/complete-audit.txt" \
-    "$artifact_dir/secure_resnet20.ckks_ops.T" "$artifact_dir" \
+    "$artifact_dir/traces/secure_resnet20.ckks_ops.T" "$artifact_dir" \
     >"$out_dir/complete-audit.json"
 
 printf 'FHE CKKS2C cached-image collection passed.\n'
