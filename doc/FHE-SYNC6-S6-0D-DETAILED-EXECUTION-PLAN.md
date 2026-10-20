@@ -383,6 +383,11 @@ authenticated join and no ABI change.
   specified in `FHE-SYNC6-D4-GROUPED-LOWERING-HANDOFF.md`. After those contracts
   merge, FHE builds the checked standard-WHIRL blocks, invokes the transactions,
   and completes S6D-T5 against the existing public ABI mock.
+- The handoff now fixes the proposed request/result layouts, ownership and
+  atomicity rules, malformed-input matrix, reviewable M1-M3 commit sequence,
+  and the terminal policy. The `-O0` terminal file omits the optional CKKS
+  event section only after complete event-consumption proof; it does not add a
+  new mapped terminal-status row or revise the v1 event image.
 
 ### D5: Add the continuous backend selector
 
