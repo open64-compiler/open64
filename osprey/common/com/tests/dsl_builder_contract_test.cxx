@@ -10258,6 +10258,122 @@ Check_CKKS_Event_Image (void)
         return 1;
     }
 
+    /* Two static CKKS subgroups form one projected source-context request. */
+    const char *group_mode =
+        getenv("OPEN64_DSL_CKKS_COMPLETE_GROUP_ONLY");
+    if (group_mode != NULL) {
+        BOOL private_projection =
+            strcmp(group_mode, "private_projection") == 0;
+        CKKS_EVENT_CHECK(private_projection ||
+                         strcmp(group_mode, "complete") == 0,
+                         "recognized complete-group mode");
+        mapped.records[1].source_static_ordinal = 2;
+        mapped.records[1].origin_static_ordinal = 2;
+        mapped.records[1].step_ordinal = 0;
+        CKKS_EVENT_CHECK
+            (DSL_CKKS_Event_Image_Load_Mapped
+                 (&mapped, sizeof(mapped), stderr),
+             "two linked CKKS static subgroups");
+
+        TY_IDX handle_ty = Create_Runtime_Interface_Handle_TY
+            ("ckks_complete_group_handle_v1");
+        DSL_RUNTIME_VALUE_PROJECTION_REQUEST projected[2];
+        memset(projected, 0, sizeof(projected));
+        projected[0].owner_pu_st = PU_Info_proc_sym(pu);
+        projected[0].source_value_id = refreshed_record.id;
+        projected[0].expected_source_st = refreshed_record.st;
+        projected[0].expected_source_ty = refreshed_record.ty;
+        projected[0].handle_ty = handle_ty;
+        projected[0].binding_kind = DSL_RUNTIME_BINDING_LOCAL_VALUE;
+        projected[0].formal_ordinal =
+            DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
+        if (private_projection) {
+            projected[1] = projected[0];
+            projected[1].source_value_id = encoded_record.id;
+            projected[1].expected_source_st = encoded_record.st;
+            projected[1].expected_source_ty = encoded_record.ty;
+        }
+        DSL_RUNTIME_INTERFACE_PLAN projection_plan;
+        memset(&projection_plan, 0, sizeof(projection_plan));
+        projection_plan.values = projected;
+        projection_plan.value_count = private_projection ? 2 : 1;
+        DSL_RUNTIME_INTERFACE_RESULT applied;
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD final_projection;
+        CKKS_EVENT_CHECK
+            (handle_ty != TY_IDX_ZERO &&
+             DSL_Runtime_Interface_Apply_PU
+                 (pu, &projection_plan, stderr, &applied) &&
+             DSL_Runtime_Interface_Image_Find_Value
+                 (PU_Info_proc_sym(pu), refreshed_record.id,
+                  &final_projection),
+             "FINAL_RESULT-only runtime projection");
+
+        WN *encoded_definition =
+            Find_STID_In_Block(body, encoded_record.st);
+        WN *refreshed_definition =
+            Find_STID_In_Block(body, refreshed_record.st);
+        CKKS_EVENT_CHECK(encoded_definition != NULL &&
+                         refreshed_definition != NULL,
+                         "complete private member chain");
+        WN *standard = WN_CreateBlock();
+        WN *handle_definition = WN_CreateStid
+            (OPR_STID, MTYPE_V, Pointer_Mtype, 0,
+             final_projection.handle_st, final_projection.handle_ty,
+             WN_Intconst(Pointer_Mtype, 0));
+        WN_Set_Linenum(handle_definition,
+                       WN_Get_Linenum(refreshed_definition));
+        WN_INSERT_BlockLast(standard, handle_definition);
+        DSL_IR_NATIVE_GROUP_MEMBER_REQUEST members[2];
+        memset(members, 0, sizeof(members));
+        members[0].native_definition = encoded_definition;
+        members[0].node_id = encoded_record.producer_node_id;
+        members[0].value_id = encoded_record.id;
+        members[0].expected_operator = OPR_DSLCKKSENCODE;
+        members[0].expected_version = 1;
+        members[1].native_definition = refreshed_definition;
+        members[1].node_id = refreshed_record.producer_node_id;
+        members[1].value_id = refreshed_record.id;
+        members[1].expected_operator = OPR_DSLCKKSBOOTSTRAP;
+        members[1].expected_version = 1;
+        DSL_IR_NATIVE_GROUP_LOWER_REQUEST lower_request;
+        memset(&lower_request, 0, sizeof(lower_request));
+        lower_request.owner_pu_st = PU_Info_proc_sym(pu);
+        lower_request.semantic_source_value_id = source_record.id;
+        lower_request.members = members;
+        lower_request.member_count = 2;
+        lower_request.group_output_value_id = refreshed_record.id;
+        lower_request.standard_block = standard;
+        lower_request.relation.relation_kind =
+            DSL_IR_LOWER_RELATION_RUNTIME_VALUE_PROJECTION;
+        lower_request.relation.value_projection_id = final_projection.id;
+        DSL_IR_NATIVE_GROUP_LOWER_RESULT lowered;
+        memset(&lowered, 0x5a, sizeof(lowered));
+        DSL_IR_NATIVE_GROUP_LOWER_RESULT sentinel = lowered;
+        if (private_projection) {
+            CKKS_EVENT_CHECK
+                (!DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+                     (pu, &lower_request, 1, NULL, &lowered) &&
+                 memcmp(&lowered, &sentinel, sizeof(lowered)) == 0 &&
+                 WN_first(standard) != NULL,
+                 "intermediate private projection rejection");
+            return 0;
+        }
+        CKKS_EVENT_CHECK
+            (DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+                 (pu, &lower_request, 1, stderr, &lowered) &&
+             DSL_IR_Image_Validate_Lowered_Relations(stderr) &&
+             !DSL_Runtime_Interface_Image_Find_Value
+                 (PU_Info_proc_sym(pu), source_record.id, NULL) &&
+             !DSL_Runtime_Interface_Image_Find_Value
+                 (PU_Info_proc_sym(pu), encoded_record.id, NULL) &&
+             lowered.semantic_source_value_id == source_record.id &&
+             lowered.retired_group_output_value_id ==
+                 refreshed_record.id &&
+             lowered.retired_member_count == 2 &&
+             DSL_Runtime_Interface_Image_Value_Count() == 1,
+             "complete source-context member union");
+    }
+
     request.path = artifact == NULL || artifact[0] == '\0' ?
                    "ckks_event_roundtrip.B" : artifact;
     request.flags = 0;

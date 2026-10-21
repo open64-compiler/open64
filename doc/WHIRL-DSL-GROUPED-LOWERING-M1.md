@@ -17,13 +17,23 @@ operations, allocate runtime calls, or implement FHE lowering policy.
 ## Closure And Inspection
 
 All private member uses must stay inside their group. One group output may
-feed a later submitted group; the final output crosses the boundary only
-through its reviewed runtime value projection and any preflighted REGION
-transition. Physical returns, calls, address escapes, unmanaged external
-reads, and private REGION or runtime-interface uses reject. The mapped DSL
-image retains logical provenance for retired members, and `ir_b2a -st -src`
-prints `private_group_member` or the output's runtime projection rather than
-the physical `OPR_DSL` escape representation.
+feed a later submitted group; the complete source-context request projects
+only its typed CKKS `FINAL_RESULT` replacement. The semantic source remains
+distinct provenance and has no runtime projection. For a ReLU-style chain,
+submit all ordered private subgroups as one member union whose final output
+is that `FINAL_RESULT`; bootstrap/stage outputs remain unprojected internal
+members. Physical returns, calls, address escapes, unmanaged external reads,
+and private REGION or runtime-interface uses reject. The mapped DSL image
+retains logical provenance for retired members, and `ir_b2a -st -src` prints
+the final runtime projection without exposing the physical `OPR_DSL` escape.
+
+The focused CKKS fixture now joins two ordered static subgroups in one
+request. Its final replacement has the sole projection, an intermediate
+member has none, a fabricated intermediate projection rejects before
+mutation, and the accepted `.B` reopens with `ir_b2a -st -src`. This proves
+the existing M1 request shape without a new row, API, or ABI revision. The
+FHE consumer still owns the exact six-subgroup ReLU union and complete-model
+event/ABI census.
 
 The optional CKKS event rows remain in this intermediate M1 image. An
 immediately previous `ir_b2a` can parse the unchanged physical row layouts

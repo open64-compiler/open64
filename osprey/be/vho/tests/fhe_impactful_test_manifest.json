@@ -279,6 +279,7 @@
         "osprey/common/fhe/fhe_plan.*",
         "osprey/common/com/tests/dsl_builder_contract_test.*",
         "osprey/common/com/tests/dsl_ckks_expand_transaction_test.*",
+        "osprey/common/com/tests/dsl_ckks_complete_group_lowering_test.*",
         "osprey/common/com/tests/dsl_view_retirement_test.*"
       ],
       "lanes": [
