@@ -23,11 +23,14 @@ that view operation. D4-D6 remain open, and no S6-0d terminal artifact is
 claimed yet.
 
 The D5 option spelling is staged independently: the backend recognizes
-`-FHE:codegen=ckks2c|poly2c` but does not yet select a route. At this point
-every explicit route is rejected before phase loading, regardless of input;
-a missing option keeps the existing behavior. D5 will move selection after
-the CKKS conformance gate so non-FHE input can ignore the FHE-owned option.
-This is option transport and fail-closed evidence, not D5 completion.
+`-FHE:codegen=ckks2c|poly2c` but does not yet select a route. Invalid
+spellings reject before phase loading. For a valid explicit route, the backend
+defers component loading until after `Read_Global_Info()`; an FHE-bearing
+image then rejects with no CG load or fallback, while unrelated WHIRL loads
+its normal components and ignores the FHE-only option. An absent option keeps
+the original early component-loading order. The cached ten-PU CKKS image
+exercises this post-read gate, but D5 still needs the actual conformance gate,
+CKKS2C exit, and continuous POLY2C path.
 
 ## Objective
 

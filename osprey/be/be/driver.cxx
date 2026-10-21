@@ -139,11 +139,13 @@
 #include "dsl_program_interface_internal.h"
 #include "dsl_pu_transaction.h"
 #include "dsl_ir_image.h"
+#include "dsl_ckks_event.h"
 #include "dsl_region.h"
 #include "fhe_checkpoint.h"
 #include "fhe_ckks_conv_specialize.h"
 #include "fhe_convert.h"
 #include "fhe_image.h"
+#include "fhe_plan.h"
 #include "fhe_materialize.h"
 #include "fhe_runtime_lower.h"
 #include "dsl_ckks_event.h"
@@ -724,23 +726,6 @@ load_components (INT argc, char **argv)
 {
     INT phase_argc;
     char **phase_argv;
-
-    /* D5 will select a route after the CKKS conformance gate. Until then,
-     * reject an explicit request before loading CG or opening any output. */
-    VHO_FHE_CODEGEN_MODE codegen = VHO_FHE_Codegen_Mode();
-    if (codegen == VHO_FHE_CODEGEN_INVALID) {
-      fprintf(stderr,
-              "CFHECKKS2C-002: invalid -FHE:codegen route; "
-              "expected ckks2c or poly2c\n");
-      exit(1);
-    }
-    if (codegen != VHO_FHE_CODEGEN_UNSPECIFIED) {
-      fprintf(stderr,
-              "CFHECKKS2C-003: -FHE:codegen=%s is not yet available; "
-              "no fallback route was selected\n",
-              VHO_FHE_Codegen);
-      exit(1);
-    }
 
     UINT32 fhe_checkpoint_count =
         (FHE_Conversion_Checkpoint_Enabled() ? 1 : 0) +
@@ -2799,12 +2784,20 @@ main (INT argc, char **argv)
 
   Init_Operator_To_Opcode_Table();
 
-  /* decide which phase to call */
-  load_components (argc, argv);
-  be_debug();
-
-  // process the component internal options
-  O64_Driver::GetInstance()->ProcessComponentOption();
+  VHO_FHE_CODEGEN_MODE fhe_codegen = VHO_FHE_Codegen_Mode();
+  if (fhe_codegen == VHO_FHE_CODEGEN_INVALID) {
+    fprintf(stderr,
+            "CFHECKKS2C-002: invalid -FHE:codegen route; "
+            "expected ckks2c or poly2c\n");
+    return 1;
+  }
+  BOOL defer_components =
+      fhe_codegen != VHO_FHE_CODEGEN_UNSPECIFIED;
+  if (!defer_components) {
+    load_components (argc, argv);
+    be_debug();
+    O64_Driver::GetInstance()->ProcessComponentOption();
+  }
   
   MEM_POOL_Push (&MEM_src_pool);
   MEM_POOL_Push (&MEM_src_nz_pool);
@@ -2849,6 +2842,28 @@ main (INT argc, char **argv)
   Stop_Timer (T_ReadIR_Comp);
 
   Initialize_Special_Global_Symbols ();
+
+  if (defer_components) {
+    /* The image, not the option spelling, decides whether this phase owns
+     * codegen. Do not load CG before a CKKS route can exit. */
+    BOOL fhe_image =
+        DSL_CKKS_Event_Image_Has_Records() ||
+        DSL_FHE_Image_Has_Records() ||
+        DSL_FHE_Plan_Image_Has_Records() ||
+        DSL_FHE_Approx_Profile_Image_Has_Records() ||
+        DSL_FHE_Context_State_Image_Has_Records() ||
+        DSL_FHE_Materialization_Image_Has_Records();
+    if (fhe_image) {
+      fprintf(stderr,
+              "CFHECKKS2C-003: -FHE:codegen=%s is not yet available; "
+              "no fallback route was selected\n",
+              VHO_FHE_Codegen);
+      return 1;
+    }
+    load_components (argc, argv);
+    be_debug();
+    O64_Driver::GetInstance()->ProcessComponentOption();
+  }
 
   // if compiling an ipa-generated file, do not instrument phases that
   // have already been done at ipl time.
