@@ -17,12 +17,15 @@
 #include <vector>
 
 #include "dsl_tile_candidate_opt.h"
+#include "config_dsl.h"
 #include "dsl_opt_plan_opt.h"
 #include "dsl_tensor_analysis_opt.h"
 #include "dsl_opcode.h"
 #include "dsl_shape.h"
 #include "pu_info.h"
 #include "strtab.h"
+#include "tracing.h"
+
 
 typedef struct {
     UINT32 family;
@@ -55,6 +58,199 @@ struct DSL_TILE_ANALYSIS {
     DSL_TILE_PLAN_IR *ir;
     BOOL built;
 };
+
+typedef struct {
+    UINT64 bytes;
+    UINT64 compute_ns;
+    UINT64 memory_ns;
+    UINT64 bound_ns;
+} DSL_TILE_ROOFLINE;
+
+/* Published H100 SXM FP32/HBM peaks, not a calibrated Hopper-wide ceiling. */
+static BOOL
+DSL_Tile_Roofline_Target (UINT32 target, UINT64 *fp32_gflops,
+                          UINT64 *hbm_gbps)
+{
+    if (target != DSL_TARGET_PROFILE_NVIDIA_HOPPER)
+        return FALSE;
+    *fp32_gflops = 67000;
+    *hbm_gbps = 3350;
+    return TRUE;
+}
+
+static BOOL
+DSL_Tile_Roofline_Project (const DSL_TILE_PLAN_RECORD &tile,
+                            UINT64 fp32_gflops, UINT64 hbm_gbps,
+                            DSL_TILE_ROOFLINE *projection)
+{
+    if (projection == NULL || fp32_gflops == 0 || hbm_gbps == 0 ||
+        tile.gmem_read_bytes > ~(UINT64)0 - tile.gmem_write_bytes)
+        return FALSE;
+    projection->bytes = tile.gmem_read_bytes + tile.gmem_write_bytes;
+    projection->compute_ns = tile.operation_count / fp32_gflops +
+        (tile.operation_count % fp32_gflops != 0);
+    projection->memory_ns = projection->bytes / hbm_gbps +
+        (projection->bytes % hbm_gbps != 0);
+    projection->bound_ns = std::max(projection->compute_ns,
+                                    projection->memory_ns);
+    return projection->bytes != 0 && projection->bound_ns != 0;
+}
+
+static BOOL
+DSL_Tile_Select_With_Roofline (DSL_TILE_ANALYSIS *analysis,
+                                const DSL_TILE_SITE_RECORD &site,
+                                DSL_OPT_SELECTION_RESULT *result,
+                                const char **reason, FILE *diagnostic)
+{
+    UINT64 fp32_gflops, hbm_gbps;
+    DSL_OPT_PLAN_CONTEXT *context = analysis->plans[site.id - 1];
+    if (!DSL_Tile_Roofline_Target(analysis->control.target_profile_id,
+                                  &fp32_gflops, &hbm_gbps)) {
+        *reason = "lowest_complete_relative_cost";
+        return VHO_DSL_Opt_Plan_Select
+            (context, analysis->control.target_profile_id, result, diagnostic);
+    }
+    DSL_OPT_SELECTION_RESULT selection;
+    memset(&selection, 0, sizeof(selection));
+    selection.target_profile_id = analysis->control.target_profile_id;
+    UINT64 best_cost = ~(UINT64)0;
+    DSL_TILE_ROOFLINE best_roof;
+    memset(&best_roof, 0, sizeof(best_roof));
+    for (UINT32 i = 0; i < site.tile_plan_count; ++i) {
+        const DSL_TILE_PLAN_RECORD &tile =
+            analysis->tile_plans[site.first_tile_plan_id - 1 + i];
+        DSL_OPT_PLAN_RECORD plan;
+        DSL_OPT_COST_RECORD cost;
+        DSL_TILE_ROOFLINE roof;
+        if (!DSL_opt_plan_get_plan(context, tile.optimization_plan_id, &plan) ||
+            !DSL_opt_plan_get_cost(context, plan.cost_id, &cost) ||
+            !DSL_Tile_Roofline_Project(tile, fp32_gflops, hbm_gbps, &roof))
+            return FALSE;
+        if (plan.legality != DSL_OPT_LEGALITY_PROVEN) {
+            ++selection.rejected_plan_count;
+            continue;
+        }
+        ++selection.legal_plan_count;
+        if (cost.target_profile_id != selection.target_profile_id) {
+            ++selection.target_mismatch_count;
+            continue;
+        }
+        if (!cost.complete) {
+            ++selection.incomplete_cost_count;
+            continue;
+        }
+        ++selection.complete_cost_count;
+        if (cost.total < best_cost) {
+            best_cost = cost.total;
+            best_roof = roof;
+            selection.selected_plan_id = plan.id;
+        }
+    }
+    if (selection.selected_plan_id == 0)
+        return FALSE;
+    *reason = "lowest_complete_relative_cost";
+    for (UINT32 i = 0; i < site.tile_plan_count; ++i) {
+        const DSL_TILE_PLAN_RECORD &tile =
+            analysis->tile_plans[site.first_tile_plan_id - 1 + i];
+        DSL_OPT_PLAN_RECORD plan;
+        DSL_OPT_COST_RECORD cost;
+        DSL_TILE_ROOFLINE roof;
+        if (!DSL_opt_plan_get_plan(context, tile.optimization_plan_id, &plan) ||
+            !DSL_opt_plan_get_cost(context, plan.cost_id, &cost) ||
+            !DSL_Tile_Roofline_Project(tile, fp32_gflops, hbm_gbps, &roof))
+            return FALSE;
+        /* Roofline only resolves close relative-cost choices. */
+        if (plan.legality != DSL_OPT_LEGALITY_PROVEN || !cost.complete ||
+            cost.target_profile_id != selection.target_profile_id ||
+            cost.total < best_cost ||
+            cost.total - best_cost > best_cost / 33 ||
+            roof.bound_ns >= best_roof.bound_ns ||
+            roof.bound_ns > best_roof.bound_ns - best_roof.bound_ns / 20)
+            continue;
+        best_roof = roof;
+        selection.selected_plan_id = plan.id;
+        *reason = "roofline_near_cost";
+    }
+    if (!DSL_opt_plan_record_selection(context, &selection, diagnostic))
+        return FALSE;
+    *result = selection;
+    return TRUE;
+}
+
+static BOOL
+DSL_Tile_Trace_Selection (const DSL_TILE_ANALYSIS *analysis,
+                          const DSL_TILE_SITE_RECORD &site,
+                          const DSL_OPT_SELECTION_RESULT &selection,
+                          const char *selection_reason)
+{
+    const DSL_OPT_PLAN_CONTEXT *context = analysis->plans[site.id - 1];
+    FILE *file = TFile;
+    DSL_IR_VALUE_RECORD result_value;
+    UINT32 source_line = 0;
+    if (DSL_IR_Image_Get_Value(site.semantic_value_id, &result_value) &&
+        result_value.st != ST_IDX_ZERO)
+        source_line = ST_Line(St_Table[result_value.st]);
+    UINT64 fp32_gflops = 0, hbm_gbps = 0;
+    BOOL roofline_available = DSL_Tile_Roofline_Target
+        (selection.target_profile_id, &fp32_gflops, &hbm_gbps);
+    UINT32 trace_version = 7;
+    fprintf(file, "AI_OPT %u ROOF_TARGET %u %s %llu %llu "
+                  "traffic=global_requests_as_cold_hbm_proxy "
+                  "ceiling=published_peak\n",
+            trace_version, selection.target_profile_id,
+            roofline_available ? "h100_sxm_reference" : "unavailable",
+            (unsigned long long)fp32_gflops,
+            (unsigned long long)hbm_gbps);
+    for (UINT32 i = 0; i < site.tile_plan_count; ++i) {
+        const DSL_TILE_PLAN_RECORD &tile =
+            analysis->tile_plans[site.first_tile_plan_id - 1 + i];
+        DSL_OPT_PLAN_RECORD plan;
+        DSL_OPT_COST_RECORD cost;
+        if (!DSL_opt_plan_get_plan(context, tile.optimization_plan_id,
+                                   &plan) ||
+            !DSL_opt_plan_get_cost(context, plan.cost_id, &cost))
+            return FALSE;
+        DSL_TILE_ROOFLINE roof;
+        memset(&roof, 0, sizeof(roof));
+        if (roofline_available && !DSL_Tile_Roofline_Project
+                                  (tile, fp32_gflops, hbm_gbps, &roof))
+            return FALSE;
+        fprintf(file,
+                "AI_OPT %u TILE_CAND %u %u %u %u %s %s %s %u %s %s "
+                "%llu %llu %llu %llu %llu %llu %llu %llu %u %u "
+                "%u %u %u %u %llu %llu %llu %llu %llu\n",
+                trace_version, site.id, tile.id, tile.candidate_id,
+                tile.optimization_plan_id, DSL_tile_family_name(tile.family),
+                DSL_opt_legality_name(plan.legality),
+                DSL_opt_rejection_reason_name(plan.rejection_reason),
+                cost.complete,
+                DSL_opt_cost_unit_name(cost.terms[0].unit),
+                DSL_opt_cost_confidence_name(cost.minimum_confidence),
+                (unsigned long long)cost.terms[DSL_OPT_COST_COMPUTE].amount,
+                (unsigned long long)cost.terms[DSL_OPT_COST_MEMORY_UNHIDDEN].amount,
+                (unsigned long long)cost.terms[DSL_OPT_COST_COMMUNICATION_UNHIDDEN].amount,
+                (unsigned long long)cost.terms[DSL_OPT_COST_SYNC].amount,
+                (unsigned long long)cost.terms[DSL_OPT_COST_LAUNCH].amount,
+                (unsigned long long)cost.terms[DSL_OPT_COST_RUNTIME_SELECTION].amount,
+                (unsigned long long)cost.total,
+                (unsigned long long)tile.shared_bytes_per_stage,
+                tile.registers_per_thread, tile.threads_per_cta,
+                tile.cta_m, tile.cta_n, tile.cta_k, source_line,
+                (unsigned long long)tile.operation_count,
+                (unsigned long long)roof.bytes,
+                (unsigned long long)roof.compute_ns,
+                (unsigned long long)roof.memory_ns,
+                (unsigned long long)roof.bound_ns);
+    }
+    fprintf(file, "AI_OPT %u TILE_SELECT %u %u %u %u %u %u %u "
+                  "selection_reason=%s\n",
+            trace_version, site.id, site.baseline_plan_id, selection.selected_plan_id,
+            selection.target_profile_id, selection.legal_plan_count,
+            selection.complete_cost_count, selection.rejected_plan_count,
+            selection_reason);
+    fflush(file);
+    return !ferror(file);
+}
 
 static const DSL_TILE_FAMILY_SEED DSL_cuda_64 = {
     DSL_TILE_FAMILY_CUDA_64,
@@ -875,11 +1071,19 @@ VHO_DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
         }
         if (analysis->control.select_plans) {
             DSL_OPT_SELECTION_RESULT selection;
-            if (!VHO_DSL_Opt_Plan_Select
-                     (context, analysis->control.target_profile_id,
-                      &selection, diagnostic))
+            const char *selection_reason;
+            if (!DSL_Tile_Select_With_Roofline
+                     (analysis, site, &selection, &selection_reason,
+                      diagnostic))
                 return FALSE;
             site.selected_plan_id = selection.selected_plan_id;
+            if (VHO_DSL_AI_Opt_Trace &&
+                Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG) &&
+                !DSL_Tile_Trace_Selection
+                     (analysis, site, selection, selection_reason))
+                return DSL_Tile_Report
+                           (diagnostic, "failed to write selection trace",
+                            site.id);
         }
         analysis->sites.push_back(site);
     }

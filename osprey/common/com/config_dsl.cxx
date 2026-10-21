@@ -37,9 +37,27 @@ BOOL VHO_DSL_Dump_After_Lowering = FALSE;
 BOOL VHO_DSL_Dump_After_Lowering_Set = FALSE;
 BOOL VHO_DSL_Dump_After_Shape_Refinement = FALSE;
 BOOL VHO_DSL_Dump_After_Shape_Refinement_Set = FALSE;
+BOOL VHO_DSL_AI_Opt_Trace = TRUE;
+BOOL VHO_DSL_AI_Opt_Trace_Set = FALSE;
+BOOL VHO_DSL_CUDA_TMA_Prefetch = FALSE;
+BOOL VHO_DSL_CUDA_TMA_Prefetch_Set = FALSE;
+BOOL VHO_DSL_CUDA_Tile_Apply = FALSE;
+BOOL VHO_DSL_CUDA_Tile_Apply_Set = FALSE;
 char *VHO_DSL_PU_Specialization_Checkpoint_Output = NULL;
+char *VHO_DSL_CUDA_Tile_Output = NULL;
 
 static OPTION_DESC Options_DSL[] = {
+  { OVK_BOOL, OV_VISIBLE, TRUE, "ai_opt_trace", "ai_opt_trace",
+    FALSE, 0, 0, &VHO_DSL_AI_Opt_Trace,
+    &VHO_DSL_AI_Opt_Trace_Set },
+  { OVK_BOOL, OV_VISIBLE, TRUE, "cuda_tma_prefetch", "cuda_tma_prefetch",
+    FALSE, 0, 0, &VHO_DSL_CUDA_TMA_Prefetch,
+    &VHO_DSL_CUDA_TMA_Prefetch_Set },
+  { OVK_BOOL, OV_VISIBLE, TRUE, "cuda_tile_apply", "cuda_tile_apply",
+    FALSE, 0, 0, &VHO_DSL_CUDA_Tile_Apply,
+    &VHO_DSL_CUDA_Tile_Apply_Set },
+  { OVK_NAME, OV_VISIBLE, FALSE, "cuda_tile_output", "cuda_tile_output",
+    0, 0, 0, &VHO_DSL_CUDA_Tile_Output, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "pu_specialization_checkpoint",
     "pu_specialization_checkpoint", 0, 0, 0,
     &VHO_DSL_PU_Specialization_Checkpoint_Output, NULL },

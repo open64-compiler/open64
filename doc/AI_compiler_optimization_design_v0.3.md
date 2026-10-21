@@ -4,7 +4,7 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
-Status: v0.3 adds a phase-by-phase optimization reporting contract and identifies trace fields still needed for a trustworthy cross-phase report. The 2026-10-18 amendment fixes the matmul-first trace, report, and durable-artifact conventions in Section 9.7. The compact, positional WOPT trace and report generator remain design proposals, not implemented compiler features. Research-derived inspiration and DSC design proposals remain distinct.
+Status: v0.3 adds a phase-by-phase optimization reporting contract and identifies trace fields still needed for a trustworthy cross-phase report. The 2026-10-18 amendment fixes the matmul-first trace, report, and durable-artifact conventions in Section 9.7. The 2026-10-21 amendment adds the predicted and measured Roofline contract in Section 7.2A. AIO-9 has a compact WOPT-style selection trace and a tile-phase report; full cross-phase coverage and Roofline reporting remain proposals. Research-derived inspiration and DSC design proposals remain distinct.
 
 # 1 Executive Summary And Design Goals
 
@@ -151,9 +151,9 @@ The ownership boundary is the most important governance rule in this design. Com
 | OptimizationCandidateIR | Common Compiler Substrate | Candidate tree that records semantic, layout, placement, parallelization, tile, memory, and pipeline alternatives. |
 | FusionCandidateIR | Common Compiler Substrate where generic | Generic operator-region fusion fields belong in common substrate; AI legality and semantic classes are AI-specific extensions. |
 | OptimizationPlanIR | Common Compiler Substrate | The unit of end-to-end cost evaluation across choices. |
-| CandidateCostIR and CommonCostModelIR | Common Compiler Substrate | Compute, memory, communication, sync, launch, overlap, resource, and confidence estimates. |
-| MemoryHierarchyDescriptorIR | Common Compiler Substrate | Tier scope, capacity, bandwidth, latency, granularity, alignment, bank structure, async capability. |
-| ComputeResourceIR | Common Compiler Substrate | Device, SM, vector unit, tensor core, thread, warp, CTA, stream, and occupancy-relevant resource descriptions. |
+| CandidateCostIR and CommonCostModelIR | Common Compiler Substrate | Compute, memory, communication, sync, launch, overlap, resource, and confidence estimates. Embed per-tier Roofline evidence: work, traffic, arithmetic intensity, bandwidth and compute ceilings, bound, provenance, and uncertainty; do not turn the bound into an additive latency term. |
+| MemoryHierarchyDescriptorIR | Common Compiler Substrate | Tier scope, capacity, sustainable bandwidth by transfer path, latency, granularity, alignment, bank structure, async capability, and calibration provenance. Capacity is not a bandwidth estimate. |
+| ComputeResourceIR | Common Compiler Substrate | Device, SM, vector unit, tensor core, thread, warp, CTA, stream, and occupancy-relevant resource descriptions, including instruction-path and dtype-specific sustained compute ceilings. |
 | RuntimeGuardIR | Common Compiler Substrate | Generic guards, validity ranges, fallback behavior, and failure actions. |
 | Generic runtime-variant infrastructure | Common Compiler Substrate | Variant identity, applicability, selection policy hooks, hysteresis, fallback, telemetry binding. |
 
@@ -341,6 +341,22 @@ For low-precision formats such as Blackwell NVFP4, the model must not only scale
 T_total(dtype, tile) = T_compute(dtype, instruction_tile) + T_scale_metadata_load + T_scale_apply_or_fused_scale + T_memory_unhidden(value_tile + scale_tile) + T_sync + T_launch + T_runtime_selection
 
 CandidateCostIR should store raw and unhidden terms separately. A plan with higher raw memory traffic can still win if the traffic is hidden by a stronger async pipeline; a plan with lower raw traffic can lose if synchronization or occupancy loss makes stalls visible.
+
+## 7.2A Roofline Bound And Data Supply Contract
+
+Roofline is a lower bound on execution time and a diagnostic for a complete OptimizationPlanIR, not another term to add to the latency equation. For a candidate, let W be the counted floating-point operations on the code path being evaluated. For each memory level L with B_L > 0, let B_L be the bytes predicted to cross that level, I_L = W / B_L its arithmetic intensity, and beta_L the sustainable bandwidth available to that path. Let pi_path be the sustained compute ceiling for the actual instruction family and dtype. Then:
+
+P_roof = min(pi_path, min_L(I_L * beta_L))
+
+T_roof = max(W / pi_path, max_L(B_L / beta_L))
+
+The data-availability metric is beta_L in bytes per second, not memory capacity. The compiler may also report beta_required,L = pi_path / I_L to show the bandwidth needed to sustain the compute ceiling. Capacity, cache residency, occupancy, coalescing, shared-memory banking, and concurrent consumers influence B_L or attainable beta_L, but are not interchangeable with bandwidth. A published peak and a calibrated sustainable ceiling are distinct evidence classes. The target profile must name the specific device, relevant clocks, memory path, instruction path, calibration method, and confidence; a generic Hopper or Blackwell capacity envelope is not a calibrated Roofline target.
+
+CommonTilePlanIR supplies W and logical movement by tile and stage. CommonFetchPlanIR and CommonPipelineIR identify the actual movement path. CandidateCostIR carries a per-level Roofline evidence record with predicted read/write bytes, cache-policy assumptions, arithmetic intensity, ceiling values and units, limiting resource, bound, provenance, and uncertainty. MemoryHierarchyDescriptorIR and ComputeResourceIR own reusable performance-capability fields; NVIDIA target adapters own SKU-specific calibrations. AI-specific semantics supply GEMM/attention/MoE operation counts, dtype behavior, scale metadata, and workload-state distributions. Global load requests are not automatically HBM bytes: an L2 hit changes the HBM denominator. Emit separate HBM, L2, and shared-memory intensities or mark a level unavailable. Do not mix a tensor-core peak with a scalar/vector FMA candidate.
+
+The compiler can construct a predicted Roofline before GPU execution using modeled B_L and documented or calibrated ceilings. It must label the result `predicted`, carry cold/warm cache or other traffic scenarios when uncertain, and reject impossible predictions such as a modeled kernel time below T_roof under the same assumptions. The bound does not prove a candidate profitable: small GEMMs may be limited by launch latency, insufficient CTA waves, dependency stalls, or pipeline fill/drain, none of which the classical steady-state Roofline explains. Keep the scheduled latency model in Section 7.2 as the profitability estimate and use Roofline to check its consistency and explain headroom. The current AIO-9 relative score and `selection_reason=lowest_complete_relative_cost` must not be relabeled as Roofline-derived latency.
+
+To measure effectiveness, compile and run the baseline and alternatives as comparable GPU kernels on the same device, verify numerical results, and retain kernel time, actual instruction path, resource use, and observed traffic at each available memory level. Join those measurements to the compile-time plan and source identity. Plot observed intensity W / B_observed,L and achieved performance W / T_kernel against the matching measured or calibrated ceiling. Report Roofline efficiency P_achieved / P_roof, model error T_predicted versus T_kernel, and whether the selected plan actually outranks rejected candidates. A GPU Roofline must not use the current direct CPU fallback as its GPU baseline. Profiling changes execution conditions, so preserve unprofiled timing separately from counter collection. Where no native GPU evidence exists, report `measured=unavailable`, not an inferred speedup.
 
 ## 7.3 Profitability Decision Timing
 
@@ -794,11 +810,11 @@ Every phase must state what it learned, which alternatives it kept or rejected, 
 | AI-P4 Distributed placement and sharding | Ownership and shard alternatives, cross-device bytes, memory balance, alias or visibility assumptions, and rejected mappings. | Plan lineage and distributed-alias facts; neither has a required trace record yet. |
 | AI-P5 Communication derivation | Collectives and transfers implied by each placement, bytes, topology/path, estimated exposed time and overlap, and unresolved communication boundaries. | Communication-specific DETAIL schema and plan linkage; both remain open. |
 | AI-P6 Local physical layout and residency | HBM/L2/SMEM/register placement, footprint versus capacity, spill or eviction risk, occupancy effect, and rejected residency plans. | LEGAL, COST, and residency DETAIL with resource limits; detail schema remains open. |
-| AI-P7 Multi-level tiling | Baseline and all tile candidates, legal and resource failures, cost terms, winner versus baseline, expected gain, and confidence. | CAND, LEGAL, COST, SELECT; a costed baseline and confidence are still required. |
+| AI-P7 Multi-level tiling | Baseline and all tile candidates, legal and resource failures, cost terms, winner versus baseline, expected gain, confidence, and predicted Roofline work/traffic/intensity by memory level where inputs exist. | CAND, LEGAL, COST, SELECT; Roofline ceilings and per-level byte provenance need a versioned trace extension. |
 | AI-P8 Fetch prefetch and async movement | Engine, stages, distance, barriers, fallback, raw and hidden memory time, residual compute bubbles, and why the chosen pipeline wins. | HINT, COST, pipeline DETAIL; barrier/fallback and bubble schemas remain open. |
 | AI-P9 Physical kernel fusion and scheduling | Final whole-plan composition, rejected alternatives, fusion boundary, launches and syncs, selected cost, actual IR changes, and structural verification. | Stable plan identity, SELECT, REWRITE, and a verification record; the latter two are incomplete. |
 | AI-P10 Runtime variants and adaptation | Each guarded variant, guard coverage and fallback, selection overhead, expected cost by workload bucket, and chosen static default. | Runtime-guard/variant detail and workload-bucket schema; not yet specified. |
-| AI-P11 Telemetry and profile feedback | Observed latency and traffic versus predictions, model error by cost term, variant hit rate, and next tuning action. | External measured profile joined to compile trace; a compile-only .t file must report this as unavailable. |
+| AI-P11 Telemetry and profile feedback | Observed latency and per-level traffic versus predictions; achieved versus predicted Roofline position, efficiency, selection-ranking error, model error by cost term, variant hit rate, and next tuning action. | External measured profile joined to compile trace and target calibration identity; a compile-only .t file must report measurements as unavailable. |
 
 The tool should produce a phase rollup and, for each PU/region, a compact candidate ledger: baseline, alternatives, legality, predicted total and cost components, confidence, selected plan, selection reason, rewrite result, verification, and remaining blocker. It should state the source of each number (analytical estimate, learned estimate, measurement, or unavailable). A cost estimate must never be presented as measured speedup.
 
@@ -808,7 +824,7 @@ The v0.2 positional records are a useful starting point, but they cannot yet sup
 
 - **Phase coverage:** emit a compact phase-end status and counts for each enabled phase, including zero eligible regions and a reason for disabled or blocked phases. Otherwise an absent record is ambiguous.
 - **Baseline and plan lineage:** cost a conservative baseline for every region and identify which component candidates form each whole OptimizationPlanIR. Keep ids stable from generation through selection and rewrite. Otherwise the tool cannot compute a defensible expected gain or connect an early fusion choice to a later tile and pipeline choice.
-- **Profitability evidence:** record cost-model source, confidence or missing-cost flag, target/resource assumptions, baseline and selected totals, and the reason for each rejection. Preserve raw and unhidden memory/communication separately; compute gain from comparable whole plans under the same assumptions.
+- **Profitability evidence:** record cost-model source, confidence or missing-cost flag, target/resource assumptions, baseline and selected totals, and the reason for each rejection. Preserve raw and unhidden memory/communication separately; compute gain from comparable whole plans under the same assumptions. For Roofline, retain unscaled FLOPs, predicted bytes per memory level, matched sustained compute/bandwidth ceilings, assumptions, and provenance; the existing scaled relative-cost columns cannot reconstruct a validated Roofline.
 - **Decision and transformation evidence:** identify the selected whole plan, distinguish cost rejection from legality rejection, record before/after IR identities and concrete change counts, and emit structural verification pass/fail. A SELECT without a successful REWRITE and verification must not be reported as an applied optimization.
 - **Runtime and profile boundary:** record guard/fallback definitions and workload buckets for variants. Join measured telemetry only through a documented compilation/profile identity; keep predicted cycles and observed latency in separate columns and units.
 - **Versioned schemas and validation:** define positional payloads and units for every emitted pattern and DETAIL subtype; increment the trace schema version when adding records. Reject unknown schemas, duplicate terminal decisions, missing baseline or cost, unmatched ids, inconsistent COST sums, and SELECT/REWRITE mismatches rather than silently producing a polished but false report.
@@ -917,7 +933,7 @@ Define legality rules for fusion, layout conversion, sharding, runtime variant s
 
 ## 11.4 Cost model calibration
 
-Add hardware calibration sources, benchmark kernels, fitted parameters, confidence intervals, and fallback heuristics.
+Add hardware calibration sources, benchmark kernels, fitted parameters, confidence intervals, and fallback heuristics. Maintain versioned, device-specific compute ceilings by dtype/instruction path and sustainable bandwidth ceilings by HBM, L2, shared-memory path, transfer engine, clock regime, and relevant occupancy range. Record whether a ceiling is a published specification, independent microbenchmark, or fitted observation. Compare predicted and observed per-level bytes before fitting latency; otherwise a cache-traffic error can be mistaken for a bandwidth error. Test candidate ranking and Roofline efficiency across multiple M/N/K shapes, edge tiles, cold/warm cache states, and pipeline depths. Keep a held-out shape set and preserve unprofiled timing separately from profiler counter runs. Do not promote Roofline-based selection from exploratory to cost-gated until the prediction error, ranking error, and fallback policy have explicit acceptance thresholds.
 
 ## 11.5 Telemetry schema
 
@@ -974,5 +990,7 @@ Track risks such as candidate explosion, inaccurate overlap modeling, runtime po
 - NVIDIA Blackwell architecture, NVFP4, Transformer Engine, and cuDNN frontend documentation: used as design evidence that FP4/NVFP4 changes tiling decisions through native Tensor Core throughput, packed value layout, scale-factor metadata, scale layout requirements, TMA/pipeline legality, and dtype-specific runtime variants.
 
 - NVIDIA CUDA and CUTLASS documentation: used as design evidence for explicit GPU hierarchy, occupancy, shared memory, Tensor Core tiling, asynchronous movement, and pipeline constraints.
+
+- NVIDIA Nsight Compute Profiling Guide, Roofline Charts and Memory Workload Analysis (https://docs.nvidia.com/nsight-compute/ProfilingGuide/): research-derived definition of arithmetic intensity, compute and bandwidth ceilings, hierarchical Roofline and measured achieved performance. Section 7.2A's compiler evidence fields, consistency gate, and selection-feedback use are DSC design proposals, not features attributed to NVIDIA.
 
 - Triton compiler documentation and source metadata: used as design evidence for block meta-parameters, autotune configurations, MLIR-based lowering, target-specific layout/pipeline passes, TMA/MMA lowering, barriers, and tensor-memory handling.

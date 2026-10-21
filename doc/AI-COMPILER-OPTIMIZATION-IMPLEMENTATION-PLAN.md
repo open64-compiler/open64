@@ -937,9 +937,18 @@ The compiler uses the existing WOPT trace convention: after confirming the
 bit is unused, reserve `AI_OPT_TRACE_FLAG = 0x00800000` under `TP_WOPT2`,
 query `Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG)`, and write compact positional
 `AI_OPT` records to `TFile`. The compiler switch is
-`-Wb,-ttOP2:0x00800000`; `-trOP2` separately requests IR dumps. This is a
-proposed implementation gate, not a claim that the switch already emits AI
-records. The raw `.t` file is retained unchanged. `ai-opt-report` parses its
+`-Wb,-ttOP2:0x00800000`; `-trOP2` separately requests IR dumps. The
+development option `-Wb,-DSL:ai_opt_trace=ON` now defaults ON and activates
+the same bit when `cuda_tile_output` runs; `=OFF` suppresses AI decision rows.
+The matmul artifact runner therefore needs no explicit `-ttOP2` switch.
+AIO-9 now emits v3 tile candidate/selection rows when the choice is made,
+appending the Python source line to each candidate record and
+`selection_reason=lowest_complete_relative_cost` to the selection record.
+The report parser also accepts archived v1/v2 rows, reporting an unrecorded
+selection reason rather than inferring one. The
+CUDA-source path emits its source/WHIRL action after verified lowering. The
+full phase-wide trace/report gate remains open. The raw `.t` file is retained
+unchanged. The planned general `ai-opt-report` parses its
 versioned `AI_OPT` records and fails visibly on an unknown schema or broken
 candidate/plan lineage.
 
@@ -1146,23 +1155,57 @@ phase-status rows still appear in the trace-derived summary.
 
 1. [ ] Certify the direct fixed-shape baseline and publish `m0-baseline`
    with source, `.B`/`.T`, correctness, measured runtime, commands, target
-   identity, and checksums.
+   identity, and checksums. The compiled-PU `emulated-smoke-001` passes
+   correctness and hash checks, and `native-ready-001` preserves that exact
+   executable and WHIRL for native rerun. Neither has native target timing yet.
 2. [ ] Implement the WOPT-convention AI trace bit, explicit phase coverage,
    and `ai-opt-report`. Publish `m1-trace-report` with the raw `.t`, complete
    and summary logs, all P0-P11 phase logs, a selected candidate, a skipped
-   candidate, and malformed/incomplete-trace negative tests.
+   candidate, and malformed/incomplete-trace negative tests. The first
+   standalone-matmul implementation and schema-v7 digest-named checkpoint now
+   satisfy the trace/report checks, including P0 semantic and P1 locality
+   facts; acceptance remains open until a native
+   `m0-baseline` receipt can be linked as predecessor.
 3. [ ] Reuse AIO-9 G0-G11 plans. Cost the unchanged baseline and at least
    two M/N/K tile families with explicit units, target resources, confidence,
    and rejection reasons. Keep stable plan IDs through selection and rewrite.
+   The current trace costs baseline, `cuda_64`, and `cuda_128`, selects plan 3,
+   and checks its emitted CUDA geometry against the trace. Stable identity
+   through an executable WHIRL rewrite is still missing.
 4. [ ] Implement one generated matmul tile path, atomically apply the
    cost-selected plan, verify before/after IR, compare numerically with the
    direct baseline, and measure on the same target. Publish
    `m2-multilevel-tiling` only with an actual tiled rewrite; cuBLASLt
-   dispatch alone does not satisfy this gate.
+   dispatch alone does not satisfy this gate. M2a now emits a versioned
+   `m2-selected-tile.json` handoff from the real compiler trace, CUDA source,
+   and input/lowered WHIRL hashes (`compiler-source/run-018/`); the remote
+   validation package carries it (`compiler-gpu-validation/run-006/`). The
+   opt-in M2b compiler path now atomically rewrites the selected synchronous
+   F32 matmul to a versioned generated-provider call at `-O3`; its plan ID,
+   tile geometry, and resource contract survive in a read-only 64-byte WHIRL
+   descriptor. `m2-applied/run-005/` retains the selected `.cu`, raw trace,
+   option-off/on post-lowering WHIRL dumps, object, reports, and checksums;
+   `m2-whirl-g14/run-007/` retains matching before/after binary WHIRL,
+   independent `ir_b2a -st -src` views, their full diff, ABI size, invalid
+   resource rejection, and rollback.
+   The fixed CUDA kernel still lacks a production runtime adapter that binds
+   the generated symbol to the compiler-emitted source, checks device/kernel
+   availability, and implements a reviewed fallback. The object has an
+   unresolved `__open64_dsl_matmul_generated_v1` reference. M2c must prove
+   numerical equivalence and same-target timing. Neither artifact is an M2
+   acceptance receipt.
 5. [ ] Extend the selected tile with P7.4/P8 staging and a reviewed
    fetch/pipeline plan. Retain movement engine, stages, issue/wait, barriers,
    hidden versus unhidden movement, fallback, correctness, and measurement
-   in `m3-prefetch-pipeline`.
+   in `m3-prefetch-pipeline`. The opt-in `run-015/` source-sidecar checkpoint
+   covers plan selection, two-stage TMA emission, fallback, and P8 trace/report
+   evidence; it does not close this gate without native CUDA compilation,
+   numerical correctness, and same-target timing. `compiler-source/run-017/`
+   exposes which launch path was selected, and the byte-preserving
+   `compiler-gpu-validation/run-006/` package is prepared to compare both
+   paths on a native Hopper-or-later GPU with wall-clock launch-to-completion
+   timing that includes host tensor-map setup. Neither package is a WHIRL
+   rewrite.
 6. [ ] Calibrate the cost model against the retained measurements. Report
    prediction error by compute, memory, synchronization, launch, and
    occupancy term without presenting relative scores as cycles.

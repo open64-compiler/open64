@@ -73,6 +73,7 @@
 #include "phase.h"		    /* for phase_ogroup_table */
 #include "flags.h"		    /* for Process_Command_Line_Group() */
 #include "config.h"		    /* for Debug_Level */
+#include "config_dsl.h"
 #include "config_list.h"
 #include "timing.h"		    /* for Initialize_Timing() */
 #include "tracing.h"		    /* for Set_Trace() */
@@ -497,6 +498,11 @@ Process_Command_Line (INT argc, char **argv)
     if (Dsm_Recompile)
       Run_Dsm_Common_Check = FALSE;
 
+    if (VHO_DSL_AI_Opt_Trace) {
+      Set_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG);
+      Tracing_Enabled = TRUE;
+    }
+
     if ( Tracing_Enabled ) {
       Initialize_Timing (TRUE);
     }
@@ -691,4 +697,3 @@ Lowering_Initialize (void)
     */
     Lower_Init();
 }
-

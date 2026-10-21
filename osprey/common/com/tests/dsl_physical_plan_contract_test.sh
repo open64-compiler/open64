@@ -34,6 +34,11 @@ fallback_b="$artifact_dir/matmul.G14.fallback.B"
 lower_t="$artifact_dir/matmul.G14.T"
 lower_repeat_t="$artifact_dir/matmul.G14.repeat.T"
 fallback_t="$artifact_dir/matmul.G14.fallback.T"
+generated_tile_b="$artifact_dir/matmul.M2.generated.B"
+generated_tile_t="$artifact_dir/matmul.M2.generated.T"
+generated_tile_before_b="$artifact_dir/matmul.M2.before.B"
+generated_tile_before_t="$artifact_dir/matmul.M2.before.T"
+generated_tile_diff="$artifact_dir/matmul.M2.before-after.diff"
 lower_diff="$artifact_dir/matmul.before-to-G14.diff"
 reject="$artifact_dir/unsupported-provider.G14.log"
 rollback="$artifact_dir/late-failure-rollback.G14.log"
@@ -68,6 +73,12 @@ OPEN64_AIO11_MODE=lower-fallback OPEN64_AIO11_ARTIFACT="$fallback_b" \
   "$producer" >> "$validation" 2>&1
 OPEN64_AIO11_MODE=lower-reject "$producer" > "$reject" 2>&1
 OPEN64_AIO11_MODE=lower-rollback "$producer" > "$rollback" 2>&1
+OPEN64_AIO11_MODE=lower-generated-tile \
+  OPEN64_AIO11_ARTIFACT="$generated_tile_b" \
+  "$producer" >> "$validation" 2>&1
+OPEN64_AIO11_MODE=lower-generated-tile-before \
+  OPEN64_AIO11_ARTIFACT="$generated_tile_before_b" \
+  "$producer" >> "$validation" 2>&1
 
 "$ir_b2a" -st -src "$before_b" "$before_t"
 "$ir_b2a" -st -src "$stage_b" "$stage_t"
@@ -75,6 +86,9 @@ OPEN64_AIO11_MODE=lower-rollback "$producer" > "$rollback" 2>&1
 "$ir_b2a" -st -src "$lower_b" "$lower_t"
 "$ir_b2a" -st -src "$lower_repeat_b" "$lower_repeat_t"
 "$ir_b2a" -st -src "$fallback_b" "$fallback_t"
+"$ir_b2a" -st -src "$generated_tile_b" "$generated_tile_t"
+"$ir_b2a" -st -src "$generated_tile_before_b" "$generated_tile_before_t"
+diff -u "$generated_tile_before_t" "$generated_tile_t" > "$generated_tile_diff" || true
 
 cmp "$before_b" "$stage_b"
 cmp "$before_t" "$stage_t"
@@ -102,6 +116,11 @@ grep -q "__open64_dsl_matmul_physical_v1" "$lower_t"
 grep -q ".dsl_physical_plan" "$lower_t"
 grep -A8 ".dsl_physical_plan" "$lower_t" | grep -q "Alignment: 8 bytes"
 grep -q "__open64_dsl_matmul_v1" "$fallback_t"
+grep -q "__open64_dsl_matmul_generated_v1" "$generated_tile_t"
+grep -q "OPR_DSLMATMUL" "$generated_tile_before_t"
+grep -q "__open64_dsl_matmul_generated_v1" "$generated_tile_diff"
+grep -q ".dsl_generated_matmul_plan" "$generated_tile_t"
+grep -A8 ".dsl_generated_matmul_plan" "$generated_tile_t" | grep -q "Alignment: 8 bytes"
 if grep -q "__open64_dsl_matmul_physical_v1" "$fallback_t"; then
   echo "error: unavailable provider did not use direct fallback" >&2
   exit 1
@@ -118,7 +137,10 @@ sha256sum "$before_b" "$stage_b" "$repeat_b" \
   "$analysis" "$repeat_analysis" "$o0" "$generated" \
   "$unavailable" "$mismatch" "$lower_b" "$lower_repeat_b" \
   "$fallback_b" "$lower_t" "$lower_repeat_t" "$fallback_t" \
-  "$lower_diff" "$reject" "$rollback" > "$artifact_dir/SHA256SUMS"
+  "$generated_tile_b" "$generated_tile_t" \
+  "$generated_tile_before_b" "$generated_tile_before_t" \
+  "$generated_tile_diff" "$lower_diff" "$reject" "$rollback" \
+  > "$artifact_dir/SHA256SUMS"
 
 cat > "$artifact_dir/commands.txt" <<EOF
 OPEN64_AIO11_MODE=before OPEN64_AIO11_ARTIFACT=$before_b $producer
@@ -134,12 +156,16 @@ OPEN64_AIO11_MODE=lower-provider OPEN64_AIO11_ARTIFACT=$lower_repeat_b $producer
 OPEN64_AIO11_MODE=lower-fallback OPEN64_AIO11_ARTIFACT=$fallback_b $producer
 OPEN64_AIO11_MODE=lower-reject $producer
 OPEN64_AIO11_MODE=lower-rollback $producer
+OPEN64_AIO11_MODE=lower-generated-tile OPEN64_AIO11_ARTIFACT=$generated_tile_b $producer
+OPEN64_AIO11_MODE=lower-generated-tile-before OPEN64_AIO11_ARTIFACT=$generated_tile_before_b $producer
 $ir_b2a -st -src $before_b $before_t
 $ir_b2a -st -src $stage_b $stage_t
 $ir_b2a -st -src $repeat_b $repeat_t
 $ir_b2a -st -src $lower_b $lower_t
 $ir_b2a -st -src $lower_repeat_b $lower_repeat_t
 $ir_b2a -st -src $fallback_b $fallback_t
+$ir_b2a -st -src $generated_tile_b $generated_tile_t
+$ir_b2a -st -src $generated_tile_before_b $generated_tile_before_t
 EOF
 
 echo "AIO-11 physical-plan selector contract passed"
@@ -151,6 +177,7 @@ echo "review provider mismatch: $mismatch"
 echo "review lowered WHIRL trace: $lower_t"
 echo "review direct fallback trace: $fallback_t"
 echo "review before/after diff: $lower_diff"
+echo "review generated-tile before/after diff: $generated_tile_diff"
 echo "review unsupported-provider rejection: $reject"
 echo "review late-failure rollback: $rollback"
 echo "review diagnostics: $validation"

@@ -46,6 +46,10 @@
 #include "dsl_telemetry_feedback_opt.h"
 #include "open64_dsl_runtime_abi.h"
 
+typedef char AIO11_Generated_Matmul_ABI_Size_Check
+    [(sizeof(OPEN64_DSL_GENERATED_MATMUL_PLAN_V1) ==
+      OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE) ? 1 : -1];
+
 BOOL Run_vsaopt = FALSE;
 INT8 Debug_Level = 0;
 
@@ -527,7 +531,8 @@ Check_Selection
 
 static BOOL
 Check_Lowered_Runtime
-        (WN *tree, const char *matmul_name, UINT32 matmul_parameters)
+        (WN *tree, const char *matmul_name, UINT32 matmul_parameters,
+         const char *plan_symbol, UINT32 plan_size)
 {
     WN *body = WN_func_body(tree);
     UINT32 call_count = 0;
@@ -545,10 +550,9 @@ Check_Lowered_Runtime
         if (matmul_parameters == 5) {
             WN *parameter = WN_kid0(WN_kid(statement, 4));
             if (WN_operator(parameter) != OPR_LDA ||
-                strstr(ST_name(WN_st(parameter)), ".dsl_physical_plan") ==
-                    NULL ||
-                TY_size(ST_type(WN_st(parameter))) !=
-                    OPEN64_DSL_PHYSICAL_PLAN_V1_SIZE ||
+                (plan_symbol == NULL ||
+                 strstr(ST_name(WN_st(parameter)), plan_symbol) == NULL) ||
+                TY_size(ST_type(WN_st(parameter))) != plan_size ||
                 TY_align(ST_type(WN_st(parameter))) != 8)
                 return FALSE;
         }
@@ -684,7 +688,9 @@ Run_Lowering_Mode
              (tree,
               physical ? "__open64_dsl_matmul_physical_v1" :
                          "__open64_dsl_matmul_v1",
-              physical ? 5 : 4)) {
+              physical ? 5 : 4,
+              physical ? ".dsl_physical_plan" : NULL,
+              physical ? OPEN64_DSL_PHYSICAL_PLAN_V1_SIZE : 0)) {
         fprintf(stderr,
                 "AIO-11 runtime lowering mismatch: valid=%u sites=%u "
                 "provider_sites=%u lowered=%u\n",
@@ -704,6 +710,83 @@ Run_Lowering_Mode
     }
     printf("AIO-11 %s runtime lowering passed\n",
            physical ? "cuBLASLt" : "direct fallback");
+    return 0;
+}
+
+/* Exercise the opt-in generated path without weakening AIO-11's default gate. */
+static int
+Run_Generated_Tile_Lowering_Mode (const char *artifact, BOOL apply)
+{
+    AIO11_FIXTURE fixture;
+    AIO11_ANALYSIS analysis;
+    DSL_TILE_SITE_RECORD site;
+    DSL_TILE_PLAN_RECORD tile;
+    DSL_BUILDER_VERIFY_RESULT verify;
+    VHO_DSL_LOWER_RESULT lower;
+    UINT32 mask =
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT) |
+        DSL_PHYSICAL_PROVIDER_MASK(DSL_PHYSICAL_PROVIDER_OPEN64_GENERATED);
+    DSL_Builder_Begin_Program();
+    DSL_Opcode_Register_Common_Substrate();
+    if (!Create_Fixture("aio11_generated_tile_lowering", &fixture) ||
+        !Build_Analysis(&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 3,
+                        mask, mask, NULL, &analysis) ||
+        !Check_Selection(&analysis, 2,
+                         DSL_PHYSICAL_PROVIDER_OPEN64_GENERATED,
+                         DSL_OPT_REJECT_NONE))
+        return 1;
+    const DSL_TILE_PLAN_IR *tile_ir = VHO_DSL_Tile_Get_IR(analysis.tile);
+    if (!DSL_tile_plan_ir_get_site(tile_ir, 1, &site) ||
+        site.selected_plan_id == site.baseline_plan_id)
+        return 1;
+    BOOL found = FALSE;
+    for (UINT32 i = 0; i < site.tile_plan_count; ++i) {
+        if (!DSL_tile_plan_ir_get_plan
+                 (tile_ir, site.first_tile_plan_id + i, &tile))
+            return 1;
+        if (tile.optimization_plan_id == site.selected_plan_id) {
+            found = TRUE;
+            break;
+        }
+    }
+    memset(&verify, 0, sizeof(verify));
+    if (!found || !DSL_Builder_Verify_Program(&verify))
+        return 1;
+    if (!apply) {
+        Destroy_Analysis(&analysis);
+        return artifact != NULL && Write_Lowered_Image(fixture.pu, artifact)
+                   ? 0 : 1;
+    }
+
+    WN *tree = PU_Info_tree_ptr(fixture.pu);
+    WN *original = tree;
+    DSL_TILE_PLAN_RECORD invalid = tile;
+    invalid.legality = DSL_OPT_LEGALITY_REJECTED;
+    if (VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile
+            (fixture.pu, &tree, &invalid, stderr, &lower) ||
+        tree != original || PU_Info_tree_ptr(fixture.pu) != original)
+        return 1;
+    invalid = tile;
+    ++invalid.shared_bytes_per_stage;
+    if (VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile
+            (fixture.pu, &tree, &invalid, stderr, &lower) ||
+        tree != original || PU_Info_tree_ptr(fixture.pu) != original)
+        return 1;
+    if (!VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile
+             (fixture.pu, &tree, &tile, stderr, &lower) ||
+        tree == original || PU_Info_tree_ptr(fixture.pu) != tree ||
+        lower.physical_plan_site_count != 1 ||
+        lower.physical_provider_site_count != 1 ||
+        lower.physical_provider_lowered_count != 1 ||
+        !Check_Lowered_Runtime
+             (tree, "__open64_dsl_matmul_generated_v1", 5,
+              ".dsl_generated_matmul_plan",
+              OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE))
+        return 1;
+    Destroy_Analysis(&analysis);
+    if (artifact == NULL || !Write_Lowered_Image(fixture.pu, artifact))
+        return 1;
+    printf("M2 generated tile WHIRL lowering and rollback passed\n");
     return 0;
 }
 
@@ -1336,6 +1419,12 @@ main(void)
     if (strcmp(mode, "lower-rollback") == 0)
         return Run_Lowering_Mode
                    (DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT, TRUE, NULL);
+    if (strcmp(mode, "lower-generated-tile-before") == 0)
+        return Run_Generated_Tile_Lowering_Mode
+                   (getenv("OPEN64_AIO11_ARTIFACT"), FALSE);
+    if (strcmp(mode, "lower-generated-tile") == 0)
+        return Run_Generated_Tile_Lowering_Mode
+                   (getenv("OPEN64_AIO11_ARTIFACT"), TRUE);
     if (strcmp(mode, "runtime-variant") == 0)
         return Run_Runtime_Variant_Mode();
     if (strcmp(mode, "runtime-variant-control") == 0)

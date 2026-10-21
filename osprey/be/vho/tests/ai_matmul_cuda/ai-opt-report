@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""Command-line entry point for the AI optimization trace report."""
+
+from ai_opt_report import main
+
+
+if __name__ == "__main__":
+    main()

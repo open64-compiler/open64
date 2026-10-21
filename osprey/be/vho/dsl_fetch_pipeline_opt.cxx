@@ -419,7 +419,8 @@ DSL_Fetch_Add_Plan
     if (engine == DSL_MEMORY_MOVEMENT_ASYNC_COPY)
         desired_stages = 2;
     else if (engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC)
-        desired_stages = 3;
+        desired_stages = std::min((UINT32)3,
+                                  analysis->control.maximum_buffer_stages);
     pipeline.stage_count = std::min
         (desired_stages,
          std::min(capability.maximum_stages,
