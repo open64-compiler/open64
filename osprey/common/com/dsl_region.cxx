@@ -961,6 +961,100 @@ DSL_Region_Verify_PU (PU_Info *pu, FILE *diagnostic)
     return DSL_Region_Verify_Store(DSL_Region_Find_Store(pu), diagnostic);
 }
 
+static BOOL
+DSL_Region_Tree_Contains (const WN *root, const WN *target)
+{
+    if (root == NULL)
+        return FALSE;
+    if (root == target)
+        return TRUE;
+    if (WN_operator(root) == OPR_BLOCK) {
+        for (WN *stmt = WN_first(root); stmt != NULL; stmt = WN_next(stmt)) {
+            if (DSL_Region_Tree_Contains(stmt, target))
+                return TRUE;
+        }
+        return FALSE;
+    }
+    for (INT kid = 0; kid < WN_kid_count(root); ++kid) {
+        if (DSL_Region_Tree_Contains(WN_kid(root, kid), target))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL
+DSL_Region_Tree_Defines_ST (const WN *root, ST_IDX st)
+{
+    if (root == NULL)
+        return FALSE;
+    if (WN_operator(root) == OPR_STID && WN_st_idx(root) == st)
+        return TRUE;
+    if (WN_operator(root) == OPR_BLOCK) {
+        for (WN *stmt = WN_first(root); stmt != NULL; stmt = WN_next(stmt)) {
+            if (DSL_Region_Tree_Defines_ST(stmt, st))
+                return TRUE;
+        }
+        return FALSE;
+    }
+    for (INT kid = 0; kid < WN_kid_count(root); ++kid) {
+        if (DSL_Region_Tree_Defines_ST(WN_kid(root, kid), st))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+BOOL
+DSL_Region_Verify_Terminal_PU (PU_Info *pu, FILE *diagnostic)
+{
+    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
+    if (pu == NULL || store == NULL || store->regions.empty() ||
+        PU_Info_state(pu, WT_TREE) != Subsect_InMem ||
+        PU_Info_tree_ptr(pu) == NULL ||
+        PU_Info_state(pu, WT_REGIONS) != Subsect_InMem ||
+        !DSL_IR_Image_Current_PU_Is(PU_Info_proc_sym(pu)) ||
+        !DSL_Region_Verify_Store(store, diagnostic))
+        return DSL_Region_Report(diagnostic,
+                                 "terminal REGION store or owner invalid", 0);
+
+    for (UINT32 i = 0; i < store->regions.size(); ++i) {
+        const dsl_region_runtime &region = *store->regions[i];
+        if (!DSL_Region_Tree_Contains(PU_Info_tree_ptr(pu), region.wn))
+            return DSL_Region_Report(diagnostic,
+                                     "terminal REGION is detached",
+                                     region.image.region_id);
+        for (UINT32 j = 0; j < i; ++j) {
+            if (store->regions[j]->wn == region.wn)
+                return DSL_Region_Report(diagnostic,
+                                         "terminal REGION WN is duplicated",
+                                         region.image.region_id);
+        }
+    }
+    for (UINT32 i = 0; i < store->interfaces.size(); ++i) {
+        const DSL_REGION_INTERFACE_RECORD &binding = store->interfaces[i];
+        if (ST_IDX_level(binding.st) != CURRENT_SYMTAB ||
+            ST_IDX_index(binding.st) >= ST_Table_Size(CURRENT_SYMTAB))
+            return DSL_Region_Report(diagnostic,
+                                     "terminal REGION symbol is invalid",
+                                     binding.region_id);
+        if ((binding.roles & (DSL_REGION_VALUE_OUTPUT |
+                              DSL_REGION_VALUE_INOUT |
+                              DSL_REGION_VALUE_RESULT)) == 0)
+            continue;
+        BOOL defined = FALSE;
+        for (UINT32 j = 0; j < store->regions.size(); ++j) {
+            const dsl_region_runtime &region = *store->regions[j];
+            if (region.image.region_id == binding.region_id)
+                defined = DSL_Region_Tree_Defines_ST
+                              (WN_region_body(region.wn), binding.st);
+        }
+        if (!defined)
+            return DSL_Region_Report(diagnostic,
+                                     "terminal REGION result is not defined",
+                                     binding.region_id);
+    }
+    return TRUE;
+}
+
 UINT32
 DSL_Region_Symbol_Use_Count (PU_Info *pu, ST_IDX st)
 {

@@ -362,8 +362,17 @@ baseline revision is used. A focused two-PU file reopens in the pre-M1 reader.
 The mode leaves TY/symbol tables intact and does not infer that all CKKS events
 were consumed; D4 still owes the authenticated group-to-ABI join and a
 complete-model terminal checkpoint before M3 can be closed.
-It presently fails closed for `WT_REGIONS` PUs; D4 must explicitly settle
-their interface disposition before selecting this terminal writer.
+The terminal writer now carries a managed `WT_REGIONS` subsection only after
+PU-local physical-tree, local-ST, and REGION result-definition preflight.
+A focused two-PU `cnn.basic_block.v1` image reopens in the current and pre-M1
+readers, while a stale result interface rejects. D4 still must prove the
+complete CKKS producer's output-symbol redirects and all-PU event/ABI join;
+the focused REGION roundtrip is not full-model terminal certification.
+The retained S6-0c `secure_resnet20.ckks_ops.T` has nine managed
+`cnn.basic_block.v1` REGIONs across ten PUs; their output/result interface
+symbols still name CKKS-stage values. D4 must redirect each such interface
+to the corresponding standard runtime-handle definition before the terminal
+writer can admit those PUs.
 
 **Code**
 

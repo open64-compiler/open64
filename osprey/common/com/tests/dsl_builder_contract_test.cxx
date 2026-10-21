@@ -12938,6 +12938,41 @@ Check_Grouped_Native_Lowering(void)
         (0, PU_Info_proc_sym(pu), standard_body,
          WN_CreateBlock(), WN_CreateBlock());
     Set_PU_Info_tree_ptr(pu, standard_tree);
+    if (getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION") != NULL) {
+        DSL_REGION region = DSL_Region_Create
+            (pu, NULL, "cnn.basic_block", 1);
+        GROUP_LOWER_CHECK
+            (region != NULL && DSL_Region_Declare_Symbol
+                 (region, projections[0].handle_st,
+                  DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT,
+                  0, DSL_REGION_INTERFACE_FLAG_NONE),
+             "terminal REGION interface");
+        if (getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION_INVALID_ST") != NULL) {
+            ST_IDX invalid_st = make_ST_IDX
+                (ST_Table_Size(CURRENT_SYMTAB) + 1, CURRENT_SYMTAB);
+            GROUP_LOWER_CHECK
+                (DSL_Region_Declare_Symbol
+                     (region, invalid_st, DSL_REGION_VALUE_INPUT, 1,
+                      DSL_REGION_INTERFACE_FLAG_NONE),
+                 "terminal invalid-ST fixture");
+        }
+        if (getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION_STALE") == NULL) {
+            WN *result = WN_CreateStid
+                (OPR_STID, MTYPE_V, Pointer_Mtype, 0,
+                 projections[0].handle_st, projections[0].handle_ty,
+                 WN_Intconst(Pointer_Mtype, 0));
+            WN_Set_Linenum(result, group_position);
+            GROUP_LOWER_CHECK
+                (DSL_Region_Append_Statement(region, result),
+                 "terminal REGION result");
+        }
+        GROUP_LOWER_CHECK
+            (DSL_Region_Set_Source_Position(region, group_position) &&
+             (getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION_DETACHED") != NULL ||
+              DSL_Region_Append_To_PU(region)) &&
+             DSL_Region_Verify_PU(pu, stderr),
+             "terminal REGION tree");
+    }
     BOOL standard_control_valid =
         DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr);
     BOOL terminal_written = FALSE;

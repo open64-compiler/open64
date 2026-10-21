@@ -13,6 +13,8 @@ image="$artifact_dir/group_lowering_contract.B"
 trace="$artifact_dir/group_lowering_contract.T"
 terminal_image="$artifact_dir/group_lowering_terminal.B"
 terminal_trace="$artifact_dir/group_lowering_terminal.T"
+region_image="$artifact_dir/group_lowering_terminal_region.B"
+region_trace="$artifact_dir/group_lowering_terminal_region.T"
 
 for executable in "$contract_test" "$ir_b2a"; do
   if [[ ! -x "$executable" ]]; then
@@ -45,6 +47,31 @@ if ! (cd "$repo_root" && OPEN64_DSL_GROUP_LOWER_ONLY=1 \
   OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT="$terminal_image" \
   "$contract_test") >>"$artifact_dir/validation.log" 2>&1; then
   cat "$artifact_dir/validation.log" >&2
+  exit 1
+fi
+printf '%s\n' \
+  "OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION=1 OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT=$region_image $contract_test" \
+  "$ir_b2a -st -src $region_image $region_trace" \
+  >>"$artifact_dir/commands.txt"
+if ! (cd "$repo_root" && OPEN64_DSL_GROUP_LOWER_ONLY=1 \
+  OPEN64_DSL_GROUP_LOWER_ARTIFACT="$image" \
+  OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT="$region_image" \
+  OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION=1 \
+  "$contract_test") >>"$artifact_dir/validation.log" 2>&1; then
+  cat "$artifact_dir/validation.log" >&2
+  exit 1
+fi
+if ! (cd "$repo_root" && "$ir_b2a" -st -src \
+       "$region_image" "$region_trace") \
+    >>"$artifact_dir/validation.log" 2>&1; then
+  cat "$artifact_dir/validation.log" >&2
+  exit 1
+fi
+if ! grep -Fq 'contract=cnn.basic_block.v1' "$region_trace" ||
+   ! grep -Fq 'VALUE ordinal=0' "$region_trace" ||
+   ! grep -Fq 'REGION 1' "$region_trace" ||
+   grep -Fq 'OPR_DSL' "$region_trace"; then
+  echo "standard-only terminal REGION evidence is incomplete" >&2
   exit 1
 fi
 grep -Fq 'DSL terminal preflight rejected live tensor seed and accepted standard control tree' \
@@ -149,10 +176,25 @@ if [[ -n "${OPEN64_PREVIOUS_IR_B2A:-}" ]]; then
     echo "previous reader lost a terminal PU" >&2
     exit 1
   fi
+  if ! "$OPEN64_PREVIOUS_IR_B2A" -st -src "$region_image" \
+       "$artifact_dir/previous_terminal_region_reader.T" \
+       >"$artifact_dir/previous_terminal_region_reader.log" 2>&1; then
+    echo "previous ir_b2a rejected terminal REGION WHIRL" >&2
+    cat "$artifact_dir/previous_terminal_region_reader.log" >&2
+    exit 1
+  fi
+  if ! grep -Fq 'contract=cnn.basic_block.v1' \
+       "$artifact_dir/previous_terminal_region_reader.T"; then
+    echo "previous reader lost the terminal REGION interface" >&2
+    exit 1
+  fi
 fi
 
 incomplete_temp="$artifact_dir/incomplete_terminal.B.tmp"
 native_temp="$artifact_dir/native_terminal.B.tmp"
+stale_region_temp="$artifact_dir/stale_region_terminal.B.tmp"
+detached_region_temp="$artifact_dir/detached_region_terminal.B.tmp"
+invalid_st_temp="$artifact_dir/invalid_st_terminal.B.tmp"
 printf '%s\n' \
   "OPEN64_DSL_GROUP_LOWER_TERMINAL_NATIVE=1 OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT=$native_temp $contract_test" \
   "OPEN64_DSL_GROUP_LOWER_TERMINAL_INCOMPLETE=1 OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT=$incomplete_temp $contract_test" \
@@ -185,6 +227,51 @@ if ! grep -Fq 'standard-only PU coverage' \
   echo "incomplete terminal output failed outside the coverage gate" >&2
   exit 1
 fi
+printf '%s\n' \
+  "OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION=1 OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION_STALE=1 OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT=$stale_region_temp $contract_test" \
+  >>"$artifact_dir/commands.txt"
+if (cd "$repo_root" && OPEN64_DSL_GROUP_LOWER_ONLY=1 \
+  OPEN64_DSL_GROUP_LOWER_ARTIFACT="$image" \
+  OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT="$stale_region_temp" \
+  OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION=1 \
+  OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION_STALE=1 \
+  "$contract_test") >"$artifact_dir/stale_region_terminal.log" 2>&1; then
+  echo "stale terminal REGION result was accepted" >&2
+  exit 1
+fi
+if ! grep -Fq 'terminal REGION result is not defined' \
+     "$artifact_dir/stale_region_terminal.log" ||
+   [[ -e "$artifact_dir/stale_region_terminal.B" ]]; then
+  echo "stale terminal REGION failed outside the interface gate" >&2
+  exit 1
+fi
+for case in detached invalid_st; do
+  if [[ "$case" == detached ]]; then
+    case_option=OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION_DETACHED
+    case_temp="$detached_region_temp"
+    expected='terminal REGION is detached'
+  else
+    case_option=OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION_INVALID_ST
+    case_temp="$invalid_st_temp"
+    expected='terminal REGION symbol is invalid'
+  fi
+  printf '%s\n' "$case_option=1 OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT=$case_temp $contract_test" \
+    >>"$artifact_dir/commands.txt"
+  if (cd "$repo_root" && OPEN64_DSL_GROUP_LOWER_ONLY=1 \
+    OPEN64_DSL_GROUP_LOWER_ARTIFACT="$image" \
+    OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT="$case_temp" \
+    OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION=1 \
+    env "$case_option=1" "$contract_test") \
+      >"$artifact_dir/${case}_region_terminal.log" 2>&1; then
+    echo "$case terminal REGION was accepted" >&2
+    exit 1
+  fi
+  if ! grep -Fq "$expected" "$artifact_dir/${case}_region_terminal.log" ||
+     [[ -e "${case_temp%.tmp}" ]]; then
+    echo "$case terminal REGION failed outside its preflight gate" >&2
+    exit 1
+  fi
+done
 
 (cd "$artifact_dir" && sha256sum *.B *.T *.log \
   dsl_builder_contract_test.cxx commands.txt terminal-*.txt >SHA256SUMS)

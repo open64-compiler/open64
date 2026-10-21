@@ -138,10 +138,18 @@ logical image and fails closed in the pre-M1 reader. This proves the writer
 boundary, not the S6-0d event-consumption or complete-model terminal gate.
 The FHE producer must finish those proofs before opening a standard-only
 temporary output and publish it only after all-PU validation succeeds.
-The current writer mode also rejects a PU with a `WT_REGIONS` subsection;
-full-model terminal lowering must either discharge that interface or prove a
-reviewed legacy-readable REGION disposition. No source CKKS event or private
-group row is discarded from the immutable intermediate image.
+The terminal writer now admits a managed `WT_REGIONS` subsection when the
+active PU's REGION records still name WNs in its standard physical tree, all
+interface symbols are valid local STs, and each output/result symbol is
+defined inside its REGION. It writes the unchanged per-PU REGION subsection
+while omitting the incompatible optional DSL/FHE global images. A focused
+two-PU image with `cnn.basic_block.v1` reopens in both the current and pre-M1
+readers; a stale result interface rejects before PU writing. This proves the
+generic writer/reader disposition, not that the full CKKS producer has
+redirected every REGION output to its terminal runtime handle. D4 must still
+prove those transitions and the authenticated event-to-ABI join. No source
+CKKS event or private group row is discarded from the immutable intermediate
+image.
 
 ## Cost And Validation
 

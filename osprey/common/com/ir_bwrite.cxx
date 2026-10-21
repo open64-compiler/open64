@@ -104,6 +104,7 @@
 #include "fhe_image.h"
 #include "fhe_plan.h"
 #include "dsl_region.h"
+#include "dsl_region_internal.h"
 #include "ir_bread.h"
 #ifndef OWN_ERROR_PACKAGE
 #include "dsl_gatekeeper.h"
@@ -2023,15 +2024,15 @@ Write_PU_Info (PU_Info *pu)
         if (pu == NULL || pu != ir_output_expected_pu ||
             ir_output_globals_written ||
             PU_Info_child(pu) != NULL ||
-            PU_Info_state(pu, WT_REGIONS) != Subsect_Missing ||
+            (PU_Info_state(pu, WT_REGIONS) != Subsect_Missing &&
+             !DSL_Region_Verify_Terminal_PU(pu, stderr)) ||
             !DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr))
             ErrMsg(EC_IR_Scn_Write, "standard-only PU", ir_output->file_name);
         ir_output_expected_pu = PU_Info_next(pu);
     }
 
     WN_MAP off_map = WN_MAP_UNDEFINED;
-    BOOL region_map = !ir_output_standard_only &&
-                      PU_Info_state(pu, WT_REGIONS) == Subsect_InMem;
+    BOOL region_map = PU_Info_state(pu, WT_REGIONS) == Subsect_InMem;
     BOOL callsite_map =
         !ir_output_standard_only &&
         DSL_Call_Image_PU_Has_Calls(PU_Info_proc_sym(pu));
