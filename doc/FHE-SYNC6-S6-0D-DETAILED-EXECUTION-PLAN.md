@@ -374,9 +374,12 @@ symbols still name CKKS-stage values. D4 must redirect each such interface
 to the corresponding standard runtime-handle definition before the terminal
 writer can admit those PUs.
 The generic two-group test now exercises that redirect inside a managed
-REGION and proves it after mapped reopen. It does not select CKKS groups,
-authenticate ABI descriptors, or remove the remaining native seed; those
-remain D4/FHE producer obligations for the full image.
+REGION and proves it after mapped reopen. A second focused run elides the
+dead tensor seed, writes the actual grouped REGION tree as standard-only
+WHIRL, and reopens it in both current and pre-M1 readers. This is one-PU
+transaction-to-writer evidence; it does not select CKKS groups, authenticate
+ABI descriptors, or cover the complete FHE image. Those remain D4/FHE
+producer obligations.
 
 **Code**
 

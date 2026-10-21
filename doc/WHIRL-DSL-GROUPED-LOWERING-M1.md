@@ -156,7 +156,12 @@ managed `cnn.basic_block.v1` REGION. The grouped transaction replaces their
 six native definitions with two standard handle definitions and redirects the
 REGION result interface to the second handle. A mapped reopen shows the same
 interface ST as the physical `STID`; it still shows the unrelated native
-tensor seed, so this is an intermediate-image proof, not a terminal PU proof.
+tensor seed, so this is an intermediate-image proof. A second producer run
+uses the existing verified-dead-source transaction to elide that seed, then
+writes the actual grouped REGION tree through the standard-only writer. Its
+terminal `.B` reopens with identical `ir_b2a -st -src` output in the current
+and pre-M1 readers. This proves the generic transaction-to-writer path for
+one PU, not CKKS event/ABI consumption or complete-model terminal coverage.
 
 ## Cost And Validation
 

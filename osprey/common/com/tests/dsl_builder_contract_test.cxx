@@ -12948,6 +12948,44 @@ Check_Grouped_Native_Lowering(void)
                  (body, DSL_Builder_Get_Value_Result_Symbol(values[i]),
                   NULL) == NULL,
              "private native definition removed");
+    if (getenv("OPEN64_DSL_GROUP_LOWER_REGION_TERMINAL") != NULL) {
+        WN *seed_definition = Find_STID_And_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(seed), NULL);
+        DSL_IR_NATIVE_VALUE_LOWER_REQUEST seed_request;
+        DSL_IR_NATIVE_VALUE_LOWER_RESULT seed_result;
+        memset(&seed_request, 0, sizeof(seed_request));
+        memset(&seed_result, 0, sizeof(seed_result));
+        seed_request.native_definition = seed_definition;
+        seed_request.source_value_id = DSL_Builder_Get_Value_Image_Id(seed);
+        seed_request.expected_operator = OPR_DSLTENSORCONST;
+        seed_request.expected_version = 1;
+        seed_request.mode =
+            DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION;
+        seed_request.relation.relation_kind =
+            DSL_IR_LOWER_RELATION_VERIFIED_DEAD_SOURCE;
+        GROUP_LOWER_CHECK
+            (grouped_region != NULL && terminal_artifact != NULL &&
+             seed_definition != NULL &&
+             DSL_IR_Lower_Native_Values_To_Standard_Blocks
+                 (pu, &seed_request, 1, stderr, &seed_result) &&
+             seed_result.source_value_id == seed_request.source_value_id &&
+             DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr) &&
+             DSL_Region_Verify_PU(pu, stderr),
+             "grouped REGION terminal preflight");
+        (void) unlink(terminal_artifact);
+        Irb_File_Name = (char *)terminal_artifact;
+        GROUP_LOWER_CHECK
+            (Open_Standard_Only_Output_Info(Irb_File_Name, pu) != NULL,
+             "grouped REGION terminal output");
+        Write_PU_Info(pu);
+        Write_Global_Info(pu);
+        Close_Output_Info();
+        GROUP_LOWER_CHECK
+            (access(terminal_artifact, F_OK) == 0,
+             "grouped REGION terminal artifact");
+        printf("DSL grouped REGION terminal WHIRL passed\n");
+        return 0;
+    }
     if (getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_NATIVE") != NULL) {
         GROUP_LOWER_CHECK
             (terminal_artifact != NULL &&

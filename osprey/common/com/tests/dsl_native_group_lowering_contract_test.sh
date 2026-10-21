@@ -17,6 +17,8 @@ region_image="$artifact_dir/group_lowering_terminal_region.B"
 region_trace="$artifact_dir/group_lowering_terminal_region.T"
 group_region_image="$artifact_dir/group_lowering_region_contract.B"
 group_region_trace="$artifact_dir/group_lowering_region_contract.T"
+group_terminal_image="$artifact_dir/group_lowering_grouped_region_terminal.B"
+group_terminal_trace="$artifact_dir/group_lowering_grouped_region_terminal.T"
 
 for executable in "$contract_test" "$ir_b2a"; do
   if [[ ! -x "$executable" ]]; then
@@ -73,6 +75,47 @@ if ! grep -Fq 'contract=cnn.basic_block.v1' "$group_region_trace" ||
    ! grep -Fq '__dsl_runtime_group_step_5_' "$group_region_trace" ||
    grep -Eq '^  OPR_DSLADD ' "$group_region_trace"; then
   echo "grouped REGION output redirect evidence is incomplete" >&2
+  exit 1
+fi
+printf '%s\n' \
+  "OPEN64_DSL_GROUP_LOWER_REGION_OUTPUT=1 OPEN64_DSL_GROUP_LOWER_REGION_TERMINAL=1 OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT=$group_terminal_image $contract_test" \
+  "$ir_b2a -st -src $group_terminal_image $group_terminal_trace" \
+  >>"$artifact_dir/commands.txt"
+if ! (cd "$repo_root" && OPEN64_DSL_GROUP_LOWER_ONLY=1 \
+  OPEN64_DSL_GROUP_LOWER_REGION_OUTPUT=1 \
+  OPEN64_DSL_GROUP_LOWER_REGION_TERMINAL=1 \
+  OPEN64_DSL_GROUP_LOWER_ARTIFACT="$group_region_image" \
+  OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT="$group_terminal_image" \
+  "$contract_test") >>"$artifact_dir/validation.log" 2>&1; then
+  cat "$artifact_dir/validation.log" >&2
+  exit 1
+fi
+if ! (cd "$repo_root" && "$ir_b2a" -st -src \
+       "$group_terminal_image" "$group_terminal_trace") \
+    >>"$artifact_dir/validation.log" 2>&1; then
+  cat "$artifact_dir/validation.log" >&2
+  exit 1
+fi
+readelf -SW "$group_terminal_image" \
+  >"$artifact_dir/grouped-terminal-sections.txt"
+readelf -p .comment "$group_terminal_image" \
+  >"$artifact_dir/grouped-terminal-revision.txt"
+terminal_result_st="$(sed -n -E \
+  's/^  VALUE ordinal=0 st=(<2,[0-9]+>) roles=0xa flags=0x0$/\1/p' \
+  "$group_terminal_trace")"
+if [[ "$terminal_result_st" != "$group_result_st" ]] ||
+   [[ "$(grep -Ec '^FUNC_ENTRY ' "$group_terminal_trace")" -ne 1 ]] ||
+   ! grep -Fq 'contract=cnn.basic_block.v1' "$group_terminal_trace" ||
+   ! grep -Fq "U8STID 0 ${terminal_result_st%>}," \
+      "$group_terminal_trace" ||
+   ! grep -Fq '__dsl_runtime_group_step_2_' "$group_terminal_trace" ||
+   ! grep -Fq '__dsl_runtime_group_step_5_' "$group_terminal_trace" ||
+   ! grep -Eq '^ LOC 1 [1-9][0-9]* ' "$group_terminal_trace" ||
+   ! grep -Fq 'WHIRL::0.33:' \
+      "$artifact_dir/grouped-terminal-revision.txt" ||
+   grep -Fq '.WHIRL.dsl' "$artifact_dir/grouped-terminal-sections.txt" ||
+   grep -Fq 'OPR_DSL' "$group_terminal_trace"; then
+  echo "actual grouped REGION terminal evidence is incomplete" >&2
   exit 1
 fi
 if ! (cd "$repo_root" && OPEN64_DSL_GROUP_LOWER_ONLY=1 \
@@ -186,6 +229,18 @@ for negative_case in private_cross_group return_escape call_escape \
 done
 
 if [[ -n "${OPEN64_PREVIOUS_IR_B2A:-}" ]]; then
+  if ! "$OPEN64_PREVIOUS_IR_B2A" -st -src "$group_terminal_image" \
+       "$artifact_dir/previous_grouped_region_terminal.T" \
+       >"$artifact_dir/previous_grouped_region_terminal.log" 2>&1; then
+    echo "previous ir_b2a rejected the actual grouped REGION terminal image" >&2
+    cat "$artifact_dir/previous_grouped_region_terminal.log" >&2
+    exit 1
+  fi
+  if ! cmp -s "$group_terminal_trace" \
+       "$artifact_dir/previous_grouped_region_terminal.T"; then
+    echo "current and previous reader disagree on grouped REGION terminal WHIRL" >&2
+    exit 1
+  fi
   if "$OPEN64_PREVIOUS_IR_B2A" -st -src "$group_region_image" \
        "$artifact_dir/previous_group_region_reader.T" \
        >"$artifact_dir/previous_group_region_reader.log" 2>&1; then
@@ -318,10 +373,12 @@ for case in detached invalid_st; do
 done
 
 (cd "$artifact_dir" && sha256sum *.B *.T *.log \
-  dsl_builder_contract_test.cxx commands.txt terminal-*.txt >SHA256SUMS)
+  dsl_builder_contract_test.cxx commands.txt *-sections.txt \
+  *-revision.txt >SHA256SUMS)
 
 echo "DSL grouped native lowering contract passed"
 echo "review image: $image"
 echo "review trace: $trace"
 echo "review standard-only trace: $terminal_trace"
+echo "review actual grouped REGION terminal trace: $group_terminal_trace"
 echo "review diagnostics: $artifact_dir/validation.log"
