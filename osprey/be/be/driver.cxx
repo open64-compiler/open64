@@ -725,6 +725,23 @@ load_components (INT argc, char **argv)
     INT phase_argc;
     char **phase_argv;
 
+    /* D5 will select a route after the CKKS conformance gate. Until then,
+     * reject an explicit request before loading CG or opening any output. */
+    VHO_FHE_CODEGEN_MODE codegen = VHO_FHE_Codegen_Mode();
+    if (codegen == VHO_FHE_CODEGEN_INVALID) {
+      fprintf(stderr,
+              "CFHECKKS2C-002: invalid -FHE:codegen route; "
+              "expected ckks2c or poly2c\n");
+      exit(1);
+    }
+    if (codegen != VHO_FHE_CODEGEN_UNSPECIFIED) {
+      fprintf(stderr,
+              "CFHECKKS2C-003: -FHE:codegen=%s is not yet available; "
+              "no fallback route was selected\n",
+              VHO_FHE_Codegen);
+      exit(1);
+    }
+
     UINT32 fhe_checkpoint_count =
         (FHE_Conversion_Checkpoint_Enabled() ? 1 : 0) +
         (FHE_Materialization_Checkpoint_Enabled() ? 1 : 0) +

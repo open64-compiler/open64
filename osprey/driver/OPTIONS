@@ -432,6 +432,8 @@ I-cpp_pic	;		ALL	NONE	"-D_PIC -D__DSO__"
 #endif
 -PHASE:%s	;		ALL	be,ipl	"-PHASE:%s"
 	""
+-FHE:%s        ;               ALL     be      "-FHE:%s"
+    "option group for FHE lowering and code generation"
 -WOPT:%s	;		ALL	be,ipl	"-WOPT:%s"
 	"option group internal-use WOPT options"
 -LNO:%s		;		ALL	be	"-LNO:%s"

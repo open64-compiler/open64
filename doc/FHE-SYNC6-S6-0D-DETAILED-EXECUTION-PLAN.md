@@ -22,6 +22,13 @@ representation-only `common.flatten`; a CKKS group must not be fabricated for
 that view operation. D4-D6 remain open, and no S6-0d terminal artifact is
 claimed yet.
 
+The D5 option spelling is staged independently: the backend recognizes
+`-FHE:codegen=ckks2c|poly2c` but does not yet select a route. At this point
+every explicit route is rejected before phase loading, regardless of input;
+a missing option keeps the existing behavior. D5 will move selection after
+the CKKS conformance gate so non-FHE input can ignore the FHE-owned option.
+This is option transport and fail-closed evidence, not D5 completion.
+
 ## Objective
 
 The first `-O0` terminal path emits a provider-private C evaluator directly
