@@ -12545,6 +12545,8 @@ Check_Grouped_Native_Lowering(void)
         } \
     } while (0)
     const char *artifact = getenv("OPEN64_DSL_GROUP_LOWER_ARTIFACT");
+    const char *terminal_artifact =
+        getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT");
     const char *negative_case =
         getenv("OPEN64_DSL_GROUP_LOWER_NEGATIVE_CASE");
     GROUP_LOWER_CHECK(artifact != NULL && artifact[0] != '\0' &&
@@ -12894,6 +12896,7 @@ Check_Grouped_Native_Lowering(void)
     WN_EXTRACT_FromBlock(body, address);
     WN_DELETE_Tree(address);
 
+    SRCPOS group_position = WN_Get_Linenum(definitions[5]);
     GROUP_LOWER_CHECK
         (DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
              (pu, requests, 2, stderr, results) &&
@@ -12912,10 +12915,21 @@ Check_Grouped_Native_Lowering(void)
                  (body, DSL_Builder_Get_Value_Result_Symbol(values[i]),
                   NULL) == NULL,
              "private native definition removed");
+    if (getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_NATIVE") != NULL) {
+        GROUP_LOWER_CHECK
+            (terminal_artifact != NULL &&
+             Open_Standard_Only_Output_Info
+                 ((char *)terminal_artifact, pu) != NULL,
+             "native terminal rejection output");
+        Write_PU_Info(pu);
+        fprintf(stderr, "native terminal PU unexpectedly accepted\n");
+        return 1;
+    }
     WN *saved_tree = PU_Info_tree_ptr(pu);
     WN *standard_body = WN_CreateBlock();
-    WN_INSERT_BlockLast
-        (standard_body, WN_CreateEval(WN_Intconst(MTYPE_I4, 0)));
+    WN *standard_eval = WN_CreateEval(WN_Intconst(MTYPE_I4, 0));
+    WN_Set_Linenum(standard_eval, group_position);
+    WN_INSERT_BlockLast(standard_body, standard_eval);
     Set_PU_Info_tree_ptr(pu, standard_body);
     BOOL bare_block_rejected =
         !DSL_Gatekeeper_Verify_No_Native_PU(pu, NULL);
@@ -12926,16 +12940,46 @@ Check_Grouped_Native_Lowering(void)
     Set_PU_Info_tree_ptr(pu, standard_tree);
     BOOL standard_control_valid =
         DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr);
+    BOOL terminal_written = FALSE;
+    if (standard_control_valid && terminal_artifact != NULL &&
+        terminal_artifact[0] != '\0') {
+        DSL_BUILDER_PROGRAM_UNIT terminal_second =
+            DSL_Builder_Create_Minimal_PU("group_terminal_second");
+        GROUP_LOWER_CHECK
+            (terminal_second != NULL &&
+             PU_Info_next(pu) == terminal_second &&
+             DSL_Builder_Select_PU(pu),
+             "two-PU standard-only fixture");
+        (void) unlink(terminal_artifact);
+        Irb_File_Name = (char *)terminal_artifact;
+        if (Open_Standard_Only_Output_Info(Irb_File_Name, pu) != NULL) {
+            Write_PU_Info(pu);
+            if (getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_INCOMPLETE") != NULL)
+                Write_Global_Info(pu);
+            GROUP_LOWER_CHECK
+                (DSL_Builder_Select_PU(terminal_second) &&
+                 DSL_Gatekeeper_Verify_No_Native_PU
+                     (terminal_second, stderr),
+                 "second standard PU");
+            Write_PU_Info(terminal_second);
+            Write_Global_Info(pu);
+            Close_Output_Info();
+            terminal_written = access(terminal_artifact, F_OK) == 0;
+        }
+    }
     Set_PU_Info_tree_ptr(pu, saved_tree);
     WN_DELETE_Tree(standard_tree);
     GROUP_LOWER_CHECK
-        (bare_block_rejected && standard_control_valid,
+        (bare_block_rejected && standard_control_valid &&
+         (terminal_artifact == NULL || terminal_written),
          "standard-WHIRL control tree has no native DSL node");
-    (void) unlink(artifact);
-    GROUP_LOWER_CHECK(Write_Runtime_Interface_Artifact
-                          (artifact, pu, NULL) &&
-                      access(artifact, F_OK) == 0,
-                      "mapped grouped artifact");
+    if (terminal_artifact == NULL) {
+        (void) unlink(artifact);
+        GROUP_LOWER_CHECK(Write_Runtime_Interface_Artifact
+                              (artifact, pu, NULL) &&
+                          access(artifact, F_OK) == 0,
+                          "mapped grouped artifact");
+    }
     printf("DSL grouped native lowering contract passed\n");
     printf("DSL terminal preflight rejected live tensor seed and accepted "
            "standard control tree\n");

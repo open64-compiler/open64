@@ -128,6 +128,21 @@ omission. The grouped fixture correctly fails this check after its add groups
 lower because its `common.tensor_const` seed remains live. An isolated
 standard-WHIRL tree passes the same check.
 
+The staged `Open_Standard_Only_Output_Info()` writer mode checks every flat
+PU as it is written, requires the complete linked PU list at global-table
+finalization, omits the optional DSL/FHE ELF sections, and writes the baseline
+WHIRL revision. It does not erase in-memory provenance or change existing
+symbol/type tables. A two-PU synthetic terminal image reopens through both
+current and pre-M1 readers; the grouped intermediate still carries its full
+logical image and fails closed in the pre-M1 reader. This proves the writer
+boundary, not the S6-0d event-consumption or complete-model terminal gate.
+The FHE producer must finish those proofs before opening a standard-only
+temporary output and publish it only after all-PU validation succeeds.
+The current writer mode also rejects a PU with a `WT_REGIONS` subsection;
+full-model terminal lowering must either discharge that interface or prove a
+reviewed legacy-readable REGION disposition. No source CKKS event or private
+group row is discarded from the immutable intermediate image.
+
 ## Cost And Validation
 
 The transaction indexes member value/node/ST/definition identities, PU tree

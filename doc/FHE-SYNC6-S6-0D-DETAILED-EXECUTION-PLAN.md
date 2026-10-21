@@ -355,6 +355,15 @@ review. Do not publish a partial terminal `.B` while this is unresolved.
 The staged `DSL_Gatekeeper_Verify_No_Native_PU()` supplies only the per-PU
 physical-tree preflight; it cannot by itself authorize M3 event consumption,
 whole-file section suppression, or prior-reader acceptance.
+The staged `Open_Standard_Only_Output_Info()` mode supplies the complementary
+writer/reader boundary: each flat PU must have a standard physical tree, all
+linked PUs must be written, optional DSL/FHE ELF sections are omitted, and the
+baseline revision is used. A focused two-PU file reopens in the pre-M1 reader.
+The mode leaves TY/symbol tables intact and does not infer that all CKKS events
+were consumed; D4 still owes the authenticated group-to-ABI join and a
+complete-model terminal checkpoint before M3 can be closed.
+It presently fails closed for `WT_REGIONS` PUs; D4 must explicitly settle
+their interface disposition before selecting this terminal writer.
 
 **Code**
 
