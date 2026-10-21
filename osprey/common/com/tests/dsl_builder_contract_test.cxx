@@ -10250,7 +10250,30 @@ Check_CKKS_Event_Image (void)
              (&mapped, sizeof(mapped), NULL) &&
          DSL_CKKS_Event_Image_Count() == 2,
          "duplicate step rejection");
+    mapped.records[1].step_ordinal = 2;
+    CKKS_EVENT_CHECK
+        (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), NULL) &&
+         DSL_CKKS_Event_Image_Count() == 2,
+         "missing step ordinal rejection");
     mapped.records[1].step_ordinal = 1;
+    mapped.records[0].flags = DSL_CKKS_EVENT_FINAL_RESULT;
+    CKKS_EVENT_CHECK
+        (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), NULL) &&
+         DSL_CKKS_Event_Image_Count() == 2,
+         "multiple final results rejection");
+    mapped.records[0].flags = 0;
+    mapped.records[1].result_value_id = encoded_record.id;
+    mapped.records[1].result_node_id = encoded_record.producer_node_id;
+    CKKS_EVENT_CHECK
+        (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), NULL) &&
+         DSL_CKKS_Event_Image_Count() == 2,
+         "reused context result rejection");
+    mapped.records[1].result_value_id = refreshed_record.id;
+    mapped.records[1].result_node_id =
+        refreshed_record.producer_node_id;
     mapped.records[1].origin_static_ordinal = 2;
     CKKS_EVENT_CHECK
         (!DSL_CKKS_Event_Image_Load_Mapped
