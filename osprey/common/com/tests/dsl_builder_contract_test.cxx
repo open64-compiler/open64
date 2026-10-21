@@ -12897,6 +12897,30 @@ Check_Grouped_Native_Lowering(void)
     WN_DELETE_Tree(address);
 
     SRCPOS group_position = WN_Get_Linenum(definitions[5]);
+    DSL_REGION grouped_region = NULL;
+    if (getenv("OPEN64_DSL_GROUP_LOWER_REGION_OUTPUT") != NULL) {
+        grouped_region = DSL_Region_Create
+            (pu, NULL, "cnn.basic_block", 1);
+        GROUP_LOWER_CHECK
+            (grouped_region != NULL &&
+             DSL_Region_Declare_Symbol
+                 (grouped_region,
+                  DSL_Builder_Get_Value_Result_Symbol(values[5]),
+                  DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT,
+                  0, DSL_REGION_INTERFACE_FLAG_NONE) &&
+             DSL_Region_Set_Source_Position(grouped_region, group_position),
+             "group output REGION interface");
+        for (UINT32 i = 0; i < 6; ++i) {
+            GROUP_LOWER_CHECK
+                (WN_EXTRACT_FromBlock(body, definitions[i]) == definitions[i] &&
+                 DSL_Region_Append_Statement(grouped_region, definitions[i]),
+                 "group members enter one REGION block");
+        }
+        GROUP_LOWER_CHECK
+            (DSL_Region_Append_To_PU(grouped_region) &&
+             DSL_Region_Verify_PU(pu, stderr),
+             "group output REGION ownership");
+    }
     GROUP_LOWER_CHECK
         (DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
              (pu, requests, 2, stderr, results) &&
@@ -12909,6 +12933,15 @@ Check_Grouped_Native_Lowering(void)
          results[0].semantic_source_value_id ==
              DSL_Builder_Get_Value_Image_Id(seed),
          "two-group atomic commit");
+    if (grouped_region != NULL) {
+        DSL_REGION_INTERFACE_RECORD interface_record;
+        GROUP_LOWER_CHECK
+            (DSL_Region_Interface_Count(pu) == 1 &&
+             DSL_Region_Get_Interface(pu, 1, &interface_record) &&
+             interface_record.st == projections[1].handle_st &&
+             DSL_Region_Verify_PU(pu, stderr),
+             "group result REGION interface follows standard handle");
+    }
     for (UINT32 i = 0; i < 6; ++i)
         GROUP_LOWER_CHECK
             (Find_STID_And_Block

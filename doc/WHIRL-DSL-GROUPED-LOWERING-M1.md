@@ -151,6 +151,13 @@ prove those transitions and the authenticated event-to-ABI join. No source
 CKKS event or private group row is discarded from the immutable intermediate
 image.
 
+A separate focused producer now places two dependent native groups inside a
+managed `cnn.basic_block.v1` REGION. The grouped transaction replaces their
+six native definitions with two standard handle definitions and redirects the
+REGION result interface to the second handle. A mapped reopen shows the same
+interface ST as the physical `STID`; it still shows the unrelated native
+tensor seed, so this is an intermediate-image proof, not a terminal PU proof.
+
 ## Cost And Validation
 
 The transaction indexes member value/node/ST/definition identities, PU tree

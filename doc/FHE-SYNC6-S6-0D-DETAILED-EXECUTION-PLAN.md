@@ -373,6 +373,10 @@ The retained S6-0c `secure_resnet20.ckks_ops.T` has nine managed
 symbols still name CKKS-stage values. D4 must redirect each such interface
 to the corresponding standard runtime-handle definition before the terminal
 writer can admit those PUs.
+The generic two-group test now exercises that redirect inside a managed
+REGION and proves it after mapped reopen. It does not select CKKS groups,
+authenticate ABI descriptors, or remove the remaining native seed; those
+remain D4/FHE producer obligations for the full image.
 
 **Code**
 

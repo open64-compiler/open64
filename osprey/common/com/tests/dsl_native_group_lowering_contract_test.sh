@@ -15,6 +15,8 @@ terminal_image="$artifact_dir/group_lowering_terminal.B"
 terminal_trace="$artifact_dir/group_lowering_terminal.T"
 region_image="$artifact_dir/group_lowering_terminal_region.B"
 region_trace="$artifact_dir/group_lowering_terminal_region.T"
+group_region_image="$artifact_dir/group_lowering_region_contract.B"
+group_region_trace="$artifact_dir/group_lowering_region_contract.T"
 
 for executable in "$contract_test" "$ir_b2a"; do
   if [[ ! -x "$executable" ]]; then
@@ -40,6 +42,37 @@ if ! (cd "$repo_root" && OPEN64_DSL_GROUP_LOWER_ONLY=1 \
   OPEN64_DSL_GROUP_LOWER_ARTIFACT="$image" "$contract_test") \
     >"$artifact_dir/validation.log" 2>&1; then
   cat "$artifact_dir/validation.log" >&2
+  exit 1
+fi
+printf '%s\n' \
+  "OPEN64_DSL_GROUP_LOWER_REGION_OUTPUT=1 OPEN64_DSL_GROUP_LOWER_ARTIFACT=$group_region_image $contract_test" \
+  "$ir_b2a -st -src $group_region_image $group_region_trace" \
+  >>"$artifact_dir/commands.txt"
+if ! (cd "$repo_root" && OPEN64_DSL_GROUP_LOWER_ONLY=1 \
+  OPEN64_DSL_GROUP_LOWER_REGION_OUTPUT=1 \
+  OPEN64_DSL_GROUP_LOWER_ARTIFACT="$group_region_image" \
+  "$contract_test") >>"$artifact_dir/validation.log" 2>&1; then
+  cat "$artifact_dir/validation.log" >&2
+  exit 1
+fi
+if ! (cd "$repo_root" && "$ir_b2a" -st -src \
+       "$group_region_image" "$group_region_trace") \
+    >>"$artifact_dir/validation.log" 2>&1; then
+  cat "$artifact_dir/validation.log" >&2
+  exit 1
+fi
+group_result_st="$(sed -n -E \
+  's/^  VALUE ordinal=0 st=(<2,[0-9]+>) roles=0xa flags=0x0$/\1/p' \
+  "$group_region_trace")"
+if ! grep -Fq 'contract=cnn.basic_block.v1' "$group_region_trace" ||
+   [[ -z "$group_result_st" ]] ||
+   ! grep -Fq "U8STID 0 ${group_result_st%>}," \
+      "$group_region_trace" ||
+   ! grep -Fq 'status=lowered relation=private_group_member' \
+      "$group_region_trace" ||
+   ! grep -Fq '__dsl_runtime_group_step_5_' "$group_region_trace" ||
+   grep -Eq '^  OPR_DSLADD ' "$group_region_trace"; then
+  echo "grouped REGION output redirect evidence is incomplete" >&2
   exit 1
 fi
 if ! (cd "$repo_root" && OPEN64_DSL_GROUP_LOWER_ONLY=1 \
@@ -153,6 +186,17 @@ for negative_case in private_cross_group return_escape call_escape \
 done
 
 if [[ -n "${OPEN64_PREVIOUS_IR_B2A:-}" ]]; then
+  if "$OPEN64_PREVIOUS_IR_B2A" -st -src "$group_region_image" \
+       "$artifact_dir/previous_group_region_reader.T" \
+       >"$artifact_dir/previous_group_region_reader.log" 2>&1; then
+    echo "previous ir_b2a unexpectedly accepted private grouped REGION rows" >&2
+    exit 1
+  fi
+  if ! grep -Eq 'DSL image error|invalid (node|value)' \
+      "$artifact_dir/previous_group_region_reader.log"; then
+    echo "previous reader did not reject grouped REGION at the DSL image gate" >&2
+    exit 1
+  fi
   if "$OPEN64_PREVIOUS_IR_B2A" -st -src "$image" \
        "$artifact_dir/previous_reader.T" \
        >"$artifact_dir/previous_reader.log" 2>&1; then
