@@ -2389,6 +2389,48 @@ DSL_IR_Image_Validate_Lowered_Relations (FILE *diagnostic)
 {
     if (!DSL_CKKS_Event_Image_Validate(diagnostic))
         return FALSE;
+
+    /* A grouped lowering has one projected output, but its pure private
+     * operands retain lowered provenance without individual projections.
+     * Walk backward from projected results through lowered logical nodes.
+     * This is derived from existing rows and survives mapped reopen. */
+    std::vector<UINT8> reaches_projection
+        (DSL_ir_value_table.Size() + 1, 0);
+    std::vector<DSL_IR_VALUE_ID> worklist;
+    for (UINT32 i = 1; i <= DSL_ir_value_table.Size(); ++i) {
+        const DSL_IR_VALUE_RECORD &value = DSL_ir_value_table[i - 1];
+        DSL_IR_NATIVE_VALUE_LOWER_RESULT relation;
+        if ((value.flags & DSL_IR_VALUE_FLAG_LOWERED) != 0 &&
+            DSL_IR_Image_Resolve_Lowered_Relation(i, &relation)) {
+            reaches_projection[i] = 1;
+            worklist.push_back(i);
+        }
+    }
+    while (!worklist.empty()) {
+        DSL_IR_VALUE_ID value_id = worklist.back();
+        worklist.pop_back();
+        const DSL_IR_VALUE_RECORD &value = DSL_ir_value_table[value_id - 1];
+        if (value.producer_node_id == 0 ||
+            value.producer_node_id > DSL_ir_node_table.Size())
+            continue;
+        const DSL_IR_NODE_RECORD &node =
+            DSL_ir_node_table[value.producer_node_id - 1];
+        if ((node.flags & DSL_IR_NODE_FLAG_LOWERED) == 0)
+            continue;
+        for (UINT32 kid = 0; kid < node.operand_count; ++kid) {
+            const DSL_IR_VALUE_REFERENCE_RECORD &reference =
+                DSL_ir_value_reference_table
+                    [node.first_operand_reference_id - 1 + kid];
+            if (reference.value_id == 0 ||
+                reference.value_id > DSL_ir_value_table.Size() ||
+                reaches_projection[reference.value_id] != 0 ||
+                (DSL_ir_value_table[reference.value_id - 1].flags &
+                 DSL_IR_VALUE_FLAG_LOWERED) == 0)
+                continue;
+            reaches_projection[reference.value_id] = 1;
+            worklist.push_back(reference.value_id);
+        }
+    }
     for (UINT32 i = 1; i <= DSL_ir_value_table.Size(); ++i) {
         const DSL_IR_VALUE_RECORD &value = DSL_ir_value_table[i - 1];
         if ((value.flags & DSL_IR_VALUE_FLAG_DEAD_ELIDED) != 0) {
@@ -2467,9 +2509,28 @@ DSL_IR_Image_Validate_Lowered_Relations (FILE *diagnostic)
             continue;
         }
         DSL_IR_NATIVE_VALUE_LOWER_RESULT relation;
-        if (!DSL_IR_Image_Resolve_Lowered_Relation(i, &relation))
+        if (!DSL_IR_Image_Resolve_Lowered_Relation(i, &relation) &&
+            !reaches_projection[i])
             return DSL_IR_Image_Report
                        (diagnostic, "invalid lowered runtime relation", i);
+        if (!DSL_IR_Image_Resolve_Lowered_Relation(i, &relation)) {
+            for (UINT32 j = 0;
+                 j < DSL_runtime_value_projection_table.Size(); ++j) {
+                if (DSL_runtime_value_projection_table[j].source_value_id == i)
+                    return DSL_IR_Image_Report
+                               (diagnostic, "private value has projection", i);
+            }
+            for (UINT32 j = 0; j < DSL_runtime_input_table.Size(); ++j) {
+                if (DSL_runtime_input_table[j].source_value_id == i)
+                    return DSL_IR_Image_Report
+                               (diagnostic, "private value has input", i);
+            }
+            for (UINT32 j = 0; j < DSL_call_argument_table.Size(); ++j) {
+                if (DSL_call_argument_table[j].argument_value_id == i)
+                    return DSL_IR_Image_Report
+                               (diagnostic, "private value has call argument", i);
+            }
+        }
     }
     return TRUE;
 }
@@ -2670,6 +2731,44 @@ DSL_IR_Lowered_Relation_Views_Validate
          UINT32 binding_count,
          FILE *diagnostic)
 {
+    std::vector<UINT8> reaches_projection
+        (DSL_ir_value_table.Size() + 1, 0);
+    std::vector<DSL_IR_VALUE_ID> worklist;
+    for (UINT32 i = 0; i < projection_count; ++i) {
+        DSL_IR_VALUE_ID value_id = projections[i].source_value_id;
+        if (value_id == 0 || value_id > DSL_ir_value_table.Size() ||
+            reaches_projection[value_id] != 0 ||
+            (DSL_ir_value_table[value_id - 1].flags &
+             DSL_IR_VALUE_FLAG_LOWERED) == 0)
+            continue;
+        reaches_projection[value_id] = 1;
+        worklist.push_back(value_id);
+    }
+    while (!worklist.empty()) {
+        DSL_IR_VALUE_ID value_id = worklist.back();
+        worklist.pop_back();
+        const DSL_IR_VALUE_RECORD &value = DSL_ir_value_table[value_id - 1];
+        if (value.producer_node_id == 0 ||
+            value.producer_node_id > DSL_ir_node_table.Size())
+            continue;
+        const DSL_IR_NODE_RECORD &node =
+            DSL_ir_node_table[value.producer_node_id - 1];
+        if ((node.flags & DSL_IR_NODE_FLAG_LOWERED) == 0)
+            continue;
+        for (UINT32 kid = 0; kid < node.operand_count; ++kid) {
+            const DSL_IR_VALUE_REFERENCE_RECORD &reference =
+                DSL_ir_value_reference_table
+                    [node.first_operand_reference_id - 1 + kid];
+            if (reference.value_id == 0 ||
+                reference.value_id > DSL_ir_value_table.Size() ||
+                reaches_projection[reference.value_id] != 0 ||
+                (DSL_ir_value_table[reference.value_id - 1].flags &
+                 DSL_IR_VALUE_FLAG_LOWERED) == 0)
+                continue;
+            reaches_projection[reference.value_id] = 1;
+            worklist.push_back(reference.value_id);
+        }
+    }
     for (UINT32 value_id = 1;
          value_id <= DSL_ir_value_table.Size(); ++value_id) {
         const DSL_IR_VALUE_RECORD &value = DSL_ir_value_table[value_id - 1];
@@ -2803,7 +2902,8 @@ DSL_IR_Lowered_Relation_Views_Validate
             matched_input = &inputs[i];
         }
         if (matched_projections > 1 || matched_inputs > 1 ||
-            (matched_projections == 0 && matched_inputs == 0) ||
+            (matched_projections == 0 && matched_inputs == 0 &&
+             reaches_projection[value.id] == 0) ||
             (matched_projections == 1 && matched_inputs == 1 &&
              (matched_projection->owner_pu_st !=
                   matched_input->source_owner_pu_st ||
@@ -2814,6 +2914,22 @@ DSL_IR_Lowered_Relation_Views_Validate
             return DSL_IR_Image_Report
                        (diagnostic,
                         "ambiguous lowered runtime relation", value.id);
+        if (matched_projections == 0 && matched_inputs == 0) {
+            for (UINT32 i = 0; i < call_count; ++i) {
+                if (calls[i].source_value_id == value.id)
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "private lowered value has runtime call",
+                                value.id);
+            }
+            for (UINT32 i = 0; i < DSL_call_argument_table.Size(); ++i) {
+                if (DSL_call_argument_table[i].argument_value_id == value.id)
+                    return DSL_IR_Image_Report
+                               (diagnostic,
+                                "private lowered value has call argument",
+                                value.id);
+            }
+        }
     }
     return TRUE;
 }

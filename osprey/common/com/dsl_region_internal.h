@@ -14,6 +14,11 @@
 /* Count all managed REGION interface rows that refer to one symbol. */
 extern UINT32 DSL_Region_Symbol_Use_Count (PU_Info *pu, ST_IDX st);
 
+/* Read the active PU's managed interface rows for one-pass rewrite preflight. */
+extern UINT32 DSL_Region_Interface_Count (PU_Info *pu);
+extern BOOL DSL_Region_Get_Interface (PU_Info *pu, UINT32 id,
+                                      DSL_REGION_INTERFACE_RECORD *record);
+
 typedef struct {
     ST_IDX old_st;
     ST_IDX new_st;

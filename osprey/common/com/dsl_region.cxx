@@ -975,6 +975,25 @@ DSL_Region_Symbol_Use_Count (PU_Info *pu, ST_IDX st)
     return count;
 }
 
+UINT32
+DSL_Region_Interface_Count (PU_Info *pu)
+{
+    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
+    return store == NULL ? 0 : store->interfaces.size();
+}
+
+BOOL
+DSL_Region_Get_Interface
+        (PU_Info *pu, UINT32 id, DSL_REGION_INTERFACE_RECORD *record)
+{
+    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
+    if (store == NULL || record == NULL || id == 0 ||
+        id > store->interfaces.size())
+        return FALSE;
+    *record = store->interfaces[id - 1];
+    return TRUE;
+}
+
 /* Verify all lowering redirects and plain-input removals as one REGION set. */
 static BOOL
 DSL_Region_Build_Lowering_Store

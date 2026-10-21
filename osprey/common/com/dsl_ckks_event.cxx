@@ -181,8 +181,10 @@ DSL_CKKS_Event_Validate_View
             !DSL_IR_Image_Get_Node(row.result_node_id, &result_node) ||
             result.producer_node_id != result_node.id ||
             result_node.result_value_id != result.id ||
-            result_node.flags != DSL_IR_NODE_FLAG_NONE ||
-            result.flags != DSL_IR_VALUE_FLAG_NONE ||
+            !((result_node.flags == DSL_IR_NODE_FLAG_NONE &&
+               result.flags == DSL_IR_VALUE_FLAG_NONE) ||
+              (result_node.flags == DSL_IR_NODE_FLAG_LOWERED &&
+               result.flags == DSL_IR_VALUE_FLAG_LOWERED)) ||
             ((row.flags & DSL_CKKS_EVENT_FINAL_RESULT) != 0 &&
              result.ty != source.ty) ||
             !DSL_CKKS_Event_Value_Owned(result, row.owner_pu_st) ||
