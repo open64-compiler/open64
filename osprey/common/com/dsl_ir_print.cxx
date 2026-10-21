@@ -231,6 +231,9 @@ DSL_IR_Image_Print (FILE *file)
             } else if (DSL_CKKS_Event_Image_Has_Source
                            (node.result_value_id)) {
                 fprintf(file, " status=lowered relation=ckks_expansion");
+            } else {
+                fprintf(file,
+                        " status=lowered relation=private_group_member");
             }
         }
         if (node.payload != STR_IDX_ZERO)
@@ -293,6 +296,9 @@ DSL_IR_Image_Print (FILE *file)
                         (UINT32)relation.handle_ty);
             } else if (DSL_CKKS_Event_Image_Has_Source(record.id)) {
                 fprintf(file, " status=lowered relation=ckks_expansion");
+            } else {
+                fprintf(file,
+                        " status=lowered relation=private_group_member");
             }
         }
         fprintf (file, " flags=0x%x\n", record.flags);

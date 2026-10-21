@@ -187,6 +187,7 @@ COMMON_COM_CXX_SRCS =   \
    fhe_plan.cxx         \
    dsl_ir_image.cxx     \
    dsl_ir_lower.cxx     \
+   dsl_ir_group_lower.cxx \
    dsl_ir_retype.cxx    \
    dsl_ir_rewrite.cxx   \
    dsl_region.cxx       \

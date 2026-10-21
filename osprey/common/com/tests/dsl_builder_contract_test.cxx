@@ -12019,6 +12019,394 @@ Check_Native_To_Standard_Lowering(void)
     return failed;
 }
 
+/*
+ * Exercise the generic grouped service with two pure three-value chains.
+ * The first request is intentionally out of member order: only the physical
+ * graph and exact owner/value records determine the transaction order.
+ */
+static int
+Check_Grouped_Native_Lowering(void)
+{
+#define GROUP_LOWER_CHECK(condition, stage) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "grouped lowering failed: %s\n", stage); \
+            return 1; \
+        } \
+    } while (0)
+    const char *artifact = getenv("OPEN64_DSL_GROUP_LOWER_ARTIFACT");
+    const char *negative_case =
+        getenv("OPEN64_DSL_GROUP_LOWER_NEGATIVE_CASE");
+    GROUP_LOWER_CHECK(artifact != NULL && artifact[0] != '\0' &&
+                      DSL_Builder_Begin_Program(),
+                      "artifact and program initialization");
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_TENSOR_TYPE_CORE core;
+    memset(&core, 0, sizeof(core));
+    core.kind = "tensor";
+    core.dtype = "float32";
+    core.rank = 2;
+    core.logical_shape = "[2,2]";
+    TY_IDX tensor_ty = DSL_Builder_Create_Tensor_Type_Core
+        ("group_lower_f32_2x2", MTYPE_To_TY(MTYPE_F4), &core);
+    TY_IDX handle_ty = Create_Runtime_Interface_Handle_TY
+        ("group_lower_handle_v1");
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU("group_lower_root");
+    UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    GROUP_LOWER_CHECK(tensor_ty != TY_IDX_ZERO &&
+                      TY_tensor_seal(tensor_ty) &&
+                      handle_ty != TY_IDX_ZERO && pu != NULL &&
+                      file_id != 0, "tensor, handle, and PU");
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = __LINE__ + 1;
+    position.statement_begin = 1;
+    DSL_BUILDER_VALUE seed = DSL_Builder_Create_Tensor_Constant
+        ("group_seed", tensor_ty, "float32", 2, "[2,2]",
+         "zero_init", "0");
+    GROUP_LOWER_CHECK(seed != NULL &&
+                      DSL_Builder_Set_Value_Source_Position
+                          (seed, &position), "seed");
+    DSL_BUILDER_VALUE values[6];
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attr = {
+        "attr.broadcast_rule", "none"
+    };
+    BOOL saved_wn_simp = Enable_WN_Simp;
+    Enable_WN_Simp = FALSE;
+    UINT32 step_count = 0;
+    for (; step_count < 6; ++step_count) {
+        DSL_BUILDER_VALUE kids[2] = {
+            step_count == 0 ? seed :
+                (step_count == 3 && negative_case != NULL &&
+                 strcmp(negative_case, "private_cross_group") == 0 ?
+                     values[1] : values[step_count - 1]), seed
+        };
+        char name[32];
+        snprintf(name, sizeof(name), "group_step_%u", step_count);
+        values[step_count] = DSL_Builder_Create_Operator_With_Result
+            (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                             DSL_OPCODE_COMMON_ADD, 1),
+             1, kids, 2, &attr, 1, name, tensor_ty);
+        ++position.line;
+        if (values[step_count] == NULL) {
+            fprintf(stderr, "grouped lowering: step %u creation failed\n",
+                    step_count);
+            break;
+        }
+        if (!DSL_Builder_Set_Value_Source_Position
+                (values[step_count], &position)) {
+            fprintf(stderr, "grouped lowering: step %u source position failed\n",
+                    step_count);
+            break;
+        }
+    }
+    Enable_WN_Simp = saved_wn_simp;
+    GROUP_LOWER_CHECK(step_count == 6, "native group step");
+    GROUP_LOWER_CHECK(DSL_Builder_Append_PU_Value(pu, values[2]) &&
+                      DSL_Builder_Append_PU_Value(pu, values[5]) &&
+                      DSL_Builder_Select_PU(pu),
+                      "materialized chain");
+
+    DSL_RUNTIME_VALUE_PROJECTION_REQUEST projected[3];
+    memset(projected, 0, sizeof(projected));
+    for (UINT32 i = 0; i < 2; ++i) {
+        DSL_BUILDER_VALUE value = values[i * 3 + 2];
+        projected[i].owner_pu_st = PU_Info_proc_sym(pu);
+        projected[i].source_value_id =
+            DSL_Builder_Get_Value_Image_Id(value);
+        projected[i].expected_source_st =
+            DSL_Builder_Get_Value_Result_Symbol(value);
+        projected[i].expected_source_ty = tensor_ty;
+        projected[i].handle_ty = handle_ty;
+        projected[i].binding_kind = DSL_RUNTIME_BINDING_LOCAL_VALUE;
+        projected[i].formal_ordinal =
+            DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
+    }
+    if (negative_case != NULL &&
+        strcmp(negative_case, "interface_escape") == 0) {
+        projected[2] = projected[0];
+        projected[2].source_value_id =
+            DSL_Builder_Get_Value_Image_Id(values[1]);
+        projected[2].expected_source_st =
+            DSL_Builder_Get_Value_Result_Symbol(values[1]);
+    }
+    DSL_RUNTIME_INTERFACE_PLAN plan;
+    memset(&plan, 0, sizeof(plan));
+    plan.values = projected;
+    plan.value_count = negative_case != NULL &&
+        strcmp(negative_case, "interface_escape") == 0 ? 3 : 2;
+    DSL_RUNTIME_INTERFACE_RESULT applied;
+    GROUP_LOWER_CHECK(DSL_Runtime_Interface_Apply_PU
+                          (pu, &plan, stderr, &applied) &&
+                      DSL_Runtime_Interface_Image_Validate(stderr),
+                      "two output projections");
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD projections[2];
+    for (UINT32 i = 0; i < 2; ++i)
+        GROUP_LOWER_CHECK
+            (DSL_Runtime_Interface_Image_Find_Value
+                 (PU_Info_proc_sym(pu), projected[i].source_value_id,
+                  &projections[i]),
+             "output projection lookup");
+
+    WN *body = WN_func_body(PU_Info_tree_ptr(pu));
+    WN *definitions[6];
+    WN *blocks[6];
+    for (UINT32 i = 0; i < 6; ++i) {
+        definitions[i] = Find_STID_And_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(values[i]),
+             &blocks[i]);
+        GROUP_LOWER_CHECK(definitions[i] != NULL && blocks[i] == body,
+                          "native definition");
+    }
+    if (negative_case == NULL) {
+        DSL_IR_VALUE_RECORD group2_first;
+        DSL_IR_NODE_RECORD group2_node;
+        DSL_IR_VALUE_REFERENCE_RECORD cross_reference;
+        GROUP_LOWER_CHECK
+            (WN_operator(WN_kid0(WN_kid0(definitions[3]))) == OPR_LDID &&
+             WN_st_idx(WN_kid0(WN_kid0(definitions[3]))) ==
+                 DSL_Builder_Get_Value_Result_Symbol(values[2]) &&
+             DSL_IR_Image_Get_Value
+                 (DSL_Builder_Get_Value_Image_Id(values[3]),
+                  &group2_first) &&
+             DSL_IR_Image_Get_Node
+                 (group2_first.producer_node_id, &group2_node) &&
+             DSL_IR_Image_Get_Value_Reference
+                 (group2_node.first_operand_reference_id,
+                  &cross_reference) &&
+             cross_reference.value_id ==
+                 DSL_Builder_Get_Value_Image_Id(values[2]),
+             "physical and logical cross-group output flow");
+    }
+    WN *standard[2];
+    for (UINT32 i = 0; i < 2; ++i) {
+        standard[i] = WN_CreateBlock();
+        WN *operand = i == 0 ?
+            WN_Intconst(Pointer_Mtype, 0) :
+            WN_CreateLdid
+                (OPR_LDID, Pointer_Mtype, Pointer_Mtype, 0,
+                 projections[0].handle_st, projections[0].handle_ty);
+        WN *result = WN_CreateStid
+            (OPR_STID, MTYPE_V, Pointer_Mtype, 0,
+             projections[i].handle_st, projections[i].handle_ty,
+             operand);
+        WN_Set_Linenum(result, WN_Get_Linenum(definitions[i * 3 + 2]));
+        WN_INSERT_BlockLast(standard[i], result);
+    }
+    DSL_IR_NATIVE_GROUP_MEMBER_REQUEST members[2][3];
+    memset(members, 0, sizeof(members));
+    const UINT32 order[2][3] = { { 1, 0, 2 }, { 3, 4, 5 } };
+    for (UINT32 i = 0; i < 2; ++i) {
+        for (UINT32 j = 0; j < 3; ++j) {
+            UINT32 step = order[i][j];
+            DSL_IR_VALUE_RECORD value;
+            GROUP_LOWER_CHECK
+                (DSL_IR_Image_Get_Value
+                     (DSL_Builder_Get_Value_Image_Id(values[step]),
+                      &value), "member value");
+            members[i][j].native_definition = definitions[step];
+            members[i][j].node_id = value.producer_node_id;
+            members[i][j].value_id = value.id;
+            members[i][j].expected_operator = OPR_DSLADD;
+            members[i][j].expected_version = 1;
+        }
+    }
+    DSL_IR_NATIVE_GROUP_LOWER_REQUEST requests[2];
+    memset(requests, 0, sizeof(requests));
+    for (UINT32 i = 0; i < 2; ++i) {
+        requests[i].owner_pu_st = PU_Info_proc_sym(pu);
+        requests[i].members = members[i];
+        requests[i].member_count = 3;
+        requests[i].group_output_value_id =
+            DSL_Builder_Get_Value_Image_Id(values[i * 3 + 2]);
+        requests[i].semantic_source_value_id =
+            DSL_Builder_Get_Value_Image_Id(seed);
+        requests[i].standard_block = standard[i];
+        requests[i].relation.relation_kind =
+            DSL_IR_LOWER_RELATION_RUNTIME_VALUE_PROJECTION;
+        requests[i].relation.value_projection_id = projections[i].id;
+    }
+    if (negative_case != NULL) {
+        WN *escape = NULL;
+        ST_IDX private_st =
+            DSL_Builder_Get_Value_Result_Symbol(values[1]);
+        if (strcmp(negative_case, "return_escape") == 0) {
+            escape = WN_CreateReturn_Val
+                (OPR_RETURN_VAL, Pointer_Mtype, MTYPE_V,
+                 WN_CreateLda(OPR_LDA, Pointer_Mtype, MTYPE_V,
+                              0, Make_Pointer_Type(tensor_ty), private_st));
+        } else if (strcmp(negative_case, "call_escape") == 0) {
+            escape = WN_Create(OPR_CALL, MTYPE_V, MTYPE_V, 1);
+            WN_st_idx(escape) = PU_Info_proc_sym(pu);
+            WN_Set_Call_Default_Flags(escape);
+            WN_kid0(escape) = WN_CreateParm
+                (Pointer_Mtype,
+                 WN_CreateLda(OPR_LDA, Pointer_Mtype, MTYPE_V,
+                              0, Make_Pointer_Type(tensor_ty), private_st),
+                 Make_Pointer_Type(tensor_ty),
+                 WN_PARM_BY_REFERENCE | WN_PARM_READ_ONLY |
+                 WN_PARM_PASSED_NOT_SAVED);
+        } else if (strcmp(negative_case, "region_escape") == 0) {
+            DSL_REGION region = DSL_Region_Create
+                (pu, NULL, "common.group_escape", 1);
+            GROUP_LOWER_CHECK
+                (region != NULL && DSL_Region_Declare_Symbol
+                     (region, private_st, DSL_REGION_VALUE_INPUT, 0,
+                      DSL_REGION_INTERFACE_FLAG_NONE) &&
+                 DSL_Region_Append_To_PU(region) &&
+                 DSL_Region_Verify_PU(pu, stderr),
+                 "REGION escape fixture");
+        } else {
+            GROUP_LOWER_CHECK
+                (strcmp(negative_case, "private_cross_group") == 0 ||
+                 strcmp(negative_case, "interface_escape") == 0,
+                 "recognized negative case");
+        }
+        if (escape != NULL) {
+            WN_Set_Linenum(escape, WN_Get_Linenum(definitions[5]));
+            WN_INSERT_BlockLast(body, escape);
+        }
+        DSL_IR_NATIVE_GROUP_LOWER_RESULT unchanged[2];
+        memset(unchanged, 0x5a, sizeof(unchanged));
+        DSL_IR_NATIVE_GROUP_LOWER_RESULT sentinel[2];
+        memcpy(sentinel, unchanged, sizeof(sentinel));
+        UINT32 node_count = DSL_IR_Image_Node_Count();
+        UINT32 value_count = DSL_IR_Image_Value_Count();
+        UINT32 projection_count =
+            DSL_Runtime_Interface_Image_Value_Count();
+        GROUP_LOWER_CHECK
+            (!DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+                 (pu, requests, 2, stderr, unchanged) &&
+             memcmp(unchanged, sentinel, sizeof(unchanged)) == 0 &&
+             DSL_IR_Image_Node_Count() == node_count &&
+             DSL_IR_Image_Value_Count() == value_count &&
+             DSL_Runtime_Interface_Image_Value_Count() ==
+                 projection_count &&
+             WN_first(standard[0]) != NULL &&
+             WN_first(standard[1]) != NULL,
+             "negative case rejects before commit");
+        for (UINT32 i = 0; i < 6; ++i) {
+            DSL_IR_VALUE_RECORD unchanged_value;
+            GROUP_LOWER_CHECK
+                (Find_STID_And_Block
+                     (body, DSL_Builder_Get_Value_Result_Symbol(values[i]),
+                      NULL) == definitions[i] &&
+                 DSL_IR_Image_Get_Value
+                     (DSL_Builder_Get_Value_Image_Id(values[i]),
+                      &unchanged_value) &&
+                 unchanged_value.flags == DSL_IR_VALUE_FLAG_NONE,
+                 "negative case retains native definitions");
+        }
+        printf("grouped lowering negative %s preserved tree and image\n",
+               negative_case);
+        return 0;
+    }
+    DSL_IR_NATIVE_GROUP_LOWER_RESULT results[2];
+    DSL_IR_NATIVE_GROUP_LOWER_RESULT sentinel[2];
+    memset(results, 0x5a, sizeof(results));
+    memcpy(sentinel, results, sizeof(sentinel));
+    UINT32 node_count_before = DSL_IR_Image_Node_Count();
+    UINT32 value_count_before = DSL_IR_Image_Value_Count();
+    DSL_IR_NATIVE_GROUP_MEMBER_REQUEST malformed[3];
+    memcpy(malformed, members[1], sizeof(malformed));
+    malformed[2].expected_version = 2;
+    DSL_IR_NATIVE_GROUP_LOWER_REQUEST rejected[2] = {
+        requests[0], requests[1]
+    };
+    rejected[1].members = malformed;
+    GROUP_LOWER_CHECK
+        (!DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+              (pu, rejected, 2, NULL, results) &&
+         memcmp(results, sentinel, sizeof(results)) == 0 &&
+         WN_first(standard[0]) != NULL &&
+         WN_first(standard[1]) != NULL &&
+         DSL_IR_Image_Node_Count() == node_count_before &&
+         DSL_IR_Image_Value_Count() == value_count_before &&
+         DSL_IR_Image_Validate(NULL),
+         "late request rejects whole array without mutation");
+    for (UINT32 i = 0; i < 6; ++i)
+        GROUP_LOWER_CHECK
+            (Find_STID_And_Block
+                 (body, DSL_Builder_Get_Value_Result_Symbol(values[i]),
+                  NULL) == definitions[i],
+             "rejected request retains every native definition");
+    rejected[1].members = members[1];
+    rejected[1].owner_pu_st = ST_IDX_ZERO;
+    GROUP_LOWER_CHECK
+        (!DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+              (pu, rejected, 2, NULL, results) &&
+         memcmp(results, sentinel, sizeof(results)) == 0 &&
+         DSL_IR_Image_Node_Count() == node_count_before &&
+         DSL_IR_Image_Value_Count() == value_count_before,
+         "wrong group owner rejects without mutation");
+    rejected[1].owner_pu_st = requests[1].owner_pu_st;
+    DSL_IR_NATIVE_GROUP_MEMBER_REQUEST duplicate[3];
+    memcpy(duplicate, members[1], sizeof(duplicate));
+    duplicate[1] = duplicate[0];
+    rejected[1].members = duplicate;
+    GROUP_LOWER_CHECK
+        (!DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+              (pu, rejected, 2, NULL, results) &&
+         memcmp(results, sentinel, sizeof(results)) == 0 &&
+         DSL_IR_Image_Node_Count() == node_count_before &&
+         DSL_IR_Image_Value_Count() == value_count_before,
+         "duplicate group member rejects without mutation");
+
+    WN *address = WN_CreateEval
+        (WN_CreateLda(OPR_LDA, Pointer_Mtype, MTYPE_V, 0,
+                      Make_Pointer_Type(tensor_ty),
+                      DSL_Builder_Get_Value_Result_Symbol(values[0])));
+    WN_INSERT_BlockAfter(body, definitions[5], address);
+    GROUP_LOWER_CHECK
+        (!DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+              (pu, requests, 2, NULL, results) &&
+         memcmp(results, sentinel, sizeof(results)) == 0 &&
+         WN_first(standard[0]) != NULL &&
+         WN_first(standard[1]) != NULL &&
+         DSL_IR_Image_Node_Count() == node_count_before &&
+         DSL_IR_Image_Value_Count() == value_count_before &&
+         DSL_IR_Image_Validate(NULL),
+         "private member address escape rejects");
+    for (UINT32 i = 0; i < 6; ++i)
+        GROUP_LOWER_CHECK
+            (Find_STID_And_Block
+                 (body, DSL_Builder_Get_Value_Result_Symbol(values[i]),
+                  NULL) == definitions[i],
+             "address escape retains every native definition");
+    printf("grouped lowering rejections preserved results, blocks, "
+           "definitions, and image counts\n");
+    WN_EXTRACT_FromBlock(body, address);
+    WN_DELETE_Tree(address);
+
+    GROUP_LOWER_CHECK
+        (DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+             (pu, requests, 2, stderr, results) &&
+         DSL_IR_Image_Validate(stderr) &&
+         DSL_IR_Image_Validate_Lowered_Relations(stderr) &&
+         results[0].owner_pu_st == PU_Info_proc_sym(pu) &&
+         results[0].retired_member_count == 3 &&
+         results[1].retired_member_count == 3 &&
+         results[0].semantic_source_value_id ==
+             DSL_Builder_Get_Value_Image_Id(seed),
+         "two-group atomic commit");
+    for (UINT32 i = 0; i < 6; ++i)
+        GROUP_LOWER_CHECK
+            (Find_STID_And_Block
+                 (body, DSL_Builder_Get_Value_Result_Symbol(values[i]),
+                  NULL) == NULL,
+             "private native definition removed");
+    (void) unlink(artifact);
+    GROUP_LOWER_CHECK(Write_Runtime_Interface_Artifact
+                          (artifact, pu, NULL) &&
+                      access(artifact, F_OK) == 0,
+                      "mapped grouped artifact");
+    printf("DSL grouped native lowering contract passed\n");
+#undef GROUP_LOWER_CHECK
+    return 0;
+}
+
 static void
 Init_Shape_Solver_Descriptor
         (DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor,
@@ -13737,6 +14125,8 @@ main(void)
         return Check_Program_Interface_Evolution();
     if (getenv("OPEN64_DSL_STANDARD_LOWER_ONLY") != NULL)
         return Check_Native_To_Standard_Lowering();
+    if (getenv("OPEN64_DSL_GROUP_LOWER_ONLY") != NULL)
+        return Check_Grouped_Native_Lowering();
     if (getenv("OPEN64_DSL_CANONICALIZATION_ONLY") != NULL)
         return Check_Algebraic_Canonicalization();
     if (getenv("OPEN64_DSL_TENSOR_FOLD_M3_ONLY") != NULL)

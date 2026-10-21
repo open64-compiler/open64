@@ -12,6 +12,7 @@
 
 #include "dsl_memory_behavior.h"
 #include "dsl_ir_image.h"
+#include "dsl_ir_lower_internal.h"
 #include "dsl_region.h"
 #include "dsl_region_internal.h"
 #include "pu_info.h"
@@ -25,7 +26,7 @@ extern BOOL DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID);
 extern BOOL DSL_IR_Image_Mark_Value_Dead_Elided (DSL_IR_VALUE_ID);
 
 /* Confirm that the caller selected the PU whose local WHIRL state is active. */
-static BOOL
+BOOL
 DSL_IR_Lower_Current_PU_Is (PU_Info *pu_info)
 {
     return pu_info != NULL && Current_PU_Info == pu_info;
@@ -57,22 +58,6 @@ DSL_IR_Lower_Find_Containing_Block (WN *tree, const WN *target)
     }
     return NULL;
 }
-
-typedef struct {
-    const DSL_IR_NATIVE_VALUE_LOWER_REQUEST *request;
-    UINT32 request_index;
-    UINT32 tree_order;
-    UINT32 statement_count;
-    DSL_IR_VALUE_RECORD value;
-    DSL_IR_NODE_RECORD node;
-    DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
-    ST_IDX handle_st;
-    TY_IDX handle_ty;
-    ST_IDX local_projection_st;
-    DSL_RUNTIME_VALUE_PROJECTION_ID local_projection_id;
-    WN *containing_block;
-    WN *result_handle_definition;
-} DSL_IR_NATIVE_VALUE_LOWER_JOURNAL;
 
 /* Resolve a native definition to its image value, including promoted sources. */
 static BOOL
@@ -125,7 +110,7 @@ DSL_IR_Lower_Find_Native_Definition_Value
 }
 
 /* Emit one stable diagnostic for a request and convert failure to FALSE. */
-static BOOL
+BOOL
 DSL_IR_Lower_Report
         (FILE *diagnostic,
          UINT32 request_index,
@@ -260,6 +245,7 @@ DSL_IR_Lower_Call_Argument_Is_Verified_Dead
                DSL_INTERFACE_RETIREMENT_VERIFIED_DEAD_INPUT;
 }
 
+/* Reject source-symbol reads, definitions, and escapes outside this transaction. */
 typedef struct {
     ST_IDX source_st;
     const WN *source_definition;
@@ -268,7 +254,6 @@ typedef struct {
     BOOL valid;
 } DSL_IR_LOWER_SOURCE_USE_SCAN;
 
-/* Reject source-symbol reads, definitions, and escapes outside this transaction. */
 static void
 DSL_IR_Lower_Scan_Source_Uses
         (const WN *tree,
@@ -303,18 +288,8 @@ DSL_IR_Lower_Scan_Source_Uses
             (WN_kid(tree, i), enclosing_definition, scan);
 }
 
-typedef struct {
-    ST_IDX source_st;
-    ST_IDX handle_st;
-    const WN *result_handle_definition;
-    SRCPOS source_position;
-    UINT32 handle_definition_count;
-    UINT32 statement_count;
-    BOOL valid;
-} DSL_IR_LOWER_STANDARD_BLOCK_SCAN;
-
 /* Validate a detached replacement block and its sole final handle definition. */
-static void
+void
 DSL_IR_Lower_Scan_Standard_Block
         (const WN *tree, DSL_IR_LOWER_STANDARD_BLOCK_SCAN *scan)
 {
