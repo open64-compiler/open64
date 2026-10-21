@@ -35,6 +35,16 @@ extern BOOL VHO_DSL_Dump_After_Lowering;
 extern BOOL VHO_DSL_Dump_After_Lowering_Set;
 extern BOOL VHO_DSL_Dump_After_Shape_Refinement;
 extern BOOL VHO_DSL_Dump_After_Shape_Refinement_Set;
+extern BOOL VHO_DSL_AI_Opt_Trace;
+extern BOOL VHO_DSL_AI_Opt_Trace_Set;
+extern BOOL VHO_DSL_CUDA_TMA_Prefetch;
+extern BOOL VHO_DSL_CUDA_TMA_Prefetch_Set;
+extern BOOL VHO_DSL_CUDA_Tile_Apply;
+extern BOOL VHO_DSL_CUDA_Tile_Apply_Set;
 extern char *VHO_DSL_PU_Specialization_Checkpoint_Output;
+extern char *VHO_DSL_CUDA_Tile_Output;
+
+/* Reserved TP_WOPT2 bit for versioned AI optimization decisions. */
+#define AI_OPT_TRACE_FLAG 0x00800000
 
 #endif /* config_dsl_INCLUDED */

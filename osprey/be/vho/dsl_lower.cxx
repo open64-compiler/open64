@@ -3,15 +3,18 @@
  */
 
 #include <ctype.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <string>
 #include <vector>
 
 #include "dsl_lower.h"
+#include "config.h"
 #include "config_dsl.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_ir_image.h"
@@ -19,6 +22,11 @@
 #include "dsl_opcode.h"
 #include "dsl_region.h"
 #include "dsl_shape_refine.h"
+#include "dsl_tensor_analysis_opt.h"
+#include "dsl_tensor_evolution_opt.h"
+#include "dsl_tensor_locality_opt.h"
+#include "dsl_fetch_pipeline_opt.h"
+#include "dsl_tile_candidate_opt.h"
 #include "errors.h"
 #include "wn.h"
 #include "wn_map.h"
@@ -55,6 +63,7 @@ typedef struct {
     ST *runtime_add;
     ST *runtime_matmul;
     ST *runtime_matmul_physical;
+    ST *runtime_matmul_generated;
     ST *runtime_relu;
     ST *runtime_flatten;
     ST *runtime_residual_add;
@@ -76,6 +85,7 @@ typedef struct {
     ST *runtime_scatter;
     const DSL_PHYSICAL_PLAN_ANALYSIS *physical_plan;
     const DSL_PHYSICAL_PLAN_IR *physical_plan_ir;
+    const DSL_TILE_PLAN_RECORD *generated_tile;
 } VHO_DSL_LOWER_CONTEXT;
 
 typedef char VHO_DSL_Runtime_Cublaslt_Provider_Matches
@@ -395,6 +405,56 @@ VHO_DSL_Create_Physical_Plan_Symbol
         VHO_DSL_Lower_Report
             (context, "physical plan image has size %u, expected %u",
              Get_INITO_Size(inito), OPEN64_DSL_PHYSICAL_PLAN_V1_SIZE);
+        return NULL;
+    }
+    return blob;
+}
+
+/* Emit a pointer-free, fixed-size plan for the generated matmul runtime. */
+static ST *
+VHO_DSL_Create_Generated_Tile_Symbol
+        (const DSL_TILE_PLAN_RECORD *tile,
+         VHO_DSL_LOWER_CONTEXT *context)
+{
+    if (tile == NULL || tile->shared_bytes_per_stage > UINT32_MAX)
+        return NULL;
+    TY_IDX blob_ty = Make_Array_Type
+                         (MTYPE_U1, 1,
+                          OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE);
+    Set_TY_align(blob_ty, 8);
+    ST *blob = Gen_Read_Only_Symbol(blob_ty, ".dsl_generated_matmul_plan");
+    Set_ST_is_initialized(blob);
+    INITO_IDX inito = New_INITO(blob);
+    INITV_IDX previous = INITV_IDX_ZERO;
+    previous = VHO_DSL_Append_Integer
+                   (inito, previous, MTYPE_U2,
+                    OPEN64_DSL_RUNTIME_ABI_VERSION);
+    previous = VHO_DSL_Append_Integer
+                   (inito, previous, MTYPE_U2,
+                    OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE);
+    previous = VHO_DSL_Append_Integer
+                   (inito, previous, MTYPE_U4,
+                    OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE);
+    const UINT32 fields[] = {
+        OPEN64_DSL_PHYSICAL_PROVIDER_OPEN64_GENERATED,
+        tile->target_profile_id,
+        tile->optimization_plan_id,
+        tile->id,
+        tile->cta_m, tile->cta_n, tile->cta_k,
+        tile->thread_m, tile->thread_n,
+        (UINT32)tile->shared_bytes_per_stage,
+        tile->threads_per_cta,
+        OPEN64_DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT
+    };
+    for (UINT32 index = 0; index < sizeof(fields) / sizeof(fields[0]); ++index)
+        previous = VHO_DSL_Append_Integer
+                       (inito, previous, MTYPE_U4, fields[index]);
+    previous = VHO_DSL_Append_Integer(inito, previous, MTYPE_U8, 0);
+    if (Get_INITO_Size(inito) !=
+            OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE) {
+        VHO_DSL_Lower_Report
+            (context, "generated matmul plan image has size %u",
+             Get_INITO_Size(inito));
         return NULL;
     }
     return blob;
@@ -757,6 +817,7 @@ VHO_DSL_Runtime_Function
          UINT16 version,
          BOOL external_tensor,
          BOOL physical_matmul,
+         BOOL generated_matmul,
          VHO_DSL_LOWER_CONTEXT *context)
 {
     ST **slot = NULL;
@@ -777,10 +838,12 @@ VHO_DSL_Runtime_Function
         name = "__open64_dsl_add_v1";
         break;
     case OPR_DSLMATMUL:
-        slot = physical_matmul ? &context->runtime_matmul_physical :
-               &context->runtime_matmul;
-        name = physical_matmul ? "__open64_dsl_matmul_physical_v1" :
-               "__open64_dsl_matmul_v1";
+        slot = generated_matmul ? &context->runtime_matmul_generated :
+               physical_matmul ? &context->runtime_matmul_physical :
+                                 &context->runtime_matmul;
+        name = generated_matmul ? "__open64_dsl_matmul_generated_v1" :
+               physical_matmul ? "__open64_dsl_matmul_physical_v1" :
+                                 "__open64_dsl_matmul_v1";
         break;
     case OPR_DSLRELU:
         slot = &context->runtime_relu;
@@ -1075,6 +1138,7 @@ VHO_DSL_Build_Runtime_Call
     char value_kind[32];
     BOOL external_tensor;
     BOOL physical_matmul = FALSE;
+    BOOL generated_matmul = FALSE;
     if (!DSL_WN_Get_Opcode_Annotation(native, &annotation))
         return FALSE;
     external_tensor = dsl_operator == OPR_DSLTENSORCONST &&
@@ -1087,12 +1151,18 @@ VHO_DSL_Build_Runtime_Call
              &physical_implementation))
         physical_matmul = physical_implementation.provider ==
                           DSL_PHYSICAL_PROVIDER_NVIDIA_CUBLASLT;
+    if (dsl_operator == OPR_DSLMATMUL && context->generated_tile != NULL) {
+        if (result_ty != context->generated_tile->source_descriptor_ty)
+            return VHO_DSL_Lower_Report
+                       (context, "generated tile result descriptor mismatch");
+        generated_matmul = TRUE;
+    }
     ST *descriptor = VHO_DSL_Create_Descriptor_Symbol
                          (result_ty, dsl_operator == OPR_DSLTENSORCONST,
                           context);
     ST *function = VHO_DSL_Runtime_Function
                        (dsl_operator, annotation.version, external_tensor,
-                        physical_matmul, context);
+                        physical_matmul, generated_matmul, context);
     if (descriptor == NULL || function == NULL)
         return FALSE;
 
@@ -1103,7 +1173,7 @@ VHO_DSL_Build_Runtime_Call
         parameter_count = 2;
     else if (dsl_operator == OPR_DSLADD ||
              dsl_operator == OPR_DSLMATMUL)
-        parameter_count = physical_matmul ? 5 : 4;
+        parameter_count = (physical_matmul || generated_matmul) ? 5 : 4;
     else if (dsl_operator == OPR_DSLRELU)
         parameter_count = 2;
     else if (dsl_operator == OPR_DSLFLATTEN)
@@ -1229,9 +1299,12 @@ VHO_DSL_Build_Runtime_Call
             strcmp(transpose, "true") == 0)
             flags |= OPEN64_DSL_MATMUL_FLAG_TRANSPOSE_KID1;
         WN_kid(call, parameter++) = VHO_DSL_U4_Parm(flags);
-        if (physical_matmul) {
-            ST *physical = VHO_DSL_Create_Physical_Plan_Symbol
-                               (&physical_implementation, context);
+        if (physical_matmul || generated_matmul) {
+            ST *physical = generated_matmul ?
+                VHO_DSL_Create_Generated_Tile_Symbol
+                    (context->generated_tile, context) :
+                VHO_DSL_Create_Physical_Plan_Symbol
+                    (&physical_implementation, context);
             if (physical == NULL)
                 return FALSE;
             WN_kid(call, parameter++) = VHO_DSL_Pointer_Parm
@@ -1461,7 +1534,7 @@ VHO_DSL_Build_Runtime_Call
 
     if (parameter != parameter_count)
         return FALSE;
-    if (physical_matmul)
+    if (physical_matmul || generated_matmul)
         ++context->result.physical_provider_lowered_count;
     *call_result = call;
     return TRUE;
@@ -1891,6 +1964,7 @@ VHO_DSL_Lower_Verified_Engine
         (struct pu_info *pu_info,
          WN *tree,
          const DSL_PHYSICAL_PLAN_ANALYSIS *physical_plan,
+         const DSL_TILE_PLAN_RECORD *generated_tile,
          FILE *diagnostic,
          VHO_DSL_LOWER_RESULT *result)
 {
@@ -1904,6 +1978,7 @@ VHO_DSL_Lower_Verified_Engine
     context.runtime_add = NULL;
     context.runtime_matmul = NULL;
     context.runtime_matmul_physical = NULL;
+    context.runtime_matmul_generated = NULL;
     context.runtime_relu = NULL;
     context.runtime_flatten = NULL;
     context.runtime_residual_add = NULL;
@@ -1925,8 +2000,10 @@ VHO_DSL_Lower_Verified_Engine
     context.runtime_scatter = NULL;
     context.physical_plan = physical_plan;
     context.physical_plan_ir = NULL;
+    context.generated_tile = generated_tile;
 
-    BOOL valid = pu_info != NULL && tree != NULL;
+    BOOL valid = pu_info != NULL && tree != NULL &&
+                 !(physical_plan != NULL && generated_tile != NULL);
     BOOL preflight_valid = FALSE;
     if (!valid) {
         VHO_DSL_Lower_Report
@@ -1934,6 +2011,44 @@ VHO_DSL_Lower_Verified_Engine
     } else {
         preflight_valid = VHO_DSL_Preflight_Physical_Plan
                               (pu_info, physical_plan, &context);
+        if (preflight_valid && generated_tile != NULL) {
+            const DSL_TILE_PLAN_RECORD &tile = *generated_tile;
+            preflight_valid = tile.id != 0 &&
+                tile.optimization_plan_id != 0 &&
+                tile.legality == DSL_OPT_LEGALITY_PROVEN &&
+                tile.rejection_reason == DSL_OPT_REJECT_NONE &&
+                (tile.flags & DSL_TILE_PLAN_FLAG_SEMANTICS_PRESERVING) != 0 &&
+                tile.family != DSL_TILE_FAMILY_BASELINE &&
+                tile.target_profile_id == DSL_TARGET_PROFILE_NVIDIA_HOPPER &&
+                tile.source_descriptor_ty != TY_IDX_ZERO &&
+                TY_is_tensor_extension(tile.source_descriptor_ty) &&
+                TY_tensor_rank(tile.source_descriptor_ty) == 2 &&
+                TY_mtype(TY_tensor_element_ty(tile.source_descriptor_ty)) ==
+                    MTYPE_F4 &&
+                tile.problem_m != 0 && tile.problem_n != 0 &&
+                tile.problem_k != 0 &&
+                tile.cta_m != 0 && tile.cta_n != 0 && tile.cta_k != 0 &&
+                tile.thread_m != 0 && tile.thread_n != 0 &&
+                tile.cta_m % tile.thread_m == 0 &&
+                tile.cta_n % tile.thread_n == 0 &&
+                tile.threads_per_cta ==
+                    (tile.cta_m / tile.thread_m) *
+                    (tile.cta_n / tile.thread_n) &&
+                tile.threads_per_cta <= 1024 &&
+                tile.shared_bytes_per_stage <= UINT32_MAX &&
+                tile.shared_bytes_per_stage ==
+                    4ULL * tile.cta_k *
+                    ((UINT64)tile.cta_m + tile.cta_n) &&
+                tile.shared_bytes_per_stage <= tile.shared_capacity_bytes &&
+                tile.edge_policy == DSL_TILE_EDGE_EXACT &&
+                tile.instruction_family == DSL_TILE_INSTRUCTION_VECTOR_FMA;
+            if (!preflight_valid)
+                VHO_DSL_Lower_Report
+                    (&context, "generated tile failed lowering preflight");
+            else
+                context.result.physical_plan_site_count =
+                    context.result.physical_provider_site_count = 1;
+        }
         valid = preflight_valid;
     }
     if (preflight_valid) {
@@ -1976,7 +2091,41 @@ VHO_DSL_Lower_Verified_Program_Unit_With_Physical_Plan
     memset(&working_result, 0, sizeof(working_result));
     BOOL valid = working_tree != NULL &&
                  VHO_DSL_Lower_Verified_Engine
-                     (pu_info, working_tree, physical_plan, diagnostic,
+                     (pu_info, working_tree, physical_plan, NULL, diagnostic,
+                      &working_result);
+    if (!valid) {
+        if (working_tree != NULL)
+            WN_DELETE_Tree(working_tree);
+        if (result != NULL)
+            *result = working_result;
+        return FALSE;
+    }
+    *tree = working_tree;
+    Set_PU_Info_tree_ptr(pu_info, working_tree);
+    if (result != NULL)
+        *result = working_result;
+    return TRUE;
+}
+
+/* A selected tile is applied only after the copied PU lowers completely. */
+BOOL
+VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile
+        (struct pu_info *pu_info,
+         WN **tree,
+         const DSL_TILE_PLAN_RECORD *tile,
+         FILE *diagnostic,
+         VHO_DSL_LOWER_RESULT *result)
+{
+    if (result != NULL)
+        memset(result, 0, sizeof(*result));
+    if (pu_info == NULL || tree == NULL || *tree == NULL || tile == NULL)
+        return FALSE;
+    WN *working_tree = WN_COPY_Tree(*tree);
+    VHO_DSL_LOWER_RESULT working_result;
+    memset(&working_result, 0, sizeof(working_result));
+    BOOL valid = working_tree != NULL &&
+                 VHO_DSL_Lower_Verified_Engine
+                     (pu_info, working_tree, NULL, tile, diagnostic,
                       &working_result);
     if (!valid) {
         if (working_tree != NULL)
@@ -2000,7 +2149,701 @@ VHO_DSL_Lower_Verified_Program_Unit
          VHO_DSL_LOWER_RESULT *result)
 {
     return VHO_DSL_Lower_Verified_Engine
-               (pu_info, tree, NULL, diagnostic, result);
+               (pu_info, tree, NULL, NULL, diagnostic, result);
+}
+
+static DSL_TENSOR_CONTROL_SNAPSHOT *
+VHO_DSL_CUDA_Linear_Snapshot (PU_Info *pu_info, WN *tree, FILE *diagnostic)
+{
+    if (WN_operator(tree) != OPR_FUNC_ENTRY ||
+        WN_operator(WN_func_body(tree)) != OPR_BLOCK) {
+        fprintf(diagnostic, "DSL CUDA snapshot: unexpected root operator %u\n",
+                (UINT32)WN_operator(tree));
+        return NULL;
+    }
+    DSL_TENSOR_CONTROL_SNAPSHOT *snapshot =
+        DSL_tensor_control_snapshot_create(pu_info, diagnostic);
+    DSL_TENSOR_CONTROL_BLOCK block;
+    memset(&block, 0, sizeof(block));
+    block.block_id = 1;
+    block.reverse_postorder = 1;
+    if (snapshot == NULL ||
+        !DSL_tensor_control_snapshot_add_block(snapshot, &block, diagnostic)) {
+        DSL_tensor_control_snapshot_destroy(snapshot);
+        return NULL;
+    }
+    UINT32 order = 0;
+    for (WN *statement = WN_first(WN_func_body(tree)); statement != NULL;
+         statement = WN_next(statement)) {
+        if (WN_operator(statement) == OPR_RETURN)
+            continue;
+        if (WN_operator(statement) != OPR_STID ||
+            WN_kid_count(statement) != 1 ||
+            !DSL_WN_Is_Native(WN_kid0(statement))) {
+            fprintf(diagnostic,
+                    "DSL CUDA snapshot: unsupported statement operator %u\n",
+                    (UINT32)WN_operator(statement));
+            DSL_tensor_control_snapshot_destroy(snapshot);
+            return NULL;
+        }
+        DSL_IR_VALUE_RECORD value;
+        DSL_IR_NODE_RECORD node;
+        DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
+        DSL_LOGICAL_OPCODE logical;
+        ST_IDX result_st = WN_st_idx(statement);
+        if (!DSL_IR_Image_Find_PU_Value
+                 (result_st, ST_name(WN_st(statement)),
+                  ST_name(St_Table[PU_Info_proc_sym(pu_info)]), &value) ||
+            value.st != result_st || value.ty != WN_ty(statement) ||
+            value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
+            !DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
+            (node.flags & DSL_IR_NODE_FLAG_RETIRED) != 0 ||
+            node.result_value_id != value.id ||
+            !DSL_IR_Image_Get_Opcode_Descriptor
+                 (node.opcode_descriptor_id, &descriptor) ||
+            !DSL_WN_Get_Logical_Opcode
+                 (WN_kid0(statement), &logical, NULL) ||
+            descriptor.logical_operator != logical.dsl_operator ||
+            descriptor.version != logical.source_version ||
+            node.operand_count != (UINT32)WN_kid_count(WN_kid0(statement)) ||
+            (node.payload == STR_IDX_ZERO && logical.payload[0] != '\0') ||
+            (node.payload != STR_IDX_ZERO &&
+             strcmp(Index_To_Str(node.payload), logical.payload) != 0)) {
+            fprintf(diagnostic,
+                    "DSL CUDA snapshot: unresolved native definition at %u\n",
+                    order + 1);
+            DSL_tensor_control_snapshot_destroy(snapshot);
+            return NULL;
+        }
+        DSL_TENSOR_CONTROL_POSITION position;
+        memset(&position, 0, sizeof(position));
+        position.node_id = value.producer_node_id;
+        position.block_id = 1;
+        position.reverse_postorder = 1;
+        position.statement_order = ++order;
+        if (!DSL_tensor_control_snapshot_add_position
+                 (snapshot, &position, diagnostic)) {
+            DSL_tensor_control_snapshot_destroy(snapshot);
+            return NULL;
+        }
+    }
+    if (order == 0 || !DSL_tensor_control_snapshot_seal(snapshot, diagnostic)) {
+        DSL_tensor_control_snapshot_destroy(snapshot);
+        return NULL;
+    }
+    return snapshot;
+}
+
+static BOOL
+VHO_DSL_CUDA_Write_Selected_Tile
+        (const char *path, const DSL_TILE_PLAN_RECORD &tile,
+         const DSL_OPT_COST_RECORD &cost, BOOL tma_fallback,
+         FILE *diagnostic)
+{
+    int fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0644);
+    if (fd < 0) {
+        fprintf(diagnostic, "DSL CUDA output cannot create %s\n", path);
+        return FALSE;
+    }
+    FILE *file = fdopen(fd, "w");
+    if (file == NULL) {
+        close(fd);
+        remove(path);
+        return FALSE;
+    }
+    fprintf(file,
+            "// Open64 cost-selected CUDA tile source; runtime binding is opt-in.\n"
+            "// Numerical/runtime verification and target resource calibration pending.\n"
+            "// tile_plan=%u optimization_plan=%u candidate=%u family=%s\n"
+            "// legality=proven cost=%llu unit=relative confidence=low\n"
+            "// shared_ab_bytes_per_stage=%llu threads_per_cta=%u\n"
+            "#include <cuda_runtime.h>\n"
+            "#define M %llu\n#define N %llu\n#define K %llu\n"
+            "#define BM %u\n#define BN %u\n#define BK %u\n"
+            "#define TM %u\n#define TN %u\n"
+            "#define THREADS ((BM / TM) * (BN / TN))\n",
+            tile.id, tile.optimization_plan_id, tile.candidate_id,
+            DSL_tile_family_name(tile.family),
+            (unsigned long long)cost.total,
+            (unsigned long long)tile.shared_bytes_per_stage,
+            tile.threads_per_cta,
+            (unsigned long long)tile.problem_m,
+            (unsigned long long)tile.problem_n,
+            (unsigned long long)tile.problem_k,
+            tile.cta_m, tile.cta_n, tile.cta_k,
+            tile.thread_m, tile.thread_n);
+    fprintf(file,
+        "extern \"C\" __global__ void %s(\n",
+        tma_fallback ? "ai_matmul_tile_f32_sync" : "ai_matmul_tile_f32");
+    fputs(
+        "    const float *__restrict__ a, const float *__restrict__ b,\n"
+        "    float *__restrict__ c) {\n"
+        "  __shared__ float as[BM][BK];\n"
+        "  __shared__ float bs[BK][BN];\n"
+        "  const int tid = threadIdx.x;\n"
+        "  const int local_row = (tid / (BN / TN)) * TM;\n"
+        "  const int local_col = (tid % (BN / TN)) * TN;\n"
+        "  const int row0 = blockIdx.y * BM;\n"
+        "  const int col0 = blockIdx.x * BN;\n"
+        "  float acc[TM][TN] = {};\n"
+        "  for (int base = 0; base < K; base += BK) {\n"
+        "    for (int offset = tid; offset < BM * BK; offset += THREADS) {\n"
+        "      const int r = offset / BK, q = offset % BK;\n"
+        "      as[r][q] = row0+r < M && base+q < K\n"
+        "          ? a[(row0+r)*K + base+q] : 0.0f;\n"
+        "    }\n"
+        "    for (int offset = tid; offset < BK * BN; offset += THREADS) {\n"
+        "      const int q = offset / BN, col = offset % BN;\n"
+        "      bs[q][col] = base+q < K && col0+col < N\n"
+        "          ? b[(base+q)*N + col0+col] : 0.0f;\n"
+        "    }\n"
+        "    __syncthreads();\n"
+        "    for (int q = 0; q < BK; ++q)\n"
+        "      for (int i = 0; i < TM; ++i) {\n"
+        "        const float av = as[local_row+i][q];\n"
+        "        for (int j = 0; j < TN; ++j)\n"
+        "          acc[i][j] += av * bs[q][local_col+j];\n"
+        "      }\n"
+        "    __syncthreads();\n"
+        "  }\n"
+        "  for (int i = 0; i < TM; ++i)\n"
+        "    for (int j = 0; j < TN; ++j)\n"
+        "      if (row0+local_row+i < M && col0+local_col+j < N)\n"
+        "        c[(row0+local_row+i)*N + col0+local_col+j] = acc[i][j];\n"
+        "}\n", file);
+    BOOL wrote = !ferror(file);
+    BOOL closed = fclose(file) == 0;
+    BOOL valid = wrote && closed;
+    if (!valid)
+        remove(path);
+    return valid;
+}
+
+static BOOL
+VHO_DSL_CUDA_Append_TMA_Pipeline
+        (const char *path, const DSL_TILE_PLAN_RECORD &tile,
+         const DSL_FETCH_PLAN_RECORD &fetch, FILE *diagnostic)
+{
+    if (tile.cta_m == 0 || tile.cta_n == 0 || tile.cta_k == 0 ||
+        tile.cta_m > 256 || tile.cta_n > 256 || tile.cta_k > 256 ||
+        tile.edge_policy != DSL_TILE_EDGE_EXACT ||
+        tile.instruction_family != DSL_TILE_INSTRUCTION_VECTOR_FMA ||
+        tile.problem_m % tile.cta_m != 0 ||
+        tile.problem_n % tile.cta_n != 0 ||
+        tile.problem_k % tile.cta_k != 0 ||
+        tile.problem_n % 4 != 0 || tile.problem_k % 4 != 0 ||
+        fetch.engine != DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC ||
+        fetch.legality != DSL_OPT_LEGALITY_PROVEN ||
+        fetch.stage_count < 2 || fetch.stage_count > 3 ||
+        fetch.buffering_bytes !=
+            tile.shared_bytes_per_stage * fetch.stage_count ||
+        fetch.buffering_bytes > tile.shared_capacity_bytes) {
+        fprintf(diagnostic, "DSL CUDA TMA plan failed lowering legality\n");
+        return FALSE;
+    }
+    FILE *file = fopen(path, "a");
+    if (file == NULL)
+        return FALSE;
+    fprintf(file,
+            "\n// P8 selected plan=%u engine=tma_2d stages=%u "
+            "prefetch_distance=%u\n"
+            "// movement_cost=relative raw=%llu hidden=%llu unhidden=%llu\n"
+            "// Requires CUDA tensor-map support and sm_90; GPU verification pending.\n"
+            "#include <cuda.h>\n#include <cuda/barrier>\n"
+            "#include <cuda/ptx>\n#include <stdint.h>\n"
+            "#define P8_STAGES %u\n"
+            "#define P8_STAGE_BYTES ((BM*BK + BK*BN)*sizeof(float))\n"
+            "#define P8_SMEM_BYTES (P8_STAGES*P8_STAGE_BYTES)\n",
+            fetch.optimization_plan_id, fetch.stage_count,
+            fetch.prefetch_distance,
+            (unsigned long long)fetch.raw_movement_cost,
+            (unsigned long long)fetch.hidden_movement_cost,
+            (unsigned long long)fetch.unhidden_movement_cost,
+            fetch.stage_count);
+    fputs(
+        "using ai_barrier = cuda::barrier<cuda::thread_scope_block>;\n"
+        "namespace ai_ptx = cuda::ptx;\n"
+        "__device__ __forceinline__ void ai_tma_issue(\n"
+        "    int slot, int k_tile, int row0, int col0,\n"
+        "    const CUtensorMap *a_map, const CUtensorMap *b_map,\n"
+        "    float (*as)[BM][BK], float (*bs)[BK][BN], ai_barrier *ready) {\n"
+        "  int32_t a_coord[2] = {k_tile*BK, row0};\n"
+        "  int32_t b_coord[2] = {col0, k_tile*BK};\n"
+        "  ai_ptx::cp_async_bulk_tensor(\n"
+        "      ai_ptx::space_shared, ai_ptx::space_global,\n"
+        "      &as[slot], a_map, a_coord,\n"
+        "      cuda::device::barrier_native_handle(ready[slot]));\n"
+        "  ai_ptx::cp_async_bulk_tensor(\n"
+        "      ai_ptx::space_shared, ai_ptx::space_global,\n"
+        "      &bs[slot], b_map, b_coord,\n"
+        "      cuda::device::barrier_native_handle(ready[slot]));\n"
+        "  (void)cuda::device::barrier_arrive_tx(\n"
+        "      ready[slot], 1, P8_STAGE_BYTES);\n"
+        "}\n"
+        "extern \"C\" __global__ void ai_matmul_tile_f32(\n"
+        "    const __grid_constant__ CUtensorMap a_map,\n"
+        "    const __grid_constant__ CUtensorMap b_map, float *c) {\n"
+        "  extern __shared__ __align__(128) unsigned char storage[];\n"
+        "  float (*as)[BM][BK] =\n"
+        "      reinterpret_cast<float (*)[BM][BK]>(storage);\n"
+        "  float (*bs)[BK][BN] = reinterpret_cast<float (*)[BK][BN]>(\n"
+        "      storage + P8_STAGES*BM*BK*sizeof(float));\n"
+        "  #pragma nv_diag_suppress static_var_with_dynamic_init\n"
+        "  __shared__ ai_barrier ready[P8_STAGES];\n"
+        "  const int tid = threadIdx.x;\n"
+        "  const int local_row = (tid / (BN / TN)) * TM;\n"
+        "  const int local_col = (tid % (BN / TN)) * TN;\n"
+        "  const int row0 = blockIdx.y * BM;\n"
+        "  const int col0 = blockIdx.x * BN;\n"
+        "  const int k_tiles = K / BK;\n"
+        "  float acc[TM][TN] = {};\n"
+        "  if (tid == 0) {\n"
+        "    for (int s = 0; s < P8_STAGES; ++s) init(&ready[s], 1);\n"
+        "  }\n"
+        "  __syncthreads();\n"
+        "  if (tid == 0) {\n"
+        "    for (int s = 0; s < P8_STAGES && s < k_tiles; ++s)\n"
+        "      ai_tma_issue(s, s, row0, col0, &a_map, &b_map, as, bs, ready);\n"
+        "  }\n"
+        "  for (int kt = 0; kt < k_tiles; ++kt) {\n"
+        "    const int slot = kt % P8_STAGES;\n"
+        "    const int parity = (kt / P8_STAGES) & 1;\n"
+        "    while (!ai_ptx::mbarrier_try_wait_parity(\n"
+        "        ai_ptx::sem_acquire, ai_ptx::scope_cta,\n"
+        "        cuda::device::barrier_native_handle(ready[slot]), parity)) {}\n"
+        "    for (int q = 0; q < BK; ++q)\n"
+        "      for (int i = 0; i < TM; ++i) {\n"
+        "        const float av = as[slot][local_row+i][q];\n"
+        "        for (int j = 0; j < TN; ++j)\n"
+        "          acc[i][j] += av * bs[slot][q][local_col+j];\n"
+        "      }\n"
+        "    __syncthreads();\n"
+        "    if (tid == 0 && kt + P8_STAGES < k_tiles)\n"
+        "      ai_tma_issue(slot, kt + P8_STAGES, row0, col0,\n"
+        "                   &a_map, &b_map, as, bs, ready);\n"
+        "  }\n"
+        "  if (tid == 0) {\n"
+        "    for (int s = 0; s < P8_STAGES; ++s) ready[s].~ai_barrier();\n"
+        "  }\n"
+        "  for (int i = 0; i < TM; ++i)\n"
+        "    for (int j = 0; j < TN; ++j)\n"
+        "      c[(row0+local_row+i)*N + col0+local_col+j] = acc[i][j];\n"
+        "}\n"
+        "extern \"C\" cudaError_t ai_matmul_tile_f32_launch_ex(\n"
+        "    const float *a, const float *b, float *c, cudaStream_t stream,\n"
+        "    bool *used_tma) {\n"
+        "  if (used_tma) *used_tma = false;\n"
+        "  if (!a || !b || !c) return cudaErrorInvalidDevicePointer;\n"
+        "  const dim3 grid(N/BN, M/BM);\n"
+        "  int device = 0, optin_bytes = 0;\n"
+        "  cudaDeviceProp prop{};\n"
+        "  cudaError_t status = cudaGetDevice(&device);\n"
+        "  if (status != cudaSuccess) return status;\n"
+        "  status = cudaGetDeviceProperties(&prop, device);\n"
+        "  if (status != cudaSuccess) return status;\n"
+        "  status = cudaDeviceGetAttribute(\n"
+        "      &optin_bytes, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);\n"
+        "  if (status != cudaSuccess) return status;\n"
+        "  if (prop.major < 9 || optin_bytes < P8_SMEM_BYTES + 128 ||\n"
+        "      (reinterpret_cast<uintptr_t>(a) & 15) ||\n"
+        "      (reinterpret_cast<uintptr_t>(b) & 15)) {\n"
+        "    ai_matmul_tile_f32_sync<<<grid, THREADS, 0, stream>>>(a, b, c);\n"
+        "    return cudaGetLastError();\n"
+        "  }\n"
+        "  const uint64_t a_dims[2] = {K, M}, b_dims[2] = {N, K};\n"
+        "  const uint64_t a_stride[1] = {K*sizeof(float)};\n"
+        "  const uint64_t b_stride[1] = {N*sizeof(float)};\n"
+        "  const uint32_t a_box[2] = {BK, BM}, b_box[2] = {BN, BK};\n"
+        "  const uint32_t element_stride[2] = {1, 1};\n"
+        "  CUtensorMap a_map{}, b_map{};\n"
+        "  if (cuInit(0) != CUDA_SUCCESS ||\n"
+        "      cuTensorMapEncodeTiled(\n"
+        "          &a_map, CU_TENSOR_MAP_DATA_TYPE_FLOAT32, 2,\n"
+        "          const_cast<float *>(a), a_dims, a_stride, a_box,\n"
+        "          element_stride, CU_TENSOR_MAP_INTERLEAVE_NONE,\n"
+        "          CU_TENSOR_MAP_SWIZZLE_NONE, CU_TENSOR_MAP_L2_PROMOTION_NONE,\n"
+        "          CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE) != CUDA_SUCCESS ||\n"
+        "      cuTensorMapEncodeTiled(\n"
+        "          &b_map, CU_TENSOR_MAP_DATA_TYPE_FLOAT32, 2,\n"
+        "          const_cast<float *>(b), b_dims, b_stride, b_box,\n"
+        "          element_stride, CU_TENSOR_MAP_INTERLEAVE_NONE,\n"
+        "          CU_TENSOR_MAP_SWIZZLE_NONE, CU_TENSOR_MAP_L2_PROMOTION_NONE,\n"
+        "          CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE) != CUDA_SUCCESS) {\n"
+        "    ai_matmul_tile_f32_sync<<<grid, THREADS, 0, stream>>>(a, b, c);\n"
+        "    return cudaGetLastError();\n"
+        "  }\n"
+        "  status = cudaFuncSetAttribute(\n"
+        "      ai_matmul_tile_f32, cudaFuncAttributeMaxDynamicSharedMemorySize,\n"
+        "      P8_SMEM_BYTES);\n"
+        "  if (status != cudaSuccess) {\n"
+        "    ai_matmul_tile_f32_sync<<<grid, THREADS, 0, stream>>>(a, b, c);\n"
+        "    return cudaGetLastError();\n"
+        "  }\n"
+        "  ai_matmul_tile_f32<<<grid, THREADS, P8_SMEM_BYTES, stream>>>(\n"
+        "      a_map, b_map, c);\n"
+        "  status = cudaGetLastError();\n"
+        "  if (status == cudaSuccess && used_tma) *used_tma = true;\n"
+        "  return status;\n"
+        "}\n"
+        "extern \"C\" cudaError_t ai_matmul_tile_f32_launch(\n"
+        "    const float *a, const float *b, float *c, cudaStream_t stream) {\n"
+        "  return ai_matmul_tile_f32_launch_ex(a, b, c, stream, nullptr);\n"
+        "}\n", file);
+    BOOL wrote = !ferror(file);
+    BOOL closed = fclose(file) == 0;
+    BOOL valid = wrote && closed;
+    if (!valid) {
+        remove(path);
+        fprintf(diagnostic, "DSL CUDA TMA source write failed: %s\n", path);
+    }
+    return valid;
+}
+
+static BOOL
+VHO_DSL_CUDA_Trace_Tensor_Facts
+        (const DSL_TENSOR_ANALYSIS *tensor,
+         const DSL_TENSOR_LOCALITY_ANALYSIS *locality)
+{
+    if (!VHO_DSL_AI_Opt_Trace ||
+        !Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG))
+        return TRUE;
+    for (UINT32 id = 1; id <= DSL_tensor_analysis_fact_count(tensor); ++id) {
+        DSL_TENSOR_FACT_RECORD fact;
+        TENSOR_DESCRIPTOR_RECORD descriptor;
+        DSL_IR_VALUE_RECORD value;
+        if (!DSL_tensor_analysis_get_fact(tensor, id, &fact) ||
+            !TY_get_tensor_descriptor_record(fact.descriptor_ty,
+                                             &descriptor) ||
+            !DSL_IR_Image_Get_Value(fact.value_id, &value))
+            return FALSE;
+        const char *shape = VHO_DSL_Str(descriptor.logical_shape);
+        if (shape == NULL || shape[0] == '\0' ||
+            strpbrk(shape, " \t\r\n") != NULL)
+            return FALSE;
+        UINT32 source_line = value.st != ST_IDX_ZERO ?
+                             ST_Line(St_Table[value.st]) : 0;
+        fprintf(TFile,
+                "AI_OPT 7 SEMANTIC %u %u %s %d %s %s %s %s %u %u\n",
+                fact.id, fact.value_id,
+                DSL_tensor_value_role_name(fact.value_role), fact.rank,
+                shape, TY_mtype(fact.element_ty) == MTYPE_F4 ? "f32" : "other",
+                DSL_tensor_ownership_name(fact.ownership),
+                DSL_tensor_reuse_role_name(fact.reuse_role),
+                fact.use_count, source_line);
+    }
+    for (UINT32 id = 1; id <= DSL_tensor_locality_fact_count(locality);
+         ++id) {
+        DSL_TENSOR_LOCALITY_FACT_RECORD fact;
+        if (!DSL_tensor_locality_get_fact(locality, id, &fact))
+            return FALSE;
+        fprintf(TFile,
+                "AI_OPT 7 LOCALITY %u %u %s %s %s %s %s %s %s "
+                "%llu %llu %llu %llu %llu %u %u\n",
+                fact.id, fact.value_id,
+                DSL_tensor_size_state_name(fact.size_state),
+                DSL_tensor_lifetime_state_name(fact.lifetime_state),
+                DSL_tensor_distance_state_name(fact.reuse_distance_state),
+                DSL_tensor_alias_state_name(fact.alias_state),
+                DSL_tensor_access_pattern_name(fact.access_pattern),
+                DSL_tensor_residency_benefit_name(fact.residency_benefit),
+                DSL_tensor_critical_path_state_name(fact.critical_path_state),
+                (unsigned long long)fact.object_bytes,
+                (unsigned long long)fact.reuse_distance_statements,
+                (unsigned long long)fact.working_set_bytes,
+                (unsigned long long)fact.estimated_read_bytes,
+                (unsigned long long)fact.estimated_write_bytes,
+                fact.producer_path_position, fact.last_use_path_position);
+    }
+    fflush(TFile);
+    return !ferror(TFile);
+}
+
+static BOOL
+VHO_DSL_CUDA_Emit_Selected_Tile
+        (PU_Info *pu_info, WN *tree, const char *path,
+         DSL_OPT_PLAN_ID *emitted_plan_id,
+         DSL_OPT_PLAN_ID *emitted_fetch_plan_id,
+         UINT32 *tile_candidate_count, UINT32 *fetch_candidate_count,
+         DSL_TILE_PLAN_RECORD *emitted_tile,
+         FILE *diagnostic)
+{
+    DSL_TENSOR_EVOLUTION_GRAPH *graph = NULL;
+    DSL_TENSOR_ANALYSIS *tensor = NULL;
+    DSL_TENSOR_CONTROL_SNAPSHOT *snapshot = NULL;
+    DSL_TENSOR_LOCALITY_ANALYSIS *locality = NULL;
+    DSL_TILE_ANALYSIS *analysis = NULL;
+    DSL_FETCH_PIPELINE_ANALYSIS *fetch_analysis = NULL;
+    const DSL_TILE_PLAN_IR *ir = NULL;
+    const DSL_FETCH_PIPELINE_IR *fetch_ir = NULL;
+    const DSL_OPT_PLAN_CONTEXT *plans = NULL;
+    const DSL_OPT_PLAN_CONTEXT *fetch_plans = NULL;
+    DSL_TILE_SITE_RECORD site;
+    DSL_FETCH_SITE_RECORD fetch_site;
+    DSL_FETCH_PLAN_RECORD selected_fetch;
+    DSL_OPT_PLAN_RECORD selected;
+    DSL_OPT_COST_RECORD cost;
+    VHO_DSL_TILE_CONTROL control;
+    VHO_DSL_FETCH_PIPELINE_CONTROL fetch_control;
+    BOOL valid = FALSE;
+    if (emitted_plan_id != NULL)
+        *emitted_plan_id = DSL_OPT_PLAN_INVALID_ID;
+    if (emitted_fetch_plan_id != NULL)
+        *emitted_fetch_plan_id = DSL_OPT_PLAN_INVALID_ID;
+    if (tile_candidate_count != NULL)
+        *tile_candidate_count = 0;
+    if (fetch_candidate_count != NULL)
+        *fetch_candidate_count = 0;
+    if (emitted_tile != NULL)
+        memset(emitted_tile, 0, sizeof(*emitted_tile));
+    memset(&selected_fetch, 0, sizeof(selected_fetch));
+    if (path == NULL || path[0] == '\0' ||
+        (snapshot = VHO_DSL_CUDA_Linear_Snapshot
+                        (pu_info, tree, diagnostic)) == NULL) {
+        fprintf(diagnostic,
+                "DSL CUDA output requires a straight-line native tensor PU\n");
+        goto done;
+    }
+    graph = DSL_tensor_evolution_create(pu_info, diagnostic);
+    if (graph == NULL ||
+        !VHO_DSL_Tensor_Evolution_Build_Semantic_Roots(graph, diagnostic))
+        goto done;
+    tensor = DSL_tensor_analysis_create(pu_info, graph, diagnostic);
+    if (tensor == NULL || !VHO_DSL_Tensor_Analysis_Build(tensor, diagnostic))
+        goto done;
+    locality = DSL_tensor_locality_create
+                   (pu_info, tensor, snapshot, diagnostic);
+    if (locality == NULL ||
+        !VHO_DSL_Tensor_Locality_Build(locality, diagnostic))
+        goto done;
+    VHO_DSL_Tile_Control_Init(&control);
+    analysis = VHO_DSL_Tile_Create
+                   (pu_info, graph, tensor, locality, NULL,
+                    &control, diagnostic);
+    if (analysis == NULL || !VHO_DSL_Tile_Build(analysis, diagnostic) ||
+        !VHO_DSL_Tile_Verify(analysis, diagnostic))
+        goto done;
+    ir = VHO_DSL_Tile_Get_IR(analysis);
+    if (DSL_tile_plan_ir_site_count(ir) != 1 ||
+        !DSL_tile_plan_ir_get_site(ir, 1, &site)) {
+        fprintf(diagnostic, "DSL CUDA output requires exactly one matmul site\n");
+        goto done;
+    }
+    if (!VHO_DSL_CUDA_Trace_Tensor_Facts(tensor, locality)) {
+        fprintf(diagnostic, "DSL CUDA output cannot trace tensor facts\n");
+        goto done;
+    }
+    if (tile_candidate_count != NULL)
+        *tile_candidate_count = site.tile_plan_count;
+    plans = VHO_DSL_Tile_Get_Plan_Context(analysis, site.id);
+    if (plans == NULL || site.selected_plan_id == site.baseline_plan_id ||
+        !DSL_opt_plan_get_plan(plans, site.selected_plan_id, &selected) ||
+        !DSL_opt_plan_get_cost(plans, selected.cost_id, &cost) ||
+        !cost.complete || selected.legality != DSL_OPT_LEGALITY_PROVEN) {
+        fprintf(diagnostic,
+                "DSL CUDA output has no cost-selected legal tile\n");
+        goto done;
+    }
+    if (VHO_DSL_CUDA_TMA_Prefetch) {
+        VHO_DSL_Fetch_Pipeline_Control_Init(&fetch_control);
+        fetch_control.focus_value_id = site.semantic_value_id;
+        fetch_control.maximum_buffer_stages = 2;
+        fetch_control.prefetch_distance_hint = 1;
+        fetch_analysis = VHO_DSL_Fetch_Pipeline_Create
+            (pu_info, graph, locality, NULL, analysis, &fetch_control,
+             diagnostic);
+        if (fetch_analysis == NULL ||
+            !VHO_DSL_Fetch_Pipeline_Build(fetch_analysis, diagnostic) ||
+            !VHO_DSL_Fetch_Pipeline_Verify(fetch_analysis, diagnostic))
+            goto done;
+        fetch_ir = VHO_DSL_Fetch_Pipeline_Get_IR(fetch_analysis);
+        if (DSL_fetch_pipeline_ir_site_count(fetch_ir) != 1 ||
+            !DSL_fetch_pipeline_ir_get_site(fetch_ir, 1, &fetch_site) ||
+            fetch_site.selected_tile_plan_id == 0 ||
+            fetch_site.selected_plan_id == fetch_site.baseline_plan_id)
+            goto done;
+        if (fetch_candidate_count != NULL)
+            *fetch_candidate_count = fetch_site.pipeline_plan_count;
+        fetch_plans = VHO_DSL_Fetch_Pipeline_Get_Plan_Context
+            (fetch_analysis, fetch_site.id);
+        if (fetch_plans == NULL)
+            goto done;
+        for (UINT32 i = 0; i < fetch_site.pipeline_plan_count; ++i) {
+            DSL_FETCH_PLAN_RECORD candidate;
+            if (!DSL_fetch_pipeline_ir_get_plan
+                    (fetch_ir, fetch_site.first_pipeline_plan_id + i,
+                     &candidate))
+                goto done;
+            if (VHO_DSL_AI_Opt_Trace &&
+                Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG))
+                fprintf(TFile,
+                    "AI_OPT 7 FETCH_CAND %u %u %u %s %s %s %u %u "
+                    "%llu %llu %llu %llu\n",
+                    fetch_site.id, candidate.id,
+                    candidate.optimization_plan_id,
+                    DSL_memory_movement_name(candidate.engine),
+                    DSL_opt_legality_name(candidate.legality),
+                    DSL_opt_rejection_reason_name(candidate.rejection_reason),
+                    candidate.stage_count, candidate.prefetch_distance,
+                    (unsigned long long)candidate.buffering_bytes,
+                    (unsigned long long)candidate.raw_movement_cost,
+                    (unsigned long long)candidate.hidden_movement_cost,
+                    (unsigned long long)candidate.unhidden_movement_cost);
+            if (candidate.optimization_plan_id == fetch_site.selected_plan_id)
+                selected_fetch = candidate;
+        }
+        if (selected_fetch.id == 0 ||
+            selected_fetch.engine !=
+                DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC ||
+            selected_fetch.legality != DSL_OPT_LEGALITY_PROVEN) {
+            fprintf(diagnostic,
+                    "DSL CUDA TMA requested but P8 selected no legal TMA plan\n");
+            goto done;
+        }
+        if (VHO_DSL_AI_Opt_Trace &&
+            Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG)) {
+            fprintf(TFile,
+                "AI_OPT 7 FETCH_SELECT %u %u %u %s "
+                "selection_reason=lowest_complete_relative_cost\n",
+                fetch_site.id, fetch_site.baseline_plan_id,
+                fetch_site.selected_plan_id,
+                DSL_memory_movement_name(selected_fetch.engine));
+            fflush(TFile);
+        }
+    }
+    for (UINT32 i = 0; i < site.tile_plan_count; ++i) {
+        DSL_TILE_PLAN_RECORD tile;
+        DSL_TENSOR_FACT_RECORD fact;
+        if (!DSL_tile_plan_ir_get_plan
+                 (ir, site.first_tile_plan_id + i, &tile))
+            goto done;
+        if (tile.optimization_plan_id != site.selected_plan_id)
+            continue;
+        if (!DSL_tensor_analysis_find_fact
+                 (tensor, site.semantic_value_id, &fact) ||
+            TY_mtype(fact.element_ty) != MTYPE_F4 ||
+            tile.problem_m > INT_MAX || tile.problem_n > INT_MAX ||
+            tile.problem_k > INT_MAX || tile.cta_m == 0 ||
+            tile.cta_n == 0 || tile.cta_k == 0 ||
+            tile.thread_m == 0 || tile.thread_n == 0 ||
+            tile.threads_per_cta == 0 ||
+            tile.threads_per_cta > 1024) {
+            fprintf(diagnostic,
+                    "DSL CUDA output selected tile exceeds F32 kernel contract\n");
+            goto done;
+        }
+        valid = VHO_DSL_CUDA_Write_Selected_Tile
+                    (path, tile, cost, VHO_DSL_CUDA_TMA_Prefetch,
+                     diagnostic);
+        if (valid && VHO_DSL_CUDA_TMA_Prefetch)
+            valid = VHO_DSL_CUDA_Append_TMA_Pipeline
+                        (path, tile, selected_fetch, diagnostic);
+        if (valid && emitted_plan_id != NULL)
+            *emitted_plan_id = selected.id;
+        if (valid && emitted_tile != NULL)
+            *emitted_tile = tile;
+        if (valid && emitted_fetch_plan_id != NULL &&
+            VHO_DSL_CUDA_TMA_Prefetch)
+            *emitted_fetch_plan_id = selected_fetch.optimization_plan_id;
+        break;
+    }
+done:
+    VHO_DSL_Fetch_Pipeline_Destroy(fetch_analysis);
+    VHO_DSL_Tile_Destroy(analysis);
+    DSL_tensor_locality_destroy(locality);
+    DSL_tensor_control_snapshot_destroy(snapshot);
+    DSL_tensor_analysis_destroy(tensor);
+    DSL_tensor_evolution_destroy(graph);
+    return valid;
+}
+
+static void
+VHO_DSL_AI_Trace_Phases (PU_Info *pu_info,
+                         DSL_OPT_PLAN_ID tile_plan_id,
+                         DSL_OPT_PLAN_ID fetch_plan_id,
+                         UINT32 tile_candidates, UINT32 fetch_candidates,
+                         BOOL tile_applied)
+{
+    if (!VHO_DSL_AI_Opt_Trace ||
+        !Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG))
+        return;
+    const BOOL tile = tile_plan_id != DSL_OPT_PLAN_INVALID_ID;
+    const BOOL fetch = fetch_plan_id != DSL_OPT_PLAN_INVALID_ID;
+    const char *pu_name = ST_name(St_Table[PU_Info_proc_sym(pu_info)]);
+    fprintf(TFile, "AI_OPT 7 CONTEXT %s matmul_f32_source\n", pu_name);
+    for (UINT32 phase = 0; phase != 12; ++phase) {
+        const char *status = "disabled_by_policy";
+        const char *reason = "phase_not_in_matmul_source_slice";
+        UINT32 regions = 0, candidates = 0, selected = 0;
+        if (phase == 0 || phase == 1) {
+            status = tile ? "analyzed_no_rewrite" : "disabled_by_option";
+            reason = tile ? "analysis_for_tile_source" : "cuda_tile_output_unset";
+            regions = tile ? 1 : 0;
+        } else if (phase == 2 || phase == 4 || phase == 5) {
+            status = "not_applicable";
+            reason = phase == 2 ? "single_matmul_no_fusion" :
+                     "single_device_no_distribution";
+        } else if (phase == 7) {
+            status = tile_applied ? "rewritten" :
+                     tile ? "analyzed_no_rewrite" : "disabled_by_option";
+            reason = tile_applied ? "generated_runtime_call" :
+                     tile ? "source_sidecar_no_whirl_rewrite" :
+                     "cuda_tile_output_unset";
+            regions = tile ? 1 : 0;
+            candidates = tile ? tile_candidates : 0;
+            selected = tile ? tile_plan_id : 0;
+        } else if (phase == 8) {
+            status = fetch ? "analyzed_no_rewrite" : "disabled_by_option";
+            reason = fetch ? "source_sidecar_no_whirl_rewrite" :
+                     (tile ? "cuda_tma_prefetch_off" : "cuda_tile_output_unset");
+            regions = fetch ? 1 : 0;
+            candidates = fetch ? fetch_candidates : 0;
+            selected = fetch ? fetch_plan_id : 0;
+        } else if (phase == 9) {
+            status = tile_applied ? "rewritten" :
+                     tile ? "analyzed_no_rewrite" : "disabled_by_option";
+            reason = tile_applied ? "generated_runtime_call" :
+                     tile ? "source_sidecar_no_whirl_rewrite" :
+                     "cuda_tile_output_unset";
+            regions = tile ? 1 : 0;
+            selected = tile ? tile_plan_id : 0;
+        } else if (phase == 10) {
+            reason = "runtime_variants_not_in_matmul_slice";
+        } else if (phase == 11) {
+            status = "not_applicable";
+            reason = "no_profile_join_at_compile_time";
+        }
+        fprintf(TFile, "AI_OPT 7 PHASE matmul_f32_source %u %s %s "
+                       "%u %u %u %u\n", phase, status, reason,
+                regions, candidates, selected,
+                tile_applied && (phase == 7 || phase == 9) ? 1U : 0U);
+    }
+    fflush(TFile);
+}
+
+static BOOL
+VHO_DSL_AI_Is_Standalone_Matmul (WN *tree)
+{
+    if (WN_operator(tree) != OPR_FUNC_ENTRY ||
+        WN_operator(WN_func_body(tree)) != OPR_BLOCK)
+        return FALSE;
+    UINT32 matmul_count = 0;
+    for (WN *statement = WN_first(WN_func_body(tree)); statement != NULL;
+         statement = WN_next(statement)) {
+        if (WN_operator(statement) == OPR_RETURN)
+            continue;
+        if (WN_operator(statement) != OPR_STID ||
+            WN_kid_count(statement) != 1)
+            return FALSE;
+        DSL_LOGICAL_OPCODE logical;
+        if (!DSL_WN_Get_Logical_Opcode(WN_kid0(statement), &logical, NULL))
+            return FALSE;
+        if (logical.dsl_operator == OPR_DSLMATMUL)
+            ++matmul_count;
+        else if (logical.dsl_operator != OPR_DSLTENSORCONST &&
+                 logical.dsl_operator != OPR_DSLMODELINPUT)
+            return FALSE;
+    }
+    return matmul_count == 1;
 }
 
 WN *
@@ -2054,12 +2897,57 @@ VHO_DSL_Lower_Driver
     FmtAssert(shape_current,
               ("DSL lowering received stale tensor shape state after "
                "optimization"));
+    const BOOL standalone_matmul =
+        VHO_DSL_AI_Is_Standalone_Matmul(tree);
+
+    DSL_OPT_PLAN_ID emitted_tile_plan_id = DSL_OPT_PLAN_INVALID_ID;
+    DSL_OPT_PLAN_ID emitted_fetch_plan_id = DSL_OPT_PLAN_INVALID_ID;
+    UINT32 tile_candidate_count = 0, fetch_candidate_count = 0;
+    DSL_TILE_PLAN_RECORD emitted_tile;
+    memset(&emitted_tile, 0, sizeof(emitted_tile));
+    if (VHO_DSL_CUDA_Tile_Apply)
+        FmtAssert(Opt_Level >= 3 && standalone_matmul &&
+                  VHO_DSL_CUDA_Tile_Output != NULL &&
+                  !VHO_DSL_CUDA_TMA_Prefetch,
+                  ("M2 generated tile requires -O3, one matmul, CUDA source, "
+                   "and synchronous movement"));
+    if (VHO_DSL_CUDA_Tile_Output != NULL) {
+        BOOL emitted = VHO_DSL_CUDA_Emit_Selected_Tile
+                           (pu_info, tree, VHO_DSL_CUDA_Tile_Output,
+                            &emitted_tile_plan_id, &emitted_fetch_plan_id,
+                            &tile_candidate_count, &fetch_candidate_count,
+                            &emitted_tile,
+                            stderr);
+        FmtAssert(emitted, ("DSL CUDA tile source emission failed"));
+    }
 
     VHO_DSL_LOWER_RESULT lower_result;
-    BOOL lower_valid = VHO_DSL_Lower_Verified_Program_Unit
-                           (pu_info, tree, stderr, &lower_result);
+    BOOL lower_valid = VHO_DSL_CUDA_Tile_Apply ?
+        VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile
+            (pu_info, &tree, &emitted_tile, stderr, &lower_result) :
+        VHO_DSL_Lower_Verified_Program_Unit
+            (pu_info, tree, stderr, &lower_result);
     FmtAssert(lower_valid,
               ("DSL lowering did not produce canonical WHIRL"));
+    if (VHO_DSL_AI_Opt_Trace &&
+        emitted_tile_plan_id != DSL_OPT_PLAN_INVALID_ID &&
+        Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG)) {
+        fprintf(TFile, "AI_OPT 7 TILE_ACTION 1 %u source_sidecar %s "
+                       "dsl_to_runtime %u\n",
+                emitted_tile_plan_id,
+                VHO_DSL_CUDA_Tile_Apply ? "generated_runtime_call" : "none",
+                lower_result.lowered_node_count);
+        if (emitted_fetch_plan_id != DSL_OPT_PLAN_INVALID_ID)
+            fprintf(TFile,
+                    "AI_OPT 7 FETCH_ACTION 1 %u source_sidecar tma_2d "
+                    "whirl_rewrite=none\n", emitted_fetch_plan_id);
+        fflush(TFile);
+    }
+    if (standalone_matmul)
+        VHO_DSL_AI_Trace_Phases(pu_info, emitted_tile_plan_id,
+                                emitted_fetch_plan_id, tile_candidate_count,
+                                fetch_candidate_count,
+                                VHO_DSL_CUDA_Tile_Apply);
     if (VHO_DSL_Dump_After_Lowering) {
         fprintf(TFile,
                 "\n\n========== WHIRL after VHO DSL Lowering =========="

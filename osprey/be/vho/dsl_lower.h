@@ -48,6 +48,18 @@ extern BOOL VHO_DSL_Lower_Verified_Program_Unit_With_Physical_Plan
                                  FILE *diagnostic,
                                  VHO_DSL_LOWER_RESULT *result);
 
+/*
+ * Apply one proven generated F32 tile to a copied PU. The caller must own the
+ * selected AIO-9 record and matching emitted kernel source. Failure leaves
+ * the original tree and PU binding unchanged.
+ */
+extern BOOL VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile
+                                (struct pu_info *pu_info,
+                                 WN **tree,
+                                 const DSL_TILE_PLAN_RECORD *tile,
+                                 FILE *diagnostic,
+                                 VHO_DSL_LOWER_RESULT *result);
+
 /* Retained DSL comments are inspection evidence, not executable carriers. */
 extern BOOL VHO_DSL_Lowered_Tree_Is_Canonical
                                 (WN *tree,

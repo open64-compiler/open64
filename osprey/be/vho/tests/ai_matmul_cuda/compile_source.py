@@ -1,0 +1,385 @@
+"""Compile a fixed F32 matmul with the opt-in Open64 CUDA tile-source switch."""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import hashlib
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+from ai_opt_report import PHASE_LOGS, parse, render
+
+
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parents[4]
+FIXTURE = HERE.parent / "ai_matmul_m0/fixture.py"
+
+
+def validate_selected_source(source: str, candidates: list[dict],
+                             selection: dict) -> dict[str, int]:
+    selected = next((row for row in candidates
+                     if row["plan"] == selection["selected"]), None)
+    if selected is None or selected["legality"] != "proven":
+        raise RuntimeError("selected tile is missing or not proven")
+    header = re.search(
+        r"^// tile_plan=(\d+) optimization_plan=(\d+) "
+        r"candidate=(\d+) family=(\w+)$", source, re.MULTILINE)
+    if header is None or (int(header[1]), int(header[2]), int(header[3]),
+                          header[4]) != (selected["tile"], selected["plan"],
+                                         selected["candidate"], selected["family"]):
+        raise RuntimeError("generated source plan identity disagrees with trace")
+    dimensions = {}
+    for name in ("M", "N", "K", "BM", "BN", "BK", "TM", "TN"):
+        match = re.search(rf"^#define {name} (\d+)$", source, re.MULTILINE)
+        if match is None:
+            raise RuntimeError(f"generated source lacks numeric {name}")
+        dimensions[name] = int(match[1])
+    bm, bn, bk = (dimensions[name] for name in ("BM", "BN", "BK"))
+    tm, tn = dimensions["TM"], dimensions["TN"]
+    if ((bm, bn, bk) != selected["cta"] or not tm or not tn or
+            bm % tm or bn % tn or
+            bm // tm * (bn // tn) != selected["threads"] or
+            (bm * bk + bk * bn) * 4 != selected["shared"]):
+        raise RuntimeError("generated tile geometry disagrees with selected plan")
+    if selection.get("version") == 7:
+        shapes = [tuple(map(int, row["shape"].strip("[]").split(",")))
+                  for row in selection["semantic"] if row["rank"] == 2]
+        m, n, k = (dimensions[name] for name in ("M", "N", "K"))
+        if ((m, k) not in shapes or (k, n) not in shapes or
+                (m, n) not in shapes):
+            raise RuntimeError("generated problem dimensions disagree with tensor facts")
+    return dimensions
+
+
+def m2_handoff(source: Path, trace: Path, input_whirl: Path,
+               lowered_artifact: Path, candidates: list[dict],
+               selection: dict, applied: bool = False) -> dict:
+    dimensions = validate_selected_source(source.read_text(encoding="utf-8"),
+                                          candidates, selection)
+    selected = next(row for row in candidates
+                    if row["plan"] == selection["selected"])
+    return {
+        "schema": "ai-matmul-m2-handoff-v1",
+        "status": ("generated_runtime_call_unverified" if applied else
+                   "selected_source_only"),
+        "whirl_rewrite_applied": applied,
+        "selected_optimization_plan_id": selected["plan"],
+        "selected_tile_plan_id": selected["tile"],
+        "selected_candidate_id": selected["candidate"],
+        "family": selected["family"],
+        "selection_reason": selection["reason"],
+        "problem": {name: dimensions[name] for name in ("M", "N", "K")},
+        "tile": {name: dimensions[name] for name in
+                 ("BM", "BN", "BK", "TM", "TN")},
+        "resources": {
+            "threads_per_cta": selected["threads"],
+            "shared_bytes_per_stage": selected["shared"],
+            "register_bytes_per_thread": selected["registers"],
+        },
+        "cost": {
+            "unit": selected["unit"],
+            "confidence": selected["confidence"],
+            "total": selected["total"],
+            "compute": selected["compute"],
+            "memory_unhidden": selected["memory"],
+            "communication_unhidden": selected["communication"],
+            "sync": selected["sync"],
+            "launch": selected["launch"],
+            "runtime_selection": selected["runtime"],
+        },
+        "source_line": selected["source_line"],
+        "fetch_plan_id": selection.get("fetch", {}).get("selection", {}).get("selected"),
+        "source_sha256": sha256(source),
+        "trace_sha256": sha256(trace),
+        "input_whirl_sha256": sha256(input_whirl),
+        "post_lowering_artifact_kind": "backend_object" if applied else "whirl",
+        "post_lowering_artifact_sha256": sha256(lowered_artifact),
+        "lowered_whirl_sha256": None if applied else sha256(lowered_artifact),
+    }
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def lowering_dump(raw_trace: Path, output: Path) -> str:
+    marker = "========== WHIRL after VHO DSL Lowering =========="
+    text = raw_trace.read_text(encoding="utf-8")
+    if text.count(marker) != 1:
+        raise RuntimeError("expected one post-DSL-lowering WHIRL dump")
+    dump = text.split(marker, 1)[1].split("!!! DevWarn", 1)[0].strip() + "\n"
+    if not dump.startswith("FUNC_ENTRY"):
+        raise RuntimeError("post-DSL-lowering dump lacks a function body")
+    output.write_text(dump, encoding="utf-8")
+    return dump
+
+
+def run(command: list[str], cwd: Path, log: Path,
+        env: dict[str, str] | None = None) -> None:
+    with log.open("w", encoding="utf-8") as stream:
+        stream.write("command=" + json.dumps(command) + "\n")
+        stream.flush()
+        status = subprocess.run(command, cwd=cwd, env=env, stdout=stream,
+                                stderr=subprocess.STDOUT, check=False)
+        stream.write(f"exit_status={status.returncode}\n")
+    if status.returncode:
+        raise RuntimeError(f"compiler command failed: {log}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--build-dir", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--tma", action="store_true",
+                        help="request selected P8 multidimensional TMA source")
+    parser.add_argument("--apply", action="store_true",
+                        help="apply the selected synchronous tile to WHIRL at -O3")
+    parser.add_argument("--digest-output", action="store_true",
+                        help="treat output-dir as a milestone root and publish by raw-trace digest")
+    args = parser.parse_args()
+    if args.apply and args.tma:
+        parser.error("M2 generated-tile application requires synchronous movement")
+    if sys.platform != "linux" or platform.machine() != "x86_64":
+        parser.error("requires the Linux/x86-64 Open64 compiler build")
+    build = args.build_dir.resolve()
+    opencc = build / "osprey/targdir/driver/opencc"
+    ir_b2a = build / "osprey/targdir/ir_tools/ir_b2a"
+    backend = build / "osprey/targdir/be/be.so"
+    for tool in (opencc, ir_b2a, backend):
+        if not tool.is_file() or not os.access(tool, os.X_OK):
+            parser.error(f"required Open64 tool missing: {tool}")
+    output = args.output_dir.resolve()
+    if output.exists() and not args.digest_output:
+        parser.error(f"artifact already exists: {output}")
+    parent = output if args.digest_output else output.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix=".ai-cuda-source-", dir=parent))
+    try:
+        for name in ("source", "binary", "traces", "logs", "plans"):
+            (stage / name).mkdir()
+        shutil.copy2(FIXTURE, stage / "source/fixture.py")
+        shutil.copy2(HERE / "README.md", stage / "source/README.md")
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.pathsep.join(filter(None, (
+            str(build / "osprey/targdir/torch2whirl/python"),
+            str(REPO / "osprey/torch2whirl/python"),
+            env.get("PYTHONPATH", ""),
+        )))
+        binary = stage / "binary/matmul.B"
+        run([sys.executable, str(FIXTURE), str(binary)], stage,
+            stage / "logs/fixture.log", env)
+        input_whirl_sha256 = sha256(binary)
+        whirl_dump = stage / "traces/matmul.T"
+        run([str(ir_b2a), "-st", "-src", str(binary), str(whirl_dump)], stage,
+            stage / "logs/ir_b2a.log")
+        cuda_source = stage / "source/matmul.generated.cu"
+        optimization = "-O3" if args.apply else "-O0"
+        inline_option = "-noinline" if args.apply else "-INLINE:none"
+        baseline_command = [str(opencc), f"-run-build={build}", optimization,
+                            inline_option, "-c", "-keep", "matmul.B"]
+        if args.apply:
+            baseline_command.insert(-1, "-Wb,-DSL:dump_after_lower=ON")
+        run(baseline_command, stage / "binary", stage / "logs/option-off.log")
+        lowered = stage / ("binary/matmul.o" if args.apply else "binary/matmul.I")
+        if not lowered.is_file():
+            raise RuntimeError("option-off compile did not produce backend output")
+        option_off_output_sha256 = sha256(lowered)
+        if not args.apply:
+            run([str(ir_b2a), "-st", "-src", str(lowered),
+                 str(stage / "traces/option-off-lowered.T")], stage,
+                stage / "logs/option-off-ir_b2a.log")
+        option_off_raw_trace = stage / "binary/matmul.t"
+        if not option_off_raw_trace.is_file():
+            raise RuntimeError("option-off compile did not emit phase coverage")
+        option_off_trace = stage / "traces/option-off.t"
+        option_off_raw_trace.rename(option_off_trace)
+        if args.apply:
+            off_text = lowering_dump(option_off_trace,
+                                     stage / "traces/option-off-lowered.T")
+            if ("__open64_dsl_matmul_v1" not in off_text or
+                    "__open64_dsl_matmul_generated_v1" in off_text):
+                raise RuntimeError("option-off lowered call is not the generic matmul")
+        option_off_selection, _ = render(option_off_trace,
+                                         stage / "reports/option-off")
+        if (option_off_selection["phases"][7]["status"] != "disabled_by_option"
+                or len(option_off_selection["phases"]) != 12):
+            raise RuntimeError("option-off phase coverage is incomplete")
+        if cuda_source.exists():
+            raise RuntimeError("CUDA source appeared with the option disabled")
+        command = [str(opencc), f"-run-build={build}", optimization, inline_option,
+                   "-c", "-keep",
+                   f"-Wb,-DSL:cuda_tile_output={cuda_source}",
+                   "matmul.B"]
+        if args.apply:
+            command.insert(-1, "-Wb,-DSL:dump_after_lower=ON")
+        if args.tma:
+            command.insert(-1, "-Wb,-DSL:cuda_tma_prefetch=ON")
+        if args.apply:
+            command.insert(-1, "-Wb,-DSL:cuda_tile_apply=ON")
+        run(command, stage / "binary", stage / "logs/opencc.log")
+        raw_trace = stage / "binary/matmul.t"
+        trace = stage / "traces/compile.t"
+        if not raw_trace.is_file():
+            raise RuntimeError("AI optimization decision trace was not emitted")
+        raw_trace.rename(trace)
+        selection, action = render(trace, stage / "reports")
+        if (len(selection["phases"]) != 12 or
+                selection["phases"][7]["selected"] != selection["selected"]):
+            raise RuntimeError("selected phase coverage is incomplete")
+        for report_root in (stage / "reports", stage / "reports/option-off"):
+            full = (report_root / "optimization.log").read_text(encoding="utf-8")
+            summary = (report_root / "optimization-summary.log").read_text(
+                encoding="utf-8")
+            if len([line for line in summary.splitlines() if line.startswith("P")]) != 12:
+                raise RuntimeError("phase summary is incomplete")
+            for phase, (filename, _) in enumerate(PHASE_LOGS):
+                content = (report_root / "phases" / filename).read_text(
+                    encoding="utf-8")
+                if (not content.startswith("# What it summarizes:") or
+                        full.count(f"## P{phase} {filename}\n{content}") != 1):
+                    raise RuntimeError(f"phase report omitted or duplicated: {filename}")
+        tile_report = (stage / "reports/phases/tile.log").read_text(
+            encoding="utf-8")
+        if "decision=selected" not in tile_report or "decision=not_selected_cost" not in tile_report:
+            raise RuntimeError("selected and skipped tile candidates are not reported")
+        for filename in ("semantic.log", "locality.log"):
+            content = (stage / "reports/phases" / filename).read_text(
+                encoding="utf-8")
+            if "tensor=" not in content or "detail=not_recorded" in content:
+                raise RuntimeError(f"active P0/P1 facts are missing: {filename}")
+        source_tree = ast.parse((stage / "source/fixture.py").read_text(
+            encoding="utf-8"))
+        matmul_lines = [node.lineno for node in ast.walk(source_tree)
+                        if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "common_matmul"]
+        candidate_rows, _, _ = parse(trace.read_text(encoding="utf-8"))
+        if selection["reason"] not in ("lowest_complete_relative_cost",
+                                       "roofline_near_cost"):
+            raise RuntimeError("tile selection reason was not recorded")
+        if len(matmul_lines) != 1 or any(
+                row["source_line"] != matmul_lines[0]
+                for row in candidate_rows):
+            raise RuntimeError("tile candidate source lines do not match input Python")
+        if not cuda_source.is_file():
+            raise RuntimeError("Open64 did not emit the selected CUDA tile")
+        text = cuda_source.read_text(encoding="utf-8")
+        required = ("tile_plan=", "cost=", "__global__ void ai_matmul_tile_f32",
+                    "__shared__ float as", "__shared__ float bs",
+                    "__syncthreads()", "#define BM", "#define BK")
+        if any(token not in text for token in required):
+            raise RuntimeError("compiler-emitted CUDA source is incomplete")
+        handoff = m2_handoff(cuda_source, trace, binary, lowered,
+                             candidate_rows, selection, args.apply)
+        if args.tma:
+            tma_required = ("cp_async_bulk_tensor", "cuTensorMapEncodeTiled",
+                            "mbarrier_try_wait_parity", "P8_STAGES",
+                            "cudaFuncAttributeMaxDynamicSharedMemorySize",
+                            "ai_matmul_tile_f32_sync",
+                            "ai_matmul_tile_f32_launch_ex", "*used_tma = true")
+            if any(token not in text for token in tma_required):
+                raise RuntimeError("selected TMA pipeline source is incomplete")
+            if "fetch" not in selection or not (stage / "reports/phases/fetch-pipeline.log").is_file():
+                raise RuntimeError("selected P8 trace/report is missing")
+        expected_rewrite = "generated_runtime_call" if args.apply else "none"
+        if (f"optimization_plan={selection['selected']}" not in text or
+                action["tile_rewrite"] != expected_rewrite):
+            raise RuntimeError("CUDA source and optimization action disagree")
+        if sha256(binary) != input_whirl_sha256:
+            raise RuntimeError("binary WHIRL changed after source emission")
+        if args.apply:
+            lowered_text = lowering_dump(trace, stage / "traces/lowered.T")
+            if ("__open64_dsl_matmul_generated_v1" not in lowered_text or
+                    ".dsl_generated_matmul_plan" not in lowered_text or
+                    "__open64_dsl_matmul_v1" in lowered_text or
+                    lowered_text == off_text):
+                raise RuntimeError("generated tile runtime call missing from WHIRL")
+            if sha256(lowered) == option_off_output_sha256:
+                raise RuntimeError("backend object is unchanged with tile application")
+        else:
+            if sha256(lowered) != option_off_output_sha256:
+                raise RuntimeError("lowered WHIRL changed in source-only mode")
+            run([str(ir_b2a), "-st", "-src", str(lowered),
+                 str(stage / "traces/lowered.T")], stage,
+                stage / "logs/lowered-ir_b2a.log")
+        (stage / "plans/m2-selected-tile.json").write_text(
+            json.dumps(handoff, indent=2) + "\n", encoding="utf-8")
+        receipt = {
+            "schema": "ai-matmul-compiler-cuda-source-v1",
+            "status": ("compiler_generated_tile_whirl_applied_unverified" if args.apply
+                       else "compiler_selected_cuda_source_unverified"),
+            "compiler_generated_from_whirl_analysis": True,
+            "whirl_rewrite_applied": args.apply,
+            "runtime_verified": False,
+            "closes_m2_generated_tile_gate": False,
+            "closes_m3_prefetch_pipeline_gate": False,
+            "source_path": "source/matmul.generated.cu",
+            "source_sha256": sha256(cuda_source),
+            "m2_handoff_path": "plans/m2-selected-tile.json",
+            "m2_handoff_sha256": sha256(stage / "plans/m2-selected-tile.json"),
+            "decision_trace_path": "traces/compile.t",
+            "option_off_trace_path": "traces/option-off.t",
+            "optimization_summary_path": "reports/optimization-summary.log",
+            "option_off_summary_path": "reports/option-off/optimization-summary.log",
+            "tile_log_path": "reports/phases/tile.log",
+            "phase_coverage_complete": True,
+            "m1_trace_report_contract_verified": True,
+            "m1_accepted": False,
+            "m1_acceptance_blocker": "native_m0_baseline_receipt_pending",
+            "selected_optimization_plan_id": selection["selected"],
+            "selection_reason": selection["reason"],
+            "p8_tma_requested": args.tma,
+            "p8_selected_plan_id": selection.get("fetch", {}).get("selection", {}).get("selected"),
+            "p8_movement": "tma_2d" if args.tma else "synchronous",
+            "input_whirl_sha256": input_whirl_sha256,
+            "lowered_whirl_sha256": None if args.apply else option_off_output_sha256,
+            "lowered_whirl_byte_identical_with_option_off": None if args.apply else True,
+            "backend_object_sha256": sha256(lowered) if args.apply else None,
+            "backend_object_byte_identical_with_option_off":
+                sha256(lowered) == option_off_output_sha256 if args.apply else None,
+            "post_lowering_dump_sha256":
+                sha256(stage / "traces/lowered.T") if args.apply else None,
+            "target": "nvidia_hopper_analysis_profile",
+            "host": platform.platform(),
+            "opencc_sha256": sha256(opencc),
+            "backend_sha256": sha256(backend),
+            "option_off_command": baseline_command,
+            "command": command,
+        }
+        (stage / "receipt.json").write_text(
+            json.dumps(receipt, indent=2) + "\n", encoding="utf-8"
+        )
+        files = sorted(p for p in stage.rglob("*") if p.is_file())
+        (stage / "SHA256SUMS").write_text(
+            "".join(f"{sha256(p)}  {p.relative_to(stage)}\n" for p in files),
+            encoding="utf-8",
+        )
+        if args.digest_output:
+            output = parent / f"sha256-{sha256(trace)}"
+            if output.exists():
+                raise RuntimeError(f"digest artifact already exists: {output}")
+        stage.rename(output)
+    except Exception as error:
+        reports = stage / "reports"
+        reports.mkdir(exist_ok=True)
+        (reports / "optimization-summary.log").write_text(
+            "# What it summarizes: Failed matmul compiler-source run; "
+            "no optimization decision is certified.\n"
+            f"run=failed error={type(error).__name__} detail={error}\n",
+            encoding="utf-8",
+        )
+        print(f"failed artifact retained for diagnosis: {stage}", file=sys.stderr)
+        raise
+    print(f"compiler-selected CUDA source: {output / 'source/matmul.generated.cu'}")
+
+
+if __name__ == "__main__":
+    main()

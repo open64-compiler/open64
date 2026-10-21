@@ -16,6 +16,7 @@ extern "C" {
 #define OPEN64_DSL_RUNTIME_ABI_VERSION 1
 #define OPEN64_DSL_TENSOR_DESCRIPTOR_V1_SIZE 64
 #define OPEN64_DSL_PHYSICAL_PLAN_V1_SIZE 48
+#define OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE 64
 
 typedef void *OPEN64_DSL_TENSOR_HANDLE;
 typedef void *OPEN64_DSL_STATE_HANDLE;
@@ -210,6 +211,31 @@ typedef struct {
 } OPEN64_DSL_PHYSICAL_PLAN_V1;
 
 /*
+ * First generated F32 matmul contract. The fixed kernel symbol is
+ * ai_matmul_tile_f32_launch; the package binds its source to the selected
+ * tile through the compiler trace and checksums. No process-local pointer
+ * appears in this read-only WHIRL descriptor.
+ */
+typedef struct {
+    uint16_t abi_version;
+    uint16_t header_size;
+    uint32_t total_size;
+    uint32_t provider;
+    uint32_t target_profile;
+    uint32_t optimization_plan_id;
+    uint32_t tile_plan_id;
+    uint32_t cta_m;
+    uint32_t cta_n;
+    uint32_t cta_k;
+    uint32_t thread_m;
+    uint32_t thread_n;
+    uint32_t shared_bytes_per_stage;
+    uint32_t threads_per_cta;
+    uint32_t fallback_provider;
+    uint64_t reserved;
+} OPEN64_DSL_GENERATED_MATMUL_PLAN_V1;
+
+/*
  * Each successful call returns a distinct owning handle.  A NULL handle is a
  * runtime failure.  The compiler stores successful handles in distinct PREGs;
  * the runtime owns allocation, placement, and eventual reclamation policy.
@@ -239,6 +265,12 @@ OPEN64_DSL_TENSOR_HANDLE __open64_dsl_matmul_physical_v1
                                  const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result,
                                  uint32_t flags,
                                  const OPEN64_DSL_PHYSICAL_PLAN_V1 *plan);
+OPEN64_DSL_TENSOR_HANDLE __open64_dsl_matmul_generated_v1
+                                (OPEN64_DSL_TENSOR_HANDLE kid0,
+                                 OPEN64_DSL_TENSOR_HANDLE kid1,
+                                 const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result,
+                                 uint32_t flags,
+                                 const OPEN64_DSL_GENERATED_MATMUL_PLAN_V1 *plan);
 OPEN64_DSL_TENSOR_HANDLE __open64_dsl_relu_v1
                                 (OPEN64_DSL_TENSOR_HANDLE kid0,
                                  const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result);
