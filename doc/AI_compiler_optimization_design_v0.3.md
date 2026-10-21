@@ -4,7 +4,7 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
-Status: v0.3 adds a phase-by-phase optimization reporting contract and identifies trace fields still needed for a trustworthy cross-phase report. The 2026-10-18 amendment fixes the matmul-first trace, report, and durable-artifact conventions in Section 9.7. The 2026-10-21 amendment adds the predicted and measured Roofline contract in Section 7.2A. AIO-9 has a compact WOPT-style selection trace and a tile-phase report; full cross-phase coverage and Roofline reporting remain proposals. Research-derived inspiration and DSC design proposals remain distinct.
+Status: v0.3 adds a phase-by-phase optimization reporting contract and identifies trace fields still needed for a trustworthy cross-phase report. The 2026-10-18 amendment fixes the matmul-first trace, report, and durable-artifact conventions in Section 9.7. The 2026-10-21 amendments add the predicted and measured Roofline contract in Section 7.2A, the high-level WHIRL/NVISA convergence contract in Section 6B, and the accepted `whirl2c -cuda` source-emission direction in Section 6B.5. The design retains the existing `.cu` emitter as a migration baseline and specifies a default-on control for it; neither implies that device WHIRL is complete. AIO-9 has a compact WOPT-style selection trace and a tile-phase report; full cross-phase coverage, Roofline reporting, and WHIRL device-loop lowering remain proposals. Research-derived inspiration and DSC design proposals remain distinct.
 
 # 1 Executive Summary And Design Goals
 
@@ -13,6 +13,8 @@ The design goal is to make AI compiler optimization compositional across semanti
 The common compiler substrate should own reusable descriptions of objects, representations, memory hierarchy, placement, access patterns, fetch plans, pipelines, parallelization, communication intent, optimization candidates, plans, costs, and runtime guards. AI-specific layers should own workload semantics and runtime state such as batch size, sequence length, KV-cache pressure, prefix-cache hit rate, expert load, and latency service-level objectives.
 
 The recommended implementation priority is now action-gated: first build the measurement harness, then implement one real tiling rewrite, one real fusion rewrite, the P7.4/P8 pipeline path, cost-model calibration, runtime variants, and only then broaden into distributed parallelization.
+
+The matmul-generated CUDA currently contains the selected tile loops, but the corresponding WHIRL records a generated-provider call and plan metadata rather than a device-kernel loop nest. A detached K-tile `DO_LOOP` used to drive source bounds is transitional evidence, not the executable kernel. The next representation milestone is to materialize a complete, structured device-kernel program unit (PU) in high-level WHIRL after plan selection, preserving loop, memory-space, ownership, and synchronization facts until target lowering. The accepted destination is `whirl2c -cuda`: CUDA C must ultimately be derived from that selected device PU. Until then, the current emitter should remain available behind a default-on option as a clearly labeled verification baseline. Section 6B defines this boundary and the NVISA reuse investigation.
 
 ## 1.1 Design Goals
 
@@ -65,7 +67,7 @@ The phases below are ordered to preserve semantic information early, introduce p
 | AI-P6 | Local physical layout and residency | Assign local HBM, L2, shared memory, registers, pinned host memory, CPU memory, or remote memory residency. Track capacity, lifetime, reuse, spill, and eviction. |
 | AI-P7 | Multi-level tiling | Build and cost hierarchical tile plans across output tile, reduction tile, CTA/threadblock tile, shared-memory tile, warp tile, thread tile, register fragment, vectorized access, and tensor-core/instruction tile. Connect each level to reuse, coalescing, arithmetic intensity, register pressure, shared-memory footprint, occupancy, synchronization, and autotuning parameters. |
 | AI-P8 | Fetch prefetch and async movement | Plan cp.async/TMA-like transfers, double/triple buffering, host-to-device prefetch, remote-HBM fetch, KV-cache paging, and overlap with compute. |
-| AI-P9 | Physical kernel fusion and scheduling | Select the physical kernel plan, final fusion boundaries, launch structure, stream assignment, synchronization points, and instruction-level schedule constraints. |
+| AI-P9 | Physical kernel fusion and scheduling | Select the complete costed plan; materialize a high-level WHIRL device-kernel PU with explicit loops, memory spaces, and synchronization; then choose final fusion boundaries, launch structure, stream assignment, and target schedule constraints. |
 | AI-P10 | Runtime variants and adaptation | Generate certified variants with runtime guards for batch size, sequence length, KV-cache pressure, prefix-cache hit rate, expert load, HBM availability, network contention, latency SLO, and guarded alias or disjoint-tile predicates. |
 | AI-P11 | Telemetry and profile feedback | Capture measured latency, achieved occupancy, memory traffic, communication time, overlap effectiveness, cache hit behavior, launch overhead, and runtime variant choices for future recompilation or policy tuning. |
 
@@ -156,6 +158,7 @@ The ownership boundary is the most important governance rule in this design. Com
 | ComputeResourceIR | Common Compiler Substrate | Device, SM, vector unit, tensor core, thread, warp, CTA, stream, and occupancy-relevant resource descriptions, including instruction-path and dtype-specific sustained compute ceilings. |
 | RuntimeGuardIR | Common Compiler Substrate | Generic guards, validity ranges, fallback behavior, and failure actions. |
 | Generic runtime-variant infrastructure | Common Compiler Substrate | Variant identity, applicability, selection policy hooks, hysteresis, fallback, telemetry binding. |
+| High-level WHIRL device-kernel lowering contract | Common Compiler Substrate | Bind a selected plan ID to a device PU and to structured loop IDs, memory-space and alias facts, synchronization dependencies, source provenance, and verification results. Reuse WHIRL nodes and symbol attributes rather than creating a competing kernel AST. Target-specific NVIDIA operations remain backend extensions. |
 
 
 ## 5.2 AI Domain Specific IR
@@ -179,6 +182,8 @@ The ownership boundary is the most important governance rule in this design. Com
 
 - A common IR object can be extended by AI traits, but common fields must remain meaningful outside AI.
 
+- High-level WHIRL owns executable structured loops and typed memory operations after selection. Plan IR owns alternatives and estimated costs before selection; the target backend owns PTX/CUDA-specific instruction realization. Neither plan metadata nor a host-side generated-provider call substitutes for a device-kernel WHIRL PU.
+
 - Research-derived mechanisms should be recorded as inspiration; DSC-specific proposals should be recorded as design commitments or hypotheses only after review.
 
 # 6 Phase To IR Matrix
@@ -194,7 +199,7 @@ The ownership boundary is the most important governance rule in this design. Com
 | AI-P6 Local layout residency | CommonMemoryResidencyIR, MemoryHierarchyDescriptorIR | HBM, L2, shared, registers, CPU, remote memory |
 | AI-P7 Multi-level tiling | CommonTilePlanIR, CommonAccessPatternIR, CommonLayoutIR, CommonMemoryResidencyIR, ComputeResourceIR, CandidateCostIR | Output/reduction/CTA/SMEM/warp/thread/register/vector tile families, coalescing, arithmetic intensity, occupancy, resource pressure |
 | AI-P8 Fetch prefetch async | CommonFetchPlanIR, CommonPipelineIR, CommonDistributedAliasIR | Async movement, buffering depth, overlap windows, safe early fetch windows |
-| AI-P9 Kernel scheduling | OptimizationPlanIR, CommonPipelineIR, ComputeResourceIR | Final physical realization |
+| AI-P9 Kernel scheduling | OptimizationPlanIR, CommonPipelineIR, ComputeResourceIR, high-level WHIRL device PU | Cost-gated plan selection, structured device-loop materialization, final physical realization |
 | AI-P10 Runtime variants | RuntimeVariantIR, RuntimeGuardIR, RuntimeSelectionPolicyIR, CommonDistributedAliasIR | Certified variants, selection guards, guarded no-alias and disjoint-tile predicates |
 | AI-P11 Telemetry feedback | TelemetryProfileIR, CandidateCostIR updates | Measured traffic, stalls, overlap, selected variants |
 
@@ -311,6 +316,57 @@ For each shared-memory tile candidate, P7.4 should emit:
 - fallback_movement_candidates: cp.async, vectorized LDG plus SMEM store, ordinary LDG/STG, or demand load when TMA is illegal or not profitable.
 
 P8 consumes those hints to build CommonFetchPlanIR and CommonPipelineIR. A P8 plan should bind the selected movement engine, source/destination memory levels, stage count, prefetch distance, arrival barrier, consumer wait point, edge-tile behavior, and fallback path. The profitability model should charge only the unhidden portion of movement latency, so the plan selection explicitly asks whether the P7.4 tile and P8 pipeline together reduce compute-unit bubbles.
+
+# 6B High-Level WHIRL And NVISA Convergence
+
+## 6B.1 Current Gap And Design Hypothesis
+
+The current matmul `.cu` output contains the outer reduction-tile loop, cooperative A/B loads, barriers, compute loops, and output stores. In the corresponding WHIRL, the selected path is a host-side generated-provider call plus plan metadata; the device loops are emitted as source text. This is useful for external CUDA compilation and review, but it does not let Open64's loop and dependence analyses inspect or transform the selected kernel. A `for` loop in a generated file is not evidence of a `DO_LOOP` in WHIRL.
+
+The design hypothesis is that preserving structured loops and memory facts in WHIRL through AI-P9 will make plan refinement, legality checking, tracing, and target lowering more effective than lowering this workload prematurely to a low-level control-flow IR. The relevant NVIDIA comparison is nvcc's LLVM-based NVVM path, not MLIR: NVIDIA announced the LLVM-based CUDA compiler with CUDA Toolkit 4.1 in December 2011, and its NVVM specification describes an LLVM-based GPU IR and PTX generator. We should compare the information our path preserves and the generated results without assuming visibility into proprietary nvcc passes. The intended Open64 advantage is an integrated, cost-gated path from semantic tensors and LNO-style loop reasoning to a target kernel, with less reconstruction of lost structure. This remains a hypothesis, not a demonstrated performance claim.
+
+MLIR affine, structured-control-flow, and transform dialects are a separate, later architectural comparison, especially for Triton-like compilers. Their existence does not make nvcc an MLIR-based compiler and should not be used to answer a claim specifically about nvcc/NVVM.
+
+## 6B.2 Representation And Ownership Contract
+
+| Layer | Required representation | Owner and commit point |
+| --- | --- | --- |
+| Candidate planning, AI-P7/P8 | CommonTilePlanIR, CommonFetchPlanIR, CommonPipelineIR, OptimizationPlanIR, CandidateCostIR; baseline and alternatives remain intact | Common substrate; no executable rewrite before whole-plan legality and profitability selection |
+| Selected GPU kernel, AI-P9 | Separate device PU with high-level WHIRL `DO_LOOP` nests for selected tile, cooperative load, compute, and epilogue loops; explicit edge `IF` predicates; typed global/shared/local storage and alias facts; synchronization dependencies | WHIRL rewriter; link every loop and memory operation to selected plan ID and input source location |
+| Host integration | Launch/provider operation, arguments, grid/block configuration, selected variant identity, and fallback | Host PU and runtime interface; never confuse this call with the device-kernel body |
+| Target lowering and source emission | Thread/block coordinates, memory-space address formation, barriers, PTX instructions, async copy/TMA, matrix operations, and launch packaging | In the completed path, NVISA/backend and `whirl2c -cuda` consume the same selected device PU. The existing template emitter remains a labeled migration baseline, not the authoritative device definition; target-specific details do not enter common plan IR as hard-coded semantics. |
+
+`WN_CreateDO` and `WN2C_do_loop` already establish a structured WHIRL loop and C emission route. The NVISA tree already contains thread/block special-register handling, global/shared symbol-space flags and lowering, `INTRN_SYNCHRONIZE` to `bar.sync`, and PTX `.entry` emission. These are concrete reuse points, not proof that the historical NVISA backend supports Hopper or Blackwell. First test the old path with a minimal device PU; extend or replace unsupported instruction paths deliberately.
+
+Reuse audit anchors in this tree: `osprey/common/com/wn.cxx` and `osprey/be/whirl2c/wn2c.cxx` for structured loops and source emission; `osprey/common/com/symtab_access.h`, `osprey/be/cg/NVISA/exp_loadstore.cxx`, `osprey/be/cg/NVISA/expand.cxx`, and `osprey/be/cg/NVISA/cgemit_targ.cxx` for memory spaces, execution coordinates, barriers, and PTX entry/variable emission. `osprey/be/lno/NVISA/lnotarget.cxx` provides LNO-to-target opcode/resource hooks, but contains unfinished resource-estimation paths; reuse the interface and validated mappings, not uncalibrated cost values.
+
+`DO_LOOP` alone does not encode CTA/warp ownership, address spaces, barrier uniformity, async transfer completion, register/SMEM capacity, or tensor-core instruction shape. Keep those as validated annotations and target lowering obligations. Materialize the selected synchronous kernel first; introduce `cp.async`/TMA pipeline operations only after the P8 event, arrival, wait, and buffer-lifetime model is explicit. Preserve a legal synchronous fallback.
+
+## 6B.3 Lowering And Verification Sequence
+
+1. Freeze the selected plan and its cost/legality record; retain baseline and rejected candidates for traceability.
+2. Create a device PU and bind tile axes to `DO_LOOP` indices, bounds, steps, source-line provenance, and plan IDs. Represent K-tile staging, cooperative loads, compute, and epilogue as separate structured regions.
+3. Attach global/shared/local storage symbols, tile-range alias and ownership facts, edge predicates, barriers, and buffer lifetimes. Check bounds, absence of unsafe overlap, resource limits, and barrier convergence before target lowering.
+4. Run `whirl2c -cuda` on the selected high-level device PU to derive `.cu` for the present remote-validation workflow. Independently lower that same PU through NVISA/PTX where the target feature is supported. Do not maintain an unrelated string-template kernel as the authoritative implementation after this milestone.
+5. Verify a before/after WHIRL dump contains the complete `DO_LOOP` nest, memory operations, and synchronization in the device PU; check the emitted `.cu` against that PU and selected plan; run numerical and GPU performance validation when hardware is available. A detached loop, a host provider call, or a matching source comment by itself fails this milestone.
+
+AI-P9 tracing must name the device PU, selected plan, loop IDs/bounds, global and shared buffers, barrier sites, source line, target path, verification status, and actual rewrite outcome. The analyzer's `physical-plan.log` and `optimization-summary.log` must distinguish `plan_selected`, `host_dispatch_rewritten`, `device_pu_materialized`, and `device_target_lowered`; no one event implies the next.
+
+## 6B.4 Comparative Evaluation Gate
+
+Compare equivalent GEMM shapes, dtypes, layouts, numerical tolerances, launch conditions, and hardware in distinct lanes: (1) nvcc/NVVM compiling comparable CUDA, (2) Clang CUDA as a separate LLVM implementation, and (3) CUTLASS and Triton as library/kernel-system baselines rather than synonyms for nvcc. Report correctness, kernel latency and throughput, HBM/SMEM/register traffic or proxies, occupancy, bank conflicts, compile time, and generated PTX/SASS when available. Measure both the structured-WHIRL path and the existing source-emission baseline. Claim superiority only for demonstrated workloads and metrics; where NVIDIA proprietary compiler internals are unavailable, compare observable outputs rather than inventing pipeline details. Section 12 separates NVIDIA's nvcc/NVVM evidence from LLVM and MLIR documentation.
+
+## 6B.5 CUDA C Derived From WHIRL
+
+**Accepted DSC design decision, not a claim about the current implementation.** In the completed path, the selected device PU is the single executable kernel definition. `whirl2c -cuda` is a proposed opt-in mode of the existing standalone translator; it reads selected high-level WHIRL and emits CUDA C from that PU. The existing C mode retains its behavior. The intended command shape is `whirl2c -cuda -CLIST:dotc_file=<output.cu> <selected-whirl.B>`; the option spelling and output-file integration must be implemented and tested, not assumed to exist today. The in-process source-emission path should use the same translation mode. Emit before lowerings that destroy structured loops or memory-space intent.
+
+**Migration baseline.** Preserve the existing source-template emitter under a proposed `-Wb,-DSL:cuda_legacy_emit=ON` control, defaulting to ON during development. A `.cu` file remains requested separately by the existing `-Wb,-DSL:cuda_tile_output=<new-file.cu>` option; ordinary compilations must not gain an unsolicited sidecar. When implemented, `cuda_legacy_emit=OFF` must suppress legacy source even if an output path was supplied, and the current `cuda_tile_apply=ON` path must require legacy emission until device-PU lowering replaces it. Phase coverage must record `cuda_legacy_emit_off` rather than claiming a selected tile when this disables the current source path. Keep this emitter available after `whirl2c -cuda` first works so equivalent plans can be compared, but never label legacy source as WHIRL-derived.
+
+The CUDA mode must translate the full synchronous GEMM body: device entry and parameters, CTA/thread coordinates, selected `DO_LOOP` nests, edge predicates, global-memory addresses, shared-memory A/B buffers, cooperative loads, barriers, register accumulators, FMA/compute loops, and stores. It must obtain type, shape, address space, ownership, and layout from verified WHIRL symbols/operations and selected-plan bindings. A host launch wrapper is a distinct artifact that consumes the same plan ID, grid/block dimensions, arguments, and guards; it is not a second definition of device behavior. Existing `WN2C_do_loop` supplies generic loop emission, but CUDA qualifiers, GPU builtins, memory spaces, barriers, and later TMA need explicit CUDA-mode handling.
+
+The first `whirl2c -cuda` implementation accepts only the synchronous F32 matmul subset and fails closed on an unsupported device operator, memory-space annotation, intrinsic, or barrier contract. It must not fill a gap by splicing in a handwritten CUDA kernel body. P8 may add `cp.async` or TMA only after transfer, buffer lifetime, barrier arrival/wait, and fallback semantics exist in WHIRL and have a tested CUDA translation. New target operations must use compatible existing WHIRL mechanisms where possible; binary WHIRL format changes require an explicit versioned contract.
+
+Driver-owned program-level code creates and registers the device PU after whole-plan legality and profitability selection; the per-PU VHO pass must not silently fabricate a second PU. The same verified PU can feed `whirl2c -cuda` and, for supported features, NVISA/PTX lowering. Retain two separate, immutable review lanes for an equivalent selected plan: legacy `.cu` plus its `.t` trace and receipt, and WHIRL-derived `.cu` plus the saved device `.B`, translation trace, and receipt. Compare loop bounds, memory spaces, buffer sizes, barrier/transfer order, launch geometry, numerical output, and target performance; source text need not match byte-for-byte. The selected-plan trace and artifact receipt must identify the device PU when present, `.B` hash, source hash, emitter mode, translated loop/buffer/barrier counts, unsupported-feature result, and host launch binding. Accept the WHIRL-derived vertical slice only when the saved device WHIRL contains the complete synchronous kernel, its generated `.cu` compiles, its numerical result matches the baseline, and trace-to-source checks establish that no executable kernel behavior came from a parallel template. GPU timing remains a separate performance gate.
 
 # 7 Candidate Generation And Profitability Architecture
 
@@ -606,7 +662,7 @@ The first execution case is a standalone `common.matmul.v1`. It exercises multi-
 
 1. Priority 1: Minimal optimization harness. Add a benchmark driver, before/after IR dump, correctness checker, timing harness, and telemetry record. Acceptance gate: every optimization run emits baseline runtime, transformed runtime if any, selected candidate id, and rejection reasons.
 
-1. Priority 2: First real tiling path. Select one canonical GEMM, convolution, or matmul-like loop/tensor region. Detect it, generate at least two tile candidates plus baseline, estimate memory traffic and resource pressure, rewrite the loop or kernel, and measure. Acceptance gate: transformed IR is visibly tiled and either improves performance or records a cost-model miss.
+1. Priority 2: First real tiling path. Select one canonical GEMM, convolution, or matmul-like loop/tensor region. Detect it, generate at least two tile candidates plus baseline, estimate memory traffic and resource pressure, rewrite the loop or kernel, and measure. Acceptance gate: the selected device PU contains visible high-level WHIRL tile loops, and either improves performance or records a cost-model miss. A tiled `.cu` sidecar alone is an intermediate milestone.
 
 1. Priority 3: First real fusion path. Select one narrow producer-consumer pattern such as MatMul+Bias, Bias+Activation, or elementwise chain. Generate fused and unfused candidates, prove legality, estimate materialization savings versus register pressure, rewrite, and measure. Acceptance gate: transformed IR has one materialization removed or records why fusion was rejected.
 
@@ -637,6 +693,8 @@ The first coding target should be deliberately small. A recommended slice is:
 1. Validate: compare output numerically and measure runtime.
 
 This slice is intentionally smaller than the full design. It proves the compiler can make a choice and act. Once this loop exists, the architecture can grow without remaining purely descriptive.
+
+For the current matmul path, the immediate representation step is narrower still: make one selected K-tile loop a verified `DO_LOOP` in a device PU, then move cooperative load, compute, and epilogue loops into that PU without changing the cost gate or trace identity. Only after structural verification should the emitted `.cu` be driven from this PU. The following target milestone reuses NVISA memory-space, thread-index, barrier, and PTX-entry machinery where validated; TMA and modern matrix instruction support require separate target work.
 
 ## 9.2 Minimum First Fusion Slice
 
@@ -812,7 +870,7 @@ Every phase must state what it learned, which alternatives it kept or rejected, 
 | AI-P6 Local physical layout and residency | HBM/L2/SMEM/register placement, footprint versus capacity, spill or eviction risk, occupancy effect, and rejected residency plans. | LEGAL, COST, and residency DETAIL with resource limits; detail schema remains open. |
 | AI-P7 Multi-level tiling | Baseline and all tile candidates, legal and resource failures, cost terms, winner versus baseline, expected gain, confidence, and predicted Roofline work/traffic/intensity by memory level where inputs exist. | CAND, LEGAL, COST, SELECT; Roofline ceilings and per-level byte provenance need a versioned trace extension. |
 | AI-P8 Fetch prefetch and async movement | Engine, stages, distance, barriers, fallback, raw and hidden memory time, residual compute bubbles, and why the chosen pipeline wins. | HINT, COST, pipeline DETAIL; barrier/fallback and bubble schemas remain open. |
-| AI-P9 Physical kernel fusion and scheduling | Final whole-plan composition, rejected alternatives, fusion boundary, launches and syncs, selected cost, actual IR changes, and structural verification. | Stable plan identity, SELECT, REWRITE, and a verification record; the latter two are incomplete. |
+| AI-P9 Physical kernel fusion and scheduling | Final whole-plan composition, rejected alternatives, fusion boundary, launches and syncs, selected cost, host versus device PU changes, structured loop IDs, memory-space and barrier facts, target path, and structural verification. | Stable plan identity, SELECT, REWRITE, and a verification record; device-PU loop materialization and target lowering remain incomplete. |
 | AI-P10 Runtime variants and adaptation | Each guarded variant, guard coverage and fallback, selection overhead, expected cost by workload bucket, and chosen static default. | Runtime-guard/variant detail and workload-bucket schema; not yet specified. |
 | AI-P11 Telemetry and profile feedback | Observed latency and per-level traffic versus predictions; achieved versus predicted Roofline position, efficiency, selection-ranking error, model error by cost term, variant hit rate, and next tuning action. | External measured profile joined to compile trace and target calibration identity; a compile-only .t file must report measurements as unavailable. |
 
@@ -951,7 +1009,21 @@ Maintain the action-gated milestone list from section 9. Each prototype mileston
 
 Track risks such as candidate explosion, inaccurate overlap modeling, runtime policy instability, and excessive IR complexity.
 
+## 11.9 WHIRL device PU and NVISA modernization
+
+Specify the selected-plan-to-`DO_LOOP` schema, plan/source provenance, GPU execution mapping, barrier and alias legality checks, memory-space symbols, `whirl2c -cuda` option and fail-closed source-emitter contract, the default-on legacy baseline switch, and rollback behavior. Audit NVISA by feature and architecture rather than assuming present-day GPU support: PTX version, 64-bit addressing, warp/CTA mapping, shared-memory layout and banks, `cp.async`, TMA/mbarrier, WGMMA/TMEM, low-precision formats, and launch packaging. Record each feature as reused, extended, replaced, or unsupported with a test and target GPU. Define comparable nvcc/NVVM measurements first; keep Clang CUDA and MLIR/Triton comparisons separate before claiming a compiler advantage.
+
 # 12 Reference Notes
+
+- NVIDIA, "NVIDIA Opens Up CUDA Platform by Releasing Compiler Source Code," December 13, 2011, https://nvidianews.nvidia.com/news/nvidia-opens-up-cuda-platform-by-releasing-compiler-source-code: dates the LLVM-based CUDA compiler in CUDA Toolkit 4.1, earlier than a 2014 start date.
+
+- NVIDIA CUDA LLVM Compiler, https://developer.nvidia.com/CUDA-LLVM-Compiler: identifies nvcc as LLVM-based and libNVVM/NVVM IR as the compiler SDK's GPU path.
+
+- LLVM Language Reference, https://llvm.org/docs/LangRef.html: documents the lower-level basic-block and branch representation used in the Section 6B comparison.
+
+- MLIR Affine, SCF, and Transform dialect documentation, https://mlir.llvm.org/docs/Dialects/Affine/, https://mlir.llvm.org/docs/Dialects/SCFDialect/, and https://mlir.llvm.org/docs/Dialects/Transform/: a separate structured-IR comparison, not evidence that nvcc is MLIR-based.
+
+- NVIDIA NVVM IR specification, https://docs.nvidia.com/cuda/nvvm-ir-spec/: documents an LLVM-based GPU IR path, without exposing proprietary nvcc optimization internals. Section 6B therefore treats performance superiority as an empirical question.
 
 - Mercury: SOSP 2025 paper listing and metadata reviewed as research inspiration for asynchronous multi-GPU LLM operator optimization via remote-memory scheduling.
 
