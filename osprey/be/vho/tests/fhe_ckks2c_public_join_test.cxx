@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "dsl_ckks_event.h"
 #include "dsl_ir_image.h"
 #include "dsl_opcode.h"
 #include "fhe_plan.h"
@@ -41,6 +42,7 @@ enum Fixture_String {
 };
 
 bool omit_flatten;
+std::vector<DSL_CKKS_EVENT_RECORD> route_events;
 
 struct Source_Row {
   UINT32 owner;
@@ -143,6 +145,26 @@ bool Rejects(const std::vector<VHO_FHE_CKKS2C_GROUP> &groups)
 }
 
 }  // namespace
+
+BOOL DSL_CKKS_Event_Image_Validate(FILE *diagnostic)
+{
+  (void)diagnostic;
+  return !route_events.empty();
+}
+
+UINT32 DSL_CKKS_Event_Image_Count()
+{
+  return route_events.size();
+}
+
+BOOL DSL_CKKS_Event_Image_Get(DSL_CKKS_EVENT_ID id,
+                              DSL_CKKS_EVENT_RECORD *record)
+{
+  if (record == NULL || id == 0 || id > route_events.size())
+    return FALSE;
+  *record = route_events[id - 1];
+  return TRUE;
+}
 
 /* Keep string indexes independent of byte offsets. */
 STR_IDX STR_Table_Size()
@@ -306,6 +328,26 @@ int main()
 {
   omit_flatten = false;
   std::vector<VHO_FHE_CKKS2C_GROUP> groups = Groups();
+  route_events.clear();
+  for (UINT32 index = 0; index < groups.size(); ++index) {
+    const VHO_FHE_CKKS2C_GROUP &group = groups[index];
+    DSL_CKKS_EVENT_RECORD event;
+    memset(&event, 0, sizeof(event));
+    event.id = index + 1;
+    event.owner_pu_st = group.owner_pu_st;
+    event.source_value_id = group.source_value_id;
+    event.source_node_id = group.source_node_id;
+    event.context_pu_identity_id = group.context_pu_identity_id;
+    event.context_callsite_id = group.context_callsite_id;
+    event.source_static_ordinal = group.origin_static_ordinal;
+    event.result_value_id = group.group_output_value_id;
+    event.result_node_id = group.result_node_ids[0];
+    event.origin_owner_pu_st = group.origin_owner_pu_st;
+    event.origin_source_value_id = group.origin_source_value_id;
+    event.origin_static_ordinal = group.origin_static_ordinal;
+    event.flags = DSL_CKKS_EVENT_FINAL_RESULT;
+    route_events.push_back(event);
+  }
   VHO_FHE_CKKS2C_PUBLIC_JOIN_PLAN plan;
   VHO_FHE_CKKS2C_PUBLIC_JOIN_RESULT result;
   memset(&result, 0, sizeof(result));
@@ -328,6 +370,41 @@ int main()
           VHO_FHE_RUNTIME_OP_RELU_RECONSTRUCT)
     return 1;
 
+  std::vector<VHO_FHE_CKKS2C_PUBLIC_ROUTE> routes;
+  VHO_FHE_CKKS2C_PUBLIC_JOIN_RESULT route_result;
+  if (!VHO_FHE_CKKS2C_Build_Public_Routes_From_Image(
+          &routes, &route_result, stderr) ||
+      routes.size() != result.private_group_binding_count ||
+      route_result.canonical_pu_count != result.canonical_pu_count ||
+      route_result.canonical_source_count != result.canonical_source_count ||
+      route_result.static_descriptor_count !=
+          result.static_descriptor_count ||
+      route_result.dynamic_binding_count != result.dynamic_binding_count)
+    return 7;
+  for (UINT32 route_index = 0; route_index < routes.size(); ++route_index) {
+    UINT32 matches = 0;
+    for (UINT32 binding_index = 0; binding_index < plan.bindings.size();
+         ++binding_index) {
+      const VHO_FHE_CKKS2C_PUBLIC_BINDING &binding =
+          plan.bindings[binding_index];
+      if (binding.binding_kind == VHO_FHE_CKKS2C_PUBLIC_PRIVATE_GROUP &&
+          binding.specialized_owner_pu_st ==
+              routes[route_index].specialized_owner_pu_st &&
+          binding.specialized_source_value_id ==
+              routes[route_index].specialized_source_value_id &&
+          binding.context_pu_identity_id ==
+              routes[route_index].context_pu_identity_id &&
+          binding.context_callsite_id ==
+              routes[route_index].context_callsite_id &&
+          binding.static_ordinal ==
+              routes[route_index].public_static_ordinal &&
+          binding.operation_kind == routes[route_index].operation_kind)
+        ++matches;
+    }
+    if (matches != 1)
+      return 8;
+  }
+
   std::reverse(groups.begin(), groups.end());
   VHO_FHE_CKKS2C_PUBLIC_JOIN_PLAN reordered;
   VHO_FHE_CKKS2C_PUBLIC_JOIN_RESULT reordered_result;
@@ -346,7 +423,8 @@ int main()
   if (!Rejects(malformed))
     return 4;
   malformed = groups;
-  malformed[0].context_callsite_id = 1;
+  /* Cross the first clone's source identity with the second clone's callsite. */
+  malformed[0].context_callsite_id = 2;
   if (!Rejects(malformed))
     return 5;
   omit_flatten = true;

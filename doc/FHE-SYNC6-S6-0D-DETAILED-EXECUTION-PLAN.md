@@ -6,7 +6,9 @@ S6-0d starts from the separately reopenable, gatekeeper-approved
 or tail semantics.
 
 Current checkpoint: **D1, D2, and D3 are complete. D4's read-only public join
-is implemented and whole-image certified; D4 mutation is next.**
+is whole-image certified. The FHE-owned standard-block materializer is under
+focused integration and submits one M1 replacement per complete source
+context so only the typed-event `FINAL_RESULT` needs a runtime projection.**
 The D2 collector is wired into the backend and `ir_tools`, its two-PU positive
 and malformed-image contracts pass, and its complete cached-image receipt is
 retained under the durable review root. That receipt consumed 10 PUs, 146
@@ -388,6 +390,18 @@ authenticated join and no ABI change.
   and the terminal policy. The `-O0` terminal file omits the optional CKKS
   event section only after complete event-consumption proof; it does not add a
   new mapped terminal-status row or revise the v1 event image.
+- Real-image integration proved that intermediate private outputs are
+  deliberately unprojected. For owner `12801`, ReLU source value `10`, the
+  first private group output `600` has no projection, while the complete
+  context's typed-event `FINAL_RESULT` owns the one final projection. D4 must
+  never submit the six ReLU groups as six independently projected requests.
+- ReLU remains six public ABI operations, but its six private groups are
+  replaced by one standard-WHIRL context block. This keeps bootstrap output
+  and polynomial intermediates as local handle temporaries; it neither drops
+  an operation nor exposes private intermediates in the runtime-interface
+  image. The block stores only reconstruction into the `FINAL_RESULT`
+  projection. Other source contexts retain one private-group replacement
+  block because their sole group output is already the final source result.
 
 ### D5: Add the continuous backend selector
 

@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 
+#include "dsl_ckks_event.h"
 #include "dsl_ir_image.h"
 #include "dsl_opcode.h"
 #include "fhe_plan.h"
@@ -109,6 +110,28 @@ struct Group_Origin_Less {
                   const VHO_FHE_CKKS2C_GROUP *right) const
   {
     return left->origin_static_ordinal < right->origin_static_ordinal;
+  }
+};
+
+struct Image_Group_Key {
+  uint32_t owner_pu_st;
+  uint32_t source_value_id;
+  uint32_t context_pu_identity_id;
+  uint32_t context_callsite_id;
+  uint32_t origin_static_ordinal;
+
+  /* Typed event identity is stable across mapped table allocation. */
+  bool operator<(const Image_Group_Key &other) const
+  {
+    if (owner_pu_st != other.owner_pu_st)
+      return owner_pu_st < other.owner_pu_st;
+    if (source_value_id != other.source_value_id)
+      return source_value_id < other.source_value_id;
+    if (context_pu_identity_id != other.context_pu_identity_id)
+      return context_pu_identity_id < other.context_pu_identity_id;
+    if (context_callsite_id != other.context_callsite_id)
+      return context_callsite_id < other.context_callsite_id;
+    return origin_static_ordinal < other.origin_static_ordinal;
   }
 };
 
@@ -488,7 +511,160 @@ bool Join_Identity(const VHO_FHE_CKKS2C_PUBLIC_JOIN_PLAN &plan,
   return digest->size() == 64;
 }
 
+/* Reconstruct the source/group keys needed for public ordinal selection
+ * without opening any owner-local symbol table. Full group plans and hashes
+ * remain the final collected-join authority. */
+bool Collect_Image_Groups(std::vector<VHO_FHE_CKKS2C_GROUP> *groups,
+                          FILE *diagnostic)
+{
+  if (groups == NULL || !DSL_CKKS_Event_Image_Validate(diagnostic))
+    return false;
+  std::map<Image_Group_Key, VHO_FHE_CKKS2C_GROUP> grouped;
+  for (uint32_t id = 1; id <= DSL_CKKS_Event_Image_Count(); ++id) {
+    DSL_CKKS_EVENT_RECORD event;
+    DSL_IR_VALUE_RECORD value;
+    DSL_IR_NODE_RECORD node;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
+    std::string value_name;
+    if (!DSL_CKKS_Event_Image_Get(id, &event) || event.id != id ||
+        !DSL_IR_Image_Get_Value(event.source_value_id, &value) ||
+        !DSL_IR_Image_Get_Node(event.source_node_id, &node) ||
+        !DSL_IR_Image_Get_Opcode_Descriptor(
+            node.opcode_descriptor_id, &opcode) ||
+        node.id != event.source_node_id ||
+        node.result_value_id != value.id ||
+        value.producer_node_id != node.id ||
+        !Required_String(value.name, &value_name))
+      return Report(diagnostic, "typed event source join failed", id);
+    Image_Group_Key key = {event.owner_pu_st, event.source_value_id,
+                           event.context_pu_identity_id,
+                           event.context_callsite_id,
+                           event.origin_static_ordinal};
+    std::map<Image_Group_Key, VHO_FHE_CKKS2C_GROUP>::iterator found =
+        grouped.find(key);
+    if (found == grouped.end()) {
+      VHO_FHE_CKKS2C_GROUP group;
+      group.owner_pu_st = event.owner_pu_st;
+      group.source_value_id = event.source_value_id;
+      group.source_node_id = event.source_node_id;
+      group.source_logical_operator = opcode.logical_operator;
+      group.source_operator_version = opcode.version;
+      group.source_value_name = value_name;
+      group.context_pu_identity_id = event.context_pu_identity_id;
+      group.context_callsite_id = event.context_callsite_id;
+      group.origin_owner_pu_st = event.origin_owner_pu_st;
+      group.origin_source_value_id = event.origin_source_value_id;
+      group.origin_static_ordinal = event.origin_static_ordinal;
+      group.group_output_value_id = 0;
+      found = grouped.insert(std::make_pair(key, group)).first;
+    }
+    VHO_FHE_CKKS2C_GROUP &group = found->second;
+    if (group.source_node_id != event.source_node_id ||
+        group.source_logical_operator != opcode.logical_operator ||
+        group.source_operator_version != opcode.version ||
+        group.source_value_name != value_name ||
+        group.origin_owner_pu_st != event.origin_owner_pu_st ||
+        group.origin_source_value_id != event.origin_source_value_id)
+      return Report(diagnostic, "typed event group identity changed", id);
+    group.group_output_value_id = event.result_value_id;
+  }
+  if (grouped.empty())
+    return Report(diagnostic, "typed event image has no public routes", 0);
+  std::vector<VHO_FHE_CKKS2C_GROUP> candidate;
+  for (std::map<Image_Group_Key, VHO_FHE_CKKS2C_GROUP>::const_iterator row =
+           grouped.begin(); row != grouped.end(); ++row)
+    candidate.push_back(row->second);
+  groups->swap(candidate);
+  return true;
+}
+
 }  // namespace
+
+/* Build the immutable public selector route before owner-local PU mutation. */
+bool VHO_FHE_CKKS2C_Build_Public_Routes_From_Image(
+    std::vector<VHO_FHE_CKKS2C_PUBLIC_ROUTE> *routes,
+    VHO_FHE_CKKS2C_PUBLIC_JOIN_RESULT *result, FILE *diagnostic)
+{
+  if (routes == NULL || result == NULL)
+    return Report(diagnostic, "public route output is absent", 0);
+  std::map<uint32_t, Owner_Info> owners;
+  uint32_t canonical_pus = 0;
+  std::vector<VHO_FHE_CKKS2C_GROUP> groups;
+  std::vector<Canonical_Source> sources;
+  if (!Collect_Owners(&owners, &canonical_pus, diagnostic) ||
+      !Collect_Image_Groups(&groups, diagnostic) ||
+      !Collect_Sources(owners, groups, &sources, diagnostic))
+    return false;
+
+  typedef std::pair<uint32_t, uint32_t> Owner_Value;
+  std::map<Owner_Value, std::vector<const VHO_FHE_CKKS2C_GROUP *> >
+      by_source;
+  for (uint32_t index = 0; index < groups.size(); ++index)
+    by_source[Owner_Value(groups[index].owner_pu_st,
+                          groups[index].source_value_id)].push_back(
+        &groups[index]);
+
+  std::vector<VHO_FHE_CKKS2C_PUBLIC_ROUTE> candidate;
+  uint32_t static_ordinal = 1;
+  uint32_t representation_count = 0;
+  for (uint32_t source_index = 0; source_index < sources.size();
+       ++source_index) {
+    const Canonical_Source &source = sources[source_index];
+    std::vector<uint32_t> kinds;
+    if (!Operation_Kinds(source.key.logical_operator, &kinds))
+      return Report(diagnostic, "image route operator is unsupported", 0);
+    const uint32_t first_public_ordinal = static_ordinal;
+    static_ordinal += kinds.size();
+    for (uint32_t instance_index = 0;
+         instance_index < source.instances.size(); ++instance_index) {
+      const Source_Instance &instance = source.instances[instance_index];
+      std::vector<const VHO_FHE_CKKS2C_GROUP *> matched =
+          by_source[Owner_Value(instance.owner_pu_st, instance.value_id)];
+      if (source.key.logical_operator == OPR_DSLFLATTEN) {
+        if (!matched.empty() || kinds.size() != 1)
+          return Report(diagnostic,
+                        "flatten image route owns private work",
+                        instance.value_id);
+        ++representation_count;
+        continue;
+      }
+      if (matched.size() != kinds.size())
+        return Report(diagnostic,
+                      "image route group count does not match source",
+                      instance.value_id);
+      std::sort(matched.begin(), matched.end(), Group_Origin_Less());
+      for (uint32_t offset = 0; offset < matched.size(); ++offset) {
+        const VHO_FHE_CKKS2C_GROUP &group = *matched[offset];
+        if (offset != 0 &&
+            group.origin_static_ordinal !=
+                matched[0]->origin_static_ordinal + offset)
+          return Report(diagnostic, "image route ordinals are not dense",
+                        instance.value_id);
+        VHO_FHE_CKKS2C_PUBLIC_ROUTE route;
+        route.specialized_owner_pu_st = group.owner_pu_st;
+        route.specialized_source_value_id = group.source_value_id;
+        route.context_pu_identity_id = group.context_pu_identity_id;
+        route.context_callsite_id = group.context_callsite_id;
+        route.origin_static_ordinal = group.origin_static_ordinal;
+        route.public_static_ordinal = first_public_ordinal + offset;
+        route.operation_kind = kinds[offset];
+        candidate.push_back(route);
+      }
+    }
+  }
+  if (candidate.size() != groups.size() || representation_count != 1)
+    return Report(diagnostic, "image public route coverage is incomplete", 0);
+  VHO_FHE_CKKS2C_PUBLIC_JOIN_RESULT counts;
+  counts.canonical_pu_count = canonical_pus;
+  counts.canonical_source_count = sources.size();
+  counts.static_descriptor_count = static_ordinal - 1;
+  counts.dynamic_binding_count = candidate.size() + representation_count;
+  counts.private_group_binding_count = candidate.size();
+  counts.representation_binding_count = representation_count;
+  routes->swap(candidate);
+  *result = counts;
+  return true;
+}
 
 /* Build the immutable whole-program public selector plan. */
 bool VHO_FHE_CKKS2C_Build_Public_Join(

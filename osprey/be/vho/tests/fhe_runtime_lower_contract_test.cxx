@@ -895,32 +895,48 @@ Build_And_Lower_Resolved_Relu_Sequence
     const DSL_IR_VALUE_ID unary_operands[1] = {
         value_requests[0].source_value_id
     };
-    const UINT32 operation_kinds[5] = {
+    const UINT32 operation_kinds[9] = {
         VHO_FHE_RUNTIME_OP_CONV2D_PLAIN,
         VHO_FHE_RUNTIME_OP_RESIDUAL_ADD,
+        VHO_FHE_RUNTIME_OP_BOOTSTRAP,
+        VHO_FHE_RUNTIME_OP_RELU_NORMALIZE,
+        VHO_FHE_RUNTIME_OP_RELU_POLY_STAGE,
+        VHO_FHE_RUNTIME_OP_RELU_RECONSTRUCT,
         VHO_FHE_RUNTIME_OP_AVERAGE_POOL,
         VHO_FHE_RUNTIME_OP_LAYOUT_CONVERT,
         VHO_FHE_RUNTIME_OP_LINEAR_PLAIN
     };
-    const DSL_IR_VALUE_ID *operation_operands[5] = {
+    const DSL_IR_VALUE_ID *operation_operands[9] = {
         conv_operands, residual_operands, unary_operands, unary_operands,
+        unary_operands, residual_operands, unary_operands, unary_operands,
         conv_operands
     };
-    const UINT32 operation_operand_counts[5] = { 3, 2, 1, 1, 3 };
-    const char *operation_functions[5] = {
+    const UINT32 operation_operand_counts[9] = {
+        3, 2, 1, 1, 1, 2, 1, 1, 3
+    };
+    const char *operation_bound_roles[9] = {
+        NULL, NULL, NULL, NULL, "fhe.relu.coefficient.stage0",
+        NULL, NULL, NULL, NULL
+    };
+    const char *operation_functions[9] = {
         "open64_fhe_conv2d_plain_v1",
         "open64_fhe_residual_add_v1",
+        "open64_fhe_bootstrap_v1",
+        "open64_fhe_relu_normalize_v1",
+        "open64_fhe_relu_poly_stage_v1",
+        "open64_fhe_relu_reconstruct_v1",
         "open64_fhe_average_pool_v1",
         "open64_fhe_layout_convert_v1",
         "open64_fhe_linear_plain_v1"
     };
-    for (UINT32 i = 0; i < 5; ++i) {
+    for (UINT32 i = 0; i < 9; ++i) {
         VHO_FHE_RUNTIME_OPERATION_REQUEST operation;
         memset(&operation, 0, sizeof(operation));
         operation.operation_kind = operation_kinds[i];
         operation.static_ordinal = 50 + i;
         operation.operand_value_ids = operation_operands[i];
         operation.operand_count = operation_operand_counts[i];
+        operation.bound_role = operation_bound_roles[i];
         VHO_FHE_RUNTIME_CALL_SEQUENCE operation_sequence;
         if (!VHO_FHE_Runtime_Build_Operation_Sequence
                  (pu, &operation, Test_Source_Position(),
@@ -962,20 +978,20 @@ Build_And_Lower_Resolved_Relu_Sequence
         }
     }
 
-    VHO_FHE_RUNTIME_OPERATION_REQUEST unsupported;
-    memset(&unsupported, 0, sizeof(unsupported));
-    unsupported.operation_kind = VHO_FHE_RUNTIME_OP_RELU_POLY_STAGE;
-    unsupported.static_ordinal = 60;
-    unsupported.operand_value_ids = unary_operands;
-    unsupported.operand_count = 1;
+    VHO_FHE_RUNTIME_OPERATION_REQUEST invalid_poly;
+    memset(&invalid_poly, 0, sizeof(invalid_poly));
+    invalid_poly.operation_kind = VHO_FHE_RUNTIME_OP_RELU_POLY_STAGE;
+    invalid_poly.static_ordinal = 60;
+    invalid_poly.operand_value_ids = unary_operands;
+    invalid_poly.operand_count = 1;
     VHO_FHE_RUNTIME_CALL_SEQUENCE rejected_sequence;
     if (VHO_FHE_Runtime_Build_Operation_Sequence
-            (pu, &unsupported, Test_Source_Position(), Build_Failure_Block,
+            (pu, &invalid_poly, Test_Source_Position(), Build_Failure_Block,
              NULL, NULL, &rejected_sequence)) {
-        fprintf(stderr, "specialized ReLU operation was admitted generically\n");
+        fprintf(stderr, "polynomial stage without coefficient was admitted\n");
         return FALSE;
     }
-    VHO_FHE_RUNTIME_OPERATION_REQUEST wrong_ordinal = unsupported;
+    VHO_FHE_RUNTIME_OPERATION_REQUEST wrong_ordinal = invalid_poly;
     wrong_ordinal.operation_kind = VHO_FHE_RUNTIME_OP_CONV2D_PLAIN;
     wrong_ordinal.operand_value_ids = conv_operands;
     wrong_ordinal.operand_count = 3;

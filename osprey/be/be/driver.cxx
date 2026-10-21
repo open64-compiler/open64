@@ -2222,11 +2222,12 @@ Preprocess_PU (PU_Info *current_pu)
       if (need_fhe_checkpoint_output) {
         BOOL converted;
         if (FHE_CKKS2C_Checkpoint_Input_Active()) {
-          Set_Error_Phase ( "FHE CKKS2C Collection" );
-          converted = VHO_FHE_CKKS2C_Checkpoint_Collect_Active_PU
-                          (PU_Info_proc_sym(current_pu),
+          VHO_FHE_CKKS2C_LOWER_RESULT lower_result;
+          Set_Error_Phase ( "FHE CKKS2C Group Lowering" );
+          converted = VHO_FHE_CKKS2C_Checkpoint_Lower_Active_PU
+                          (current_pu,
                            VHO_FHE_Conversion_Checkpoint_Output,
-                           stderr);
+                           stderr, &lower_result);
           if (converted)
             convert_result.conversion_pass_count = 1;
           else

@@ -42,7 +42,9 @@ Publish one generic atomic transaction that accepts, for one active PU:
 - expected logical operator/version and owner for every member;
 - one detached, already checked standard-WHIRL block producing the public
   runtime handle; and
-- the runtime projection/relation used by the existing standard lowering.
+- the typed-event `FINAL_RESULT` runtime projection/relation used by the
+  existing standard lowering. Intermediate private group outputs remain
+  unprojected.
 
 Preflight must derive the PU tree and containing blocks from `PU_Info`, then
 prove unique definitions, exact TY/owner identity, closed internal WN and DSL
@@ -113,10 +115,17 @@ standard block; failure consumes none and leaves caller result storage
 unchanged.
 
 The result intentionally names the semantic source and retired private output
-separately. The source is the public ABI event being reconstructed; the group
-output is the last internal CKKS value whose executable uses are redirected to
-the standard runtime handle. Internal group members do not acquire public
-runtime projections.
+separately. The source is the public ABI event being reconstructed; the
+complete source context's group output is its typed-event `FINAL_RESULT` and
+owns the one runtime projection. Earlier private outputs and other internal
+members do not acquire public runtime projections.
+
+For ReLU, the FHE consumer submits the six ordered private groups as one source
+replacement block. The block still contains bootstrap, normalization, three
+polynomial stages, and reconstruction. Their intermediate runtime handles are
+ordinary local symbols rather than mapped runtime projections. This is the
+only composite source replacement in the first profile; other source contexts
+submit one private group apiece.
 
 ### Required common/com tests
 

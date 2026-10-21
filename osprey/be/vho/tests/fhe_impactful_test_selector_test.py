@@ -73,6 +73,19 @@ class ImpactfulTestSelectorTest(unittest.TestCase):
         self.assertIn("miniature-checkpoint", lanes)
         self.assertIn("full-s6-0c-certification", lanes)
 
+    def test_ckks2c_group_lowering_reuses_cached_receipt(self) -> None:
+        """D4 lowering reruns cached evidence without model rematerialization."""
+
+        lanes = self.lanes("osprey/be/vho/fhe_ckks2c_lower.cxx")
+        self.assertEqual(lanes, {
+            "artifact-audit",
+            "backend-link-boundary",
+            "ckks2c-group-join",
+            "ckks2c-group-lowering",
+            "hygiene",
+            "mapped-reopen",
+        })
+
     def test_common_transaction_is_conservatively_broad(self) -> None:
         """A generic rewrite change reaches mapped, miniature, and full gates."""
 

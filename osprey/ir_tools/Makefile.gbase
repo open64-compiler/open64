@@ -199,7 +199,7 @@ LDIRT += fhe_semantic_convert_test fhe_semantic_convert_test.o
 LDIRT += fhe_semantic_convert.o
 LDIRT += fhe_ckks2c_collect_image_test fhe_ckks2c_collect_image_test.o \
 	fhe_ckks2c_collect.o fhe_ckks2c_emit.o fhe_ckks_plan_bytes.o \
-	fhe_ckks2c_public_join.o fhe_ckks2c_publish.o \
+	fhe_ckks2c_lower.o fhe_ckks2c_public_join.o fhe_ckks2c_publish.o \
 	fhe_ckks2c_checkpoint.o fhe_sha256.o
 LDIRT += dsl_wopt_bridge_test dsl_wopt_bridge_test.o
 LDIRT += opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
@@ -685,12 +685,16 @@ fhe_runtime_lower_contract_test.o: \
 
 fhe_semantic_convert_test: $(OBJECTS) controls.o fhe_checkpoint.o \
 		fhe_convert.o fhe_ckks2c_collect.o fhe_ckks2c_emit.o \
+		fhe_ckks2c_lower.o fhe_semantic_runtime_lower.o \
+		fhe_standard_whirl.o \
 		fhe_ckks2c_publish.o fhe_ckks2c_checkpoint.o \
 		fhe_ckks_plan_bytes.o fhe_sha256.o \
 		fhe_semantic_convert.o fhe_semantic_convert_test.o
 	$(link.c++f) -o $@ fhe_semantic_convert_test.o controls.o \
 		fhe_checkpoint.o fhe_convert.o fhe_ckks2c_collect.o \
-		fhe_ckks2c_emit.o fhe_ckks2c_publish.o \
+		fhe_ckks2c_emit.o fhe_ckks2c_lower.o \
+		fhe_semantic_runtime_lower.o fhe_standard_whirl.o \
+		fhe_ckks2c_publish.o \
 		fhe_ckks2c_checkpoint.o fhe_ckks_plan_bytes.o fhe_sha256.o \
 		fhe_semantic_convert.o \
 		$(OBJECTS) $(LDFLAGS)
@@ -715,6 +719,9 @@ fhe_ckks2c_collect.o: $(BE_VHO_DIR)/fhe_ckks2c_collect.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 fhe_ckks2c_emit.o: $(BE_VHO_DIR)/fhe_ckks2c_emit.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+fhe_ckks2c_lower.o: $(BE_VHO_DIR)/fhe_ckks2c_lower.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 fhe_ckks2c_public_join.o: $(BE_VHO_DIR)/fhe_ckks2c_public_join.cxx

@@ -49,6 +49,10 @@
       "status": "automated",
       "command": "sh osprey/be/vho/tests/fhe_ckks2c_group_join_test.sh /private/tmp/open64-fhe-impactful/ckks2c-group-join"
     },
+    "ckks2c-group-lowering": {
+      "status": "environment",
+      "command": "rebuild linked fhe_runtime_lower_contract_test and be; run the receipt-matched cached S6-0c .B through -FHE:checkpoint and reopen with ir_b2a -st -src"
+    },
     "ckks2c-driver-exit": {
       "status": "planned",
       "command": "sh osprey/driver/tests/openpy_fhe_ckks2c_exit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-driver"
@@ -213,6 +217,22 @@
         "hygiene",
         "ckks2c-group-join",
         "ckks2c-cached-image",
+        "artifact-audit"
+      ]
+    },
+    {
+      "name": "ckks2c-group-lowering",
+      "patterns": [
+        "osprey/be/vho/fhe_ckks2c_lower.*",
+        "osprey/be/vho/fhe_semantic_runtime_lower.*",
+        "osprey/be/vho/tests/fhe_runtime_lower_contract_test.*"
+      ],
+      "lanes": [
+        "hygiene",
+        "ckks2c-group-lowering",
+        "ckks2c-group-join",
+        "backend-link-boundary",
+        "mapped-reopen",
         "artifact-audit"
       ]
     },

@@ -120,9 +120,13 @@ satisfy the following same contract:
 - Preflight all group member definitions, typed event rows, the separate
   group output, the one source/context final replacement, internal-use
   closure, owner/local-symbol identity, source positions,
-  interface/REGION/call obligations, and one final runtime projection.
-- Accept one detached checked standard-WHIRL block for the whole group and
-  produce one ABI v1 evaluation call with the existing status/output guards.
+  interface/REGION/call obligations, and the typed-event `FINAL_RESULT`'s one
+  runtime projection. Intermediate private group outputs remain unprojected.
+- Accept one detached checked standard-WHIRL block for the complete source
+  replacement. Most source contexts contain one private group and one ABI v1
+  evaluation. ReLU contains six ordered private groups and one block with six
+  guarded ABI evaluations so its intermediate handles remain local. The
+  request's group output is the context's final reconstruction result.
 - Remove every group's native CKKS definition from the executable tree, keep
   its logical rows as nonexecutable provenance, and redirect only the final
   result's permitted external uses. The event-row disposition requires the

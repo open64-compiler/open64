@@ -1133,6 +1133,22 @@ VHO_FHE_Runtime_Build_Operation_Sequence
         function_name = "open64_fhe_residual_add_v1";
         expected_operands = 2;
         break;
+    case VHO_FHE_RUNTIME_OP_BOOTSTRAP:
+        function_name = "open64_fhe_bootstrap_v1";
+        expected_operands = 1;
+        break;
+    case VHO_FHE_RUNTIME_OP_RELU_NORMALIZE:
+        function_name = "open64_fhe_relu_normalize_v1";
+        expected_operands = 1;
+        break;
+    case VHO_FHE_RUNTIME_OP_RELU_POLY_STAGE:
+        function_name = "open64_fhe_relu_poly_stage_v1";
+        expected_operands = 1;
+        break;
+    case VHO_FHE_RUNTIME_OP_RELU_RECONSTRUCT:
+        function_name = "open64_fhe_relu_reconstruct_v1";
+        expected_operands = 2;
+        break;
     case VHO_FHE_RUNTIME_OP_AVERAGE_POOL:
         function_name = "open64_fhe_average_pool_v1";
         expected_operands = 1;
@@ -1149,9 +1165,15 @@ VHO_FHE_Runtime_Build_Operation_Sequence
         return VHO_FHE_Runtime_Semantic_Report
                    (diagnostic, "operation kind requires another lowering path");
     }
-    if (request->operand_count != expected_operands)
+    const BOOL needs_bound_role =
+        request->operation_kind == VHO_FHE_RUNTIME_OP_RELU_POLY_STAGE;
+    if (request->operand_count != expected_operands ||
+        (needs_bound_role &&
+         (request->bound_role == NULL || request->bound_role[0] == '\0')) ||
+        (!needs_bound_role && request->bound_role != NULL &&
+         request->bound_role[0] != '\0'))
         return VHO_FHE_Runtime_Semantic_Report
-                   (diagnostic, "operation operand count does not match ABI");
+                   (diagnostic, "operation operands or bound role do not match ABI");
 
     VHO_FHE_RUNTIME_HANDLE_BINDING model;
     VHO_FHE_RUNTIME_HANDLE_BINDING operands[3];
@@ -1164,8 +1186,16 @@ VHO_FHE_Runtime_Build_Operation_Sequence
                   &operands[i]))
             return FALSE;
     }
+    VHO_FHE_RUNTIME_HANDLE_BINDING bound;
+    if (needs_bound_role &&
+        !VHO_FHE_Runtime_Resolve_Role_Handle
+             (pu_info, request->bound_role, diagnostic, &bound))
+        return FALSE;
     if ((request->operation_kind == VHO_FHE_RUNTIME_OP_RESIDUAL_ADD &&
          operands[1].handle_ty != operands[0].handle_ty) ||
+        (request->operation_kind == VHO_FHE_RUNTIME_OP_RELU_RECONSTRUCT &&
+         operands[1].handle_ty != operands[0].handle_ty) ||
+        (needs_bound_role && bound.handle_ty == operands[0].handle_ty) ||
         ((request->operation_kind == VHO_FHE_RUNTIME_OP_CONV2D_PLAIN ||
           request->operation_kind == VHO_FHE_RUNTIME_OP_LINEAR_PLAIN) &&
          (operands[1].handle_ty != operands[2].handle_ty ||
@@ -1186,7 +1216,20 @@ VHO_FHE_Runtime_Build_Operation_Sequence
     TY_IDX descriptor_ty = VHO_FHE_Runtime_Descriptor_Handle_TY();
     VHO_FHE_STANDARD_CALL_RESULT evaluated;
     BOOL valid;
-    if (expected_operands == 1)
+    if (needs_bound_role)
+        valid = VHO_FHE_Runtime_Append_Poly_Evaluation
+                    (block, model, operands[0].handle_st,
+                     operands[0].handle_ty, bound, selected.output_st,
+                     descriptor_ty, source_position, build_failure,
+                     failure_context, diagnostic, &evaluated);
+    else if (request->operation_kind ==
+             VHO_FHE_RUNTIME_OP_RELU_RECONSTRUCT)
+        valid = VHO_FHE_Runtime_Append_Reconstruct_Evaluation
+                    (block, model, operands[0].handle_st,
+                     operands[1].handle_st, operands[0].handle_ty,
+                     selected.output_st, descriptor_ty, source_position,
+                     build_failure, failure_context, diagnostic, &evaluated);
+    else if (expected_operands == 1)
         valid = VHO_FHE_Runtime_Append_Unary_Evaluation
                     (block, function_name, model, operands[0].handle_st,
                      operands[0].handle_ty, selected.output_st, descriptor_ty,

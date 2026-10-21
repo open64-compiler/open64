@@ -58,6 +58,17 @@ struct VHO_FHE_CKKS2C_PUBLIC_BINDING {
   std::string group_identity_sha256;
 };
 
+/* One image-derived route available before any active PU is mutated. */
+struct VHO_FHE_CKKS2C_PUBLIC_ROUTE {
+  uint32_t specialized_owner_pu_st;
+  uint32_t specialized_source_value_id;
+  uint32_t context_pu_identity_id;
+  uint32_t context_callsite_id;
+  uint32_t origin_static_ordinal;
+  uint32_t public_static_ordinal;
+  uint32_t operation_kind;
+};
+
 /* Immutable-image result consumed by the later grouped lowering transaction. */
 struct VHO_FHE_CKKS2C_PUBLIC_JOIN_PLAN {
   std::vector<VHO_FHE_CKKS2C_PUBLIC_DESCRIPTOR> descriptors;
@@ -83,6 +94,15 @@ struct VHO_FHE_CKKS2C_PUBLIC_JOIN_RESULT {
 bool VHO_FHE_CKKS2C_Build_Public_Join(
     const std::vector<VHO_FHE_CKKS2C_GROUP> &groups,
     VHO_FHE_CKKS2C_PUBLIC_JOIN_PLAN *plan,
+    VHO_FHE_CKKS2C_PUBLIC_JOIN_RESULT *result,
+    FILE *diagnostic);
+
+/* Reconstruct the public selector route for every typed CKKS event group
+ * directly from immutable mapped images. This plan is available before the
+ * backend opens the first local PU and is authenticated again by the complete
+ * collected-group join at checkpoint finalization. */
+bool VHO_FHE_CKKS2C_Build_Public_Routes_From_Image(
+    std::vector<VHO_FHE_CKKS2C_PUBLIC_ROUTE> *routes,
     VHO_FHE_CKKS2C_PUBLIC_JOIN_RESULT *result,
     FILE *diagnostic);
 

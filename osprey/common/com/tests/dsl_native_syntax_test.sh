@@ -100,6 +100,7 @@ sources=(
   "osprey/be/vho/fhe_ckks_source_events.cxx"
   "osprey/be/vho/fhe_ckks2c_collect.cxx"
   "osprey/be/vho/fhe_ckks2c_emit.cxx"
+  "osprey/be/vho/fhe_ckks2c_lower.cxx"
   "osprey/be/vho/fhe_ckks2c_public_join.cxx"
   "osprey/be/vho/fhe_ckks2c_publish.cxx"
   "osprey/be/vho/fhe_ckks2c_checkpoint.cxx"

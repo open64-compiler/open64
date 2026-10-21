@@ -65,6 +65,9 @@ typedef struct {
     UINT32 static_ordinal;
     const DSL_IR_VALUE_ID *operand_value_ids;
     UINT32 operand_count;
+    /* Required only by RELU_POLY_STAGE. The stable role resolves the
+     * coefficient plaintext through the projected program interface. */
+    const char *bound_role;
 } VHO_FHE_RUNTIME_OPERATION_REQUEST;
 
 typedef struct {
