@@ -10264,7 +10264,11 @@ Check_CKKS_Event_Image (void)
     if (group_mode != NULL) {
         BOOL private_projection =
             strcmp(group_mode, "private_projection") == 0;
-        CKKS_EVENT_CHECK(private_projection ||
+        BOOL terminal = strcmp(group_mode, "terminal") == 0;
+        BOOL call_projection = strcmp(group_mode, "call") == 0 ||
+            strcmp(group_mode, "call_bad_actual") == 0 ||
+            strcmp(group_mode, "call_bad_projection") == 0;
+        CKKS_EVENT_CHECK(private_projection || terminal || call_projection ||
                          strcmp(group_mode, "complete") == 0,
                          "recognized complete-group mode");
         mapped.records[1].source_static_ordinal = 2;
@@ -10277,6 +10281,53 @@ Check_CKKS_Event_Image (void)
 
         TY_IDX handle_ty = Create_Runtime_Interface_Handle_TY
             ("ckks_complete_group_handle_v1");
+        DSL_BUILDER_PROGRAM_UNIT callee = NULL;
+        DSL_BUILDER_VALUE formal = NULL;
+        DSL_BUILDER_VALUE dead_formal = NULL;
+        DSL_CALLSITE_METADATA_RECORD callsite_record;
+        memset(&callsite_record, 0, sizeof(callsite_record));
+        if (call_projection) {
+            callee = DSL_Builder_Create_Minimal_PU
+                ("ckks_complete_group_callee");
+            UINT32 callee_file =
+                DSL_Builder_Register_Source_File(callee, __FILE__);
+            DSL_BUILDER_SOURCE_POSITION formal_position;
+            memset(&formal_position, 0, sizeof(formal_position));
+            formal_position.file_id = callee_file;
+            formal_position.line = __LINE__ + 1;
+            formal_position.column = 1;
+            formal_position.statement_begin = 1;
+            formal = DSL_Builder_Declare_PU_Formal
+                (callee, "group_input", 0, tensor_ty, &formal_position);
+            dead_formal = DSL_Builder_Declare_PU_Formal
+                (callee, "retired_group_input", 1,
+                 tensor_ty, &formal_position);
+            CKKS_EVENT_CHECK
+                (callee != NULL && callee_file != 0 && formal != NULL &&
+                 dead_formal != NULL &&
+                 DSL_Builder_Return_PU_Values(callee, NULL, 0),
+                 "complete group callee signature");
+            DSL_BUILDER_CALLSITE_INFO callsite;
+            memset(&callsite, 0, sizeof(callsite));
+            callsite.canonical_class_name = "CKKSCompleteGroup";
+            callsite.instance_path = "model.complete_group";
+            callsite.context_identity = "CKKSCompleteGroup.call";
+            callsite.source_position = formal_position;
+            callsite.source_position.file_id = file_id;
+            DSL_BUILDER_VALUE call_arguments[2] = {
+                refreshed, refreshed
+            };
+            DSL_BUILDER_CALL call = DSL_Builder_Create_PU_Call
+                (pu, callee, call_arguments, 2, NULL, 0, &callsite);
+            CKKS_EVENT_CHECK
+                (call != NULL &&
+                 DSL_Builder_Set_PU_Call_Argument_Role
+                     (call, 0, 0, "ckks.final_result") &&
+                 DSL_Builder_Set_PU_Call_Argument_Role
+                     (call, 1, 1, "ckks.retired_original") &&
+                 DSL_Call_Image_Find_Callsite(call, &callsite_record),
+                 "final result feeds a managed call");
+        }
         DSL_RUNTIME_VALUE_PROJECTION_REQUEST projected[2];
         memset(projected, 0, sizeof(projected));
         projected[0].owner_pu_st = PU_Info_proc_sym(pu);
@@ -10292,17 +10343,80 @@ Check_CKKS_Event_Image (void)
             projected[1].source_value_id = encoded_record.id;
             projected[1].expected_source_st = encoded_record.st;
             projected[1].expected_source_ty = encoded_record.ty;
+        } else if (call_projection) {
+            projected[1] = projected[0];
+            projected[1].owner_pu_st = PU_Info_proc_sym(callee);
+            projected[1].source_value_id =
+                DSL_Builder_Get_Value_Image_Id(formal);
+            projected[1].expected_source_st =
+                DSL_Builder_Get_Value_Result_Symbol(formal);
+            projected[1].binding_kind = DSL_RUNTIME_BINDING_INPUT_FORMAL;
+            projected[1].formal_ordinal = 0;
         }
         DSL_RUNTIME_INTERFACE_PLAN projection_plan;
         memset(&projection_plan, 0, sizeof(projection_plan));
         projection_plan.values = projected;
-        projection_plan.value_count = private_projection ? 2 : 1;
+        projection_plan.value_count =
+            private_projection || call_projection ? 2 : 1;
+        DSL_RUNTIME_CALL_PROJECTION_REQUEST call_request;
+        memset(&call_request, 0, sizeof(call_request));
+        if (call_projection) {
+            call_request.owner_pu_st = PU_Info_proc_sym(pu);
+            call_request.callsite_id = callsite_record.id;
+            call_request.source_value_id = refreshed_record.id;
+            call_request.actual_ordinal = 0;
+            call_request.callee_formal_ordinal = 0;
+            call_request.direction = DSL_RUNTIME_CALL_INPUT;
+            projection_plan.calls = &call_request;
+            projection_plan.call_count = 1;
+        }
         DSL_RUNTIME_INTERFACE_RESULT applied;
         DSL_RUNTIME_VALUE_PROJECTION_RECORD final_projection;
+        BOOL interface_applied = FALSE;
+        if (call_projection) {
+            DSL_PROGRAM_INTERFACE_PLAN program_plan;
+            DSL_PROGRAM_INTERFACE_RESULT program_result;
+            DSL_PU_FORMAL_RECORD dead_formal_row;
+            DSL_CALL_ARGUMENT_RECORD dead_argument_row;
+            DSL_RETIRED_FORMAL_REQUEST retired_formal;
+            DSL_RETIRED_CALL_ARGUMENT_REQUEST retired_argument;
+            memset(&program_plan, 0, sizeof(program_plan));
+            CKKS_EVENT_CHECK
+                (DSL_PU_Interface_Image_Find_Formal
+                     (PU_Info_proc_sym(callee), 1, &dead_formal_row) &&
+                 DSL_Call_ABI_Image_Find_Argument_By_Id
+                     (callsite_record.id, 1, &dead_argument_row) &&
+                 dead_argument_row.argument_value_id ==
+                     refreshed_record.id,
+                 "retired original call argument");
+            retired_formal.pu_formal_id = dead_formal_row.id;
+            retired_formal.semantic_role = "ckks.retired_original";
+            retired_argument.call_argument_id = dead_argument_row.id;
+            retired_argument.semantic_role = "ckks.retired_original";
+            program_plan.retired_formals = &retired_formal;
+            program_plan.retired_formal_count = 1;
+            program_plan.retired_call_arguments = &retired_argument;
+            program_plan.retired_call_argument_count = 1;
+            interface_applied =
+                DSL_Program_Interface_Plan_Validate
+                    (&program_plan, &projection_plan, stderr) &&
+                DSL_Builder_Select_PU(pu) &&
+                DSL_Program_Interface_Apply_PU
+                    (pu, &program_plan, &projection_plan,
+                     stderr, &program_result) &&
+                DSL_Builder_Select_PU(callee) &&
+                DSL_Program_Interface_Apply_PU
+                    (callee, &program_plan, &projection_plan,
+                     stderr, &program_result) &&
+                DSL_Builder_Select_PU(pu) &&
+                DSL_Program_Interface_Validate_PU(pu, stderr);
+        } else {
+            interface_applied = DSL_Runtime_Interface_Apply_PU
+                (pu, &projection_plan, stderr, &applied);
+        }
         CKKS_EVENT_CHECK
             (handle_ty != TY_IDX_ZERO &&
-             DSL_Runtime_Interface_Apply_PU
-                 (pu, &projection_plan, stderr, &applied) &&
+             interface_applied &&
              DSL_Runtime_Interface_Image_Find_Value
                  (PU_Info_proc_sym(pu), refreshed_record.id,
                   &final_projection),
@@ -10346,9 +10460,44 @@ Check_CKKS_Event_Image (void)
         lower_request.relation.relation_kind =
             DSL_IR_LOWER_RELATION_RUNTIME_VALUE_PROJECTION;
         lower_request.relation.value_projection_id = final_projection.id;
+        if (strcmp(group_mode, "call_bad_projection") == 0) {
+            DSL_RUNTIME_VALUE_PROJECTION_RECORD formal_projection;
+            CKKS_EVENT_CHECK
+                (DSL_Runtime_Interface_Image_Find_Value
+                     (PU_Info_proc_sym(callee),
+                      DSL_Builder_Get_Value_Image_Id(formal),
+                      &formal_projection),
+                 "callee formal projection");
+            lower_request.relation.value_projection_id =
+                formal_projection.id;
+        }
         DSL_IR_NATIVE_GROUP_LOWER_RESULT lowered;
         memset(&lowered, 0x5a, sizeof(lowered));
         DSL_IR_NATIVE_GROUP_LOWER_RESULT sentinel = lowered;
+        if (strcmp(group_mode, "call_bad_actual") == 0) {
+            WN *physical_call = const_cast<WN *>
+                (DSL_Call_Image_Get_Call_WN(callsite_record.id));
+            WN *actual = physical_call == NULL ? NULL :
+                WN_kid0(WN_kid(physical_call, 0));
+            CKKS_EVENT_CHECK(actual != NULL &&
+                             WN_operator(actual) == OPR_LDID,
+                             "projected call actual");
+            WN_st_idx(actual) = refreshed_record.st;
+        }
+        if (strcmp(group_mode, "call_bad_actual") == 0 ||
+            strcmp(group_mode, "call_bad_projection") == 0) {
+            CKKS_EVENT_CHECK
+                (!DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+                     (pu, &lower_request, 1, NULL, &lowered) &&
+                 memcmp(&lowered, &sentinel, sizeof(lowered)) == 0 &&
+                 WN_first(standard) != NULL &&
+                 Find_STID_In_Block(body, encoded_record.st) ==
+                     encoded_definition &&
+                 Find_STID_In_Block(body, refreshed_record.st) ==
+                     refreshed_definition,
+                 "malformed final call/projection rejects without mutation");
+            return 0;
+        }
         if (private_projection) {
             CKKS_EVENT_CHECK
                 (!DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
@@ -10370,8 +10519,58 @@ Check_CKKS_Event_Image (void)
              lowered.retired_group_output_value_id ==
                  refreshed_record.id &&
              lowered.retired_member_count == 2 &&
-             DSL_Runtime_Interface_Image_Value_Count() == 1,
+             DSL_Runtime_Interface_Image_Value_Count() ==
+                 (call_projection ? 2 : 1),
              "complete source-context member union");
+        if (call_projection) {
+            const char *call_artifact = artifact == NULL ||
+                artifact[0] == '\0' ?
+                "ckks_complete_group_call.B" : artifact;
+            CKKS_EVENT_CHECK
+                (DSL_Program_Interface_Validate_PU(pu, stderr) &&
+                 DSL_CKKS_Event_Image_Validate(stderr) &&
+                 Write_Runtime_Interface_Artifact
+                     (call_artifact, pu, callee),
+                 "two-PU complete-group mapped image");
+            return 0;
+        }
+        if (terminal) {
+            const char *terminal_artifact =
+                getenv("OPEN64_DSL_CKKS_COMPLETE_GROUP_TERMINAL_ARTIFACT");
+            WN *seed_definition = Find_STID_In_Block(body,
+                DSL_Builder_Get_Value_Result_Symbol(one));
+            DSL_IR_NATIVE_VALUE_LOWER_REQUEST seed_request;
+            DSL_IR_NATIVE_VALUE_LOWER_RESULT seed_result;
+            memset(&seed_request, 0, sizeof(seed_request));
+            memset(&seed_result, 0, sizeof(seed_result));
+            seed_request.native_definition = seed_definition;
+            seed_request.source_value_id =
+                DSL_Builder_Get_Value_Image_Id(one);
+            seed_request.expected_operator = OPR_DSLTENSORCONST;
+            seed_request.expected_version = 1;
+            seed_request.mode =
+                DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION;
+            seed_request.relation.relation_kind =
+                DSL_IR_LOWER_RELATION_VERIFIED_DEAD_SOURCE;
+            CKKS_EVENT_CHECK
+                (terminal_artifact != NULL && terminal_artifact[0] != '\0' &&
+                 seed_definition != NULL &&
+                 DSL_IR_Lower_Native_Values_To_Standard_Blocks
+                     (pu, &seed_request, 1, stderr, &seed_result) &&
+                 seed_result.source_value_id == seed_request.source_value_id &&
+                 DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr),
+                 "complete CKKS group terminal preflight");
+            Irb_File_Name = (char *)terminal_artifact;
+            CKKS_EVENT_CHECK
+                (Open_Standard_Only_Output_Info(Irb_File_Name, pu) != NULL,
+                 "complete CKKS group terminal output");
+            Write_PU_Info(pu);
+            Write_Global_Info(pu);
+            Close_Output_Info();
+            CKKS_EVENT_CHECK(access(terminal_artifact, F_OK) == 0,
+                             "complete CKKS group terminal artifact");
+            return 0;
+        }
     }
 
     request.path = artifact == NULL || artifact[0] == '\0' ?

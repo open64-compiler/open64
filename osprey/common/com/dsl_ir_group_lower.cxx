@@ -235,7 +235,12 @@ DSL_IR_Group_Index_Managed_Uses
          const std::map<DSL_IR_VALUE_ID, UINT32> &member_by_value,
          const std::map<DSL_IR_NODE_ID, UINT32> &member_by_node,
          const std::map<ST_IDX, UINT32> &member_by_st,
-         std::vector<DSL_IR_GROUP_MEMBER_USES> *uses)
+         std::vector<DSL_IR_GROUP_MEMBER_USES> *uses,
+         std::vector<std::vector<UINT32> > *member_calls,
+         std::vector<std::vector<UINT32> > *member_arguments,
+         std::map<DSL_IR_GROUP_USE_EDGE, UINT32> *call_by_actual,
+         std::map<DSL_IR_GROUP_USE_EDGE, UINT32> *argument_by_actual,
+         std::set<DSL_CALL_ARGUMENT_ID> *retired_arguments)
 {
     for (UINT32 id = 1; id <= DSL_Runtime_Interface_Image_Value_Count();
          ++id) {
@@ -265,19 +270,40 @@ DSL_IR_Group_Index_Managed_Uses
         DSL_RUNTIME_CALL_PROJECTION_RECORD call;
         if (!DSL_Runtime_Interface_Image_Get_Call(id, &call))
             return FALSE;
+        if (!call_by_actual->insert
+                (std::make_pair
+                    (std::make_pair(call.callsite_id,
+                                    call.actual_ordinal), id)).second)
+            return FALSE;
         std::map<DSL_IR_VALUE_ID, UINT32>::const_iterator member =
             member_by_value.find(call.source_value_id);
-        if (member != member_by_value.end())
+        if (member != member_by_value.end()) {
             ++(*uses)[member->second].call_count;
+            (*member_calls)[member->second].push_back(id);
+        }
     }
     for (UINT32 id = 1; id <= DSL_Call_ABI_Image_Argument_Count(); ++id) {
         DSL_CALL_ARGUMENT_RECORD argument;
         if (!DSL_Call_ABI_Image_Get_Argument(id, &argument))
             return FALSE;
+        if (!argument_by_actual->insert
+                (std::make_pair
+                    (std::make_pair(argument.callsite_id,
+                                    argument.actual_ordinal), id)).second)
+            return FALSE;
         std::map<DSL_IR_VALUE_ID, UINT32>::const_iterator member =
             member_by_value.find(argument.argument_value_id);
-        if (member != member_by_value.end())
+        if (member != member_by_value.end()) {
             ++(*uses)[member->second].call_argument_count;
+            (*member_arguments)[member->second].push_back(id);
+        }
+    }
+    for (UINT32 id = 1;
+         id <= DSL_Program_Interface_Image_Retired_Call_Count(); ++id) {
+        DSL_RETIRED_CALL_ARGUMENT_RECORD retired;
+        if (!DSL_Program_Interface_Image_Get_Retired_Call(id, &retired))
+            return FALSE;
+        retired_arguments->insert(retired.call_argument_id);
     }
     for (UINT32 id = 1; id <= DSL_Effect_Image_State_Effect_Count(); ++id) {
         DSL_STATE_EFFECT_RECORD effect;
@@ -296,6 +322,69 @@ DSL_IR_Group_Index_Managed_Uses
             member_by_st.find(interface_record.st);
         if (member != member_by_st.end())
             ++(*uses)[member->second].region_count;
+    }
+    return TRUE;
+}
+
+/* A final output may cross a rewritten call only through its own handle. */
+static BOOL
+DSL_IR_Group_Output_Calls_Valid
+        (ST_IDX owner_pu_st, const DSL_IR_VALUE_RECORD &output,
+         DSL_RUNTIME_VALUE_PROJECTION_ID projection_id,
+         const std::vector<UINT32> &call_ids,
+         const std::vector<UINT32> &argument_ids,
+         const std::map<DSL_IR_GROUP_USE_EDGE, UINT32> &call_by_actual,
+         const std::map<DSL_IR_GROUP_USE_EDGE, UINT32> &argument_by_actual,
+         const std::set<DSL_CALL_ARGUMENT_ID> &retired_arguments)
+{
+    for (UINT32 i = 0; i < call_ids.size(); ++i) {
+        DSL_RUNTIME_CALL_PROJECTION_RECORD call;
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        if (!DSL_Runtime_Interface_Image_Get_Call(call_ids[i], &call) ||
+            call.owner_pu_st != owner_pu_st ||
+            call.source_value_id != output.id ||
+            call.value_projection_id != projection_id ||
+            !DSL_Call_Image_Get_Callsite(call.callsite_id, &callsite) ||
+            callsite.owner_pu_st != owner_pu_st)
+            return FALSE;
+        if (call.direction == DSL_RUNTIME_CALL_INPUT) {
+            DSL_CALL_ARGUMENT_RECORD argument;
+            std::map<DSL_IR_GROUP_USE_EDGE, UINT32>::const_iterator found =
+                argument_by_actual.find
+                    (std::make_pair(call.callsite_id, call.actual_ordinal));
+            if (found == argument_by_actual.end() ||
+                !DSL_Call_ABI_Image_Get_Argument(found->second, &argument) ||
+                argument.argument_value_id != output.id ||
+                argument.callee_formal_ordinal !=
+                    call.callee_formal_ordinal ||
+                retired_arguments.find(argument.id) !=
+                    retired_arguments.end())
+                return FALSE;
+        }
+    }
+    for (UINT32 i = 0; i < argument_ids.size(); ++i) {
+        DSL_CALL_ARGUMENT_RECORD argument;
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        DSL_RUNTIME_CALL_PROJECTION_RECORD call;
+        if (!DSL_Call_ABI_Image_Get_Argument(argument_ids[i], &argument) ||
+            argument.argument_value_id != output.id ||
+            !DSL_Call_Image_Get_Callsite(argument.callsite_id, &callsite) ||
+            callsite.owner_pu_st != owner_pu_st)
+            return FALSE;
+        BOOL retired = retired_arguments.find(argument.id) !=
+                           retired_arguments.end();
+        std::map<DSL_IR_GROUP_USE_EDGE, UINT32>::const_iterator found =
+            call_by_actual.find
+                (std::make_pair(argument.callsite_id,
+                                argument.actual_ordinal));
+        BOOL projected = found != call_by_actual.end() &&
+            DSL_Runtime_Interface_Image_Get_Call(found->second, &call);
+        if (retired ? projected :
+            (!projected || call.direction != DSL_RUNTIME_CALL_INPUT ||
+             call.source_value_id != output.id ||
+             call.value_projection_id != projection_id ||
+             call.callee_formal_ordinal != argument.callee_formal_ordinal))
+            return FALSE;
     }
     return TRUE;
 }
@@ -348,7 +437,9 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
         requests == NULL || request_count == 0 || results == NULL ||
         !DSL_IR_Image_Validate(diagnostic) ||
         !DSL_Runtime_Interface_Image_Validate(diagnostic) ||
+        !DSL_Program_Interface_Image_Validate(diagnostic) ||
         !DSL_Call_ABI_Image_Validate_PU(pu_info, diagnostic) ||
+        !DSL_Program_Interface_Validate_PU(pu_info, diagnostic) ||
         !DSL_Region_Verify_PU(pu_info, diagnostic))
         return DSL_IR_Lower_Report(diagnostic, 0,
                                    "group transaction is incomplete");
@@ -567,17 +658,25 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
 
     std::vector<DSL_IR_GROUP_MEMBER_USES> uses(members.size());
     memset(&uses[0], 0, uses.size() * sizeof(uses[0]));
+    std::vector<std::vector<UINT32> > member_calls(members.size());
+    std::vector<std::vector<UINT32> > member_arguments(members.size());
+    std::map<DSL_IR_GROUP_USE_EDGE, UINT32> call_by_actual;
+    std::map<DSL_IR_GROUP_USE_EDGE, UINT32> argument_by_actual;
+    std::set<DSL_CALL_ARGUMENT_ID> retired_arguments;
     if (!DSL_IR_Group_Index_Managed_Uses
             (pu_info, member_by_value, member_by_node, member_by_st,
-             &uses))
+             &uses, &member_calls, &member_arguments,
+              &call_by_actual, &argument_by_actual,
+              &retired_arguments))
         return DSL_IR_Lower_Report
                    (diagnostic, 0, "managed-use indexing failed");
     std::vector<DSL_REGION_SYMBOL_REDIRECT> region_redirects;
     for (UINT32 i = 0; i < groups.size(); ++i) {
         DSL_IR_GROUP_LOWER_JOURNAL &group = groups[i];
         const DSL_IR_NATIVE_GROUP_LOWER_REQUEST &request = *group.request;
+        UINT32 output_member = member_by_value.find(group.output.id)->second;
         const DSL_IR_GROUP_MEMBER_USES &output_uses =
-            uses[member_by_value.find(group.output.id)->second];
+            uses[output_member];
         const DSL_RUNTIME_VALUE_PROJECTION_RECORD &projection =
             output_uses.projection;
         if (request.relation.relation_kind !=
@@ -593,8 +692,11 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
             projection.source_st != group.output.st ||
             projection.source_ty != group.output.ty ||
             projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE ||
-            output_uses.call_count != 0 ||
-            output_uses.call_argument_count != 0 ||
+            !DSL_IR_Group_Output_Calls_Valid
+                (owner_pu_st, group.output, projection.id,
+                 member_calls[output_member],
+                 member_arguments[output_member], call_by_actual,
+                 argument_by_actual, retired_arguments) ||
             request.standard_block == NULL ||
             WN_operator(request.standard_block) != OPR_BLOCK ||
             WN_first(request.standard_block) == NULL ||
