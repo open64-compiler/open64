@@ -334,6 +334,28 @@ as one transaction.
 
 ### D4: Build the CKKS-group to public ABI-v1 join
 
+The `-O0` scope decision is to retain the ten specialized WHIRL PUs and
+construct the canonical six-PU public C surface from the authenticated
+origin/descriptor join. Do not rewrite caller/callee WHIRL across PUs or
+disguise a ten-to-six PU transformation inside `common/com`: `AGENTS.md`
+reserves cross-PU transformation for `-ipa`. The public-C join is an output
+construction proof, not a mutation of the input `.ckks_ops.B` or of another
+PU's local symbol table. Each active PU contributes immutable, owner-qualified
+fragments. File-level output assembly joins only those fragments and stable
+global identities after PU processing; it does not switch local symtabs to
+analyze another PU.
+
+M3 must prove the terminal binary's reader contract independently. A pre-M1
+reader rejects private lowered DSL rows even if the optional CKKS event
+section is absent. Event-section omission alone cannot satisfy prior-reader
+reopen. The terminal path must either pass a full standard-WHIRL/no-private-
+DSL-image preflight and omit incompatible private provenance sections, or
+revise the prior-reader acceptance claim through explicit compatibility
+review. Do not publish a partial terminal `.B` while this is unresolved.
+The staged `DSL_Gatekeeper_Verify_No_Native_PU()` supplies only the per-PU
+physical-tree preflight; it cannot by itself authorize M3 event consumption,
+whole-file section suppression, or prior-reader acceptance.
+
 **Code**
 
 - Join specialized CKKS groups back to canonical six-PU source definitions,

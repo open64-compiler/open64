@@ -31,6 +31,10 @@ if ! (cd "$repo_root" && OPEN64_DSL_GROUP_LOWER_ONLY=1 \
   cat "$artifact_dir/validation.log" >&2
   exit 1
 fi
+grep -Fq 'DSL terminal preflight rejected live tensor seed and accepted standard control tree' \
+  "$artifact_dir/validation.log"
+grep -Fq 'DSL-TERMINAL-001: executable native DSL node OPR_DSLTENSORCONST remains' \
+  "$artifact_dir/validation.log"
 if ! (cd "$repo_root" && "$ir_b2a" -st -src "$image" "$trace") \
     >>"$artifact_dir/validation.log" 2>&1; then
   cat "$artifact_dir/validation.log" >&2

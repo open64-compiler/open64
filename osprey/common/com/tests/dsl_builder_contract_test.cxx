@@ -12738,6 +12738,10 @@ Check_Grouped_Native_Lowering(void)
             DSL_IR_LOWER_RELATION_RUNTIME_VALUE_PROJECTION;
         requests[i].relation.value_projection_id = projections[i].id;
     }
+    GROUP_LOWER_CHECK
+        (!DSL_Gatekeeper_Verify_No_Native_PU(pu, NULL) &&
+         !DSL_Gatekeeper_Verify_No_Native_PU(NULL, NULL),
+         "native group is not terminal standard WHIRL");
     if (negative_case != NULL) {
         WN *escape = NULL;
         ST_IDX private_st =
@@ -12893,6 +12897,7 @@ Check_Grouped_Native_Lowering(void)
     GROUP_LOWER_CHECK
         (DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
              (pu, requests, 2, stderr, results) &&
+         !DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr) &&
          DSL_IR_Image_Validate(stderr) &&
          DSL_IR_Image_Validate_Lowered_Relations(stderr) &&
          results[0].owner_pu_st == PU_Info_proc_sym(pu) &&
@@ -12907,12 +12912,33 @@ Check_Grouped_Native_Lowering(void)
                  (body, DSL_Builder_Get_Value_Result_Symbol(values[i]),
                   NULL) == NULL,
              "private native definition removed");
+    WN *saved_tree = PU_Info_tree_ptr(pu);
+    WN *standard_body = WN_CreateBlock();
+    WN_INSERT_BlockLast
+        (standard_body, WN_CreateEval(WN_Intconst(MTYPE_I4, 0)));
+    Set_PU_Info_tree_ptr(pu, standard_body);
+    BOOL bare_block_rejected =
+        !DSL_Gatekeeper_Verify_No_Native_PU(pu, NULL);
+    Set_PU_Info_tree_ptr(pu, saved_tree);
+    WN *standard_tree = WN_CreateEntry
+        (0, PU_Info_proc_sym(pu), standard_body,
+         WN_CreateBlock(), WN_CreateBlock());
+    Set_PU_Info_tree_ptr(pu, standard_tree);
+    BOOL standard_control_valid =
+        DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr);
+    Set_PU_Info_tree_ptr(pu, saved_tree);
+    WN_DELETE_Tree(standard_tree);
+    GROUP_LOWER_CHECK
+        (bare_block_rejected && standard_control_valid,
+         "standard-WHIRL control tree has no native DSL node");
     (void) unlink(artifact);
     GROUP_LOWER_CHECK(Write_Runtime_Interface_Artifact
                           (artifact, pu, NULL) &&
                       access(artifact, F_OK) == 0,
                       "mapped grouped artifact");
     printf("DSL grouped native lowering contract passed\n");
+    printf("DSL terminal preflight rejected live tensor seed and accepted "
+           "standard control tree\n");
 #undef GROUP_LOWER_CHECK
     return 0;
 }

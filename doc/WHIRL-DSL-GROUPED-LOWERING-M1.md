@@ -121,6 +121,13 @@ terminal `.B` reopens with identical `ir_b2a -st -src` output in the current
 and pre-M1 readers. This proves the generic transaction-to-writer path for
 one PU, not CKKS event/ABI consumption or complete-model terminal coverage.
 
+`DSL_Gatekeeper_Verify_No_Native_PU()` is the first PU-local terminal
+preflight. It rejects any executable native DSL node in the active tree; it
+does not consume CKKS events, prove all-PU coverage, or authorize section
+omission. The grouped fixture correctly fails this check after its add groups
+lower because its `common.tensor_const` seed remains live. An isolated
+standard-WHIRL tree passes the same check.
+
 ## Cost And Validation
 
 The transaction indexes member value/node/ST/definition identities, PU tree
