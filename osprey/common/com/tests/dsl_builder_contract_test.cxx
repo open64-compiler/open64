@@ -12668,6 +12668,9 @@ Check_Grouped_Native_Lowering(void)
         getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT");
     const char *negative_case =
         getenv("OPEN64_DSL_GROUP_LOWER_NEGATIVE_CASE");
+    BOOL root_alias = getenv("OPEN64_DSL_GROUP_LOWER_ROOT_ALIAS") != NULL;
+    const char *alias_negative =
+        getenv("OPEN64_DSL_GROUP_LOWER_ROOT_ALIAS_NEGATIVE");
     GROUP_LOWER_CHECK(artifact != NULL && artifact[0] != '\0' &&
                       DSL_Builder_Begin_Program(),
                       "artifact and program initialization");
@@ -12739,6 +12742,43 @@ Check_Grouped_Native_Lowering(void)
                       DSL_Builder_Append_PU_Value(pu, values[5]) &&
                       DSL_Builder_Select_PU(pu),
                       "materialized chain");
+    DSL_BUILDER_VALUE logits = NULL;
+    if (root_alias) {
+        DSL_BUILDER_OPERATOR_ATTRIBUTE semantic = {
+            "attr.semantic", "logits"
+        };
+        logits = DSL_Builder_Create_Operator_With_Result
+            (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                             "common.output_logits", 2),
+             2, &values[5], 1, &semantic, 1,
+             "group_output_logits", tensor_ty);
+        ++position.line;
+        GROUP_LOWER_CHECK
+            (logits != NULL &&
+             DSL_Builder_Set_Value_Source_Position(logits, &position) &&
+             DSL_Builder_Append_PU_Value(pu, logits),
+             "root output-logits boundary");
+        WN *body = WN_func_body(PU_Info_tree_ptr(pu));
+        WN *linear_definition = Find_STID_And_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(values[5]), NULL);
+        WN *logits_definition = Find_STID_And_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(logits), NULL);
+        DSL_IR_NATIVE_VALUE_RETIRE_REQUEST retire;
+        memset(&retire, 0, sizeof(retire));
+        retire.replacement_definition = linear_definition;
+        retire.replacement_value_id =
+            DSL_Builder_Get_Value_Image_Id(values[5]);
+        retire.retiring_definition = logits_definition;
+        retire.retiring_value_id =
+            DSL_Builder_Get_Value_Image_Id(logits);
+        retire.expected_retiring_operator = OPR_DSLOUTPUTLOGITS;
+        retire.expected_retiring_version = 2;
+        retire.replacement_operand_ordinal = 0;
+        GROUP_LOWER_CHECK
+            (linear_definition != NULL && logits_definition != NULL &&
+             DSL_IR_Redirect_And_Retire_Native_Value(pu, &retire),
+             "same-TY output-logits retirement");
+    }
 
     DSL_RUNTIME_VALUE_PROJECTION_REQUEST projected[3];
     memset(projected, 0, sizeof(projected));
@@ -12762,12 +12802,19 @@ Check_Grouped_Native_Lowering(void)
             DSL_Builder_Get_Value_Image_Id(values[1]);
         projected[2].expected_source_st =
             DSL_Builder_Get_Value_Result_Symbol(values[1]);
+    } else if (root_alias) {
+        projected[2] = projected[1];
+        projected[2].source_value_id =
+            DSL_Builder_Get_Value_Image_Id(logits);
+        projected[2].expected_source_st =
+            DSL_Builder_Get_Value_Result_Symbol(logits);
     }
     DSL_RUNTIME_INTERFACE_PLAN plan;
     memset(&plan, 0, sizeof(plan));
     plan.values = projected;
-    plan.value_count = negative_case != NULL &&
-        strcmp(negative_case, "interface_escape") == 0 ? 3 : 2;
+    plan.value_count = root_alias ||
+        (negative_case != NULL &&
+         strcmp(negative_case, "interface_escape") == 0) ? 3 : 2;
     DSL_RUNTIME_INTERFACE_RESULT applied;
     GROUP_LOWER_CHECK(DSL_Runtime_Interface_Apply_PU
                           (pu, &plan, stderr, &applied) &&
@@ -12780,6 +12827,37 @@ Check_Grouped_Native_Lowering(void)
                  (PU_Info_proc_sym(pu), projected[i].source_value_id,
                   &projections[i]),
              "output projection lookup");
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD alias_projection;
+    WN *result_store = NULL;
+    WN *result_load = NULL;
+    if (root_alias) {
+        GROUP_LOWER_CHECK
+            (DSL_Runtime_Interface_Image_Find_Value
+                 (PU_Info_proc_sym(pu),
+                  DSL_Builder_Get_Value_Image_Id(logits),
+                  &alias_projection),
+             "retired output runtime projection");
+        ST *result_st = New_ST(CURRENT_SYMTAB);
+        ST_Init(result_st, Save_Str("group_model_result"), CLASS_VAR,
+                SCLASS_AUTO, EXPORT_LOCAL, handle_ty);
+        WN *output_definition = Find_STID_And_Block
+            (WN_func_body(PU_Info_tree_ptr(pu)),
+             DSL_Builder_Get_Value_Result_Symbol(values[5]), NULL);
+        GROUP_LOWER_CHECK(output_definition != NULL,
+                          "root output source position");
+        Set_ST_Srcpos(*result_st,
+                      WN_Get_Linenum(output_definition));
+        result_load = WN_CreateLdid
+            (OPR_LDID, Pointer_Mtype, Pointer_Mtype, 0,
+             alias_projection.handle_st, alias_projection.handle_ty);
+        result_store = WN_CreateStid
+            (OPR_STID, MTYPE_V, Pointer_Mtype, 0,
+             ST_st_idx(*result_st), handle_ty, result_load);
+        WN_Set_Linenum(result_store,
+                       WN_Get_Linenum(output_definition));
+        WN_INSERT_BlockLast(WN_func_body(PU_Info_tree_ptr(pu)),
+                            result_store);
+    }
 
     WN *body = WN_func_body(PU_Info_tree_ptr(pu));
     WN *definitions[6];
@@ -12858,6 +12936,47 @@ Check_Grouped_Native_Lowering(void)
         requests[i].relation.relation_kind =
             DSL_IR_LOWER_RELATION_RUNTIME_VALUE_PROJECTION;
         requests[i].relation.value_projection_id = projections[i].id;
+    }
+    if (alias_negative != NULL) {
+        GROUP_LOWER_CHECK(root_alias, "alias negative requires root alias");
+        if (strcmp(alias_negative, "address") == 0) {
+            WN_kid0(result_store) = WN_CreateLda
+                (OPR_LDA, Pointer_Mtype, MTYPE_V, 0,
+                 Make_Pointer_Type(handle_ty),
+                 alias_projection.handle_st);
+        } else if (strcmp(alias_negative, "predom") == 0) {
+            WN_EXTRACT_FromBlock(body, result_store);
+            WN_INSERT_BlockBefore(body, definitions[5], result_store);
+        } else if (strcmp(alias_negative, "standard") == 0) {
+            WN *read = WN_CreateEval
+                (WN_CreateLdid
+                    (OPR_LDID, Pointer_Mtype, Pointer_Mtype, 0,
+                     alias_projection.handle_st,
+                     alias_projection.handle_ty));
+            WN_Set_Linenum(read, WN_Get_Linenum(definitions[5]));
+            WN_INSERT_BlockFirst(standard[1], read);
+        } else if (strcmp(alias_negative, "wrong_type") == 0) {
+            WN_set_ty(result_load, tensor_ty);
+        } else {
+            GROUP_LOWER_CHECK(FALSE, "recognized alias negative");
+        }
+        DSL_IR_NATIVE_GROUP_LOWER_RESULT unchanged[2];
+        memset(unchanged, 0x5a, sizeof(unchanged));
+        DSL_IR_NATIVE_GROUP_LOWER_RESULT sentinel[2];
+        memcpy(sentinel, unchanged, sizeof(sentinel));
+        GROUP_LOWER_CHECK
+            (!DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+                 (pu, requests, 2, NULL, unchanged) &&
+             memcmp(unchanged, sentinel, sizeof(unchanged)) == 0 &&
+             WN_first(standard[0]) != NULL &&
+             WN_first(standard[1]) != NULL &&
+             Find_STID_And_Block
+                 (body, DSL_Builder_Get_Value_Result_Symbol(values[5]),
+                  NULL) == definitions[5],
+             "retired alias malformed use rejects without mutation");
+        printf("grouped lowering retired alias %s rejected atomically\n",
+               alias_negative);
+        return 0;
     }
     GROUP_LOWER_CHECK
         (!DSL_Gatekeeper_Verify_No_Native_PU(pu, NULL) &&
@@ -13067,6 +13186,46 @@ Check_Grouped_Native_Lowering(void)
                  (body, DSL_Builder_Get_Value_Result_Symbol(values[i]),
                   NULL) == NULL,
              "private native definition removed");
+    if (root_alias) {
+        GROUP_LOWER_CHECK
+            (WN_operator(WN_kid0(result_store)) == OPR_LDID &&
+             WN_st_idx(result_load) == projections[1].handle_st &&
+             result_store == Find_STID_And_Block
+                 (body, WN_st_idx(result_store), NULL),
+             "retired output reads the defined group handle");
+        WN *seed_definition = Find_STID_And_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(seed), NULL);
+        DSL_IR_NATIVE_VALUE_LOWER_REQUEST seed_request;
+        DSL_IR_NATIVE_VALUE_LOWER_RESULT seed_result;
+        memset(&seed_request, 0, sizeof(seed_request));
+        memset(&seed_result, 0, sizeof(seed_result));
+        seed_request.native_definition = seed_definition;
+        seed_request.source_value_id = DSL_Builder_Get_Value_Image_Id(seed);
+        seed_request.expected_operator = OPR_DSLTENSORCONST;
+        seed_request.expected_version = 1;
+        seed_request.mode =
+            DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION;
+        seed_request.relation.relation_kind =
+            DSL_IR_LOWER_RELATION_VERIFIED_DEAD_SOURCE;
+        GROUP_LOWER_CHECK
+            (seed_definition != NULL &&
+             DSL_IR_Lower_Native_Values_To_Standard_Blocks
+                 (pu, &seed_request, 1, stderr, &seed_result) &&
+             DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr) &&
+             DSL_Program_Interface_Validate_Lowered_PU(pu, stderr),
+             "retired output terminal handle closure");
+        WN_st_idx(result_load) = alias_projection.handle_st;
+        GROUP_LOWER_CHECK
+            (!DSL_Program_Interface_Validate_Lowered_PU(pu, NULL),
+             "terminal verifier rejects undefined alias handle");
+        WN_st_idx(result_load) = projections[1].handle_st;
+        GROUP_LOWER_CHECK
+            (DSL_Program_Interface_Validate_Lowered_PU(pu, stderr) &&
+             Write_Runtime_Interface_Artifact(artifact, pu, NULL),
+             "retired output mapped artifact");
+        printf("DSL grouped retired output alias contract passed\n");
+        return 0;
+    }
     if (getenv("OPEN64_DSL_GROUP_LOWER_REGION_TERMINAL") != NULL) {
         WN *seed_definition = Find_STID_And_Block
             (body, DSL_Builder_Get_Value_Result_Symbol(seed), NULL);

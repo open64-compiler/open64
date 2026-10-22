@@ -29,6 +29,7 @@ extern BOOL DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID);
 typedef struct {
     WN *containing_block;
     UINT32 tree_order;
+    UINT32 subtree_end_order;
     UINT32 block_ordinal;
 } DSL_IR_GROUP_TREE_POSITION;
 
@@ -61,6 +62,7 @@ DSL_IR_Group_Index_Tree
                      physical_symbols))
                 return FALSE;
         }
+        (*positions)[tree].subtree_end_order = *next_order;
         return TRUE;
     }
     for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid) {
@@ -71,6 +73,7 @@ DSL_IR_Group_Index_Tree
                                    physical_symbols))
             return FALSE;
     }
+    (*positions)[tree].subtree_end_order = *next_order;
     return TRUE;
 }
 
@@ -419,6 +422,36 @@ DSL_IR_Group_Block_Uses_Member
                 (WN_kid(tree, kid), member_by_st))
             return TRUE;
     }
+    return FALSE;
+}
+
+typedef struct {
+    ST_IDX replacement_st;
+    UINT32 group_index;
+    std::vector<WN *> reads;
+} DSL_IR_GROUP_RETIRED_ALIAS;
+
+/* A detached block must not hide a read of a retired projection handle. */
+static BOOL
+DSL_IR_Group_Block_Uses_Alias
+        (const WN *tree,
+         const std::map<ST_IDX, DSL_IR_GROUP_RETIRED_ALIAS> &aliases)
+{
+    if (tree == NULL)
+        return FALSE;
+    if (WN_has_sym(tree) &&
+        aliases.find(WN_st_idx(tree)) != aliases.end())
+        return TRUE;
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (const WN *stmt = WN_first(tree); stmt != NULL;
+             stmt = WN_next(stmt))
+            if (DSL_IR_Group_Block_Uses_Alias(stmt, aliases))
+                return TRUE;
+        return FALSE;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid)
+        if (DSL_IR_Group_Block_Uses_Alias(WN_kid(tree, kid), aliases))
+            return TRUE;
     return FALSE;
 }
 
@@ -849,6 +882,129 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
                        (diagnostic, source_group.request_index,
                         "member use violates group dominance");
     }
+    std::set<DSL_RUNTIME_VALUE_PROJECTION_ID> call_projections;
+    std::set<DSL_IR_VALUE_ID> call_values;
+    for (UINT32 id = 1; id <= DSL_Runtime_Interface_Image_Call_Count();
+         ++id) {
+        DSL_RUNTIME_CALL_PROJECTION_RECORD call;
+        if (!DSL_Runtime_Interface_Image_Get_Call(id, &call))
+            return DSL_IR_Lower_Report
+                       (diagnostic, 0, "runtime call indexing failed");
+        call_projections.insert(call.value_projection_id);
+        call_values.insert(call.source_value_id);
+    }
+    std::map<ST_IDX, DSL_IR_GROUP_RETIRED_ALIAS> aliases;
+    std::map<UINT32, UINT32> member_subtrees;
+    for (UINT32 i = 0; i < members.size(); ++i) {
+        std::map<const WN *, DSL_IR_GROUP_TREE_POSITION>::const_iterator
+            position = tree_positions.find
+                (members[i].request->native_definition);
+        if (position == tree_positions.end())
+            return DSL_IR_Lower_Report
+                       (diagnostic, 0, "group member tree index is missing");
+        member_subtrees[position->second.tree_order] =
+            position->second.subtree_end_order;
+    }
+    for (UINT32 id = 1; id <= DSL_Runtime_Interface_Image_Value_Count();
+         ++id) {
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+        DSL_IR_VALUE_ID target_id = DSL_IR_VALUE_INVALID_ID;
+        if (!DSL_Runtime_Interface_Image_Get_Value(id, &projection))
+            return DSL_IR_Lower_Report
+                       (diagnostic, 0, "runtime alias indexing failed");
+        if (!DSL_IR_Image_Value_Redirect_Target
+                (projection.source_value_id, &target_id))
+            continue;
+        std::map<DSL_IR_VALUE_ID, UINT32>::const_iterator target =
+            member_by_value.find(target_id);
+        if (target == member_by_value.end())
+            continue;
+        UINT32 group_index = member_groups[target->second];
+        const DSL_IR_GROUP_LOWER_JOURNAL &group = groups[group_index];
+        if (target_id != group.output.id ||
+            projection.owner_pu_st != owner_pu_st)
+            continue;
+        DSL_IR_VALUE_RECORD retired;
+        DSL_IR_NODE_RECORD retired_node;
+        std::map<ST_IDX, DSL_IR_VALUE_RECORD>::const_iterator owned =
+            owner_values.find(projection.source_st);
+        if (projection.owner_pu_st != owner_pu_st ||
+            !DSL_IR_Image_Get_Value
+                (projection.source_value_id, &retired) ||
+            !DSL_IR_Image_Get_Node
+                (retired.producer_node_id, &retired_node) ||
+            (retired_node.flags & DSL_IR_NODE_FLAG_RETIRED) == 0 ||
+            owned == owner_values.end() ||
+            owned->second.id != retired.id ||
+            retired.st != projection.source_st ||
+            retired.ty != projection.source_ty ||
+            retired.ty != group.output.ty ||
+            projection.handle_ty != group.handle_ty ||
+            projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE ||
+            ST_IDX_level(projection.handle_st) != CURRENT_SYMTAB ||
+            ST_IDX_index(projection.handle_st) == 0 ||
+            ST_IDX_index(projection.handle_st) >=
+                ST_Table_Size(CURRENT_SYMTAB) ||
+            ST_sclass(St_Table[projection.handle_st]) != SCLASS_AUTO ||
+            ST_type(St_Table[projection.handle_st]) !=
+                projection.handle_ty ||
+            projection.handle_st == group.handle_st ||
+            call_projections.find(projection.id) !=
+                call_projections.end() ||
+            call_values.find(retired.id) != call_values.end() ||
+            DSL_Region_Symbol_Use_Count
+                (pu_info, projection.handle_st) != 0 ||
+            effect_nodes.find(retired_node.id) != effect_nodes.end())
+            return DSL_IR_Lower_Report
+                       (diagnostic, group.request_index,
+                        "retired output projection is not a local alias");
+        DSL_IR_GROUP_RETIRED_ALIAS alias;
+        alias.replacement_st = group.handle_st;
+        alias.group_index = group_index;
+        if (!aliases.insert
+                (std::make_pair(projection.handle_st, alias)).second)
+            return DSL_IR_Lower_Report
+                       (diagnostic, group.request_index,
+                        "retired output projection handle is ambiguous");
+    }
+    for (std::map<const WN *, DSL_IR_GROUP_TREE_POSITION>::const_iterator
+             current = tree_positions.begin();
+         current != tree_positions.end(); ++current) {
+        WN *wn = const_cast<WN *>(current->first);
+        if (!WN_has_sym(wn))
+            continue;
+        std::map<ST_IDX, DSL_IR_GROUP_RETIRED_ALIAS>::iterator alias =
+            aliases.find(WN_st_idx(wn));
+        if (alias == aliases.end())
+            continue;
+        const DSL_IR_GROUP_LOWER_JOURNAL &group =
+            groups[alias->second.group_index];
+        std::map<const WN *, DSL_IR_GROUP_TREE_POSITION>::const_iterator
+            output = tree_positions.find(group.output_definition);
+        std::map<UINT32, UINT32>::const_iterator member =
+            member_subtrees.upper_bound(current->second.tree_order);
+        BOOL inside_member = FALSE;
+        if (member != member_subtrees.begin()) {
+            --member;
+            inside_member = current->second.tree_order < member->second;
+        }
+        if (WN_operator(wn) != OPR_LDID ||
+            WN_ty(wn) != group.handle_ty ||
+            output == tree_positions.end() ||
+            current->second.containing_block != group.containing_block ||
+            current->second.tree_order <
+                output->second.subtree_end_order || inside_member)
+            return DSL_IR_Lower_Report
+                       (diagnostic, group.request_index,
+                        "retired alias has a non-dominating use or escape");
+        alias->second.reads.push_back(wn);
+    }
+    for (UINT32 i = 0; i < groups.size(); ++i)
+        if (DSL_IR_Group_Block_Uses_Alias
+                (groups[i].request->standard_block, aliases))
+            return DSL_IR_Lower_Report
+                       (diagnostic, groups[i].request_index,
+                        "standard block reads a retired alias handle");
     if (!region_redirects.empty() &&
         !DSL_Region_Can_Apply_Lowering_Transitions
              (pu_info, &region_redirects[0], region_redirects.size(),
@@ -883,6 +1039,11 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
             WN_DELETE_Tree(removed);
         }
     }
+    for (std::map<ST_IDX, DSL_IR_GROUP_RETIRED_ALIAS>::iterator alias =
+             aliases.begin(); alias != aliases.end(); ++alias)
+        for (UINT32 i = 0; i < alias->second.reads.size(); ++i)
+            WN_st_idx(alias->second.reads[i]) =
+                alias->second.replacement_st;
     for (UINT32 i = 0; i < members.size(); ++i)
         FmtAssert(DSL_IR_Image_Mark_Value_Lowered(members[i].value.id),
                   ("preflighted grouped image update failed"));
