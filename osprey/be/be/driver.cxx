@@ -632,7 +632,26 @@ Open_FHE_Conversion_Checkpoint (void)
   fhe_checkpoint_pu_count = 0;
   need_fhe_checkpoint_output = TRUE;
   Register_Cleanup_Callback(Cleanup_FHE_Conversion_Checkpoint);
-  ir_output = Open_Output_Info(fhe_checkpoint_temp_name);
+}
+
+/* Open the checkpoint writer only after Read_Global_Info has loaded the
+ * complete program and optional CKKS image.  A certified CKKS2C checkpoint is
+ * terminal standard WHIRL, so its writer must validate every PU and omit the
+ * private DSL/FHE sections.  Earlier conversion checkpoints retain the
+ * ordinary mapped-image writer.  See
+ * doc/FHE-SYNC6-S6-0D-DETAILED-EXECUTION-PLAN.md, D4. */
+static void
+Open_FHE_Conversion_Checkpoint_Output (PU_Info *program_root)
+{
+  FmtAssert(need_fhe_checkpoint_output &&
+            fhe_checkpoint_temp_name != NULL && ir_output == NULL,
+            ("invalid deferred FHE checkpoint output state"));
+
+  if (DSL_CKKS_Event_Image_Count() != 0)
+    ir_output = Open_Standard_Only_Output_Info
+                    (fhe_checkpoint_temp_name, program_root);
+  else
+    ir_output = Open_Output_Info(fhe_checkpoint_temp_name);
   FmtAssert(ir_output != NULL,
             ("could not open FHE checkpoint output %s",
              fhe_checkpoint_temp_name));
@@ -2896,6 +2915,9 @@ main (INT argc, char **argv)
   }
 
   Phase_Init ();
+
+  if (need_fhe_checkpoint_output)
+    Open_FHE_Conversion_Checkpoint_Output(pu_tree);
 
   if (Tlog_File)
     Print_Tlog_Header(argc, argv);
