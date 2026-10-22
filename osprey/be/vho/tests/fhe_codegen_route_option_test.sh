@@ -11,6 +11,7 @@ be_library="${OPEN64_BE_LIBRARY_DIR:?set the rebuilt be.so directory}"
 ir_b2a="${OPEN64_IR_B2A:?set the rebuilt ir_b2a executable}"
 artifact_dir="${OPEN64_FHE_CODEGEN_OPTION_ARTIFACT_DIR:?set a host-mounted directory}"
 openpy="${OPEN64_OPENPY:-}"
+plain_input="${OPEN64_FHE_CODEGEN_PLAIN_IMAGE:-}"
 
 for executable in "$producer" "$backend" "$ir_b2a"; do
   if [[ ! -x "$executable" ]]; then
@@ -42,17 +43,30 @@ printf '%q -st -src %q %q\n' "$ir_b2a" "$image" "$trace" \
   >"$artifact_dir/reader.log" 2>&1
 grep -Fq 'FHE Plan Image:' "$trace"
 
-printf 'OPEN64_DSL_GROUP_LOWER_REGION_TERMINAL=1 OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT=%q %q\n' \
-  "$plain_image" "$producer" >>"$commands"
-OPEN64_DSL_GROUP_LOWER_ONLY=1 \
-  OPEN64_DSL_GROUP_LOWER_REGION_OUTPUT=1 \
-  OPEN64_DSL_GROUP_LOWER_REGION_TERMINAL=1 \
-  OPEN64_DSL_GROUP_LOWER_ARTIFACT="$artifact_dir/plain_intermediate_unused.B" \
-  OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT="$plain_image" \
-  "$producer" >"$artifact_dir/plain-producer.log" 2>&1
+if [[ -n "$plain_input" ]]; then
+  if [[ ! -f "$plain_input" ]]; then
+    echo "missing unrelated WHIRL input: $plain_input" >&2
+    exit 1
+  fi
+  printf 'cp %q %q\n' "$plain_input" "$plain_image" >>"$commands"
+  cp "$plain_input" "$plain_image"
+else
+  printf 'OPEN64_DSL_GROUP_LOWER_REGION_TERMINAL=1 OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT=%q %q\n' \
+    "$plain_image" "$producer" >>"$commands"
+  OPEN64_DSL_GROUP_LOWER_ONLY=1 \
+    OPEN64_DSL_GROUP_LOWER_REGION_OUTPUT=1 \
+    OPEN64_DSL_GROUP_LOWER_REGION_TERMINAL=1 \
+    OPEN64_DSL_GROUP_LOWER_ARTIFACT="$artifact_dir/plain_intermediate_unused.B" \
+    OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT="$plain_image" \
+    "$producer" >"$artifact_dir/plain-producer.log" 2>&1
+fi
 "$ir_b2a" -st -src "$plain_image" "$plain_trace" \
   >"$artifact_dir/plain-reader.log" 2>&1
-grep -Fq 'contract=cnn.basic_block.v1' "$plain_trace"
+if [[ -n "$plain_input" ]]; then
+  grep -Fq 'FUNC_ENTRY' "$plain_trace"
+else
+  grep -Fq 'contract=cnn.basic_block.v1' "$plain_trace"
+fi
 
 for route in ckks2c poly2c invalid CKKS2C; do
   log_name="$route"
