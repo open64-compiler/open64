@@ -18,6 +18,7 @@
 #include "dsl_ir_lower_internal.h"
 #include "dsl_region.h"
 #include "dsl_region_internal.h"
+#include "dsl_shape.h"
 #include "pu_info.h"
 #include "strtab.h"
 #include "symtab.h"
@@ -926,19 +927,36 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
             continue;
         DSL_IR_VALUE_RECORD retired;
         DSL_IR_NODE_RECORD retired_node;
+        DSL_IR_OPCODE_DESCRIPTOR_RECORD retired_descriptor;
         std::map<ST_IDX, DSL_IR_VALUE_RECORD>::const_iterator owned =
             owner_values.find(projection.source_st);
+        BOOL view_redirect =
+            (projection.flags &
+             DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW) != 0;
         if (projection.owner_pu_st != owner_pu_st ||
             !DSL_IR_Image_Get_Value
                 (projection.source_value_id, &retired) ||
             !DSL_IR_Image_Get_Node
                 (retired.producer_node_id, &retired_node) ||
+            !DSL_IR_Image_Get_Opcode_Descriptor
+                (retired_node.opcode_descriptor_id, &retired_descriptor) ||
             (retired_node.flags & DSL_IR_NODE_FLAG_RETIRED) == 0 ||
+            view_redirect !=
+                ((retired_node.flags & DSL_IR_NODE_FLAG_RETIRED_VIEW) != 0) ||
             owned == owner_values.end() ||
             owned->second.id != retired.id ||
             retired.st != projection.source_st ||
             retired.ty != projection.source_ty ||
-            retired.ty != group.output.ty ||
+            (view_redirect ?
+             (retired.ty == group.output.ty ||
+              retired_descriptor.shape_rule != DSL_SHAPE_RULE_VIEW ||
+              retired_descriptor.effect_model != DSL_EFFECT_MODEL_PURE ||
+              !DSL_Shape_Zero_Motion_View_Operator
+                  (retired_descriptor.logical_operator,
+                   retired_descriptor.version) ||
+              !DSL_Shape_Representation_Preserving_View
+                  (group.output.ty, retired.ty)) :
+             retired.ty != group.output.ty) ||
             projection.handle_ty != group.handle_ty ||
             projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE ||
             ST_IDX_level(projection.handle_st) != CURRENT_SYMTAB ||

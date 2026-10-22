@@ -42,6 +42,19 @@ tree use, REGION interface, or state effect. The existing lowered-relation
 verifier must accept the full image before commit. A live destination or any
 external reference from an intermediate private member still rejects.
 
+A retained, retired output projection may name the selected group output in
+an executable result-handle read. Group preflight redirects only a local,
+LDID-only read in the same BLOCK after the output definition; calls, address
+escapes, effects, REGION uses, and reads inside removed member subtrees
+reject. An ordinary retired alias requires identical source and target
+tensor TYs. A cross-TY alias requires the existing `retired_view` projection
+flag, a matching retired logical node with the `representation_view` relation,
+and the pure, zero-motion `common.flatten.v2` shape rule with a verified
+representation-preserving TY change. Both cases require the same opaque
+runtime handle TY. No mapped row is changed by this physical read redirect;
+the terminal program-interface verifier rejects a projection-handle read
+without a dominating definition.
+
 The focused CKKS fixture now joins two ordered static subgroups in one
 request. Its final replacement has the sole projection, an intermediate
 member has none, a fabricated intermediate projection rejects before

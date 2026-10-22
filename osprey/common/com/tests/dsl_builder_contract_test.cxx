@@ -12668,7 +12668,9 @@ Check_Grouped_Native_Lowering(void)
         getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT");
     const char *negative_case =
         getenv("OPEN64_DSL_GROUP_LOWER_NEGATIVE_CASE");
-    BOOL root_alias = getenv("OPEN64_DSL_GROUP_LOWER_ROOT_ALIAS") != NULL;
+    BOOL root_view = getenv("OPEN64_DSL_GROUP_LOWER_ROOT_VIEW") != NULL;
+    BOOL root_alias = root_view ||
+        getenv("OPEN64_DSL_GROUP_LOWER_ROOT_ALIAS") != NULL;
     const char *alias_negative =
         getenv("OPEN64_DSL_GROUP_LOWER_ROOT_ALIAS_NEGATIVE");
     GROUP_LOWER_CHECK(artifact != NULL && artifact[0] != '\0' &&
@@ -12681,8 +12683,28 @@ Check_Grouped_Native_Lowering(void)
     core.dtype = "float32";
     core.rank = 2;
     core.logical_shape = "[2,2]";
-    TY_IDX tensor_ty = DSL_Builder_Create_Tensor_Type_Core
-        ("group_lower_f32_2x2", MTYPE_To_TY(MTYPE_F4), &core);
+    TY_IDX tensor_ty = TY_IDX_ZERO;
+    TY_IDX view_ty = TY_IDX_ZERO;
+    if (root_view) {
+        DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+        memset(&descriptor, 0, sizeof(descriptor));
+        descriptor.type_core = core;
+        descriptor.traits.traits = "activation";
+        descriptor.representation.layout = "contiguous";
+        descriptor.representation.sharding = "replicated";
+        descriptor.representation.placement = "host";
+        descriptor.representation.memory = "contiguous";
+        descriptor.representation.quantization = "none";
+        tensor_ty = DSL_Builder_Intern_Tensor_Type
+            ("group_view_f32_2x2", MTYPE_To_TY(MTYPE_F4), &descriptor);
+        descriptor.type_core.rank = 1;
+        descriptor.type_core.logical_shape = "[4]";
+        view_ty = DSL_Builder_Intern_Tensor_Type
+            ("group_view_f32_4", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    } else {
+        tensor_ty = DSL_Builder_Create_Tensor_Type_Core
+            ("group_lower_f32_2x2", MTYPE_To_TY(MTYPE_F4), &core);
+    }
     TY_IDX handle_ty = Create_Runtime_Interface_Handle_TY
         ("group_lower_handle_v1");
     DSL_BUILDER_PROGRAM_UNIT pu =
@@ -12690,6 +12712,10 @@ Check_Grouped_Native_Lowering(void)
     UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
     GROUP_LOWER_CHECK(tensor_ty != TY_IDX_ZERO &&
                       TY_tensor_seal(tensor_ty) &&
+                      (!root_view ||
+                       (view_ty != TY_IDX_ZERO &&
+                        DSL_Shape_Representation_Preserving_View
+                            (tensor_ty, view_ty))) &&
                       handle_ty != TY_IDX_ZERO && pu != NULL &&
                       file_id != 0, "tensor, handle, and PU");
     DSL_BUILDER_SOURCE_POSITION position;
@@ -12742,42 +12768,32 @@ Check_Grouped_Native_Lowering(void)
                       DSL_Builder_Append_PU_Value(pu, values[5]) &&
                       DSL_Builder_Select_PU(pu),
                       "materialized chain");
-    DSL_BUILDER_VALUE logits = NULL;
+    DSL_BUILDER_VALUE retired_output = NULL;
     if (root_alias) {
         DSL_BUILDER_OPERATOR_ATTRIBUTE semantic = {
             "attr.semantic", "logits"
         };
-        logits = DSL_Builder_Create_Operator_With_Result
-            (DSL_Opcode_Find(DSL_Domain_Find("common"),
-                             "common.output_logits", 2),
-             2, &values[5], 1, &semantic, 1,
-             "group_output_logits", tensor_ty);
+        DSL_BUILDER_OPERATOR_ATTRIBUTE dimensions[2] = {
+            { "attr.start_dim", "0" }, { "attr.end_dim", "-1" }
+        };
+        retired_output = root_view ?
+            DSL_Builder_Create_Operator_With_Result
+                (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                 "common.flatten", 2),
+                 2, &values[5], 1, dimensions, 2,
+                 "group_flatten_view", view_ty) :
+            DSL_Builder_Create_Operator_With_Result
+                (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                 "common.output_logits", 2),
+                 2, &values[5], 1, &semantic, 1,
+                 "group_output_logits", tensor_ty);
         ++position.line;
         GROUP_LOWER_CHECK
-            (logits != NULL &&
-             DSL_Builder_Set_Value_Source_Position(logits, &position) &&
-             DSL_Builder_Append_PU_Value(pu, logits),
-             "root output-logits boundary");
-        WN *body = WN_func_body(PU_Info_tree_ptr(pu));
-        WN *linear_definition = Find_STID_And_Block
-            (body, DSL_Builder_Get_Value_Result_Symbol(values[5]), NULL);
-        WN *logits_definition = Find_STID_And_Block
-            (body, DSL_Builder_Get_Value_Result_Symbol(logits), NULL);
-        DSL_IR_NATIVE_VALUE_RETIRE_REQUEST retire;
-        memset(&retire, 0, sizeof(retire));
-        retire.replacement_definition = linear_definition;
-        retire.replacement_value_id =
-            DSL_Builder_Get_Value_Image_Id(values[5]);
-        retire.retiring_definition = logits_definition;
-        retire.retiring_value_id =
-            DSL_Builder_Get_Value_Image_Id(logits);
-        retire.expected_retiring_operator = OPR_DSLOUTPUTLOGITS;
-        retire.expected_retiring_version = 2;
-        retire.replacement_operand_ordinal = 0;
-        GROUP_LOWER_CHECK
-            (linear_definition != NULL && logits_definition != NULL &&
-             DSL_IR_Redirect_And_Retire_Native_Value(pu, &retire),
-             "same-TY output-logits retirement");
+            (retired_output != NULL &&
+             DSL_Builder_Set_Value_Source_Position
+                 (retired_output, &position) &&
+             DSL_Builder_Append_PU_Value(pu, retired_output),
+             "root retired output boundary");
     }
 
     DSL_RUNTIME_VALUE_PROJECTION_REQUEST projected[3];
@@ -12805,9 +12821,11 @@ Check_Grouped_Native_Lowering(void)
     } else if (root_alias) {
         projected[2] = projected[1];
         projected[2].source_value_id =
-            DSL_Builder_Get_Value_Image_Id(logits);
+            DSL_Builder_Get_Value_Image_Id(retired_output);
         projected[2].expected_source_st =
-            DSL_Builder_Get_Value_Result_Symbol(logits);
+            DSL_Builder_Get_Value_Result_Symbol(retired_output);
+        projected[2].expected_source_ty =
+            root_view ? view_ty : tensor_ty;
     }
     DSL_RUNTIME_INTERFACE_PLAN plan;
     memset(&plan, 0, sizeof(plan));
@@ -12817,9 +12835,36 @@ Check_Grouped_Native_Lowering(void)
          strcmp(negative_case, "interface_escape") == 0) ? 3 : 2;
     DSL_RUNTIME_INTERFACE_RESULT applied;
     GROUP_LOWER_CHECK(DSL_Runtime_Interface_Apply_PU
-                          (pu, &plan, stderr, &applied) &&
-                      DSL_Runtime_Interface_Image_Validate(stderr),
+                          (pu, &plan, stderr, &applied),
                       "two output projections");
+    if (root_alias) {
+        WN *body = WN_func_body(PU_Info_tree_ptr(pu));
+        WN *linear_definition = Find_STID_And_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(values[5]), NULL);
+        WN *retired_definition = Find_STID_And_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(retired_output),
+             NULL);
+        DSL_IR_NATIVE_VALUE_RETIRE_REQUEST retire;
+        memset(&retire, 0, sizeof(retire));
+        retire.replacement_definition = linear_definition;
+        retire.replacement_value_id =
+            DSL_Builder_Get_Value_Image_Id(values[5]);
+        retire.retiring_definition = retired_definition;
+        retire.retiring_value_id =
+            DSL_Builder_Get_Value_Image_Id(retired_output);
+        retire.expected_retiring_operator =
+            root_view ? OPR_DSLFLATTEN : OPR_DSLOUTPUTLOGITS;
+        retire.expected_retiring_version = 2;
+        retire.replacement_operand_ordinal = 0;
+        GROUP_LOWER_CHECK
+            (linear_definition != NULL && retired_definition != NULL &&
+             (root_view ?
+              DSL_IR_Redirect_And_Retire_Native_View(pu, &retire) :
+              DSL_IR_Redirect_And_Retire_Native_Value(pu, &retire)),
+             "root output retirement");
+    }
+    GROUP_LOWER_CHECK(DSL_Runtime_Interface_Image_Validate(stderr),
+                      "retired output projection image");
     DSL_RUNTIME_VALUE_PROJECTION_RECORD projections[2];
     for (UINT32 i = 0; i < 2; ++i)
         GROUP_LOWER_CHECK
@@ -12831,12 +12876,27 @@ Check_Grouped_Native_Lowering(void)
     WN *result_store = NULL;
     WN *result_load = NULL;
     if (root_alias) {
+        BOOL found_alias = FALSE;
+        for (UINT32 id = 1;
+             id <= DSL_Runtime_Interface_Image_Value_Count(); ++id) {
+            DSL_RUNTIME_VALUE_PROJECTION_RECORD candidate;
+            if (DSL_Runtime_Interface_Image_Get_Value(id, &candidate) &&
+                candidate.owner_pu_st == PU_Info_proc_sym(pu) &&
+                candidate.source_value_id ==
+                    DSL_Builder_Get_Value_Image_Id(retired_output)) {
+                alias_projection = candidate;
+                found_alias = TRUE;
+                break;
+            }
+        }
         GROUP_LOWER_CHECK
-            (DSL_Runtime_Interface_Image_Find_Value
-                 (PU_Info_proc_sym(pu),
-                  DSL_Builder_Get_Value_Image_Id(logits),
-                  &alias_projection),
+            (found_alias,
              "retired output runtime projection");
+        GROUP_LOWER_CHECK
+            (((alias_projection.flags &
+               DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW) != 0) ==
+                 root_view,
+             "retired output projection relation");
         ST *result_st = New_ST(CURRENT_SYMTAB);
         ST_Init(result_st, Save_Str("group_model_result"), CLASS_VAR,
                 SCLASS_AUTO, EXPORT_LOCAL, handle_ty);
@@ -12939,6 +12999,57 @@ Check_Grouped_Native_Lowering(void)
     }
     if (alias_negative != NULL) {
         GROUP_LOWER_CHECK(root_alias, "alias negative requires root alias");
+        if (strcmp(alias_negative, "missing_view_flag") == 0 ||
+            strcmp(alias_negative, "wrong_relation") == 0) {
+            GROUP_LOWER_CHECK(root_view,
+                              "malformed view requires root view");
+            UINT64 mapped_size = 0;
+            unsigned char *mapped =
+                strcmp(alias_negative, "missing_view_flag") == 0 ?
+                    Capture_Runtime_Interface_Image(&mapped_size) :
+                    Capture_DSL_IR_Image(&mapped_size);
+            GROUP_LOWER_CHECK(mapped != NULL,
+                              "capture malformed view candidate");
+            if (strcmp(alias_negative, "missing_view_flag") == 0) {
+                DSL_RUNTIME_VALUE_PROJECTION_RECORD *records =
+                    (DSL_RUNTIME_VALUE_PROJECTION_RECORD *)
+                        (mapped + DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE);
+                records[alias_projection.id - 1].flags = 0;
+                GROUP_LOWER_CHECK
+                    (!DSL_Runtime_Interface_Image_Load_Mapped
+                         (mapped, mapped_size, NULL) &&
+                     DSL_Runtime_Interface_Image_Validate(stderr),
+                     "missing retired-view flag rejects atomically");
+            } else {
+                DSL_IR_IMAGE_HEADER *header = (DSL_IR_IMAGE_HEADER *)mapped;
+                DSL_IR_NODE_RECORD *nodes = (DSL_IR_NODE_RECORD *)
+                    (mapped + DSL_IR_IMAGE_HEADER_SIZE +
+                     (UINT64)header->opcode_descriptor_count *
+                         DSL_IR_OPCODE_DESCRIPTOR_RECORD_SIZE);
+                DSL_IR_VALUE_RECORD value;
+                GROUP_LOWER_CHECK
+                    (DSL_IR_Image_Get_Value
+                         (DSL_Builder_Get_Value_Image_Id(retired_output),
+                          &value),
+                     "retired view value lookup");
+                nodes[value.producer_node_id - 1].flags &=
+                    ~DSL_IR_NODE_FLAG_RETIRED_VIEW;
+                GROUP_LOWER_CHECK
+                    (!DSL_IR_Image_Load_Mapped(mapped, mapped_size, NULL) &&
+                     DSL_IR_Image_Validate(stderr),
+                     "wrong view relation rejects atomically");
+            }
+            delete [] mapped;
+            GROUP_LOWER_CHECK
+                (Find_STID_And_Block
+                     (body, DSL_Builder_Get_Value_Result_Symbol(values[5]),
+                      NULL) == definitions[5] &&
+                 WN_st_idx(result_load) == alias_projection.handle_st,
+                 "malformed mapped view leaves physical tree unchanged");
+            printf("grouped lowering retired alias %s rejected atomically\n",
+                   alias_negative);
+            return 0;
+        }
         if (strcmp(alias_negative, "address") == 0) {
             WN_kid0(result_store) = WN_CreateLda
                 (OPR_LDA, Pointer_Mtype, MTYPE_V, 0,
