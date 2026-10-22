@@ -9,7 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <set>
 #include <string>
+#include <vector>
 
 #include "defs.h"
 #include "mempool.h"
@@ -12336,9 +12338,111 @@ Check_Native_To_Standard_Lowering(void)
              (body, projection_requests[1].expected_source_st, NULL) ==
                 definitions[1],
          "partial chain rejects without mutation");
+    const char *large_batch_env =
+        getenv("OPEN64_DSL_STANDARD_LOWER_LARGE_BATCH");
+    UINT32 extra_count = large_batch_env == NULL ? 0 :
+        (UINT32)atoi(large_batch_env);
+    STANDARD_LOWER_CHECK(extra_count <= 1024,
+                         "large batch size is bounded");
+    if (failed)
+        return failed;
+    std::vector<DSL_IR_NATIVE_VALUE_LOWER_REQUEST> batch_requests
+        (5 + extra_count);
+    std::vector<DSL_IR_NATIVE_VALUE_LOWER_RESULT> batch_results
+        (5 + extra_count);
+    memcpy(&batch_requests[0], requests, sizeof(requests));
+    if (extra_count != 0) {
+        WN *return_statement = NULL;
+        for (WN *stmt = WN_first(body); stmt != NULL;
+             stmt = WN_next(stmt)) {
+            if (WN_operator(stmt) == OPR_RETURN) {
+                return_statement = stmt;
+                break;
+            }
+        }
+        STANDARD_LOWER_CHECK
+            (return_statement != NULL &&
+             DSL_Builder_Select_PU(pu),
+             "large batch return boundary");
+        if (failed)
+            return failed;
+        for (UINT32 i = 0; i < extra_count; ++i) {
+            char name[64];
+            snprintf(name, sizeof(name), "standard_dead_%u", i);
+            DSL_BUILDER_VALUE dead = DSL_Builder_Create_Tensor_Constant
+                (name, tensor_ty[0], "float32", 4, "[1,1,2,2]",
+                 "zero_init", "0");
+            STANDARD_LOWER_CHECK
+                (dead != NULL &&
+                 DSL_Builder_Set_Value_Source_Position(dead, &position) &&
+                 DSL_Builder_Append_PU_Value(pu, dead),
+                 "large batch dead constant construction");
+            if (failed)
+                break;
+            DSL_IR_NATIVE_VALUE_LOWER_REQUEST &request =
+                batch_requests[5 + i];
+            memset(&request, 0, sizeof(request));
+            request.native_definition = Find_STID_And_Block
+                (body, DSL_Builder_Get_Value_Result_Symbol(dead), NULL);
+            request.source_value_id =
+                DSL_Builder_Get_Value_Image_Id(dead);
+            request.expected_operator = OPR_DSLTENSORCONST;
+            request.expected_version = 1;
+            request.mode =
+                DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION;
+            request.relation.relation_kind =
+                DSL_IR_LOWER_RELATION_VERIFIED_DEAD_SOURCE;
+            STANDARD_LOWER_CHECK(request.native_definition != NULL,
+                                 "large batch native definition");
+            if (request.native_definition != NULL) {
+                WN_EXTRACT_FromBlock(body, request.native_definition);
+                WN_INSERT_BlockBefore
+                    (body, return_statement, request.native_definition);
+            }
+        }
+        if (failed)
+            return failed;
+
+        UINT32 node_count = DSL_IR_Image_Node_Count();
+        UINT32 value_count = DSL_IR_Image_Value_Count();
+        batch_requests.back().expected_version = 2;
+        STANDARD_LOWER_CHECK
+            (!DSL_IR_Lower_Native_Values_To_Standard_Blocks
+                 (pu, &batch_requests[0], batch_requests.size(), NULL,
+                  &batch_results[0]) &&
+             DSL_IR_Image_Node_Count() == node_count &&
+             DSL_IR_Image_Value_Count() == value_count &&
+             Find_STID_And_Block
+                 (body, projection_requests[0].expected_source_st,
+                  NULL) == definitions[0] &&
+             Find_STID_And_Block
+                 (body, WN_st_idx(batch_requests.back().native_definition),
+                  NULL) == batch_requests.back().native_definition,
+             "large mixed batch rejects atomically at final request");
+        std::set<const WN *> attached_definitions;
+        for (WN *stmt = WN_first(body); stmt != NULL;
+             stmt = WN_next(stmt))
+            attached_definitions.insert(stmt);
+        for (UINT32 i = 5; i < batch_requests.size(); ++i) {
+            DSL_IR_VALUE_RECORD value;
+            DSL_IR_NODE_RECORD node;
+            STANDARD_LOWER_CHECK
+                (attached_definitions.find
+                     (batch_requests[i].native_definition) !=
+                         attached_definitions.end() &&
+                 DSL_IR_Image_Get_Value
+                     (batch_requests[i].source_value_id, &value) &&
+                 DSL_IR_Image_Get_Node(value.producer_node_id, &node) &&
+                 value.flags == DSL_IR_VALUE_FLAG_NONE &&
+                 node.flags == DSL_IR_NODE_FLAG_NONE,
+                 "large batch rollback preserves every member");
+        }
+        batch_requests.back().expected_version = 1;
+    }
     STANDARD_LOWER_CHECK
          (DSL_IR_Lower_Native_Values_To_Standard_Blocks
-             (pu, requests, 5, stderr, results) &&
+             (pu, &batch_requests[0], batch_requests.size(), stderr,
+              &batch_results[0]) &&
          DSL_IR_Image_Validate(stderr) &&
          DSL_IR_Image_Validate_Lowered_Relations(stderr) &&
          DSL_Program_Interface_Validate_Lowered_PU(pu, stderr) &&
@@ -12348,6 +12452,20 @@ Check_Native_To_Standard_Lowering(void)
          DSL_Gatekeeper_Verify_Program
              (pu, stderr, NULL),
          "atomic standard lowering transaction");
+    memcpy(results, &batch_results[0], sizeof(results));
+    for (UINT32 i = 5; i < batch_requests.size(); ++i) {
+        DSL_IR_NODE_RECORD node;
+        DSL_IR_VALUE_RECORD value;
+        STANDARD_LOWER_CHECK
+            (DSL_IR_Image_Get_Value
+                 (batch_requests[i].source_value_id, &value) &&
+             DSL_IR_Image_Get_Node(value.producer_node_id, &node) &&
+             (value.flags & DSL_IR_VALUE_FLAG_DEAD_ELIDED) != 0 &&
+             (node.flags & DSL_IR_NODE_FLAG_DEAD_ELIDED) != 0 &&
+             batch_results[i].mode ==
+                 DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION,
+             "large batch dead constant evidence");
+    }
     for (UINT32 i = 0; i < 5; ++i) {
         UINT32 source_index = request_order[i];
         ST_IDX source_st = source_index < 2 ?
