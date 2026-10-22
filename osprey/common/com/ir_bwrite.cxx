@@ -2186,6 +2186,19 @@ Close_Output_Info (void)
     ir_output_standard_only = FALSE;
 }
 
+void
+Discard_Output_Info (void)
+{
+    if (ir_output != NULL) {
+        WN_close_file(ir_output);
+        ir_output = NULL;
+    }
+    ir_output_standard_only = FALSE;
+    ir_output_globals_written = FALSE;
+    ir_output_first_pu = NULL;
+    ir_output_expected_pu = NULL;
+}
+
 
 extern "C" void
 WN_write_elf_symtab (const void* symtab, UINT64 size, UINT64 entsize,

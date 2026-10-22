@@ -289,12 +289,14 @@
         "osprey/common/com/dsl_ir_rewrite.*",
         "osprey/common/com/dsl_ir_image.*",
         "osprey/common/com/dsl_ir_group_lower.*",
+        "osprey/common/com/dsl_ir_lower.*",
         "osprey/common/com/dsl_shape.*",
         "osprey/common/com/dsl_builder.*",
         "osprey/common/fhe/fhe_plan.*",
         "osprey/common/com/tests/dsl_builder_contract_test.*",
         "osprey/common/com/tests/dsl_ckks_expand_transaction_test.*",
         "osprey/common/com/tests/dsl_ckks_complete_group_lowering_test.*",
+        "osprey/common/com/tests/dsl_dead_native_constant_batch_test.*",
         "osprey/common/com/tests/dsl_view_retirement_test.*"
       ],
       "lanes": [

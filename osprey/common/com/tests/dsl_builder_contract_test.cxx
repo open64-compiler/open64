@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <string>
 
 #include "defs.h"
 #include "mempool.h"
@@ -13093,6 +13094,201 @@ Check_Grouped_Native_Lowering(void)
     return 0;
 }
 
+/* Exercise the public dead-constant batch boundary after consumers are gone. */
+static int
+Check_Dead_Native_Constant_Batch(void)
+{
+#define DEAD_BATCH_CHECK(condition, stage) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "dead constant batch failed: %s\n", stage); \
+            return 1; \
+        } \
+    } while (0)
+    const char *artifact = getenv("OPEN64_DSL_DEAD_CONSTANT_ARTIFACT");
+    const char *negative = getenv("OPEN64_DSL_DEAD_CONSTANT_NEGATIVE");
+    BOOL discard = getenv("OPEN64_DSL_DEAD_CONSTANT_DISCARD") != NULL;
+    DEAD_BATCH_CHECK(artifact != NULL && artifact[0] != '\0' &&
+                     DSL_Builder_Begin_Program(), "program and output");
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_TENSOR_TYPE_CORE core;
+    memset(&core, 0, sizeof(core));
+    core.kind = "tensor";
+    core.dtype = "float32";
+    core.rank = 2;
+    core.logical_shape = "[2,2]";
+    TY_IDX tensor_ty = DSL_Builder_Create_Tensor_Type_Core
+        ("dead_batch_f32_2x2", MTYPE_To_TY(MTYPE_F4), &core);
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU("dead_constant_batch");
+    UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = __LINE__ + 1;
+    position.statement_begin = 1;
+    DEAD_BATCH_CHECK(tensor_ty != TY_IDX_ZERO && TY_tensor_seal(tensor_ty) &&
+                     pu != NULL && file_id != 0, "tensor and PU");
+    DSL_BUILDER_VALUE constants[2];
+    constants[0] = DSL_Builder_Create_Tensor_Constant
+        ("dead_zero", tensor_ty, "float32", 2, "[2,2]", "zero_init", "0");
+    constants[1] = DSL_Builder_Create_Tensor_Constant
+        ("dead_one", tensor_ty, "float32", 2, "[2,2]", "one_init", "1");
+    DEAD_BATCH_CHECK
+        (constants[0] != NULL && constants[1] != NULL &&
+         DSL_Builder_Set_Value_Source_Position(constants[0], &position),
+         "constant values");
+    ++position.line;
+    DEAD_BATCH_CHECK
+        (DSL_Builder_Set_Value_Source_Position(constants[1], &position) &&
+         DSL_Builder_Append_PU_Value(pu, constants[0]) &&
+         DSL_Builder_Append_PU_Value(pu, constants[1]) &&
+         DSL_Builder_Select_PU(pu), "constant definitions");
+
+    WN *body = WN_func_body(PU_Info_tree_ptr(pu));
+    WN *definitions[2];
+    DSL_IR_DEAD_NATIVE_CONSTANT_REQUEST requests[2];
+    memset(requests, 0, sizeof(requests));
+    for (UINT32 i = 0; i < 2; ++i) {
+        DSL_IR_VALUE_RECORD value;
+        definitions[i] = Find_STID_And_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(constants[i]), NULL);
+        DEAD_BATCH_CHECK
+            (definitions[i] != NULL &&
+             DSL_IR_Image_Get_Value
+                 (DSL_Builder_Get_Value_Image_Id(constants[i]), &value),
+             "constant identity");
+        requests[i].owner_pu_st = PU_Info_proc_sym(pu);
+        requests[i].native_definition = definitions[i];
+        requests[i].node_id = value.producer_node_id;
+        requests[i].value_id = value.id;
+        requests[i].st = value.st;
+        requests[i].ty = value.ty;
+        requests[i].expected_version = 1;
+    }
+    if (negative != NULL && strcmp(negative, "wrong_identity") == 0)
+        requests[1].value_id = requests[0].value_id;
+    if (negative != NULL && strcmp(negative, "duplicate") == 0)
+        requests[1] = requests[0];
+    if (negative != NULL && strcmp(negative, "live") == 0) {
+        WN *address = WN_CreateEval
+            (WN_CreateLda(OPR_LDA, Pointer_Mtype, MTYPE_V, 0,
+                          Make_Pointer_Type(tensor_ty), requests[1].st));
+        WN_INSERT_BlockLast(body, address);
+    }
+    if (negative != NULL && strcmp(negative, "region") == 0) {
+        DSL_REGION region = DSL_Region_Create
+            (pu, NULL, "cnn.basic_block", 1);
+        DEAD_BATCH_CHECK
+            (region != NULL && DSL_Region_Declare_Symbol
+                 (region, requests[1].st, DSL_REGION_VALUE_INPUT, 0,
+                  DSL_REGION_INTERFACE_FLAG_NONE) &&
+             DSL_Region_Set_Source_Position(region, position.line) &&
+             DSL_Region_Append_To_PU(region) &&
+             DSL_Region_Verify_PU(pu, stderr), "live REGION input");
+    }
+    if (negative != NULL && strcmp(negative, "call") == 0) {
+        DSL_BUILDER_PROGRAM_UNIT callee =
+            DSL_Builder_Create_Minimal_PU("dead_constant_callee");
+        UINT32 callee_file = DSL_Builder_Register_Source_File
+            (callee, __FILE__);
+        position.file_id = callee_file;
+        DSL_BUILDER_VALUE formal = DSL_Builder_Declare_PU_Formal
+            (callee, "constant_input", 0, tensor_ty, &position);
+        DEAD_BATCH_CHECK
+            (callee != NULL && callee_file != 0 && formal != NULL &&
+             DSL_Builder_Return_PU_Values(callee, NULL, 0),
+             "callee signature");
+        DSL_BUILDER_CALLSITE_INFO callsite;
+        memset(&callsite, 0, sizeof(callsite));
+        callsite.canonical_class_name = "DeadConstantCallee";
+        callsite.instance_path = "model.dead_constant";
+        callsite.context_identity = "DeadConstantCallee.call";
+        callsite.source_position = position;
+        callsite.source_position.file_id = file_id;
+        DSL_BUILDER_CALL call = DSL_Builder_Create_PU_Call
+            (pu, callee, &constants[1], 1, NULL, 0, &callsite);
+        DSL_CALLSITE_METADATA_RECORD call_record;
+        DSL_CALL_ARGUMENT_RECORD argument;
+        DEAD_BATCH_CHECK
+            (call != NULL &&
+             DSL_Builder_Set_PU_Call_Argument_Role
+                 (call, 0, 0, "test.constant_input") &&
+             DSL_Call_Image_Find_Callsite(call, &call_record) &&
+             DSL_Call_ABI_Image_Find_Argument
+                 (call, 0, &argument) &&
+             argument.argument_value_id == requests[1].value_id &&
+             DSL_Builder_Select_PU(pu), "live call ABI argument");
+    }
+
+    UINT32 elided_count = 0x5a5a5a5a;
+    BOOL elided = DSL_IR_Elide_Dead_Native_Constants
+        (pu, requests, 2, stderr, &elided_count);
+    if (negative != NULL) {
+        DSL_IR_VALUE_RECORD first;
+        DSL_IR_VALUE_RECORD second;
+        DEAD_BATCH_CHECK
+            (!elided && elided_count == 0x5a5a5a5a &&
+             Find_STID_And_Block(body, requests[0].st, NULL) ==
+                 definitions[0] &&
+             Find_STID_And_Block
+                 (body, DSL_Builder_Get_Value_Result_Symbol(constants[1]),
+                  NULL) == definitions[1] &&
+             DSL_IR_Image_Get_Value
+                 (DSL_Builder_Get_Value_Image_Id(constants[0]), &first) &&
+             DSL_IR_Image_Get_Value
+                 (DSL_Builder_Get_Value_Image_Id(constants[1]), &second) &&
+             first.flags == DSL_IR_VALUE_FLAG_NONE &&
+             second.flags == DSL_IR_VALUE_FLAG_NONE,
+             "complete-array rejection leaves both definitions live");
+        return 0;
+    }
+    DEAD_BATCH_CHECK
+        (elided && elided_count == 2 &&
+         DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr) &&
+         DSL_IR_Image_Validate(stderr) &&
+         DSL_IR_Image_Validate_Lowered_Relations(stderr),
+         "batch elision and verifier");
+    for (UINT32 i = 0; i < 2; ++i) {
+        DSL_IR_VALUE_RECORD value;
+        DSL_IR_NODE_RECORD node;
+        DEAD_BATCH_CHECK
+            (Find_STID_And_Block(body, requests[i].st, NULL) == NULL &&
+             DSL_IR_Image_Get_Value(requests[i].value_id, &value) &&
+             DSL_IR_Image_Get_Node(requests[i].node_id, &node) &&
+             value.flags == DSL_IR_VALUE_FLAG_DEAD_ELIDED &&
+             (node.flags & DSL_IR_NODE_FLAG_DEAD_ELIDED) != 0,
+             "non-executable provenance retained");
+    }
+    if (discard) {
+        std::string temporary(artifact);
+        temporary += ".tmp";
+        (void) unlink(temporary.c_str());
+        DEAD_BATCH_CHECK
+            (Open_Standard_Only_Output_Info
+                 ((char *)temporary.c_str(), pu) != NULL,
+             "incomplete standard-only output open");
+        Discard_Output_Info();
+        DEAD_BATCH_CHECK
+            (unlink(temporary.c_str()) == 0 &&
+             access(temporary.c_str(), F_OK) != 0,
+             "discarded temporary output removed");
+        DEAD_BATCH_CHECK
+            (Open_Standard_Only_Output_Info((char *)artifact, pu) != NULL,
+             "standard-only output retry");
+        Write_PU_Info(pu);
+        Write_Global_Info(pu);
+        Close_Output_Info();
+    } else {
+        DEAD_BATCH_CHECK
+            (Write_Runtime_Interface_Artifact(artifact, pu, NULL),
+             "mapped dead-provenance image");
+    }
+    printf("DSL dead native constant batch passed\n");
+#undef DEAD_BATCH_CHECK
+    return 0;
+}
+
 static void
 Init_Shape_Solver_Descriptor
         (DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor,
@@ -14815,6 +15011,8 @@ main(void)
         return Check_Native_To_Standard_Lowering();
     if (getenv("OPEN64_DSL_GROUP_LOWER_ONLY") != NULL)
         return Check_Grouped_Native_Lowering();
+    if (getenv("OPEN64_DSL_DEAD_CONSTANT_ONLY") != NULL)
+        return Check_Dead_Native_Constant_Batch();
     if (getenv("OPEN64_DSL_CANONICALIZATION_ONLY") != NULL)
         return Check_Algebraic_Canonicalization();
     if (getenv("OPEN64_DSL_TENSOR_FOLD_M3_ONLY") != NULL)

@@ -813,3 +813,67 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
               ("lowered DSL value failed postcondition"));
     return TRUE;
 }
+
+/* Reuse the complete native-lowering transaction for dead constant batches.
+ * The stricter identity record prevents a caller from selecting a different
+ * definition after its deadness decision was made. */
+BOOL
+DSL_IR_Elide_Dead_Native_Constants
+        (PU_Info *pu_info,
+         const DSL_IR_DEAD_NATIVE_CONSTANT_REQUEST *requests,
+         UINT32 request_count,
+         FILE *diagnostic,
+         UINT32 *elided_count)
+{
+    if (!DSL_IR_Lower_Current_PU_Is(pu_info) ||
+        PU_Info_tree_ptr(pu_info) == NULL || requests == NULL ||
+        request_count == 0 || elided_count == NULL ||
+        !DSL_IR_Image_Validate(NULL) ||
+        !DSL_IR_Image_Validate_Lowered_Relations(NULL) ||
+        !DSL_Region_Verify_PU(pu_info, NULL))
+        return DSL_IR_Lower_Report
+                   (diagnostic, 0, "dead-constant transaction is invalid");
+
+    std::vector<DSL_IR_NATIVE_VALUE_LOWER_REQUEST> lower_requests
+        (request_count);
+    std::vector<DSL_IR_NATIVE_VALUE_LOWER_RESULT> lower_results
+        (request_count);
+    for (UINT32 i = 0; i < request_count; ++i) {
+        const DSL_IR_DEAD_NATIVE_CONSTANT_REQUEST &request = requests[i];
+        DSL_IR_VALUE_RECORD value;
+        DSL_IR_NODE_RECORD node;
+        if (request.reserved != 0 || request.expected_version == 0 ||
+            request.owner_pu_st != PU_Info_proc_sym(pu_info) ||
+            request.native_definition == NULL ||
+            WN_operator(request.native_definition) != OPR_STID ||
+            WN_st_idx(request.native_definition) != request.st ||
+            WN_ty(request.native_definition) != request.ty ||
+            !DSL_IR_Lower_Find_Native_Definition_Value
+                (pu_info, request.native_definition,
+                 DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION,
+                 &value) ||
+            value.id != request.value_id || value.st != request.st ||
+            value.ty != request.ty ||
+            value.producer_node_id != request.node_id ||
+            !DSL_IR_Image_Get_Node(request.node_id, &node) ||
+            node.result_value_id != value.id)
+            return DSL_IR_Lower_Report
+                       (diagnostic, i, "dead-constant identity mismatch");
+
+        DSL_IR_NATIVE_VALUE_LOWER_REQUEST &lower = lower_requests[i];
+        memset(&lower, 0, sizeof(lower));
+        lower.native_definition = request.native_definition;
+        lower.source_value_id = request.value_id;
+        lower.expected_operator = OPR_DSLTENSORCONST;
+        lower.expected_version = request.expected_version;
+        lower.mode = DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION;
+        lower.relation.relation_kind =
+            DSL_IR_LOWER_RELATION_VERIFIED_DEAD_SOURCE;
+    }
+    if (!DSL_IR_Lower_Native_Values_To_Standard_Blocks
+            (pu_info, &lower_requests[0], request_count, diagnostic,
+             &lower_results[0]))
+        return FALSE;
+    *elided_count = request_count;
+    return TRUE;
+}

@@ -60,6 +60,26 @@ The immediately previous reader rejects this intermediate image at its CKKS
 event gate, while its `-st -src` output for the standard-only terminal image
 is byte-identical to the current reader's output.
 
+After grouped lowering, a producer may select pure `common.tensor_const`
+definitions whose executable uses are gone. The generic
+`DSL_IR_Elide_Dead_Native_Constants()` API takes exact owner-PU,
+definition, node, value, ST, TY, and version identities for a whole active-PU
+batch. It reuses the established native-to-standard batch transaction:
+preflight rejects live physical, logical, REGION, runtime-interface, and
+call-ABI obligations before any definition is extracted. Success removes the
+physical `STID`s and marks the existing logical node/value records
+`DEAD_ELIDED`; it does not delete provenance or change mapped-image rows.
+The FHE producer owns selection of the actual dead constants. A focused
+two-constant fixture certifies batch rollback, mapped reopen, and a
+standard-only terminal image, not the cached ten-PU ResNet census.
+
+Failed standard-only output now uses `Discard_Output_Info()` in backend
+checkpoint cleanup. Discard closes the open mapped output without demanding
+global-table/revision finalization; the checkpoint abort owns removal of the
+incomplete `.tmp` path. The ordinary `Close_Output_Info()` remains the only
+successful finalization path. An in-memory PU already written to a failed
+stream is not retryable; compilation failure is terminal.
+
 The optional CKKS event rows remain in this intermediate M1 image. An
 immediately previous `ir_b2a` can parse the unchanged physical row layouts
 but **must reject** private lowered members at its DSL image gate rather than

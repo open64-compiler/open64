@@ -539,10 +539,19 @@ Close_FHE_Checkpoint_Output (void)
 }
 
 static void
+Discard_FHE_Checkpoint_Output (void)
+{
+  if (ir_output != NULL) {
+    ir_output = NULL;
+    Discard_Output_Info();
+  }
+}
+
+static void
 Cleanup_DSL_PU_Specialization_Checkpoint (void)
 {
   Register_Cleanup_Callback(NULL);
-  Close_FHE_Checkpoint_Output();
+  Discard_FHE_Checkpoint_Output();
   VHO_FHE_Checkpoint_Abort();
   free(dsl_pu_checkpoint_temp_name);
   dsl_pu_checkpoint_temp_name = NULL;
@@ -582,7 +591,7 @@ Cleanup_FHE_Conversion_Checkpoint (void)
     return;
 
   Register_Cleanup_Callback(NULL);
-  Close_FHE_Checkpoint_Output();
+  Discard_FHE_Checkpoint_Output();
   VHO_FHE_Convert_Checkpoint_Abort();
   Release_FHE_Conversion_Checkpoint();
 }
@@ -594,7 +603,7 @@ Cleanup_FHE_Materialization_Checkpoint (void)
     return;
 
   Register_Cleanup_Callback(NULL);
-  Close_FHE_Checkpoint_Output();
+  Discard_FHE_Checkpoint_Output();
   VHO_FHE_Materialize_Checkpoint_Abort();
   Release_FHE_Materialization_Checkpoint();
 }
@@ -606,7 +615,7 @@ Cleanup_FHE_Runtime_Lowering_Checkpoint (void)
     return;
 
   Register_Cleanup_Callback(NULL);
-  Close_FHE_Checkpoint_Output();
+  Discard_FHE_Checkpoint_Output();
   VHO_FHE_Runtime_Lower_Checkpoint_Abort();
   Release_FHE_Runtime_Lowering_Checkpoint();
 }
