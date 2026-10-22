@@ -10039,6 +10039,15 @@ Check_CKKS_Event_Image (void)
     WN *source_definition;
     UINT32 file_id;
     const char *artifact = getenv("OPEN64_DSL_CKKS_EVENT_ARTIFACT");
+    const char *provenance_mode =
+        getenv("OPEN64_DSL_CKKS_GROUP_PROVENANCE");
+    CKKS_EVENT_CHECK
+        (provenance_mode == NULL ||
+         strcmp(provenance_mode, "retired_lowered") == 0 ||
+         strcmp(provenance_mode, "live") == 0 ||
+         strcmp(provenance_mode, "malformed") == 0 ||
+         strcmp(provenance_mode, "private") == 0,
+         "recognized provenance mode");
 
     CKKS_EVENT_CHECK(DSL_Builder_Begin_Program() &&
                      DSL_Opcode_Register_CKKS_Domain() == 9,
@@ -10072,9 +10081,10 @@ Check_CKKS_Event_Image (void)
                      "source identity");
     one = DSL_Builder_Create_Tensor_Constant
               ("event_one", tensor_ty, "float32", 1, "[2]", "splat", "1");
-    source = DSL_Builder_Create_Operator_With_Result
-                 (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
-                  &one, 1, NULL, 0, "event_source_relu", tensor_ty);
+    if (provenance_mode == NULL)
+        source = DSL_Builder_Create_Operator_With_Result
+                     (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
+                      &one, 1, NULL, 0, "event_source_relu", tensor_ty);
     encoded = DSL_Builder_Create_Operator_With_Result
                   (DSL_Opcode_Find(ckks_id, "ckks.encode", 1), 1,
                    &one, 1, NULL, 0, "event_encoded", tensor_ty);
@@ -10082,6 +10092,11 @@ Check_CKKS_Event_Image (void)
                     (DSL_Opcode_Find(ckks_id, "ckks.bootstrap", 1), 1,
                      &encoded, 1, refresh_attrs, 3,
                      "event_refreshed", tensor_ty);
+    if (provenance_mode != NULL)
+        source = DSL_Builder_Create_Operator_With_Result
+                     (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
+                      &refreshed, 1, NULL, 0,
+                      "event_source_relu", tensor_ty);
     CKKS_EVENT_CHECK(one != NULL && source != NULL && encoded != NULL &&
                      refreshed != NULL, "native values");
     memset(&position, 0, sizeof(position));
@@ -10279,6 +10294,55 @@ Check_CKKS_Event_Image (void)
                  (&mapped, sizeof(mapped), stderr),
              "two linked CKKS static subgroups");
 
+        if (provenance_mode != NULL) {
+            DSL_BUILDER_VALUE operand =
+                strcmp(provenance_mode, "private") == 0 ?
+                    encoded : refreshed;
+            DSL_BUILDER_VALUE provenance =
+                DSL_Builder_Create_Operator_With_Result
+                    (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
+                     &operand, 1, NULL, 0,
+                     "event_provenance", tensor_ty);
+            ++position.line;
+            CKKS_EVENT_CHECK
+                (provenance != NULL &&
+                 DSL_Builder_Set_Value_Source_Position
+                     (provenance, &position) &&
+                 DSL_Builder_Append_PU_Value(pu, provenance),
+                 "provenance node materialization");
+            WN *replacement_definition = Find_STID_In_Block
+                (body, DSL_Builder_Get_Value_Result_Symbol(operand));
+            WN *provenance_definition = Find_STID_In_Block
+                (body, DSL_Builder_Get_Value_Result_Symbol(provenance));
+            CKKS_EVENT_CHECK
+                (replacement_definition != NULL &&
+                 provenance_definition != NULL,
+                 "provenance definitions");
+            if (strcmp(provenance_mode, "malformed") == 0) {
+                CKKS_EVENT_CHECK
+                    (WN_EXTRACT_FromBlock(body, provenance_definition) ==
+                         provenance_definition &&
+                     DSL_IR_Image_Mark_Value_Lowered
+                         (DSL_Builder_Get_Value_Image_Id(provenance)),
+                     "unrelated lowered relation fixture");
+            } else if (strcmp(provenance_mode, "live") != 0) {
+                DSL_IR_NATIVE_VALUE_RETIRE_REQUEST retire;
+                memset(&retire, 0, sizeof(retire));
+                retire.replacement_definition = replacement_definition;
+                retire.replacement_value_id =
+                    DSL_Builder_Get_Value_Image_Id(operand);
+                retire.retiring_definition = provenance_definition;
+                retire.retiring_value_id =
+                    DSL_Builder_Get_Value_Image_Id(provenance);
+                retire.expected_retiring_operator = OPR_DSLRELU;
+                retire.expected_retiring_version = 2;
+                retire.replacement_operand_ordinal = 0;
+                CKKS_EVENT_CHECK
+                    (DSL_IR_Redirect_And_Retire_Native_Value(pu, &retire),
+                     "retired provenance redirect");
+            }
+        }
+
         TY_IDX handle_ty = Create_Runtime_Interface_Handle_TY
             ("ckks_complete_group_handle_v1");
         DSL_BUILDER_PROGRAM_UNIT callee = NULL;
@@ -10474,6 +10538,20 @@ Check_CKKS_Event_Image (void)
         DSL_IR_NATIVE_GROUP_LOWER_RESULT lowered;
         memset(&lowered, 0x5a, sizeof(lowered));
         DSL_IR_NATIVE_GROUP_LOWER_RESULT sentinel = lowered;
+        if (provenance_mode != NULL &&
+            strcmp(provenance_mode, "retired_lowered") != 0) {
+            CKKS_EVENT_CHECK
+                (!DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+                     (pu, &lower_request, 1, NULL, &lowered) &&
+                 memcmp(&lowered, &sentinel, sizeof(lowered)) == 0 &&
+                 WN_first(standard) != NULL &&
+                 Find_STID_In_Block(body, encoded_record.st) ==
+                     encoded_definition &&
+                 Find_STID_In_Block(body, refreshed_record.st) ==
+                     refreshed_definition,
+                 "live, malformed, or private provenance rejection");
+            return 0;
+        }
         if (strcmp(group_mode, "call_bad_actual") == 0) {
             WN *physical_call = const_cast<WN *>
                 (DSL_Call_Image_Get_Call_WN(callsite_record.id));
@@ -10532,6 +10610,17 @@ Check_CKKS_Event_Image (void)
                  Write_Runtime_Interface_Artifact
                      (call_artifact, pu, callee),
                  "two-PU complete-group mapped image");
+            return 0;
+        }
+        if (provenance_mode != NULL) {
+            const char *provenance_artifact = artifact == NULL ||
+                artifact[0] == '\0' ?
+                "ckks_complete_group_provenance.B" : artifact;
+            CKKS_EVENT_CHECK
+                (DSL_IR_Image_Validate_Lowered_Relations(stderr) &&
+                 Write_Runtime_Interface_Artifact
+                     (provenance_artifact, pu, NULL),
+                 "non-executable provenance mapped image");
             return 0;
         }
         if (terminal) {

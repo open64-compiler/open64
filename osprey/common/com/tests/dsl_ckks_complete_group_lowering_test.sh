@@ -11,6 +11,8 @@ image="$artifact_dir/ckks_complete_group.B"
 trace="$artifact_dir/ckks_complete_group.T"
 call_image="$artifact_dir/ckks_complete_group_call.B"
 call_trace="$artifact_dir/ckks_complete_group_call.T"
+provenance_image="$artifact_dir/ckks_complete_group_provenance.B"
+provenance_trace="$artifact_dir/ckks_complete_group_provenance.T"
 terminal_image="$artifact_dir/ckks_complete_group_terminal.B"
 terminal_trace="$artifact_dir/ckks_complete_group_terminal.T"
 
@@ -35,6 +37,8 @@ printf '%s\n' \
   "$ir_b2a -st -src $image $trace" \
   "OPEN64_DSL_CKKS_EVENT_ONLY=1 OPEN64_DSL_CKKS_COMPLETE_GROUP_ONLY=call OPEN64_DSL_CKKS_EVENT_ARTIFACT=$call_image $producer" \
   "$ir_b2a -st -src $call_image $call_trace" \
+  "OPEN64_DSL_CKKS_EVENT_ONLY=1 OPEN64_DSL_CKKS_COMPLETE_GROUP_ONLY=complete OPEN64_DSL_CKKS_GROUP_PROVENANCE=retired_lowered OPEN64_DSL_CKKS_EVENT_ARTIFACT=$provenance_image $producer" \
+  "$ir_b2a -st -src $provenance_image $provenance_trace" \
   "OPEN64_DSL_CKKS_EVENT_ONLY=1 OPEN64_DSL_CKKS_COMPLETE_GROUP_ONLY=terminal OPEN64_DSL_CKKS_COMPLETE_GROUP_TERMINAL_ARTIFACT=$terminal_image $producer" \
   "$ir_b2a -st -src $terminal_image $terminal_trace" \
   >"$artifact_dir/commands.txt"
@@ -54,10 +58,23 @@ OPEN64_DSL_CKKS_EVENT_ARTIFACT="$call_image" \
   "$producer" >"$artifact_dir/call-producer.log" 2>&1
 "$ir_b2a" -st -src "$call_image" "$call_trace" \
   >"$artifact_dir/call-ir_b2a.log" 2>&1
+OPEN64_DSL_CKKS_EVENT_ONLY=1 \
+OPEN64_DSL_CKKS_COMPLETE_GROUP_ONLY=complete \
+OPEN64_DSL_CKKS_GROUP_PROVENANCE=retired_lowered \
+OPEN64_DSL_CKKS_EVENT_ARTIFACT="$provenance_image" \
+  "$producer" >"$artifact_dir/provenance-producer.log" 2>&1
+"$ir_b2a" -st -src "$provenance_image" "$provenance_trace" \
+  >"$artifact_dir/provenance-ir_b2a.log" 2>&1
 for case_name in call_bad_actual call_bad_projection; do
   OPEN64_DSL_CKKS_EVENT_ONLY=1 \
   OPEN64_DSL_CKKS_COMPLETE_GROUP_ONLY="$case_name" \
     "$producer" >"$artifact_dir/$case_name.log" 2>&1
+done
+for case_name in live malformed private; do
+  OPEN64_DSL_CKKS_EVENT_ONLY=1 \
+  OPEN64_DSL_CKKS_COMPLETE_GROUP_ONLY=complete \
+  OPEN64_DSL_CKKS_GROUP_PROVENANCE="$case_name" \
+    "$producer" >"$artifact_dir/provenance_$case_name.log" 2>&1
 done
 OPEN64_DSL_CKKS_EVENT_ONLY=1 \
 OPEN64_DSL_CKKS_COMPLETE_GROUP_ONLY=terminal \
@@ -84,6 +101,11 @@ grep -Eq 'source_value=[0-9]+ projection=[0-9]+ actual=0 formal=0 direction=inpu
 grep -Fq 'retired_formals=1 retired_call_arguments=1' "$call_trace"
 grep -Eq 'old_actual=1 old_formal=1 value=[0-9]+ reason=verified_dead_input role=ckks.retired_original' "$call_trace"
 grep -Eq '^ LOC 1 [1-9][0-9]* ' "$call_trace"
+grep -Eq 'name=event_refreshed .*status=lowered relation=runtime_value_projection' "$provenance_trace"
+grep -Eq 'operator=OPR_DSLRELU .*status=retired redirected_to=value[0-9]+' "$provenance_trace"
+grep -Eq 'operator=OPR_DSLRELU .*status=lowered relation=ckks_expansion' "$provenance_trace"
+test "$(grep -Ec 'node=[0-9]+ ordinal=kid0 value=value3' "$provenance_trace")" -eq 2
+grep -Eq '^ LOC 1 [1-9][0-9]* ' "$provenance_trace"
 test "$(grep -c '^FUNC_ENTRY' "$terminal_trace")" -eq 1
 grep -Fq '__dsl_runtime_event_refreshed_' "$terminal_trace"
 grep -Eq '^ LOC 1 [1-9][0-9]* ' "$terminal_trace"
@@ -95,6 +117,15 @@ if grep -Fq '.WHIRL.dsl' "$artifact_dir/terminal-sections.txt" ||
   exit 1
 fi
 if [[ -n "${OPEN64_PREVIOUS_IR_B2A:-}" ]]; then
+  if "$OPEN64_PREVIOUS_IR_B2A" -st -src "$provenance_image" \
+      "$artifact_dir/previous_provenance.T" \
+      >"$artifact_dir/previous-provenance-ir_b2a.log" 2>&1; then
+    echo "previous reader unexpectedly accepted grouped provenance" >&2
+    exit 1
+  fi
+  grep -Fq 'DSL CKKS event image error' \
+    "$artifact_dir/previous-provenance-ir_b2a.log"
+  test ! -e "$artifact_dir/previous_provenance.T"
   "$OPEN64_PREVIOUS_IR_B2A" -st -src "$terminal_image" \
     "$artifact_dir/previous_terminal.T" \
     >"$artifact_dir/previous-terminal-ir_b2a.log" 2>&1
@@ -106,39 +137,51 @@ if grep -Eq 'OPR_DSL[[:space:]]|MDSL[[:space:]]' "$trace"; then
 fi
 test ! -e "$image.tmp"
 test ! -e "$call_image.tmp"
+test ! -e "$provenance_image.tmp"
 test ! -e "$terminal_image.tmp"
 if command -v sha256sum >/dev/null 2>&1; then
   (cd "$artifact_dir" && sha256sum \
     ckks_complete_group.B ckks_complete_group.T \
     ckks_complete_group_call.B ckks_complete_group_call.T \
+    ckks_complete_group_provenance.B ckks_complete_group_provenance.T \
     ckks_complete_group_terminal.B ckks_complete_group_terminal.T \
     dsl_builder_contract_test.cxx producer.log \
     private-projection-rejection.log ir_b2a.log \
     call-producer.log call-ir_b2a.log call_bad_actual.log \
-    call_bad_projection.log terminal-producer.log terminal-ir_b2a.log \
+    call_bad_projection.log provenance-producer.log \
+    provenance-ir_b2a.log provenance_live.log \
+    provenance_malformed.log provenance_private.log \
+    terminal-producer.log terminal-ir_b2a.log \
     terminal-sections.txt terminal-revision.txt commands.txt >SHA256SUMS)
 else
   (cd "$artifact_dir" && shasum -a 256 \
     ckks_complete_group.B ckks_complete_group.T \
     ckks_complete_group_call.B ckks_complete_group_call.T \
+    ckks_complete_group_provenance.B ckks_complete_group_provenance.T \
     ckks_complete_group_terminal.B ckks_complete_group_terminal.T \
     dsl_builder_contract_test.cxx producer.log \
     private-projection-rejection.log ir_b2a.log \
     call-producer.log call-ir_b2a.log call_bad_actual.log \
-    call_bad_projection.log terminal-producer.log terminal-ir_b2a.log \
+    call_bad_projection.log provenance-producer.log \
+    provenance-ir_b2a.log provenance_live.log \
+    provenance_malformed.log provenance_private.log \
+    terminal-producer.log terminal-ir_b2a.log \
     terminal-sections.txt terminal-revision.txt commands.txt >SHA256SUMS)
 fi
 if [[ -n "${OPEN64_PREVIOUS_IR_B2A:-}" ]]; then
   if command -v sha256sum >/dev/null 2>&1; then
     (cd "$artifact_dir" && sha256sum previous_terminal.T \
-      previous-terminal-ir_b2a.log >>SHA256SUMS)
+      previous-terminal-ir_b2a.log \
+      previous-provenance-ir_b2a.log >>SHA256SUMS)
   else
     (cd "$artifact_dir" && shasum -a 256 previous_terminal.T \
-      previous-terminal-ir_b2a.log >>SHA256SUMS)
+      previous-terminal-ir_b2a.log \
+      previous-provenance-ir_b2a.log >>SHA256SUMS)
   fi
 fi
 
 echo "CKKS complete-group lowering passed"
 echo "review trace: $trace"
 echo "review call trace: $call_trace"
+echo "review provenance trace: $provenance_trace"
 echo "review terminal trace: $terminal_trace"

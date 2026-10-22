@@ -37,7 +37,8 @@ static BOOL
 DSL_IR_Group_Index_Tree
         (WN *tree, WN *containing_block, UINT32 block_ordinal,
          UINT32 *next_order,
-         std::map<const WN *, DSL_IR_GROUP_TREE_POSITION> *positions)
+         std::map<const WN *, DSL_IR_GROUP_TREE_POSITION> *positions,
+         std::set<ST_IDX> *physical_symbols)
 {
     if (tree == NULL || *next_order == UINT32_MAX)
         return FALSE;
@@ -47,6 +48,8 @@ DSL_IR_Group_Index_Tree
     position.block_ordinal = block_ordinal;
     if (!positions->insert(std::make_pair((const WN *)tree, position)).second)
         return FALSE;
+    if (WN_has_sym(tree))
+        physical_symbols->insert(WN_st_idx(tree));
     if (WN_operator(tree) == OPR_BLOCK) {
         UINT32 ordinal = 0;
         for (WN *stmt = WN_first(tree); stmt != NULL;
@@ -54,7 +57,8 @@ DSL_IR_Group_Index_Tree
             if (WN_operator(stmt) != OPR_COMMENT)
                 ++ordinal;
             if (!DSL_IR_Group_Index_Tree
-                    (stmt, tree, ordinal, next_order, positions))
+                    (stmt, tree, ordinal, next_order, positions,
+                     physical_symbols))
                 return FALSE;
         }
         return TRUE;
@@ -63,7 +67,8 @@ DSL_IR_Group_Index_Tree
         WN *child = WN_kid(tree, kid);
         if (child != NULL && !DSL_IR_Group_Index_Tree
                                   (child, containing_block, block_ordinal,
-                                   next_order, positions))
+                                   next_order, positions,
+                                   physical_symbols))
             return FALSE;
     }
     return TRUE;
@@ -240,7 +245,8 @@ DSL_IR_Group_Index_Managed_Uses
          std::vector<std::vector<UINT32> > *member_arguments,
          std::map<DSL_IR_GROUP_USE_EDGE, UINT32> *call_by_actual,
          std::map<DSL_IR_GROUP_USE_EDGE, UINT32> *argument_by_actual,
-         std::set<DSL_CALL_ARGUMENT_ID> *retired_arguments)
+         std::set<DSL_CALL_ARGUMENT_ID> *retired_arguments,
+         std::set<DSL_IR_NODE_ID> *effect_nodes)
 {
     for (UINT32 id = 1; id <= DSL_Runtime_Interface_Image_Value_Count();
          ++id) {
@@ -309,6 +315,7 @@ DSL_IR_Group_Index_Managed_Uses
         DSL_STATE_EFFECT_RECORD effect;
         if (!DSL_Effect_Image_Get_State_Effect(id, &effect))
             return FALSE;
+        effect_nodes->insert(effect.owner_node_id);
         std::map<DSL_IR_NODE_ID, UINT32>::const_iterator member =
             member_by_node.find(effect.owner_node_id);
         if (member != member_by_node.end())
@@ -455,9 +462,11 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
     std::vector<DSL_IR_NATIVE_VALUE_LOWER_REQUEST> member_requests
         (member_count);
     std::map<const WN *, DSL_IR_GROUP_TREE_POSITION> tree_positions;
+    std::set<ST_IDX> physical_symbols;
     UINT32 next_order = 0;
     if (!DSL_IR_Group_Index_Tree
-            (pu_root, NULL, 0, &next_order, &tree_positions))
+            (pu_root, NULL, 0, &next_order, &tree_positions,
+             &physical_symbols))
         return DSL_IR_Lower_Report(diagnostic, 0,
                                    "PU tree indexing failed");
     std::string owner_metadata("owner_pu=");
@@ -663,11 +672,12 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
     std::map<DSL_IR_GROUP_USE_EDGE, UINT32> call_by_actual;
     std::map<DSL_IR_GROUP_USE_EDGE, UINT32> argument_by_actual;
     std::set<DSL_CALL_ARGUMENT_ID> retired_arguments;
+    std::set<DSL_IR_NODE_ID> effect_nodes;
     if (!DSL_IR_Group_Index_Managed_Uses
             (pu_info, member_by_value, member_by_node, member_by_st,
              &uses, &member_calls, &member_arguments,
               &call_by_actual, &argument_by_actual,
-              &retired_arguments))
+              &retired_arguments, &effect_nodes))
         return DSL_IR_Lower_Report
                    (diagnostic, 0, "managed-use indexing failed");
     std::vector<DSL_REGION_SYMBOL_REDIRECT> region_redirects;
@@ -744,6 +754,7 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
     std::vector<UINT32> definition_counts(members.size(), 0);
     std::vector<DSL_IR_GROUP_USE_EDGE> physical_edges;
     std::vector<DSL_IR_GROUP_USE_EDGE> logical_edges;
+    BOOL has_external_provenance = FALSE;
     if (!DSL_IR_Group_Index_Physical_Uses
             (pu_root, UINT32_MAX, member_by_definition, member_by_st,
              &definition_counts, &physical_edges))
@@ -760,13 +771,44 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
             continue;
         std::map<DSL_IR_NODE_ID, UINT32>::const_iterator destination =
             member_by_node.find(reference.owner_node_id);
-        if (destination == member_by_node.end())
-            return DSL_IR_Lower_Report
-                       (diagnostic, member_groups[source->second],
-                        "member has an escaping logical use");
+        if (destination == member_by_node.end()) {
+            const DSL_IR_GROUP_LOWER_JOURNAL &group =
+                groups[member_groups[source->second]];
+            DSL_IR_NODE_RECORD owner_node;
+            DSL_IR_VALUE_RECORD owner_result;
+            DSL_IR_VALUE_ID redirect_target = DSL_IR_VALUE_INVALID_ID;
+            if (members[source->second].value.id != group.output.id ||
+                !DSL_IR_Image_Get_Node(reference.owner_node_id,
+                                       &owner_node) ||
+                !DSL_IR_Image_Get_Value(owner_node.result_value_id,
+                                        &owner_result) ||
+                (owner_node.flags &
+                 (DSL_IR_NODE_FLAG_RETIRED | DSL_IR_NODE_FLAG_LOWERED |
+                  DSL_IR_NODE_FLAG_DEAD_ELIDED)) == 0 ||
+                ((owner_node.flags & DSL_IR_NODE_FLAG_RETIRED) != 0 &&
+                 !DSL_IR_Image_Value_Redirect_Target
+                      (owner_result.id, &redirect_target)) ||
+                ST_IDX_level(owner_result.st) != CURRENT_SYMTAB ||
+                owner_values.find(owner_result.st) == owner_values.end() ||
+                owner_values.find(owner_result.st)->second.id !=
+                    owner_result.id ||
+                physical_symbols.find(owner_result.st) !=
+                    physical_symbols.end() ||
+                DSL_Region_Symbol_Use_Count(pu_info, owner_result.st) != 0 ||
+                effect_nodes.find(owner_node.id) != effect_nodes.end())
+                return DSL_IR_Lower_Report
+                           (diagnostic, member_groups[source->second],
+                            "member has an escaping logical use");
+            has_external_provenance = TRUE;
+            continue;
+        }
         logical_edges.push_back
             (std::make_pair(source->second, destination->second));
     }
+    if (has_external_provenance &&
+        !DSL_IR_Image_Validate_Lowered_Relations(diagnostic))
+        return DSL_IR_Lower_Report
+                   (diagnostic, 0, "non-executable provenance is invalid");
     for (UINT32 i = 0; i < members.size(); ++i) {
         const DSL_IR_NATIVE_VALUE_LOWER_JOURNAL &member = members[i];
         const DSL_IR_GROUP_LOWER_JOURNAL &group =

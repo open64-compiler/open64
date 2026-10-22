@@ -34,6 +34,14 @@ rule. The mapped DSL image retains logical provenance for retired members,
 and `ir_b2a -st -src` prints the final runtime projection without exposing
 the physical `OPR_DSL` escape.
 
+A final member may also be named by retained non-executable semantic rows.
+M1 admits such an external logical reference only when its destination is an
+already retired, lowered, or dead-elided node with a valid existing relation,
+the destination result belongs to the active PU, and its ST has no physical
+tree use, REGION interface, or state effect. The existing lowered-relation
+verifier must accept the full image before commit. A live destination or any
+external reference from an intermediate private member still rejects.
+
 The focused CKKS fixture now joins two ordered static subgroups in one
 request. Its final replacement has the sole projection, an intermediate
 member has none, a fabricated intermediate projection rejects before
@@ -45,6 +53,12 @@ The two-PU fixture additionally proves a `FINAL_RESULT` handle passed to a
 rewritten runtime `VCALL` while a second original actual for that same value
 is verified retired. A wrong physical actual or wrong projection ID rejects
 with native definitions and the detached standard block unchanged.
+Another mapped fixture retains both a retired redirect and a CKKS-expanded
+lowered source row that reference the final member. Live, malformed-lowered,
+and intermediate-member provenance variants reject without mutation.
+The immediately previous reader rejects this intermediate image at its CKKS
+event gate, while its `-st -src` output for the standard-only terminal image
+is byte-identical to the current reader's output.
 
 The optional CKKS event rows remain in this intermediate M1 image. An
 immediately previous `ir_b2a` can parse the unchanged physical row layouts

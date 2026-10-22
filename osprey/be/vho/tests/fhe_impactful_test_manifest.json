@@ -274,6 +274,7 @@
       "patterns": [
         "osprey/common/com/dsl_ir_rewrite.*",
         "osprey/common/com/dsl_ir_image.*",
+        "osprey/common/com/dsl_ir_group_lower.*",
         "osprey/common/com/dsl_shape.*",
         "osprey/common/com/dsl_builder.*",
         "osprey/common/fhe/fhe_plan.*",
