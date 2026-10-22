@@ -177,6 +177,8 @@ DSL_Tile_Select_With_Roofline (DSL_TILE_ANALYSIS *analysis,
     return TRUE;
 }
 
+static UINT64 DSL_Tile_Ceil_Div (UINT64 value, UINT64 divisor);
+
 static BOOL
 DSL_Tile_Trace_Selection (const DSL_TILE_ANALYSIS *analysis,
                           const DSL_TILE_SITE_RECORD &site,
@@ -241,6 +243,22 @@ DSL_Tile_Trace_Selection (const DSL_TILE_ANALYSIS *analysis,
                 (unsigned long long)roof.compute_ns,
                 (unsigned long long)roof.memory_ns,
                 (unsigned long long)roof.bound_ns);
+        UINT64 grid_m = tile.cta_m ?
+            DSL_Tile_Ceil_Div(tile.problem_m, tile.cta_m) : 0;
+        UINT64 grid_n = tile.cta_n ?
+            DSL_Tile_Ceil_Div(tile.problem_n, tile.cta_n) : 0;
+        UINT64 k_iterations = tile.cta_k ?
+            DSL_Tile_Ceil_Div(tile.problem_k, tile.cta_k) : 0;
+        fprintf(file, "AI_OPT %u TILE_GRID %u %u %u %llu %llu %llu "
+                      "%llu %llu %llu %llu\n",
+                trace_version, site.id, tile.id, tile.optimization_plan_id,
+                (unsigned long long)tile.problem_m,
+                (unsigned long long)tile.problem_n,
+                (unsigned long long)tile.problem_k,
+                (unsigned long long)grid_m,
+                (unsigned long long)grid_n,
+                (unsigned long long)(grid_m * grid_n),
+                (unsigned long long)k_iterations);
     }
     fprintf(file, "AI_OPT %u TILE_SELECT %u %u %u %u %u %u %u "
                   "selection_reason=%s\n",

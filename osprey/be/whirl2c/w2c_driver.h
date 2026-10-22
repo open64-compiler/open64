@@ -211,6 +211,7 @@ extern BOOL W2C_Emit_Linedirs;   /* Emit preprocessing line-directives */
 extern BOOL W2C_Emit_Frequency;  /* Emit feedback frequency information */
 extern BOOL W2C_Emit_Cgtag;      /* Emit codegen tags for loop */
 extern BOOL W2C_Lower_Fortran;   /* Lower Fortran intrinsics and io */
+extern BOOL W2C_Cuda_Mode;       /* Translate a selected NVISA device PU */
 extern BOOL W2F_Emit_Omp;        /* Force OMP pragmas wherever possible */
 
 

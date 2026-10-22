@@ -15,8 +15,42 @@ cost, or feedback evidence. AIO-11 also has an executable rank-2 F4
 rewrite to a generic cuBLASLt provider ABI. **That provider path is not an
 Open64-generated tiled GEMM.** The separate F32 path now has a selected CUDA
 tile source, a trace/report tool, and an opt-in generated-provider WHIRL
-rewrite. It does not yet have a linked CUDA provider, numerical GPU result,
-or measured baseline-versus-generated-tile result.
+rewrite and a separate selected synchronous device-WHIRL image. It does not
+yet have a linked CUDA provider, numerical GPU result, native PTX, or measured
+baseline-versus-generated-tile result.
+
+The compiler-side source-emission slice adds opt-in `whirl2c -cuda`
+plumbing and a target-neutral `ST_ATTR_DEVICE_SYMBOL` contract. The attribute
+distinguishes kernel/device function and global/shared/constant data, and
+survives symbol-table serialization without reading the x86-64 host `ST`
+TLS bitfield as NVISA memory space. The translator emits `__global__`,
+`__device__`, `__shared__`, and `__constant__` from this contract, while still
+recognizing legacy NVISA space bits when no attribute is present. Clone,
+IPA merge, verification, and symbol printing are updated. Syntax checks with
+the Linux build flags pass; an isolated native contract binary and rebuilt
+`ir_b2a` pass the dedicated mapped-image test, preserving kernel, global,
+and shared attributes across `.B`/`.T`. An older reader labels the new kind
+unknown, so mixed-version toolchains are unsupported. This groundwork is now
+followed by a selected synchronous GEMM device PU in a separate mapped image.
+The existing M2 `.cu` remains legacy-template output; `whirl2c -cuda` emits
+a second source from the device PU.
+The checksum-verified symbol contract images are retained in
+`artifacts/ai_optimization/m2-device-symbol-contract/run-001/` and `run-002/`.
+The latter includes both a host PU and a device-attributed PU. The backend
+driver filters out host PUs under `-cuda`, suppresses host global declarations,
+and rejects an image with no eligible device PU. The expanded `run-010/`
+contract has a nonempty device `DO_LOOP` and shared-memory store; isolated
+rebuilt binaries round-trip the `.B`, reject a separate host-only image, emit
+a device-only `.cu` with C-linkage kernel naming, and pass a host
+C++ syntax check with CUDA qualifiers stubbed. CUDA mode emits primitive
+scalar aliases without the host `whirl2c.h`. This earlier run is a translation
+fixture, not the selected GEMM kernel or an NVCC test. The selected-kernel
+evidence in `m2-whirl-kernel/run-008/` includes a complete compiler exit,
+device `.B`, WHIRL-derived CUDA, legacy CUDA, trace, and a 256-thread CPU CTA
+simulation with zero error against reference and between the two kernels.
+`run-009/` verifies WHIRL-only selection with legacy emission disabled and
+the trace/report labeled `device_whirl_sidecar`.
+Native PTX and GPU execution remain unverified.
 
 **Next acceptance gate:** publish `m0-baseline` for the direct fixed-shape F32
 matmul, with correctness, target identity, raw timings, source, binary `.B`,
@@ -118,6 +152,16 @@ so its timing is not target profitability evidence or an accepted `m0` receipt.
 The same executable and WHIRL evidence are retained in
 `m0-baseline/native-ready-001/` with a native x86-64 runner; no native receipt
 has been recorded.
+On 2026-10-21, M1's digest-named checkpoint passed its `SHA256SUMS` audit.
+Replaying both raw traces through the current `ai-opt-report` reproduced
+their archived phase logs, complete logs, and summaries byte for byte. The
+option-off replay reports no selected tile; the option-on replay retains
+three P7 candidates and selected plan 3. This closes the local report
+reproducibility check, not M1 acceptance: `native-ready-001/native.json`
+still says `native_verified=false`, and no reviewed native M0 receipt exists.
+The archived M1 trace predates the additive `TILE_GRID` rows; a fresh compiler
+checkpoint will be needed to review those rows, without changing the archived
+receipt.
 The selected compiler `.cu` is retained in `compiler-source/run-018/` with an
 explicit TMA-versus-fallback launch flag. The exact same source bytes and
 compiler trace are packaged in `compiler-gpu-validation/run-006/` with a
@@ -153,14 +197,27 @@ native run is pending; the local host has no `nvcc` or `nvidia-smi`.
 These rows mirror the [Current Matmul Execution Queue](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#current-matmul-execution-queue).
 An unchecked gate is open even if a related check-only AIO slice is complete.
 
-| Gate | Status on 2026-10-20 | Evidence required to close | Next action |
+| Gate | Status on 2026-10-21 | Evidence required to close | Next action |
 | --- | --- | --- | --- |
 | `m0-baseline` | Open; compiled-PU native package ready | Direct F32 correctness passes in emulation; source, `.B`/`.T`, executable, commands, and hashes are retained in `emulated-smoke-001/`. `native-ready-001/` preserves the exact executable for fresh native correctness and timing. Emulated timing is not target evidence. | Run on the intended native x86-64 target and review the returned receipt. |
 | `m1-trace-report` | Trace/report implementation verified; acceptance open | Schema v7 emits P0-P11 coverage, P0 semantic facts, P1 locality facts, and an option-off trace. `ai-opt-report` validates decisions and produces all twelve phase logs, the complete log, and the summary. The digest-named checkpoint retains both raw `.t` files, reports, commands, and checksums; malformed/incomplete-trace tests pass. The receipt explicitly says `m1_accepted=false`. | Obtain an accepted native `m0-baseline` predecessor, then review and accept the m1 receipt; broaden other phase details as each optimizer is implemented. |
 | Tile costing prerequisite | Open | Baseline plus at least two M/N/K tile families with explicit units, target resources, confidence, rejection reasons, and stable plan IDs. | Refine AIO-9 check-only plans into costable full candidates. |
-| `m2-multilevel-tiling` | Open; selected-plan WHIRL rewrite verified, provider unresolved | `compiler-source/run-018/` retains M2a. `m2-applied/run-005/` shows the option-on generated-provider call and P7/P9 rewrite rows; option-off retains the generic call. `m2-whirl-g14/run-007/` retains matched before/after binary WHIRL and a full diff, and verifies ABI size, invalid-plan/resource rejection, and rollback. The generated runtime symbol is not linked to a CUDA provider. | Implement and link the CUDA runtime adapter and fallback, then verify correctness and same-target timing. |
+| `m2-multilevel-tiling` | Open; synchronous device-source parity verified for one fixed tile, native GPU pending | `m2-applied/run-007/` retains the host generated-provider rewrite and plan traces; `m2-whirl-g14/run-007/` retains host before/after WHIRL. `m2-generated-runtime/run-009/` packages the GPU validation path. `m2-whirl-kernel/run-008/` adds a separate selected device WHIRL image, translated CUDA, and zero-error CPU CTA parity against reference and legacy CUDA. `m2-whirl-kernel/run-009/` verifies legacy-OFF translation and an accurate trace/report. | Register the device PU in the driver, establish full trace provenance, validate NVISA/PTX and native CUDA resources/correctness/timing on Hopper, and compare against an accepted same-target baseline. Production tensor-provider integration remains separate. |
 | `m3-prefetch-pipeline` | Open; native validation package prepared | Selected P7.4/P8 staging and fallback are in the source sidecar and trace. `compiler-gpu-validation/run-006/` preserves the M2 handoff and is ready to compare selected TMA and synchronous paths with correctness and 30 wall-clock launch-to-completion samples per path, including host launcher setup. No native compile or timing has been run, and WHIRL is unchanged. | Run the package on a Hopper-or-later GPU, then integrate the selected plan into executable WHIRL after m2. |
 | Cost calibration | Open | Predicted-versus-measured compute, memory, sync, launch, and occupancy terms, with provenance and model error. | Calibrate from accepted m0-m3 measurements. |
+
+The tile trace now also records each candidate's CTA grid and K-iteration
+count. For the 128x128x128 fixture, `cuda_64` exposes four CTAs while the
+selected `cuda_128` exposes one. Neither SM-level occupancy nor underfilled
+grid throughput is in the current cost equation, and the published-peak
+Roofline bound cannot settle this comparison. Treat the present selection as
+low-confidence until native Hopper correctness and paired timings are
+available; do not infer a performance win from the compiler artifact.
+The isolated backend rebuild and fresh `m2-applied/run-007/` trace confirm
+these rows are compiler-emitted, not only report-test fixtures. Its SHA256
+manifest, option-on/off report checks, and compiled-PU mock-launch smoke pass.
+`m2-generated-runtime/run-009/` passes prepared-package integrity checks;
+it has not been submitted to a native GPU.
 
 ## Phase maturity
 
@@ -179,7 +236,7 @@ plan and their linked AIO documents.
 | AI-P6 residency | AIO-8 check-only | Verify compiled SMEM/register usage and CTA residency against the selected plan. |
 | AI-P7 multi-level tiling | AIO-9 candidate/selection plus opt-in generated-provider rewrite | Calibrate resource use and execute the selected tile on a GPU. |
 | AI-P8 fetch and pipeline | AIO-10 check-only | Allocate A/B slots and emit legal copy, wait, compute, and release events. |
-| AI-P9 physical plan | AIO-11 F4 provider rewrite; separate F32 generated-provider call verified | Link the generated call to the selected CUDA kernel with fallback and runtime evidence. |
+| AI-P9 physical plan | AIO-11 F4 provider rewrite; F32 generated-provider call linked to a fixed-shape review adapter and mock-tested | Verify the actual CUDA launch, fallback diagnostics, and production tensor-provider boundary. |
 | AI-P10 runtime variants | AIO-12 check-only guarded variant evidence | Defer executable variants until the kernel and fallback are certified. |
 | AI-P11 feedback | AIO-13 check-only telemetry join | Add reviewed profile transport and measured feedback after executable work. |
 
@@ -198,7 +255,8 @@ are frontend settings, not backend optimization controls.
 | `-Wb,-ttOP2:0x00800000` | Implemented for the standalone matmul source slice | Schema v7 covers P0-P11, records P0/P1 facts, and retains P7/P8 decisions; `ai-opt-report` rejects missing or contradictory coverage. Other workload scopes still need coverage. |
 | `-Wb,-DSL:ai_opt_trace=ON|OFF` | Registered; ON by default during AI optimization development | ON activates the trace bit even when CUDA source emission is off; the standalone matmul records why P7/P8 did not run. OFF suppresses AI decision rows. |
 | `-Wb,-DSL:cuda_tile_output=<new-file.cu>` | Registered opt-in source sidecar | Emits one cost-selected F32 tile source for a straight-line PU. Does not apply a WHIRL rewrite or close `m2`. |
-| `-Wb,-DSL:cuda_tile_apply=ON` | Registered, OFF by default; requires `-O3`, `-noinline`, one matmul, `cuda_tile_output`, and synchronous movement | Atomically rewrites the selected matmul to `__open64_dsl_matmul_generated_v1`; P7/P9 trace rows report one rewrite. The runtime provider is not implemented or linked yet. |
+| `-Wb,-DSL:cuda_whirl_output=<new-file.B>` | Registered opt-in device-image sidecar | Emits a complete synchronous F32 GEMM device PU for exact-divisible fixed shapes after cost selection; `whirl2c -cuda` translates the image. Independent of legacy source emission. No native PTX claim. |
+| `-Wb,-DSL:cuda_tile_apply=ON` | Registered, OFF by default; requires `-O3`, `-noinline`, one matmul, a legacy source or device-WHIRL output, and synchronous movement | Rewrites the host matmul to `__open64_dsl_matmul_generated_v1`; P7/P9 trace rows report one rewrite. The fixed-shape review adapter links and mock-tests this call; native GPU and production-provider integration remain open. |
 | `-trOP2` | Existing IR-dump selector | Separate from the proposed AI decision-trace mask. |
 | `-DSL:gemm_precision=preserve|allow_narrow` | Proposed; not registered | Default preserves source precision; narrowing also needs a numerical contract and full-plan legality/profitability. |
 | `-DSL:gemm_schedule=auto|conventional|persistent` | Proposed; not registered | Do not expose until a persistent kernel is implemented and verified. |
@@ -240,3 +298,9 @@ updates the implementation queue:
 | 2026-10-20 | Prepared a source-preserving Hopper CUDA validation bundle with remote compile/run/retrieval tooling. GPU execution and compiler lowering remain open. | [CUDA bundle contract](../osprey/be/vho/tests/ai_matmul_cuda/README.md). |
 | 2026-10-20 | Added opt-in compiler-selected CUDA source emission; `cuda_128` source and option-off/on evidence retained. WHIRL application and native GPU verification remain open. | [Compiler source bundle](../osprey/be/vho/tests/ai_matmul_cuda/README.md). |
 | 2026-10-21 | Added opt-in selected-tile WHIRL application and a 64-byte generated-provider plan ABI. Normal `-O3` option-off/on traces and matched binary-WHIRL before/after views verify the compiler rewrite; the CUDA runtime provider and native measurement remain open. | `m2-applied/run-005/`, `m2-whirl-g14/run-007/`, [compiler runner](../osprey/be/vho/tests/ai_matmul_cuda/README.md). |
+| 2026-10-21 | Added the fixed-shape M2 review runtime and strict native validation package. The actual rewritten PU links and reaches a mock launch hook with the expected descriptor. GPU compilation, execution, and same-target comparison remain open. | `m2-applied/run-006/`, `m2-generated-runtime/run-003/`, [runtime bundle](../osprey/be/vho/tests/ai_matmul_cuda/README.md). |
+| 2026-10-21 | Added a dedicated remote handoff for the applied M2 package, with input and native-output manifests, failure-log retrieval, no-reuse policy, and host-only integrity tests. The transport has not been exercised against a remote GPU. | `m2-generated-runtime/run-006/`, [remote runner](../osprey/be/vho/tests/ai_matmul_cuda/remote_generated.py). |
+| 2026-10-21 | Rebuilt the M2 backend in an isolated temporary clone, regenerated an applied artifact with `TILE_GRID` rows, verified its manifest and compiled-PU mock launch, and prepared a new native GPU package. The selected one-CTA grid remains an unpriced cost-model limitation. | `m2-applied/run-007/`, `m2-generated-runtime/run-009/`. |
+| 2026-10-21 | Added a validation-only untiled CUDA control with nonuniform correctness checks and 30 paired CUDA-event samples to separate tile-kernel timing from full-PU transfer/allocation time. It is not an Open64 baseline and has not run on a GPU. | `m2-generated-runtime/run-008/`, [kernel control](../osprey/be/vho/tests/ai_matmul_cuda/kernel_control.cu). |
+| 2026-10-21 | Verified a nonempty device WHIRL loop and shared-memory store through mapped-image round-trip and isolated rebuilt `whirl2c -cuda`; retained the C-linkage `.cu`, checked host-only rejection, and passed a host C++ syntax check. The selected GEMM PU remains unmaterialized. | `m2-device-symbol-contract/run-010/`, [device contract](../osprey/common/com/tests/device_symbol_image_test.sh). |
+| 2026-10-21 | Materialized the selected synchronous GEMM as a separate device WHIRL image. `whirl2c -cuda` emits the full kernel; a 256-thread CPU CTA simulation matches reference and legacy source with zero maximum error. Also verified selection and translation with the legacy source disabled and its trace/report corrected. This is not native PTX or GPU acceptance. | `m2-whirl-kernel/run-008/` and `run-009/`, [parity harness](../osprey/be/vho/tests/ai_matmul_cuda/test_whirl_cuda_parity.sh). |

@@ -43,8 +43,11 @@ BOOL VHO_DSL_CUDA_TMA_Prefetch = FALSE;
 BOOL VHO_DSL_CUDA_TMA_Prefetch_Set = FALSE;
 BOOL VHO_DSL_CUDA_Tile_Apply = FALSE;
 BOOL VHO_DSL_CUDA_Tile_Apply_Set = FALSE;
+BOOL VHO_DSL_CUDA_Legacy_Emit = TRUE;
+BOOL VHO_DSL_CUDA_Legacy_Emit_Set = FALSE;
 char *VHO_DSL_PU_Specialization_Checkpoint_Output = NULL;
 char *VHO_DSL_CUDA_Tile_Output = NULL;
+char *VHO_DSL_CUDA_Whirl_Output = NULL;
 
 static OPTION_DESC Options_DSL[] = {
   { OVK_BOOL, OV_VISIBLE, TRUE, "ai_opt_trace", "ai_opt_trace",
@@ -56,8 +59,13 @@ static OPTION_DESC Options_DSL[] = {
   { OVK_BOOL, OV_VISIBLE, TRUE, "cuda_tile_apply", "cuda_tile_apply",
     FALSE, 0, 0, &VHO_DSL_CUDA_Tile_Apply,
     &VHO_DSL_CUDA_Tile_Apply_Set },
+  { OVK_BOOL, OV_VISIBLE, TRUE, "cuda_legacy_emit", "cuda_legacy_emit",
+    FALSE, 0, 0, &VHO_DSL_CUDA_Legacy_Emit,
+    &VHO_DSL_CUDA_Legacy_Emit_Set },
   { OVK_NAME, OV_VISIBLE, FALSE, "cuda_tile_output", "cuda_tile_output",
     0, 0, 0, &VHO_DSL_CUDA_Tile_Output, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "cuda_whirl_output", "cuda_whirl_output",
+    0, 0, 0, &VHO_DSL_CUDA_Whirl_Output, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "pu_specialization_checkpoint",
     "pu_specialization_checkpoint", 0, 0, 0,
     &VHO_DSL_PU_Specialization_Checkpoint_Output, NULL },

@@ -102,6 +102,7 @@
 #include "config.h"		    /* for LNO_Path, etc. */
 #include "config_opt.h"             /* for Instrumentation_Enabled */
 #include "config_list.h"	    /* for List_Enabled, etc. */
+#include "config_clist.h"        /* for CLIST_cuda */
 #include "config_lno.h"		    /* for LNO_Run_Lego, etc. */
 #include "config_cache.h"           /* for Mhd and Mhd_Options */
 #include "config_product.h"         /* for so names, etc. */
@@ -437,6 +438,7 @@ static BOOL need_ipl_output = FALSE;
 static BOOL need_fhe_checkpoint_output = FALSE;
 static BOOL need_fhe_materialization_output = FALSE;
 static BOOL need_fhe_runtime_lower_output = FALSE;
+static UINT32 cuda_emitted_pu_count = 0;
 static Output_File *ir_output = 0;
 static char *fhe_checkpoint_temp_name = NULL;
 static char *dsl_pu_checkpoint_temp_name = NULL;
@@ -831,8 +833,12 @@ Phase_Init (void)
 	Lno_Init ();
     if ( Opt_Level > 0 ) /* run VHO at -O1 and above */
         Vho_Init ();
-    if (Run_w2c)
-	W2C_Outfile_Init (TRUE/*emit_global_decls*/);
+    if (Run_w2c) {
+        FmtAssert(!CLIST_cuda || !Run_w2fc_early,
+                  ("whirl2c -cuda does not support early source emission"));
+        cuda_emitted_pu_count = 0;
+	W2C_Outfile_Init (!CLIST_cuda/*emit_global_decls*/);
+    }
     if (Run_w2f)
 	W2F_Outfile_Init ();
     if ((Run_lno || Run_preopt) && !Run_cg && !(Run_wopt || (Run_vsaopt || Run_ipsaopt)))
@@ -917,8 +923,11 @@ Phase_Fini (void)
     CURRENT_SYMTAB = GLOBAL_SYMTAB;
 
     /* Always finish w2c and w2f first */
-    if (Run_w2c)
-	W2C_Outfile_Fini (TRUE/*emit_global_decls*/);
+    if (Run_w2c) {
+	W2C_Outfile_Fini (!CLIST_cuda/*emit_global_decls*/);
+        FmtAssert(!CLIST_cuda || cuda_emitted_pu_count != 0,
+                  ("whirl2c -cuda found no device-attributed PU"));
+    }
     if (Run_w2f)
 	W2F_Outfile_Fini ();
 
@@ -1261,18 +1270,33 @@ Post_LNO_Processing (PU_Info *current_pu, WN *pu)
                               ((Language == LANG_F90) &&
 			       (CURRENT_SYMTAB == GLOBAL_SYMTAB + 2) &&
 			       (!Is_Set_PU_Info_flags(current_pu, PU_IS_COMPILER_GENERATED))) ;
+
+    BOOL is_cuda_device_pu = FALSE;
+    if (Run_w2c && CLIST_cuda) {
+        const ST& symbol = St_Table[PU_Info_proc_sym(current_pu)];
+        const DEVICE_SYMBOL_KIND kind = ST_device_symbol_kind(symbol);
+        is_cuda_device_pu = kind == DEVICE_SYMBOL_KERNEL ||
+                            kind == DEVICE_SYMBOL_FUNCTION;
+#ifdef TARG_NVISA
+        if (kind == DEVICE_SYMBOL_NONE && ST_in_global_mem(&symbol))
+            is_cuda_device_pu = TRUE;
+#endif
+    }
     
     /* Only run w2c and w2f on top-level PUs, unless otherwise requested.
      */
     if (Run_w2c && !Run_w2fc_early) {
-        if (W2C_Should_Emit_Nested_PUs() || is_user_visible_pu) {
+        if (CLIST_cuda ? is_cuda_device_pu :
+            (W2C_Should_Emit_Nested_PUs() || is_user_visible_pu)) {
             VHO_FHE_UNLOWERED_GATE_RESULT gate_result;
             FmtAssert(VHO_FHE_Unlowered_Gate_Program_Unit
                           (current_pu, pu, stderr, &gate_result),
                       ("unlowered DSL/FHE node reached whirl2c"));
             if (Cur_PU_Feedback)
                 W2C_Set_Frequency_Map(WN_MAP_FEEDBACK);
-            W2C_Outfile_Translate_Pu(pu, TRUE/*emit_global_decls*/);
+            W2C_Outfile_Translate_Pu(pu, !CLIST_cuda/*emit_global_decls*/);
+            if (CLIST_cuda)
+                ++cuda_emitted_pu_count;
         }
     }
     if (Run_w2f && !Run_w2fc_early) {

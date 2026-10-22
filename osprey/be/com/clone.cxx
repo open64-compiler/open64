@@ -549,8 +549,9 @@ IPO_SYMTAB::fix_table_entry<ST_ATTR>::operator () (UINT idx, ST_ATTR* st_attr) c
     // bug fix for OSP_125
     Is_True (ST_ATTR_kind (*st_attr) == ST_ATTR_DEDICATED_REGISTER || 
              ST_ATTR_kind (*st_attr) == ST_ATTR_SECTION_NAME ||
-             ST_ATTR_kind (*st_attr) == ST_ATTR_ABSOLUTE_LOCATION,
-	     ("expecting DEDICATED_REGISTER or SECTION_NAME or ABSOLUTE_LOCATION"));
+             ST_ATTR_kind (*st_attr) == ST_ATTR_ABSOLUTE_LOCATION ||
+             ST_ATTR_kind (*st_attr) == ST_ATTR_DEVICE_SYMBOL,
+	     ("unexpected ST_ATTR kind while cloning"));
     ST_IDX st_idx = ST_ATTR_st_idx (*st_attr);
     Set_ST_ATTR_st_idx (*st_attr, make_ST_IDX (ST_IDX_index (st_idx) +
 					 _sym->Get_cloned_st_last_idx(),
@@ -1100,4 +1101,3 @@ IPO_ADDR_HASH::Reset_Lookup (void *key)
     p = p->next;
   }
 } // IPO_ADDR_HASH::Reset_Lookup
-

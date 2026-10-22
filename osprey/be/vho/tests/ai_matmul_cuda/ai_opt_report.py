@@ -29,6 +29,9 @@ PHASE_STATUSES = frozenset(("disabled_by_option", "disabled_by_policy",
 
 def parse(trace: str) -> tuple[list[dict], dict, dict]:
     candidates: list[dict] = []
+    grids: dict[int, dict] = {}
+    k_loop: dict | None = None
+    whirl_kernel: dict | None = None
     selection: dict | None = None
     action: dict | None = None
     fetch_candidates: list[dict] = []
@@ -129,6 +132,15 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                                          "sync", "launch", "runtime")):
                 raise ValueError("candidate cost components do not sum to total")
             candidates.append(row)
+        elif kind == "TILE_GRID" and trace_version == "7" and len(fields) == 13:
+            (site, tile, plan, problem_m, problem_n, problem_k,
+             grid_m, grid_n, grid_ctas, k_iterations) = map(int, fields[3:])
+            if plan in grids:
+                raise ValueError("duplicate tile grid")
+            grids[plan] = dict(site=site, tile=tile,
+                               problem=(problem_m, problem_n, problem_k),
+                               grid=(grid_m, grid_n),
+                               ctas=grid_ctas, k_iterations=k_iterations)
         elif kind == "TILE_SELECT" and len(fields) == (11 if trace_version in ("3", "4", "5", "6", "7") else 10):
             if selection is not None:
                 raise ValueError("duplicate tile selection")
@@ -152,6 +164,19 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
             action = dict(site=int(site), plan=int(plan), emission=emission,
                           tile_rewrite=tile_rewrite, lower=lower,
                           lowered_count=int(count))
+        elif kind == "K_LOOP" and trace_version == "7" and len(fields) == 10:
+            if k_loop is not None:
+                raise ValueError("duplicate selected K loop")
+            site, plan, tile, start, end, step, scope = fields[3:]
+            k_loop = dict(site=int(site), plan=int(plan), tile=int(tile),
+                          start=int(start), end=int(end), step=int(step),
+                          scope=scope)
+        elif kind == "WHIRL_KERNEL" and trace_version == "7" and len(fields) == 7:
+            if whirl_kernel is not None:
+                raise ValueError("duplicate device WHIRL kernel")
+            site, plan, tile, image = fields[3:]
+            whirl_kernel = dict(site=int(site), plan=int(plan),
+                                tile=int(tile), image=image)
         elif kind == "FETCH_CAND" and trace_version in ("5", "6", "7") and len(fields) == 15:
             (site, plan, optimization_plan, engine, legality, reason,
              stages, distance, buffering, raw, hidden, unhidden) = fields[3:]
@@ -194,7 +219,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         if not candidates and selection is None and action is None:
             if phases[7]["status"] not in ("disabled_by_option", "no_eligible_region"):
                 raise ValueError("missing tile decision for active P7")
-            if fetch_candidates or fetch_selection or fetch_action:
+            if fetch_candidates or fetch_selection or fetch_action or grids:
                 raise ValueError("fetch decision without tile selection")
             if semantic or locality:
                 raise ValueError("tensor facts without active tile analysis")
@@ -226,6 +251,24 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     if any(row["site"] != selection["site"] for row in candidates):
         raise ValueError("tile site mismatch")
     by_plan = {row["plan"]: row for row in candidates}
+    if grids:
+        if set(grids) != set(by_plan):
+            raise ValueError("incomplete tile grid coverage")
+        for plan, grid in grids.items():
+            row = by_plan[plan]
+            m, n, k = grid["problem"]
+            bm, bn, bk = row["cta"]
+            if (grid["site"] != row["site"] or grid["tile"] != row["tile"]
+                    or min(m, n, k) <= 0):
+                raise ValueError("tile grid disagrees with candidate")
+            expected = ((m + bm - 1) // bm, (n + bn - 1) // bn,
+                        (k + bk - 1) // bk) if min(bm, bn, bk) > 0 else (0, 0, 0)
+            if (grid["grid"] != expected[:2]
+                    or grid["ctas"] != expected[0] * expected[1]
+                    or grid["k_iterations"] != expected[2]
+                    or (row["family"] == "baseline") != (row["cta"] == (0, 0, 0))):
+                raise ValueError("tile grid disagrees with candidate")
+            row["grid"] = grid
     if selection["baseline"] not in by_plan or selection["selected"] not in by_plan:
         raise ValueError("baseline or selected plan missing from candidates")
     if by_plan[selection["baseline"]]["family"] != "baseline":
@@ -258,10 +301,36 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         raise ValueError("relative-cost reason disagrees with cost units")
     if (action["site"] != selection["site"] or
             action["plan"] != selection["selected"] or
-            action["emission"] != "source_sidecar" or
+            action["emission"] not in ("source_sidecar", "device_whirl_sidecar") or
             action["tile_rewrite"] not in ("none", "generated_runtime_call") or
             action["lower"] != "dsl_to_runtime"):
         raise ValueError("action does not match selected tile plan")
+    if k_loop is not None:
+        chosen_loop_tile = next(
+            (row for row in candidates if row["plan"] == selection["selected"]),
+            None)
+        if (chosen_loop_tile is None or
+                (k_loop["site"], k_loop["plan"], k_loop["tile"],
+                 k_loop["start"], k_loop["step"], k_loop["scope"]) !=
+                (selection["site"], selection["selected"],
+                 chosen_loop_tile["tile"], 0, chosen_loop_tile["cta"][2],
+                 "detached_plan_only") or k_loop["end"] <= 0 or
+                ("grid" in chosen_loop_tile and
+                 k_loop["end"] != chosen_loop_tile["grid"]["problem"][2])):
+            raise ValueError("selected K loop disagrees with tile plan")
+        selection["k_loop"] = k_loop
+    if whirl_kernel is not None:
+        chosen_kernel_tile = by_plan[selection["selected"]]
+        if ((whirl_kernel["site"], whirl_kernel["plan"],
+             whirl_kernel["tile"]) !=
+            (selection["site"], selection["selected"],
+             chosen_kernel_tile["tile"]) or
+                not whirl_kernel["image"].endswith(".B") or
+                fetch_candidates):
+            raise ValueError("device WHIRL kernel disagrees with selected tile")
+        selection["whirl_kernel"] = whirl_kernel
+    if action["emission"] == "device_whirl_sidecar" and whirl_kernel is None:
+        raise ValueError("device WHIRL action has no kernel image")
     applied = action["tile_rewrite"] == "generated_runtime_call"
     if applied and (trace_version != "7" or fetch_candidates):
         raise ValueError("generated M2 rewrite requires v7 synchronous tile")
@@ -377,6 +446,11 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
                 f"producer={row['producer']} last_use={row['last_use']}\n"
                 for row in selection["locality"]
             )
+        elif number == 9 and selection.get("whirl_kernel"):
+            kernel = selection["whirl_kernel"]
+            details = (f"device_pu=ai_matmul_tile_f32 plan={kernel['plan']} "
+                       f"tile={kernel['tile']} image={kernel['image']} "
+                       "state=materialized_sidecar target_lowered=no\n")
         else:
             details = "detail=not_recorded\n" if row["status"] == "analyzed_no_rewrite" else ""
         content = f"# What it summarizes: {description}\n{metadata}{details}"
@@ -390,8 +464,18 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
         summary.append(
             f"P{number} status={row['status']} reason={row['reason']} "
             f"regions={row['regions']} candidates={row['candidates']} "
-            f"selected={row['selected']} rewrites={row['rewrites']} next={next_step}"
+            f"selected={row['selected']} rewrites={row['rewrites']} "
+            + (f"selected_grid_ctas={selection['selected_grid_ctas']} "
+               "grid_parallelism_cost=unmodeled "
+               if number == 7 and 'selected_grid_ctas' in selection else "")
+            + f"next={next_step}"
         )
+    if selection.get("whirl_kernel"):
+        kernel = selection["whirl_kernel"]
+        summary.append(
+            f"device_pu=ai_matmul_tile_f32 plan={kernel['plan']} "
+            f"tile={kernel['tile']} image={kernel['image']} "
+            "state=materialized_sidecar target_lowered=no")
     (reports / "optimization.log").write_text(
         "# What it summarizes: Complete P0-P11 optimization process, including every phase decision and non-execution reason.\n"
         + "".join(phase_contents), encoding="utf-8")
@@ -420,6 +504,8 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
         "# Selection: lowest complete relative cost among proven plans; a modeled Roofline bound can resolve near-cost alternatives where available.",
         f"site={selection['site']} target={selection['target']} baseline={selection['baseline']} selected={selection['selected']}",
     ]
+    if any("grid" in row for row in candidates):
+        tile_lines.insert(-2, "# Grid: CTA counts and K iterations are traced, but SM count, occupancy, grid waves, and underfilled-device throughput are not priced.")
     if candidates[0].get("roof_bound_ns") is not None:
         target = selection["roofline_target"]
         tile_lines.insert(-1, f"# Roofline target: {target['name']} FP32={target['fp32']} GFLOP/s HBM={target['hbm']} GB/s (published peak, uncalibrated).")
@@ -444,6 +530,11 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
             f"shared_bytes={row['shared']} register_bytes_per_thread={row['registers']} "
             f"threads={row['threads']} cta={','.join(map(str, row['cta']))} "
             f"source_line={row['source_line'] if row['source_line'] is not None else 'unknown'}")
+        if "grid" in row:
+            grid = row["grid"]
+            tile_lines[-1] += (f" problem={','.join(map(str, grid['problem']))}"
+                               f" grid={','.join(map(str, grid['grid']))}"
+                               f" grid_ctas={grid['ctas']} k_iterations={grid['k_iterations']}")
         if "roof_bound_ns" in row:
             tile_lines[-1] += (f" flops={row['flops']} global_bytes={row['roof_bytes']} "
                                f"roof_compute_ns={row['roof_compute_ns']} "
@@ -460,6 +551,28 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
         f"selection baseline={selection['baseline']} chosen={selection['selected']} "
         f"legal={selection['legal']} complete_cost={selection['complete']} "
         f"rejected={selection['rejected']} selection_reason={selection['reason']}")
+    if "k_loop" in selection:
+        loop = selection["k_loop"]
+        tile_lines.append(
+            f"whirl_k_loop=DO_LOOP scope={loop['scope']} "
+            f"plan={loop['plan']} tile={loop['tile']} "
+            f"start={loop['start']} end={loop['end']} step={loop['step']} "
+            + ("device_pu=separate_selected_image"
+               if selection.get("whirl_kernel") else
+               "device_pu=not_materialized"))
+    if "whirl_kernel" in selection:
+        kernel = selection["whirl_kernel"]
+        tile_lines.append(
+            f"device_pu=ai_matmul_tile_f32 plan={kernel['plan']} "
+            f"tile={kernel['tile']} image={kernel['image']} "
+            "state=materialized_sidecar target_lowered=no")
+    chosen = next(row for row in candidates if row["plan"] == selection["selected"])
+    if "grid" in chosen:
+        selection["selected_grid_ctas"] = chosen["grid"]["ctas"]
+        tile_lines.append(
+            f"selection_grid_ctas={chosen['grid']['ctas']} "
+            "grid_parallelism_cost=unmodeled "
+            "selection_confidence=requires_native_calibration")
     tile_lines.append(
         f"action source={action['emission']} tile_whirl_rewrite={action['tile_rewrite']} "
         f"whirl_lowering={action['lower']} lowered_nodes={action['lowered_count']}")

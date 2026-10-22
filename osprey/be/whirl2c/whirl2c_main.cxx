@@ -116,7 +116,7 @@ Usage (const char *progname)
 	   "USAGE: in EBNF notation, where '|' indicates choice and '['\n"
 	   "indicates an optional item:\n"
 	   "\n"
-	   "\t%s [-CLIST:<opts>] [-TARG:<t>] [-TENV:<e>] <inp_files>\n"
+	   "\t%s [-cuda] [-CLIST:<opts>] [-TARG:<t>] [-TENV:<e>] <inp_files>\n"
 	   "\n"
 	   "\t<inp_files> ::= [-fB,<Whirl_File_Name>] <File_Name>\n"
 	   "\t<opts> ::= <single_opt>[:<opts>]\n"
@@ -162,6 +162,8 @@ Usage (const char *progname)
 	   "-CLIST:ftn\n"
 	   "\tThe intermediate is for a Fortran source program; intrinsics\n"
 	   "\tand IO-statements must be lowered for translation to C.\n"
+	   "-cuda\n"
+	   "\tEnable experimental CUDA source mode for a device-attributed PU.\n"
 	   "-CLIST:src_file=<Src_File_Name>\n"
 	   "\tThe name of the original source program.  When not given,\n"
 	   "\tthe <Src_File_Name> is derived from the <File_Name>.\n"
@@ -261,6 +263,15 @@ main (INT argc,                   /* Number of command line arguments */
     {
        new_argv[argidx] = (char *)malloc(strlen(argv[argidx]) + 1);
        new_argv[argidx] = strcpy(new_argv[argidx], argv[argidx]);
+       if (strcmp(new_argv[argidx], "-cuda") == 0) {
+          free(new_argv[argidx]);
+          new_argv[argidx] = (char *)malloc(sizeof("-CLIST:cuda=ON"));
+          if (new_argv[argidx] == NULL) {
+             fprintf(stderr, errstring, argv[0]);
+             exit(RC_NORECOVER_USER_ERROR);
+          }
+          strcpy(new_argv[argidx], "-CLIST:cuda=ON");
+       }
        if (new_argv[argidx][0] == '-' &&
 	   new_argv[argidx][1] == 'f' &&
 	   new_argv[argidx][2] == 'B')
@@ -338,5 +349,3 @@ main (INT argc,                   /* Number of command line arguments */
     error("%s: fail to execute %s: %s.\n", argv[0], new_argv[0], strerror(errno));
     exit(RC_SYSTEM_ERROR);
 } /* main */
-
-

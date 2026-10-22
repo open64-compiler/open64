@@ -10,6 +10,49 @@ The output path must not exist. Source emission does not rewrite WHIRL or
 launch a GPU kernel. The current cost is low-confidence and relative, not
 target latency.
 
+`-Wb,-DSL:cuda_legacy_emit=ON` is the default during the WHIRL-to-CUDA
+transition. It preserves the current source-template emitter as a baseline
+when `cuda_tile_output` requests a `.cu` file; it does not create a file on
+ordinary compilations without that output option. Set
+`-Wb,-DSL:cuda_legacy_emit=OFF` to suppress legacy `.cu` generation even
+when a path is supplied. P7/P9 coverage then says
+`disabled_by_option cuda_legacy_emit_off` when no device-WHIRL output is
+requested. With `-Wb,-DSL:cuda_whirl_output=<new-file.B>`, cost selection
+and the synchronous `cuda_tile_apply=ON` host rewrite can proceed even when
+legacy emission is OFF. The selected device PU is currently a separate
+sidecar, not yet registered by the driver in the main compilation unit.
+Retain the legacy source, trace, and receipt separately when comparing it
+with `whirl2c -cuda` output from the same selected plan.
+
+## Selected Device WHIRL Parity
+
+For the exact-divisible fixed F32 GEMM subset, `cuda_whirl_output` writes
+`ai_matmul_tile_f32` as high-level device WHIRL with cooperative global-to-
+shared A/B staging, two CTA barriers per K tile, register accumulation, and
+output stores. Translate the saved image with `whirl2c -cuda matmul.device.B`;
+the resulting `matmul.device.w2c.c` is CUDA C despite its `.c` suffix. The
+review artifacts also retain the same bytes as `source/matmul.whirl.cu` for
+future native CUDA compilation. The
+legacy emitter remains the default-on transition baseline. Byte-for-byte
+source equality is not required: the device PU omits bounds guards only
+where the exact-divisibility gate proves they are redundant.
+
+For the selected 128x128x128, BM=BN=128, BK=32, TM=TN=8 case, run:
+
+```sh
+bash osprey/be/vho/tests/ai_matmul_cuda/test_whirl_cuda_parity.sh \
+  path/to/matmul.generated.cu path/to/matmul.device.w2c.c \
+  path/to/artifact/binary
+```
+
+The test compiles both sources with a CUDA host stub and simulates one
+256-thread CTA with real barriers. It compares both outputs with reference
+GEMM and each other. The first preserved zero-error evidence is
+`artifacts/ai_optimization/m2-whirl-kernel/run-008/`; `run-009/` shows that
+WHIRL-only selection produces no legacy `.cu` and reports
+`device_whirl_sidecar` in the optimization trace. This does not establish
+native CUDA compilation, PTX generation, GPU correctness, or performance.
+
 The backend option `-Wb,-DSL:ai_opt_trace=ON` defaults to ON for this
 development phase. It activates the reserved WOPT-style trace bit and opens
 the compiler's `.t` file without a separate `-ttOP2` switch. Use
@@ -42,7 +85,21 @@ evidence. P0 and P1 now contain source-linked semantic tensor and locality
 facts from AIO-3/AIO-4. The separate `--apply` path below records a
 generated-provider rewrite; its CUDA runtime adapter remains unimplemented.
 The current 128x128x128 fixture still selects `cuda_128` by relative cost;
-Roofline corroborates that choice but does not independently change it.
+its one-CTA grid is not priced by the relative cost or full-device Roofline
+proxy, so the latter is not evidence of target throughput. New schema-v7
+`TILE_GRID` rows record M/N/K, CTA grid dimensions, CTA count, and K
+iterations for each candidate. The report validates the geometry and marks
+the selected plan as requiring native calibration. Older v7 traces without
+these additive rows remain readable.
+After cost selection, the backend also constructs a canonical PU-local
+`OPR_DO_LOOP` for the K-tile coordinate. The emitted synchronous CUDA loop
+reads its bound and stride from this WHIRL node. A `K_LOOP` trace row and
+`traces/selected-k-loop.T` preserve the selected loop for inspection; the
+runner checks its site/plan/tile identity and source geometry. This node is
+detached planning evidence and is not itself inserted into the device PU.
+The new device image builds a complete loop nest independently from the same
+selected tile. The legacy CUDA body remains source-emitted, and the host
+WHIRL rewrite described below still calls a generated provider.
 If an artifact run fails after staging begins, the retained staging directory
 still contains an `optimization-summary.log` marked `run=failed`; it does not
 certify a selection or rewrite.
@@ -91,12 +148,66 @@ python3 osprey/be/vho/tests/ai_matmul_cuda/compile_source.py \
   --apply
 ```
 
-The object still has an unresolved generated-provider symbol. The emitted
-`.cu` defines the kernel, not the host runtime adapter that owns tensor
-placement, launch, fallback, and errors. This verifies the compiler
-transformation, not an executable CUDA optimization or accepted `m2` result.
-The focused AIO-11 contract test also writes binary WHIRL for the generated
-call and checks invalid-plan rejection and rollback.
+The compiler object has an unresolved generated-provider symbol until linked
+with a runtime. A fixed-shape **review adapter** now binds the emitted `.cu`
+to the M0 test handles, validates plan identity and device/kernel resources,
+allocates/copies device buffers, launches the selected synchronous kernel,
+and copies its result back. A failed launch takes the direct CPU path only
+when the plan authorizes that fallback. The host contract test exercises
+success, fallback, malformed-plan rejection, and no-fallback failure. A
+separate x86-64 integration smoke links the actual rewritten object to a mock
+CUDA hook and checks the emitted descriptor. This is not a production tensor
+provider or a GPU verification result. The focused AIO-11 contract test also
+writes binary WHIRL and checks invalid-plan rejection and rollback.
+
+To preserve the exact selected source and object for native execution:
+
+```sh
+python3 osprey/be/vho/tests/ai_matmul_cuda/prepare_generated.py \
+  --compiler-artifact /path/to/m2-applied/run-007 \
+  --output-dir /path/to/new/m2-generated-runtime-run
+```
+
+The current prepared package is `m2-generated-runtime/run-009/`. Its input
+`m2-applied/run-007/` records and validates the selected one-CTA grid against
+the emitted 128x128x128 CUDA source. The grid-parallelism cost remains
+unmodeled, so this package is for correctness and calibration, not a claimed
+performance win.
+
+On a native Linux/x86-64 Hopper machine with CUDA toolkit and `nvcc`, run
+`python3 run_generated_gpu.py --artifact-dir /path/to/m2-generated-runtime-run`.
+The runner verifies package hashes, links the real Open64 PU with the selected
+CUDA source, requires the generated path on every numerical sample, retains
+`nvcc`/ptxas resource output, device identity, raw full-PU timing, and a native
+receipt. It fails if execution falls back to CPU. It also compiles a separate
+validation-only untiled CUDA control from the same F32 problem, checks both
+kernels on nonuniform inputs against a CPU reference, and records 30 paired
+CUDA-event samples per kernel in `measurements/kernel-control.csv`. The pair
+order alternates by sample; its ratio is **not** a comparison with the
+compiler-produced M0 baseline. Full-PU timing includes allocation and
+transfers, while the control timing measures resident kernels only. GPU
+compilation, correctness, resource usage, and timing remain unverified locally;
+same-target comparison with an accepted compiler baseline is still needed for
+M2 acceptance.
+
+For a remote Hopper host, use the generated-package transport (the older
+`remote.py` handles only the source-sidecar package):
+
+```sh
+python3 osprey/be/vho/tests/ai_matmul_cuda/remote_generated.py \
+  --artifact-dir /path/to/m2-generated-runtime-run \
+  --host user@hopper-host \
+  --remote-dir /absolute/new/m2-generated-runtime-run
+```
+
+It requires an unused remote directory, uploads only a verified prepared
+package, retrieves native logs even if compilation or execution fails, and
+checks the original `SHA256SUMS` again after retrieval. A successful run also
+requires `native-SHA256SUMS` covering the executable, ptxas/build logs,
+device identity, both raw timing files, and native receipt. The receipt's
+kernel-control medians are checked against those raw paired samples. A package with any prior
+native attempt cannot be reused; prepare a new run to retry. The transport
+and integrity checks have host-only tests, but no remote GPU run has occurred.
 
 ## Opt-in P8 TMA source
 

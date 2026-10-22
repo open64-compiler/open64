@@ -190,6 +190,19 @@ class ReportTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid or duplicate phase coverage"):
             parse(trace + phase_rows[0] + "\n")
 
+    def test_legacy_emitter_off_has_explicit_phase_reason(self):
+        phase_rows = [
+            f"AI_OPT 7 PHASE matmul_f32_source {phase} disabled_by_option "
+            "cuda_legacy_emit_off 0 0 0 0"
+            for phase in range(12)
+        ]
+        trace = "\n".join(("AI_OPT 7 CONTEXT ai_matmul_m0 matmul_f32_source",
+                           *phase_rows)) + "\n"
+        candidates, selection, action = parse(trace)
+        self.assertEqual((candidates, action), ([], {}))
+        self.assertEqual(selection["phases"][7]["reason"],
+                         "cuda_legacy_emit_off")
+
     def test_v6_tile_coverage_must_match_decision(self):
         rows = [
             "AI_OPT 6 CONTEXT ai_matmul_m0 matmul_f32_source",
@@ -224,10 +237,16 @@ class ReportTest(unittest.TestCase):
         rows = [
             "AI_OPT 7 CONTEXT ai_matmul_m0 matmul_f32_source",
             "AI_OPT 7 ROOF_TARGET 2 h100_sxm_reference 67000 3350 traffic=global_requests_as_cold_hbm_proxy ceiling=published_peak",
-            candidate(1, "baseline", 1300, version="7", roof_bytes=1675000),
-            candidate(2, "cuda_64", 1000, version="7", roof_bytes=335000),
+            candidate(1, "baseline", 1300, version="7", roof_bytes=1675000).replace(
+                " 128 128 32 25", " 0 0 0 25"),
+            candidate(2, "cuda_64", 1000, version="7", roof_bytes=335000).replace(
+                " 128 128 32 25", " 64 64 16 25"),
             candidate(3, "cuda_128", 900, version="7", roof_bytes=268000),
+            "AI_OPT 7 TILE_GRID 1 1 1 128 128 128 0 0 0 0",
+            "AI_OPT 7 TILE_GRID 1 2 2 128 128 128 2 2 4 8",
+            "AI_OPT 7 TILE_GRID 1 3 3 128 128 128 1 1 1 4",
             "AI_OPT 7 TILE_SELECT 1 1 3 2 3 3 0 selection_reason=lowest_complete_relative_cost",
+            "AI_OPT 7 K_LOOP 1 3 3 0 128 32 detached_plan_only",
             "AI_OPT 7 TILE_ACTION 1 3 source_sidecar none dsl_to_runtime 3",
         ]
         for value in (1, 2, 3):
@@ -244,6 +263,29 @@ class ReportTest(unittest.TestCase):
                         f"{3 if phase in (7, 9) else 0} 0")
         trace = "\n".join(rows) + "\n"
         self.assertEqual(len(parse(trace)[1]["locality"]), 3)
+        self.assertEqual(parse(trace)[0][2]["grid"]["ctas"], 1)
+        with_kernel = trace.replace(
+            "AI_OPT 7 TILE_ACTION 1 3",
+            "AI_OPT 7 WHIRL_KERNEL 1 3 3 /artifact/matmul.device.B\n"
+            "AI_OPT 7 TILE_ACTION 1 3")
+        whirl_only = with_kernel.replace(
+            "TILE_ACTION 1 3 source_sidecar",
+            "TILE_ACTION 1 3 device_whirl_sidecar")
+        self.assertEqual(parse(whirl_only)[1]["whirl_kernel"]["tile"], 3)
+        with self.assertRaisesRegex(ValueError, "device WHIRL action has no kernel"):
+            parse(whirl_only.replace(
+                "AI_OPT 7 WHIRL_KERNEL 1 3 3 /artifact/matmul.device.B\n", ""))
+        with self.assertRaisesRegex(ValueError, "device WHIRL kernel disagrees"):
+            parse(whirl_only.replace("WHIRL_KERNEL 1 3 3", "WHIRL_KERNEL 1 2 3"))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "compile.t"
+            source.write_text(whirl_only, encoding="utf-8")
+            render(source, root / "reports")
+            self.assertIn("state=materialized_sidecar",
+                          (root / "reports/phases/physical-plan.log").read_text())
+            self.assertIn("device_pu=ai_matmul_tile_f32",
+                          (root / "reports/optimization-summary.log").read_text())
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / "compile.t"
@@ -253,6 +295,30 @@ class ReportTest(unittest.TestCase):
                           (root / "reports/phases/semantic.log").read_text())
             self.assertIn("alias=proven_unique",
                           (root / "reports/phases/locality.log").read_text())
+            tile_report = (root / "reports/phases/tile.log").read_text()
+            self.assertIn("grid_ctas=4 k_iterations=8", tile_report)
+            self.assertIn("selection_grid_ctas=1", tile_report)
+            self.assertIn("whirl_k_loop=DO_LOOP scope=detached_plan_only", tile_report)
+            self.assertIn("device_pu=not_materialized", tile_report)
+            self.assertIn("grid_parallelism_cost=unmodeled", tile_report)
+            summary = (root / "reports/optimization-summary.log").read_text()
+            self.assertIn("selected_grid_ctas=1 grid_parallelism_cost=unmodeled", summary)
+        with self.assertRaisesRegex(ValueError, "tile grid disagrees"):
+            parse(trace.replace(" 2 2 4 8", " 2 2 3 8"))
+        with self.assertRaisesRegex(ValueError, "incomplete tile grid"):
+            parse(trace.replace("AI_OPT 7 TILE_GRID 1 2 2 128 128 128 2 2 4 8\n", ""))
+        with self.assertRaisesRegex(ValueError, "selected K loop disagrees"):
+            parse(trace.replace("K_LOOP 1 3 3 0 128 32", "K_LOOP 1 3 3 0 128 16"))
+        legacy_trace = "\n".join(line for line in trace.splitlines()
+                                 if " TILE_GRID " not in line) + "\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "compile.t"
+            source.write_text(legacy_trace, encoding="utf-8")
+            render(source, root / "reports")
+            legacy_tile = (root / "reports/phases/tile.log").read_text()
+            self.assertNotIn("# Grid:", legacy_tile)
+            self.assertNotIn("selection_grid_ctas=", legacy_tile)
         with self.assertRaisesRegex(ValueError, "incomplete or inconsistent P0/P1"):
             parse(trace.replace("AI_OPT 7 LOCALITY 3 3", "AI_OPT 7 LOCALITY 3 4"))
         applied = trace.replace(

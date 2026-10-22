@@ -49,6 +49,11 @@ def validate_selected_source(source: str, candidates: list[dict],
             bm // tm * (bn // tn) != selected["threads"] or
             (bm * bk + bk * bn) * 4 != selected["shared"]):
         raise RuntimeError("generated tile geometry disagrees with selected plan")
+    for name, expected in (("AI_TILE_PLAN_ID", selected["tile"]),
+                           ("AI_OPTIMIZATION_PLAN_ID", selected["plan"])):
+        match = re.search(rf"^#define {name} (\d+)$", source, re.MULTILINE)
+        if match is None or int(match[1]) != expected:
+            raise RuntimeError(f"generated source {name} disagrees with selected plan")
     if selection.get("version") == 7:
         shapes = [tuple(map(int, row["shape"].strip("[]").split(",")))
                   for row in selection["semantic"] if row["rank"] == 2]
@@ -56,6 +61,32 @@ def validate_selected_source(source: str, candidates: list[dict],
         if ((m, k) not in shapes or (k, n) not in shapes or
                 (m, n) not in shapes):
             raise RuntimeError("generated problem dimensions disagree with tensor facts")
+    grid = selected.get("grid")
+    if grid is not None:
+        m, n, k = (dimensions[name] for name in ("M", "N", "K"))
+        expected_grid = ((m + bm - 1) // bm, (n + bn - 1) // bn)
+        if (tuple(grid["problem"]) != (m, n, k) or
+                tuple(grid["grid"]) != expected_grid or
+                grid["ctas"] != expected_grid[0] * expected_grid[1] or
+                grid["k_iterations"] != (k + bk - 1) // bk):
+            raise RuntimeError("generated problem grid disagrees with selected plan")
+    loop = re.search(
+        r"^// whirl_k_loop=DO_LOOP scope=detached_plan_only "
+        r"start=(\d+) end=(\d+) step=(\d+)$", source, re.MULTILINE)
+    traced_loop = selection.get("k_loop")
+    if traced_loop is not None and (loop is None or
+            tuple(map(int, loop.groups())) !=
+            (traced_loop["start"], traced_loop["end"], traced_loop["step"])):
+        raise RuntimeError("generated source WHIRL loop disagrees with trace")
+    if loop is not None and tuple(map(int, loop.groups())) != (
+            0, dimensions["K"], dimensions["BK"]):
+        raise RuntimeError("generated source WHIRL loop disagrees with tile")
+    if loop is not None:
+        emitted = re.search(
+            r"for \(int base = (\d+); base < (\d+); base \+= (\d+)\)",
+            source)
+        if emitted is None or emitted.groups() != loop.groups():
+            raise RuntimeError("generated CUDA K loop disagrees with WHIRL loop")
     return dimensions
 
 
@@ -71,6 +102,8 @@ def m2_handoff(source: Path, trace: Path, input_whirl: Path,
         "status": ("generated_runtime_call_unverified" if applied else
                    "selected_source_only"),
         "whirl_rewrite_applied": applied,
+        "cuda_source_emitter": "legacy_template",
+        "selected_k_loop_scope": selection.get("k_loop", {}).get("scope"),
         "selected_optimization_plan_id": selected["plan"],
         "selected_tile_plan_id": selected["tile"],
         "selected_candidate_id": selected["candidate"],
@@ -118,6 +151,24 @@ def lowering_dump(raw_trace: Path, output: Path) -> str:
     dump = text.split(marker, 1)[1].split("!!! DevWarn", 1)[0].strip() + "\n"
     if not dump.startswith("FUNC_ENTRY"):
         raise RuntimeError("post-DSL-lowering dump lacks a function body")
+    output.write_text(dump, encoding="utf-8")
+    return dump
+
+
+def selected_k_loop_dump(raw_trace: Path, output: Path,
+                         selection: dict) -> str:
+    marker = "========== AI selected K-tile WHIRL plan loop =========="
+    text = raw_trace.read_text(encoding="utf-8")
+    if text.count(marker) != 1:
+        raise RuntimeError("expected one selected K-tile WHIRL loop dump")
+    dump = text.split(marker, 1)[1]
+    dump = re.split(r"(?m)^(?:AI_OPT |========== |!!! DevWarn)", dump, 1)[0]
+    dump = dump.strip() + "\n"
+    loop = selection["k_loop"]
+    header = (f"plan={loop['plan']} tile={loop['tile']} "
+              "scope=detached_plan_only\n")
+    if not dump.startswith(header) or not re.search(r"\bDO_LOOP\b", dump):
+        raise RuntimeError("selected K-tile WHIRL loop dump is incomplete")
     output.write_text(dump, encoding="utf-8")
     return dump
 
@@ -231,6 +282,10 @@ def main() -> None:
             raise RuntimeError("AI optimization decision trace was not emitted")
         raw_trace.rename(trace)
         selection, action = render(trace, stage / "reports")
+        if "k_loop" not in selection:
+            raise RuntimeError("selected K-tile WHIRL loop trace is missing")
+        selected_k_loop_dump(trace, stage / "traces/selected-k-loop.T",
+                             selection)
         if (len(selection["phases"]) != 12 or
                 selection["phases"][7]["selected"] != selection["selected"]):
             raise RuntimeError("selected phase coverage is incomplete")
@@ -326,6 +381,10 @@ def main() -> None:
             "m2_handoff_path": "plans/m2-selected-tile.json",
             "m2_handoff_sha256": sha256(stage / "plans/m2-selected-tile.json"),
             "decision_trace_path": "traces/compile.t",
+            "cuda_source_emitter": "legacy_template",
+            "cuda_legacy_emit_default": True,
+            "selected_k_loop_dump_path": "traces/selected-k-loop.T",
+            "selected_k_loop_scope": selection["k_loop"]["scope"],
             "option_off_trace_path": "traces/option-off.t",
             "optimization_summary_path": "reports/optimization-summary.log",
             "option_off_summary_path": "reports/option-off/optimization-summary.log",
