@@ -1,7 +1,8 @@
-"""Check generated-C execution against the immutable SYNC-5 schedule.
+"""Check generated-C execution against an authenticated public schedule.
 
-See doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md, S5-H. The trace is emitted by
-executing unchanged whirl2c output; this tool does not infer a new schedule.
+The historical SYNC-5 JSON and the atomic S6-0d D4 text report carry the same
+87-static/147-dynamic contract. The trace is emitted by executing unchanged
+whirl2c output; this tool does not infer a new schedule.
 """
 
 from collections import Counter
@@ -20,17 +21,58 @@ FAMILIES = {
 }
 
 
+def load_schedule(path: str) -> dict:
+    """Read either the historical JSON or the atomic D4 text schedule."""
+    with open(path, encoding="utf-8") as stream:
+        content = stream.read()
+    if content.lstrip().startswith("{"):
+        return json.loads(content)
+
+    schedule = {"schema": "", "descriptors": [], "bindings": []}
+    descriptors = {}
+    bindings = {}
+    for line in content.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key == "public_schedule.format":
+            schedule["schema"] = value
+        elif key == "public_schedule.static_descriptor_count":
+            schedule["static_evaluations"] = int(value)
+        elif key == "public_schedule.dynamic_binding_count":
+            schedule["dynamic_evaluations"] = int(value)
+        elif key.startswith("public_descriptor["):
+            match = re.fullmatch(r"public_descriptor\[(\d+)\]\.(.+)", key)
+            assert match is not None
+            descriptors.setdefault(int(match.group(1)), {})[
+                match.group(2)
+            ] = int(value)
+        elif key.startswith("public_binding["):
+            match = re.fullmatch(r"public_binding\[(\d+)\]\.(.+)", key)
+            assert match is not None
+            field = match.group(2)
+            if field == "group_sha256":
+                continue
+            bindings.setdefault(int(match.group(1)), {})[field] = int(value)
+    schedule["descriptors"] = [
+        descriptors[index] for index in range(len(descriptors))
+    ]
+    schedule["bindings"] = [bindings[index] for index in range(len(bindings))]
+    return schedule
+
+
 def validate(trace_path: str, schedule_path: str, source_path: str) -> None:
     """Match execution and the root's ordered resource roles to the plan."""
     with open(trace_path, encoding="utf-8") as stream:
         lines = [line.strip() for line in stream]
-    with open(schedule_path, encoding="utf-8") as stream:
-        schedule = json.load(stream)
+    schedule = load_schedule(schedule_path)
 
-    assert schedule["schema"] == "open64.fhe.sync5.runtime-schedule.v1"
+    assert schedule["schema"] in {
+        "open64.fhe.sync5.runtime-schedule.v1",
+        "open64.ckks2c.public-schedule.v1",
+    }
     assert schedule["static_evaluations"] == 87
     assert schedule["dynamic_evaluations"] == 147
-    assert len(schedule["records"]) == 32
     assert len(lines) == 295
     assert lines[-1] == "SUMMARY selects=147 evals=147 output=set"
     observed = Counter()
@@ -44,16 +86,40 @@ def validate(trace_path: str, schedule_path: str, source_path: str) -> None:
         observed[(int(selected[2]), int(selected[3]))] += 1
 
     expected = Counter()
-    next_ordinal = 1
-    for record in schedule["records"]:
-        kinds = FAMILIES[record["operator"]]
-        assert record["first_ordinal"] == next_ordinal
-        assert record["static_count"] == len(kinds)
-        assert record["dynamic_count"] == len(kinds) * record["multiplicity"]
-        for index, kind in enumerate(kinds):
-            expected[(next_ordinal + index, kind)] += record["multiplicity"]
-        next_ordinal += len(kinds)
-    assert next_ordinal == 88
+    if schedule["schema"] == "open64.fhe.sync5.runtime-schedule.v1":
+        assert len(schedule["records"]) == 32
+        next_ordinal = 1
+        for record in schedule["records"]:
+            kinds = FAMILIES[record["operator"]]
+            assert record["first_ordinal"] == next_ordinal
+            assert record["static_count"] == len(kinds)
+            assert record["dynamic_count"] == (
+                len(kinds) * record["multiplicity"]
+            )
+            for index, kind in enumerate(kinds):
+                expected[(next_ordinal + index, kind)] += record[
+                    "multiplicity"
+                ]
+            next_ordinal += len(kinds)
+        assert next_ordinal == 88
+    else:
+        assert len(schedule["descriptors"]) == 87
+        assert len(schedule["bindings"]) == 147
+        descriptors = {
+            (row["static_ordinal"], row["operation_kind"]): row
+            for row in schedule["descriptors"]
+        }
+        assert len(descriptors) == 87
+        assert sorted(row["static_ordinal"] for row in schedule["descriptors"]) == list(
+            range(1, 88)
+        )
+        assert sum(row["kind"] == 2 for row in schedule["bindings"]) == 1
+        for binding in schedule["bindings"]:
+            key = (binding["static_ordinal"], binding["operation_kind"])
+            assert key in descriptors
+            expected[key] += 1
+        for key, descriptor in descriptors.items():
+            assert expected[key] == descriptor["multiplicity"]
     assert observed == expected, (observed - expected, expected - observed)
 
     with open(source_path, encoding="utf-8") as stream:

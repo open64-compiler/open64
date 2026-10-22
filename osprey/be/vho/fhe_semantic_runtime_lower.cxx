@@ -1259,6 +1259,86 @@ VHO_FHE_Runtime_Build_Operation_Sequence
     return TRUE;
 }
 
+/* Resolve an ABI unary kind to the evaluator used by a local-handle pipeline.
+ * Polynomial and reconstruction calls carry extra operands and are therefore
+ * intentionally excluded from this helper. */
+static const char *
+VHO_FHE_Runtime_Unary_Function_Name(UINT32 operation_kind)
+{
+    switch (operation_kind) {
+    case VHO_FHE_RUNTIME_OP_BOOTSTRAP:
+        return "open64_fhe_bootstrap_v1";
+    case VHO_FHE_RUNTIME_OP_RELU_NORMALIZE:
+        return "open64_fhe_relu_normalize_v1";
+    case VHO_FHE_RUNTIME_OP_AVERAGE_POOL:
+        return "open64_fhe_average_pool_v1";
+    case VHO_FHE_RUNTIME_OP_LAYOUT_CONVERT:
+        return "open64_fhe_layout_convert_v1";
+    default:
+        return NULL;
+    }
+}
+
+/* Build an ordered unary ABI pipeline with only its final handle projected.
+ * This preserves zero-private-work representation steps such as flatten while
+ * keeping their intermediate handles local to one detached standard block. */
+BOOL
+VHO_FHE_Runtime_Build_Unary_Pipeline_Sequence
+        (struct pu_info *pu_info, DSL_IR_VALUE_ID input_value_id,
+         const VHO_FHE_RUNTIME_UNARY_PIPELINE_STEP *steps,
+         UINT32 step_count, SRCPOS source_position,
+         VHO_FHE_STANDARD_FAILURE_BUILDER build_failure,
+         void *failure_context, FILE *diagnostic,
+         VHO_FHE_RUNTIME_CALL_SEQUENCE *sequence)
+{
+    VHO_FHE_Runtime_Call_Sequence_Init(sequence);
+    if (steps == NULL || step_count < 2 || sequence == NULL ||
+        input_value_id == DSL_IR_VALUE_INVALID_ID || source_position == 0 ||
+        build_failure == NULL)
+        return VHO_FHE_Runtime_Semantic_Report
+                   (diagnostic, "unary pipeline request is incomplete");
+
+    VHO_FHE_RUNTIME_HANDLE_BINDING model;
+    VHO_FHE_RUNTIME_HANDLE_BINDING input;
+    if (!VHO_FHE_Runtime_Resolve_Role_Handle
+             (pu_info, "fhe.model", diagnostic, &model) ||
+        !VHO_FHE_Runtime_Resolve_Value_Handle
+             (pu_info, input_value_id, diagnostic, &input))
+        return FALSE;
+
+    WN *block = WN_CreateBlock();
+    ST_IDX current_st = input.handle_st;
+    TY_IDX ciphertext_ty = input.handle_ty;
+    TY_IDX descriptor_ty = VHO_FHE_Runtime_Descriptor_Handle_TY();
+    for (UINT32 index = 0; index < step_count; ++index) {
+        const char *function_name =
+            VHO_FHE_Runtime_Unary_Function_Name(steps[index].operation_kind);
+        VHO_FHE_STANDARD_CALL_RESULT selected;
+        VHO_FHE_STANDARD_CALL_RESULT evaluated;
+        if (function_name == NULL || steps[index].static_ordinal == 0 ||
+            !VHO_FHE_Runtime_Append_Selector
+                (block, model, current_st, ciphertext_ty,
+                 steps[index].static_ordinal, steps[index].operation_kind,
+                 source_position, build_failure, failure_context, diagnostic,
+                 &selected) ||
+            !VHO_FHE_Runtime_Append_Unary_Evaluation
+                (block, function_name, model, current_st, ciphertext_ty,
+                 selected.output_st, descriptor_ty, source_position,
+                 build_failure, failure_context, diagnostic, &evaluated)) {
+            WN_DELETE_Tree(block);
+            return FALSE;
+        }
+        current_st = evaluated.output_st;
+    }
+
+    sequence->block = block;
+    sequence->output_st = current_st;
+    sequence->standard_call_count = 2 * step_count;
+    sequence->output_handle_count = 2 * step_count;
+    sequence->status_check_count = 2 * step_count;
+    return TRUE;
+}
+
 BOOL
 VHO_FHE_Runtime_Build_Identity_Sequence
         (struct pu_info *pu_info, DSL_IR_VALUE_ID input_value_id,

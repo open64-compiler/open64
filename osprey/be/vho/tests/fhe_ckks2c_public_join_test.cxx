@@ -291,6 +291,23 @@ BOOL DSL_IR_Image_Get_Node(DSL_IR_NODE_ID id, DSL_IR_NODE_RECORD *record)
   record->id = source->node;
   record->opcode_descriptor_id = source->node;
   record->result_value_id = source->value;
+  if (source->opcode == OPR_DSLFLATTEN) {
+    record->first_operand_reference_id = 1;
+    record->operand_count = 1;
+  }
+  return TRUE;
+}
+
+/* Bind the fixture's representation-only flatten to one pool-like input. */
+BOOL DSL_IR_Image_Get_Value_Reference(
+    DSL_IR_VALUE_REFERENCE_ID id, DSL_IR_VALUE_REFERENCE_RECORD *record)
+{
+  if (id != 1 || record == NULL)
+    return FALSE;
+  memset(record, 0, sizeof(*record));
+  record->id = 1;
+  record->owner_node_id = 1;
+  record->value_id = 99;
   return TRUE;
 }
 
@@ -369,17 +386,32 @@ int main()
       plan.descriptors[7].operation_kind !=
           VHO_FHE_RUNTIME_OP_RELU_RECONSTRUCT)
     return 1;
+  std::string schedule_text;
+  if (!VHO_FHE_CKKS2C_Render_Public_Join(
+          plan, result, &schedule_text, stderr) ||
+      schedule_text.find(
+          "public_schedule.static_descriptor_count=8\n") ==
+          std::string::npos ||
+      schedule_text.find(
+          "public_schedule.dynamic_binding_count=15\n") ==
+          std::string::npos ||
+      schedule_text.find("public_binding[0].kind=2\n") ==
+          std::string::npos)
+    return 9;
 
   std::vector<VHO_FHE_CKKS2C_PUBLIC_ROUTE> routes;
   VHO_FHE_CKKS2C_PUBLIC_JOIN_RESULT route_result;
   if (!VHO_FHE_CKKS2C_Build_Public_Routes_From_Image(
           &routes, &route_result, stderr) ||
-      routes.size() != result.private_group_binding_count ||
+      routes.size() != result.dynamic_binding_count ||
       route_result.canonical_pu_count != result.canonical_pu_count ||
       route_result.canonical_source_count != result.canonical_source_count ||
       route_result.static_descriptor_count !=
           result.static_descriptor_count ||
-      route_result.dynamic_binding_count != result.dynamic_binding_count)
+      route_result.dynamic_binding_count != result.dynamic_binding_count ||
+      routes[0].binding_kind !=
+          VHO_FHE_CKKS2C_PUBLIC_REPRESENTATION_ONLY ||
+      routes[0].representation_operand_value_id != 99)
     return 7;
   for (UINT32 route_index = 0; route_index < routes.size(); ++route_index) {
     UINT32 matches = 0;
@@ -387,7 +419,7 @@ int main()
          ++binding_index) {
       const VHO_FHE_CKKS2C_PUBLIC_BINDING &binding =
           plan.bindings[binding_index];
-      if (binding.binding_kind == VHO_FHE_CKKS2C_PUBLIC_PRIVATE_GROUP &&
+      if (binding.binding_kind == routes[route_index].binding_kind &&
           binding.specialized_owner_pu_st ==
               routes[route_index].specialized_owner_pu_st &&
           binding.specialized_source_value_id ==
@@ -412,6 +444,11 @@ int main()
           groups, &reordered, &reordered_result, stderr) ||
       reordered.identity_sha256 != plan.identity_sha256)
     return 2;
+  std::string reordered_schedule;
+  if (!VHO_FHE_CKKS2C_Render_Public_Join(
+          reordered, reordered_result, &reordered_schedule, stderr) ||
+      reordered_schedule != schedule_text)
+    return 10;
 
   std::vector<VHO_FHE_CKKS2C_GROUP> malformed = groups;
   malformed.push_back(malformed[0]);

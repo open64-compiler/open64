@@ -5,10 +5,12 @@ S6-0d starts from the separately reopenable, gatekeeper-approved
 `secure_resnet20.ckks_ops.B`; it does not rematerialize Conv, residual, ReLU,
 or tail semantics.
 
-Current checkpoint: **D1, D2, and D3 are complete. D4's read-only public join
-is whole-image certified. The FHE-owned standard-block materializer is under
-focused integration and submits one M1 replacement per complete source
-context so only the typed-event `FINAL_RESULT` needs a runtime projection.**
+Current checkpoint: **D1 through D4 are complete.** The D4 terminal checkpoint
+submits one M1 replacement per complete source context so only the typed-event
+`FINAL_RESULT` needs a runtime projection. The sole zero-private-work
+`common.flatten` binding is emitted as a local layout-convert step after the
+average-pool evaluator and before the final pool-context projection; no CKKS
+group is fabricated for the representation view.
 The D2 collector is wired into the backend and `ir_tools`, its two-PU positive
 and malformed-image contracts pass, and its complete cached-image receipt is
 retained under the durable review root. That receipt consumed 10 PUs, 146
@@ -18,9 +20,9 @@ compiles the generated C, and reopens the last-published binary. The D4 join
 reconstructs 6 canonical PUs, 32 canonical source definitions, 87 static
 public ABI descriptors, and 147 dynamic bindings from the immutable S6-0c
 image. Those bindings comprise 146 private CKKS groups plus one zero-primitive
-representation-only `common.flatten`; a CKKS group must not be fabricated for
-that view operation. D4-D6 remain open, and no S6-0d terminal artifact is
-claimed yet.
+representation-only `common.flatten`. The standard-only terminal artifact
+reopens with `ir_b2a -st -src`, unchanged `whirl2c` emits compilable C, and the
+trace executes exactly 147 selector/evaluator pairs. D5-D6 remain open.
 
 The D5 option spelling is staged independently: the backend recognizes
 `-FHE:codegen=ckks2c|poly2c` but does not yet select a route. Invalid
@@ -186,9 +188,9 @@ not be replaced silently with a full model run.
 | S6D-T2 | `bash osprey/be/vho/tests/fhe_ckks2c_collect_test.sh /private/tmp/open64-fhe-impactful/ckks2c-collector` |
 | S6D-T3 | `bash osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.sh /private/tmp/open64-fhe-impactful/ckks2c-checkpoint` |
 | S6D-T4 | Verify accepted hashes, reopen cached `.B`, emit private C/report, compile, and run the independent complete-image audit |
-| S6D-T5 | `sh osprey/be/vho/tests/fhe_ckks2c_group_join_test.sh /private/tmp/open64-fhe-impactful/ckks2c-group-join` |
-| S6D-T6 | `sh osprey/driver/tests/openpy_fhe_ckks2c_exit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-driver` |
-| S6D-T7 | `sh osprey/libopen64fhe/tests/fhe_ckks2c_ant_admission_test.sh /private/tmp/open64-fhe-impactful/ckks2c-ant` |
+| S6D-T5 | `bash osprey/be/vho/tests/fhe_ckks2c_group_join_test.sh /private/tmp/open64-fhe-impactful/ckks2c-group-join` |
+| S6D-T6 | `bash osprey/driver/tests/openpy_fhe_ckks2c_exit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-driver` |
+| S6D-T7 | `bash osprey/libopen64fhe/tests/fhe_ckks2c_ant_admission_test.sh /private/tmp/open64-fhe-impactful/ckks2c-ant` |
 | S6D-T8 | When selected by documented impact proof, run the retained `openpy -O0 -keep -FHE:codegen=ckks2c` ResNet command, followed by separate-process `ir_b2a -st -src`, C compile/link, ABI-mock comparison, hashes, and negative cleanup audit; otherwise verify and cite the matching receipt |
 
 ### Per-commit report template
@@ -436,12 +438,23 @@ authenticated join and no ABI change.
   definitions, 87 static descriptors, 147 dynamic bindings, and exactly one
   representation-only binding. This reuses the accepted `.ckks_ops.B`; it does
   not rematerialize the 33,367 CKKS events.
-- D4 is not closed by that read-only proof. Main/common must still publish the
-  generic grouped native-value lowering transaction, canonical-PU clone
-  collapse/callsite rewrite transaction, and terminal CKKS-event image policy
-  specified in `FHE-SYNC6-D4-GROUPED-LOWERING-HANDOFF.md`. After those contracts
-  merge, FHE builds the checked standard-WHIRL blocks, invokes the transactions,
-  and completes S6D-T5 against the existing public ABI mock.
+- The shared grouped-lowering, retired-view alias, terminal writer, and event
+  disposition contracts are merged and consumed. The FHE lowerer replaces 51
+  source contexts, retires all 33,367 private event definitions, promotes 44
+  external constants, and elides 6,543 verified-dead constants. The resulting
+  file contains only standard WHIRL sections and no executable `OPR_DSL`.
+- The terminal census is 146 private groups, 87 static descriptors, 147
+  dynamic bindings, and 294 checked standard calls. The atomic text report
+  contains every descriptor and binding plus join SHA-256
+  `6ff3cff9cace8d9e2ea1bd9c02dc43e62b89b13e664c5ffbf32860a3fdff4280`.
+  Generated execution authenticates against that report and ends with pool
+  ordinal 8, representation-only layout-convert ordinal 9, and linear ordinal
+  10.
+- S6D-T5 passes unchanged `whirl2c`, strict generated-C compilation, the
+  147-operation trace, the standalone ABI mock, and wrong-ordinal,
+  missing-resource, missing-coefficient, and wrong-handle rejection. The D4
+  output is a conversion/code-generation checkpoint; it does not claim real
+  ciphertext inference or the D5 backend early-exit route.
 - The handoff now fixes the proposed request/result layouts, ownership and
   atomicity rules, malformed-input matrix, reviewable M1-M3 commit sequence,
   and the terminal policy. The `-O0` terminal file omits the optional CKKS

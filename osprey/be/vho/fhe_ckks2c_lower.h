@@ -30,6 +30,8 @@ struct VHO_FHE_CKKS2C_LOWER_RESULT {
   uint32_t group_count;
   uint32_t replacement_block_count;
   uint32_t retired_member_count;
+  uint32_t promoted_constant_count;
+  uint32_t elided_constant_count;
   uint32_t inserted_statement_count;
   uint32_t standard_call_count;
   uint32_t output_handle_count;

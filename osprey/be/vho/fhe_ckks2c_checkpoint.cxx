@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include <unistd.h>
+
 #include "dsl_ckks_event.h"
 #include "fhe_ckks2c_collect.h"
 #include "fhe_ckks2c_lower.h"
@@ -58,7 +60,7 @@ bool Report(FILE *diagnostic, const char *message)
 bool Public_Routes_Match_Join()
 {
   if (session.public_routes.size() !=
-      session.public_join_result.private_group_binding_count)
+      session.public_join_result.dynamic_binding_count)
     return false;
   std::vector<bool> consumed(session.public_routes.size(), false);
   uint32_t matched = 0;
@@ -66,21 +68,26 @@ bool Public_Routes_Match_Join()
        binding_index < session.public_join.bindings.size(); ++binding_index) {
     const VHO_FHE_CKKS2C_PUBLIC_BINDING &binding =
         session.public_join.bindings[binding_index];
-    if (binding.binding_kind != VHO_FHE_CKKS2C_PUBLIC_PRIVATE_GROUP)
-      continue;
     uint32_t matches = 0;
     for (uint32_t route_index = 0;
          route_index < session.public_routes.size(); ++route_index) {
       const VHO_FHE_CKKS2C_PUBLIC_ROUTE &route =
           session.public_routes[route_index];
-      if (route.specialized_owner_pu_st !=
+      if (route.binding_kind != binding.binding_kind ||
+          route.specialized_owner_pu_st !=
               binding.specialized_owner_pu_st ||
           route.specialized_source_value_id !=
               binding.specialized_source_value_id ||
           route.context_pu_identity_id != binding.context_pu_identity_id ||
           route.context_callsite_id != binding.context_callsite_id ||
           route.public_static_ordinal != binding.static_ordinal ||
-          route.operation_kind != binding.operation_kind)
+          route.operation_kind != binding.operation_kind ||
+          (binding.binding_kind == VHO_FHE_CKKS2C_PUBLIC_PRIVATE_GROUP &&
+           route.representation_operand_value_id != 0) ||
+          (binding.binding_kind ==
+               VHO_FHE_CKKS2C_PUBLIC_REPRESENTATION_ONLY &&
+           (route.origin_static_ordinal != 0 ||
+            route.representation_operand_value_id == 0)))
         continue;
       if (consumed[route_index])
         return false;
@@ -92,6 +99,29 @@ bool Public_Routes_Match_Join()
     ++matched;
   }
   return matched == session.public_routes.size();
+}
+
+/* Append the authenticated D4 public schedule while the registered report is
+ * still temporary. Any write failure leaves publication to the shared abort
+ * path, so the final report and binary can never disagree. */
+bool Append_Public_Join_Report(FILE *diagnostic)
+{
+  std::string text;
+  if (!VHO_FHE_CKKS2C_Render_Public_Join(
+          session.public_join, session.public_join_result, &text,
+          diagnostic))
+    return false;
+  FILE *report = fopen(
+      session.published.group_report_temporary_path.c_str(), "a");
+  bool valid = report != NULL &&
+      fwrite(text.data(), 1, text.size(), report) == text.size() &&
+      fflush(report) == 0 && fsync(fileno(report)) == 0;
+  if (report != NULL && fclose(report) != 0)
+    valid = false;
+  if (!valid && diagnostic != NULL)
+    fprintf(diagnostic,
+            "CFHECKKS2C-004: public schedule report could not be staged\n");
+  return valid;
 }
 
 }  // namespace
@@ -150,6 +180,8 @@ bool VHO_FHE_CKKS2C_Checkpoint_Lower_Active_PU(
   session.lowered.replacement_block_count +=
       lowered.replacement_block_count;
   session.lowered.retired_member_count += lowered.retired_member_count;
+  session.lowered.promoted_constant_count += lowered.promoted_constant_count;
+  session.lowered.elided_constant_count += lowered.elided_constant_count;
   session.lowered.inserted_statement_count += lowered.inserted_statement_count;
   session.lowered.standard_call_count += lowered.standard_call_count;
   session.lowered.output_handle_count += lowered.output_handle_count;
@@ -191,19 +223,23 @@ bool VHO_FHE_CKKS2C_Checkpoint_Finalize(
       !Public_Routes_Match_Join() ||
       !VHO_FHE_CKKS2C_Stage_Private_Artifacts(
           session.binary_final_path.c_str(), expected_pu_count, groups,
-          collected, &session.published, diagnostic))
+          collected, &session.published, diagnostic) ||
+      !Append_Public_Join_Report(diagnostic))
     return Report(diagnostic, "private-output finalization failed");
   if (diagnostic != NULL)
     fprintf(diagnostic,
             "FHE-CKKS2C-CHECKPOINT: pu=%u groups=%u events=%u "
             "assets=%u keys=%u replacements=%u public_calls=%u "
-            "retired=%u canonical_pus=%u descriptors=%u bindings=%u "
+            "retired=%u promoted_constants=%u dead_constants=%u "
+            "canonical_pus=%u descriptors=%u bindings=%u "
             "join_sha256=%s c_sha256=%s\n",
             collected.pu_count, collected.group_count, collected.event_count,
             collected.external_asset_count, collected.key_use_count,
             session.lowered.replacement_block_count,
             session.lowered.standard_call_count,
             session.lowered.retired_member_count,
+            session.lowered.promoted_constant_count,
+            session.lowered.elided_constant_count,
             session.public_join_result.canonical_pu_count,
             session.public_join_result.static_descriptor_count,
             session.public_join_result.dynamic_binding_count,

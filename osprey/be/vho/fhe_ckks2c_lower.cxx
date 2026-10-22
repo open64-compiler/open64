@@ -30,6 +30,7 @@
 #include "fhe_semantic_runtime_lower.h"
 #include "pu_info.h"
 #include "stab.h"
+#include "strtab.h"
 #include "wn.h"
 
 namespace {
@@ -60,15 +61,25 @@ struct Prepared_Group {
   std::vector<DSL_IR_NATIVE_GROUP_MEMBER_REQUEST> members;
   DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
   SRCPOS source_position;
+  uint32_t representation_static_ordinal;
   VHO_FHE_RUNTIME_CALL_SEQUENCE sequence;
 
   Prepared_Group() : first_group(NULL), final_group(NULL), operation_kind(0),
-                     source_position(0)
+                     source_position(0), representation_static_ordinal(0)
   {
     memset(&projection, 0, sizeof(projection));
     VHO_FHE_Runtime_Call_Sequence_Init(&sequence);
   }
 };
+
+struct Owner_Lowering_Index {
+  std::map<ST_IDX, DSL_IR_VALUE_RECORD> values_by_st;
+  std::map<DSL_IR_VALUE_ID, DSL_RUNTIME_INPUT_RECORD> inputs_by_value;
+  std::map<DSL_RUNTIME_INPUT_ID, DSL_RUNTIME_INPUT_BINDING_RECORD>
+      root_bindings_by_input;
+};
+
+typedef std::map<DSL_IR_VALUE_ID, WN *> Native_Definition_Index;
 
 /* Emit one stable materialization diagnostic without changing managed IR. */
 bool Report(FILE *diagnostic, uint32_t id, const char *message)
@@ -122,32 +133,186 @@ WN *Build_Failure(ST_IDX status_st, ST_IDX output_st,
   return block;
 }
 
-/* Resolve one logical value's native STID from the authoritative PU tree. */
-WN *Find_Definition(PU_Info *pu_info, WN *tree, DSL_IR_VALUE_ID value_id)
+/* Index every owner-local native STID once. Group preparation then resolves
+ * tens of thousands of CKKS member values without rescanning the whole PU. */
+bool Index_Native_Definitions(
+    const Owner_Lowering_Index &index, WN *tree,
+    Native_Definition_Index *definitions)
 {
-  if (tree == NULL)
-    return NULL;
-  if (WN_operator(tree) == OPR_STID) {
-    DSL_IR_VALUE_RECORD value;
-    if (DSL_IR_Image_Find_Definition_Value(pu_info, tree, &value) &&
-        value.id == value_id)
-      return tree;
+  if (tree == NULL || definitions == NULL)
+    return false;
+  if (WN_operator(tree) == OPR_STID && WN_kid_count(tree) == 1 &&
+      DSL_WN_Is_Native(WN_kid0(tree))) {
+    std::map<ST_IDX, DSL_IR_VALUE_RECORD>::const_iterator value =
+        index.values_by_st.find(WN_st_idx(tree));
+    if (value == index.values_by_st.end() ||
+        value->second.id == DSL_IR_VALUE_INVALID_ID ||
+        value->second.st != WN_st_idx(tree) ||
+        value->second.ty != WN_ty(tree) ||
+        !definitions->insert(
+            std::make_pair(value->second.id, tree)).second)
+      return false;
   }
   if (WN_operator(tree) == OPR_BLOCK) {
     for (WN *statement = WN_first(tree); statement != NULL;
-         statement = WN_next(statement)) {
-      WN *found = Find_Definition(pu_info, statement, value_id);
-      if (found != NULL)
-        return found;
+         statement = WN_next(statement))
+      if (!Index_Native_Definitions(index, statement, definitions))
+        return false;
+    return true;
+  }
+  for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid)
+    if (!Index_Native_Definitions(
+            index, WN_kid(tree, kid), definitions))
+      return false;
+  return true;
+}
+
+/* Build one owner-qualified view of constant and runtime-role rows. This keeps
+ * collection linear in image size instead of rescanning all managed tables
+ * for every plaintext constant in a convolution-heavy PU. */
+bool Build_Owner_Lowering_Index(
+    PU_Info *pu_info, Owner_Lowering_Index *index)
+{
+  if (pu_info == NULL || index == NULL ||
+      PU_Info_proc_sym(pu_info) == ST_IDX_ZERO)
+    return false;
+  const ST_IDX owner = PU_Info_proc_sym(pu_info);
+  const std::string owner_metadata =
+      std::string("owner_pu=") + ST_name(St_Table[owner]);
+  Owner_Lowering_Index candidate;
+  for (uint32_t id = 1; id <= DSL_IR_Image_Value_Count(); ++id) {
+    DSL_IR_VALUE_RECORD value;
+    if (!DSL_IR_Image_Get_Value(id, &value))
+      return false;
+    if (value.metadata == STR_IDX_ZERO ||
+        owner_metadata != Index_To_Str(value.metadata))
+      continue;
+    if (!candidate.values_by_st.insert(
+            std::make_pair(value.st, value)).second)
+      return false;
+  }
+  for (uint32_t id = 1;
+       id <= DSL_Program_Interface_Image_Runtime_Input_Count(); ++id) {
+    DSL_RUNTIME_INPUT_RECORD input;
+    if (!DSL_Program_Interface_Image_Get_Runtime_Input(id, &input))
+      return false;
+    if (input.source_owner_pu_st != owner)
+      continue;
+    if (!candidate.inputs_by_value.insert(
+            std::make_pair(input.source_value_id, input)).second)
+      return false;
+  }
+  for (uint32_t id = 1;
+       id <= DSL_Program_Interface_Image_Runtime_Binding_Count(); ++id) {
+    DSL_RUNTIME_INPUT_BINDING_RECORD binding;
+    if (!DSL_Program_Interface_Image_Get_Runtime_Binding(id, &binding))
+      return false;
+    if (binding.owner_pu_st != owner ||
+        binding.binding_kind !=
+            DSL_RUNTIME_INPUT_BINDING_ROOT_PROMOTED_SOURCE)
+      continue;
+    if (!candidate.root_bindings_by_input.insert(
+            std::make_pair(binding.runtime_input_id, binding)).second)
+      return false;
+  }
+  index->values_by_st.swap(candidate.values_by_st);
+  index->inputs_by_value.swap(candidate.inputs_by_value);
+  index->root_bindings_by_input.swap(candidate.root_bindings_by_input);
+  return true;
+}
+
+/* Resolve one constant's indexed runtime role into the generic lowering
+ * relation. Root external sources are promoted to their opaque handle;
+ * constants with no runtime role are submitted for verified-dead elision. */
+bool Select_Constant_Lowering(
+    const Owner_Lowering_Index &index, DSL_IR_VALUE_ID value_id,
+    DSL_IR_NATIVE_VALUE_LOWER_REQUEST *request)
+{
+  if (value_id == DSL_IR_VALUE_INVALID_ID || request == NULL)
+    return false;
+  std::map<DSL_IR_VALUE_ID, DSL_RUNTIME_INPUT_RECORD>::const_iterator input =
+      index.inputs_by_value.find(value_id);
+  if (input == index.inputs_by_value.end()) {
+    request->mode = DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION;
+    request->relation.relation_kind =
+        DSL_IR_LOWER_RELATION_VERIFIED_DEAD_SOURCE;
+    return true;
+  }
+  if (input->second.input_kind !=
+      DSL_RUNTIME_INPUT_SOURCE_EXTERNAL_TENSOR)
+    return false;
+  std::map<DSL_RUNTIME_INPUT_ID,
+           DSL_RUNTIME_INPUT_BINDING_RECORD>::const_iterator binding =
+      index.root_bindings_by_input.find(input->second.id);
+  if (binding == index.root_bindings_by_input.end())
+    return false;
+  request->mode = DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION;
+  request->relation.relation_kind =
+      DSL_IR_LOWER_RELATION_ROOT_PROMOTED_INPUT;
+  request->relation.runtime_input_id = input->second.id;
+  request->relation.runtime_binding_id = binding->second.id;
+  return true;
+}
+
+/* Collect tensor constants left after CKKS groups are replaced and construct
+ * one mixed atomic lowering batch. The shared transaction revalidates every
+ * physical/logical identity, runtime relation, and use before mutation. */
+bool Collect_Tensor_Constants(
+    PU_Info *pu_info, const Owner_Lowering_Index &index, WN *tree,
+    std::vector<DSL_IR_NATIVE_VALUE_LOWER_REQUEST> *requests)
+{
+  if (pu_info == NULL || tree == NULL || requests == NULL)
+    return false;
+  if (WN_operator(tree) == OPR_STID && WN_kid_count(tree) == 1 &&
+      DSL_WN_Is_Native(WN_kid0(tree))) {
+    DSL_LOGICAL_OPCODE logical;
+    DSL_IR_VALUE_RECORD value;
+    DSL_IR_NODE_RECORD node;
+    if (!DSL_WN_Get_Logical_Opcode(WN_kid0(tree), &logical, NULL))
+      return false;
+    if (logical.dsl_operator == OPR_DSLTENSORCONST) {
+      const ST_IDX st = WN_st_idx(tree);
+      std::map<ST_IDX, DSL_IR_VALUE_RECORD>::const_iterator indexed_value =
+          index.values_by_st.find(st);
+      if (ST_IDX_level(st) != CURRENT_SYMTAB || ST_IDX_index(st) == 0 ||
+          ST_IDX_index(st) >= ST_Table_Size(CURRENT_SYMTAB) ||
+          ST_type(St_Table[st]) != WN_ty(tree) ||
+          indexed_value == index.values_by_st.end() ||
+          indexed_value->second.name == STR_IDX_ZERO ||
+          strcmp(Index_To_Str(indexed_value->second.name),
+                 ST_name(St_Table[st])) != 0)
+        return false;
+      value = indexed_value->second;
+      if (value.id == DSL_IR_VALUE_INVALID_ID ||
+          value.value_kind != DSL_IR_VALUE_CONSTANT || value.st != st ||
+          value.ty != WN_ty(tree) ||
+          value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
+          !DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
+          node.result_value_id != value.id || node.operand_count != 0)
+        return false;
+      DSL_IR_NATIVE_VALUE_LOWER_REQUEST request;
+      memset(&request, 0, sizeof(request));
+      request.native_definition = tree;
+      request.source_value_id = value.id;
+      request.expected_operator = OPR_DSLTENSORCONST;
+      request.expected_version = logical.source_version;
+      if (!Select_Constant_Lowering(index, value.id, &request))
+        return false;
+      requests->push_back(request);
     }
-    return NULL;
   }
-  for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid) {
-    WN *found = Find_Definition(pu_info, WN_kid(tree, kid), value_id);
-    if (found != NULL)
-      return found;
+  if (WN_operator(tree) == OPR_BLOCK) {
+    for (WN *statement = WN_first(tree); statement != NULL;
+         statement = WN_next(statement))
+      if (!Collect_Tensor_Constants(pu_info, index, statement, requests))
+        return false;
+    return true;
   }
-  return NULL;
+  for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid)
+    if (!Collect_Tensor_Constants(
+            pu_info, index, WN_kid(tree, kid), requests))
+      return false;
+  return true;
 }
 
 /* Copy one logical node's ordered direct operand values. */
@@ -206,7 +371,8 @@ bool Find_Public_Route(
   uint32_t matches = 0;
   for (uint32_t index = 0; index < routes.size(); ++index) {
     const VHO_FHE_CKKS2C_PUBLIC_ROUTE &candidate = routes[index];
-    if (candidate.specialized_owner_pu_st != group.owner_pu_st ||
+    if (candidate.binding_kind != VHO_FHE_CKKS2C_PUBLIC_PRIVATE_GROUP ||
+        candidate.specialized_owner_pu_st != group.owner_pu_st ||
         candidate.specialized_source_value_id != group.source_value_id ||
         candidate.context_pu_identity_id != group.context_pu_identity_id ||
         candidate.context_callsite_id != group.context_callsite_id ||
@@ -277,6 +443,7 @@ bool Assign_Operation_Kinds(
                       "source context does not own one supported group");
     }
   }
+
   kinds->swap(candidate);
   return true;
 }
@@ -382,6 +549,12 @@ bool VHO_FHE_CKKS2C_Lower_Active_PU(
   WN *tree = PU_Info_tree_ptr(pu_info);
   if (owner == ST_IDX_ZERO || tree == NULL)
     return Report(diagnostic, 0, "active PU tree is unavailable");
+  Owner_Lowering_Index owner_index;
+  Native_Definition_Index definitions;
+  if (!Build_Owner_Lowering_Index(pu_info, &owner_index) ||
+      !Index_Native_Definitions(owner_index, tree, &definitions))
+    return Report(diagnostic, 0,
+                  "active PU native-definition indexing failed");
 
   std::vector<uint32_t> kinds;
   if (!Assign_Operation_Kinds(groups, &kinds, diagnostic))
@@ -433,6 +606,65 @@ bool VHO_FHE_CKKS2C_Lower_Active_PU(
                     "non-ReLU replacement owns multiple private groups");
     }
   }
+
+  /* Attach each zero-private-work flatten route to the average-pool context
+   * that produces its sole operand. The shared transaction already redirects
+   * the retired flatten view to that context's final projection, so the
+   * representation evaluator must be the last local step in the pool block. */
+  uint32_t representation_count = 0;
+  for (uint32_t route_index = 0; route_index < routes.size(); ++route_index) {
+    const VHO_FHE_CKKS2C_PUBLIC_ROUTE &route = routes[route_index];
+    if (route.binding_kind != VHO_FHE_CKKS2C_PUBLIC_REPRESENTATION_ONLY ||
+        route.specialized_owner_pu_st != owner)
+      continue;
+    DSL_IR_VALUE_RECORD value;
+    DSL_IR_NODE_RECORD node;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
+    std::vector<DSL_IR_VALUE_ID> operands;
+    if (route.operation_kind != VHO_FHE_RUNTIME_OP_LAYOUT_CONVERT ||
+        route.origin_static_ordinal != 0 ||
+        route.public_static_ordinal == 0 ||
+        route.representation_operand_value_id == DSL_IR_VALUE_INVALID_ID ||
+        !DSL_IR_Image_Get_Value(route.specialized_source_value_id, &value) ||
+        value.id != route.specialized_source_value_id ||
+        value.producer_node_id == DSL_IR_NODE_INVALID_ID ||
+        !DSL_IR_Image_Get_Node(value.producer_node_id, &node))
+      return Report(diagnostic, route.specialized_source_value_id,
+                    "representation route source is absent");
+    if (node.result_value_id != route.specialized_source_value_id ||
+        !DSL_IR_Image_Get_Opcode_Descriptor(
+            node.opcode_descriptor_id, &opcode) ||
+        opcode.logical_operator != OPR_DSLFLATTEN || opcode.version != 2 ||
+        !Node_Operands(node, &operands) || operands.size() != 1 ||
+        operands[0] != route.representation_operand_value_id)
+      return Report(diagnostic, route.specialized_source_value_id,
+                    "representation route identity is malformed");
+    uint32_t matches = 0;
+    for (uint32_t index = 0; index < prepared.size(); ++index) {
+      Prepared_Group &entry = prepared[index];
+      if (entry.first_group->source_logical_operator !=
+              OPR_DSLGLOBALAVGPOOL2D ||
+          entry.final_group->group_output_value_id !=
+              route.representation_operand_value_id ||
+          entry.first_group->context_pu_identity_id !=
+              route.context_pu_identity_id ||
+          entry.first_group->context_callsite_id !=
+              route.context_callsite_id)
+        continue;
+      if (entry.representation_static_ordinal != 0)
+        return Report(diagnostic, route.specialized_source_value_id,
+                      "pool context owns duplicate representation routes");
+      entry.representation_static_ordinal = route.public_static_ordinal;
+      ++matches;
+    }
+    if (matches != 1)
+      return Report(diagnostic, route.specialized_source_value_id,
+                    "representation route has no exact pool context");
+    ++representation_count;
+  }
+  if (representation_count > 1)
+    return Report(diagnostic, representation_count,
+                  "active PU owns multiple representation routes");
 
   std::set<DSL_IR_VALUE_ID> member_values;
   for (uint32_t index = 0; index < prepared.size(); ++index) {
@@ -489,9 +721,9 @@ bool VHO_FHE_CKKS2C_Lower_Active_PU(
         DSL_IR_VALUE_RECORD value;
         DSL_IR_NODE_RECORD node;
         DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
-        WN *definition = Find_Definition(
-            pu_info, tree, group.result_value_ids[member]);
-        if (definition == NULL ||
+        Native_Definition_Index::const_iterator definition =
+            definitions.find(group.result_value_ids[member]);
+        if (definition == definitions.end() ||
             !member_values.insert(group.result_value_ids[member]).second ||
             !DSL_IR_Image_Get_Value(group.result_value_ids[member], &value) ||
             !DSL_IR_Image_Get_Node(group.result_node_ids[member], &node) ||
@@ -510,7 +742,7 @@ bool VHO_FHE_CKKS2C_Lower_Active_PU(
         }
         DSL_IR_NATIVE_GROUP_MEMBER_REQUEST request;
         memset(&request, 0, sizeof(request));
-        request.native_definition = definition;
+        request.native_definition = definition->second;
         request.node_id = node.id;
         request.value_id = value.id;
         request.expected_operator =
@@ -543,6 +775,20 @@ bool VHO_FHE_CKKS2C_Lower_Active_PU(
           entry.source_position, Build_Failure, &entry.source_position,
           diagnostic,
           &entry.sequence);
+    } else if (entry.representation_static_ordinal != 0) {
+      VHO_FHE_RUNTIME_UNARY_PIPELINE_STEP steps[2];
+      steps[0].operation_kind = VHO_FHE_RUNTIME_OP_AVERAGE_POOL;
+      steps[0].static_ordinal =
+          public_ordinals[entry.group_indices.front()];
+      steps[1].operation_kind = VHO_FHE_RUNTIME_OP_LAYOUT_CONVERT;
+      steps[1].static_ordinal = entry.representation_static_ordinal;
+      built = entry.first_group->source_logical_operator ==
+                  OPR_DSLGLOBALAVGPOOL2D &&
+              entry.operands.size() == 1 &&
+              VHO_FHE_Runtime_Build_Unary_Pipeline_Sequence(
+                  pu_info, entry.operands[0], steps, 2,
+                  entry.source_position, Build_Failure,
+                  &entry.source_position, diagnostic, &entry.sequence);
     } else {
       VHO_FHE_RUNTIME_OPERATION_REQUEST operation;
       memset(&operation, 0, sizeof(operation));
@@ -593,9 +839,31 @@ bool VHO_FHE_CKKS2C_Lower_Active_PU(
     return Report(diagnostic, 0, "atomic grouped lowering rejected the PU");
   }
 
-  VHO_FHE_CKKS2C_LOWER_RESULT counts = {0, 0, 0, 0, 0, 0, 0};
+  std::vector<DSL_IR_NATIVE_VALUE_LOWER_REQUEST> constants;
+  std::vector<DSL_IR_NATIVE_VALUE_LOWER_RESULT> constant_results;
+  if (!Collect_Tensor_Constants(
+          pu_info, owner_index, tree, &constants))
+    return Report(diagnostic, 0,
+                  "tensor-constant lowering plan rejected the PU");
+  constant_results.resize(constants.size());
+  if (!constants.empty() &&
+      !DSL_IR_Lower_Native_Values_To_Standard_Blocks(
+          pu_info, &constants[0], constants.size(), diagnostic,
+          &constant_results[0]))
+    return Report(diagnostic, 0,
+                  "tensor-constant lowering transaction rejected the PU");
+
+  VHO_FHE_CKKS2C_LOWER_RESULT counts = {0, 0, 0, 0, 0, 0, 0, 0, 0};
   counts.group_count = groups.size();
   counts.replacement_block_count = prepared.size();
+  for (uint32_t index = 0; index < constant_results.size(); ++index) {
+    if (constant_results[index].mode ==
+        DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION)
+      ++counts.promoted_constant_count;
+    else if (constant_results[index].mode ==
+             DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION)
+      ++counts.elided_constant_count;
+  }
   for (uint32_t index = 0; index < prepared.size(); ++index) {
     prepared[index].sequence.block = NULL;
     counts.retired_member_count += lowered[index].retired_member_count;

@@ -60,6 +60,7 @@ struct VHO_FHE_CKKS2C_PUBLIC_BINDING {
 
 /* One image-derived route available before any active PU is mutated. */
 struct VHO_FHE_CKKS2C_PUBLIC_ROUTE {
+  uint32_t binding_kind;
   uint32_t specialized_owner_pu_st;
   uint32_t specialized_source_value_id;
   uint32_t context_pu_identity_id;
@@ -67,6 +68,9 @@ struct VHO_FHE_CKKS2C_PUBLIC_ROUTE {
   uint32_t origin_static_ordinal;
   uint32_t public_static_ordinal;
   uint32_t operation_kind;
+  /* Nonzero only for a representation-only source. This records the exact
+   * source value whose public result is viewed by the representation step. */
+  uint32_t representation_operand_value_id;
 };
 
 /* Immutable-image result consumed by the later grouped lowering transaction. */
@@ -96,6 +100,14 @@ bool VHO_FHE_CKKS2C_Build_Public_Join(
     VHO_FHE_CKKS2C_PUBLIC_JOIN_PLAN *plan,
     VHO_FHE_CKKS2C_PUBLIC_JOIN_RESULT *result,
     FILE *diagnostic);
+
+/* Render the authenticated join as deterministic, human-readable schedule
+ * evidence. The text is suitable for appending to the transaction's group
+ * report before any auxiliary artifact is published. */
+bool VHO_FHE_CKKS2C_Render_Public_Join(
+    const VHO_FHE_CKKS2C_PUBLIC_JOIN_PLAN &plan,
+    const VHO_FHE_CKKS2C_PUBLIC_JOIN_RESULT &result,
+    std::string *text, FILE *diagnostic);
 
 /* Reconstruct the public selector route for every typed CKKS event group
  * directly from immutable mapped images. This plan is available before the

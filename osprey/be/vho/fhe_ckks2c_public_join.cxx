@@ -4,8 +4,8 @@
  * Purpose: implement the read-only S6-0d D4 join from context-specialized
  * CKKS groups to the canonical public FHE ABI-v1 selector surface.  This file
  * constructs no calls and performs no tree/image mutation; those operations
- * remain behind the reviewed standard-call builder and the pending generic
- * grouped lowering transaction.
+ * remain behind the reviewed standard-call builder and generic grouped
+ * lowering transaction.
  *
  * Design references:
  *   doc/FHE-SYNC6-S6-0D-DETAILED-EXECUTION-PLAN.md, D4
@@ -621,10 +621,32 @@ bool VHO_FHE_CKKS2C_Build_Public_Routes_From_Image(
       std::vector<const VHO_FHE_CKKS2C_GROUP *> matched =
           by_source[Owner_Value(instance.owner_pu_st, instance.value_id)];
       if (source.key.logical_operator == OPR_DSLFLATTEN) {
-        if (!matched.empty() || kinds.size() != 1)
+        DSL_IR_NODE_RECORD node;
+        DSL_IR_VALUE_REFERENCE_RECORD operand;
+        if (!matched.empty() || kinds.size() != 1 ||
+            !DSL_IR_Image_Get_Node(instance.node_id, &node) ||
+            node.id != instance.node_id || node.result_value_id !=
+                instance.value_id || node.operand_count != 1 ||
+            node.first_operand_reference_id == 0 ||
+            !DSL_IR_Image_Get_Value_Reference(
+                node.first_operand_reference_id, &operand) ||
+            operand.owner_node_id != node.id || operand.ordinal != 0 ||
+            operand.value_id == DSL_IR_VALUE_INVALID_ID ||
+            operand.flags != 0 || operand.reserved != 0)
           return Report(diagnostic,
-                        "flatten image route owns private work",
+                        "flatten image route is malformed or owns private work",
                         instance.value_id);
+        VHO_FHE_CKKS2C_PUBLIC_ROUTE route;
+        route.binding_kind = VHO_FHE_CKKS2C_PUBLIC_REPRESENTATION_ONLY;
+        route.specialized_owner_pu_st = instance.owner_pu_st;
+        route.specialized_source_value_id = instance.value_id;
+        route.context_pu_identity_id = instance.identity_id;
+        route.context_callsite_id = 0;
+        route.origin_static_ordinal = 0;
+        route.public_static_ordinal = first_public_ordinal;
+        route.operation_kind = kinds[0];
+        route.representation_operand_value_id = operand.value_id;
+        candidate.push_back(route);
         ++representation_count;
         continue;
       }
@@ -641,6 +663,7 @@ bool VHO_FHE_CKKS2C_Build_Public_Routes_From_Image(
           return Report(diagnostic, "image route ordinals are not dense",
                         instance.value_id);
         VHO_FHE_CKKS2C_PUBLIC_ROUTE route;
+        route.binding_kind = VHO_FHE_CKKS2C_PUBLIC_PRIVATE_GROUP;
         route.specialized_owner_pu_st = group.owner_pu_st;
         route.specialized_source_value_id = group.source_value_id;
         route.context_pu_identity_id = group.context_pu_identity_id;
@@ -648,18 +671,20 @@ bool VHO_FHE_CKKS2C_Build_Public_Routes_From_Image(
         route.origin_static_ordinal = group.origin_static_ordinal;
         route.public_static_ordinal = first_public_ordinal + offset;
         route.operation_kind = kinds[offset];
+        route.representation_operand_value_id = 0;
         candidate.push_back(route);
       }
     }
   }
-  if (candidate.size() != groups.size() || representation_count != 1)
+  if (candidate.size() != groups.size() + representation_count ||
+      representation_count != 1)
     return Report(diagnostic, "image public route coverage is incomplete", 0);
   VHO_FHE_CKKS2C_PUBLIC_JOIN_RESULT counts;
   counts.canonical_pu_count = canonical_pus;
   counts.canonical_source_count = sources.size();
   counts.static_descriptor_count = static_ordinal - 1;
-  counts.dynamic_binding_count = candidate.size() + representation_count;
-  counts.private_group_binding_count = candidate.size();
+  counts.dynamic_binding_count = candidate.size();
+  counts.private_group_binding_count = groups.size();
   counts.representation_binding_count = representation_count;
   routes->swap(candidate);
   *result = counts;
@@ -798,5 +823,76 @@ bool VHO_FHE_CKKS2C_Build_Public_Join(
   plan->bindings.swap(candidate.bindings);
   plan->identity_sha256 = candidate.identity_sha256;
   *result = counts;
+  return true;
+}
+
+/* Render one complete public join after re-authenticating its exact rows. */
+bool VHO_FHE_CKKS2C_Render_Public_Join(
+    const VHO_FHE_CKKS2C_PUBLIC_JOIN_PLAN &plan,
+    const VHO_FHE_CKKS2C_PUBLIC_JOIN_RESULT &result,
+    std::string *text, FILE *diagnostic)
+{
+  std::string identity;
+  if (text == NULL || plan.descriptors.empty() || plan.bindings.empty() ||
+      result.static_descriptor_count != plan.descriptors.size() ||
+      result.dynamic_binding_count != plan.bindings.size() ||
+      result.dynamic_binding_count != result.private_group_binding_count +
+                                          result.representation_binding_count ||
+      !Join_Identity(plan, &identity) || identity != plan.identity_sha256)
+    return Report(diagnostic, "public join report is inconsistent", 0);
+
+  std::ostringstream output;
+  output << "public_schedule.format=open64.ckks2c.public-schedule.v1\n"
+         << "public_schedule.join_sha256=" << identity << "\n"
+         << "public_schedule.canonical_pu_count="
+         << result.canonical_pu_count << "\n"
+         << "public_schedule.canonical_source_count="
+         << result.canonical_source_count << "\n"
+         << "public_schedule.static_descriptor_count="
+         << result.static_descriptor_count << "\n"
+         << "public_schedule.dynamic_binding_count="
+         << result.dynamic_binding_count << "\n"
+         << "public_schedule.private_group_binding_count="
+         << result.private_group_binding_count << "\n"
+         << "public_schedule.representation_binding_count="
+         << result.representation_binding_count << "\n";
+  for (uint32_t index = 0; index < plan.descriptors.size(); ++index) {
+    const VHO_FHE_CKKS2C_PUBLIC_DESCRIPTOR &row = plan.descriptors[index];
+    output << "public_descriptor[" << index << "].owner_pu="
+           << row.canonical_owner_pu_st << "\n"
+           << "public_descriptor[" << index << "].source_node="
+           << row.canonical_source_node_id << "\n"
+           << "public_descriptor[" << index << "].source_value="
+           << row.canonical_source_value_id << "\n"
+           << "public_descriptor[" << index << "].static_ordinal="
+           << row.static_ordinal << "\n"
+           << "public_descriptor[" << index << "].operation_kind="
+           << row.operation_kind << "\n"
+           << "public_descriptor[" << index << "].multiplicity="
+           << row.execution_multiplicity << "\n";
+  }
+  for (uint32_t index = 0; index < plan.bindings.size(); ++index) {
+    const VHO_FHE_CKKS2C_PUBLIC_BINDING &row = plan.bindings[index];
+    output << "public_binding[" << index << "].kind="
+           << row.binding_kind << "\n"
+           << "public_binding[" << index << "].static_ordinal="
+           << row.static_ordinal << "\n"
+           << "public_binding[" << index << "].operation_kind="
+           << row.operation_kind << "\n"
+           << "public_binding[" << index << "].owner_pu="
+           << row.specialized_owner_pu_st << "\n"
+           << "public_binding[" << index << "].source_value="
+           << row.specialized_source_value_id << "\n"
+           << "public_binding[" << index << "].context_identity="
+           << row.context_pu_identity_id << "\n"
+           << "public_binding[" << index << "].callsite="
+           << row.context_callsite_id << "\n"
+           << "public_binding[" << index << "].group_output="
+           << row.group_output_value_id << "\n"
+           << "public_binding[" << index << "].group_sha256="
+           << (row.group_identity_sha256.empty() ? "none" :
+               row.group_identity_sha256) << "\n";
+  }
+  *text = output.str();
   return true;
 }

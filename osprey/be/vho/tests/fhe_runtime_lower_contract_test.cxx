@@ -978,6 +978,64 @@ Build_And_Lower_Resolved_Relu_Sequence
         }
     }
 
+    VHO_FHE_RUNTIME_UNARY_PIPELINE_STEP pipeline_steps[2];
+    pipeline_steps[0].operation_kind = VHO_FHE_RUNTIME_OP_AVERAGE_POOL;
+    pipeline_steps[0].static_ordinal = 70;
+    pipeline_steps[1].operation_kind = VHO_FHE_RUNTIME_OP_LAYOUT_CONVERT;
+    pipeline_steps[1].static_ordinal = 71;
+    VHO_FHE_RUNTIME_CALL_SEQUENCE pipeline_sequence;
+    if (!VHO_FHE_Runtime_Build_Unary_Pipeline_Sequence
+             (pu, unary_operands[0], pipeline_steps, 2,
+              Test_Source_Position(), Build_Failure_Block, NULL, stderr,
+              &pipeline_sequence) ||
+        pipeline_sequence.block == NULL ||
+        pipeline_sequence.standard_call_count != 4 ||
+        pipeline_sequence.output_handle_count != 4 ||
+        pipeline_sequence.status_check_count != 4 ||
+        ST_type(pipeline_sequence.output_st) != ciphertext_ty) {
+        fprintf(stderr, "runtime unary pipeline changed\n");
+        return FALSE;
+    }
+    UINT32 pipeline_call_count = 0;
+    UINT32 pipeline_selector_count = 0;
+    BOOL saw_pool = FALSE;
+    BOOL saw_layout = FALSE;
+    for (WN *stmt = WN_first(pipeline_sequence.block); stmt != NULL;
+         stmt = WN_next(stmt)) {
+        if (WN_operator(stmt) != OPR_CALL)
+            continue;
+        ++pipeline_call_count;
+        const char *name = ST_name(WN_st(stmt));
+        if (strcmp(name, "open64_fhe_operation_desc_select_v1") == 0) {
+            WN *ordinal = WN_kid0(WN_kid(stmt, 2));
+            WN *kind = WN_kid0(WN_kid(stmt, 3));
+            const INT64 expected_ordinal = 70 + pipeline_selector_count;
+            const INT64 expected_kind = pipeline_selector_count == 0 ?
+                VHO_FHE_RUNTIME_OP_AVERAGE_POOL :
+                VHO_FHE_RUNTIME_OP_LAYOUT_CONVERT;
+            if (WN_operator(ordinal) != OPR_INTCONST ||
+                WN_const_val(ordinal) != expected_ordinal ||
+                WN_operator(kind) != OPR_INTCONST ||
+                WN_const_val(kind) != expected_kind) {
+                fprintf(stderr, "runtime unary pipeline selector changed\n");
+                return FALSE;
+            }
+            ++pipeline_selector_count;
+        } else if (strcmp(name, "open64_fhe_average_pool_v1") == 0) {
+            saw_pool = TRUE;
+        } else if (strcmp(name, "open64_fhe_layout_convert_v1") == 0) {
+            saw_layout = TRUE;
+        }
+    }
+    const BOOL valid_pipeline = pipeline_call_count == 4 &&
+                                pipeline_selector_count == 2 &&
+                                saw_pool && saw_layout;
+    WN_DELETE_Tree(pipeline_sequence.block);
+    if (!valid_pipeline) {
+        fprintf(stderr, "runtime unary pipeline ABI changed\n");
+        return FALSE;
+    }
+
     VHO_FHE_RUNTIME_OPERATION_REQUEST invalid_poly;
     memset(&invalid_poly, 0, sizeof(invalid_poly));
     invalid_poly.operation_kind = VHO_FHE_RUNTIME_OP_RELU_POLY_STAGE;
