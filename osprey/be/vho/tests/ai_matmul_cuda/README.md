@@ -29,10 +29,14 @@ with `whirl2c -cuda` output from the same selected plan.
 For the exact-divisible fixed F32 GEMM subset, `cuda_whirl_output` writes
 `ai_matmul_tile_f32` as high-level device WHIRL with cooperative global-to-
 shared A/B staging, two CTA barriers per K tile, register accumulation, and
-output stores. Translate the saved image with `whirl2c -cuda matmul.device.B`;
+output stores. The emitted declarations must contain `__shared__` for both
+`as` and `bs`; `acc` remains per-thread. Translate the saved image with
+`whirl2c -cuda matmul.device.B`;
 the resulting `matmul.device.w2c.c` is CUDA C despite its `.c` suffix. The
 review artifacts also retain the same bytes as `source/matmul.whirl.cu` for
-future native CUDA compilation. The
+future native CUDA compilation. The checked-in `generated_runtime.cu` is a
+host launch adapter, not `whirl2c` kernel output; it has no A/B tile
+declarations. The
 legacy emitter remains the default-on transition baseline. Byte-for-byte
 source equality is not required: the device PU omits bounds guards only
 where the exact-divisibility gate proves they are redundant.
