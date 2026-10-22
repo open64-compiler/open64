@@ -154,6 +154,7 @@ BOOL  W2C_Emit_Nested_PUs = FALSE;  /* Emit code for nested PUs */
 BOOL  W2C_Emit_Frequency = FALSE;   /* Emit feedback frequency info */
 BOOL  W2C_Emit_Cgtag = FALSE;       /* Emit codegen tags for loop */
 BOOL  W2C_Lower_Fortran = FALSE;    /* Lower Fortran intrinsics and io */
+BOOL  W2C_Cuda_Mode = FALSE;        /* Translate an attributed device PU */
 BOOL  W2C_Emit_Omp = FALSE;         /* Force OMP pragmas wherever possible */
 INT32 W2C_Line_Length = 0;   /* Max output line length; zero==default */
 
@@ -592,6 +593,10 @@ W2C_Process_Command_Line (INT phase_argc, const char * const phase_argv[],
    W2C_Emit_Frequency = CLIST_emit_frequency;
    W2C_Emit_Cgtag = CLIST_emit_cgtag;
    W2C_Lower_Fortran = CLIST_lower_ftn;
+   W2C_Cuda_Mode = CLIST_cuda;
+   FmtAssert(!W2C_Cuda_Mode ||
+             (!W2C_Lower_Fortran && !W2C_Emit_Nested_PUs),
+             ("whirl2c -cuda cannot lower Fortran or nested MP PUs"));
    W2C_Emit_Omp = CLIST_emit_omp;
    W2C_Line_Length = CLIST_line_length;
 
@@ -654,6 +659,19 @@ W2C_Push_PU(const WN *pu, WN *body_part_of_interest)
 
    Is_True(WN_opcode(pu) == OPC_FUNC_ENTRY, 
 	   ("Invalid opcode for W2C_Push_PU()"));
+   if (W2C_Cuda_Mode) {
+      const DEVICE_SYMBOL_KIND kind = ST_device_symbol_kind(*WN_st(pu));
+#ifdef TARG_NVISA
+      FmtAssert(kind == DEVICE_SYMBOL_KERNEL ||
+                kind == DEVICE_SYMBOL_FUNCTION ||
+                (kind == DEVICE_SYMBOL_NONE && ST_in_global_mem(WN_st(pu))),
+                ("whirl2c -cuda requires a device-attributed PU"));
+#else
+      FmtAssert(kind == DEVICE_SYMBOL_KERNEL ||
+                kind == DEVICE_SYMBOL_FUNCTION,
+                ("whirl2c -cuda requires a device-attributed PU"));
+#endif
+   }
 
    /* Set up the parent mapping
     */
@@ -924,6 +942,7 @@ W2C_Fini(void)
       W2C_Emit_Nested_PUs = FALSE;  /* Emit code for nested PUs */
       W2C_Emit_Frequency = FALSE;   /* Emit feedback frequency info */
       W2C_Lower_Fortran = FALSE;    /* Lower Fortran intrinsics and io */
+      W2C_Cuda_Mode = FALSE;        /* Translate an attributed device PU */
       W2C_Line_Length = 0;   /* Max output line length; zero==default */
 
       W2C_Cplus_Initializer = FALSE;
@@ -1024,6 +1043,20 @@ W2C_Outfile_Init(BOOL emit_global_decls)
    Write_String(W2C_File[W2C_DOTC_FILE], W2C_File[W2C_LOC_FILE],
 		" *******************************************************/"
 		"\n\n");
+   if (W2C_Cuda_Mode)
+      Write_String(W2C_File[W2C_DOTC_FILE], W2C_File[W2C_LOC_FILE],
+                   "#include <cuda_runtime.h>\n"
+                   "typedef char _BOOLEAN;\n"
+                   "typedef signed char _INT8;\n"
+                   "typedef signed short _INT16;\n"
+                   "typedef signed int _INT32;\n"
+                   "typedef signed long long _INT64;\n"
+                   "typedef unsigned char _UINT8;\n"
+                   "typedef unsigned short _UINT16;\n"
+                   "typedef unsigned int _UINT32;\n"
+                   "typedef unsigned long long _UINT64;\n"
+                   "typedef float _IEEE32;\n"
+                   "typedef double _IEEE64;\n\n");
 
    /* Emit the header file if appropriate */
    if (emit_global_decls)
@@ -1067,7 +1100,6 @@ W2C_Outfile_Translate_Pu(WN *pu, BOOL emit_global_decls)
 
    Is_True(WN_opcode(pu) == OPC_FUNC_ENTRY, 
 	   ("Invalid opcode for W2C_Outfile_Translate_Pu()"));
-
    /* Make sure all necessary output files are open.
     */
    Continue_Locations_File();

@@ -2,6 +2,9 @@
 
 #include "runtime.h"
 #include "open64_dsl_runtime_abi.h"
+#ifdef AI_MATMUL_M2_RUNTIME
+#include "generated_runtime.h"
+#endif
 
 #include <limits.h>
 #include <stdint.h>
@@ -18,6 +21,7 @@ static M0_TENSOR *owned[3];
 static uint32_t owned_count;
 static M0_TENSOR *last_result;
 static const char *error_message;
+static int last_generated_path;
 
 static int
 shape_of(const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *desc,
@@ -72,6 +76,32 @@ new_tensor(uint32_t rows, uint32_t cols)
     return tensor;
 }
 
+static void
+cpu_matmul_into(const M0_TENSOR *a, const M0_TENSOR *b, M0_TENSOR *c)
+{
+    uint32_t i, j, k;
+    for (i = 0; i < c->rows; ++i)
+        for (j = 0; j < c->cols; ++j) {
+            float sum = 0.0f;
+            for (k = 0; k < a->cols; ++k)
+                sum += a->values[(size_t)i * a->cols + k] *
+                       b->values[(size_t)k * c->cols + j];
+            c->values[(size_t)i * c->cols + j] = sum;
+        }
+}
+
+#ifdef AI_MATMUL_M2_RUNTIME
+static void
+discard_last_tensor(M0_TENSOR *tensor)
+{
+    if (owned_count != 0 && owned[owned_count - 1] == tensor) {
+        owned[--owned_count] = NULL;
+        free(tensor->values);
+        free(tensor);
+    }
+}
+#endif
+
 OPEN64_DSL_TENSOR_HANDLE
 __open64_dsl_tensor_const_v1(const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result,
                              const OPEN64_DSL_SCALAR_VALUE_V1 *value)
@@ -107,7 +137,7 @@ __open64_dsl_matmul_v1(OPEN64_DSL_TENSOR_HANDLE kid0,
     M0_TENSOR *a = (M0_TENSOR *)kid0;
     M0_TENSOR *b = (M0_TENSOR *)kid1;
     M0_TENSOR *c;
-    uint32_t rows, cols, i, j, k;
+    uint32_t rows, cols;
     if (!shape_of(result, &rows, &cols))
         return NULL;
     if (flags != OPEN64_DSL_MATMUL_FLAG_NONE || a == NULL || b == NULL ||
@@ -118,16 +148,79 @@ __open64_dsl_matmul_v1(OPEN64_DSL_TENSOR_HANDLE kid0,
     c = new_tensor(rows, cols);
     if (c == NULL)
         return NULL;
-    for (i = 0; i < rows; ++i)
-        for (j = 0; j < cols; ++j) {
-            float sum = 0.0f;
-            for (k = 0; k < a->cols; ++k)
-                sum += a->values[(size_t)i * a->cols + k] *
-                       b->values[(size_t)k * cols + j];
-            c->values[(size_t)i * cols + j] = sum;
-        }
+    cpu_matmul_into(a, b, c);
     last_result = c;
     return c;
+}
+
+#ifdef AI_MATMUL_M2_RUNTIME
+static int
+valid_generated_plan(const OPEN64_DSL_GENERATED_MATMUL_PLAN_V1 *plan)
+{
+    uint64_t shared, threads;
+    if (plan == NULL ||
+        plan->abi_version != OPEN64_DSL_RUNTIME_ABI_VERSION ||
+        plan->header_size != OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE ||
+        plan->total_size != OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE ||
+        plan->provider != OPEN64_DSL_PHYSICAL_PROVIDER_OPEN64_GENERATED ||
+        plan->target_profile != OPEN64_DSL_TARGET_PROFILE_NVIDIA_HOPPER ||
+        plan->optimization_plan_id == 0 || plan->tile_plan_id == 0 ||
+        plan->cta_m == 0 || plan->cta_n == 0 || plan->cta_k == 0 ||
+        plan->thread_m == 0 || plan->thread_n == 0 ||
+        plan->cta_m % plan->thread_m || plan->cta_n % plan->thread_n ||
+        (plan->fallback_provider != OPEN64_DSL_PHYSICAL_PROVIDER_UNSPECIFIED &&
+         plan->fallback_provider != OPEN64_DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT) ||
+        plan->reserved != 0)
+        return 0;
+    shared = ((uint64_t)plan->cta_m * plan->cta_k +
+              (uint64_t)plan->cta_k * plan->cta_n) * sizeof(float);
+    threads = (uint64_t)(plan->cta_m / plan->thread_m) *
+              (plan->cta_n / plan->thread_n);
+    return shared == plan->shared_bytes_per_stage &&
+           threads == plan->threads_per_cta && threads <= 1024;
+}
+
+OPEN64_DSL_TENSOR_HANDLE
+__open64_dsl_matmul_generated_v1
+        (OPEN64_DSL_TENSOR_HANDLE kid0, OPEN64_DSL_TENSOR_HANDLE kid1,
+         const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result, uint32_t flags,
+         const OPEN64_DSL_GENERATED_MATMUL_PLAN_V1 *plan)
+{
+    M0_TENSOR *a = (M0_TENSOR *)kid0;
+    M0_TENSOR *b = (M0_TENSOR *)kid1;
+    M0_TENSOR *c;
+    uint32_t rows, cols;
+    last_generated_path = 0;
+    if (!valid_generated_plan(plan) || !shape_of(result, &rows, &cols) ||
+        flags != OPEN64_DSL_MATMUL_FLAG_NONE || a == NULL || b == NULL ||
+        a->rows != rows || b->cols != cols || a->cols != b->rows) {
+        error_message = "generated matmul plan, shape or flags mismatch";
+        return NULL;
+    }
+    c = new_tensor(rows, cols);
+    if (c == NULL)
+        return NULL;
+    if (ai_matmul_m2_launch(a->values, b->values, c->values,
+                            rows, cols, a->cols, plan) == 0) {
+        last_generated_path = 1;
+    } else if (plan->fallback_provider ==
+               OPEN64_DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT) {
+        cpu_matmul_into(a, b, c);
+        last_generated_path = 2;
+    } else {
+        discard_last_tensor(c);
+        error_message = "generated CUDA launch failed without fallback";
+        return NULL;
+    }
+    last_result = c;
+    return c;
+}
+#endif
+
+int
+ai_matmul_m0_last_generated_path(void)
+{
+    return last_generated_path;
 }
 
 int
@@ -163,4 +256,5 @@ ai_matmul_m0_reset(void)
     owned_count = 0;
     last_result = NULL;
     error_message = NULL;
+    last_generated_path = 0;
 }

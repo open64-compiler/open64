@@ -4174,6 +4174,9 @@ ST_ATTR::Print (FILE* f) const
     case ST_ATTR_ABSOLUTE_LOCATION:
 	fprintf (f, "(LOCATION) 0x%llx\n", u.value);
 	break;
+    case ST_ATTR_DEVICE_SYMBOL:
+	fprintf (f, "(DEVICE_SYMBOL) %llu\n", u.value);
+	break;
     default:
 	fprintf (f, "(UNKNOWN) 0x%llx\n", u.value);
 	break;

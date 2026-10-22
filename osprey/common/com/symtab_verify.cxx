@@ -874,6 +874,19 @@ ST_ATTR::Verify (UINT level) const
     case ST_ATTR_UNKNOWN:
     case ST_ATTR_ABSOLUTE_LOCATION:
 	break;
+    case ST_ATTR_DEVICE_SYMBOL:
+        Is_True(u.value >= DEVICE_SYMBOL_KERNEL &&
+                u.value <= DEVICE_SYMBOL_CONSTANT,
+                ("invalid device symbol kind"));
+        Is_True(((u.value == DEVICE_SYMBOL_KERNEL ||
+                  u.value == DEVICE_SYMBOL_FUNCTION) &&
+                 ST_class(st) == CLASS_FUNC) ||
+                ((u.value == DEVICE_SYMBOL_GLOBAL ||
+                  u.value == DEVICE_SYMBOL_SHARED ||
+                  u.value == DEVICE_SYMBOL_CONSTANT) &&
+                 ST_class(st) == CLASS_VAR),
+                ("device symbol kind does not match ST class"));
+        break;
     case ST_ATTR_DEDICATED_REGISTER:
 	Is_True(ST_assigned_to_dedicated_preg (st),
 		("ST_ASSIGNED_TO_DEDICATED_PREG not set"));

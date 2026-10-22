@@ -498,6 +498,17 @@ enum ST_ATTR_KIND
     ST_ATTR_DEDICATED_REGISTER	= 1,	// physical register number
     ST_ATTR_SECTION_NAME	= 2,	// name of sections where defined.
     ST_ATTR_ABSOLUTE_LOCATION   = 3,	// absolute location for the st
+    ST_ATTR_DEVICE_SYMBOL       = 4,  // device function or data storage kind
+};
+
+enum DEVICE_SYMBOL_KIND
+{
+    DEVICE_SYMBOL_NONE     = 0,
+    DEVICE_SYMBOL_KERNEL   = 1,
+    DEVICE_SYMBOL_FUNCTION = 2,
+    DEVICE_SYMBOL_GLOBAL   = 3,
+    DEVICE_SYMBOL_SHARED   = 4,
+    DEVICE_SYMBOL_CONSTANT = 5
 };
 
 class ST_ATTR

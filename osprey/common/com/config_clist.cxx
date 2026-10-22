@@ -75,7 +75,8 @@ CLIST_FLAGS Clist_Flags =
    FALSE, /* lower_ftn */
    TRUE,  /* emit_omp */
    0,     /* line_length */
-   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* buffer[16] */
+   FALSE, /* cuda */
+   {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, /* buffer[15] */
 }; /* Clist_Flags */
 
 
@@ -126,6 +127,9 @@ static OPTION_DESC Options_CLIST[] =
   { OVK_BOOL,	OV_SHY,	        FALSE, "emit_omp", NULL,
        0, 0, 0, &CLF.emit_omp,  NULL,
        "Assume MP pragmas are OMP pragmas wherever possible" },
+  { OVK_BOOL, OV_VISIBLE, FALSE, "cuda", NULL,
+       0, 0, 0, &CLF.cuda, NULL,
+       "Enable experimental NVISA device-PU CUDA source mode" },
   { OVK_UINT32,	OV_VISIBLE,	FALSE, "linelength",     NULL,
        0, 0, 1024, &CLF.line_length,   NULL,
        "Set maximum line-length for transformed sources" },

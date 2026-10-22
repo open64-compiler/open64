@@ -1952,11 +1952,13 @@ Merge_Global_Inito(const INITO* inito_tab, UINT32 inito_tab_size,
     }
 } // Merge_Global_Inito
 
-static BOOL St_Attr_Entry_Existed(ST_IDX new_st_idx, ST_ATTR_KIND kind) {
-	UINT32 i;
-	ST_ATTR* st_attr_entry;
-	for (i = 0; i < ST_ATTR_Table_Size(GLOBAL_SYMTAB) && (st_attr_entry = &St_Attr_Table(GLOBAL_SYMTAB,i)); ++i) {
-	    if (st_attr_entry->kind == kind && st_attr_entry->st_idx == new_st_idx) {
+static BOOL St_Attr_Entry_Existed(ST_IDX new_st_idx, const ST_ATTR& incoming) {
+	for (UINT32 i = 1; i < ST_ATTR_Table_Size(GLOBAL_SYMTAB); ++i) {
+	    const ST_ATTR& entry = St_Attr_Table(GLOBAL_SYMTAB, i);
+	    if (entry.kind == incoming.kind && entry.st_idx == new_st_idx) {
+              if (incoming.kind == ST_ATTR_DEVICE_SYMBOL)
+                  FmtAssert(ST_ATTR_value(entry) == ST_ATTR_value(incoming),
+                            ("conflicting device symbol attributes during IPA merge"));
 	      return TRUE;
 	    }
 	}
@@ -1985,7 +1987,7 @@ Merge_Global_St_Attr(const ST_ATTR* st_attr_tab, UINT32 size)
 	Update_reference_count (&St_Table [st_idx], /*refcount*/ 1,
 				/*modcount*/ 0, /*is_cmod*/ FALSE);
 
-	if (St_Attr_Entry_Existed(st_idx, old_st_attr.kind)) continue;
+	if (St_Attr_Entry_Existed(st_idx, old_st_attr)) continue;
 
 	ST_ATTR_KIND akind = old_st_attr.kind;
 	ST_ATTR_IDX new_st_attr_idx;
@@ -2007,6 +2009,11 @@ Merge_Global_St_Attr(const ST_ATTR* st_attr_tab, UINT32 size)
 		ST_ATTR_Init (new_st_attr, st_idx, ST_ATTR_ABSOLUTE_LOCATION,
 			      (*New_Symstr_Idx) [ST_ATTR_value (old_st_attr)]);
 		break;
+
+            case ST_ATTR_DEVICE_SYMBOL:
+                ST_ATTR_Init (new_st_attr, st_idx, ST_ATTR_DEVICE_SYMBOL,
+                              ST_ATTR_value (old_st_attr));
+                break;
 
 	    default:
 		Fail_FmtAssertion ("invalid ATTR_KIND in Merge_Global_St_Attr");

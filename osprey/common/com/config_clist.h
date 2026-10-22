@@ -144,6 +144,7 @@ typedef struct clist_flags {
    BOOL        lower_ftn;       /* Lower fortran intermediate */
    BOOL        emit_omp;        /* force OMP spellings for pragmas */
    INT32       line_length;     /* 'zero' means: use the default */
+   BOOL        cuda;            /* opt-in CUDA source translation */
 
   /* This buffer area allows references to new fields to be added in
    * later revisions, from other DSOs, without requiring a new be.so
@@ -151,7 +152,7 @@ typedef struct clist_flags {
    * the buffer is initialized to zeroes, any such references will
    * simply pick up FALSE values (for the Booleans):
    */
-  INT32 buffer[16];	/* Buffer space -- initialize to FALSE */
+  INT32 buffer[15]; /* Buffer space -- initialize to FALSE */
 } CLIST_FLAGS;
 
 
@@ -185,6 +186,7 @@ extern CLIST_FLAGS *Current_CLIST;
 #define CLIST_lower_ftn         Current_CLIST->lower_ftn
 #define CLIST_emit_omp        Current_CLIST->emit_omp
 #define CLIST_line_length       Current_CLIST->line_length
+#define CLIST_cuda              Current_CLIST->cuda
 
 
 #ifdef __cplusplus

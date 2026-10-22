@@ -845,6 +845,89 @@ Check_Symbol_Metadata(void)
 }
 
 static int
+Check_Device_Symbol_Attribute(void)
+{
+    DSL_BUILDER_PROGRAM_UNIT host_pu;
+    DSL_BUILDER_PROGRAM_UNIT pu;
+    DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+    const char *artifact = getenv("OPEN64_DEVICE_SYMBOL_ARTIFACT");
+    ST *kernel;
+    ST *global;
+    ST *shared;
+    ST_ATTR_IDX attr_idx;
+
+    DSL_Builder_Begin_Program();
+    host_pu = DSL_Builder_Create_Minimal_PU("host_symbol_contract");
+    if (host_pu == NULL ||
+        ST_device_symbol_kind(St_Table[PU_Info_proc_sym(host_pu)]) !=
+            DEVICE_SYMBOL_NONE)
+        return 1;
+    if (getenv("OPEN64_DEVICE_HOST_ONLY") != NULL) {
+        if (artifact == NULL || artifact[0] == '\0')
+            return 1;
+        request.path = artifact;
+        request.flags = 0;
+        if (!DSL_Builder_Finalize_Mapped_Image(&request))
+            return 1;
+        DSL_Builder_Abort_Program();
+        printf("host-only symbol attribute contract passed\n");
+        return 0;
+    }
+    pu = DSL_Builder_Create_Minimal_PU("device_symbol_contract");
+    if (pu == NULL)
+        return 1;
+    kernel = &St_Table[PU_Info_proc_sym(pu)];
+    global = New_ST(GLOBAL_SYMTAB);
+    ST_Init(global, Save_Str("device_global_contract"), CLASS_VAR,
+            SCLASS_UGLOBAL, EXPORT_LOCAL, MTYPE_To_TY(MTYPE_I4));
+    shared = New_ST(CURRENT_SYMTAB);
+    ST_Init(shared, Save_Str("device_shared_contract"), CLASS_VAR,
+            SCLASS_AUTO, EXPORT_LOCAL, MTYPE_To_TY(MTYPE_I4));
+
+    if (ST_device_symbol_kind(*kernel) != DEVICE_SYMBOL_NONE ||
+        ST_device_symbol_kind(*global) != DEVICE_SYMBOL_NONE ||
+        ST_device_symbol_kind(*shared) != DEVICE_SYMBOL_NONE)
+        return 1;
+    Set_ST_device_symbol_kind(*kernel, DEVICE_SYMBOL_KERNEL);
+    Set_ST_device_symbol_kind(*global, DEVICE_SYMBOL_GLOBAL);
+    Set_ST_device_symbol_kind(*shared, DEVICE_SYMBOL_SHARED);
+    PREG_NUM base = Create_Preg(MTYPE_I4, "device_tile_base");
+    WN *index = WN_CreateIdname(base, MTYPE_To_PREG(MTYPE_I4));
+    WN *start = WN_StidPreg(MTYPE_I4, base, WN_Intconst(MTYPE_I4, 0));
+    WN *end = WN_LT(MTYPE_I4, WN_LdidPreg(MTYPE_I4, base),
+                    WN_Intconst(MTYPE_I4, 16));
+    WN *step = WN_StidPreg
+                   (MTYPE_I4, base,
+                    WN_Add(MTYPE_I4, WN_LdidPreg(MTYPE_I4, base),
+                           WN_Intconst(MTYPE_I4, 4)));
+    WN *loop_body = WN_CreateBlock();
+    WN_INSERT_BlockLast(loop_body,
+        WN_Stid(MTYPE_I4, 0, shared, ST_type(shared),
+                WN_LdidPreg(MTYPE_I4, base)));
+    WN_INSERT_BlockLast(WN_func_body(PU_Info_tree_ptr(pu)),
+                        WN_CreateDO(index, start, end, step, loop_body, NULL));
+    if (ST_device_symbol_kind(*kernel) != DEVICE_SYMBOL_KERNEL ||
+        ST_device_symbol_kind(*global) != DEVICE_SYMBOL_GLOBAL ||
+        ST_device_symbol_kind(*shared) != DEVICE_SYMBOL_SHARED)
+        return 1;
+    for (attr_idx = 1; attr_idx < ST_ATTR_Table_Size(CURRENT_SYMTAB);
+         ++attr_idx)
+        St_Attr_Table(CURRENT_SYMTAB, attr_idx).Verify(CURRENT_SYMTAB);
+    for (attr_idx = 1; attr_idx < ST_ATTR_Table_Size(GLOBAL_SYMTAB);
+         ++attr_idx)
+        St_Attr_Table(GLOBAL_SYMTAB, attr_idx).Verify(GLOBAL_SYMTAB);
+    if (artifact != NULL && artifact[0] != '\0') {
+        request.path = artifact;
+        request.flags = 0;
+        if (!DSL_Builder_Finalize_Mapped_Image(&request))
+            return 1;
+    }
+    DSL_Builder_Abort_Program();
+    printf("device symbol attribute contract passed\n");
+    return 0;
+}
+
+static int
 Check_Operator_Creation(void)
 {
     DSL_DOMAIN_ID common_id;
@@ -14081,6 +14164,8 @@ main(void)
         return Check_Upgraded_Ingestion_APIs();
     if (getenv("OPEN64_DSL_TENSOR_ALIGNMENT_ONLY") != NULL)
         return Check_Tensor_Type_And_Descriptor();
+    if (getenv("OPEN64_DEVICE_SYMBOL_ONLY") != NULL)
+        return Check_Device_Symbol_Attribute();
     if (getenv("OPEN64_DSL_PRODUCTION_NATIVE_ONLY") != NULL)
         return Check_Operator_Creation() |
                Check_Production_Native_Builder();

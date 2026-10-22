@@ -854,6 +854,7 @@ ST_ATTR_Init (ST_ATTR& st_attr, ST_IDX st_idx, ST_ATTR_KIND akind, UINT64 val)
       st_attr.Set_section_name(val);
       break;
     case ST_ATTR_ABSOLUTE_LOCATION:
+    case ST_ATTR_DEVICE_SYMBOL:
       st_attr.Set_value(val);
       break;
     default:
@@ -869,6 +870,48 @@ ST_ATTR_Table_Size_explicit (SCOPE *scope_tab, SYMTAB_IDX level) {
 inline UINT32
 ST_ATTR_Table_Size (SYMTAB_IDX level) {
     return ST_ATTR_Table_Size_explicit(Scope_tab, level);
+}
+
+inline DEVICE_SYMBOL_KIND
+ST_device_symbol_kind (const ST& st)
+{
+    const ST_IDX st_idx = ST_st_idx(st);
+    const SYMTAB_IDX level = ST_IDX_level(st_idx);
+    DEVICE_SYMBOL_KIND found = DEVICE_SYMBOL_NONE;
+    for (ST_ATTR_IDX i = 1; i < ST_ATTR_Table_Size(level); ++i) {
+        const ST_ATTR& attr = St_Attr_Table(level, i);
+        if (ST_ATTR_st_idx(attr) != st_idx ||
+            ST_ATTR_kind(attr) != ST_ATTR_DEVICE_SYMBOL)
+            continue;
+        FmtAssert(found == DEVICE_SYMBOL_NONE,
+                  ("duplicate device symbol attribute for %s", ST_name(st)));
+        const UINT64 value = ST_ATTR_value(attr);
+        FmtAssert(value >= DEVICE_SYMBOL_KERNEL &&
+                  value <= DEVICE_SYMBOL_CONSTANT,
+                  ("invalid device symbol kind for %s", ST_name(st)));
+        found = static_cast<DEVICE_SYMBOL_KIND>(value);
+    }
+    return found;
+}
+
+inline void
+Set_ST_device_symbol_kind (ST& st, DEVICE_SYMBOL_KIND kind)
+{
+    FmtAssert(kind >= DEVICE_SYMBOL_KERNEL && kind <= DEVICE_SYMBOL_CONSTANT,
+              ("invalid device symbol kind"));
+    FmtAssert(((kind == DEVICE_SYMBOL_KERNEL ||
+                kind == DEVICE_SYMBOL_FUNCTION) && ST_class(st) == CLASS_FUNC) ||
+              ((kind == DEVICE_SYMBOL_GLOBAL ||
+                kind == DEVICE_SYMBOL_SHARED ||
+                kind == DEVICE_SYMBOL_CONSTANT) && ST_class(st) == CLASS_VAR),
+              ("device symbol kind does not match ST class"));
+    FmtAssert(ST_device_symbol_kind(st) == DEVICE_SYMBOL_NONE,
+              ("duplicate device symbol attribute for %s", ST_name(st)));
+    ST_ATTR_IDX idx;
+    ST_ATTR& attr = New_ST_ATTR(ST_IDX_level(ST_st_idx(st)), idx);
+    attr.st_idx = ST_st_idx(st);
+    attr.kind = ST_ATTR_DEVICE_SYMBOL;
+    attr.Set_value(kind);
 }
 
 inline void

@@ -82,6 +82,25 @@ static char *rcs_id = "$Source: /scratch/mee/2.4-65/kpro64-pending/be/whirl2c/SC
 #include "ty2c.h"
 #include "init2c.h"
 
+static DEVICE_SYMBOL_KIND
+ST2C_device_symbol_kind (const ST *st)
+{
+   DEVICE_SYMBOL_KIND kind = ST_device_symbol_kind(*st);
+#ifdef TARG_NVISA
+   if (kind == DEVICE_SYMBOL_NONE) {
+      if (ST_sym_class(st) == CLASS_FUNC && ST_in_global_mem(st))
+         kind = DEVICE_SYMBOL_KERNEL;
+      else if (ST_in_shared_mem(st))
+         kind = DEVICE_SYMBOL_SHARED;
+      else if (ST_in_constant_mem(st))
+         kind = DEVICE_SYMBOL_CONSTANT;
+      else if (ST_in_global_mem(st))
+         kind = DEVICE_SYMBOL_GLOBAL;
+   }
+#endif
+   return kind;
+}
+
 
 /*--------- General purpose macros to get ST attributes ---------------*/
 /*---------------------------------------------------------------------*/
@@ -491,6 +510,44 @@ ST2C_basic_decl(TOKEN_BUFFER tokens, const ST *st, CONTEXT context)
    TY_IDX tidx = ST_sym_class(st) == CLASS_FUNC ? ST_pu_type(st) : ST_type(st);
    TY2C_translate(decl_tokens, tidx, context); /* type */
 
+   if (W2C_Cuda_Mode)
+   {
+      const DEVICE_SYMBOL_KIND kind = ST2C_device_symbol_kind(st);
+      if (ST_sym_class(st) == CLASS_FUNC)
+      {
+         FmtAssert(kind == DEVICE_SYMBOL_KERNEL ||
+                   kind == DEVICE_SYMBOL_FUNCTION,
+                   ("CUDA source needs a device function attribute"));
+         Prepend_Token_String(decl_tokens,
+                              kind == DEVICE_SYMBOL_KERNEL ?
+                              "__global__" : "__device__");
+         if (kind == DEVICE_SYMBOL_KERNEL)
+            Prepend_Token_String(decl_tokens, "extern \"C\"");
+      }
+      else
+      {
+#ifdef TARG_NVISA
+         FmtAssert(!ST_in_texture_mem(st),
+                   ("CUDA texture symbols are not supported by whirl2c -cuda"));
+#endif
+         FmtAssert((ST_sclass(st) != SCLASS_FORMAL &&
+                    ST_sclass(st) != SCLASS_FORMAL_REF) ||
+                   kind == DEVICE_SYMBOL_NONE,
+                   ("CUDA parameter storage is distinct from pointee memory"));
+         if (kind == DEVICE_SYMBOL_SHARED)
+            Prepend_Token_String(decl_tokens, "__shared__");
+         else if (kind == DEVICE_SYMBOL_CONSTANT)
+            Prepend_Token_String(decl_tokens, "__constant__");
+         else if (kind == DEVICE_SYMBOL_GLOBAL)
+            Prepend_Token_String(decl_tokens, "__device__");
+         else
+            FmtAssert(kind == DEVICE_SYMBOL_NONE,
+                      ("invalid CUDA data symbol attribute"));
+      }
+      Append_And_Reclaim_Token_List(tokens, &decl_tokens);
+      return;
+   }
+
    if (!Stab_No_Linkage(st))
    {
       /* Static, common, or extern declarations */
@@ -866,6 +923,17 @@ ST2C_func_header(TOKEN_BUFFER  tokens,
       TY2C_translate(header_tokens, Func_Return_Type(funtype), context);
    }
    
+   if (W2C_Cuda_Mode) {
+      const DEVICE_SYMBOL_KIND kind = ST2C_device_symbol_kind(st);
+      FmtAssert(kind == DEVICE_SYMBOL_KERNEL ||
+                kind == DEVICE_SYMBOL_FUNCTION,
+                ("CUDA source needs a device function attribute"));
+      Prepend_Token_String(header_tokens,
+                           kind == DEVICE_SYMBOL_KERNEL ?
+                           "__global__" : "__device__");
+      if (kind == DEVICE_SYMBOL_KERNEL)
+         Prepend_Token_String(header_tokens, "extern \"C\"");
+   } else
    if (PU_is_inline_function(Pu_Table[ST_pu(st)])) {
       Prepend_Token_String(header_tokens, "__inline");
    } else if (ST_export(st) == EXPORT_LOCAL) {
@@ -975,6 +1043,3 @@ ST2C_Define_Common_Blocks(TOKEN_BUFFER tokens, CONTEXT context)
       }
    }
 } /* ST2C_Define_Common_Blocks */
-
-
-
