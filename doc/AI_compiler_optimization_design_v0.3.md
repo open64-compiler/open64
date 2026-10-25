@@ -4,7 +4,7 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
-Status: v0.3 adds a phase-by-phase optimization reporting contract and identifies trace fields still needed for a trustworthy cross-phase report. The 2026-10-18 amendment fixes the matmul-first trace, report, and durable-artifact conventions in Section 9.7. The 2026-10-21 amendments add the predicted and measured Roofline contract in Section 7.2A, the high-level WHIRL/NVISA convergence contract in Section 6B, and the accepted `whirl2c -cuda` source-emission direction in Section 6B.5. The design retains the existing `.cu` emitter as a migration baseline and specifies a default-on control for it; neither implies that device WHIRL is complete. AIO-9 has a compact WOPT-style selection trace and a tile-phase report; full cross-phase coverage, Roofline reporting, and WHIRL device-loop lowering remain proposals. Research-derived inspiration and DSC design proposals remain distinct.
+Status: v0.3 adds a phase-by-phase optimization reporting contract and identifies trace fields still needed for a trustworthy cross-phase report. The 2026-10-18 amendment fixes the matmul-first trace, report, and durable-artifact conventions in Section 9.7. The 2026-10-21 amendments add the predicted and measured Roofline contract in Section 7.2A, the high-level WHIRL/NVISA convergence contract in Section 6B, and the accepted `whirl2c -cuda` source-emission direction in Section 6B.5. The 2026-10-22 amendment makes SMEM cache-blocking a costed alternative within an opt-in delayed joint-plan search (Section 6A.3B), with rationale preserved in a separate white-paper candidate. The design retains the existing `.cu` emitter as a migration baseline and specifies a default-on control for it; neither implies that device WHIRL is complete. AIO-9 has a compact WOPT-style selection trace and a tile-phase report; full cross-phase coverage, Roofline reporting, joint-plan search, and WHIRL device-loop lowering remain proposals. Research-derived inspiration and DSC design proposals remain distinct.
 
 # 1 Executive Summary And Design Goals
 
@@ -140,10 +140,10 @@ The ownership boundary is the most important governance rule in this design. Com
 | Tensor or Object descriptor core | Common Compiler Substrate | Stable identity, logical shape or object extent, dtype or element type, producers, consumers, aliasing, lifetime anchor. |
 | TensorEvolutionGraph | Common Compiler Substrate | Object lineage across semantic, logical, distributed, local, tile, and execution-fragment forms. |
 | RepresentationDescriptor hierarchy | Common Compiler Substrate | LayoutDescriptor, ShardingDescriptor, PlacementDescriptor, ResidencyDescriptor, TileDescriptor. |
-| CommonLayoutIR | Common Compiler Substrate | Reusable layout names, strides, blocking, packing, swizzle, and alignment constraints. |
+| CommonLayoutIR | Common Compiler Substrate | Describe a tensor's persistent storage representation (shape, strides, packing, alignment) separately from transient SMEM/register layouts. A physical GMEM repack creates a new representation and a costed TensorEvolutionGraph edge; a lane remap does not. |
 | CommonPlacementIR | Common Compiler Substrate | Device, NUMA, GPU, remote memory, replicated, partitioned, or staged placement. |
 | CommonMemoryResidencyIR | Common Compiler Substrate | Home tier, preferred tier, capacity, lifetime, eviction point, spill policy. |
-| CommonAccessPatternIR | Common Compiler Substrate | Sequential, tiled, strided, gather, scatter, reuse distance, producer-consumer timing. |
+| CommonAccessPatternIR | Common Compiler Substrate | Per-memory-operation lane/warp-to-address mapping, active-lane mask, vector width, alignment, distinct requested sectors, useful bytes, reuse distance, and producer-consumer timing. Access mapping is not persistent storage layout. |
 | CommonFetchPlanIR | Common Compiler Substrate | Prefetch, demand fetch, async transfer, promotion, demotion, staging, overlap window. |
 | CommonTilePlanIR | Common Compiler Substrate | Hierarchical tiling alternatives across problem, device, CTA/threadblock, warp/warpgroup, thread, register fragment, tensor-core instruction, and memory-pipeline stages. It records candidate tile shapes, split/reduction axes, buffering depth, swizzle/layout assumptions, resource usage, legality, and cost-model inputs before transformation is committed. |
 | CommonDistributedAliasIR | Common Compiler Substrate | Range-level alias, ownership, mod/ref/reduce, and visibility facts for tensor tiles across ranks, devices, sockets, boards, or nodes. It records owned, ghost, replicated, reduced, migrated, and unknown regions plus communication epochs and runtime guards. |
@@ -193,11 +193,11 @@ The ownership boundary is the most important governance rule in this design. Com
 | AI-P0 Semantic tensor | Tensor descriptor core, AI semantic descriptors, TensorEvolutionGraph root | Semantic roles, shape, dtype, dynamic dimensions |
 | AI-P1 Lifetime reuse | CommonAccessPatternIR, CommonMemoryResidencyIR, CandidateCostIR seed | Reuse distance, last use, working set |
 | AI-P2 High-level fusion | FusionCandidateIR, OptimizationCandidateIR | Candidate state unknown, semantic legality |
-| AI-P3 Logical layout | CommonLayoutIR, RepresentationDescriptor hierarchy | Logical layout alternatives |
+| AI-P3 Logical layout | CommonLayoutIR, RepresentationDescriptor hierarchy | Logical layout alternatives; preserve the existing persistent GMEM representation as a distinct fact |
 | AI-P4 Distributed placement | CommonPlacementIR, CommonParallelizationIR, CommonDistributedAliasIR, TensorEvolutionGraph | Sharding, replication, device ownership, tile-range ownership |
 | AI-P5 Communication derivation | CommonCommunicationIntentIR, CommonDistributedAliasIR, CandidateCostIR | Collectives, peer transfers, and visibility epochs implied by sharding |
-| AI-P6 Local layout residency | CommonMemoryResidencyIR, MemoryHierarchyDescriptorIR | HBM, L2, shared, registers, CPU, remote memory |
-| AI-P7 Multi-level tiling | CommonTilePlanIR, CommonAccessPatternIR, CommonLayoutIR, CommonMemoryResidencyIR, ComputeResourceIR, CandidateCostIR | Output/reduction/CTA/SMEM/warp/thread/register/vector tile families, coalescing, arithmetic intensity, occupancy, resource pressure |
+| AI-P6 Local layout residency | CommonMemoryResidencyIR, CommonLayoutIR, MemoryHierarchyDescriptorIR | Existing GMEM storage, optional costed repack alternatives, HBM/L2/SMEM/register residency |
+| AI-P7 Multi-level tiling | CommonTilePlanIR, CommonAccessPatternIR, CommonLayoutIR, CommonMemoryResidencyIR, ComputeResourceIR, CandidateCostIR | Joint A/B/C lane access maps, output/reduction/CTA/SMEM/warp/thread/register tiles, per-operation GMEM transaction utilization, arithmetic intensity, occupancy, resource pressure |
 | AI-P8 Fetch prefetch async | CommonFetchPlanIR, CommonPipelineIR, CommonDistributedAliasIR | Async movement, buffering depth, overlap windows, safe early fetch windows |
 | AI-P9 Kernel scheduling | OptimizationPlanIR, CommonPipelineIR, ComputeResourceIR, high-level WHIRL device PU | Cost-gated plan selection, structured device-loop materialization, final physical realization |
 | AI-P10 Runtime variants | RuntimeVariantIR, RuntimeGuardIR, RuntimeSelectionPolicyIR, CommonDistributedAliasIR | Certified variants, selection guards, guarded no-alias and disjoint-tile predicates |
@@ -216,9 +216,9 @@ AI-P7 receives logical layout, placement, ownership, and local residency constra
 | --- | --- | --- | --- |
 | P7.0 Baseline access characterization | Describe the naive mapping, memory traffic, arithmetic intensity, and reuse opportunity before changing the plan. | Kernel 1 naive implementation and lower-bound math. | CommonAccessPatternIR; CandidateCostIR; TensorEvolutionGraph roots. |
 | P7.1 Output tile and thread-to-element mapping | Choose how result elements are assigned to blocks, warps, and threads. | Naive one-thread-per-C element mapping. | CommonTilePlanIR output_tile_shape; thread_ownership; boundary_predication. |
-| P7.2 Global-memory coalescing tile | Remap lanes so warp-level accesses become contiguous and aligned where possible. | Kernel 2 GMEM coalescing. | CommonAccessPatternIR lane_to_address_map; coalescing_width; alignment_assumption; transaction_width. |
+| P7.2 GMEM access mapping | Remap output ownership and A/B/C warp accesses against the existing GMEM representation; do not imply physical repacking. Evaluate a repacked representation only as a separate, costed candidate. | Kernel 2 improves coalescing by remapping threads, with A/B storage unchanged. | CommonAccessPatternIR per_op_lane_to_address_map; active_mask; requested_sectors; useful_bytes; CommonLayoutIR representation_id; optional repack_edge. |
 | P7.3 Reduction-axis tile | Split the K/reduction dimension into reusable chunks. | BLOCKSIZE/BK loop over A columns and B rows. | CommonTilePlanIR reduction_tile_shape; split_axis; accumulation_scope. |
-| P7.4 Shared-memory tile and prefetch hint | Promote A/B chunks from GMEM to SMEM, define SMEM tile shape/layout, and emit advice for later async prefetch planning. | Kernel 3 shared-memory cache blocking; later TMA/cp.async pipeline realization. | CommonMemoryResidencyIR; CommonLayoutIR smem_layout; CommonTilePlanIR smem_tile_shape; reuse_distance; tma_legality; buffering_feasibility; synchronization_points. |
+| P7.4 Shared-memory cache-blocking alternatives | Keep a direct/cache-served A/B path and propose distinct one-slot synchronous and feasible multi-slot SMEM staging paths; describe A/B layouts, copy maps, reuse, and P8 prefetch hints without selecting residency. | Kernel 3 shared-memory cache blocking is one implementation, not a universal winner; later TMA/cp.async paths are alternatives. | CommonMemoryResidencyIR; CommonLayoutIR A/B smem_layout; CommonTilePlanIR smem_tile_shape, copy_map, stage_footprint, reuse; CommonFetchPlanIR hints. |
 | P7.5 Occupancy and resource feasibility | Estimate whether tile choices fit SMEM, registers, warp limits, CTA limits, and launch-grid utilization. | Occupancy calculation after Kernel 3. | ComputeResourceIR; CandidateCostIR occupancy_terms; resource_limits. |
 | P7.6 Per-thread register tile | Assign each thread multiple output elements and accumulate in registers. | Kernel 4 1D blocktiling and Kernel 5 2D blocktiling. | CommonTilePlanIR thread_tile_shape; register_fragment_shape; accumulator_footprint. |
 | P7.7 Register reuse and inner-loop ordering | Order dot/reduction loops to reuse SMEM values through register fragments. | Kernel 5 register caching and outer-product accumulation. | CommonTilePlanIR inner_loop_order; register_reuse_factor; smem_access_count. |
@@ -247,7 +247,13 @@ CommonTilePlanIR should be detailed enough to represent the following fields dir
 
 - shared_memory_tile_shape: A/B SMEM tile shapes, bytes per stage, double-buffering compatibility.
 
-- layout_transform: transposed SMEM layout, swizzle, padding, or bank-conflict avoidance transform.
+- residency_alternatives: direct/cache-served GMEM, one-slot synchronous SMEM, and target-legal multi-slot SMEM; each binds separate A/B copy maps, SMEM layouts, consumer maps, and resource ledgers.
+
+- persistent_gmem_representation: existing A/B/C storage identity, strides, packing, and alignment; optional repacked representation and its explicit conversion edge.
+
+- access_layout: per-operation lane/warp-to-element mapping for A loads, B loads, and C stores, distinct from persistent storage and from SMEM/register layout.
+
+- layout_transform: transposed SMEM layout, swizzle, padding, or bank-conflict avoidance transform; charge any required conversion between access, staging, and compute layouts.
 
 - low_precision_format: dtype family such as BF16, FP8, MXFP8, MXFP4, NVFP4, accumulation dtype, packing alignment, and supported Tensor Core instruction family.
 
@@ -263,7 +269,7 @@ CommonTilePlanIR should be detailed enough to represent the following fields dir
 
 - access_vectorization: scalar, float2, float4, LDG/STG width, LDS width, alignment requirement.
 
-- coalescing_model: lane-to-address mapping, transaction width, contiguous-lane count, wasted transaction estimate.
+- coalescing_model: for each warp memory instruction, active lanes, addressed bytes, distinct target-profile sectors requested, useful bytes, sector utilization, and cache-path assumptions. Keep GMEM request bytes distinct from estimated HBM bytes.
 
 - occupancy_model_inputs: registers/thread, SMEM/CTA, CTAs/SM, warps/SM, launch grid, wave quantization.
 
@@ -289,9 +295,35 @@ P7 creates the tile candidates, but later phases still decide whether and how to
 
 The design lesson from CUDA MMM is that every tiling decision is entangled with memory layout, access pattern, residency, and scheduling. Therefore AI-P7 should create rich CommonTilePlanIR alternatives and defer final selection until cost-model and runtime-variant information are available.
 
+## 6A.3A GMEM Coalescing Candidate Algorithm
+
+1. Record the existing A/B/C GMEM representations, strides, alignment, alias ranges, and cache assumptions. Keep physical storage unchanged for the default candidate.
+2. Enumerate legal CTA/warp/lane ownership and per-operation access maps together with SMEM layouts and compute fragments. An optional physical GMEM repack is a different representation candidate, with an explicit allocation/conversion plan and reuse horizon.
+3. Reject candidates that violate bounds, alias/dependence rules, unique C-store ownership, alignment, target instruction requirements, or SMEM/register/barrier limits.
+4. For each warp load/store instruction, map active lanes to byte addresses and count distinct aligned sectors using the target's transaction granularity. Report useful distinct bytes divided by requested sector bytes. Model cache hits and HBM traffic separately; coalescing at the instruction does not establish HBM bytes.
+5. Combine A/B/C transaction costs with SMEM bank effects, layout conversions, occupancy, P8 movement/overlap, and any amortized repack allocation and traffic. Select only the lowest-cost legal complete plan at the P9 profitability gate; retain the unchanged-representation baseline and rejection reasons.
+
+The trace must distinguish `gmem_representation_id`, `access_map_id`, and `repack_plan_id` (or `-`), and report per-operation requested sectors, useful bytes, cache assumption, conversion/repack cost, and selected-plan reason. No source or WHIRL rewrite occurs merely because an access map improves coalescing in isolation.
+
+## 6A.3B Delayed SMEM Cache-Blocking Selection
+
+The P7.4 action is **propose**, not **promote**. A/B SMEM staging can reduce repeated GMEM requests, but the benefit depends on the already coalesced/cache-served path, consumer register reuse, SMEM bank behavior, synchronization, and occupancy. Boehm's Kernel 3 makes the staging and two per-K-tile synchronization points concrete; his later register tiling shows that SMEM traffic itself can become the next bottleneck. This is research-derived evidence, not a measured result for Open64.
+
+For each legal `(BM, BN, BK, warp/thread tile)` family, build a bounded set of complete alternatives: (D) direct or cache-served A/B loads with no A/B SMEM slots; (S1) one-slot synchronous A/B SMEM staging; (SN) multi-slot async staging only when the target, movement engine, and buffer lifetime permit it. A and B may have different copy maps and SMEM layouts. Keep output ownership, GMEM representation, A/B lane access maps, SMEM consumer maps, register fragment, edge policy, and CTA order attached to the same candidate ID. An optional physical GMEM repack remains a separate costed representation edge, not a consequence of coalescing.
+
+1. Enumerate deterministic, bounded candidate tuples; retain D and the current supported S1 plan as reference candidates. Prune only with proved semantic, dependence/alias, alignment, SMEM/register, bank-layout, barrier-uniformity, and target-capability constraints. Record the bound and every rejection reason.
+2. Compute per-operation warp GMEM requested sectors and useful bytes, then estimate L1/L2/HBM bytes under named cache scenarios. For S1/SN also count SMEM writes and consumer reads, bank serialization (including broadcast behavior), layout conversions, and actual padded A/B slot footprints. Do not replace requested traffic with HBM traffic or treat SMEM capacity as free.
+3. Pass each surviving tuple to P8 for an explicit load/arrival/wait/compute/release event schedule. Model synchronous barriers by dynamic K-tile frequency, not a fixed two-barrier charge for the entire GEMM. For async plans prove that a producer never overwrites a slot before all consumers complete.
+4. At P9 compare complete legal plans using compute, exposed movement, exposed communication, synchronization, launch, occupancy/grid-wave, and conversion/repack costs. Obtain overlap from the event schedule/critical path, not a fixed stage-count credit. Require a configurable benefit margin when uncertainty can reverse a ranking; otherwise select the conservative fallback and report why.
+5. Materialize only the selected plan in device WHIRL. Reopen/verify the selected image, report selected versus baseline estimates, and calibrate the ranking with measured traffic, stalls, barriers, and runtime when a GPU is available. No estimated speedup is a verified performance claim.
+
+**Experimental control.** Propose `-Wb,-DSL:gemm_plan_search=baseline|joint`, default `baseline`. `baseline` preserves the currently supported selector and trace behavior; `joint` enables the bounded D/S1/SN family and delayed whole-plan comparison. This is a proposed, **unregistered** option: until the generator, verifier, cost inputs, and rewrite exist, requesting `joint` must diagnose unsupported mode rather than silently alias `baseline`. It does not override `-O0`, `cuda_tile_apply`, precision permission, target legality, or the mandatory conservative fallback. Record the mode, search budget, target-profile version, candidate lineage, cost provenance, selection reason, and applied WHIRL action in `.t`, `tile.log`, `fetch-pipeline.log`, and `optimization-summary.log`.
+
+This option isolates the potential contribution for evaluation: delayed transformation permits *cross-axis* choices that a sequential, one-pass tile or staging decision may discard. The claim is an architectural hypothesis until equal-search-budget comparisons against the baseline, schedule-search systems, and hardware measurements establish a gain. The rationale, evaluation questions, and related work are retained in `AI-COMPILER-WHITE-PAPER-CANDIDATE-DELAYED-GEMM-PLAN-SELECTION.md`.
+
 ## 6A.4 P7.4 To P8 Prefetch Hint Contract
 
-P7.4 should not generate the async copy schedule directly. Its responsibility is to preserve enough tile structure for P8 to decide whether a TMA, cp.async, vectorized-load, or scalar fallback movement plan can hide memory latency. This is the same delayed-transformation principle as the rest of the design: P7.4 describes what is worth staging in shared memory; P8 decides how early and by which hardware engine it should be moved.
+P7.4 should not generate the async copy schedule directly. It describes both direct/cache-served and SMEM-staged alternatives, preserving enough tile structure for P8 to decide whether a TMA, cp.async, vectorized-load, or scalar movement plan can hide latency. P8 may return a schedule that makes an S1 or SN candidate unprofitable; it does not itself commit the residency choice.
 
 For each shared-memory tile candidate, P7.4 should emit:
 
@@ -302,6 +334,10 @@ For each shared-memory tile candidate, P7.4 should emit:
 - scale_tile_layout: associated scale-factor tile layout and whether it can be staged with, before, or independently from the packed value tile.
 
 - tile_reuse_profile: consumers per staged tile, reuse distance, arithmetic intensity contribution, and expected SMEM-to-register access count.
+
+- separate_copy_and_consumer_maps: A/B warp-lane GMEM load maps, SMEM store/read maps, expected requested sectors, SMEM bank conflicts or broadcasts, and register-fragment reuse.
+
+- direct_path_reference: matching non-staged tile with its cache scenario, GMEM transactions, register demand, and no A/B SMEM slot or staging barriers.
 
 - prefetch_distance_hint: the candidate number of K-tiles or pipeline stages to fetch ahead.
 
@@ -315,7 +351,7 @@ For each shared-memory tile candidate, P7.4 should emit:
 
 - fallback_movement_candidates: cp.async, vectorized LDG plus SMEM store, ordinary LDG/STG, or demand load when TMA is illegal or not profitable.
 
-P8 consumes those hints to build CommonFetchPlanIR and CommonPipelineIR. A P8 plan should bind the selected movement engine, source/destination memory levels, stage count, prefetch distance, arrival barrier, consumer wait point, edge-tile behavior, and fallback path. The profitability model should charge only the unhidden portion of movement latency, so the plan selection explicitly asks whether the P7.4 tile and P8 pipeline together reduce compute-unit bubbles.
+P8 consumes those hints to build CommonFetchPlanIR and CommonPipelineIR for each candidate. A P8 plan should bind the proposed movement engine, source/destination memory levels, stage count, prefetch distance, arrival barrier, consumer wait point, release/overwrite point, edge-tile behavior, and fallback path. P9 selects the complete plan after charging dynamic synchronization, SMEM bank effects, occupancy, and only the unhidden portion of movement latency. It must answer whether staging reduces compute-unit bubbles *relative to the matching direct/cache-served plan*, not merely whether an async instruction is available.
 
 # 6B High-Level WHIRL And NVISA Convergence
 
@@ -633,6 +669,8 @@ The compiler should minimize compute bubbles by making data movement a first-cla
 - Use residency to model transient on-chip placement such as L2 working sets, shared-memory tiles, and register fragments.
 
 - Represent layout conversion as an explicit evolution edge with cost and validity conditions.
+
+- Do not conflate persistent GMEM storage layout with lane access layout or transient SMEM/register layout. Remapping lanes can improve coalescing without moving the stored tensor; repacking GMEM requires an explicit allocation, conversion, lifetime, and amortization decision.
 
 ## 8.2 Fetch Prefetch And Async Movement
 
