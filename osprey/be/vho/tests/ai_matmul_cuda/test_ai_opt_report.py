@@ -300,6 +300,32 @@ class ReportTest(unittest.TestCase):
             tile_report = (root / "reports/phases/tile.log").read_text()
             self.assertIn("valid_a_load_bytes=65536", tile_report)
             self.assertIn("sync tiled=2*ceil(M/BM)", tile_report)
+        v3_rows = [row.split() for row in v2_rows]
+        v3_rows[0][20:23] = ["0", "0", "0"]
+        v3_rows[1][20] = "8192"
+        v3_rows[1][14] = "832"
+        v3_rows[1][19] = "4992"
+        v3_rows[2][20] = "32896"
+        v3_trace = "\n".join(
+            ["AI_OPT 7 COST_MODEL 3 valid_predicated_elements "
+             "dynamic_cta_k_barriers bank_conflict_work"] +
+            [" ".join(v3_rows[int(line.split()[4]) - 1])
+             if line.startswith("AI_OPT 7 TILE_CAND ") else line
+             for line in trace.splitlines()] +
+            ["AI_OPT 7 TILE_LAYOUT 1 1 1 linear row_major 0 0 0 0",
+             "AI_OPT 7 TILE_LAYOUT 1 2 2 linear row_major 16 16384 16 8",
+             "AI_OPT 7 TILE_LAYOUT 1 3 3 linear transposed_padded 129 0 16 8"]
+        ) + "\n"
+        self.assertEqual(parse(v3_trace)[1]["cost_model"], "v3")
+        self.assertEqual(parse(v3_trace)[0][1]["layout"]["bank_work"], 16384)
+        self.assertEqual(parse(v3_trace)[0][2]["layout"]["a_stride"], 129)
+        with self.assertRaisesRegex(ValueError, "v3 bank work disagrees"):
+            parse(v3_trace.replace("row_major 16 16384", "row_major 16 16383"))
+        with self.assertRaisesRegex(ValueError, "v3 invalid SMEM layout"):
+            parse(v3_trace.replace("transposed_padded 129", "transposed_padded 128"))
+        with self.assertRaisesRegex(ValueError, "incomplete tile layout"):
+            parse(v3_trace.replace(
+                "AI_OPT 7 TILE_LAYOUT 1 3 3 linear transposed_padded 129 0 16 8\n", ""))
         self.assertEqual(len(parse(trace)[1]["locality"]), 3)
         self.assertEqual(parse(trace)[0][2]["grid"]["ctas"], 1)
         with_kernel = trace.replace(

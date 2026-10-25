@@ -16,6 +16,10 @@ extern void ai_matmul_duplicate_1(void);
 
 static uint64_t seen_entry_ordinal;
 
+#ifndef AI_EXPECT_PLAN
+#error "compiler-selected plan ID is required"
+#endif
+
 int
 ai_matmul_m2_launch(const float *a, const float *b, float *c,
                     uint32_t m, uint32_t n, uint32_t k,
@@ -24,7 +28,8 @@ ai_matmul_m2_launch(const float *a, const float *b, float *c,
     uint32_t index;
     if (a == 0 || b == 0 || c == 0 || plan == 0 ||
         m != 128 || n != 128 || k != 128 ||
-        plan->optimization_plan_id != 3 || plan->tile_plan_id != 3)
+        plan->optimization_plan_id != AI_EXPECT_PLAN ||
+        plan->tile_plan_id != AI_EXPECT_PLAN)
         return 1;
     for (index = 0; index != m * n; ++index)
         c[index] = 128.0f;

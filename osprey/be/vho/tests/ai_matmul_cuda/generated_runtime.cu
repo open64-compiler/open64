@@ -17,7 +17,8 @@ ai_matmul_m2_launch(const float *a, const float *b, float *c,
       plan->cta_m != BM || plan->cta_n != BN || plan->cta_k != BK ||
       plan->thread_m != TM || plan->thread_n != TN ||
       plan->threads_per_cta != THREADS ||
-      plan->shared_bytes_per_stage != (BM * BK + BK * BN) * sizeof(float))
+      plan->shared_bytes_per_stage !=
+          (AI_A_SHARED_ELEMS + BK * BN) * sizeof(float))
     return 1;
 
   int device = 0;

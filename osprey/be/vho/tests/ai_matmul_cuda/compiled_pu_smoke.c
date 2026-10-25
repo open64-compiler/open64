@@ -6,6 +6,10 @@
 
 extern void ai_matmul_m0(void);
 
+#if !defined(AI_EXPECT_PLAN) || !defined(AI_EXPECT_SHARED)
+#error "compiler-selected plan and shared bytes are required"
+#endif
+
 int
 ai_matmul_m2_launch(const float *a, const float *b, float *c,
                     uint32_t m, uint32_t n, uint32_t k,
@@ -15,10 +19,11 @@ ai_matmul_m2_launch(const float *a, const float *b, float *c,
     if (a == 0 || b == 0 || c == 0 || m != 128 || n != 128 || k != 128 ||
         plan == 0 || plan->provider != OPEN64_DSL_PHYSICAL_PROVIDER_OPEN64_GENERATED ||
         plan->target_profile != OPEN64_DSL_TARGET_PROFILE_NVIDIA_HOPPER ||
-        plan->optimization_plan_id != 3 || plan->tile_plan_id != 3 ||
+        plan->optimization_plan_id != AI_EXPECT_PLAN ||
+        plan->tile_plan_id != AI_EXPECT_PLAN ||
         plan->cta_m != 128 || plan->cta_n != 128 || plan->cta_k != 32 ||
         plan->thread_m != 8 || plan->thread_n != 8 ||
-        plan->shared_bytes_per_stage != 32768 ||
+        plan->shared_bytes_per_stage != AI_EXPECT_SHARED ||
         plan->threads_per_cta != 256 ||
         plan->fallback_provider != OPEN64_DSL_PHYSICAL_PROVIDER_OPEN64_DIRECT)
         return 1;

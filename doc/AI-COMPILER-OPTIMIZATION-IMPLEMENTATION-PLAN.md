@@ -696,7 +696,17 @@ Deferred beyond this slice:
 - measured/autotuned cost evidence, runtime variants, and mapped publication;
 - explicit IPA summaries and cross-PU tile planning.
 
-Delayed SMEM cache-blocking follow-up (design only, not implemented): retain
+Delayed SMEM cache-blocking follow-up (partially implemented): the synchronous
+F32 path now retains compact A/B and padded-transposed A/compact B candidates
+for `BK=32`, with fixed linear GMEM copy maps. `CommonTilePlanIR` carries the
+A layout, stride, and low-confidence bank-conflict work; the selected layout
+changes device-WHIRL A allocation, fill, and compute indices. The legacy CUDA
+sidecar mirrors that layout, and v7 `COST_MODEL 3` plus `TILE_LAYOUT` rows make
+the choice reviewable. A TMA request limits selection to the supported compact
+layout. This does not yet model GMEM sectors, B layout alternatives, or actual
+hardware bank latency.
+
+The remaining joint-plan design retains
 matching direct/cache-served, one-slot synchronous, and target-legal
 multi-slot async A/B plans through AIO-10. Generate separate A/B copy and
 consumer maps, padded SMEM ledgers, bank effects, and dynamic K-tile barrier

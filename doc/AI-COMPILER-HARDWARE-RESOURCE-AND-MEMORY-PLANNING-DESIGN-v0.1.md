@@ -177,6 +177,16 @@ lane-to-address map; CTA reuse and SMEM staging control temporal reuse.
 Neither merely putting A/B in GMEM nor allocating SMEM slots guarantees
 coalescing or reuse [N3, N1].
 
+Implementation note (2026-10-25): the synchronous F32 GEMM slice retains a
+fixed linear GMEM copy map but now compares compact row-major A with
+transposed A padded to stride `BM+1`; B stays row-major. For `BK=32`, the
+padded A copy uses distinct banks across each 32-lane GMEM-to-SMEM store,
+while compute reads by distinct row groups avoid the compact layout's
+same-bank addresses. The selector charges an explicitly low-confidence
+bank-conflict-work proxy and lowers the selected A indices into WHIRL. It
+does not yet estimate GMEM sectors, model bank latency, or choose among
+multiple GMEM copy maps. The TMA sidecar remains compact-only.
+
 ## 4. Candidate construction: allocation, then schedule
 
 ### 4.1 Resource-allocation plan

@@ -20,7 +20,12 @@ for name in M N K BM BN BK TM TN; do
     definitions+=("-DAI_TEST_${name}=$value")
     printf -v "AI_TEST_${name}" '%s' "$value"
 done
-as_elements=$((AI_TEST_BM * AI_TEST_BK))
+as_elements=$(awk '$1 == "#define" && $2 == "AI_A_SHARED_ELEMS" { print $3; exit }' "$legacy")
+if [[ -z $as_elements ]]; then as_elements=$((AI_TEST_BM * AI_TEST_BK)); fi
+if [[ ! $as_elements =~ ^[0-9]+$ ]]; then
+    echo "legacy CUDA source has invalid A shared allocation" >&2
+    exit 1
+fi
 bs_elements=$((AI_TEST_BK * AI_TEST_BN))
 for tile in as bs; do
     elements=$as_elements

@@ -40,6 +40,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     fetch_selection: dict | None = None
     fetch_action: dict | None = None
     cost_model: str | None = None
+    layouts: dict[int, dict] = {}
     roof_target: dict | None = None
     context: dict | None = None
     phases: dict[int, dict] = {}
@@ -91,11 +92,13 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                                  read_bytes=int(read_bytes),
                                  write_bytes=int(write_bytes),
                                  producer=int(producer), last_use=int(last_use)))
-        elif kind == "COST_MODEL" and trace_version == "7" and len(fields) == 6:
-            if cost_model is not None or fields[3:] != [
-                    "2", "valid_predicated_elements", "dynamic_cta_k_barriers"]:
+        elif kind == "COST_MODEL" and trace_version == "7" and len(fields) in (6, 7):
+            if cost_model is not None or fields[3:] not in (
+                    ["2", "valid_predicated_elements", "dynamic_cta_k_barriers"],
+                    ["3", "valid_predicated_elements", "dynamic_cta_k_barriers",
+                     "bank_conflict_work"]):
                 raise ValueError("unknown or duplicate tile cost model")
-            cost_model = "v2"
+            cost_model = "v" + fields[3]
         elif kind == "ROOF_TARGET" and trace_version in ("4", "5", "6", "7") and len(fields) == 9:
             if roof_target is not None:
                 raise ValueError("duplicate Roofline target")
@@ -149,6 +152,17 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                                problem=(problem_m, problem_n, problem_k),
                                grid=(grid_m, grid_n),
                                ctas=grid_ctas, k_iterations=k_iterations)
+        elif kind == "TILE_LAYOUT" and trace_version == "7" and len(fields) == 12:
+            site, tile, plan = map(int, fields[3:6])
+            copy_map, a_layout = fields[6:8]
+            stride, bank_work, thread_columns, warps = map(int, fields[8:])
+            if (plan in layouts or copy_map != "linear" or a_layout not in
+                    ("row_major", "transposed_padded")):
+                raise ValueError("invalid or duplicate tile layout")
+            layouts[plan] = dict(site=site, tile=tile, copy_map=copy_map,
+                                 a_layout=a_layout, a_stride=stride,
+                                 bank_work=bank_work,
+                                 thread_columns=thread_columns, warps=warps)
         elif kind == "TILE_SELECT" and len(fields) == (11 if trace_version in ("3", "4", "5", "6", "7") else 10):
             if selection is not None:
                 raise ValueError("duplicate tile selection")
@@ -299,7 +313,9 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         raise ValueError("baseline or selected plan missing from candidates")
     if by_plan[selection["baseline"]]["family"] != "baseline":
         raise ValueError("baseline plan does not name baseline family")
-    if cost_model == "v2":
+    if cost_model in ("v2", "v3"):
+        if cost_model == "v3" and set(layouts) != set(by_plan):
+            raise ValueError("incomplete tile layout coverage")
         for row in candidates:
             grid = row.get("grid")
             if grid is None:
@@ -313,11 +329,43 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                 read_bytes = (m * k * grid_n + k * n * grid_m) * 4
                 sync = 2 * grid["ctas"] * grid["k_iterations"]
             total_bytes = read_bytes + m * n * 4
-            if (row["memory"] != max(1, total_bytes // 1024) or
+            bank_work = 0
+            if cost_model == "v3":
+                layout = layouts[row["plan"]]
+                bm, bn, bk = row["cta"]
+                if (layout["site"] != row["site"] or
+                        layout["tile"] != row["tile"] or
+                        layout["warps"] != (row["threads"] + 31) // 32):
+                    raise ValueError("v3 tile layout disagrees with candidate")
+                if row["family"] == "baseline":
+                    if (layout["a_stride"] or layout["bank_work"] or
+                            layout["thread_columns"]):
+                        raise ValueError("v3 baseline has physical tile layout")
+                else:
+                    cols = layout["thread_columns"]
+                    if (cols <= 0 or bn % cols or row["threads"] == 0 or
+                            bm * cols % row["threads"]):
+                        raise ValueError("v3 invalid thread layout")
+                    thread_m = bm * cols // row["threads"]
+                    transpose = layout["a_layout"] == "transposed_padded"
+                    stride = bm + 1 if transpose else bk
+                    if (layout["a_stride"] != stride or
+                            (transpose and bk < 32) or
+                            row["shared"] != (bk * (bm + 1 if transpose else bm)
+                                              + bk * bn) * 4):
+                        raise ValueError("v3 invalid SMEM layout")
+                    groups = (32 + cols - 1) // cols
+                    bank_work = (0 if transpose or cols >= 32 else
+                                 grid["ctas"] * grid["k_iterations"] * bk *
+                                 layout["warps"] * thread_m * (groups - 1))
+                    if layout["bank_work"] != bank_work:
+                        raise ValueError("v3 bank work disagrees with geometry")
+                row["layout"] = layout
+            if (row["memory"] != max(1, total_bytes // 1024) + bank_work // 32 or
                     row["sync"] != sync or
                     (row.get("roof_bytes") and
                      row["roof_bytes"] != total_bytes)):
-                raise ValueError("v2 tile cost disagrees with traced geometry")
+                raise ValueError(f"{cost_model} tile cost disagrees with traced geometry")
         selection["cost_model"] = cost_model
     eligible = [row for row in candidates if row["legality"] == "proven"
                 and row["complete"] and row["unit"] != "unknown"]
@@ -572,7 +620,8 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
             f"b_load={edge['b_load']} c_store={edge['c_store']} "
             f"{edge['barriers']}")
     if selection.get("cost_model"):
-        summary.append("cost_model=v2 reads=valid_predicated_elements "
+        summary.append(f"cost_model={selection['cost_model']} "
+                       "reads=valid_predicated_elements "
                        "sync=dynamic_cta_k_barriers confidence=low")
     (reports / "optimization.log").write_text(
         "# What it summarizes: Complete P0-P11 optimization process, including every phase decision and non-execution reason.\n"
@@ -594,16 +643,18 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
         "# Symbols: M,N,K=problem extents; E=element bytes; BM,BN,BK=CTA tile extents; ceil=ceiling division.",
         "# compute=max(1,floor(2*M*N*K/1024)); one multiply-add counts as two operations.",
         "# memory_unhidden=max(1,floor((read_bytes+write_bytes)/1024)); write_bytes=M*N*E.",
+        *( ["# v3 memory_unhidden adds floor(bank_conflict_work/32); this is a low-confidence bank-serialization proxy, not time."]
+           if selection.get("cost_model") == "v3" else [] ),
         "# read_bytes baseline=2*M*N*K*E.",
         ("# read_bytes tiled=(M*K*ceil(N/BN)+K*N*ceil(M/BM))*E; invalid edge loads are zero-filled without GMEM requests."
-         if selection.get("cost_model") == "v2" else
+         if selection.get("cost_model") in ("v2", "v3") else
          "# read_bytes tiled=ceil(M/BM)*ceil(N/BN)*ceil(K/BK)*(BM*BK+BK*BN)*E."),
         "# total=compute+memory_unhidden+communication_unhidden+sync+launch+runtime_selection.",
         ("# sync tiled=2*ceil(M/BM)*ceil(N/BN)*ceil(K/BK), baseline=0; this counts issued CTA barriers, not exposed latency."
-         if selection.get("cost_model") == "v2" else
+         if selection.get("cost_model") in ("v2", "v3") else
          "# sync=static barrier_count (0 baseline, 2 tiled); communication_unhidden, launch, runtime_selection=0 here."),
         ("# Caveat: valid element bytes are not sector transactions or HBM bytes; bandwidth, cache effects, overlap, and SM parallelism remain unmodeled."
-         if selection.get("cost_model") == "v2" else
+         if selection.get("cost_model") in ("v2", "v3") else
          "# Caveat: memory_unhidden is a traffic proxy; bandwidth, overlap, cache effects, and dynamic barrier frequency are not modeled."),
         "# Selection: lowest complete relative cost among proven plans; a modeled Roofline bound can resolve near-cost alternatives where available.",
         f"site={selection['site']} target={selection['target']} baseline={selection['baseline']} selected={selection['selected']}",
@@ -639,11 +690,17 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
             tile_lines[-1] += (f" problem={','.join(map(str, grid['problem']))}"
                                f" grid={','.join(map(str, grid['grid']))}"
                                f" grid_ctas={grid['ctas']} k_iterations={grid['k_iterations']}")
-            if selection.get("cost_model") == "v2" and row["family"] != "baseline":
+            if selection.get("cost_model") in ("v2", "v3") and row["family"] != "baseline":
                 m, n, k = grid["problem"]
                 grid_m, grid_n = grid["grid"]
                 tile_lines[-1] += (f" valid_a_load_bytes={m * k * grid_n * 4}"
                                    f" valid_b_load_bytes={k * n * grid_m * 4}")
+            if "layout" in row:
+                layout = row["layout"]
+                tile_lines[-1] += (f" gmem_copy_map={layout['copy_map']}"
+                                   f" a_smem_layout={layout['a_layout']}"
+                                   f" a_stride={layout['a_stride']}"
+                                   f" bank_conflict_work={layout['bank_work']}")
         if "roof_bound_ns" in row:
             tile_lines[-1] += (f" flops={row['flops']} global_bytes={row['roof_bytes']} "
                                f"roof_compute_ns={row['roof_compute_ns']} "

@@ -99,6 +99,15 @@ a low-confidence relative work score, not a latency prediction: sector
 transactions, cache/HBM behavior, exposed barrier latency, and SM parallelism
 need later target modeling and measurement.
 
+`run-016/` adds a synchronous F32 A-layout choice for the c128 family:
+compact row-major or transposed with one padded column. `TILE_LAYOUT`
+records the linear GMEM copy map, selected A stride, and modeled bank work;
+`COST_MODEL 3` charges `floor(bank_conflict_work/32)` to the relative memory
+term. Both the transitional `.cu` and device WHIRL use the selected layout.
+The edge fixture checks transposed selection and source/WHIRL host-CTA
+parity; the TMA source path stays compact. This is not a measured bank
+throughput result or a complete GMEM sector/coalescing model.
+
 The compiler artifact runner can capture both source paths in one run:
 
 ```sh

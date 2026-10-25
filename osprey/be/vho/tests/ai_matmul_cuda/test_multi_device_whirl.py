@@ -134,11 +134,16 @@ def main():
             "__open64_dsl_matmul_generated_v1" not in relocations or
             "__open64_dsl_matmul_generated_v2" not in relocations):
         raise RuntimeError("host object lost versioned plan/entry ABI")
+    selected_plans = [int(line.split()[5]) for line in applied_trace.splitlines()
+                      if line.startswith("AI_OPT 7 TILE_SELECT ")]
+    if len(selected_plans) != 2 or selected_plans[0] != selected_plans[1]:
+        raise RuntimeError("two-PU fixture has inconsistent selected plans")
     run(["objcopy", "--globalize-symbol=ai_matmul_duplicate_0",
          "--globalize-symbol=ai_matmul_duplicate_1", "two.o",
          "two.link.o"], applied, env)
     run(["cc", "-std=c11", "-O2", "-fno-fast-math",
          "-ffp-contract=off", "-DAI_MATMUL_M2_RUNTIME=1",
+         f"-DAI_EXPECT_PLAN={selected_plans[0]}",
          "-I", str(REPO / "osprey/include"),
          "-I", str(HERE.parent / "ai_matmul_m0"),
          str(HERE.parent / "ai_matmul_m0/runtime.c"),

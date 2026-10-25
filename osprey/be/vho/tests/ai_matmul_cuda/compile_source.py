@@ -44,11 +44,20 @@ def validate_selected_source(source: str, candidates: list[dict],
         dimensions[name] = int(match[1])
     bm, bn, bk = (dimensions[name] for name in ("BM", "BN", "BK"))
     tm, tn = dimensions["TM"], dimensions["TN"]
+    transpose_a = selected.get("layout", {}).get("a_layout") == "transposed_padded"
+    a_elements = bk * (bm + 1) if transpose_a else bm * bk
     if ((bm, bn, bk) != selected["cta"] or not tm or not tn or
             bm % tm or bn % tn or
             bm // tm * (bn // tn) != selected["threads"] or
-            (bm * bk + bk * bn) * 4 != selected["shared"]):
+            (a_elements + bk * bn) * 4 != selected["shared"]):
         raise RuntimeError("generated tile geometry disagrees with selected plan")
+    if selected.get("layout"):
+        stride = selected["layout"]["a_stride"]
+        if (f"// a_smem_layout={selected['layout']['a_layout']} a_stride={stride}"
+                not in source or
+                f"#define A_STRIDE {stride}" not in source or
+                f"#define AI_A_SHARED_ELEMS {a_elements}" not in source):
+            raise RuntimeError("generated A layout disagrees with selected plan")
     for name, expected in (("AI_TILE_PLAN_ID", selected["tile"]),
                            ("AI_OPTIMIZATION_PLAN_ID", selected["plan"])):
         match = re.search(rf"^#define {name} (\d+)$", source, re.MULTILINE)
@@ -101,9 +110,11 @@ def validate_device_whirl_output(source: str, dump: str,
     if problem is None:
         raise RuntimeError("device WHIRL needs traced problem geometry")
     m, n, k = problem
+    a_elements = (bk * (bm + 1) if selected.get("layout", {}).get(
+        "a_layout") == "transposed_padded" else bm * bk)
     required_source = (
         r'extern\s+"C"\s+__global__\s+void\s+ai_matmul_tile_f32\s*\(',
-        rf'__shared__\s+_IEEE32\s+as\[{bm * bk}LL\]',
+        rf'__shared__\s+_IEEE32\s+as\[{a_elements}LL\]',
         rf'__shared__\s+_IEEE32\s+bs\[{bk * bn}LL\]',
         rf'for\s*\(base\s*=\s*0;\s*base\s*<\s*{k};\s*'
         rf'base\s*=\s*base\s*\+\s*{bk}\)',
