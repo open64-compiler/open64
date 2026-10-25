@@ -11,10 +11,12 @@
 #include <cuda_runtime.h>
 
 namespace {
-constexpr int M = 128;
-constexpr int N = 128;
-constexpr int K = 128;
-constexpr int Threads = 256;
+constexpr int M = AI_TEST_M;
+constexpr int N = AI_TEST_N;
+constexpr int K = AI_TEST_K;
+constexpr int TileM = AI_TEST_BM;
+constexpr int TileN = AI_TEST_BN;
+constexpr int Threads = (TileM / AI_TEST_TM) * (TileN / AI_TEST_TN);
 
 std::mutex barrier_mutex;
 std::condition_variable barrier_condition;
@@ -59,8 +61,14 @@ int main() {
   std::vector<float> a(M * K), b(K * N), actual(M * N), legacy(M * N);
   for (int i = 0; i != M * K; ++i) a[i] = ((i * 13) % 17 - 8) / 8.0f;
   for (int i = 0; i != K * N; ++i) b[i] = ((i * 7) % 19 - 9) / 9.0f;
-  run_cta(ai_matmul_whirl, a.data(), b.data(), actual.data());
-  run_cta(ai_matmul_legacy, a.data(), b.data(), legacy.data());
+  for (int row = 0; row < M; row += TileM) {
+    for (int col = 0; col < N; col += TileN) {
+      blockIdx = {static_cast<unsigned>(col / TileN),
+                  static_cast<unsigned>(row / TileM), 0};
+      run_cta(ai_matmul_whirl, a.data(), b.data(), actual.data());
+      run_cta(ai_matmul_legacy, a.data(), b.data(), legacy.data());
+    }
+  }
   float max_reference_error = 0.0f;
   float max_legacy_error = 0.0f;
   float max_pair_error = 0.0f;
@@ -70,6 +78,8 @@ int main() {
       for (int q = 0; q != K; ++q)
         reference += a[row * K + q] * b[q * N + col];
       const int index = row * N + col;
+      if (!std::isfinite(actual[index]) || !std::isfinite(legacy[index]))
+        return 1;
       max_reference_error = std::fmax(max_reference_error,
                                       std::fabs(actual[index] - reference));
       max_legacy_error = std::fmax(max_legacy_error,

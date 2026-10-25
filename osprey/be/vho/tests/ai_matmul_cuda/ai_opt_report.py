@@ -33,6 +33,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     k_loop: dict | None = None
     whirl_kernel: dict | None = None
     device_binding: dict | None = None
+    edge_plan: dict | None = None
     selection: dict | None = None
     action: dict | None = None
     fetch_candidates: list[dict] = []
@@ -165,6 +166,17 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
             action = dict(site=int(site), plan=int(plan), emission=emission,
                           tile_rewrite=tile_rewrite, lower=lower,
                           lowered_count=int(count))
+        elif kind == "EDGE_PLAN" and trace_version == "7" and len(fields) == 10:
+            if edge_plan is not None:
+                raise ValueError("duplicate device edge plan")
+            site, plan, policy, a_load, b_load, c_store, barriers = fields[3:]
+            if not (a_load.startswith("a=") and b_load.startswith("b=")
+                    and c_store.startswith("c=")):
+                raise ValueError("malformed device edge plan")
+            edge_plan = dict(site=int(site), plan=int(plan), policy=policy,
+                             a_load=a_load[2:], b_load=b_load[2:],
+                             c_store=c_store[2:],
+                             barriers=barriers)
         elif kind == "K_LOOP" and trace_version == "7" and len(fields) == 10:
             if k_loop is not None:
                 raise ValueError("duplicate selected K loop")
@@ -342,6 +354,25 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                 fetch_candidates):
             raise ValueError("device WHIRL kernel disagrees with selected tile")
         selection["whirl_kernel"] = whirl_kernel
+    if edge_plan is not None:
+        chosen = by_plan[selection["selected"]]
+        problem = chosen.get("grid", {}).get("problem")
+        guards = tuple(extent % tile != 0 for extent, tile in
+                       zip(problem, chosen["cta"])) if problem else ()
+        expected = "predicated" if any(guards) else "exact"
+        movement = (("zero_fill" if guards[0] or guards[2] else "direct",
+                     "zero_fill" if guards[2] or guards[1] else "direct",
+                     "guarded_store" if guards[0] or guards[1] else "direct")
+                    if guards else ())
+        if (whirl_kernel is None or problem is None or
+                (edge_plan["site"], edge_plan["plan"],
+                 edge_plan["policy"], edge_plan["a_load"],
+                 edge_plan["b_load"], edge_plan["c_store"],
+                 edge_plan["barriers"]) !=
+                (selection["site"], selection["selected"], expected,
+                 *movement, "barriers=uniform")):
+            raise ValueError("device edge plan disagrees with selected tile")
+        selection["edge_plan"] = edge_plan
     if device_binding is not None:
         ordinal = device_binding["ordinal"]
         expected_entry = ("ai_matmul_tile_f32" if ordinal == 0 else
@@ -508,6 +539,12 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
             f"device_binding owner={binding['owner']} "
             f"entry={binding['entry']} ordinal={binding['ordinal']} "
             f"plan={binding['plan']} image={binding['image']}")
+    if selection.get("edge_plan"):
+        edge = selection["edge_plan"]
+        summary.append(
+            f"edge_plan={edge['policy']} a_load={edge['a_load']} "
+            f"b_load={edge['b_load']} c_store={edge['c_store']} "
+            f"{edge['barriers']}")
     (reports / "optimization.log").write_text(
         "# What it summarizes: Complete P0-P11 optimization process, including every phase decision and non-execution reason.\n"
         + "".join(phase_contents), encoding="utf-8")
@@ -598,6 +635,12 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
             f"device_pu=ai_matmul_tile_f32 plan={kernel['plan']} "
             f"tile={kernel['tile']} image={kernel['image']} "
             "state=materialized_sidecar target_lowered=no")
+    if "edge_plan" in selection:
+        edge = selection["edge_plan"]
+        tile_lines.append(
+            f"edge_plan={edge['policy']} a_load={edge['a_load']} "
+            f"b_load={edge['b_load']} c_store={edge['c_store']} "
+            f"{edge['barriers']}")
     chosen = next(row for row in candidates if row["plan"] == selection["selected"])
     if "grid" in chosen:
         selection["selected_grid_ctas"] = chosen["grid"]["ctas"]

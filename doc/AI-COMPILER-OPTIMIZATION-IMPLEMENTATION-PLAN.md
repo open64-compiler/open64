@@ -1299,9 +1299,25 @@ phase-status rows still appear in the trace-derived summary.
    host-object descriptor sizes and relocations, linked host-only mock
    execution, and per-PU plus aggregate `.t` reports. The package/runtime
    loader still needs to resolve v2 ordinals to device entries; the mock is
-   not a production CUDA launch provider. Next, add general edge guards and
-   attempt NVISA/PTX lowering. Native CUDA compilation, ptxas resource
-   inspection, GPU correctness, and same-target timing remain open.
+   not a production CUDA launch provider. `run-014/` extends the selected
+   synchronous device WHIRL to non-divisible M/N/K tiles. It conditionally
+   zero-fills only A/B loads whose axis can overrun, guards only potentially
+   invalid C stores, and keeps both CTA barriers uniform. An I4 geometry
+   gate rejects padded or flattened indices that can overflow. `EDGE_PLAN`
+   records those decisions in the raw `.t`, `tile.log`, and summary. The
+   130x133x135 all-tail fixture passes source-only and applied host-PU
+   paths; 128x128x135 proves the K-only path omits the C guard. Both pass
+   mapped-image reopen, `whirl2c -cuda`, and multi-CTA host simulation with
+   zero error against reference and legacy source. A 50000x50000x128
+   negative fixture is rejected without publishing an I4-unsafe device image.
+   The artifact retains `.B`, `.T`, `.cu`, `.t`, phase reports, host object,
+   negative compile log, receipt, and checksums.
+   The current cost model still prices full tile-load requests at edges and
+   static barrier count, not measured masked traffic or dynamic barriers.
+   Next, resolve v2 ordinals in the package/runtime, refine edge-aware cost
+   estimates, and attempt NVISA/PTX lowering. Native CUDA compilation,
+   ptxas resource inspection, GPU correctness, and same-target timing remain
+   open.
 5. [ ] Extend the selected tile with P7.4/P8 staging and a reviewed
    fetch/pipeline plan. Retain movement engine, stages, issue/wait, barriers,
    hidden versus unhidden movement, fallback, correctness, and measurement

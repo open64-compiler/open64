@@ -88,6 +88,21 @@ class SourceContractTest(unittest.TestCase):
                 DEVICE_SOURCE, DEVICE_DUMP,
                 dict(selection, whirl_kernel=dict(plan=2, tile=3)), selected)
 
+    def test_predicated_device_requires_three_whirl_guards(self):
+        selected = dict(CANDIDATES[0], grid=dict(problem=(130, 133, 135)))
+        selection = dict(SELECTION, whirl_kernel=dict(plan=3, tile=3))
+        source = DEVICE_SOURCE.replace("base < 128", "base < 135")
+        with self.assertRaisesRegex(RuntimeError, "required edge guards"):
+            validate_device_whirl_output(source, DEVICE_DUMP,
+                                         selection, selected)
+        guarded_source = source.replace(
+            "    __syncthreads();",
+            "    if (valid) {}\n    if (valid) {}\n    if (valid) {}\n"
+            "    __syncthreads();", 1)
+        guarded_dump = DEVICE_DUMP + "IF {line: 0}\n" * 3
+        validate_device_whirl_output(guarded_source, guarded_dump,
+                                     selection, selected)
+
     def test_selected_tile_matches_source(self):
         validate_selected_source(SOURCE, CANDIDATES, SELECTION)
 

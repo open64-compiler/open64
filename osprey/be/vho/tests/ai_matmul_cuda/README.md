@@ -36,12 +36,15 @@ with `whirl2c -cuda` output from the same selected plan.
 
 ## Selected Device WHIRL Parity
 
-For the exact-divisible fixed F32 GEMM subset, `cuda_whirl_output` writes
+For the selected synchronous F32 GEMM subset, `cuda_whirl_output` writes
 `ai_matmul_tile_f32` as high-level device WHIRL with cooperative global-to-
 shared A/B staging, two CTA barriers per K tile, register accumulation, and
-output stores. The emitted declarations must contain `__shared__` for both
-`as` and `bs`; `acc` remains per-thread. To write a CUDA-suffixed output
-directly, run:
+output stores. Non-divisible M/N/K tails conditionally zero-fill only the A/B
+accesses that can cross a boundary and guard only potentially invalid C
+stores; both CTA barriers remain unconditional. The 32-bit index gate rejects
+flattened or padded geometry that can overflow an I4 index. The emitted
+declarations contain `__shared__` for both `as` and `bs`; `acc` remains
+per-thread. To write a CUDA-suffixed output directly, run:
 
 ```sh
 whirl2c -cuda -CLIST:dotc_file=matmul.whirl.cu \
@@ -54,9 +57,10 @@ file containing CUDA C. The review artifacts retain those bytes as
 `source/matmul.whirl.cu` for future native CUDA compilation. The checked-in
 `generated_runtime.cu` is a host launch adapter, not `whirl2c` kernel output;
 it has no A/B tile declarations. The legacy emitter remains the default-on
-transition baseline. Byte-for-byte
-source equality is not required: the device PU omits bounds guards only
-where the exact-divisibility gate proves they are redundant.
+transition baseline. Byte-for-byte source equality is not required: the device
+PU omits bounds guards on axes where divisibility proves them redundant. The
+`EDGE_PLAN` row in `.t`, `tile.log`, and `optimization-summary.log` records
+A/B zero-fill, C-store guard, and uniform-barrier decisions.
 
 For the selected 128x128x128, BM=BN=128, BK=32, TM=TN=8 case, run:
 
@@ -66,13 +70,23 @@ bash osprey/be/vho/tests/ai_matmul_cuda/test_whirl_cuda_parity.sh \
   path/to/artifact/binary
 ```
 
-The test compiles both sources with a CUDA host stub and simulates one
-256-thread CTA with real barriers. It compares both outputs with reference
+The test compiles both sources with a CUDA host stub and simulates one CTA per
+output tile with real barriers. It compares both outputs with reference
 GEMM and each other. The first preserved zero-error evidence is
 `artifacts/ai_optimization/m2-whirl-kernel/run-008/`; `run-009/` shows that
 WHIRL-only selection produces no legacy `.cu` and reports
 `device_whirl_sidecar` in the optimization trace. This does not establish
 native CUDA compilation, PTX generation, GPU correctness, or performance.
+
+`test_device_whirl_edges.py --build-dir /path/to/build --output-dir /new/run`
+exercises 130x133x135 with all M/N/K tails in source-only and applied modes,
+plus 128x128x135 with only a K tail. It reopens the device image, checks `IF`
+counts and `EDGE_PLAN`, translates with `whirl2c -cuda`, runs multi-CTA host
+parity against legacy source and reference GEMM, and rejects a 50000x50000x128
+shape whose flattened C index cannot fit I4 before device publication. It
+retains raw `.t`, phase reports, device `.B`/`.T`, `.cu`, host object, negative
+compile log, receipt, and checksums. The
+compiler-only checkpoint is `artifacts/ai_optimization/m2-whirl-kernel/run-014/`.
 
 The compiler artifact runner can capture both source paths in one run:
 

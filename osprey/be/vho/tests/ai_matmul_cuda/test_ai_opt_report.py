@@ -272,6 +272,25 @@ class ReportTest(unittest.TestCase):
             "TILE_ACTION 1 3 source_sidecar",
             "TILE_ACTION 1 3 device_whirl_sidecar")
         self.assertEqual(parse(whirl_only)[1]["whirl_kernel"]["tile"], 3)
+        with_edge = whirl_only.replace(
+            "AI_OPT 7 TILE_ACTION 1 3",
+            "AI_OPT 7 EDGE_PLAN 1 3 exact a=direct b=direct c=direct "
+            "barriers=uniform\nAI_OPT 7 TILE_ACTION 1 3")
+        self.assertEqual(parse(with_edge)[1]["edge_plan"]["policy"], "exact")
+        with self.assertRaisesRegex(ValueError, "device edge plan disagrees"):
+            parse(with_edge.replace("EDGE_PLAN 1 3 exact", "EDGE_PLAN 1 3 predicated"))
+        with self.assertRaisesRegex(ValueError, "duplicate device edge plan"):
+            parse(with_edge + "AI_OPT 7 EDGE_PLAN 1 3 exact a=direct b=direct "
+                  "c=direct barriers=uniform\n")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "compile.t"
+            source.write_text(with_edge, encoding="utf-8")
+            render(source, root / "reports")
+            self.assertIn("edge_plan=exact",
+                          (root / "reports/phases/tile.log").read_text())
+            self.assertIn("barriers=uniform",
+                          (root / "reports/optimization-summary.log").read_text())
         bound = whirl_only.replace(
             "AI_OPT 7 WHIRL_KERNEL 1 3 3 /artifact/matmul.device.B\n",
             "AI_OPT 7 WHIRL_KERNEL 1 3 3 /artifact/matmul.device.B\n"

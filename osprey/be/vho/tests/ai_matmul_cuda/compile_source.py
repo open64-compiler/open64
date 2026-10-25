@@ -100,7 +100,7 @@ def validate_device_whirl_output(source: str, dump: str,
     problem = selected.get("grid", {}).get("problem")
     if problem is None:
         raise RuntimeError("device WHIRL needs traced problem geometry")
-    _, _, k = problem
+    m, n, k = problem
     required_source = (
         r'extern\s+"C"\s+__global__\s+void\s+ai_matmul_tile_f32\s*\(',
         rf'__shared__\s+_IEEE32\s+as\[{bm * bk}LL\]',
@@ -118,6 +118,12 @@ def validate_device_whirl_output(source: str, dump: str,
             "(DEVICE_SYMBOL) 1" not in dump or
             dump.count("(DEVICE_SYMBOL) 4") < 2):
         raise RuntimeError("device WHIRL dump lacks kernel or shared staging")
+    guard_m, guard_n, guard_k = (m % bm != 0, n % bn != 0, k % bk != 0)
+    expected_guards = sum((guard_m or guard_k, guard_k or guard_n,
+                           guard_m or guard_n))
+    if (len(re.findall(r'\bif\s*\(', source)) < expected_guards or
+            dump.count("IF {line:") < expected_guards):
+        raise RuntimeError("predicated device WHIRL lacks required edge guards")
 
 
 def validate_device_publication_order(trace: str, selection: dict) -> None:
