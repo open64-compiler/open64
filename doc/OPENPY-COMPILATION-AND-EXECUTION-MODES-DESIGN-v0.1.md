@@ -3,7 +3,7 @@
 Version: v0.1
 Status: cross-domain design proposal; option spellings and most packaging/runtime paths are not implemented
 Date: 2026-10-23
-Revision: 2026-10-23, explicit PU/service concepts and SGLang integration boundary
+Revision: 2026-10-25, target-neutral device-buffer allocation and ownership contract
 Scope: AI and FHE programs compiled by `openpy`; standalone application, service JIT, and performance testing
 Companions: `OPEN64-AI-COMPILATION-AND-RUNTIME-ARCHITECTURE.md`, `FHE-CONSOLIDATED-IMPLEMENTATION-PLAN.md`, and `FHE-O2-ACE-RESBM-METAKERNEL-INTEGRATION-PLAN.md`
 
@@ -106,10 +106,11 @@ linking, package publication, and retention. The **domain compiler** owns
 semantic legality and numerical/security policy. The **target backend** owns
 instruction/code realization. The **runtime executor** owns certified
 variant selection, its own allocations, borrowed-buffer leases, dependencies,
-and execution lifetime. The **provider
-adapter** owns CUDA or ACE ANT handles and API calls. The **application or
-service** owns user requests and input/output policy. The **harness** owns
-experimental controls and measurements only.
+and execution lifetime. Its `TargetBufferService` owns the target-neutral
+buffer contract; the selected **provider adapter** implements allocation,
+transfer, and release with target-specific facilities such as CUDA or ACE
+ANT. The **application or service** owns user requests and input/output
+policy. The **harness** owns experimental controls and measurements only.
 
 One package record must join the semantic entry, selected plan, compiled
 entry symbol, ABI version, target/provider requirements, source and compiler
@@ -141,6 +142,48 @@ each load/invocation. A standalone host PU calls this interface after its
 launcher binds inputs; service JIT calls the same interface from the service.
 The harness invokes two separately loaded entries through it.
 
+#### TargetBufferService: allocation and binding
+
+`TargetBufferService` is the generic runtime building block for device or
+accelerator-visible buffers. The compiler emits a **buffer requirement**, not
+an allocation call or a process-local pointer: tensor role (input, output,
+scratch), bytes or guarded shape expression, dtype/layout, target memory tier,
+alignment, access/alias permissions, lifetime, and whether borrowing is
+legal. The selected plan and entry descriptor carry those requirements. At
+invocation, the executor binds each requirement to a validated borrowed
+buffer or asks `TargetBufferService` to acquire a runtime-owned buffer. No
+compiler-generated PU contains `cudaMalloc` or another provider allocator.
+
+| Operation | Generic contract | Ownership rule |
+| --- | --- | --- |
+| `import` | Validate a caller-owned buffer handle against target, tier, size, alignment, layout, access, and completion dependencies | Borrow only; never free or silently relocate it |
+| `allocate` | Acquire a target-visible buffer for a plan-declared result, staging object, or scratch requirement | Runtime owns it until release or an explicit ownership transfer to the caller |
+| `transfer` | Move or make data available between declared tiers when the plan and caller policy require it | Record direction, bytes, dependencies, and completion; no implicit host round trip |
+| `release` | Return a runtime-owned buffer after its final dependent operation completes | Reject release of borrowed storage; preserve results whose ownership was transferred to the caller |
+
+The executor selects a provider implementation from the package's target
+and capability contract plus the live device/runtime configuration. Its
+configuration includes target kind and device identity, available memory
+tiers, allocator/stream policy, capacity and alignment limits, and provider
+ABI version. The provider must validate these requirements before exposing
+a buffer handle or launch pointer. The NVIDIA implementation may use CUDA
+allocation and copy APIs (for example, `cudaMalloc` and `cudaMemcpy`); those
+names belong only in the CUDA provider, not in common WHIRL, the host PU, or
+the cross-domain ABI. A CPU or FHE provider supplies its own implementation
+of the same contract. Changing providers cannot change the selected tensor
+layout, numerical/security semantics, or ownership rules.
+
+For standalone execution, the launcher binds application inputs, and the
+generated host dispatch PU passes plan-bound buffer requirements and handles
+to this service. Host-resident A/B may require provider allocations and
+transfers; a device-resident input can be imported without a redundant copy.
+The output C is either bound to validated caller storage or allocated by the
+runtime and returned with explicit ownership. For service JIT, the service
+usually imports its existing A/B, output, and KV buffers; only plan-declared
+scratch or an explicitly requested output may be runtime-allocated. Failure,
+cancellation, fallback, and reuse all wait for the recorded completion event
+before a borrowed or owned buffer is released or rebound.
+
 ### 3.2 Building blocks to build or adopt
 
 | Building block | Owner and decision | Build or adopt | First deliverable / gate |
@@ -151,7 +194,8 @@ The harness invokes two separately loaded entries through it.
 | Host dispatch PU generator | Open64 compiler driver/lowering | Build for standalone product | Plan-derived runtime calls; no independent kernel-selection policy |
 | Package publisher and callable-entry ABI | Open64 driver/common contract | Build | Atomic manifest, checksums, guards, entry and fallback identity |
 | Runtime executor | Open64 runtime library | Build | Load/invoke/release, certified variant selection, dependencies, typed buffers |
-| NVIDIA launch provider | CUDA adapter behind Open64 runtime | Build adapter; adopt CUDA driver/runtime facilities | Device capability check, module load, buffer/stream/event bridge, launch and errors |
+| TargetBufferService | Open64 runtime contract; selected provider supplies the implementation | Build target-neutral allocate/import/transfer/release interface | Plan-declared buffer requirements, provider configuration, ownership/lifetime checks, and no unrequested host copy |
+| NVIDIA launch and buffer provider | CUDA adapter behind Open64 runtime | Build adapter; adopt CUDA driver/runtime facilities | Device capability check, module load, CUDA buffer/stream/event operations, launch and errors |
 | FHE execution provider | FHE runtime integration | Adopt ACE `FHErt_common`/`FHErt_ant` through a reviewed adapter | Public C ABI projection and secretless server lifecycle proof |
 | AI inference service | AI serving integration | Adopt SGLang for request orchestration; build an Open64 adapter | One SGLang-managed batch invokes a certified Open64 entry without copying through host memory by default |
 | FHE service shell | FHE deployment owner | Build or adopt separately; do not infer SGLang suitability | Ciphertext/public-context requests, key-domain isolation, encrypted results |
@@ -189,14 +233,15 @@ executable PUs:
 compiler-selected plan
   +-- device PU: tiled GEMM kernel
   +-- host PU: plan-specific dispatch
-        -> runtime buffer/load/launch APIs
+        -> TargetBufferService and runtime load/launch APIs
         -> selected device entry
 ```
 
 The host PU carries the selected plan and package identity, binds A/B/C and
-the verified launch contract, and calls the runtime APIs. Those APIs resolve
-the selected device entry and own buffers, provider handles, launches, and
-completion. The host PU does not reproduce the GEMM tile loop or choose a
+the verified launch contract, and calls the runtime APIs. `TargetBufferService`
+resolves declared allocation or import requirements through the configured
+target provider; the executor resolves the selected device entry, launch,
+and completion. The host PU does not reproduce the GEMM tile loop or choose a
 new kernel; the device PU contains the selected tile computation. Both PUs
 must be traceable to the same plan ID, and the package manifest must verify
 their entry/ABI join before linking or loading. A source-only `.cu` sidecar
@@ -298,8 +343,9 @@ SGLang request API / tokenizer
 The adapter carries batch shape, dtype/layout, prefill/decode phase, tensor
 and KV-block descriptors, selected stream/dependency tokens, and package
 identity. SGLang keeps ownership of request queues, sampling, and the KV
-cache allocator/policy; Open64 borrows those buffers under explicit lifetime
-and alias rules and may allocate plan-declared scratch through its provider.
+cache allocator/policy; Open64 imports those buffers through
+`TargetBufferService` under explicit lifetime and alias rules and may
+allocate plan-declared scratch through the selected provider.
 The bridge must document pointer/address-space validity, stream ordering,
 completion before reuse or eviction, cancellation, and error propagation.
 No default host round trip or duplicate KV-cache manager is acceptable.

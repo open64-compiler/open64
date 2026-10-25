@@ -95,6 +95,15 @@ or "Blackwell" constant. H200 and Blackwell SKUs must remain distinguishable.
 | Transfer engines | Demand/vector load, async copy, TMA, issue cost, alignment, descriptor and barrier rules | Determines available movement schedules and possible overlap. |
 | Execution resources | SM count, warps/CTA, CTAs/SM, CTA clusters, barriers, scheduler support | Determines occupancy, wave effects, and persistent feasibility. |
 
+"Existing A/B/C allocation" means a validated live buffer binding, not a
+`cudaMalloc` emitted by the tile planner. The selected plan declares buffer
+requirements; `TargetBufferService` in
+`OPENPY-COMPILATION-AND-EXECUTION-MODES-DESIGN-v0.1.md` imports or allocates
+them through the configured target provider. The NVIDIA provider may use CUDA
+APIs, while a different target uses its own allocator and transfer mechanism.
+This ownership boundary is separate from planning per-CTA SMEM slots and
+optional cost-gated GMEM repacking.
+
 The current `DSL_MEMORY_TIER_RECORD` and movement-capability records are a
 starting point, but they lack an explicit SMEM bank model, target bandwidth,
 SIMT lane map, per-SM resource allocation, and TMEM tier [O4]. NVIDIA
