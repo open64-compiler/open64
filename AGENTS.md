@@ -56,6 +56,20 @@ only when the current task needs detail.
    demonstrated and documented.
 13. Follow the coding guidelines below for every touched file.
 
+## Commit-Ready Milestones
+
+1. End each completed coding milestone with focused validation, `git diff --check`,
+   and a review of the exact files to be committed. Commit coherent verified
+   work promptly; do not leave finished milestones in a mixed dirty worktree.
+2. Stage explicit paths. Preserve unrelated or pre-existing edits, and split
+   design changes from implementation changes when that makes review clearer.
+3. Keep generated validation artifacts under their designated artifact
+   directories with receipts and checksums. Respect `.gitignore` unless a
+   milestone explicitly requires tracking those artifacts. Never claim GPU
+   correctness or performance from compiler-only or host-only evidence.
+4. If a milestone cannot be committed, state the blocker and the precise
+   uncommitted files before moving on to another coding milestone.
+
 ## WHIRL Single Source Of Truth For CUDA
 
 1. Treat the selected, lowered WHIRL image as the source of truth for generated
