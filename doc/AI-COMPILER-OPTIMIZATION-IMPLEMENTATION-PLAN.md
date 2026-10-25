@@ -1175,6 +1175,17 @@ These gates are specific to the first standalone rank-2 F32 matmul. Fusion,
 distributed placement, and runtime variants are out of scope; their
 phase-status rows still appear in the trace-derived summary.
 
+The immediate development gate is **compiler-side CUDA algorithm review**,
+separate from native M0/M2/M3 acceptance. For each candidate implementation,
+publish the selected device `.B`, `ir_b2a` view, `whirl2c -cuda` `.cu`, raw
+`.t`, `tile.log`, `optimization-summary.log`, host-CTA parity, and checksums.
+The WHIRL-derived `.cu` is the manual-review target; the legacy `.cu` is a
+comparison only. Review A/B addresses and layout, cooperative copy map,
+SMEM allocation, edge zero-fill, uniform barriers, K-loop and accumulator,
+and C stores against the selected plan before moving to GMEM alternatives.
+This gate needs no GPU. Native CUDA compilation, PTX/resource inspection,
+GPU correctness, and calibrated speedup remain separate later gates.
+
 1. [ ] Certify the direct fixed-shape baseline and publish `m0-baseline`
    with source, `.B`/`.T`, correctness, measured runtime, commands, target
    identity, and checksums. The compiled-PU `emulated-smoke-001` passes
@@ -1338,6 +1349,15 @@ phase-status rows still appear in the trace-derived summary.
    NVISA/PTX lowering. Native CUDA compilation,
    ptxas resource inspection, GPU correctness, and same-target timing remain
    open.
+   The compiler-only manual-review runner now publishes
+   `plans/cu-review.json` with the canonical WHIRL-derived `.cu` path and
+   hash, selected plan/geometry/SMEM layout, trace and report pointers,
+   and host-CTA parity. It rejects incomplete image/trace/parity provenance;
+   it does not relabel the legacy template as the selected kernel. The
+   checksum-verified `m2-whirl-kernel/run-018/` is the current fixed-shape
+   manual-review checkpoint. Its compiler-side gate is complete; native M2
+   acceptance is still open. The next compiler design action is GMEM copy-map
+   and sector-aware planning after the source algorithm is reviewed.
 5. [ ] Extend the selected tile with P7.4/P8 staging and a reviewed
    fetch/pipeline plan. Retain movement engine, stages, issue/wait, barriers,
    hidden versus unhidden movement, fallback, correctness, and measurement

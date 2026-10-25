@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 import tempfile
 
-from compile_source import (m2_handoff, selected_k_loop_dump,
+from compile_source import (m2_handoff, review_record, selected_k_loop_dump,
                             validate_device_publication_order,
                             validate_device_whirl_output,
                             validate_selected_source)
@@ -186,6 +186,37 @@ class SourceContractTest(unittest.TestCase):
                              320)
             self.assertFalse(handoff["whirl_rewrite_applied"])
             self.assertEqual(len(handoff["source_sha256"]), 64)
+
+    def test_review_record_names_whirl_source_and_requires_parity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for name, data in (
+                    ("source/matmul.whirl.cu", DEVICE_SOURCE),
+                    ("binary/matmul.device.B", "selected image"),
+                    ("traces/compile.t", "selection"),
+                    ("binary/parity.log",
+                     "whirl_vs_reference=0 legacy_vs_reference=0 "
+                     "whirl_vs_legacy=0\n")):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(data, encoding="utf-8")
+            selected = dict(CANDIDATES[0],
+                            grid=dict(problem=(128, 128, 128)))
+            selection = dict(SELECTION, whirl_kernel=dict(
+                plan=3, tile=3, image="matmul.device.B"))
+            review = review_record(root, selection, [selected], True)
+            self.assertEqual(review["canonical_cuda_path"],
+                             "source/matmul.whirl.cu")
+            self.assertEqual(review["selected_optimization_plan_id"], 3)
+            self.assertTrue(review["host_cta_parity_passed"])
+            self.assertFalse(review["gpu_correctness_verified"])
+            with self.assertRaisesRegex(RuntimeError, "disagree with selection"):
+                review_record(root, dict(selection, whirl_kernel=dict(
+                    plan=2, tile=3, image="matmul.device.B")), [selected], True)
+            (root / "binary/parity.log").write_text(
+                "whirl_vs_reference=1 whirl_vs_legacy=0\n", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "failed host CTA parity"):
+                review_record(root, selection, [selected], True)
 
 
 if __name__ == "__main__":

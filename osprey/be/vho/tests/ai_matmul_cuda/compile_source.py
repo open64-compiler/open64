@@ -205,6 +205,64 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def review_record(stage: Path, selection: dict, candidates: list[dict],
+                  applied: bool) -> dict:
+    selected = next((row for row in candidates
+                     if row["plan"] == selection["selected"]), None)
+    if selected is None or selected["legality"] != "proven":
+        raise RuntimeError("review source lacks a proven selected plan")
+    source = stage / "source/matmul.whirl.cu"
+    image = stage / "binary/matmul.device.B"
+    trace = stage / "traces/compile.t"
+    parity = stage / "binary/parity.log"
+    if not all(path.is_file() for path in (source, image, trace, parity)):
+        raise RuntimeError("review evidence is incomplete")
+    parity_text = parity.read_text(encoding="utf-8")
+    if "whirl_vs_reference=0" not in parity_text or "whirl_vs_legacy=0" not in parity_text:
+        raise RuntimeError("review source failed host CTA parity")
+    kernel = selection.get("whirl_kernel", {})
+    if (kernel.get("plan"), kernel.get("tile"), kernel.get("image")) != (
+            selected["plan"], selected["tile"], image.name):
+        raise RuntimeError("review source and device image disagree with selection")
+    return {
+        "schema": "ai-matmul-cu-review-v1",
+        "status": "compiler_only_ready_for_manual_review",
+        "canonical_cuda_path": "source/matmul.whirl.cu",
+        "canonical_cuda_sha256": sha256(source),
+        "canonical_emitter": "whirl2c -cuda from selected device WHIRL",
+        "legacy_comparison_path": "source/matmul.generated.cu",
+        "device_whirl_path": "binary/matmul.device.B",
+        "device_whirl_sha256": sha256(image),
+        "decision_trace_path": "traces/compile.t",
+        "decision_trace_sha256": sha256(trace),
+        "tile_log_path": "reports/phases/tile.log",
+        "summary_path": "reports/optimization-summary.log",
+        "host_parity_path": "binary/parity.log",
+        "selected_optimization_plan_id": selected["plan"],
+        "selected_tile_plan_id": selected["tile"],
+        "selected_candidate_id": selected["candidate"],
+        "selection_reason": selection["reason"],
+        "source_line": selected["source_line"],
+        "problem": selected["grid"]["problem"],
+        "cta_tile": selected["cta"],
+        "threads_per_cta": selected["threads"],
+        "gmem_copy_map": selected.get("layout", {}).get("copy_map", "linear"),
+        "a_smem_layout": selected.get("layout", {}).get("a_layout", "compact"),
+        "a_smem_stride": selected.get("layout", {}).get("a_stride", selected["cta"][2]),
+        "b_smem_layout": "row_major",
+        "shared_bytes_per_stage": selected["shared"],
+        "movement": "one_slot_synchronous",
+        "edge_plan": selection.get("edge_plan"),
+        "relative_cost": selected["total"],
+        "cost_confidence": selected["confidence"],
+        "host_whirl_rewrite_applied": applied,
+        "host_cta_parity_passed": True,
+        "native_cuda_compiled": False,
+        "gpu_correctness_verified": False,
+        "gpu_performance_verified": False,
+    }
+
+
 def lowering_dump(raw_trace: Path, output: Path) -> str:
     marker = "========== WHIRL after VHO DSL Lowering =========="
     text = raw_trace.read_text(encoding="utf-8")
@@ -437,6 +495,9 @@ def main() -> None:
                            device_cuda_sha256=sha256(device_cuda),
                            device_dump_sha256=sha256(device_dump),
                            device_parity_log_sha256=sha256(stage / "binary/parity.log"))
+            review = review_record(stage, selection, candidate_rows, args.apply)
+            (stage / "plans/cu-review.json").write_text(
+                json.dumps(review, indent=2) + "\n", encoding="utf-8")
         if args.tma:
             tma_required = ("cp_async_bulk_tensor", "cuTensorMapEncodeTiled",
                             "mbarrier_try_wait_parity", "P8_STAGES",
@@ -481,6 +542,9 @@ def main() -> None:
             "closes_m3_prefetch_pipeline_gate": False,
             "source_path": "source/matmul.generated.cu",
             "source_sha256": sha256(cuda_source),
+            "review_cuda_path": "source/matmul.whirl.cu" if args.device_whirl else None,
+            "review_cuda_sha256": sha256(device_cuda) if args.device_whirl else None,
+            "review_record_path": "plans/cu-review.json" if args.device_whirl else None,
             "m2_handoff_path": "plans/m2-selected-tile.json",
             "m2_handoff_sha256": sha256(stage / "plans/m2-selected-tile.json"),
             "decision_trace_path": "traces/compile.t",
@@ -549,7 +613,9 @@ def main() -> None:
         )
         print(f"failed artifact retained for diagnosis: {stage}", file=sys.stderr)
         raise
-    print(f"compiler-selected CUDA source: {output / 'source/matmul.generated.cu'}")
+    selected_source = ("source/matmul.whirl.cu" if args.device_whirl else
+                       "source/matmul.generated.cu")
+    print(f"compiler-selected CUDA source: {output / selected_source}")
 
 
 if __name__ == "__main__":

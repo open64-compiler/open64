@@ -125,6 +125,18 @@ and shared A/B attributes, and runs host CTA parity against the legacy source.
 The receipt and handoff include paths and SHA256 hashes for both sources and
 the device image. Compiler options use paths relative to the artifact's
 `binary/` directory, so the trace remains readable after publication.
+For manual algorithm review, open `source/matmul.whirl.cu` first: this is the
+canonical selected-kernel output from `whirl2c -cuda`. The generated
+`plans/cu-review.json` records its hash, selected plan, geometry, SMEM layout,
+movement mode, trace/report paths, and host-CTA parity. Then inspect
+`reports/phases/tile.log` for candidate costs and selection,
+`traces/matmul.device.T` for the WHIRL body, and `traces/compile.t` for raw
+decisions. `source/matmul.generated.cu` is only the transitional parity
+baseline, even though older receipt fields name it `source_path`.
+This checkpoint certifies compiler provenance and CPU-simulated CTA behavior,
+not native CUDA compilation, GPU correctness, or throughput. GMEM placement
+and sector-aware planning can proceed after source review without treating a
+GPU run as a prerequisite.
 `run-012/` records a passing `--apply` run with driver-owned `PU_Info` and
 mapped-image writing, plus zero host CTA error. `test_multi_device_whirl.py`
 compiles the two-PU fixture, reopens the two-kernel device image, checks both
