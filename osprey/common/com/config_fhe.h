@@ -26,4 +26,14 @@ extern BOOL VHO_FHE_Enable_Runtime_Lowering;
 extern BOOL VHO_FHE_Enable_Runtime_Lowering_Set;
 extern char *VHO_FHE_Runtime_Lowering_Checkpoint_Output;
 
+typedef enum {
+  VHO_FHE_CODEGEN_UNSPECIFIED = 0,
+  VHO_FHE_CODEGEN_CKKS2C,
+  VHO_FHE_CODEGEN_POLY2C,
+  VHO_FHE_CODEGEN_INVALID
+} VHO_FHE_CODEGEN_MODE;
+
+extern char *VHO_FHE_Codegen;
+extern VHO_FHE_CODEGEN_MODE VHO_FHE_Codegen_Mode (void);
+
 #endif /* config_fhe_INCLUDED */

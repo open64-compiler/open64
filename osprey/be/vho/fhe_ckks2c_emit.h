@@ -22,8 +22,19 @@ struct VHO_FHE_CKKS2C_GROUP {
   std::string identity_sha256;
   uint32_t owner_pu_st;
   uint32_t source_value_id;
+  uint32_t source_node_id;
+  uint32_t source_logical_operator;
+  uint32_t source_operator_version;
+  std::string source_value_name;
   uint32_t context_pu_identity_id;
   uint32_t context_callsite_id;
+  uint32_t origin_owner_pu_st;
+  uint32_t origin_source_value_id;
+  uint32_t origin_static_ordinal;
+  uint32_t group_output_value_id;
+  std::vector<uint32_t> event_ids;
+  std::vector<uint32_t> result_node_ids;
+  std::vector<uint32_t> result_value_ids;
   VHO_FHE_CKKS_EVENT_PLAN plan;
 };
 

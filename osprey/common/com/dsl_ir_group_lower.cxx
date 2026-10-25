@@ -18,6 +18,7 @@
 #include "dsl_ir_lower_internal.h"
 #include "dsl_region.h"
 #include "dsl_region_internal.h"
+#include "dsl_shape.h"
 #include "pu_info.h"
 #include "strtab.h"
 #include "symtab.h"
@@ -29,6 +30,7 @@ extern BOOL DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID);
 typedef struct {
     WN *containing_block;
     UINT32 tree_order;
+    UINT32 subtree_end_order;
     UINT32 block_ordinal;
 } DSL_IR_GROUP_TREE_POSITION;
 
@@ -37,7 +39,8 @@ static BOOL
 DSL_IR_Group_Index_Tree
         (WN *tree, WN *containing_block, UINT32 block_ordinal,
          UINT32 *next_order,
-         std::map<const WN *, DSL_IR_GROUP_TREE_POSITION> *positions)
+         std::map<const WN *, DSL_IR_GROUP_TREE_POSITION> *positions,
+         std::set<ST_IDX> *physical_symbols)
 {
     if (tree == NULL || *next_order == UINT32_MAX)
         return FALSE;
@@ -47,6 +50,8 @@ DSL_IR_Group_Index_Tree
     position.block_ordinal = block_ordinal;
     if (!positions->insert(std::make_pair((const WN *)tree, position)).second)
         return FALSE;
+    if (WN_has_sym(tree))
+        physical_symbols->insert(WN_st_idx(tree));
     if (WN_operator(tree) == OPR_BLOCK) {
         UINT32 ordinal = 0;
         for (WN *stmt = WN_first(tree); stmt != NULL;
@@ -54,18 +59,22 @@ DSL_IR_Group_Index_Tree
             if (WN_operator(stmt) != OPR_COMMENT)
                 ++ordinal;
             if (!DSL_IR_Group_Index_Tree
-                    (stmt, tree, ordinal, next_order, positions))
+                    (stmt, tree, ordinal, next_order, positions,
+                     physical_symbols))
                 return FALSE;
         }
+        (*positions)[tree].subtree_end_order = *next_order;
         return TRUE;
     }
     for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid) {
         WN *child = WN_kid(tree, kid);
         if (child != NULL && !DSL_IR_Group_Index_Tree
                                   (child, containing_block, block_ordinal,
-                                   next_order, positions))
+                                   next_order, positions,
+                                   physical_symbols))
             return FALSE;
     }
+    (*positions)[tree].subtree_end_order = *next_order;
     return TRUE;
 }
 
@@ -235,7 +244,13 @@ DSL_IR_Group_Index_Managed_Uses
          const std::map<DSL_IR_VALUE_ID, UINT32> &member_by_value,
          const std::map<DSL_IR_NODE_ID, UINT32> &member_by_node,
          const std::map<ST_IDX, UINT32> &member_by_st,
-         std::vector<DSL_IR_GROUP_MEMBER_USES> *uses)
+         std::vector<DSL_IR_GROUP_MEMBER_USES> *uses,
+         std::vector<std::vector<UINT32> > *member_calls,
+         std::vector<std::vector<UINT32> > *member_arguments,
+         std::map<DSL_IR_GROUP_USE_EDGE, UINT32> *call_by_actual,
+         std::map<DSL_IR_GROUP_USE_EDGE, UINT32> *argument_by_actual,
+         std::set<DSL_CALL_ARGUMENT_ID> *retired_arguments,
+         std::set<DSL_IR_NODE_ID> *effect_nodes)
 {
     for (UINT32 id = 1; id <= DSL_Runtime_Interface_Image_Value_Count();
          ++id) {
@@ -265,24 +280,46 @@ DSL_IR_Group_Index_Managed_Uses
         DSL_RUNTIME_CALL_PROJECTION_RECORD call;
         if (!DSL_Runtime_Interface_Image_Get_Call(id, &call))
             return FALSE;
+        if (!call_by_actual->insert
+                (std::make_pair
+                    (std::make_pair(call.callsite_id,
+                                    call.actual_ordinal), id)).second)
+            return FALSE;
         std::map<DSL_IR_VALUE_ID, UINT32>::const_iterator member =
             member_by_value.find(call.source_value_id);
-        if (member != member_by_value.end())
+        if (member != member_by_value.end()) {
             ++(*uses)[member->second].call_count;
+            (*member_calls)[member->second].push_back(id);
+        }
     }
     for (UINT32 id = 1; id <= DSL_Call_ABI_Image_Argument_Count(); ++id) {
         DSL_CALL_ARGUMENT_RECORD argument;
         if (!DSL_Call_ABI_Image_Get_Argument(id, &argument))
             return FALSE;
+        if (!argument_by_actual->insert
+                (std::make_pair
+                    (std::make_pair(argument.callsite_id,
+                                    argument.actual_ordinal), id)).second)
+            return FALSE;
         std::map<DSL_IR_VALUE_ID, UINT32>::const_iterator member =
             member_by_value.find(argument.argument_value_id);
-        if (member != member_by_value.end())
+        if (member != member_by_value.end()) {
             ++(*uses)[member->second].call_argument_count;
+            (*member_arguments)[member->second].push_back(id);
+        }
+    }
+    for (UINT32 id = 1;
+         id <= DSL_Program_Interface_Image_Retired_Call_Count(); ++id) {
+        DSL_RETIRED_CALL_ARGUMENT_RECORD retired;
+        if (!DSL_Program_Interface_Image_Get_Retired_Call(id, &retired))
+            return FALSE;
+        retired_arguments->insert(retired.call_argument_id);
     }
     for (UINT32 id = 1; id <= DSL_Effect_Image_State_Effect_Count(); ++id) {
         DSL_STATE_EFFECT_RECORD effect;
         if (!DSL_Effect_Image_Get_State_Effect(id, &effect))
             return FALSE;
+        effect_nodes->insert(effect.owner_node_id);
         std::map<DSL_IR_NODE_ID, UINT32>::const_iterator member =
             member_by_node.find(effect.owner_node_id);
         if (member != member_by_node.end())
@@ -296,6 +333,69 @@ DSL_IR_Group_Index_Managed_Uses
             member_by_st.find(interface_record.st);
         if (member != member_by_st.end())
             ++(*uses)[member->second].region_count;
+    }
+    return TRUE;
+}
+
+/* A final output may cross a rewritten call only through its own handle. */
+static BOOL
+DSL_IR_Group_Output_Calls_Valid
+        (ST_IDX owner_pu_st, const DSL_IR_VALUE_RECORD &output,
+         DSL_RUNTIME_VALUE_PROJECTION_ID projection_id,
+         const std::vector<UINT32> &call_ids,
+         const std::vector<UINT32> &argument_ids,
+         const std::map<DSL_IR_GROUP_USE_EDGE, UINT32> &call_by_actual,
+         const std::map<DSL_IR_GROUP_USE_EDGE, UINT32> &argument_by_actual,
+         const std::set<DSL_CALL_ARGUMENT_ID> &retired_arguments)
+{
+    for (UINT32 i = 0; i < call_ids.size(); ++i) {
+        DSL_RUNTIME_CALL_PROJECTION_RECORD call;
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        if (!DSL_Runtime_Interface_Image_Get_Call(call_ids[i], &call) ||
+            call.owner_pu_st != owner_pu_st ||
+            call.source_value_id != output.id ||
+            call.value_projection_id != projection_id ||
+            !DSL_Call_Image_Get_Callsite(call.callsite_id, &callsite) ||
+            callsite.owner_pu_st != owner_pu_st)
+            return FALSE;
+        if (call.direction == DSL_RUNTIME_CALL_INPUT) {
+            DSL_CALL_ARGUMENT_RECORD argument;
+            std::map<DSL_IR_GROUP_USE_EDGE, UINT32>::const_iterator found =
+                argument_by_actual.find
+                    (std::make_pair(call.callsite_id, call.actual_ordinal));
+            if (found == argument_by_actual.end() ||
+                !DSL_Call_ABI_Image_Get_Argument(found->second, &argument) ||
+                argument.argument_value_id != output.id ||
+                argument.callee_formal_ordinal !=
+                    call.callee_formal_ordinal ||
+                retired_arguments.find(argument.id) !=
+                    retired_arguments.end())
+                return FALSE;
+        }
+    }
+    for (UINT32 i = 0; i < argument_ids.size(); ++i) {
+        DSL_CALL_ARGUMENT_RECORD argument;
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        DSL_RUNTIME_CALL_PROJECTION_RECORD call;
+        if (!DSL_Call_ABI_Image_Get_Argument(argument_ids[i], &argument) ||
+            argument.argument_value_id != output.id ||
+            !DSL_Call_Image_Get_Callsite(argument.callsite_id, &callsite) ||
+            callsite.owner_pu_st != owner_pu_st)
+            return FALSE;
+        BOOL retired = retired_arguments.find(argument.id) !=
+                           retired_arguments.end();
+        std::map<DSL_IR_GROUP_USE_EDGE, UINT32>::const_iterator found =
+            call_by_actual.find
+                (std::make_pair(argument.callsite_id,
+                                argument.actual_ordinal));
+        BOOL projected = found != call_by_actual.end() &&
+            DSL_Runtime_Interface_Image_Get_Call(found->second, &call);
+        if (retired ? projected :
+            (!projected || call.direction != DSL_RUNTIME_CALL_INPUT ||
+             call.source_value_id != output.id ||
+             call.value_projection_id != projection_id ||
+             call.callee_formal_ordinal != argument.callee_formal_ordinal))
+            return FALSE;
     }
     return TRUE;
 }
@@ -326,6 +426,36 @@ DSL_IR_Group_Block_Uses_Member
     return FALSE;
 }
 
+typedef struct {
+    ST_IDX replacement_st;
+    UINT32 group_index;
+    std::vector<WN *> reads;
+} DSL_IR_GROUP_RETIRED_ALIAS;
+
+/* A detached block must not hide a read of a retired projection handle. */
+static BOOL
+DSL_IR_Group_Block_Uses_Alias
+        (const WN *tree,
+         const std::map<ST_IDX, DSL_IR_GROUP_RETIRED_ALIAS> &aliases)
+{
+    if (tree == NULL)
+        return FALSE;
+    if (WN_has_sym(tree) &&
+        aliases.find(WN_st_idx(tree)) != aliases.end())
+        return TRUE;
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (const WN *stmt = WN_first(tree); stmt != NULL;
+             stmt = WN_next(stmt))
+            if (DSL_IR_Group_Block_Uses_Alias(stmt, aliases))
+                return TRUE;
+        return FALSE;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid)
+        if (DSL_IR_Group_Block_Uses_Alias(WN_kid(tree, kid), aliases))
+            return TRUE;
+    return FALSE;
+}
+
 /*
  * Replace complete, pure, owner-local native groups with one checked standard
  * block apiece. This is the common/com side of
@@ -348,7 +478,9 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
         requests == NULL || request_count == 0 || results == NULL ||
         !DSL_IR_Image_Validate(diagnostic) ||
         !DSL_Runtime_Interface_Image_Validate(diagnostic) ||
+        !DSL_Program_Interface_Image_Validate(diagnostic) ||
         !DSL_Call_ABI_Image_Validate_PU(pu_info, diagnostic) ||
+        !DSL_Program_Interface_Validate_PU(pu_info, diagnostic) ||
         !DSL_Region_Verify_PU(pu_info, diagnostic))
         return DSL_IR_Lower_Report(diagnostic, 0,
                                    "group transaction is incomplete");
@@ -364,9 +496,11 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
     std::vector<DSL_IR_NATIVE_VALUE_LOWER_REQUEST> member_requests
         (member_count);
     std::map<const WN *, DSL_IR_GROUP_TREE_POSITION> tree_positions;
+    std::set<ST_IDX> physical_symbols;
     UINT32 next_order = 0;
     if (!DSL_IR_Group_Index_Tree
-            (pu_root, NULL, 0, &next_order, &tree_positions))
+            (pu_root, NULL, 0, &next_order, &tree_positions,
+             &physical_symbols))
         return DSL_IR_Lower_Report(diagnostic, 0,
                                    "PU tree indexing failed");
     std::string owner_metadata("owner_pu=");
@@ -567,17 +701,26 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
 
     std::vector<DSL_IR_GROUP_MEMBER_USES> uses(members.size());
     memset(&uses[0], 0, uses.size() * sizeof(uses[0]));
+    std::vector<std::vector<UINT32> > member_calls(members.size());
+    std::vector<std::vector<UINT32> > member_arguments(members.size());
+    std::map<DSL_IR_GROUP_USE_EDGE, UINT32> call_by_actual;
+    std::map<DSL_IR_GROUP_USE_EDGE, UINT32> argument_by_actual;
+    std::set<DSL_CALL_ARGUMENT_ID> retired_arguments;
+    std::set<DSL_IR_NODE_ID> effect_nodes;
     if (!DSL_IR_Group_Index_Managed_Uses
             (pu_info, member_by_value, member_by_node, member_by_st,
-             &uses))
+             &uses, &member_calls, &member_arguments,
+              &call_by_actual, &argument_by_actual,
+              &retired_arguments, &effect_nodes))
         return DSL_IR_Lower_Report
                    (diagnostic, 0, "managed-use indexing failed");
     std::vector<DSL_REGION_SYMBOL_REDIRECT> region_redirects;
     for (UINT32 i = 0; i < groups.size(); ++i) {
         DSL_IR_GROUP_LOWER_JOURNAL &group = groups[i];
         const DSL_IR_NATIVE_GROUP_LOWER_REQUEST &request = *group.request;
+        UINT32 output_member = member_by_value.find(group.output.id)->second;
         const DSL_IR_GROUP_MEMBER_USES &output_uses =
-            uses[member_by_value.find(group.output.id)->second];
+            uses[output_member];
         const DSL_RUNTIME_VALUE_PROJECTION_RECORD &projection =
             output_uses.projection;
         if (request.relation.relation_kind !=
@@ -593,8 +736,11 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
             projection.source_st != group.output.st ||
             projection.source_ty != group.output.ty ||
             projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE ||
-            output_uses.call_count != 0 ||
-            output_uses.call_argument_count != 0 ||
+            !DSL_IR_Group_Output_Calls_Valid
+                (owner_pu_st, group.output, projection.id,
+                 member_calls[output_member],
+                 member_arguments[output_member], call_by_actual,
+                 argument_by_actual, retired_arguments) ||
             request.standard_block == NULL ||
             WN_operator(request.standard_block) != OPR_BLOCK ||
             WN_first(request.standard_block) == NULL ||
@@ -642,6 +788,7 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
     std::vector<UINT32> definition_counts(members.size(), 0);
     std::vector<DSL_IR_GROUP_USE_EDGE> physical_edges;
     std::vector<DSL_IR_GROUP_USE_EDGE> logical_edges;
+    BOOL has_external_provenance = FALSE;
     if (!DSL_IR_Group_Index_Physical_Uses
             (pu_root, UINT32_MAX, member_by_definition, member_by_st,
              &definition_counts, &physical_edges))
@@ -658,13 +805,44 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
             continue;
         std::map<DSL_IR_NODE_ID, UINT32>::const_iterator destination =
             member_by_node.find(reference.owner_node_id);
-        if (destination == member_by_node.end())
-            return DSL_IR_Lower_Report
-                       (diagnostic, member_groups[source->second],
-                        "member has an escaping logical use");
+        if (destination == member_by_node.end()) {
+            const DSL_IR_GROUP_LOWER_JOURNAL &group =
+                groups[member_groups[source->second]];
+            DSL_IR_NODE_RECORD owner_node;
+            DSL_IR_VALUE_RECORD owner_result;
+            DSL_IR_VALUE_ID redirect_target = DSL_IR_VALUE_INVALID_ID;
+            if (members[source->second].value.id != group.output.id ||
+                !DSL_IR_Image_Get_Node(reference.owner_node_id,
+                                       &owner_node) ||
+                !DSL_IR_Image_Get_Value(owner_node.result_value_id,
+                                        &owner_result) ||
+                (owner_node.flags &
+                 (DSL_IR_NODE_FLAG_RETIRED | DSL_IR_NODE_FLAG_LOWERED |
+                  DSL_IR_NODE_FLAG_DEAD_ELIDED)) == 0 ||
+                ((owner_node.flags & DSL_IR_NODE_FLAG_RETIRED) != 0 &&
+                 !DSL_IR_Image_Value_Redirect_Target
+                      (owner_result.id, &redirect_target)) ||
+                ST_IDX_level(owner_result.st) != CURRENT_SYMTAB ||
+                owner_values.find(owner_result.st) == owner_values.end() ||
+                owner_values.find(owner_result.st)->second.id !=
+                    owner_result.id ||
+                physical_symbols.find(owner_result.st) !=
+                    physical_symbols.end() ||
+                DSL_Region_Symbol_Use_Count(pu_info, owner_result.st) != 0 ||
+                effect_nodes.find(owner_node.id) != effect_nodes.end())
+                return DSL_IR_Lower_Report
+                           (diagnostic, member_groups[source->second],
+                            "member has an escaping logical use");
+            has_external_provenance = TRUE;
+            continue;
+        }
         logical_edges.push_back
             (std::make_pair(source->second, destination->second));
     }
+    if (has_external_provenance &&
+        !DSL_IR_Image_Validate_Lowered_Relations(diagnostic))
+        return DSL_IR_Lower_Report
+                   (diagnostic, 0, "non-executable provenance is invalid");
     for (UINT32 i = 0; i < members.size(); ++i) {
         const DSL_IR_NATIVE_VALUE_LOWER_JOURNAL &member = members[i];
         const DSL_IR_GROUP_LOWER_JOURNAL &group =
@@ -705,6 +883,146 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
                        (diagnostic, source_group.request_index,
                         "member use violates group dominance");
     }
+    std::set<DSL_RUNTIME_VALUE_PROJECTION_ID> call_projections;
+    std::set<DSL_IR_VALUE_ID> call_values;
+    for (UINT32 id = 1; id <= DSL_Runtime_Interface_Image_Call_Count();
+         ++id) {
+        DSL_RUNTIME_CALL_PROJECTION_RECORD call;
+        if (!DSL_Runtime_Interface_Image_Get_Call(id, &call))
+            return DSL_IR_Lower_Report
+                       (diagnostic, 0, "runtime call indexing failed");
+        call_projections.insert(call.value_projection_id);
+        call_values.insert(call.source_value_id);
+    }
+    std::map<ST_IDX, DSL_IR_GROUP_RETIRED_ALIAS> aliases;
+    std::map<UINT32, UINT32> member_subtrees;
+    for (UINT32 i = 0; i < members.size(); ++i) {
+        std::map<const WN *, DSL_IR_GROUP_TREE_POSITION>::const_iterator
+            position = tree_positions.find
+                (members[i].request->native_definition);
+        if (position == tree_positions.end())
+            return DSL_IR_Lower_Report
+                       (diagnostic, 0, "group member tree index is missing");
+        member_subtrees[position->second.tree_order] =
+            position->second.subtree_end_order;
+    }
+    for (UINT32 id = 1; id <= DSL_Runtime_Interface_Image_Value_Count();
+         ++id) {
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+        DSL_IR_VALUE_ID target_id = DSL_IR_VALUE_INVALID_ID;
+        if (!DSL_Runtime_Interface_Image_Get_Value(id, &projection))
+            return DSL_IR_Lower_Report
+                       (diagnostic, 0, "runtime alias indexing failed");
+        if (!DSL_IR_Image_Value_Redirect_Target
+                (projection.source_value_id, &target_id))
+            continue;
+        std::map<DSL_IR_VALUE_ID, UINT32>::const_iterator target =
+            member_by_value.find(target_id);
+        if (target == member_by_value.end())
+            continue;
+        UINT32 group_index = member_groups[target->second];
+        const DSL_IR_GROUP_LOWER_JOURNAL &group = groups[group_index];
+        if (target_id != group.output.id ||
+            projection.owner_pu_st != owner_pu_st)
+            continue;
+        DSL_IR_VALUE_RECORD retired;
+        DSL_IR_NODE_RECORD retired_node;
+        DSL_IR_OPCODE_DESCRIPTOR_RECORD retired_descriptor;
+        std::map<ST_IDX, DSL_IR_VALUE_RECORD>::const_iterator owned =
+            owner_values.find(projection.source_st);
+        BOOL view_redirect =
+            (projection.flags &
+             DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW) != 0;
+        if (projection.owner_pu_st != owner_pu_st ||
+            !DSL_IR_Image_Get_Value
+                (projection.source_value_id, &retired) ||
+            !DSL_IR_Image_Get_Node
+                (retired.producer_node_id, &retired_node) ||
+            !DSL_IR_Image_Get_Opcode_Descriptor
+                (retired_node.opcode_descriptor_id, &retired_descriptor) ||
+            (retired_node.flags & DSL_IR_NODE_FLAG_RETIRED) == 0 ||
+            view_redirect !=
+                ((retired_node.flags & DSL_IR_NODE_FLAG_RETIRED_VIEW) != 0) ||
+            owned == owner_values.end() ||
+            owned->second.id != retired.id ||
+            retired.st != projection.source_st ||
+            retired.ty != projection.source_ty ||
+            (view_redirect ?
+             (retired.ty == group.output.ty ||
+              retired_descriptor.shape_rule != DSL_SHAPE_RULE_VIEW ||
+              retired_descriptor.effect_model != DSL_EFFECT_MODEL_PURE ||
+              !DSL_Shape_Zero_Motion_View_Operator
+                  (retired_descriptor.logical_operator,
+                   retired_descriptor.version) ||
+              !DSL_Shape_Representation_Preserving_View
+                  (group.output.ty, retired.ty)) :
+             retired.ty != group.output.ty) ||
+            projection.handle_ty != group.handle_ty ||
+            projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE ||
+            ST_IDX_level(projection.handle_st) != CURRENT_SYMTAB ||
+            ST_IDX_index(projection.handle_st) == 0 ||
+            ST_IDX_index(projection.handle_st) >=
+                ST_Table_Size(CURRENT_SYMTAB) ||
+            ST_sclass(St_Table[projection.handle_st]) != SCLASS_AUTO ||
+            ST_type(St_Table[projection.handle_st]) !=
+                projection.handle_ty ||
+            projection.handle_st == group.handle_st ||
+            call_projections.find(projection.id) !=
+                call_projections.end() ||
+            call_values.find(retired.id) != call_values.end() ||
+            DSL_Region_Symbol_Use_Count
+                (pu_info, projection.handle_st) != 0 ||
+            effect_nodes.find(retired_node.id) != effect_nodes.end())
+            return DSL_IR_Lower_Report
+                       (diagnostic, group.request_index,
+                        "retired output projection is not a local alias");
+        DSL_IR_GROUP_RETIRED_ALIAS alias;
+        alias.replacement_st = group.handle_st;
+        alias.group_index = group_index;
+        if (!aliases.insert
+                (std::make_pair(projection.handle_st, alias)).second)
+            return DSL_IR_Lower_Report
+                       (diagnostic, group.request_index,
+                        "retired output projection handle is ambiguous");
+    }
+    for (std::map<const WN *, DSL_IR_GROUP_TREE_POSITION>::const_iterator
+             current = tree_positions.begin();
+         current != tree_positions.end(); ++current) {
+        WN *wn = const_cast<WN *>(current->first);
+        if (!WN_has_sym(wn))
+            continue;
+        std::map<ST_IDX, DSL_IR_GROUP_RETIRED_ALIAS>::iterator alias =
+            aliases.find(WN_st_idx(wn));
+        if (alias == aliases.end())
+            continue;
+        const DSL_IR_GROUP_LOWER_JOURNAL &group =
+            groups[alias->second.group_index];
+        std::map<const WN *, DSL_IR_GROUP_TREE_POSITION>::const_iterator
+            output = tree_positions.find(group.output_definition);
+        std::map<UINT32, UINT32>::const_iterator member =
+            member_subtrees.upper_bound(current->second.tree_order);
+        BOOL inside_member = FALSE;
+        if (member != member_subtrees.begin()) {
+            --member;
+            inside_member = current->second.tree_order < member->second;
+        }
+        if (WN_operator(wn) != OPR_LDID ||
+            WN_ty(wn) != group.handle_ty ||
+            output == tree_positions.end() ||
+            current->second.containing_block != group.containing_block ||
+            current->second.tree_order <
+                output->second.subtree_end_order || inside_member)
+            return DSL_IR_Lower_Report
+                       (diagnostic, group.request_index,
+                        "retired alias has a non-dominating use or escape");
+        alias->second.reads.push_back(wn);
+    }
+    for (UINT32 i = 0; i < groups.size(); ++i)
+        if (DSL_IR_Group_Block_Uses_Alias
+                (groups[i].request->standard_block, aliases))
+            return DSL_IR_Lower_Report
+                       (diagnostic, groups[i].request_index,
+                        "standard block reads a retired alias handle");
     if (!region_redirects.empty() &&
         !DSL_Region_Can_Apply_Lowering_Transitions
              (pu_info, &region_redirects[0], region_redirects.size(),
@@ -739,6 +1057,11 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
             WN_DELETE_Tree(removed);
         }
     }
+    for (std::map<ST_IDX, DSL_IR_GROUP_RETIRED_ALIAS>::iterator alias =
+             aliases.begin(); alias != aliases.end(); ++alias)
+        for (UINT32 i = 0; i < alias->second.reads.size(); ++i)
+            WN_st_idx(alias->second.reads[i]) =
+                alias->second.replacement_st;
     for (UINT32 i = 0; i < members.size(); ++i)
         FmtAssert(DSL_IR_Image_Mark_Value_Lowered(members[i].value.id),
                   ("preflighted grouped image update failed"));

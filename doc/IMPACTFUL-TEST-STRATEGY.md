@@ -101,6 +101,13 @@ invalidates the trace and audit receipts, but not the producer receipt.
 Changing a materializer, native transaction, input artifact, provider
 manifest, or producer binary invalidates all three.
 
+Accepted expensive evidence must be promoted to the durable, Git-ignored
+`<primary-open64-root>/artifacts/review` hierarchy defined by
+`doc/REVIEW-ARTIFACT-RETENTION-POLICY.md`. `/private/tmp`, a container, or a
+managed worktree may stage a run but may not hold its only accepted copy.
+Durable receipts are immutable and may be removed only with explicit user
+approval naming the affected path.
+
 ## SYNC-6 Measured Baseline
 
 The 2026-10-08 S6-0c closure run demonstrates why the tiers are necessary:

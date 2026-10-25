@@ -104,7 +104,11 @@
 #include "fhe_image.h"
 #include "fhe_plan.h"
 #include "dsl_region.h"
+#include "dsl_region_internal.h"
 #include "ir_bread.h"
+#ifndef OWN_ERROR_PACKAGE
+#include "dsl_gatekeeper.h"
+#endif
 #include "tracing.h"                /* TEMPORARY FOR ROBERT'S DEBUGGING */
 
 #ifdef BACK_END
@@ -166,6 +170,14 @@ static void (*old_sigsegv) (int);   /* the previous signal handler */
 static void (*old_sigbus) (int);   /* the previous signal handler */
 
 Output_File *Current_Output = 0;
+
+#ifndef OWN_ERROR_PACKAGE
+static Output_File *ir_output;
+static BOOL ir_output_standard_only = FALSE;
+static BOOL ir_output_globals_written = FALSE;
+static PU_Info *ir_output_first_pu = NULL;
+static PU_Info *ir_output_expected_pu = NULL;
+#endif
 
 #if (defined(linux) || defined(BUILD_OS_DARWIN))
 #define MAPPED_SIZE 0x400000
@@ -1916,6 +1928,10 @@ WN_write_revision (Output_File *fl)
     Section *cur_section;
     const char *revision = DSL_IR_Image_Node_Count() == 0 ?
                            Whirl_Revision : WHIRL_DSL_REVISION;
+#ifndef OWN_ERROR_PACKAGE
+    if (ir_output_standard_only && fl == ir_output)
+        revision = Whirl_Revision;
+#endif
     int length = strlen (revision);
 
     cur_section = get_section (0, ELF_COMMENT, fl);
@@ -1999,16 +2015,26 @@ WN_close_file (void *this_fl)
  * These routines use the standard compiler error reporting mechanism.
  */
 
-static Output_File *ir_output;
-
 void
 Write_PU_Info (PU_Info *pu)
 {
     Temporary_Error_Phase ephase("Writing WHIRL file");
 
+    if (ir_output_standard_only) {
+        if (pu == NULL || pu != ir_output_expected_pu ||
+            ir_output_globals_written ||
+            PU_Info_child(pu) != NULL ||
+            (PU_Info_state(pu, WT_REGIONS) != Subsect_Missing &&
+             !DSL_Region_Verify_Terminal_PU(pu, stderr)) ||
+            !DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr))
+            ErrMsg(EC_IR_Scn_Write, "standard-only PU", ir_output->file_name);
+        ir_output_expected_pu = PU_Info_next(pu);
+    }
+
     WN_MAP off_map = WN_MAP_UNDEFINED;
     BOOL region_map = PU_Info_state(pu, WT_REGIONS) == Subsect_InMem;
     BOOL callsite_map =
+        !ir_output_standard_only &&
         DSL_Call_Image_PU_Has_Calls(PU_Info_proc_sym(pu));
     BOOL need_off_map = region_map || callsite_map;
 
@@ -2074,11 +2100,29 @@ Output_File *
 Open_Output_Info (char *output_file)
 {
     Set_Error_Phase ("Writing WHIRL file" );
+    ir_output_standard_only = FALSE;
+    ir_output_globals_written = FALSE;
+    ir_output_first_pu = NULL;
+    ir_output_expected_pu = NULL;
     ir_output = WN_open_output (output_file);
     if (!ir_output) {
 	ErrMsg (EC_IR_Create, output_file, errno);
     }
     return ir_output;
+}
+
+Output_File *
+Open_Standard_Only_Output_Info (char *output_file, PU_Info *program_root)
+{
+    if (program_root == NULL)
+        return NULL;
+    Output_File *output = Open_Output_Info(output_file);
+    if (output != NULL) {
+        ir_output_standard_only = TRUE;
+        ir_output_first_pu = program_root;
+        ir_output_expected_pu = program_root;
+    }
+    return output;
 }
 
 #if defined(KEY) && defined(BACK_END)
@@ -2089,6 +2133,14 @@ void
 Write_Global_Info (PU_Info *pu_tree)
 {
     Set_Error_Phase ("Writing WHIRL file" );
+    if (ir_output_standard_only) {
+        if (pu_tree == NULL || pu_tree != ir_output_first_pu ||
+            ir_output_expected_pu != NULL ||
+            ir_output_globals_written)
+            ErrMsg(EC_IR_Scn_Write, "standard-only PU coverage",
+                   ir_output->file_name);
+        ir_output_globals_written = TRUE;
+    }
     WN_write_PU_Infos (pu_tree, ir_output);
 
 
@@ -2096,19 +2148,21 @@ Write_Global_Info (PU_Info *pu_tree)
 
     WN_write_dst(Current_DST, ir_output);
 
-    WN_write_dsl_ir_image(ir_output);
-    WN_write_dsl_effect_image(ir_output);
-    WN_write_dsl_callsite_image(ir_output);
-    WN_write_dsl_pu_interface_image(ir_output);
-    WN_write_dsl_call_abi_image(ir_output);
-    WN_write_dsl_runtime_interface_image(ir_output);
-    WN_write_dsl_program_interface_image(ir_output);
-    WN_write_dsl_fhe_image(ir_output);
-    WN_write_dsl_fhe_plan_image(ir_output);
-    WN_write_dsl_fhe_approx_profile_image(ir_output);
-    WN_write_dsl_fhe_context_state_image(ir_output);
-    WN_write_dsl_fhe_materialization_image(ir_output);
-    WN_write_dsl_ckks_event_image(ir_output);
+    if (!ir_output_standard_only) {
+        WN_write_dsl_ir_image(ir_output);
+        WN_write_dsl_effect_image(ir_output);
+        WN_write_dsl_callsite_image(ir_output);
+        WN_write_dsl_pu_interface_image(ir_output);
+        WN_write_dsl_call_abi_image(ir_output);
+        WN_write_dsl_runtime_interface_image(ir_output);
+        WN_write_dsl_program_interface_image(ir_output);
+        WN_write_dsl_fhe_image(ir_output);
+        WN_write_dsl_fhe_plan_image(ir_output);
+        WN_write_dsl_fhe_approx_profile_image(ir_output);
+        WN_write_dsl_fhe_context_state_image(ir_output);
+        WN_write_dsl_fhe_materialization_image(ir_output);
+        WN_write_dsl_ckks_event_image(ir_output);
+    }
 
     WN_write_strtab(Index_To_Str (0), STR_Table_Size (), ir_output);
 
@@ -2122,9 +2176,27 @@ Write_Global_Info (PU_Info *pu_tree)
 void
 Close_Output_Info (void)
 {
+    if (ir_output_standard_only && !ir_output_globals_written)
+        ErrMsg(EC_IR_Scn_Write, "standard-only global tables",
+               ir_output->file_name);
     WN_write_revision (ir_output);
 
     WN_close_output(ir_output);
+    ir_output = NULL;
+    ir_output_standard_only = FALSE;
+}
+
+void
+Discard_Output_Info (void)
+{
+    if (ir_output != NULL) {
+        WN_close_file(ir_output);
+        ir_output = NULL;
+    }
+    ir_output_standard_only = FALSE;
+    ir_output_globals_written = FALSE;
+    ir_output_first_pu = NULL;
+    ir_output_expected_pu = NULL;
 }
 
 

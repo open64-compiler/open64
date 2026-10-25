@@ -47,6 +47,8 @@ cscope.out
 autoconf/aclocal.m4
 autoconf/autom4te.cache
 /compile_commands.json
+# Local generated evidence.  The protected human-review area under
+# artifacts/review is governed by doc/REVIEW-ARTIFACT-RETENTION-POLICY.md.
 /artifacts
 # Visual Studio built-in CMake configuration
 /CMakeSettings.json

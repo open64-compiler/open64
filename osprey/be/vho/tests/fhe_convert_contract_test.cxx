@@ -366,6 +366,28 @@ Create_FHE_Config(void)
 int
 main(void)
 {
+    char *saved_codegen = VHO_FHE_Codegen;
+    VHO_FHE_Codegen = NULL;
+    BOOL codegen_modes_valid =
+        VHO_FHE_Codegen_Mode() == VHO_FHE_CODEGEN_UNSPECIFIED;
+    VHO_FHE_Codegen = (char *)"ckks2c";
+    codegen_modes_valid &=
+        VHO_FHE_Codegen_Mode() == VHO_FHE_CODEGEN_CKKS2C;
+    VHO_FHE_Codegen = (char *)"poly2c";
+    codegen_modes_valid &=
+        VHO_FHE_Codegen_Mode() == VHO_FHE_CODEGEN_POLY2C;
+    VHO_FHE_Codegen = (char *)"";
+    codegen_modes_valid &=
+        VHO_FHE_Codegen_Mode() == VHO_FHE_CODEGEN_INVALID;
+    VHO_FHE_Codegen = (char *)"CKKS2C";
+    codegen_modes_valid &=
+        VHO_FHE_Codegen_Mode() == VHO_FHE_CODEGEN_INVALID;
+    VHO_FHE_Codegen = saved_codegen;
+    if (!codegen_modes_valid) {
+        fprintf(stderr, "FHE codegen route parsing changed\n");
+        return 1;
+    }
+
     Initialize_Test_Context();
     if (!DSL_Builder_Begin_Program())
         return 1;

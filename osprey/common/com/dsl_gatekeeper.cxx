@@ -1269,6 +1269,50 @@ DSL_Gatekeeper_Verify_PU
                (pu, DSL_GATEKEEPER_STRICT, diagnostic, result);
 }
 
+static BOOL
+DSL_Gatekeeper_No_Native_Tree (WN *wn, FILE *diagnostic)
+{
+    if (wn == NULL)
+        return TRUE;
+    if (DSL_WN_Is_Native(wn)) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic,
+                    "DSL-TERMINAL-001: executable native DSL node %s "
+                    "remains\n",
+                    DSL_OPERATOR_name(DSL_WN_operator(wn)));
+        return FALSE;
+    }
+    BOOL valid = TRUE;
+    if (WN_operator(wn) == OPR_BLOCK) {
+        for (WN *stmt = WN_first(wn); stmt != NULL; stmt = WN_next(stmt)) {
+            if (!DSL_Gatekeeper_No_Native_Tree(stmt, diagnostic))
+                valid = FALSE;
+        }
+    } else {
+        for (INT kid = 0; kid < WN_kid_count(wn); ++kid) {
+            if (!DSL_Gatekeeper_No_Native_Tree
+                     (WN_kid(wn, kid), diagnostic))
+                valid = FALSE;
+        }
+    }
+    return valid;
+}
+
+BOOL
+DSL_Gatekeeper_Verify_No_Native_PU (PU_Info *pu, FILE *diagnostic)
+{
+    if (pu == NULL || PU_Info_state(pu, WT_TREE) != Subsect_InMem ||
+        PU_Info_tree_ptr(pu) == NULL ||
+        WN_operator(PU_Info_tree_ptr(pu)) != OPR_FUNC_ENTRY) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic,
+                    "DSL-TERMINAL-001: program unit has no in-memory "
+                    "FUNC_ENTRY\n");
+        return FALSE;
+    }
+    return DSL_Gatekeeper_No_Native_Tree(PU_Info_tree_ptr(pu), diagnostic);
+}
+
 BOOL
 DSL_Gatekeeper_Verify_Program_Mode
         (PU_Info *pu_tree,

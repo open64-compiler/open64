@@ -10,6 +10,8 @@
 
 #include <string.h>
 #include <algorithm>
+#include <iterator>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -1967,10 +1969,116 @@ DSL_Program_Interface_Validate_PU (PU_Info *pu, FILE *diagnostic)
     return TRUE;
 }
 
-/*
- * Extend final interface verification with the lowering postcondition: no
- * promoted external tensor or canonical source ST may remain executable.
- */
+/* Check executable projection-handle reads in structured WHIRL order. */
+static BOOL
+DSL_Program_Interface_Projection_Reads_Defined
+        (const WN *tree, const std::set<ST_IDX> &handles,
+         std::set<ST_IDX> *defined, ST_IDX *missing)
+{
+    if (tree == NULL)
+        return TRUE;
+    OPERATOR opr = WN_operator(tree);
+    if (opr == OPR_FUNC_ENTRY)
+        return DSL_Program_Interface_Projection_Reads_Defined
+                   (WN_func_body(tree), handles, defined, missing);
+    if (opr == OPR_BLOCK) {
+        for (const WN *stmt = WN_first(tree); stmt != NULL;
+             stmt = WN_next(stmt))
+            if (!DSL_Program_Interface_Projection_Reads_Defined
+                    (stmt, handles, defined, missing))
+                return FALSE;
+        return TRUE;
+    }
+    if (opr == OPR_LDID && handles.find(WN_st_idx(tree)) != handles.end() &&
+        defined->find(WN_st_idx(tree)) == defined->end()) {
+        *missing = WN_st_idx(tree);
+        return FALSE;
+    }
+    if (opr == OPR_STID) {
+        if (!DSL_Program_Interface_Projection_Reads_Defined
+                (WN_kid0(tree), handles, defined, missing))
+            return FALSE;
+        if (handles.find(WN_st_idx(tree)) != handles.end())
+            defined->insert(WN_st_idx(tree));
+        return TRUE;
+    }
+    if (opr == OPR_IF && WN_kid_count(tree) == 3) {
+        if (!DSL_Program_Interface_Projection_Reads_Defined
+                (WN_kid0(tree), handles, defined, missing))
+            return FALSE;
+        std::set<ST_IDX> then_defined = *defined;
+        std::set<ST_IDX> else_defined = *defined;
+        if (!DSL_Program_Interface_Projection_Reads_Defined
+                (WN_kid1(tree), handles, &then_defined, missing) ||
+            !DSL_Program_Interface_Projection_Reads_Defined
+                (WN_kid2(tree), handles, &else_defined, missing))
+            return FALSE;
+        std::set<ST_IDX> common;
+        std::set_intersection
+            (then_defined.begin(), then_defined.end(),
+             else_defined.begin(), else_defined.end(),
+             std::inserter(common, common.begin()));
+        *defined = common;
+        return TRUE;
+    }
+    if (opr == OPR_REGION)
+        return DSL_Program_Interface_Projection_Reads_Defined
+                   (WN_region_body(tree), handles, defined, missing);
+    if (OPERATOR_is_scf(opr)) {
+        std::set<ST_IDX> inside = *defined;
+        for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid)
+            if (!DSL_Program_Interface_Projection_Reads_Defined
+                    (WN_kid(tree, kid), handles, &inside, missing))
+                return FALSE;
+        return TRUE;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid)
+        if (!DSL_Program_Interface_Projection_Reads_Defined
+                (WN_kid(tree, kid), handles, defined, missing))
+            return FALSE;
+    return TRUE;
+}
+
+static BOOL
+DSL_Program_Interface_Verify_Projection_Handles
+        (PU_Info *pu, FILE *diagnostic)
+{
+    ST_IDX owner = PU_Info_proc_sym(pu);
+    std::set<ST_IDX> handles;
+    std::set<ST_IDX> defined;
+    for (UINT32 id = 1; id <= DSL_Runtime_Interface_Image_Value_Count();
+         ++id) {
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
+        if (!DSL_Runtime_Interface_Image_Get_Value(id, &projection))
+            return DSL_Program_Interface_Report
+                       (diagnostic, "runtime projection is invalid", id);
+        if (projection.owner_pu_st != owner ||
+            projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE)
+            continue;
+        ST_IDX st = projection.handle_st;
+        if (ST_IDX_level(st) != CURRENT_SYMTAB ||
+            ST_IDX_index(st) == 0 ||
+            ST_IDX_index(st) >= ST_Table_Size(CURRENT_SYMTAB) ||
+            ST_type(St_Table[st]) != projection.handle_ty)
+            return DSL_Program_Interface_Report
+                       (diagnostic, "runtime projection handle is invalid",
+                        id);
+        handles.insert(st);
+        if (ST_sclass(St_Table[st]) == SCLASS_FORMAL ||
+            ST_sclass(St_Table[st]) == SCLASS_FORMAL_REF)
+            defined.insert(st);
+    }
+    ST_IDX missing = ST_IDX_ZERO;
+    if (!DSL_Program_Interface_Projection_Reads_Defined
+            (PU_Info_tree_ptr(pu), handles, &defined, &missing))
+        return DSL_Program_Interface_Report
+                   (diagnostic,
+                    "projection handle read lacks a dominating definition",
+                    ST_IDX_index(missing));
+    return TRUE;
+}
+
+/* Final lowering requires no executable source symbols or undefined handles. */
 BOOL
 DSL_Program_Interface_Validate_Lowered_PU
         (PU_Info *pu, FILE *diagnostic)
@@ -2048,5 +2156,6 @@ DSL_Program_Interface_Validate_Lowered_PU
                        (diagnostic,
                         "dead-elided projection remains executable", i);
     }
-    return TRUE;
+    return DSL_Program_Interface_Verify_Projection_Handles
+               (pu, diagnostic);
 }

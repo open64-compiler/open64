@@ -177,9 +177,18 @@ extern void WN_write_SSA(PU_Info *pu, Output_File *fl);
  */
 
 extern Output_File *Open_Output_Info (char *output_file);
+/* Omit optional DSL ELF sections after PU-local native-node checks.
+ * The caller must first prove complete semantic-event consumption and publish
+ * the result atomically; this mode does not alter symbol/type tables.
+ */
+extern Output_File *Open_Standard_Only_Output_Info
+                                (char *output_file, PU_Info *program_root);
 extern void Write_PU_Info (PU_Info *pu);
 extern void Write_Global_Info (PU_Info *pu_tree);
 extern void Close_Output_Info (void);
+/* Abort an open output stream without global-table or revision finalization.
+ * The caller remains responsible for removing its incomplete output path. */
+extern void Discard_Output_Info (void);
 extern void WN_write_elf_symtab (const void* symtab, UINT64 size,
 				 UINT64 entsize, UINT align, Output_File* fl);
 extern void Write_Inlskip(const char *skip_fname);

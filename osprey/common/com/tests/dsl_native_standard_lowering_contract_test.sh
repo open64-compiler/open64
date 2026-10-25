@@ -14,6 +14,11 @@ trace="$artifact_dir/standard_lowering_contract.T"
 command_log="$artifact_dir/commands.txt"
 validation_log="$artifact_dir/validation.log"
 previous_reader_log="$artifact_dir/previous_reader.log"
+large_batch="${OPEN64_DSL_STANDARD_LOWER_LARGE_BATCH:-0}"
+if [[ ! "$large_batch" =~ ^[0-9]+$ ]] || (( large_batch > 1024 )); then
+  echo "large lowering batch must be an integer from 0 to 1024" >&2
+  exit 1
+fi
 
 for executable in "$contract_test" "$ir_b2a"; do
   if [[ ! -x "$executable" ]]; then
@@ -26,7 +31,7 @@ mkdir -p "$artifact_dir"
 find "$artifact_dir" -mindepth 1 -maxdepth 1 -type f -delete
 
 printf '%s\n' \
-  "OPEN64_DSL_STANDARD_LOWER_ONLY=1 OPEN64_DSL_STANDARD_LOWER_ARTIFACT=$image $contract_test" \
+  "OPEN64_DSL_STANDARD_LOWER_ONLY=1 OPEN64_DSL_STANDARD_LOWER_LARGE_BATCH=$large_batch OPEN64_DSL_STANDARD_LOWER_ARTIFACT=$image $contract_test" \
   "$ir_b2a -st -src $image $trace" >"$command_log"
 
 if ! (cd "$repo_root" && \
@@ -81,7 +86,7 @@ done
 
 if [[ "$(grep -Fc 'status=lowered relation=runtime_value_projection' "$trace")" -ne 4 ]] ||
    [[ "$(grep -Fc 'status=lowered relation=root_promoted_input' "$trace")" -ne 4 ]] ||
-   [[ "$(grep -Fc 'status=dead_elided relation=none' "$trace")" -ne 2 ]] ||
+   [[ "$(grep -Fc 'status=dead_elided relation=none' "$trace")" -ne $((2 * (large_batch + 1))) ]] ||
    [[ "$(grep -Ec '^  OPR_DSLADD ' "$trace")" -ne 0 ]] ||
    [[ "$(grep -Ec '^  OPR_DSLTENSORCONST .*standard_(weight|bias|seed)' "$trace")" -ne 0 ]]; then
   echo "standard-lowering relation or executable-node census changed" >&2

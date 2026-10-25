@@ -17,21 +17,184 @@ operations, allocate runtime calls, or implement FHE lowering policy.
 ## Closure And Inspection
 
 All private member uses must stay inside their group. One group output may
-feed a later submitted group; the final output crosses the boundary only
-through its reviewed runtime value projection and any preflighted REGION
-transition. Physical returns, calls, address escapes, unmanaged external
-reads, and private REGION or runtime-interface uses reject. The mapped DSL
-image retains logical provenance for retired members, and `ir_b2a -st -src`
-prints `private_group_member` or the output's runtime projection rather than
-the physical `OPR_DSL` escape representation.
+feed a later submitted group; the complete source-context request projects
+only its typed CKKS `FINAL_RESULT` replacement. The semantic source remains
+distinct provenance and has no runtime projection. For a ReLU-style chain,
+submit all ordered private subgroups as one member union whose final output
+is that `FINAL_RESULT`; bootstrap/stage outputs remain unprojected internal
+members. Physical returns, raw calls, address escapes, unmanaged external
+reads, and private REGION or runtime-interface uses reject. The sole final
+member may feed an already rewritten runtime call: its call projection must
+refer to that same value projection and handle, its active call-ABI argument
+and callee formal must agree, and the physical actual must use the handle
+rather than the retiring tensor ST. Verified-retired original call arguments
+carry provenance but have no live call projection. M1 checks the complete
+program interface before mutation; intermediate members retain the no-call
+rule. The mapped DSL image retains logical provenance for retired members,
+and `ir_b2a -st -src` prints the final runtime projection without exposing
+the physical `OPR_DSL` escape.
+
+A final member may also be named by retained non-executable semantic rows.
+M1 admits such an external logical reference only when its destination is an
+already retired, lowered, or dead-elided node with a valid existing relation,
+the destination result belongs to the active PU, and its ST has no physical
+tree use, REGION interface, or state effect. The existing lowered-relation
+verifier must accept the full image before commit. A live destination or any
+external reference from an intermediate private member still rejects.
+
+A retained, retired output projection may name the selected group output in
+an executable result-handle read. Group preflight redirects only a local,
+LDID-only read in the same BLOCK after the output definition; calls, address
+escapes, effects, REGION uses, and reads inside removed member subtrees
+reject. An ordinary retired alias requires identical source and target
+tensor TYs. A cross-TY alias requires the existing `retired_view` projection
+flag, a matching retired logical node with the `representation_view` relation,
+and the pure, zero-motion `common.flatten.v2` shape rule with a verified
+representation-preserving TY change. Both cases require the same opaque
+runtime handle TY. No mapped row is changed by this physical read redirect;
+the terminal program-interface verifier rejects a projection-handle read
+without a dominating definition.
+
+The focused CKKS fixture now joins two ordered static subgroups in one
+request. Its final replacement has the sole projection, an intermediate
+member has none, a fabricated intermediate projection rejects before
+mutation, and the accepted `.B` reopens with `ir_b2a -st -src`. This proves
+the existing M1 request shape without a new row, API, or ABI revision. The
+FHE consumer still owns the exact six-subgroup ReLU union and complete-model
+event/ABI census.
+The two-PU fixture additionally proves a `FINAL_RESULT` handle passed to a
+rewritten runtime `VCALL` while a second original actual for that same value
+is verified retired. A wrong physical actual or wrong projection ID rejects
+with native definitions and the detached standard block unchanged.
+Another mapped fixture retains both a retired redirect and a CKKS-expanded
+lowered source row that reference the final member. Live, malformed-lowered,
+and intermediate-member provenance variants reject without mutation.
+The immediately previous reader rejects this intermediate image at its CKKS
+event gate, while its `-st -src` output for the standard-only terminal image
+is byte-identical to the current reader's output.
+
+After grouped lowering, a producer may select pure `common.tensor_const`
+definitions whose executable uses are gone. The generic
+`DSL_IR_Elide_Dead_Native_Constants()` API takes exact owner-PU,
+definition, node, value, ST, TY, and version identities for a whole active-PU
+batch. It reuses the established native-to-standard batch transaction:
+preflight rejects live physical, logical, REGION, runtime-interface, and
+call-ABI obligations before any definition is extracted. Success removes the
+physical `STID`s and marks the existing logical node/value records
+`DEAD_ELIDED`; it does not delete provenance or change mapped-image rows.
+The FHE producer owns selection of the actual dead constants. A focused
+two-constant fixture certifies batch rollback, mapped reopen, and a
+standard-only terminal image, not the cached ten-PU ResNet census.
+
+Failed standard-only output now uses `Discard_Output_Info()` in backend
+checkpoint cleanup. Discard closes the open mapped output without demanding
+global-table/revision finalization; the checkpoint abort owns removal of the
+incomplete `.tmp` path. The ordinary `Close_Output_Info()` remains the only
+successful finalization path. An in-memory PU already written to a failed
+stream is not retryable; compilation failure is terminal.
 
 The optional CKKS event rows remain in this intermediate M1 image. An
 immediately previous `ir_b2a` can parse the unchanged physical row layouts
 but **must reject** private lowered members at its DSL image gate rather than
 silently reinterpret them. The terminal standard-WHIRL checkpoint is a
-separate M3 contract: after complete event consumption is proved, omit the
-optional event section and certify previous-reader reopen of that terminal
-artifact. M1 does not claim that terminal compatibility result.
+separate M3 contract. Omitting only the optional event section is insufficient
+for previous-reader reopen: the pre-M1 lowered-relation validator rejects
+private members without individual runtime projections. The focused M1 test
+already proves that fail-closed behavior on an artifact with no event section.
+M3 must either publish a fully standard-WHIRL terminal image without the
+private DSL provenance sections, after a complete no-live-DSL preflight, or
+explicitly accept previous-reader rejection. It must not claim compatibility
+from event-section omission alone. Retain the immutable CKKS input and
+authenticated report for detailed provenance.
+The CKKS fixture also elides its verified-dead tensor seed, writes the
+actual grouped result through the standard-only writer, and reopens that
+terminal `.B` in both current and pre-M1 readers with identical
+`ir_b2a -st -src` traces. This proves one-PU CKKS event-section disposition,
+not the complete FHE image, all-PU event census, or public ABI join.
+
+`DSL_Gatekeeper_Verify_No_Native_PU()` is the first PU-local terminal
+preflight. It rejects any executable native DSL node in the active tree; it
+does not consume CKKS events, prove all-PU coverage, or authorize section
+omission. The grouped fixture correctly fails this check after its add groups
+lower because its `common.tensor_const` seed remains live. An isolated
+standard-WHIRL tree passes the same check.
+
+The staged `Open_Standard_Only_Output_Info()` writer mode checks every flat
+PU as it is written, requires the complete linked PU list at global-table
+finalization, omits the optional DSL/FHE ELF sections, and writes the baseline
+WHIRL revision. It does not erase in-memory provenance or change existing
+symbol/type tables. A two-PU synthetic terminal image reopens through both
+current and pre-M1 readers; the grouped intermediate still carries its full
+logical image and fails closed in the pre-M1 reader. This proves the writer
+boundary, not the S6-0d event-consumption or complete-model terminal gate.
+The FHE producer must finish those proofs before opening a standard-only
+temporary output and publish it only after all-PU validation succeeds.
+The terminal writer now admits a managed `WT_REGIONS` subsection when the
+active PU's REGION records still name WNs in its standard physical tree, all
+interface symbols are valid local STs, and each output/result symbol is
+defined inside its REGION. It writes the unchanged per-PU REGION subsection
+while omitting the incompatible optional DSL/FHE global images. A focused
+two-PU image with `cnn.basic_block.v1` reopens in both the current and pre-M1
+readers; a stale result interface rejects before PU writing. This proves the
+generic writer/reader disposition, not that the full CKKS producer has
+redirected every REGION output to its terminal runtime handle. D4 must still
+prove those transitions and the authenticated event-to-ABI join. No source
+CKKS event or private group row is discarded from the immutable intermediate
+image.
+
+A separate focused producer now places two dependent native groups inside a
+managed `cnn.basic_block.v1` REGION. The grouped transaction replaces their
+six native definitions with two standard handle definitions and redirects the
+REGION result interface to the second handle. A mapped reopen shows the same
+interface ST as the physical `STID`; it still shows the unrelated native
+tensor seed, so this is an intermediate-image proof. A second producer run
+uses the existing verified-dead-source transaction to elide that seed, then
+writes the actual grouped REGION tree through the standard-only writer. Its
+terminal `.B` reopens with identical `ir_b2a -st -src` output in the current
+and pre-M1 readers. This proves the generic transaction-to-writer path for
+one PU, not CKKS event/ABI consumption or complete-model terminal coverage.
+
+`DSL_Gatekeeper_Verify_No_Native_PU()` is the first PU-local terminal
+preflight. It rejects any executable native DSL node in the active tree; it
+does not consume CKKS events, prove all-PU coverage, or authorize section
+omission. The grouped fixture correctly fails this check after its add groups
+lower because its `common.tensor_const` seed remains live. An isolated
+standard-WHIRL tree passes the same check.
+
+The staged `Open_Standard_Only_Output_Info()` writer mode checks every flat
+PU as it is written, requires the complete linked PU list at global-table
+finalization, omits the optional DSL/FHE ELF sections, and writes the baseline
+WHIRL revision. It does not erase in-memory provenance or change existing
+symbol/type tables. A two-PU synthetic terminal image reopens through both
+current and pre-M1 readers; the grouped intermediate still carries its full
+logical image and fails closed in the pre-M1 reader. This proves the writer
+boundary, not the S6-0d event-consumption or complete-model terminal gate.
+The FHE producer must finish those proofs before opening a standard-only
+temporary output and publish it only after all-PU validation succeeds.
+The terminal writer now admits a managed `WT_REGIONS` subsection when the
+active PU's REGION records still name WNs in its standard physical tree, all
+interface symbols are valid local STs, and each output/result symbol is
+defined inside its REGION. It writes the unchanged per-PU REGION subsection
+while omitting the incompatible optional DSL/FHE global images. A focused
+two-PU image with `cnn.basic_block.v1` reopens in both the current and pre-M1
+readers; a stale result interface rejects before PU writing. This proves the
+generic writer/reader disposition, not that the full CKKS producer has
+redirected every REGION output to its terminal runtime handle. D4 must still
+prove those transitions and the authenticated event-to-ABI join. No source
+CKKS event or private group row is discarded from the immutable intermediate
+image.
+
+A separate focused producer now places two dependent native groups inside a
+managed `cnn.basic_block.v1` REGION. The grouped transaction replaces their
+six native definitions with two standard handle definitions and redirects the
+REGION result interface to the second handle. A mapped reopen shows the same
+interface ST as the physical `STID`; it still shows the unrelated native
+tensor seed, so this is an intermediate-image proof. A second producer run
+uses the existing verified-dead-source transaction to elide that seed, then
+writes the actual grouped REGION tree through the standard-only writer. Its
+terminal `.B` reopens with identical `ir_b2a -st -src` output in the current
+and pre-M1 readers. This proves the generic transaction-to-writer path for
+one PU, not CKKS event/ABI consumption or complete-model terminal coverage.
 
 ## Cost And Validation
 

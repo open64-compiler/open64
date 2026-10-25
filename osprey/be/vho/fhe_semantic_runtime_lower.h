@@ -65,7 +65,18 @@ typedef struct {
     UINT32 static_ordinal;
     const DSL_IR_VALUE_ID *operand_value_ids;
     UINT32 operand_count;
+    /* Required only by RELU_POLY_STAGE. The stable role resolves the
+     * coefficient plaintext through the projected program interface. */
+    const char *bound_role;
 } VHO_FHE_RUNTIME_OPERATION_REQUEST;
+
+/* One selector/evaluator pair in a local-handle unary pipeline. The first
+ * step consumes a managed DSL value; each later step consumes the preceding
+ * evaluator's local result without introducing a fabricated DSL value. */
+typedef struct {
+    UINT32 operation_kind;
+    UINT32 static_ordinal;
+} VHO_FHE_RUNTIME_UNARY_PIPELINE_STEP;
 
 typedef struct {
     DSL_IR_NODE_ID source_node_id;
@@ -117,6 +128,18 @@ extern BOOL VHO_FHE_Runtime_Build_Operation_Sequence
                                 (struct pu_info *pu_info,
                                  const VHO_FHE_RUNTIME_OPERATION_REQUEST
                                      *request,
+                                 SRCPOS source_position,
+                                 VHO_FHE_STANDARD_FAILURE_BUILDER
+                                     build_failure,
+                                 void *failure_context,
+                                 FILE *diagnostic,
+                                 VHO_FHE_RUNTIME_CALL_SEQUENCE *sequence);
+extern BOOL VHO_FHE_Runtime_Build_Unary_Pipeline_Sequence
+                                (struct pu_info *pu_info,
+                                 DSL_IR_VALUE_ID input_value_id,
+                                 const VHO_FHE_RUNTIME_UNARY_PIPELINE_STEP
+                                     *steps,
+                                 UINT32 step_count,
                                  SRCPOS source_position,
                                  VHO_FHE_STANDARD_FAILURE_BUILDER
                                      build_failure,

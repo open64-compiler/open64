@@ -27,23 +27,39 @@
     },
     "ckks2c-emitter": {
       "status": "automated",
-      "command": "sh osprey/be/vho/tests/fhe_ckks2c_emit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-emitter"
+      "command": "bash osprey/be/vho/tests/fhe_ckks2c_emit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-emitter"
     },
     "ckks2c-collector": {
-      "status": "planned",
-      "command": "sh osprey/be/vho/tests/fhe_ckks2c_collect_test.sh /private/tmp/open64-fhe-impactful/ckks2c-collector"
+      "status": "automated",
+      "command": "bash osprey/be/vho/tests/fhe_ckks2c_collect_test.sh /private/tmp/open64-fhe-impactful/ckks2c-collector"
+    },
+    "ckks2c-cached-image": {
+      "status": "environment",
+      "command": "bash osprey/be/vho/tests/fhe_ckks2c_cached_image_test.sh <output-dir> <cached-secure_resnet20.ckks_ops.B> <linked-collector>"
     },
     "ckks2c-checkpoint": {
-      "status": "planned",
-      "command": "sh osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.sh /private/tmp/open64-fhe-impactful/ckks2c-checkpoint"
+      "status": "automated",
+      "command": "bash osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.sh /private/tmp/open64-fhe-impactful/ckks2c-checkpoint"
+    },
+    "fhe-semantic-conversion": {
+      "status": "environment",
+      "command": "rebuild and run the linked ir_tools fhe_semantic_convert_test"
     },
     "ckks2c-group-join": {
-      "status": "planned",
-      "command": "sh osprey/be/vho/tests/fhe_ckks2c_group_join_test.sh /private/tmp/open64-fhe-impactful/ckks2c-group-join"
+      "status": "automated",
+      "command": "bash osprey/be/vho/tests/fhe_ckks2c_group_join_test.sh /private/tmp/open64-fhe-impactful/ckks2c-group-join"
+    },
+    "ckks2c-group-lowering": {
+      "status": "environment",
+      "command": "rebuild linked fhe_runtime_lower_contract_test and be; run the receipt-matched cached S6-0c .B through -FHE:checkpoint and reopen with ir_b2a -st -src"
     },
     "ckks2c-driver-exit": {
       "status": "planned",
       "command": "sh osprey/driver/tests/openpy_fhe_ckks2c_exit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-driver"
+    },
+    "ckks2c-route-option": {
+      "status": "environment",
+      "command": "bash osprey/be/vho/tests/fhe_codegen_route_option_test.sh with rebuilt OPEN64_DSL_CONTRACT_TEST, OPEN64_BE, OPEN64_BE_LIBRARY_DIR, OPEN64_IR_B2A, OPEN64_OPENPY, and host-mounted OPEN64_FHE_CODEGEN_OPTION_ARTIFACT_DIR"
     },
     "ckks2c-ant-admission": {
       "status": "planned",
@@ -77,13 +93,17 @@
       "status": "environment",
       "command": "run the affected independent audit against a receipt-matched retained .T"
     },
+    "complete-audit-format": {
+      "status": "automated",
+      "command": "python3 osprey/be/vho/tests/test_fhe_ckks_complete_checkpoint_audit.py"
+    },
     "frontend-native-smoke": {
       "status": "environment",
       "command": "run the established torch2whirl native Docker smoke lane"
     },
     "miniature-checkpoint": {
-      "status": "planned",
-      "command": "implement and run the representative multi-PU CKKS checkpoint"
+      "status": "automated",
+      "command": "bash osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.sh /private/tmp/open64-fhe-impactful/ckks2c-checkpoint"
     },
     "full-s6-0c-certification": {
       "status": "manual-expensive",
@@ -108,7 +128,7 @@
     {
       "name": "artifact-auditor",
       "patterns": ["osprey/be/vho/tests/*audit.py"],
-      "lanes": ["hygiene", "artifact-audit"]
+      "lanes": ["hygiene", "complete-audit-format", "artifact-audit"]
     },
     {
       "name": "tail-plan",
@@ -143,7 +163,8 @@
       "patterns": [
         "osprey/be/vho/fhe_ckks2c_emit.*",
         "osprey/include/open64_fhe_ckks2c_facade.h",
-        "osprey/be/vho/tests/fhe_ckks2c_*"
+        "osprey/be/vho/tests/fhe_ckks2c_emit_test.*",
+        "osprey/be/vho/tests/fhe_ckks2c_facade_link_stub.c"
       ],
       "lanes": ["hygiene", "ckks2c-emitter"]
     },
@@ -151,11 +172,14 @@
       "name": "ckks2c-collector",
       "patterns": [
         "osprey/be/vho/fhe_ckks2c_collect.*",
-        "osprey/be/vho/tests/fhe_ckks2c_collect_test.*"
+        "osprey/be/vho/tests/fhe_ckks2c_collect_test.*",
+        "osprey/be/vho/tests/fhe_ckks2c_collect_image_test.*",
+        "osprey/be/vho/tests/fhe_ckks2c_cached_image_test.*"
       ],
       "lanes": [
         "hygiene",
         "ckks2c-collector",
+        "ckks2c-cached-image",
         "artifact-audit"
       ]
     },
@@ -163,19 +187,56 @@
       "name": "ckks2c-checkpoint",
       "patterns": [
         "osprey/be/vho/fhe_ckks2c_checkpoint.*",
+        "osprey/be/vho/fhe_ckks2c_publish.*",
         "osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.*"
       ],
-      "lanes": ["hygiene", "ckks2c-checkpoint", "artifact-audit"]
+      "lanes": [
+        "hygiene",
+        "ckks2c-checkpoint",
+        "miniature-checkpoint",
+        "artifact-audit"
+      ]
+    },
+    {
+      "name": "fhe-semantic-conversion",
+      "patterns": [
+        "osprey/be/vho/fhe_semantic_convert.*"
+      ],
+      "lanes": [
+        "hygiene",
+        "fhe-semantic-conversion",
+        "ckks2c-checkpoint",
+        "miniature-checkpoint"
+      ]
     },
     {
       "name": "ckks2c-group-join",
       "patterns": [
         "osprey/be/vho/fhe_ckks2c_group_join.*",
-        "osprey/be/vho/tests/fhe_ckks2c_group_join_test.*"
+        "osprey/be/vho/fhe_ckks2c_public_join.*",
+        "osprey/be/vho/tests/fhe_ckks2c_group_join_test.*",
+        "osprey/be/vho/tests/fhe_ckks2c_public_join_test.*"
       ],
       "lanes": [
         "hygiene",
         "ckks2c-group-join",
+        "ckks2c-cached-image",
+        "artifact-audit"
+      ]
+    },
+    {
+      "name": "ckks2c-group-lowering",
+      "patterns": [
+        "osprey/be/vho/fhe_ckks2c_lower.*",
+        "osprey/be/vho/fhe_semantic_runtime_lower.*",
+        "osprey/be/vho/tests/fhe_runtime_lower_contract_test.*"
+      ],
+      "lanes": [
+        "hygiene",
+        "ckks2c-group-lowering",
+        "ckks2c-group-join",
+        "backend-link-boundary",
+        "mapped-reopen",
         "artifact-audit"
       ]
     },
@@ -185,6 +246,16 @@
         "osprey/driver/tests/openpy_fhe_ckks2c_exit_test.*"
       ],
       "lanes": ["hygiene", "ckks2c-driver-exit"]
+    },
+    {
+      "name": "ckks2c-route-option",
+      "patterns": [
+        "osprey/common/com/config_fhe.*",
+        "osprey/driver/OPTIONS",
+        "osprey/be/vho/tests/fhe_codegen_route_option_test.sh",
+        "osprey/be/vho/tests/fhe_convert_contract_test.cxx"
+      ],
+      "lanes": ["hygiene", "ckks2c-route-option", "backend-link-boundary"]
     },
     {
       "name": "ckks2c-ant-admission",
@@ -217,11 +288,15 @@
       "patterns": [
         "osprey/common/com/dsl_ir_rewrite.*",
         "osprey/common/com/dsl_ir_image.*",
+        "osprey/common/com/dsl_ir_group_lower.*",
+        "osprey/common/com/dsl_ir_lower.*",
         "osprey/common/com/dsl_shape.*",
         "osprey/common/com/dsl_builder.*",
         "osprey/common/fhe/fhe_plan.*",
         "osprey/common/com/tests/dsl_builder_contract_test.*",
         "osprey/common/com/tests/dsl_ckks_expand_transaction_test.*",
+        "osprey/common/com/tests/dsl_ckks_complete_group_lowering_test.*",
+        "osprey/common/com/tests/dsl_dead_native_constant_batch_test.*",
         "osprey/common/com/tests/dsl_view_retirement_test.*"
       ],
       "lanes": [
@@ -250,6 +325,17 @@
         "osprey/torch2whirl/Makefile*"
       ],
       "lanes": ["hygiene", "backend-link-boundary"]
+    },
+    {
+      "name": "fhe-backend-checkpoint-driver",
+      "patterns": ["osprey/be/be/driver.cxx"],
+      "lanes": [
+        "hygiene",
+        "backend-link-boundary",
+        "ckks2c-checkpoint",
+        "miniature-checkpoint",
+        "mapped-reopen"
+      ]
     },
     {
       "name": "frontend-bridge",

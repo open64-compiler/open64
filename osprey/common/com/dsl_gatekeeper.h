@@ -51,6 +51,10 @@ extern BOOL DSL_Gatekeeper_Verify_PU
                                 (PU_Info *pu,
                                  FILE *diagnostic,
                                  DSL_GATEKEEPER_RESULT *result);
+/* Necessary PU-local preflight before publishing standard-only WHIRL. */
+extern BOOL DSL_Gatekeeper_Verify_No_Native_PU
+                                (PU_Info *pu,
+                                 FILE *diagnostic);
 extern BOOL DSL_Gatekeeper_Verify_PU_Mode
                                 (PU_Info *pu,
                                  DSL_GATEKEEPER_MODE mode,

@@ -9,6 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <set>
+#include <string>
+#include <vector>
 
 #include "defs.h"
 #include "mempool.h"
@@ -10039,6 +10042,15 @@ Check_CKKS_Event_Image (void)
     WN *source_definition;
     UINT32 file_id;
     const char *artifact = getenv("OPEN64_DSL_CKKS_EVENT_ARTIFACT");
+    const char *provenance_mode =
+        getenv("OPEN64_DSL_CKKS_GROUP_PROVENANCE");
+    CKKS_EVENT_CHECK
+        (provenance_mode == NULL ||
+         strcmp(provenance_mode, "retired_lowered") == 0 ||
+         strcmp(provenance_mode, "live") == 0 ||
+         strcmp(provenance_mode, "malformed") == 0 ||
+         strcmp(provenance_mode, "private") == 0,
+         "recognized provenance mode");
 
     CKKS_EVENT_CHECK(DSL_Builder_Begin_Program() &&
                      DSL_Opcode_Register_CKKS_Domain() == 9,
@@ -10072,9 +10084,10 @@ Check_CKKS_Event_Image (void)
                      "source identity");
     one = DSL_Builder_Create_Tensor_Constant
               ("event_one", tensor_ty, "float32", 1, "[2]", "splat", "1");
-    source = DSL_Builder_Create_Operator_With_Result
-                 (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
-                  &one, 1, NULL, 0, "event_source_relu", tensor_ty);
+    if (provenance_mode == NULL)
+        source = DSL_Builder_Create_Operator_With_Result
+                     (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
+                      &one, 1, NULL, 0, "event_source_relu", tensor_ty);
     encoded = DSL_Builder_Create_Operator_With_Result
                   (DSL_Opcode_Find(ckks_id, "ckks.encode", 1), 1,
                    &one, 1, NULL, 0, "event_encoded", tensor_ty);
@@ -10082,6 +10095,11 @@ Check_CKKS_Event_Image (void)
                     (DSL_Opcode_Find(ckks_id, "ckks.bootstrap", 1), 1,
                      &encoded, 1, refresh_attrs, 3,
                      "event_refreshed", tensor_ty);
+    if (provenance_mode != NULL)
+        source = DSL_Builder_Create_Operator_With_Result
+                     (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
+                      &refreshed, 1, NULL, 0,
+                      "event_source_relu", tensor_ty);
     CKKS_EVENT_CHECK(one != NULL && source != NULL && encoded != NULL &&
                      refreshed != NULL, "native values");
     memset(&position, 0, sizeof(position));
@@ -10235,7 +10253,30 @@ Check_CKKS_Event_Image (void)
              (&mapped, sizeof(mapped), NULL) &&
          DSL_CKKS_Event_Image_Count() == 2,
          "duplicate step rejection");
+    mapped.records[1].step_ordinal = 2;
+    CKKS_EVENT_CHECK
+        (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), NULL) &&
+         DSL_CKKS_Event_Image_Count() == 2,
+         "missing step ordinal rejection");
     mapped.records[1].step_ordinal = 1;
+    mapped.records[0].flags = DSL_CKKS_EVENT_FINAL_RESULT;
+    CKKS_EVENT_CHECK
+        (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), NULL) &&
+         DSL_CKKS_Event_Image_Count() == 2,
+         "multiple final results rejection");
+    mapped.records[0].flags = 0;
+    mapped.records[1].result_value_id = encoded_record.id;
+    mapped.records[1].result_node_id = encoded_record.producer_node_id;
+    CKKS_EVENT_CHECK
+        (!DSL_CKKS_Event_Image_Load_Mapped
+             (&mapped, sizeof(mapped), NULL) &&
+         DSL_CKKS_Event_Image_Count() == 2,
+         "reused context result rejection");
+    mapped.records[1].result_value_id = refreshed_record.id;
+    mapped.records[1].result_node_id =
+        refreshed_record.producer_node_id;
     mapped.records[1].origin_static_ordinal = 2;
     CKKS_EVENT_CHECK
         (!DSL_CKKS_Event_Image_Load_Mapped
@@ -10256,6 +10297,395 @@ Check_CKKS_Event_Image (void)
         !DSL_CKKS_Event_Image_Validate(stderr)) {
         fprintf(stderr, "CKKS event fixture failed: mapped reload\n");
         return 1;
+    }
+
+    /* Two static CKKS subgroups form one projected source-context request. */
+    const char *group_mode =
+        getenv("OPEN64_DSL_CKKS_COMPLETE_GROUP_ONLY");
+    if (group_mode != NULL) {
+        BOOL private_projection =
+            strcmp(group_mode, "private_projection") == 0;
+        BOOL terminal = strcmp(group_mode, "terminal") == 0;
+        BOOL call_projection = strcmp(group_mode, "call") == 0 ||
+            strcmp(group_mode, "call_bad_actual") == 0 ||
+            strcmp(group_mode, "call_bad_projection") == 0;
+        CKKS_EVENT_CHECK(private_projection || terminal || call_projection ||
+                         strcmp(group_mode, "complete") == 0,
+                         "recognized complete-group mode");
+        mapped.records[1].source_static_ordinal = 2;
+        mapped.records[1].origin_static_ordinal = 2;
+        mapped.records[1].step_ordinal = 0;
+        CKKS_EVENT_CHECK
+            (DSL_CKKS_Event_Image_Load_Mapped
+                 (&mapped, sizeof(mapped), stderr),
+             "two linked CKKS static subgroups");
+
+        if (provenance_mode != NULL) {
+            DSL_BUILDER_VALUE operand =
+                strcmp(provenance_mode, "private") == 0 ?
+                    encoded : refreshed;
+            DSL_BUILDER_VALUE provenance =
+                DSL_Builder_Create_Operator_With_Result
+                    (DSL_Opcode_Find(common_id, "common.relu", 2), 2,
+                     &operand, 1, NULL, 0,
+                     "event_provenance", tensor_ty);
+            ++position.line;
+            CKKS_EVENT_CHECK
+                (provenance != NULL &&
+                 DSL_Builder_Set_Value_Source_Position
+                     (provenance, &position) &&
+                 DSL_Builder_Append_PU_Value(pu, provenance),
+                 "provenance node materialization");
+            WN *replacement_definition = Find_STID_In_Block
+                (body, DSL_Builder_Get_Value_Result_Symbol(operand));
+            WN *provenance_definition = Find_STID_In_Block
+                (body, DSL_Builder_Get_Value_Result_Symbol(provenance));
+            CKKS_EVENT_CHECK
+                (replacement_definition != NULL &&
+                 provenance_definition != NULL,
+                 "provenance definitions");
+            if (strcmp(provenance_mode, "malformed") == 0) {
+                CKKS_EVENT_CHECK
+                    (WN_EXTRACT_FromBlock(body, provenance_definition) ==
+                         provenance_definition &&
+                     DSL_IR_Image_Mark_Value_Lowered
+                         (DSL_Builder_Get_Value_Image_Id(provenance)),
+                     "unrelated lowered relation fixture");
+            } else if (strcmp(provenance_mode, "live") != 0) {
+                DSL_IR_NATIVE_VALUE_RETIRE_REQUEST retire;
+                memset(&retire, 0, sizeof(retire));
+                retire.replacement_definition = replacement_definition;
+                retire.replacement_value_id =
+                    DSL_Builder_Get_Value_Image_Id(operand);
+                retire.retiring_definition = provenance_definition;
+                retire.retiring_value_id =
+                    DSL_Builder_Get_Value_Image_Id(provenance);
+                retire.expected_retiring_operator = OPR_DSLRELU;
+                retire.expected_retiring_version = 2;
+                retire.replacement_operand_ordinal = 0;
+                CKKS_EVENT_CHECK
+                    (DSL_IR_Redirect_And_Retire_Native_Value(pu, &retire),
+                     "retired provenance redirect");
+            }
+        }
+
+        TY_IDX handle_ty = Create_Runtime_Interface_Handle_TY
+            ("ckks_complete_group_handle_v1");
+        DSL_BUILDER_PROGRAM_UNIT callee = NULL;
+        DSL_BUILDER_VALUE formal = NULL;
+        DSL_BUILDER_VALUE dead_formal = NULL;
+        DSL_CALLSITE_METADATA_RECORD callsite_record;
+        memset(&callsite_record, 0, sizeof(callsite_record));
+        if (call_projection) {
+            callee = DSL_Builder_Create_Minimal_PU
+                ("ckks_complete_group_callee");
+            UINT32 callee_file =
+                DSL_Builder_Register_Source_File(callee, __FILE__);
+            DSL_BUILDER_SOURCE_POSITION formal_position;
+            memset(&formal_position, 0, sizeof(formal_position));
+            formal_position.file_id = callee_file;
+            formal_position.line = __LINE__ + 1;
+            formal_position.column = 1;
+            formal_position.statement_begin = 1;
+            formal = DSL_Builder_Declare_PU_Formal
+                (callee, "group_input", 0, tensor_ty, &formal_position);
+            dead_formal = DSL_Builder_Declare_PU_Formal
+                (callee, "retired_group_input", 1,
+                 tensor_ty, &formal_position);
+            CKKS_EVENT_CHECK
+                (callee != NULL && callee_file != 0 && formal != NULL &&
+                 dead_formal != NULL &&
+                 DSL_Builder_Return_PU_Values(callee, NULL, 0),
+                 "complete group callee signature");
+            DSL_BUILDER_CALLSITE_INFO callsite;
+            memset(&callsite, 0, sizeof(callsite));
+            callsite.canonical_class_name = "CKKSCompleteGroup";
+            callsite.instance_path = "model.complete_group";
+            callsite.context_identity = "CKKSCompleteGroup.call";
+            callsite.source_position = formal_position;
+            callsite.source_position.file_id = file_id;
+            DSL_BUILDER_VALUE call_arguments[2] = {
+                refreshed, refreshed
+            };
+            DSL_BUILDER_CALL call = DSL_Builder_Create_PU_Call
+                (pu, callee, call_arguments, 2, NULL, 0, &callsite);
+            CKKS_EVENT_CHECK
+                (call != NULL &&
+                 DSL_Builder_Set_PU_Call_Argument_Role
+                     (call, 0, 0, "ckks.final_result") &&
+                 DSL_Builder_Set_PU_Call_Argument_Role
+                     (call, 1, 1, "ckks.retired_original") &&
+                 DSL_Call_Image_Find_Callsite(call, &callsite_record),
+                 "final result feeds a managed call");
+        }
+        DSL_RUNTIME_VALUE_PROJECTION_REQUEST projected[2];
+        memset(projected, 0, sizeof(projected));
+        projected[0].owner_pu_st = PU_Info_proc_sym(pu);
+        projected[0].source_value_id = refreshed_record.id;
+        projected[0].expected_source_st = refreshed_record.st;
+        projected[0].expected_source_ty = refreshed_record.ty;
+        projected[0].handle_ty = handle_ty;
+        projected[0].binding_kind = DSL_RUNTIME_BINDING_LOCAL_VALUE;
+        projected[0].formal_ordinal =
+            DSL_RUNTIME_INTERFACE_INVALID_ORDINAL;
+        if (private_projection) {
+            projected[1] = projected[0];
+            projected[1].source_value_id = encoded_record.id;
+            projected[1].expected_source_st = encoded_record.st;
+            projected[1].expected_source_ty = encoded_record.ty;
+        } else if (call_projection) {
+            projected[1] = projected[0];
+            projected[1].owner_pu_st = PU_Info_proc_sym(callee);
+            projected[1].source_value_id =
+                DSL_Builder_Get_Value_Image_Id(formal);
+            projected[1].expected_source_st =
+                DSL_Builder_Get_Value_Result_Symbol(formal);
+            projected[1].binding_kind = DSL_RUNTIME_BINDING_INPUT_FORMAL;
+            projected[1].formal_ordinal = 0;
+        }
+        DSL_RUNTIME_INTERFACE_PLAN projection_plan;
+        memset(&projection_plan, 0, sizeof(projection_plan));
+        projection_plan.values = projected;
+        projection_plan.value_count =
+            private_projection || call_projection ? 2 : 1;
+        DSL_RUNTIME_CALL_PROJECTION_REQUEST call_request;
+        memset(&call_request, 0, sizeof(call_request));
+        if (call_projection) {
+            call_request.owner_pu_st = PU_Info_proc_sym(pu);
+            call_request.callsite_id = callsite_record.id;
+            call_request.source_value_id = refreshed_record.id;
+            call_request.actual_ordinal = 0;
+            call_request.callee_formal_ordinal = 0;
+            call_request.direction = DSL_RUNTIME_CALL_INPUT;
+            projection_plan.calls = &call_request;
+            projection_plan.call_count = 1;
+        }
+        DSL_RUNTIME_INTERFACE_RESULT applied;
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD final_projection;
+        BOOL interface_applied = FALSE;
+        if (call_projection) {
+            DSL_PROGRAM_INTERFACE_PLAN program_plan;
+            DSL_PROGRAM_INTERFACE_RESULT program_result;
+            DSL_PU_FORMAL_RECORD dead_formal_row;
+            DSL_CALL_ARGUMENT_RECORD dead_argument_row;
+            DSL_RETIRED_FORMAL_REQUEST retired_formal;
+            DSL_RETIRED_CALL_ARGUMENT_REQUEST retired_argument;
+            memset(&program_plan, 0, sizeof(program_plan));
+            CKKS_EVENT_CHECK
+                (DSL_PU_Interface_Image_Find_Formal
+                     (PU_Info_proc_sym(callee), 1, &dead_formal_row) &&
+                 DSL_Call_ABI_Image_Find_Argument_By_Id
+                     (callsite_record.id, 1, &dead_argument_row) &&
+                 dead_argument_row.argument_value_id ==
+                     refreshed_record.id,
+                 "retired original call argument");
+            retired_formal.pu_formal_id = dead_formal_row.id;
+            retired_formal.semantic_role = "ckks.retired_original";
+            retired_argument.call_argument_id = dead_argument_row.id;
+            retired_argument.semantic_role = "ckks.retired_original";
+            program_plan.retired_formals = &retired_formal;
+            program_plan.retired_formal_count = 1;
+            program_plan.retired_call_arguments = &retired_argument;
+            program_plan.retired_call_argument_count = 1;
+            interface_applied =
+                DSL_Program_Interface_Plan_Validate
+                    (&program_plan, &projection_plan, stderr) &&
+                DSL_Builder_Select_PU(pu) &&
+                DSL_Program_Interface_Apply_PU
+                    (pu, &program_plan, &projection_plan,
+                     stderr, &program_result) &&
+                DSL_Builder_Select_PU(callee) &&
+                DSL_Program_Interface_Apply_PU
+                    (callee, &program_plan, &projection_plan,
+                     stderr, &program_result) &&
+                DSL_Builder_Select_PU(pu) &&
+                DSL_Program_Interface_Validate_PU(pu, stderr);
+        } else {
+            interface_applied = DSL_Runtime_Interface_Apply_PU
+                (pu, &projection_plan, stderr, &applied);
+        }
+        CKKS_EVENT_CHECK
+            (handle_ty != TY_IDX_ZERO &&
+             interface_applied &&
+             DSL_Runtime_Interface_Image_Find_Value
+                 (PU_Info_proc_sym(pu), refreshed_record.id,
+                  &final_projection),
+             "FINAL_RESULT-only runtime projection");
+
+        WN *encoded_definition =
+            Find_STID_In_Block(body, encoded_record.st);
+        WN *refreshed_definition =
+            Find_STID_In_Block(body, refreshed_record.st);
+        CKKS_EVENT_CHECK(encoded_definition != NULL &&
+                         refreshed_definition != NULL,
+                         "complete private member chain");
+        WN *standard = WN_CreateBlock();
+        WN *handle_definition = WN_CreateStid
+            (OPR_STID, MTYPE_V, Pointer_Mtype, 0,
+             final_projection.handle_st, final_projection.handle_ty,
+             WN_Intconst(Pointer_Mtype, 0));
+        WN_Set_Linenum(handle_definition,
+                       WN_Get_Linenum(refreshed_definition));
+        WN_INSERT_BlockLast(standard, handle_definition);
+        DSL_IR_NATIVE_GROUP_MEMBER_REQUEST members[2];
+        memset(members, 0, sizeof(members));
+        members[0].native_definition = encoded_definition;
+        members[0].node_id = encoded_record.producer_node_id;
+        members[0].value_id = encoded_record.id;
+        members[0].expected_operator = OPR_DSLCKKSENCODE;
+        members[0].expected_version = 1;
+        members[1].native_definition = refreshed_definition;
+        members[1].node_id = refreshed_record.producer_node_id;
+        members[1].value_id = refreshed_record.id;
+        members[1].expected_operator = OPR_DSLCKKSBOOTSTRAP;
+        members[1].expected_version = 1;
+        DSL_IR_NATIVE_GROUP_LOWER_REQUEST lower_request;
+        memset(&lower_request, 0, sizeof(lower_request));
+        lower_request.owner_pu_st = PU_Info_proc_sym(pu);
+        lower_request.semantic_source_value_id = source_record.id;
+        lower_request.members = members;
+        lower_request.member_count = 2;
+        lower_request.group_output_value_id = refreshed_record.id;
+        lower_request.standard_block = standard;
+        lower_request.relation.relation_kind =
+            DSL_IR_LOWER_RELATION_RUNTIME_VALUE_PROJECTION;
+        lower_request.relation.value_projection_id = final_projection.id;
+        if (strcmp(group_mode, "call_bad_projection") == 0) {
+            DSL_RUNTIME_VALUE_PROJECTION_RECORD formal_projection;
+            CKKS_EVENT_CHECK
+                (DSL_Runtime_Interface_Image_Find_Value
+                     (PU_Info_proc_sym(callee),
+                      DSL_Builder_Get_Value_Image_Id(formal),
+                      &formal_projection),
+                 "callee formal projection");
+            lower_request.relation.value_projection_id =
+                formal_projection.id;
+        }
+        DSL_IR_NATIVE_GROUP_LOWER_RESULT lowered;
+        memset(&lowered, 0x5a, sizeof(lowered));
+        DSL_IR_NATIVE_GROUP_LOWER_RESULT sentinel = lowered;
+        if (provenance_mode != NULL &&
+            strcmp(provenance_mode, "retired_lowered") != 0) {
+            CKKS_EVENT_CHECK
+                (!DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+                     (pu, &lower_request, 1, NULL, &lowered) &&
+                 memcmp(&lowered, &sentinel, sizeof(lowered)) == 0 &&
+                 WN_first(standard) != NULL &&
+                 Find_STID_In_Block(body, encoded_record.st) ==
+                     encoded_definition &&
+                 Find_STID_In_Block(body, refreshed_record.st) ==
+                     refreshed_definition,
+                 "live, malformed, or private provenance rejection");
+            return 0;
+        }
+        if (strcmp(group_mode, "call_bad_actual") == 0) {
+            WN *physical_call = const_cast<WN *>
+                (DSL_Call_Image_Get_Call_WN(callsite_record.id));
+            WN *actual = physical_call == NULL ? NULL :
+                WN_kid0(WN_kid(physical_call, 0));
+            CKKS_EVENT_CHECK(actual != NULL &&
+                             WN_operator(actual) == OPR_LDID,
+                             "projected call actual");
+            WN_st_idx(actual) = refreshed_record.st;
+        }
+        if (strcmp(group_mode, "call_bad_actual") == 0 ||
+            strcmp(group_mode, "call_bad_projection") == 0) {
+            CKKS_EVENT_CHECK
+                (!DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+                     (pu, &lower_request, 1, NULL, &lowered) &&
+                 memcmp(&lowered, &sentinel, sizeof(lowered)) == 0 &&
+                 WN_first(standard) != NULL &&
+                 Find_STID_In_Block(body, encoded_record.st) ==
+                     encoded_definition &&
+                 Find_STID_In_Block(body, refreshed_record.st) ==
+                     refreshed_definition,
+                 "malformed final call/projection rejects without mutation");
+            return 0;
+        }
+        if (private_projection) {
+            CKKS_EVENT_CHECK
+                (!DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+                     (pu, &lower_request, 1, NULL, &lowered) &&
+                 memcmp(&lowered, &sentinel, sizeof(lowered)) == 0 &&
+                 WN_first(standard) != NULL,
+                 "intermediate private projection rejection");
+            return 0;
+        }
+        CKKS_EVENT_CHECK
+            (DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+                 (pu, &lower_request, 1, stderr, &lowered) &&
+             DSL_IR_Image_Validate_Lowered_Relations(stderr) &&
+             !DSL_Runtime_Interface_Image_Find_Value
+                 (PU_Info_proc_sym(pu), source_record.id, NULL) &&
+             !DSL_Runtime_Interface_Image_Find_Value
+                 (PU_Info_proc_sym(pu), encoded_record.id, NULL) &&
+             lowered.semantic_source_value_id == source_record.id &&
+             lowered.retired_group_output_value_id ==
+                 refreshed_record.id &&
+             lowered.retired_member_count == 2 &&
+             DSL_Runtime_Interface_Image_Value_Count() ==
+                 (call_projection ? 2 : 1),
+             "complete source-context member union");
+        if (call_projection) {
+            const char *call_artifact = artifact == NULL ||
+                artifact[0] == '\0' ?
+                "ckks_complete_group_call.B" : artifact;
+            CKKS_EVENT_CHECK
+                (DSL_Program_Interface_Validate_PU(pu, stderr) &&
+                 DSL_CKKS_Event_Image_Validate(stderr) &&
+                 Write_Runtime_Interface_Artifact
+                     (call_artifact, pu, callee),
+                 "two-PU complete-group mapped image");
+            return 0;
+        }
+        if (provenance_mode != NULL) {
+            const char *provenance_artifact = artifact == NULL ||
+                artifact[0] == '\0' ?
+                "ckks_complete_group_provenance.B" : artifact;
+            CKKS_EVENT_CHECK
+                (DSL_IR_Image_Validate_Lowered_Relations(stderr) &&
+                 Write_Runtime_Interface_Artifact
+                     (provenance_artifact, pu, NULL),
+                 "non-executable provenance mapped image");
+            return 0;
+        }
+        if (terminal) {
+            const char *terminal_artifact =
+                getenv("OPEN64_DSL_CKKS_COMPLETE_GROUP_TERMINAL_ARTIFACT");
+            WN *seed_definition = Find_STID_In_Block(body,
+                DSL_Builder_Get_Value_Result_Symbol(one));
+            DSL_IR_NATIVE_VALUE_LOWER_REQUEST seed_request;
+            DSL_IR_NATIVE_VALUE_LOWER_RESULT seed_result;
+            memset(&seed_request, 0, sizeof(seed_request));
+            memset(&seed_result, 0, sizeof(seed_result));
+            seed_request.native_definition = seed_definition;
+            seed_request.source_value_id =
+                DSL_Builder_Get_Value_Image_Id(one);
+            seed_request.expected_operator = OPR_DSLTENSORCONST;
+            seed_request.expected_version = 1;
+            seed_request.mode =
+                DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION;
+            seed_request.relation.relation_kind =
+                DSL_IR_LOWER_RELATION_VERIFIED_DEAD_SOURCE;
+            CKKS_EVENT_CHECK
+                (terminal_artifact != NULL && terminal_artifact[0] != '\0' &&
+                 seed_definition != NULL &&
+                 DSL_IR_Lower_Native_Values_To_Standard_Blocks
+                     (pu, &seed_request, 1, stderr, &seed_result) &&
+                 seed_result.source_value_id == seed_request.source_value_id &&
+                 DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr),
+                 "complete CKKS group terminal preflight");
+            Irb_File_Name = (char *)terminal_artifact;
+            CKKS_EVENT_CHECK
+                (Open_Standard_Only_Output_Info(Irb_File_Name, pu) != NULL,
+                 "complete CKKS group terminal output");
+            Write_PU_Info(pu);
+            Write_Global_Info(pu);
+            Close_Output_Info();
+            CKKS_EVENT_CHECK(access(terminal_artifact, F_OK) == 0,
+                             "complete CKKS group terminal artifact");
+            return 0;
+        }
     }
 
     request.path = artifact == NULL || artifact[0] == '\0' ?
@@ -11908,9 +12338,111 @@ Check_Native_To_Standard_Lowering(void)
              (body, projection_requests[1].expected_source_st, NULL) ==
                 definitions[1],
          "partial chain rejects without mutation");
+    const char *large_batch_env =
+        getenv("OPEN64_DSL_STANDARD_LOWER_LARGE_BATCH");
+    UINT32 extra_count = large_batch_env == NULL ? 0 :
+        (UINT32)atoi(large_batch_env);
+    STANDARD_LOWER_CHECK(extra_count <= 1024,
+                         "large batch size is bounded");
+    if (failed)
+        return failed;
+    std::vector<DSL_IR_NATIVE_VALUE_LOWER_REQUEST> batch_requests
+        (5 + extra_count);
+    std::vector<DSL_IR_NATIVE_VALUE_LOWER_RESULT> batch_results
+        (5 + extra_count);
+    memcpy(&batch_requests[0], requests, sizeof(requests));
+    if (extra_count != 0) {
+        WN *return_statement = NULL;
+        for (WN *stmt = WN_first(body); stmt != NULL;
+             stmt = WN_next(stmt)) {
+            if (WN_operator(stmt) == OPR_RETURN) {
+                return_statement = stmt;
+                break;
+            }
+        }
+        STANDARD_LOWER_CHECK
+            (return_statement != NULL &&
+             DSL_Builder_Select_PU(pu),
+             "large batch return boundary");
+        if (failed)
+            return failed;
+        for (UINT32 i = 0; i < extra_count; ++i) {
+            char name[64];
+            snprintf(name, sizeof(name), "standard_dead_%u", i);
+            DSL_BUILDER_VALUE dead = DSL_Builder_Create_Tensor_Constant
+                (name, tensor_ty[0], "float32", 4, "[1,1,2,2]",
+                 "zero_init", "0");
+            STANDARD_LOWER_CHECK
+                (dead != NULL &&
+                 DSL_Builder_Set_Value_Source_Position(dead, &position) &&
+                 DSL_Builder_Append_PU_Value(pu, dead),
+                 "large batch dead constant construction");
+            if (failed)
+                break;
+            DSL_IR_NATIVE_VALUE_LOWER_REQUEST &request =
+                batch_requests[5 + i];
+            memset(&request, 0, sizeof(request));
+            request.native_definition = Find_STID_And_Block
+                (body, DSL_Builder_Get_Value_Result_Symbol(dead), NULL);
+            request.source_value_id =
+                DSL_Builder_Get_Value_Image_Id(dead);
+            request.expected_operator = OPR_DSLTENSORCONST;
+            request.expected_version = 1;
+            request.mode =
+                DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION;
+            request.relation.relation_kind =
+                DSL_IR_LOWER_RELATION_VERIFIED_DEAD_SOURCE;
+            STANDARD_LOWER_CHECK(request.native_definition != NULL,
+                                 "large batch native definition");
+            if (request.native_definition != NULL) {
+                WN_EXTRACT_FromBlock(body, request.native_definition);
+                WN_INSERT_BlockBefore
+                    (body, return_statement, request.native_definition);
+            }
+        }
+        if (failed)
+            return failed;
+
+        UINT32 node_count = DSL_IR_Image_Node_Count();
+        UINT32 value_count = DSL_IR_Image_Value_Count();
+        batch_requests.back().expected_version = 2;
+        STANDARD_LOWER_CHECK
+            (!DSL_IR_Lower_Native_Values_To_Standard_Blocks
+                 (pu, &batch_requests[0], batch_requests.size(), NULL,
+                  &batch_results[0]) &&
+             DSL_IR_Image_Node_Count() == node_count &&
+             DSL_IR_Image_Value_Count() == value_count &&
+             Find_STID_And_Block
+                 (body, projection_requests[0].expected_source_st,
+                  NULL) == definitions[0] &&
+             Find_STID_And_Block
+                 (body, WN_st_idx(batch_requests.back().native_definition),
+                  NULL) == batch_requests.back().native_definition,
+             "large mixed batch rejects atomically at final request");
+        std::set<const WN *> attached_definitions;
+        for (WN *stmt = WN_first(body); stmt != NULL;
+             stmt = WN_next(stmt))
+            attached_definitions.insert(stmt);
+        for (UINT32 i = 5; i < batch_requests.size(); ++i) {
+            DSL_IR_VALUE_RECORD value;
+            DSL_IR_NODE_RECORD node;
+            STANDARD_LOWER_CHECK
+                (attached_definitions.find
+                     (batch_requests[i].native_definition) !=
+                         attached_definitions.end() &&
+                 DSL_IR_Image_Get_Value
+                     (batch_requests[i].source_value_id, &value) &&
+                 DSL_IR_Image_Get_Node(value.producer_node_id, &node) &&
+                 value.flags == DSL_IR_VALUE_FLAG_NONE &&
+                 node.flags == DSL_IR_NODE_FLAG_NONE,
+                 "large batch rollback preserves every member");
+        }
+        batch_requests.back().expected_version = 1;
+    }
     STANDARD_LOWER_CHECK
          (DSL_IR_Lower_Native_Values_To_Standard_Blocks
-             (pu, requests, 5, stderr, results) &&
+             (pu, &batch_requests[0], batch_requests.size(), stderr,
+              &batch_results[0]) &&
          DSL_IR_Image_Validate(stderr) &&
          DSL_IR_Image_Validate_Lowered_Relations(stderr) &&
          DSL_Program_Interface_Validate_Lowered_PU(pu, stderr) &&
@@ -11920,6 +12452,20 @@ Check_Native_To_Standard_Lowering(void)
          DSL_Gatekeeper_Verify_Program
              (pu, stderr, NULL),
          "atomic standard lowering transaction");
+    memcpy(results, &batch_results[0], sizeof(results));
+    for (UINT32 i = 5; i < batch_requests.size(); ++i) {
+        DSL_IR_NODE_RECORD node;
+        DSL_IR_VALUE_RECORD value;
+        STANDARD_LOWER_CHECK
+            (DSL_IR_Image_Get_Value
+                 (batch_requests[i].source_value_id, &value) &&
+             DSL_IR_Image_Get_Node(value.producer_node_id, &node) &&
+             (value.flags & DSL_IR_VALUE_FLAG_DEAD_ELIDED) != 0 &&
+             (node.flags & DSL_IR_NODE_FLAG_DEAD_ELIDED) != 0 &&
+             batch_results[i].mode ==
+                 DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION,
+             "large batch dead constant evidence");
+    }
     for (UINT32 i = 0; i < 5; ++i) {
         UINT32 source_index = request_order[i];
         ST_IDX source_st = source_index < 2 ?
@@ -12118,8 +12664,15 @@ Check_Grouped_Native_Lowering(void)
         } \
     } while (0)
     const char *artifact = getenv("OPEN64_DSL_GROUP_LOWER_ARTIFACT");
+    const char *terminal_artifact =
+        getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_ARTIFACT");
     const char *negative_case =
         getenv("OPEN64_DSL_GROUP_LOWER_NEGATIVE_CASE");
+    BOOL root_view = getenv("OPEN64_DSL_GROUP_LOWER_ROOT_VIEW") != NULL;
+    BOOL root_alias = root_view ||
+        getenv("OPEN64_DSL_GROUP_LOWER_ROOT_ALIAS") != NULL;
+    const char *alias_negative =
+        getenv("OPEN64_DSL_GROUP_LOWER_ROOT_ALIAS_NEGATIVE");
     GROUP_LOWER_CHECK(artifact != NULL && artifact[0] != '\0' &&
                       DSL_Builder_Begin_Program(),
                       "artifact and program initialization");
@@ -12130,8 +12683,28 @@ Check_Grouped_Native_Lowering(void)
     core.dtype = "float32";
     core.rank = 2;
     core.logical_shape = "[2,2]";
-    TY_IDX tensor_ty = DSL_Builder_Create_Tensor_Type_Core
-        ("group_lower_f32_2x2", MTYPE_To_TY(MTYPE_F4), &core);
+    TY_IDX tensor_ty = TY_IDX_ZERO;
+    TY_IDX view_ty = TY_IDX_ZERO;
+    if (root_view) {
+        DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+        memset(&descriptor, 0, sizeof(descriptor));
+        descriptor.type_core = core;
+        descriptor.traits.traits = "activation";
+        descriptor.representation.layout = "contiguous";
+        descriptor.representation.sharding = "replicated";
+        descriptor.representation.placement = "host";
+        descriptor.representation.memory = "contiguous";
+        descriptor.representation.quantization = "none";
+        tensor_ty = DSL_Builder_Intern_Tensor_Type
+            ("group_view_f32_2x2", MTYPE_To_TY(MTYPE_F4), &descriptor);
+        descriptor.type_core.rank = 1;
+        descriptor.type_core.logical_shape = "[4]";
+        view_ty = DSL_Builder_Intern_Tensor_Type
+            ("group_view_f32_4", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    } else {
+        tensor_ty = DSL_Builder_Create_Tensor_Type_Core
+            ("group_lower_f32_2x2", MTYPE_To_TY(MTYPE_F4), &core);
+    }
     TY_IDX handle_ty = Create_Runtime_Interface_Handle_TY
         ("group_lower_handle_v1");
     DSL_BUILDER_PROGRAM_UNIT pu =
@@ -12139,6 +12712,10 @@ Check_Grouped_Native_Lowering(void)
     UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
     GROUP_LOWER_CHECK(tensor_ty != TY_IDX_ZERO &&
                       TY_tensor_seal(tensor_ty) &&
+                      (!root_view ||
+                       (view_ty != TY_IDX_ZERO &&
+                        DSL_Shape_Representation_Preserving_View
+                            (tensor_ty, view_ty))) &&
                       handle_ty != TY_IDX_ZERO && pu != NULL &&
                       file_id != 0, "tensor, handle, and PU");
     DSL_BUILDER_SOURCE_POSITION position;
@@ -12191,6 +12768,33 @@ Check_Grouped_Native_Lowering(void)
                       DSL_Builder_Append_PU_Value(pu, values[5]) &&
                       DSL_Builder_Select_PU(pu),
                       "materialized chain");
+    DSL_BUILDER_VALUE retired_output = NULL;
+    if (root_alias) {
+        DSL_BUILDER_OPERATOR_ATTRIBUTE semantic = {
+            "attr.semantic", "logits"
+        };
+        DSL_BUILDER_OPERATOR_ATTRIBUTE dimensions[2] = {
+            { "attr.start_dim", "0" }, { "attr.end_dim", "-1" }
+        };
+        retired_output = root_view ?
+            DSL_Builder_Create_Operator_With_Result
+                (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                 "common.flatten", 2),
+                 2, &values[5], 1, dimensions, 2,
+                 "group_flatten_view", view_ty) :
+            DSL_Builder_Create_Operator_With_Result
+                (DSL_Opcode_Find(DSL_Domain_Find("common"),
+                                 "common.output_logits", 2),
+                 2, &values[5], 1, &semantic, 1,
+                 "group_output_logits", tensor_ty);
+        ++position.line;
+        GROUP_LOWER_CHECK
+            (retired_output != NULL &&
+             DSL_Builder_Set_Value_Source_Position
+                 (retired_output, &position) &&
+             DSL_Builder_Append_PU_Value(pu, retired_output),
+             "root retired output boundary");
+    }
 
     DSL_RUNTIME_VALUE_PROJECTION_REQUEST projected[3];
     memset(projected, 0, sizeof(projected));
@@ -12214,17 +12818,53 @@ Check_Grouped_Native_Lowering(void)
             DSL_Builder_Get_Value_Image_Id(values[1]);
         projected[2].expected_source_st =
             DSL_Builder_Get_Value_Result_Symbol(values[1]);
+    } else if (root_alias) {
+        projected[2] = projected[1];
+        projected[2].source_value_id =
+            DSL_Builder_Get_Value_Image_Id(retired_output);
+        projected[2].expected_source_st =
+            DSL_Builder_Get_Value_Result_Symbol(retired_output);
+        projected[2].expected_source_ty =
+            root_view ? view_ty : tensor_ty;
     }
     DSL_RUNTIME_INTERFACE_PLAN plan;
     memset(&plan, 0, sizeof(plan));
     plan.values = projected;
-    plan.value_count = negative_case != NULL &&
-        strcmp(negative_case, "interface_escape") == 0 ? 3 : 2;
+    plan.value_count = root_alias ||
+        (negative_case != NULL &&
+         strcmp(negative_case, "interface_escape") == 0) ? 3 : 2;
     DSL_RUNTIME_INTERFACE_RESULT applied;
     GROUP_LOWER_CHECK(DSL_Runtime_Interface_Apply_PU
-                          (pu, &plan, stderr, &applied) &&
-                      DSL_Runtime_Interface_Image_Validate(stderr),
+                          (pu, &plan, stderr, &applied),
                       "two output projections");
+    if (root_alias) {
+        WN *body = WN_func_body(PU_Info_tree_ptr(pu));
+        WN *linear_definition = Find_STID_And_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(values[5]), NULL);
+        WN *retired_definition = Find_STID_And_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(retired_output),
+             NULL);
+        DSL_IR_NATIVE_VALUE_RETIRE_REQUEST retire;
+        memset(&retire, 0, sizeof(retire));
+        retire.replacement_definition = linear_definition;
+        retire.replacement_value_id =
+            DSL_Builder_Get_Value_Image_Id(values[5]);
+        retire.retiring_definition = retired_definition;
+        retire.retiring_value_id =
+            DSL_Builder_Get_Value_Image_Id(retired_output);
+        retire.expected_retiring_operator =
+            root_view ? OPR_DSLFLATTEN : OPR_DSLOUTPUTLOGITS;
+        retire.expected_retiring_version = 2;
+        retire.replacement_operand_ordinal = 0;
+        GROUP_LOWER_CHECK
+            (linear_definition != NULL && retired_definition != NULL &&
+             (root_view ?
+              DSL_IR_Redirect_And_Retire_Native_View(pu, &retire) :
+              DSL_IR_Redirect_And_Retire_Native_Value(pu, &retire)),
+             "root output retirement");
+    }
+    GROUP_LOWER_CHECK(DSL_Runtime_Interface_Image_Validate(stderr),
+                      "retired output projection image");
     DSL_RUNTIME_VALUE_PROJECTION_RECORD projections[2];
     for (UINT32 i = 0; i < 2; ++i)
         GROUP_LOWER_CHECK
@@ -12232,6 +12872,52 @@ Check_Grouped_Native_Lowering(void)
                  (PU_Info_proc_sym(pu), projected[i].source_value_id,
                   &projections[i]),
              "output projection lookup");
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD alias_projection;
+    WN *result_store = NULL;
+    WN *result_load = NULL;
+    if (root_alias) {
+        BOOL found_alias = FALSE;
+        for (UINT32 id = 1;
+             id <= DSL_Runtime_Interface_Image_Value_Count(); ++id) {
+            DSL_RUNTIME_VALUE_PROJECTION_RECORD candidate;
+            if (DSL_Runtime_Interface_Image_Get_Value(id, &candidate) &&
+                candidate.owner_pu_st == PU_Info_proc_sym(pu) &&
+                candidate.source_value_id ==
+                    DSL_Builder_Get_Value_Image_Id(retired_output)) {
+                alias_projection = candidate;
+                found_alias = TRUE;
+                break;
+            }
+        }
+        GROUP_LOWER_CHECK
+            (found_alias,
+             "retired output runtime projection");
+        GROUP_LOWER_CHECK
+            (((alias_projection.flags &
+               DSL_RUNTIME_VALUE_PROJECTION_FLAG_RETIRED_VIEW) != 0) ==
+                 root_view,
+             "retired output projection relation");
+        ST *result_st = New_ST(CURRENT_SYMTAB);
+        ST_Init(result_st, Save_Str("group_model_result"), CLASS_VAR,
+                SCLASS_AUTO, EXPORT_LOCAL, handle_ty);
+        WN *output_definition = Find_STID_And_Block
+            (WN_func_body(PU_Info_tree_ptr(pu)),
+             DSL_Builder_Get_Value_Result_Symbol(values[5]), NULL);
+        GROUP_LOWER_CHECK(output_definition != NULL,
+                          "root output source position");
+        Set_ST_Srcpos(*result_st,
+                      WN_Get_Linenum(output_definition));
+        result_load = WN_CreateLdid
+            (OPR_LDID, Pointer_Mtype, Pointer_Mtype, 0,
+             alias_projection.handle_st, alias_projection.handle_ty);
+        result_store = WN_CreateStid
+            (OPR_STID, MTYPE_V, Pointer_Mtype, 0,
+             ST_st_idx(*result_st), handle_ty, result_load);
+        WN_Set_Linenum(result_store,
+                       WN_Get_Linenum(output_definition));
+        WN_INSERT_BlockLast(WN_func_body(PU_Info_tree_ptr(pu)),
+                            result_store);
+    }
 
     WN *body = WN_func_body(PU_Info_tree_ptr(pu));
     WN *definitions[6];
@@ -12311,6 +12997,102 @@ Check_Grouped_Native_Lowering(void)
             DSL_IR_LOWER_RELATION_RUNTIME_VALUE_PROJECTION;
         requests[i].relation.value_projection_id = projections[i].id;
     }
+    if (alias_negative != NULL) {
+        GROUP_LOWER_CHECK(root_alias, "alias negative requires root alias");
+        if (strcmp(alias_negative, "missing_view_flag") == 0 ||
+            strcmp(alias_negative, "wrong_relation") == 0) {
+            GROUP_LOWER_CHECK(root_view,
+                              "malformed view requires root view");
+            UINT64 mapped_size = 0;
+            unsigned char *mapped =
+                strcmp(alias_negative, "missing_view_flag") == 0 ?
+                    Capture_Runtime_Interface_Image(&mapped_size) :
+                    Capture_DSL_IR_Image(&mapped_size);
+            GROUP_LOWER_CHECK(mapped != NULL,
+                              "capture malformed view candidate");
+            if (strcmp(alias_negative, "missing_view_flag") == 0) {
+                DSL_RUNTIME_VALUE_PROJECTION_RECORD *records =
+                    (DSL_RUNTIME_VALUE_PROJECTION_RECORD *)
+                        (mapped + DSL_RUNTIME_INTERFACE_IMAGE_HEADER_SIZE);
+                records[alias_projection.id - 1].flags = 0;
+                GROUP_LOWER_CHECK
+                    (!DSL_Runtime_Interface_Image_Load_Mapped
+                         (mapped, mapped_size, NULL) &&
+                     DSL_Runtime_Interface_Image_Validate(stderr),
+                     "missing retired-view flag rejects atomically");
+            } else {
+                DSL_IR_IMAGE_HEADER *header = (DSL_IR_IMAGE_HEADER *)mapped;
+                DSL_IR_NODE_RECORD *nodes = (DSL_IR_NODE_RECORD *)
+                    (mapped + DSL_IR_IMAGE_HEADER_SIZE +
+                     (UINT64)header->opcode_descriptor_count *
+                         DSL_IR_OPCODE_DESCRIPTOR_RECORD_SIZE);
+                DSL_IR_VALUE_RECORD value;
+                GROUP_LOWER_CHECK
+                    (DSL_IR_Image_Get_Value
+                         (DSL_Builder_Get_Value_Image_Id(retired_output),
+                          &value),
+                     "retired view value lookup");
+                nodes[value.producer_node_id - 1].flags &=
+                    ~DSL_IR_NODE_FLAG_RETIRED_VIEW;
+                GROUP_LOWER_CHECK
+                    (!DSL_IR_Image_Load_Mapped(mapped, mapped_size, NULL) &&
+                     DSL_IR_Image_Validate(stderr),
+                     "wrong view relation rejects atomically");
+            }
+            delete [] mapped;
+            GROUP_LOWER_CHECK
+                (Find_STID_And_Block
+                     (body, DSL_Builder_Get_Value_Result_Symbol(values[5]),
+                      NULL) == definitions[5] &&
+                 WN_st_idx(result_load) == alias_projection.handle_st,
+                 "malformed mapped view leaves physical tree unchanged");
+            printf("grouped lowering retired alias %s rejected atomically\n",
+                   alias_negative);
+            return 0;
+        }
+        if (strcmp(alias_negative, "address") == 0) {
+            WN_kid0(result_store) = WN_CreateLda
+                (OPR_LDA, Pointer_Mtype, MTYPE_V, 0,
+                 Make_Pointer_Type(handle_ty),
+                 alias_projection.handle_st);
+        } else if (strcmp(alias_negative, "predom") == 0) {
+            WN_EXTRACT_FromBlock(body, result_store);
+            WN_INSERT_BlockBefore(body, definitions[5], result_store);
+        } else if (strcmp(alias_negative, "standard") == 0) {
+            WN *read = WN_CreateEval
+                (WN_CreateLdid
+                    (OPR_LDID, Pointer_Mtype, Pointer_Mtype, 0,
+                     alias_projection.handle_st,
+                     alias_projection.handle_ty));
+            WN_Set_Linenum(read, WN_Get_Linenum(definitions[5]));
+            WN_INSERT_BlockFirst(standard[1], read);
+        } else if (strcmp(alias_negative, "wrong_type") == 0) {
+            WN_set_ty(result_load, tensor_ty);
+        } else {
+            GROUP_LOWER_CHECK(FALSE, "recognized alias negative");
+        }
+        DSL_IR_NATIVE_GROUP_LOWER_RESULT unchanged[2];
+        memset(unchanged, 0x5a, sizeof(unchanged));
+        DSL_IR_NATIVE_GROUP_LOWER_RESULT sentinel[2];
+        memcpy(sentinel, unchanged, sizeof(sentinel));
+        GROUP_LOWER_CHECK
+            (!DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
+                 (pu, requests, 2, NULL, unchanged) &&
+             memcmp(unchanged, sentinel, sizeof(unchanged)) == 0 &&
+             WN_first(standard[0]) != NULL &&
+             WN_first(standard[1]) != NULL &&
+             Find_STID_And_Block
+                 (body, DSL_Builder_Get_Value_Result_Symbol(values[5]),
+                  NULL) == definitions[5],
+             "retired alias malformed use rejects without mutation");
+        printf("grouped lowering retired alias %s rejected atomically\n",
+               alias_negative);
+        return 0;
+    }
+    GROUP_LOWER_CHECK
+        (!DSL_Gatekeeper_Verify_No_Native_PU(pu, NULL) &&
+         !DSL_Gatekeeper_Verify_No_Native_PU(NULL, NULL),
+         "native group is not terminal standard WHIRL");
     if (negative_case != NULL) {
         WN *escape = NULL;
         ST_IDX private_st =
@@ -12463,9 +13245,35 @@ Check_Grouped_Native_Lowering(void)
     WN_EXTRACT_FromBlock(body, address);
     WN_DELETE_Tree(address);
 
+    SRCPOS group_position = WN_Get_Linenum(definitions[5]);
+    DSL_REGION grouped_region = NULL;
+    if (getenv("OPEN64_DSL_GROUP_LOWER_REGION_OUTPUT") != NULL) {
+        grouped_region = DSL_Region_Create
+            (pu, NULL, "cnn.basic_block", 1);
+        GROUP_LOWER_CHECK
+            (grouped_region != NULL &&
+             DSL_Region_Declare_Symbol
+                 (grouped_region,
+                  DSL_Builder_Get_Value_Result_Symbol(values[5]),
+                  DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT,
+                  0, DSL_REGION_INTERFACE_FLAG_NONE) &&
+             DSL_Region_Set_Source_Position(grouped_region, group_position),
+             "group output REGION interface");
+        for (UINT32 i = 0; i < 6; ++i) {
+            GROUP_LOWER_CHECK
+                (WN_EXTRACT_FromBlock(body, definitions[i]) == definitions[i] &&
+                 DSL_Region_Append_Statement(grouped_region, definitions[i]),
+                 "group members enter one REGION block");
+        }
+        GROUP_LOWER_CHECK
+            (DSL_Region_Append_To_PU(grouped_region) &&
+             DSL_Region_Verify_PU(pu, stderr),
+             "group output REGION ownership");
+    }
     GROUP_LOWER_CHECK
         (DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
              (pu, requests, 2, stderr, results) &&
+         !DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr) &&
          DSL_IR_Image_Validate(stderr) &&
          DSL_IR_Image_Validate_Lowered_Relations(stderr) &&
          results[0].owner_pu_st == PU_Info_proc_sym(pu) &&
@@ -12474,19 +13282,398 @@ Check_Grouped_Native_Lowering(void)
          results[0].semantic_source_value_id ==
              DSL_Builder_Get_Value_Image_Id(seed),
          "two-group atomic commit");
+    if (grouped_region != NULL) {
+        DSL_REGION_INTERFACE_RECORD interface_record;
+        GROUP_LOWER_CHECK
+            (DSL_Region_Interface_Count(pu) == 1 &&
+             DSL_Region_Get_Interface(pu, 1, &interface_record) &&
+             interface_record.st == projections[1].handle_st &&
+             DSL_Region_Verify_PU(pu, stderr),
+             "group result REGION interface follows standard handle");
+    }
     for (UINT32 i = 0; i < 6; ++i)
         GROUP_LOWER_CHECK
             (Find_STID_And_Block
                  (body, DSL_Builder_Get_Value_Result_Symbol(values[i]),
                   NULL) == NULL,
              "private native definition removed");
-    (void) unlink(artifact);
-    GROUP_LOWER_CHECK(Write_Runtime_Interface_Artifact
-                          (artifact, pu, NULL) &&
-                      access(artifact, F_OK) == 0,
-                      "mapped grouped artifact");
+    if (root_alias) {
+        GROUP_LOWER_CHECK
+            (WN_operator(WN_kid0(result_store)) == OPR_LDID &&
+             WN_st_idx(result_load) == projections[1].handle_st &&
+             result_store == Find_STID_And_Block
+                 (body, WN_st_idx(result_store), NULL),
+             "retired output reads the defined group handle");
+        WN *seed_definition = Find_STID_And_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(seed), NULL);
+        DSL_IR_NATIVE_VALUE_LOWER_REQUEST seed_request;
+        DSL_IR_NATIVE_VALUE_LOWER_RESULT seed_result;
+        memset(&seed_request, 0, sizeof(seed_request));
+        memset(&seed_result, 0, sizeof(seed_result));
+        seed_request.native_definition = seed_definition;
+        seed_request.source_value_id = DSL_Builder_Get_Value_Image_Id(seed);
+        seed_request.expected_operator = OPR_DSLTENSORCONST;
+        seed_request.expected_version = 1;
+        seed_request.mode =
+            DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION;
+        seed_request.relation.relation_kind =
+            DSL_IR_LOWER_RELATION_VERIFIED_DEAD_SOURCE;
+        GROUP_LOWER_CHECK
+            (seed_definition != NULL &&
+             DSL_IR_Lower_Native_Values_To_Standard_Blocks
+                 (pu, &seed_request, 1, stderr, &seed_result) &&
+             DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr) &&
+             DSL_Program_Interface_Validate_Lowered_PU(pu, stderr),
+             "retired output terminal handle closure");
+        WN_st_idx(result_load) = alias_projection.handle_st;
+        GROUP_LOWER_CHECK
+            (!DSL_Program_Interface_Validate_Lowered_PU(pu, NULL),
+             "terminal verifier rejects undefined alias handle");
+        WN_st_idx(result_load) = projections[1].handle_st;
+        GROUP_LOWER_CHECK
+            (DSL_Program_Interface_Validate_Lowered_PU(pu, stderr) &&
+             Write_Runtime_Interface_Artifact(artifact, pu, NULL),
+             "retired output mapped artifact");
+        printf("DSL grouped retired output alias contract passed\n");
+        return 0;
+    }
+    if (getenv("OPEN64_DSL_GROUP_LOWER_REGION_TERMINAL") != NULL) {
+        WN *seed_definition = Find_STID_And_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(seed), NULL);
+        DSL_IR_NATIVE_VALUE_LOWER_REQUEST seed_request;
+        DSL_IR_NATIVE_VALUE_LOWER_RESULT seed_result;
+        memset(&seed_request, 0, sizeof(seed_request));
+        memset(&seed_result, 0, sizeof(seed_result));
+        seed_request.native_definition = seed_definition;
+        seed_request.source_value_id = DSL_Builder_Get_Value_Image_Id(seed);
+        seed_request.expected_operator = OPR_DSLTENSORCONST;
+        seed_request.expected_version = 1;
+        seed_request.mode =
+            DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION;
+        seed_request.relation.relation_kind =
+            DSL_IR_LOWER_RELATION_VERIFIED_DEAD_SOURCE;
+        GROUP_LOWER_CHECK
+            (grouped_region != NULL && terminal_artifact != NULL &&
+             seed_definition != NULL &&
+             DSL_IR_Lower_Native_Values_To_Standard_Blocks
+                 (pu, &seed_request, 1, stderr, &seed_result) &&
+             seed_result.source_value_id == seed_request.source_value_id &&
+             DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr) &&
+             DSL_Region_Verify_PU(pu, stderr),
+             "grouped REGION terminal preflight");
+        (void) unlink(terminal_artifact);
+        Irb_File_Name = (char *)terminal_artifact;
+        GROUP_LOWER_CHECK
+            (Open_Standard_Only_Output_Info(Irb_File_Name, pu) != NULL,
+             "grouped REGION terminal output");
+        Write_PU_Info(pu);
+        Write_Global_Info(pu);
+        Close_Output_Info();
+        GROUP_LOWER_CHECK
+            (access(terminal_artifact, F_OK) == 0,
+             "grouped REGION terminal artifact");
+        printf("DSL grouped REGION terminal WHIRL passed\n");
+        return 0;
+    }
+    if (getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_NATIVE") != NULL) {
+        GROUP_LOWER_CHECK
+            (terminal_artifact != NULL &&
+             Open_Standard_Only_Output_Info
+                 ((char *)terminal_artifact, pu) != NULL,
+             "native terminal rejection output");
+        Write_PU_Info(pu);
+        fprintf(stderr, "native terminal PU unexpectedly accepted\n");
+        return 1;
+    }
+    WN *saved_tree = PU_Info_tree_ptr(pu);
+    WN *standard_body = WN_CreateBlock();
+    WN *standard_eval = WN_CreateEval(WN_Intconst(MTYPE_I4, 0));
+    WN_Set_Linenum(standard_eval, group_position);
+    WN_INSERT_BlockLast(standard_body, standard_eval);
+    Set_PU_Info_tree_ptr(pu, standard_body);
+    BOOL bare_block_rejected =
+        !DSL_Gatekeeper_Verify_No_Native_PU(pu, NULL);
+    Set_PU_Info_tree_ptr(pu, saved_tree);
+    WN *standard_tree = WN_CreateEntry
+        (0, PU_Info_proc_sym(pu), standard_body,
+         WN_CreateBlock(), WN_CreateBlock());
+    Set_PU_Info_tree_ptr(pu, standard_tree);
+    if (getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION") != NULL) {
+        DSL_REGION region = DSL_Region_Create
+            (pu, NULL, "cnn.basic_block", 1);
+        GROUP_LOWER_CHECK
+            (region != NULL && DSL_Region_Declare_Symbol
+                 (region, projections[0].handle_st,
+                  DSL_REGION_VALUE_OUTPUT | DSL_REGION_VALUE_RESULT,
+                  0, DSL_REGION_INTERFACE_FLAG_NONE),
+             "terminal REGION interface");
+        if (getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION_INVALID_ST") != NULL) {
+            ST_IDX invalid_st = make_ST_IDX
+                (ST_Table_Size(CURRENT_SYMTAB) + 1, CURRENT_SYMTAB);
+            GROUP_LOWER_CHECK
+                (DSL_Region_Declare_Symbol
+                     (region, invalid_st, DSL_REGION_VALUE_INPUT, 1,
+                      DSL_REGION_INTERFACE_FLAG_NONE),
+                 "terminal invalid-ST fixture");
+        }
+        if (getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION_STALE") == NULL) {
+            WN *result = WN_CreateStid
+                (OPR_STID, MTYPE_V, Pointer_Mtype, 0,
+                 projections[0].handle_st, projections[0].handle_ty,
+                 WN_Intconst(Pointer_Mtype, 0));
+            WN_Set_Linenum(result, group_position);
+            GROUP_LOWER_CHECK
+                (DSL_Region_Append_Statement(region, result),
+                 "terminal REGION result");
+        }
+        GROUP_LOWER_CHECK
+            (DSL_Region_Set_Source_Position(region, group_position) &&
+             (getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_REGION_DETACHED") != NULL ||
+              DSL_Region_Append_To_PU(region)) &&
+             DSL_Region_Verify_PU(pu, stderr),
+             "terminal REGION tree");
+    }
+    BOOL standard_control_valid =
+        DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr);
+    BOOL terminal_written = FALSE;
+    if (standard_control_valid && terminal_artifact != NULL &&
+        terminal_artifact[0] != '\0') {
+        DSL_BUILDER_PROGRAM_UNIT terminal_second =
+            DSL_Builder_Create_Minimal_PU("group_terminal_second");
+        GROUP_LOWER_CHECK
+            (terminal_second != NULL &&
+             PU_Info_next(pu) == terminal_second &&
+             DSL_Builder_Select_PU(pu),
+             "two-PU standard-only fixture");
+        (void) unlink(terminal_artifact);
+        Irb_File_Name = (char *)terminal_artifact;
+        if (Open_Standard_Only_Output_Info(Irb_File_Name, pu) != NULL) {
+            Write_PU_Info(pu);
+            if (getenv("OPEN64_DSL_GROUP_LOWER_TERMINAL_INCOMPLETE") != NULL)
+                Write_Global_Info(pu);
+            GROUP_LOWER_CHECK
+                (DSL_Builder_Select_PU(terminal_second) &&
+                 DSL_Gatekeeper_Verify_No_Native_PU
+                     (terminal_second, stderr),
+                 "second standard PU");
+            Write_PU_Info(terminal_second);
+            Write_Global_Info(pu);
+            Close_Output_Info();
+            terminal_written = access(terminal_artifact, F_OK) == 0;
+        }
+    }
+    Set_PU_Info_tree_ptr(pu, saved_tree);
+    WN_DELETE_Tree(standard_tree);
+    GROUP_LOWER_CHECK
+        (bare_block_rejected && standard_control_valid &&
+         (terminal_artifact == NULL || terminal_written),
+         "standard-WHIRL control tree has no native DSL node");
+    if (terminal_artifact == NULL) {
+        (void) unlink(artifact);
+        GROUP_LOWER_CHECK(Write_Runtime_Interface_Artifact
+                              (artifact, pu, NULL) &&
+                          access(artifact, F_OK) == 0,
+                          "mapped grouped artifact");
+    }
     printf("DSL grouped native lowering contract passed\n");
+    printf("DSL terminal preflight rejected live tensor seed and accepted "
+           "standard control tree\n");
 #undef GROUP_LOWER_CHECK
+    return 0;
+}
+
+/* Exercise the public dead-constant batch boundary after consumers are gone. */
+static int
+Check_Dead_Native_Constant_Batch(void)
+{
+#define DEAD_BATCH_CHECK(condition, stage) \
+    do { \
+        if (!(condition)) { \
+            fprintf(stderr, "dead constant batch failed: %s\n", stage); \
+            return 1; \
+        } \
+    } while (0)
+    const char *artifact = getenv("OPEN64_DSL_DEAD_CONSTANT_ARTIFACT");
+    const char *negative = getenv("OPEN64_DSL_DEAD_CONSTANT_NEGATIVE");
+    BOOL discard = getenv("OPEN64_DSL_DEAD_CONSTANT_DISCARD") != NULL;
+    DEAD_BATCH_CHECK(artifact != NULL && artifact[0] != '\0' &&
+                     DSL_Builder_Begin_Program(), "program and output");
+    DSL_Opcode_Register_Common_Substrate();
+    DSL_BUILDER_TENSOR_TYPE_CORE core;
+    memset(&core, 0, sizeof(core));
+    core.kind = "tensor";
+    core.dtype = "float32";
+    core.rank = 2;
+    core.logical_shape = "[2,2]";
+    TY_IDX tensor_ty = DSL_Builder_Create_Tensor_Type_Core
+        ("dead_batch_f32_2x2", MTYPE_To_TY(MTYPE_F4), &core);
+    DSL_BUILDER_PROGRAM_UNIT pu =
+        DSL_Builder_Create_Minimal_PU("dead_constant_batch");
+    UINT32 file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = file_id;
+    position.line = __LINE__ + 1;
+    position.statement_begin = 1;
+    DEAD_BATCH_CHECK(tensor_ty != TY_IDX_ZERO && TY_tensor_seal(tensor_ty) &&
+                     pu != NULL && file_id != 0, "tensor and PU");
+    DSL_BUILDER_VALUE constants[2];
+    constants[0] = DSL_Builder_Create_Tensor_Constant
+        ("dead_zero", tensor_ty, "float32", 2, "[2,2]", "zero_init", "0");
+    constants[1] = DSL_Builder_Create_Tensor_Constant
+        ("dead_one", tensor_ty, "float32", 2, "[2,2]", "one_init", "1");
+    DEAD_BATCH_CHECK
+        (constants[0] != NULL && constants[1] != NULL &&
+         DSL_Builder_Set_Value_Source_Position(constants[0], &position),
+         "constant values");
+    ++position.line;
+    DEAD_BATCH_CHECK
+        (DSL_Builder_Set_Value_Source_Position(constants[1], &position) &&
+         DSL_Builder_Append_PU_Value(pu, constants[0]) &&
+         DSL_Builder_Append_PU_Value(pu, constants[1]) &&
+         DSL_Builder_Select_PU(pu), "constant definitions");
+
+    WN *body = WN_func_body(PU_Info_tree_ptr(pu));
+    WN *definitions[2];
+    DSL_IR_DEAD_NATIVE_CONSTANT_REQUEST requests[2];
+    memset(requests, 0, sizeof(requests));
+    for (UINT32 i = 0; i < 2; ++i) {
+        DSL_IR_VALUE_RECORD value;
+        definitions[i] = Find_STID_And_Block
+            (body, DSL_Builder_Get_Value_Result_Symbol(constants[i]), NULL);
+        DEAD_BATCH_CHECK
+            (definitions[i] != NULL &&
+             DSL_IR_Image_Get_Value
+                 (DSL_Builder_Get_Value_Image_Id(constants[i]), &value),
+             "constant identity");
+        requests[i].owner_pu_st = PU_Info_proc_sym(pu);
+        requests[i].native_definition = definitions[i];
+        requests[i].node_id = value.producer_node_id;
+        requests[i].value_id = value.id;
+        requests[i].st = value.st;
+        requests[i].ty = value.ty;
+        requests[i].expected_version = 1;
+    }
+    if (negative != NULL && strcmp(negative, "wrong_identity") == 0)
+        requests[1].value_id = requests[0].value_id;
+    if (negative != NULL && strcmp(negative, "duplicate") == 0)
+        requests[1] = requests[0];
+    if (negative != NULL && strcmp(negative, "live") == 0) {
+        WN *address = WN_CreateEval
+            (WN_CreateLda(OPR_LDA, Pointer_Mtype, MTYPE_V, 0,
+                          Make_Pointer_Type(tensor_ty), requests[1].st));
+        WN_INSERT_BlockLast(body, address);
+    }
+    if (negative != NULL && strcmp(negative, "region") == 0) {
+        DSL_REGION region = DSL_Region_Create
+            (pu, NULL, "cnn.basic_block", 1);
+        DEAD_BATCH_CHECK
+            (region != NULL && DSL_Region_Declare_Symbol
+                 (region, requests[1].st, DSL_REGION_VALUE_INPUT, 0,
+                  DSL_REGION_INTERFACE_FLAG_NONE) &&
+             DSL_Region_Set_Source_Position(region, position.line) &&
+             DSL_Region_Append_To_PU(region) &&
+             DSL_Region_Verify_PU(pu, stderr), "live REGION input");
+    }
+    if (negative != NULL && strcmp(negative, "call") == 0) {
+        DSL_BUILDER_PROGRAM_UNIT callee =
+            DSL_Builder_Create_Minimal_PU("dead_constant_callee");
+        UINT32 callee_file = DSL_Builder_Register_Source_File
+            (callee, __FILE__);
+        position.file_id = callee_file;
+        DSL_BUILDER_VALUE formal = DSL_Builder_Declare_PU_Formal
+            (callee, "constant_input", 0, tensor_ty, &position);
+        DEAD_BATCH_CHECK
+            (callee != NULL && callee_file != 0 && formal != NULL &&
+             DSL_Builder_Return_PU_Values(callee, NULL, 0),
+             "callee signature");
+        DSL_BUILDER_CALLSITE_INFO callsite;
+        memset(&callsite, 0, sizeof(callsite));
+        callsite.canonical_class_name = "DeadConstantCallee";
+        callsite.instance_path = "model.dead_constant";
+        callsite.context_identity = "DeadConstantCallee.call";
+        callsite.source_position = position;
+        callsite.source_position.file_id = file_id;
+        DSL_BUILDER_CALL call = DSL_Builder_Create_PU_Call
+            (pu, callee, &constants[1], 1, NULL, 0, &callsite);
+        DSL_CALLSITE_METADATA_RECORD call_record;
+        DSL_CALL_ARGUMENT_RECORD argument;
+        DEAD_BATCH_CHECK
+            (call != NULL &&
+             DSL_Builder_Set_PU_Call_Argument_Role
+                 (call, 0, 0, "test.constant_input") &&
+             DSL_Call_Image_Find_Callsite(call, &call_record) &&
+             DSL_Call_ABI_Image_Find_Argument
+                 (call, 0, &argument) &&
+             argument.argument_value_id == requests[1].value_id &&
+             DSL_Builder_Select_PU(pu), "live call ABI argument");
+    }
+
+    UINT32 elided_count = 0x5a5a5a5a;
+    BOOL elided = DSL_IR_Elide_Dead_Native_Constants
+        (pu, requests, 2, stderr, &elided_count);
+    if (negative != NULL) {
+        DSL_IR_VALUE_RECORD first;
+        DSL_IR_VALUE_RECORD second;
+        DEAD_BATCH_CHECK
+            (!elided && elided_count == 0x5a5a5a5a &&
+             Find_STID_And_Block(body, requests[0].st, NULL) ==
+                 definitions[0] &&
+             Find_STID_And_Block
+                 (body, DSL_Builder_Get_Value_Result_Symbol(constants[1]),
+                  NULL) == definitions[1] &&
+             DSL_IR_Image_Get_Value
+                 (DSL_Builder_Get_Value_Image_Id(constants[0]), &first) &&
+             DSL_IR_Image_Get_Value
+                 (DSL_Builder_Get_Value_Image_Id(constants[1]), &second) &&
+             first.flags == DSL_IR_VALUE_FLAG_NONE &&
+             second.flags == DSL_IR_VALUE_FLAG_NONE,
+             "complete-array rejection leaves both definitions live");
+        return 0;
+    }
+    DEAD_BATCH_CHECK
+        (elided && elided_count == 2 &&
+         DSL_Gatekeeper_Verify_No_Native_PU(pu, stderr) &&
+         DSL_IR_Image_Validate(stderr) &&
+         DSL_IR_Image_Validate_Lowered_Relations(stderr),
+         "batch elision and verifier");
+    for (UINT32 i = 0; i < 2; ++i) {
+        DSL_IR_VALUE_RECORD value;
+        DSL_IR_NODE_RECORD node;
+        DEAD_BATCH_CHECK
+            (Find_STID_And_Block(body, requests[i].st, NULL) == NULL &&
+             DSL_IR_Image_Get_Value(requests[i].value_id, &value) &&
+             DSL_IR_Image_Get_Node(requests[i].node_id, &node) &&
+             value.flags == DSL_IR_VALUE_FLAG_DEAD_ELIDED &&
+             (node.flags & DSL_IR_NODE_FLAG_DEAD_ELIDED) != 0,
+             "non-executable provenance retained");
+    }
+    if (discard) {
+        std::string temporary(artifact);
+        temporary += ".tmp";
+        (void) unlink(temporary.c_str());
+        DEAD_BATCH_CHECK
+            (Open_Standard_Only_Output_Info
+                 ((char *)temporary.c_str(), pu) != NULL,
+             "incomplete standard-only output open");
+        Discard_Output_Info();
+        DEAD_BATCH_CHECK
+            (unlink(temporary.c_str()) == 0 &&
+             access(temporary.c_str(), F_OK) != 0,
+             "discarded temporary output removed");
+        DEAD_BATCH_CHECK
+            (Open_Standard_Only_Output_Info((char *)artifact, pu) != NULL,
+             "standard-only output retry");
+        Write_PU_Info(pu);
+        Write_Global_Info(pu);
+        Close_Output_Info();
+    } else {
+        DEAD_BATCH_CHECK
+            (Write_Runtime_Interface_Artifact(artifact, pu, NULL),
+             "mapped dead-provenance image");
+    }
+    printf("DSL dead native constant batch passed\n");
+#undef DEAD_BATCH_CHECK
     return 0;
 }
 
@@ -14212,6 +15399,8 @@ main(void)
         return Check_Native_To_Standard_Lowering();
     if (getenv("OPEN64_DSL_GROUP_LOWER_ONLY") != NULL)
         return Check_Grouped_Native_Lowering();
+    if (getenv("OPEN64_DSL_DEAD_CONSTANT_ONLY") != NULL)
+        return Check_Dead_Native_Constant_Batch();
     if (getenv("OPEN64_DSL_CANONICALIZATION_ONLY") != NULL)
         return Check_Algebraic_Canonicalization();
     if (getenv("OPEN64_DSL_TENSOR_FOLD_M3_ONLY") != NULL)

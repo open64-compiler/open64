@@ -6,6 +6,7 @@
  */
 
 #include "config_fhe.h"
+#include <string.h>
 
 BOOL VHO_FHE_Enable_Conversion = TRUE;
 BOOL VHO_FHE_Enable_Conversion_Set = FALSE;
@@ -27,6 +28,20 @@ char *VHO_FHE_Provider_Manifest_SHA256 = NULL;
 BOOL VHO_FHE_Enable_Runtime_Lowering = FALSE;
 BOOL VHO_FHE_Enable_Runtime_Lowering_Set = FALSE;
 char *VHO_FHE_Runtime_Lowering_Checkpoint_Output = NULL;
+char *VHO_FHE_Codegen = NULL;
+
+/* An absent route preserves the existing pipeline until D5 owns the exit. */
+VHO_FHE_CODEGEN_MODE
+VHO_FHE_Codegen_Mode (void)
+{
+  if (VHO_FHE_Codegen == NULL)
+    return VHO_FHE_CODEGEN_UNSPECIFIED;
+  if (strcmp(VHO_FHE_Codegen, "ckks2c") == 0)
+    return VHO_FHE_CODEGEN_CKKS2C;
+  if (strcmp(VHO_FHE_Codegen, "poly2c") == 0)
+    return VHO_FHE_CODEGEN_POLY2C;
+  return VHO_FHE_CODEGEN_INVALID;
+}
 
 static OPTION_DESC Options_FHE[] = {
   { OVK_BOOL, OV_VISIBLE, TRUE, "convert", "convert",
@@ -68,5 +83,7 @@ static OPTION_DESC Options_FHE[] = {
   { OVK_NAME, OV_VISIBLE, FALSE, "runtime_checkpoint",
     "runtime_checkpoint",
     0, 0, 0, &VHO_FHE_Runtime_Lowering_Checkpoint_Output, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "codegen", "codegen",
+    0, 0, 0, &VHO_FHE_Codegen, NULL },
   { OVK_COUNT }
 };

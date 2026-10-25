@@ -139,13 +139,17 @@
 #include "dsl_program_interface_internal.h"
 #include "dsl_pu_transaction.h"
 #include "dsl_ir_image.h"
+#include "dsl_ckks_event.h"
 #include "dsl_region.h"
 #include "fhe_checkpoint.h"
 #include "fhe_ckks_conv_specialize.h"
 #include "fhe_convert.h"
 #include "fhe_image.h"
+#include "fhe_plan.h"
 #include "fhe_materialize.h"
 #include "fhe_runtime_lower.h"
+#include "dsl_ckks_event.h"
+#include "fhe_ckks2c_checkpoint.h"
 #include "fhe_unlowered_gate.h"
 #include "iter.h"		    /* PU iterator for loops */
 #include "dra_export.h"             /* for DRA routines */
@@ -513,6 +517,18 @@ FHE_Checkpoint_Output_Active (void)
          need_fhe_runtime_lower_output;
 }
 
+/* A conversion checkpoint over a certified CKKS event image is a terminal
+ * read-only code-generation checkpoint.  Its committed projected interface
+ * has already passed tensor shape refinement, so rerunning that earlier stage
+ * would reinterpret CKKS operands as source-level tensor expressions.  See
+ * doc/FHE-SYNC6-S6-0D-DETAILED-EXECUTION-PLAN.md, D3. */
+static BOOL
+FHE_CKKS2C_Checkpoint_Input_Active (void)
+{
+  return need_fhe_checkpoint_output &&
+         DSL_CKKS_Event_Image_Count() != 0;
+}
+
 static void
 Close_FHE_Checkpoint_Output (void)
 {
@@ -523,10 +539,19 @@ Close_FHE_Checkpoint_Output (void)
 }
 
 static void
+Discard_FHE_Checkpoint_Output (void)
+{
+  if (ir_output != NULL) {
+    ir_output = NULL;
+    Discard_Output_Info();
+  }
+}
+
+static void
 Cleanup_DSL_PU_Specialization_Checkpoint (void)
 {
   Register_Cleanup_Callback(NULL);
-  Close_FHE_Checkpoint_Output();
+  Discard_FHE_Checkpoint_Output();
   VHO_FHE_Checkpoint_Abort();
   free(dsl_pu_checkpoint_temp_name);
   dsl_pu_checkpoint_temp_name = NULL;
@@ -566,7 +591,7 @@ Cleanup_FHE_Conversion_Checkpoint (void)
     return;
 
   Register_Cleanup_Callback(NULL);
-  Close_FHE_Checkpoint_Output();
+  Discard_FHE_Checkpoint_Output();
   VHO_FHE_Convert_Checkpoint_Abort();
   Release_FHE_Conversion_Checkpoint();
 }
@@ -578,7 +603,7 @@ Cleanup_FHE_Materialization_Checkpoint (void)
     return;
 
   Register_Cleanup_Callback(NULL);
-  Close_FHE_Checkpoint_Output();
+  Discard_FHE_Checkpoint_Output();
   VHO_FHE_Materialize_Checkpoint_Abort();
   Release_FHE_Materialization_Checkpoint();
 }
@@ -590,7 +615,7 @@ Cleanup_FHE_Runtime_Lowering_Checkpoint (void)
     return;
 
   Register_Cleanup_Callback(NULL);
-  Close_FHE_Checkpoint_Output();
+  Discard_FHE_Checkpoint_Output();
   VHO_FHE_Runtime_Lower_Checkpoint_Abort();
   Release_FHE_Runtime_Lowering_Checkpoint();
 }
@@ -618,7 +643,26 @@ Open_FHE_Conversion_Checkpoint (void)
   fhe_checkpoint_pu_count = 0;
   need_fhe_checkpoint_output = TRUE;
   Register_Cleanup_Callback(Cleanup_FHE_Conversion_Checkpoint);
-  ir_output = Open_Output_Info(fhe_checkpoint_temp_name);
+}
+
+/* Open the checkpoint writer only after Read_Global_Info has loaded the
+ * complete program and optional CKKS image.  A certified CKKS2C checkpoint is
+ * terminal standard WHIRL, so its writer must validate every PU and omit the
+ * private DSL/FHE sections.  Earlier conversion checkpoints retain the
+ * ordinary mapped-image writer.  See
+ * doc/FHE-SYNC6-S6-0D-DETAILED-EXECUTION-PLAN.md, D4. */
+static void
+Open_FHE_Conversion_Checkpoint_Output (PU_Info *program_root)
+{
+  FmtAssert(need_fhe_checkpoint_output &&
+            fhe_checkpoint_temp_name != NULL && ir_output == NULL,
+            ("invalid deferred FHE checkpoint output state"));
+
+  if (DSL_CKKS_Event_Image_Count() != 0)
+    ir_output = Open_Standard_Only_Output_Info
+                    (fhe_checkpoint_temp_name, program_root);
+  else
+    ir_output = Open_Output_Info(fhe_checkpoint_temp_name);
   FmtAssert(ir_output != NULL,
             ("could not open FHE checkpoint output %s",
              fhe_checkpoint_temp_name));
@@ -2127,7 +2171,8 @@ Preprocess_PU (PU_Info *current_pu)
   }
 #endif
 
-  if (need_fhe_runtime_lower_output || need_fhe_materialization_output) {
+  if (need_fhe_runtime_lower_output || need_fhe_materialization_output ||
+      FHE_CKKS2C_Checkpoint_Input_Active()) {
     Set_Error_Phase ( "FHE Projected-IR Admission" );
     FmtAssert(!VHO_DSL_Enable_WOPT &&
               DSL_Program_Interface_PU_Is_Committed
@@ -2204,22 +2249,46 @@ Preprocess_PU (PU_Info *current_pu)
       Check_for_IR_Dump(TP_GLOBOPT, pu, "FHE_MATERIALIZE");
     }
     else {
-      Set_Error_Phase ( "FHE VHO Conversion" );
       if (need_fhe_checkpoint_output) {
-        BOOL converted = VHO_FHE_Convert_Driver_Try
-                             (current_pu, &pu, &convert_result);
+        BOOL converted;
+        if (FHE_CKKS2C_Checkpoint_Input_Active()) {
+          VHO_FHE_CKKS2C_LOWER_RESULT lower_result;
+          Set_Error_Phase ( "FHE CKKS2C Group Lowering" );
+          converted = VHO_FHE_CKKS2C_Checkpoint_Lower_Active_PU
+                          (current_pu,
+                           VHO_FHE_Conversion_Checkpoint_Output,
+                           stderr, &lower_result);
+          if (converted)
+            convert_result.conversion_pass_count = 1;
+          else
+            convert_result.error_count = 1;
+        }
+        else {
+          Set_Error_Phase ( "FHE VHO Conversion" );
+          converted = VHO_FHE_Convert_Driver_Try
+                          (current_pu, &pu, &convert_result);
+        }
         VHO_FHE_Convert_Result_Accumulate
             (&fhe_checkpoint_result, &convert_result);
         if (!converted) {
-          fprintf(stderr,
-                  "CFHE-CHECKPOINT-002: conversion failed before all-PU "
-                  "checkpoint completion\n");
+          if (FHE_CKKS2C_Checkpoint_Input_Active())
+            fprintf(stderr,
+                    "CFHECKKS2C-004: collection failed before all-PU "
+                    "checkpoint completion\n");
+          else
+            fprintf(stderr,
+                    "CFHE-CHECKPOINT-002: conversion failed before all-PU "
+                    "checkpoint completion\n");
           Cleanup_FHE_Conversion_Checkpoint();
-          FmtAssert(FALSE, ("FHE conversion checkpoint failed"));
+          FmtAssert(FALSE,
+                    (FHE_CKKS2C_Checkpoint_Input_Active() ?
+                         "FHE CKKS2C checkpoint collection failed" :
+                         "FHE conversion checkpoint failed"));
         }
         ++fhe_checkpoint_pu_count;
       }
       else {
+        Set_Error_Phase ( "FHE VHO Conversion" );
         pu = VHO_FHE_Convert_Driver_With_Result
                  (current_pu, pu, &convert_result);
       }
@@ -2227,7 +2296,8 @@ Preprocess_PU (PU_Info *current_pu)
       Check_for_IR_Dump(TP_GLOBOPT, pu, "FHE_CONVERT");
     }
 
-    if (convert_result.conversion_pass_count != 0) {
+    if (convert_result.conversion_pass_count != 0 &&
+        !FHE_CKKS2C_Checkpoint_Input_Active()) {
       FmtAssert(VHO_DSL_Shape_Refinement_Invalidate
                     (current_pu, pu,
                      VHO_DSL_SHAPE_TRIGGER_FHE_CONVERSION, stderr),
@@ -2723,12 +2793,20 @@ main (INT argc, char **argv)
 
   Init_Operator_To_Opcode_Table();
 
-  /* decide which phase to call */
-  load_components (argc, argv);
-  be_debug();
-
-  // process the component internal options
-  O64_Driver::GetInstance()->ProcessComponentOption();
+  VHO_FHE_CODEGEN_MODE fhe_codegen = VHO_FHE_Codegen_Mode();
+  if (fhe_codegen == VHO_FHE_CODEGEN_INVALID) {
+    fprintf(stderr,
+            "CFHECKKS2C-002: invalid -FHE:codegen route; "
+            "expected ckks2c or poly2c\n");
+    return 1;
+  }
+  BOOL defer_components =
+      fhe_codegen != VHO_FHE_CODEGEN_UNSPECIFIED;
+  if (!defer_components) {
+    load_components (argc, argv);
+    be_debug();
+    O64_Driver::GetInstance()->ProcessComponentOption();
+  }
   
   MEM_POOL_Push (&MEM_src_pool);
   MEM_POOL_Push (&MEM_src_nz_pool);
@@ -2773,6 +2851,28 @@ main (INT argc, char **argv)
   Stop_Timer (T_ReadIR_Comp);
 
   Initialize_Special_Global_Symbols ();
+
+  if (defer_components) {
+    /* The image, not the option spelling, decides whether this phase owns
+     * codegen. Do not load CG before a CKKS route can exit. */
+    BOOL fhe_image =
+        DSL_CKKS_Event_Image_Has_Records() ||
+        DSL_FHE_Image_Has_Records() ||
+        DSL_FHE_Plan_Image_Has_Records() ||
+        DSL_FHE_Approx_Profile_Image_Has_Records() ||
+        DSL_FHE_Context_State_Image_Has_Records() ||
+        DSL_FHE_Materialization_Image_Has_Records();
+    if (fhe_image) {
+      fprintf(stderr,
+              "CFHECKKS2C-003: -FHE:codegen=%s is not yet available; "
+              "no fallback route was selected\n",
+              VHO_FHE_Codegen);
+      return 1;
+    }
+    load_components (argc, argv);
+    be_debug();
+    O64_Driver::GetInstance()->ProcessComponentOption();
+  }
 
   // if compiling an ipa-generated file, do not instrument phases that
   // have already been done at ipl time.
@@ -2856,6 +2956,9 @@ main (INT argc, char **argv)
   }
 
   Phase_Init ();
+
+  if (need_fhe_checkpoint_output)
+    Open_FHE_Conversion_Checkpoint_Output(pu_tree);
 
   if (Tlog_File)
     Print_Tlog_Header(argc, argv);

@@ -49,9 +49,11 @@ for evidence in \
   'VHO_FHE_Convert_Checkpoint_Publish_Artifacts' \
   'VHO_FHE_Convert_Checkpoint_Complete' \
   'VHO_FHE_Convert_Checkpoint_Abort' \
+  'Open_FHE_Conversion_Checkpoint_Output(pu_tree)' \
+  'Open_Standard_Only_Output_Info' \
   'Write_PU_Info(current_pu)' \
   'Write_Global_Info(pu_tree)' \
-  'Publish_FHE_Conversion_Checkpoint'; do
+  'VHO_FHE_Convert_Checkpoint_Publish_Binary'; do
   if ! grep -Fq "$evidence" "$driver_source"; then
     echo "missing all-PU checkpoint evidence '$evidence' in $driver_source" >&2
     exit 1
@@ -61,11 +63,18 @@ done
 finalize_line="$(grep -n 'VHO_FHE_Convert_Checkpoint_Finalize' "$driver_source" | tail -1 | cut -d: -f1)"
 global_line="$(grep -n 'Write_Global_Info(pu_tree)' "$driver_source" | tail -1 | cut -d: -f1)"
 publish_line="$(grep -n 'VHO_FHE_Convert_Checkpoint_Publish_Artifacts' "$driver_source" | tail -1 | cut -d: -f1)"
-binary_line="$(grep -n 'if (!Publish_FHE_Conversion_Checkpoint())' "$driver_source" | tail -1 | cut -d: -f1)"
+binary_line="$(grep -n 'VHO_FHE_Convert_Checkpoint_Publish_Binary' "$driver_source" | tail -1 | cut -d: -f1)"
 complete_line="$(grep -n 'VHO_FHE_Convert_Checkpoint_Complete' "$driver_source" | tail -1 | cut -d: -f1)"
 if (( finalize_line >= global_line || global_line >= publish_line ||
       publish_line >= binary_line || binary_line >= complete_line )); then
   echo "FHE checkpoint publication ordering changed in $driver_source" >&2
+  exit 1
+fi
+
+read_line="$(grep -n 'pu_tree = Read_Global_Info' "$driver_source" | head -1 | cut -d: -f1)"
+open_line="$(grep -n 'Open_FHE_Conversion_Checkpoint_Output(pu_tree)' "$driver_source" | head -1 | cut -d: -f1)"
+if (( read_line >= open_line )); then
+  echo "FHE checkpoint writer opened before mapped-image inspection" >&2
   exit 1
 fi
 

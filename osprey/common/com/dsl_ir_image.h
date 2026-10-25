@@ -869,6 +869,19 @@ typedef struct {
     UINT32 inserted_statement_count;
 } DSL_IR_NATIVE_VALUE_LOWER_RESULT;
 
+/* Exact identity for one pure tensor constant whose executable definition is
+ * dead after its consumers have been lowered or retired. No image row changes. */
+typedef struct {
+    ST_IDX owner_pu_st;
+    WN *native_definition;
+    DSL_IR_NODE_ID node_id;
+    DSL_IR_VALUE_ID value_id;
+    ST_IDX st;
+    TY_IDX ty;
+    UINT16 expected_version;
+    UINT16 reserved;
+} DSL_IR_DEAD_NATIVE_CONSTANT_REQUEST;
+
 /* One owner-PU transaction may retire pure private definitions for each
  * checked standard-WHIRL replacement. Requests and detached blocks remain
  * caller-owned on rejection; success consumes the detached blocks. */
@@ -1309,6 +1322,15 @@ extern BOOL DSL_IR_Lower_Native_Values_To_Standard_Blocks
                                  UINT32 request_count,
                                  FILE *diagnostic,
                                  DSL_IR_NATIVE_VALUE_LOWER_RESULT *results);
+/* Batch preflight then elide dead pure tensor-constant definitions in one PU.
+ * Rejection leaves the WHIRL tree and logical image unchanged. */
+extern BOOL DSL_IR_Elide_Dead_Native_Constants
+                                (PU_Info *pu_info,
+                                 const DSL_IR_DEAD_NATIVE_CONSTANT_REQUEST
+                                     *requests,
+                                 UINT32 request_count,
+                                 FILE *diagnostic,
+                                 UINT32 *elided_count);
 /* Complete-array grouped lowering consumes detached blocks only on success. */
 extern BOOL DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
                                 (PU_Info *pu_info,

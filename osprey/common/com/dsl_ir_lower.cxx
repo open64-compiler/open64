@@ -7,12 +7,16 @@
  */
 
 #include <algorithm>
+#include <map>
+#include <set>
+#include <string>
 #include <string.h>
 #include <vector>
 
 #include "dsl_memory_behavior.h"
 #include "dsl_ir_image.h"
 #include "dsl_ir_lower_internal.h"
+#include "dsl_ir_transaction_internal.h"
 #include "dsl_region.h"
 #include "dsl_region_internal.h"
 #include "pu_info.h"
@@ -32,47 +36,85 @@ DSL_IR_Lower_Current_PU_Is (PU_Info *pu_info)
     return pu_info != NULL && Current_PU_Info == pu_info;
 }
 
-/* Find the innermost BLOCK that directly or recursively contains a statement. */
-static WN *
-DSL_IR_Lower_Find_Containing_Block (WN *tree, const WN *target)
+typedef std::map<const WN *, UINT32> DSL_IR_LOWER_DEFINITION_INDEX;
+
+typedef struct {
+    WN *containing_block;
+    UINT32 tree_order;
+    UINT32 occurrences;
+} DSL_IR_LOWER_TREE_POSITION;
+
+/* One preorder walk locates every requested definition and attached block. */
+static void
+DSL_IR_Lower_Index_Tree
+        (WN *tree, WN *containing_block,
+         const DSL_IR_LOWER_DEFINITION_INDEX &definitions,
+         const std::set<const WN *> &standard_blocks,
+         std::vector<DSL_IR_LOWER_TREE_POSITION> *positions,
+         std::set<const WN *> *attached_blocks,
+         UINT32 *next_order)
 {
-    if (tree == NULL || target == NULL)
-        return NULL;
+    if (tree == NULL)
+        return;
+    UINT32 order = (*next_order)++;
+    DSL_IR_LOWER_DEFINITION_INDEX::const_iterator found =
+        definitions.find(tree);
+    if (found != definitions.end()) {
+        DSL_IR_LOWER_TREE_POSITION &position = (*positions)[found->second];
+        position.containing_block = containing_block;
+        position.tree_order = order;
+        ++position.occurrences;
+    }
+    if (standard_blocks.find(tree) != standard_blocks.end())
+        attached_blocks->insert(tree);
     if (WN_operator(tree) == OPR_BLOCK) {
-        for (WN *current = WN_first(tree); current != NULL;
-             current = WN_next(current)) {
-            if (current == target)
-                return tree;
-            WN *containing = DSL_IR_Lower_Find_Containing_Block
-                                  (current, target);
-            if (containing != NULL)
-                return containing;
-        }
-        return NULL;
+        for (WN *stmt = WN_first(tree); stmt != NULL;
+             stmt = WN_next(stmt))
+            DSL_IR_Lower_Index_Tree
+                (stmt, tree, definitions, standard_blocks, positions,
+                 attached_blocks, next_order);
+        return;
     }
-    for (INT32 i = 0; i < WN_kid_count(tree); ++i) {
-        WN *containing = DSL_IR_Lower_Find_Containing_Block
-                              (WN_kid(tree, i), target);
-        if (containing != NULL)
-            return containing;
-    }
-    return NULL;
+    for (INT32 i = 0; i < WN_kid_count(tree); ++i)
+        DSL_IR_Lower_Index_Tree
+            (WN_kid(tree, i), NULL, definitions, standard_blocks,
+             positions, attached_blocks, next_order);
 }
 
-/* Resolve a native definition to its image value, including promoted sources. */
+typedef std::map<std::pair<ST_IDX, std::string>,
+                 std::vector<DSL_IR_VALUE_RECORD> > DSL_IR_LOWER_VALUE_INDEX;
+
+/* Preserve Find_PU_Value's owner/name and duplicate semantics in one pass. */
+static BOOL
+DSL_IR_Lower_Build_Value_Index
+        (PU_Info *pu_info, DSL_IR_LOWER_VALUE_INDEX *values)
+{
+    std::string owner_metadata("owner_pu=");
+    owner_metadata += ST_name(St_Table[PU_Info_proc_sym(pu_info)]);
+    for (UINT32 id = 1; id <= DSL_IR_Image_Value_Count(); ++id) {
+        DSL_IR_VALUE_RECORD value;
+        if (!DSL_IR_Image_Get_Value(id, &value))
+            return FALSE;
+        if (value.name == STR_IDX_ZERO || value.metadata == STR_IDX_ZERO ||
+            owner_metadata != Index_To_Str(value.metadata))
+            continue;
+        std::pair<ST_IDX, std::string> key
+            (value.st, Index_To_Str(value.name));
+        (*values)[key].push_back(value);
+    }
+    return TRUE;
+}
+
+/* Resolve a native definition by exact value ID without rescanning values. */
 static BOOL
 DSL_IR_Lower_Find_Native_Definition_Value
-        (PU_Info *pu_info,
-         const WN *definition,
+        (const WN *definition,
+         DSL_IR_VALUE_ID value_id,
          UINT32 mode,
+         const DSL_IR_LOWER_VALUE_INDEX &values,
          DSL_IR_VALUE_RECORD *value_record)
 {
-    if (DSL_IR_Image_Find_Definition_Value
-            (pu_info, definition, value_record))
-        return TRUE;
-    if ((mode != DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION &&
-         mode != DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION) ||
-        definition == NULL || WN_operator(definition) != OPR_STID ||
+    if (definition == NULL || WN_operator(definition) != OPR_STID ||
         WN_kid_count(definition) != 1 || WN_kid0(definition) == NULL ||
         !DSL_WN_Is_Native(WN_kid0(definition)))
         return FALSE;
@@ -81,19 +123,28 @@ DSL_IR_Lower_Find_Native_Definition_Value
             (WN_kid0(definition), &logical_opcode, NULL))
         return FALSE;
     ST_IDX st = WN_st_idx(definition);
-    DSL_IR_VALUE_RECORD value;
-    DSL_IR_NODE_RECORD node;
-    DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
-    ST_IDX owner_pu_st = PU_Info_proc_sym(pu_info);
     if (ST_IDX_level(st) != CURRENT_SYMTAB || ST_IDX_index(st) == 0 ||
         ST_IDX_index(st) >= ST_Table_Size(CURRENT_SYMTAB) ||
-        ST_type(St_Table[st]) != WN_ty(definition) ||
-        !DSL_IR_Image_Find_PU_Value
-            (st, ST_name(St_Table[st]), ST_name(St_Table[owner_pu_st]),
-             &value) ||
-        value.value_kind != DSL_IR_VALUE_CONSTANT || value.st != st ||
-        value.ty != WN_ty(definition) ||
-        !DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
+        ST_type(St_Table[st]) != WN_ty(definition))
+        return FALSE;
+    std::pair<ST_IDX, std::string> key(st, ST_name(St_Table[st]));
+    DSL_IR_LOWER_VALUE_INDEX::const_iterator found = values.find(key);
+    if (found == values.end() || found->second.size() != 1 ||
+        found->second[0].id != value_id)
+        return FALSE;
+    const DSL_IR_VALUE_RECORD &value = found->second[0];
+    if (value.st != st || value.ty != WN_ty(definition) ||
+        (value.value_kind == DSL_IR_VALUE_OPERATOR_RESULT &&
+         !DSL_IR_Image_Current_PU_Is
+             (PU_Info_proc_sym(Current_PU_Info))) ||
+        (value.value_kind != DSL_IR_VALUE_OPERATOR_RESULT &&
+         ((mode != DSL_IR_NATIVE_LOWER_PROMOTED_SOURCE_ELISION &&
+           mode != DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION) ||
+          value.value_kind != DSL_IR_VALUE_CONSTANT)))
+        return FALSE;
+    DSL_IR_NODE_RECORD node;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
+    if (!DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
         node.result_value_id != value.id ||
         !DSL_IR_Image_Get_Opcode_Descriptor
             (node.opcode_descriptor_id, &opcode) ||
@@ -123,119 +174,20 @@ DSL_IR_Lower_Report
     return FALSE;
 }
 
-/* Test whether a detached standard block is already attached to the PU tree. */
-static BOOL
-DSL_IR_Lower_Tree_Contains (const WN *tree, const WN *target)
-{
-    if (tree == NULL)
-        return FALSE;
-    if (tree == target)
-        return TRUE;
-    if (WN_operator(tree) == OPR_BLOCK) {
-        for (const WN *stmt = WN_first(tree); stmt != NULL;
-             stmt = WN_next(stmt)) {
-            if (DSL_IR_Lower_Tree_Contains(stmt, target))
-                return TRUE;
-        }
-        return FALSE;
-    }
-    for (INT32 i = 0; i < WN_kid_count(tree); ++i) {
-        if (DSL_IR_Lower_Tree_Contains(WN_kid(tree, i), target))
-            return TRUE;
-    }
-    return FALSE;
-}
-
-/* A dead local projection must have no executable use or definition. */
-static BOOL
-DSL_IR_Lower_Tree_Uses_ST (const WN *tree, ST_IDX st)
-{
-    if (tree == NULL)
-        return FALSE;
-    if (WN_has_sym(tree) && WN_st_idx(tree) == st)
-        return TRUE;
-    if (WN_operator(tree) == OPR_BLOCK) {
-        for (const WN *stmt = WN_first(tree); stmt != NULL;
-             stmt = WN_next(stmt)) {
-            if (DSL_IR_Lower_Tree_Uses_ST(stmt, st))
-                return TRUE;
-        }
-        return FALSE;
-    }
-    for (INT32 i = 0; i < WN_kid_count(tree); ++i) {
-        if (DSL_IR_Lower_Tree_Uses_ST(WN_kid(tree, i), st))
-            return TRUE;
-    }
-    return FALSE;
-}
-
-/* Assign deterministic preorder positions used to order physical commits. */
-static BOOL
-DSL_IR_Lower_Find_Tree_Order
-        (const WN *tree,
-         const WN *target,
-         UINT32 *next_order,
-         UINT32 *target_order)
-{
-    if (tree == NULL)
-        return FALSE;
-    UINT32 order = (*next_order)++;
-    if (tree == target) {
-        *target_order = order;
-        return TRUE;
-    }
-    if (WN_operator(tree) == OPR_BLOCK) {
-        for (const WN *stmt = WN_first(tree); stmt != NULL;
-             stmt = WN_next(stmt)) {
-            if (DSL_IR_Lower_Find_Tree_Order
-                    (stmt, target, next_order, target_order))
-                return TRUE;
-        }
-        return FALSE;
-    }
-    for (INT32 i = 0; i < WN_kid_count(tree); ++i) {
-        if (DSL_IR_Lower_Find_Tree_Order
-                (WN_kid(tree, i), target, next_order, target_order))
-            return TRUE;
-    }
-    return FALSE;
-}
-
-/* Locate a journal entry by its native definition during source-use scans. */
-static const DSL_IR_NATIVE_VALUE_LOWER_JOURNAL *
-DSL_IR_Lower_Find_Definition
-        (const std::vector<DSL_IR_NATIVE_VALUE_LOWER_JOURNAL> &journal,
-         const WN *definition)
-{
-    for (UINT32 i = 0; i < journal.size(); ++i) {
-        if (journal[i].request->native_definition == definition)
-            return &journal[i];
-    }
-    return NULL;
-}
-
-/* Locate a journal entry by logical node identity during closure checks. */
-static const DSL_IR_NATIVE_VALUE_LOWER_JOURNAL *
-DSL_IR_Lower_Find_Node
-        (const std::vector<DSL_IR_NATIVE_VALUE_LOWER_JOURNAL> &journal,
-         DSL_IR_NODE_ID node_id)
-{
-    for (UINT32 i = 0; i < journal.size(); ++i) {
-        if (journal[i].node.id == node_id)
-            return &journal[i];
-    }
-    return NULL;
-}
-
 /* Retired ABI rows preserve provenance but no longer require a live actual. */
 static BOOL
 DSL_IR_Lower_Call_Argument_Is_Verified_Dead
-        (const DSL_CALL_ARGUMENT_RECORD &argument)
+        (const DSL_CALL_ARGUMENT_RECORD &argument,
+         const std::map<DSL_CALL_ARGUMENT_ID,
+                        DSL_RETIRED_CALL_ARGUMENT_RECORD> &retired_calls)
 {
-    DSL_RETIRED_CALL_ARGUMENT_RECORD retired;
-    return DSL_Program_Interface_Image_Find_Retired_Call
-               (argument.id, &retired) &&
-           retired.call_argument_id == argument.id &&
+    std::map<DSL_CALL_ARGUMENT_ID,
+             DSL_RETIRED_CALL_ARGUMENT_RECORD>::const_iterator found =
+        retired_calls.find(argument.id);
+    if (found == retired_calls.end())
+        return FALSE;
+    const DSL_RETIRED_CALL_ARGUMENT_RECORD &retired = found->second;
+    return retired.call_argument_id == argument.id &&
            retired.callsite_id == argument.callsite_id &&
            retired.argument_value_id == argument.argument_value_id &&
            retired.old_actual_ordinal == argument.actual_ordinal &&
@@ -245,47 +197,50 @@ DSL_IR_Lower_Call_Argument_Is_Verified_Dead
                DSL_INTERFACE_RETIREMENT_VERIFIED_DEAD_INPUT;
 }
 
-/* Reject source-symbol reads, definitions, and escapes outside this transaction. */
-typedef struct {
-    ST_IDX source_st;
-    const WN *source_definition;
-    const std::vector<DSL_IR_NATIVE_VALUE_LOWER_JOURNAL> *journal;
-    UINT32 definition_count;
-    BOOL valid;
-} DSL_IR_LOWER_SOURCE_USE_SCAN;
-
+/* One walk checks source uses and dead local projections for the entire batch. */
 static void
-DSL_IR_Lower_Scan_Source_Uses
-        (const WN *tree,
-         const WN *native_definition,
-         DSL_IR_LOWER_SOURCE_USE_SCAN *scan)
+DSL_IR_Lower_Scan_All_Source_Uses
+        (const WN *tree, const WN *native_definition,
+         const DSL_IR_LOWER_DEFINITION_INDEX &definitions,
+         const std::map<ST_IDX, UINT32> &source_symbols,
+         std::vector<BOOL> *valid,
+         std::set<ST_IDX> *used_symbols)
 {
-    if (tree == NULL || !scan->valid)
+    if (tree == NULL)
         return;
     const WN *enclosing_definition = native_definition;
     if (WN_operator(tree) == OPR_STID && WN_kid_count(tree) == 1 &&
         WN_kid0(tree) != NULL && DSL_WN_Is_Native(WN_kid0(tree)))
         enclosing_definition = tree;
-    if (tree == scan->source_definition)
-        ++scan->definition_count;
-    if (WN_has_sym(tree) && WN_st_idx(tree) == scan->source_st) {
-        BOOL source_definition = tree == scan->source_definition;
-        BOOL request_operand = WN_operator(tree) == OPR_LDID &&
-            enclosing_definition != NULL &&
-            DSL_IR_Lower_Find_Definition
-                (*scan->journal, enclosing_definition) != NULL;
-        if (!source_definition && !request_operand)
-            scan->valid = FALSE;
+    if (WN_has_sym(tree)) {
+        ST_IDX st = WN_st_idx(tree);
+        used_symbols->insert(st);
+        std::map<ST_IDX, UINT32>::const_iterator found =
+            source_symbols.find(st);
+        if (found != source_symbols.end()) {
+            DSL_IR_LOWER_DEFINITION_INDEX::const_iterator own =
+                definitions.find(tree);
+            BOOL own_definition = own != definitions.end() &&
+                own->second == found->second;
+            BOOL request_operand = WN_operator(tree) == OPR_LDID &&
+                enclosing_definition != NULL &&
+                definitions.find(enclosing_definition) != definitions.end();
+            if (!own_definition && !request_operand)
+                (*valid)[found->second] = FALSE;
+        }
     }
     if (WN_operator(tree) == OPR_BLOCK) {
         for (const WN *stmt = WN_first(tree); stmt != NULL;
              stmt = WN_next(stmt))
-            DSL_IR_Lower_Scan_Source_Uses(stmt, NULL, scan);
+            DSL_IR_Lower_Scan_All_Source_Uses
+                (stmt, NULL, definitions, source_symbols, valid,
+                 used_symbols);
         return;
     }
     for (INT32 i = 0; i < WN_kid_count(tree); ++i)
-        DSL_IR_Lower_Scan_Source_Uses
-            (WN_kid(tree, i), enclosing_definition, scan);
+        DSL_IR_Lower_Scan_All_Source_Uses
+            (WN_kid(tree, i), enclosing_definition, definitions,
+             source_symbols, valid, used_symbols);
 }
 
 /* Validate a detached replacement block and its sole final handle definition. */
@@ -322,41 +277,101 @@ DSL_IR_Lower_Scan_Standard_Block
         DSL_IR_Lower_Scan_Standard_Block(WN_kid(tree, i), scan);
 }
 
-/* Prove that every logical value reference is lowered or in this request set. */
+typedef struct {
+    std::map<DSL_IR_VALUE_ID,
+             std::vector<DSL_RUNTIME_VALUE_PROJECTION_RECORD> > projections;
+    std::map<DSL_IR_VALUE_ID,
+             std::vector<DSL_RUNTIME_INPUT_RECORD> > inputs;
+    std::map<DSL_IR_VALUE_ID,
+             std::vector<DSL_RUNTIME_CALL_PROJECTION_RECORD> > calls;
+    std::set<DSL_RUNTIME_VALUE_PROJECTION_ID> call_projection_ids;
+    std::map<std::pair<DSL_CALLSITE_METADATA_ID, UINT32>,
+             DSL_RUNTIME_CALL_PROJECTION_RECORD> calls_by_actual;
+    std::map<DSL_IR_VALUE_ID,
+             std::vector<DSL_CALL_ARGUMENT_RECORD> > arguments;
+    std::map<DSL_CALL_ARGUMENT_ID,
+             DSL_RETIRED_CALL_ARGUMENT_RECORD> retired_calls;
+} DSL_IR_LOWER_RELATION_INDEX;
+
+/* Snapshot runtime relations once; every request observes the same tables. */
+static BOOL
+DSL_IR_Lower_Build_Relation_Index (DSL_IR_LOWER_RELATION_INDEX *index)
+{
+    for (UINT32 id = 1; id <= DSL_Runtime_Interface_Image_Value_Count();
+         ++id) {
+        DSL_RUNTIME_VALUE_PROJECTION_RECORD record;
+        if (!DSL_Runtime_Interface_Image_Get_Value(id, &record))
+            return FALSE;
+        index->projections[record.source_value_id].push_back(record);
+    }
+    for (UINT32 id = 1;
+         id <= DSL_Program_Interface_Image_Runtime_Input_Count(); ++id) {
+        DSL_RUNTIME_INPUT_RECORD record;
+        if (!DSL_Program_Interface_Image_Get_Runtime_Input(id, &record))
+            return FALSE;
+        index->inputs[record.source_value_id].push_back(record);
+    }
+    for (UINT32 id = 1; id <= DSL_Runtime_Interface_Image_Call_Count();
+         ++id) {
+        DSL_RUNTIME_CALL_PROJECTION_RECORD record;
+        if (!DSL_Runtime_Interface_Image_Get_Call(id, &record))
+            return FALSE;
+        index->calls[record.source_value_id].push_back(record);
+        index->call_projection_ids.insert(record.value_projection_id);
+        index->calls_by_actual.insert
+            (std::make_pair
+                (std::make_pair(record.callsite_id, record.actual_ordinal),
+                 record));
+    }
+    for (UINT32 id = 1; id <= DSL_Call_ABI_Image_Argument_Count(); ++id) {
+        DSL_CALL_ARGUMENT_RECORD record;
+        if (!DSL_Call_ABI_Image_Get_Argument(id, &record))
+            return FALSE;
+        index->arguments[record.argument_value_id].push_back(record);
+    }
+    for (UINT32 id = 1;
+         id <= DSL_Program_Interface_Image_Retired_Call_Count(); ++id) {
+        DSL_RETIRED_CALL_ARGUMENT_RECORD record;
+        if (!DSL_Program_Interface_Image_Get_Retired_Call(id, &record))
+            return FALSE;
+        index->retired_calls.insert
+            (std::make_pair(record.call_argument_id, record));
+    }
+    return TRUE;
+}
+
+/* Prove logical and call-ABI closure using the batch's indexed relations. */
 static BOOL
 DSL_IR_Lower_Logical_Uses_Closed
         (const DSL_IR_NATIVE_VALUE_LOWER_JOURNAL &entry,
-         const std::vector<DSL_IR_NATIVE_VALUE_LOWER_JOURNAL> &journal)
+         const DSL_IR_LOWER_RELATION_INDEX &relations,
+         const std::map<DSL_IR_VALUE_ID, BOOL> &references_closed)
 {
-    for (UINT32 i = 1; i <= DSL_IR_Image_Value_Reference_Count(); ++i) {
-        DSL_IR_VALUE_REFERENCE_RECORD reference;
-        DSL_IR_NODE_RECORD owner;
-        if (!DSL_IR_Image_Get_Value_Reference(i, &reference) ||
-            reference.value_id != entry.value.id)
-            continue;
-        if (!DSL_IR_Image_Get_Node(reference.owner_node_id, &owner))
-            return FALSE;
-        if ((owner.flags & (DSL_IR_NODE_FLAG_RETIRED |
-                            DSL_IR_NODE_FLAG_LOWERED |
-                            DSL_IR_NODE_FLAG_DEAD_ELIDED)) == 0 &&
-            DSL_IR_Lower_Find_Node(journal, owner.id) == NULL)
-            return FALSE;
-    }
-    for (UINT32 i = 1; i <= DSL_Call_ABI_Image_Argument_Count(); ++i) {
-        DSL_CALL_ARGUMENT_RECORD argument;
-        if (!DSL_Call_ABI_Image_Get_Argument(i, &argument) ||
-            argument.argument_value_id != entry.value.id)
-            continue;
+    std::map<DSL_IR_VALUE_ID, BOOL>::const_iterator closed =
+        references_closed.find(entry.value.id);
+    if (closed != references_closed.end() && !closed->second)
+        return FALSE;
+    std::map<DSL_IR_VALUE_ID,
+             std::vector<DSL_CALL_ARGUMENT_RECORD> >::const_iterator args =
+        relations.arguments.find(entry.value.id);
+    if (args == relations.arguments.end())
+        return TRUE;
+    for (UINT32 i = 0; i < args->second.size(); ++i) {
+        const DSL_CALL_ARGUMENT_RECORD &argument = args->second[i];
         if (entry.request->mode ==
                 DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION) {
-            if (!DSL_IR_Lower_Call_Argument_Is_Verified_Dead(argument))
+            if (!DSL_IR_Lower_Call_Argument_Is_Verified_Dead
+                    (argument, relations.retired_calls))
                 return FALSE;
             continue;
         }
-        DSL_RUNTIME_CALL_PROJECTION_RECORD call;
-        if (!DSL_Runtime_Interface_Image_Find_Call
-                (argument.callsite_id, argument.actual_ordinal, &call) ||
-            call.source_value_id != entry.value.id)
+        std::pair<DSL_CALLSITE_METADATA_ID, UINT32> key
+            (argument.callsite_id, argument.actual_ordinal);
+        std::map<std::pair<DSL_CALLSITE_METADATA_ID, UINT32>,
+                 DSL_RUNTIME_CALL_PROJECTION_RECORD>::const_iterator call =
+            relations.calls_by_actual.find(key);
+        if (call == relations.calls_by_actual.end() ||
+            call->second.source_value_id != entry.value.id)
             return FALSE;
     }
     return TRUE;
@@ -368,6 +383,7 @@ DSL_IR_Lower_Relation_Resolve
         (ST_IDX owner_pu_st,
          const DSL_IR_NATIVE_VALUE_LOWER_REQUEST &request,
          const DSL_IR_VALUE_RECORD &value,
+         const DSL_IR_LOWER_RELATION_INDEX &relations,
          ST_IDX *handle_st,
          TY_IDX *handle_ty,
          ST_IDX *local_projection_st,
@@ -385,55 +401,47 @@ DSL_IR_Lower_Relation_Resolve
             value.value_kind != DSL_IR_VALUE_CONSTANT)
             return FALSE;
         UINT32 projection_count = 0;
-        for (UINT32 i = 1;
-             i <= DSL_Runtime_Interface_Image_Value_Count(); ++i) {
-            DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
-            if (!DSL_Runtime_Interface_Image_Get_Value(i, &projection))
-                return FALSE;
-            if (projection.source_value_id != value.id)
-                continue;
-            if (++projection_count > 1 ||
-                projection.owner_pu_st != owner_pu_st ||
-                projection.source_st != value.st ||
-                projection.source_ty != value.ty ||
-                projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE ||
-                ST_IDX_level(projection.handle_st) != CURRENT_SYMTAB ||
-                ST_IDX_index(projection.handle_st) == 0 ||
-                ST_IDX_index(projection.handle_st) >=
-                    ST_Table_Size(CURRENT_SYMTAB) ||
-                ST_sclass(St_Table[projection.handle_st]) != SCLASS_AUTO ||
-                ST_type(St_Table[projection.handle_st]) !=
-                    projection.handle_ty ||
-                projection.handle_st == value.st)
-                return FALSE;
-            *local_projection_st = projection.handle_st;
-            *local_projection_id = projection.id;
+        std::map<DSL_IR_VALUE_ID,
+                 std::vector<DSL_RUNTIME_VALUE_PROJECTION_RECORD> >
+            ::const_iterator projections = relations.projections.find(value.id);
+        if (projections != relations.projections.end()) {
+            for (UINT32 i = 0; i < projections->second.size(); ++i) {
+                const DSL_RUNTIME_VALUE_PROJECTION_RECORD &projection =
+                    projections->second[i];
+                if (++projection_count > 1 ||
+                    projection.owner_pu_st != owner_pu_st ||
+                    projection.source_st != value.st ||
+                    projection.source_ty != value.ty ||
+                    projection.binding_kind !=
+                        DSL_RUNTIME_BINDING_LOCAL_VALUE ||
+                    ST_IDX_level(projection.handle_st) != CURRENT_SYMTAB ||
+                    ST_IDX_index(projection.handle_st) == 0 ||
+                    ST_IDX_index(projection.handle_st) >=
+                        ST_Table_Size(CURRENT_SYMTAB) ||
+                    ST_sclass(St_Table[projection.handle_st]) !=
+                        SCLASS_AUTO ||
+                    ST_type(St_Table[projection.handle_st]) !=
+                        projection.handle_ty ||
+                    projection.handle_st == value.st)
+                    return FALSE;
+                *local_projection_st = projection.handle_st;
+                *local_projection_id = projection.id;
+            }
         }
-        for (UINT32 i = 1;
-             i <= DSL_Program_Interface_Image_Runtime_Input_Count(); ++i) {
-            DSL_RUNTIME_INPUT_RECORD input;
-            if (!DSL_Program_Interface_Image_Get_Runtime_Input(i, &input) ||
-                input.source_value_id == value.id)
-                return FALSE;
-        }
-        for (UINT32 i = 1;
-             i <= DSL_Runtime_Interface_Image_Call_Count(); ++i) {
-            DSL_RUNTIME_CALL_PROJECTION_RECORD call;
-            if (!DSL_Runtime_Interface_Image_Get_Call(i, &call) ||
-                call.source_value_id == value.id ||
-                (projection_count == 1 &&
-                 call.value_projection_id == *local_projection_id))
-                return FALSE;
-        }
-        for (UINT32 i = 1;
-             i <= DSL_Call_ABI_Image_Argument_Count(); ++i) {
-            DSL_CALL_ARGUMENT_RECORD argument;
-            if (!DSL_Call_ABI_Image_Get_Argument(i, &argument))
-                return FALSE;
-            if (argument.argument_value_id == value.id &&
-                !DSL_IR_Lower_Call_Argument_Is_Verified_Dead(argument))
-                return FALSE;
-        }
+        if (relations.inputs.find(value.id) != relations.inputs.end() ||
+            relations.calls.find(value.id) != relations.calls.end() ||
+            (projection_count == 1 &&
+             relations.call_projection_ids.find(*local_projection_id) !=
+                 relations.call_projection_ids.end()))
+            return FALSE;
+        std::map<DSL_IR_VALUE_ID,
+                 std::vector<DSL_CALL_ARGUMENT_RECORD> >::const_iterator
+            arguments = relations.arguments.find(value.id);
+        if (arguments != relations.arguments.end())
+            for (UINT32 i = 0; i < arguments->second.size(); ++i)
+                if (!DSL_IR_Lower_Call_Argument_Is_Verified_Dead
+                        (arguments->second[i], relations.retired_calls))
+                    return FALSE;
         *handle_st = ST_IDX_ZERO;
         *handle_ty = TY_IDX_ZERO;
         return TRUE;
@@ -456,13 +464,8 @@ DSL_IR_Lower_Relation_Resolve
             projection.source_ty != value.ty ||
             projection.binding_kind != DSL_RUNTIME_BINDING_LOCAL_VALUE)
             return FALSE;
-        for (UINT32 i = 1;
-             i <= DSL_Program_Interface_Image_Runtime_Input_Count(); ++i) {
-            DSL_RUNTIME_INPUT_RECORD input;
-            if (DSL_Program_Interface_Image_Get_Runtime_Input(i, &input) &&
-                input.source_value_id == value.id)
-                return FALSE;
-        }
+        if (relations.inputs.find(value.id) != relations.inputs.end())
+            return FALSE;
         *handle_st = projection.handle_st;
         *handle_ty = projection.handle_ty;
         return TRUE;
@@ -494,16 +497,19 @@ DSL_IR_Lower_Relation_Resolve
         return FALSE;
     DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
     UINT32 projection_count = 0;
-    for (UINT32 i = 1;
-         i <= DSL_Runtime_Interface_Image_Value_Count(); ++i) {
-        DSL_RUNTIME_VALUE_PROJECTION_RECORD current;
-        if (!DSL_Runtime_Interface_Image_Get_Value(i, &current))
-            return FALSE;
-        if (current.owner_pu_st != owner_pu_st ||
-            current.source_value_id != value.id)
-            continue;
-        projection = current;
-        ++projection_count;
+    std::map<DSL_IR_VALUE_ID,
+             std::vector<DSL_RUNTIME_VALUE_PROJECTION_RECORD> >
+        ::const_iterator projections = relations.projections.find(value.id);
+    if (projections != relations.projections.end()) {
+        for (UINT32 i = 0; i < projections->second.size(); ++i) {
+            const DSL_RUNTIME_VALUE_PROJECTION_RECORD &current =
+                projections->second[i];
+            if (current.owner_pu_st != owner_pu_st ||
+                current.source_value_id != value.id)
+                continue;
+            projection = current;
+            ++projection_count;
+        }
     }
     if (projection_count > 1 ||
         (projection_count == 1 &&
@@ -564,24 +570,60 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
         return DSL_IR_Lower_Report(diagnostic, 0, "transaction is incomplete");
 
     /* Prove the complete physical/logical replacement set before mutation. */
+    DSL_IR_LOWER_VALUE_INDEX values;
+    if (!DSL_IR_Lower_Build_Value_Index(pu_info, &values))
+        return DSL_IR_Lower_Report
+                   (diagnostic, 0, "value indexing failed");
+    DSL_IR_LOWER_RELATION_INDEX relations;
+    if (!DSL_IR_Lower_Build_Relation_Index(&relations))
+        return DSL_IR_Lower_Report
+                   (diagnostic, 0, "runtime relation indexing failed");
+    DSL_IR_LOWER_DEFINITION_INDEX definitions;
+    std::set<const WN *> standard_blocks;
+    std::set<const WN *> handle_definitions;
+    for (UINT32 i = 0; i < request_count; ++i) {
+        const DSL_IR_NATIVE_VALUE_LOWER_REQUEST &request = requests[i];
+        if (request.native_definition == NULL ||
+            !definitions.insert
+                (std::make_pair(request.native_definition, i)).second ||
+            (request.standard_block != NULL &&
+             !standard_blocks.insert(request.standard_block).second) ||
+            (request.standard_block != NULL &&
+             WN_operator(request.standard_block) == OPR_BLOCK &&
+             WN_last(request.standard_block) != NULL &&
+             !handle_definitions.insert
+                 (WN_last(request.standard_block)).second))
+            return DSL_IR_Lower_Report
+                       (diagnostic, i, "duplicate transaction member");
+    }
+    std::vector<DSL_IR_LOWER_TREE_POSITION> positions(request_count);
+    std::set<const WN *> attached_blocks;
+    UINT32 next_order = 0;
+    DSL_IR_Lower_Index_Tree
+        (pu_root, NULL, definitions, standard_blocks, &positions,
+         &attached_blocks, &next_order);
     std::vector<DSL_IR_NATIVE_VALUE_LOWER_JOURNAL> journal;
+    std::set<DSL_IR_VALUE_ID> value_ids;
+    std::set<DSL_IR_NODE_ID> node_ids;
+    std::map<ST_IDX, UINT32> source_symbols;
     for (UINT32 i = 0; i < request_count; ++i) {
         const DSL_IR_NATIVE_VALUE_LOWER_REQUEST &request = requests[i];
         DSL_IR_NATIVE_VALUE_LOWER_JOURNAL entry;
         memset(&entry, 0, sizeof(entry));
         entry.request = &request;
         entry.request_index = i;
-        entry.containing_block = DSL_IR_Lower_Find_Containing_Block
-                                    (pu_root, request.native_definition);
+        entry.containing_block = positions[i].containing_block;
+        entry.tree_order = positions[i].tree_order;
         if (request.standard_block != NULL &&
             WN_operator(request.standard_block) == OPR_BLOCK)
             entry.result_handle_definition = WN_last(request.standard_block);
-        if (request.reserved != 0 || entry.containing_block == NULL)
+        if (request.reserved != 0 || entry.containing_block == NULL ||
+            positions[i].occurrences != 1)
             return DSL_IR_Lower_Report
                        (diagnostic, i, "PU or containing block mismatch");
         if (!DSL_IR_Lower_Find_Native_Definition_Value
-                (pu_info, request.native_definition, request.mode,
-                 &entry.value) ||
+                (request.native_definition, request.source_value_id,
+                 request.mode, values, &entry.value) ||
             entry.value.id != request.source_value_id)
             return DSL_IR_Lower_Report
                        (diagnostic, i, "native definition identity mismatch");
@@ -603,62 +645,76 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
             return DSL_IR_Lower_Report
                        (diagnostic, i, "source ownership or use mismatch");
         if (!DSL_IR_Lower_Relation_Resolve
-                (owner_pu_st, request, entry.value,
+                (owner_pu_st, request, entry.value, relations,
                  &entry.handle_st, &entry.handle_ty,
                  &entry.local_projection_st,
                  &entry.local_projection_id))
             return DSL_IR_Lower_Report
                        (diagnostic, i, "runtime relation mismatch");
-        UINT32 order = 0;
-        if (!DSL_IR_Lower_Find_Tree_Order
-                (pu_root, request.native_definition, &order,
-                 &entry.tree_order))
+        if (!value_ids.insert(entry.value.id).second ||
+            !node_ids.insert(entry.node.id).second ||
+            !source_symbols.insert
+                (std::make_pair(entry.value.st, i)).second)
             return DSL_IR_Lower_Report
-                       (diagnostic, i, "definition is outside the PU tree");
-        for (UINT32 j = 0; j < journal.size(); ++j) {
-            if (journal[j].value.id == entry.value.id ||
-                journal[j].node.id == entry.node.id ||
-                journal[j].request->native_definition ==
-                    request.native_definition ||
-                (request.standard_block != NULL &&
-                 journal[j].request->standard_block ==
-                    request.standard_block) ||
-                (entry.result_handle_definition != NULL &&
-                 journal[j].result_handle_definition ==
-                    entry.result_handle_definition))
-                return DSL_IR_Lower_Report
-                           (diagnostic, i, "duplicate transaction member");
-        }
+                       (diagnostic, i, "duplicate transaction member");
         journal.push_back(entry);
+    }
+
+    std::map<DSL_IR_VALUE_ID, BOOL> references_closed;
+    for (UINT32 id = 1; id <= DSL_IR_Image_Value_Reference_Count(); ++id) {
+        DSL_IR_VALUE_REFERENCE_RECORD reference;
+        if (!DSL_IR_Image_Get_Value_Reference(id, &reference))
+            return DSL_IR_Lower_Report
+                       (diagnostic, 0, "value-reference indexing failed");
+        if (value_ids.find(reference.value_id) == value_ids.end())
+            continue;
+        DSL_IR_NODE_RECORD owner;
+        if (!DSL_IR_Image_Get_Node(reference.owner_node_id, &owner))
+            references_closed[reference.value_id] = FALSE;
+        else if ((owner.flags & (DSL_IR_NODE_FLAG_RETIRED |
+                                 DSL_IR_NODE_FLAG_LOWERED |
+                                 DSL_IR_NODE_FLAG_DEAD_ELIDED)) == 0 &&
+                 node_ids.find(owner.id) == node_ids.end())
+            references_closed[reference.value_id] = FALSE;
+    }
+
+    std::vector<BOOL> source_uses_valid(request_count, TRUE);
+    std::set<ST_IDX> used_symbols;
+    DSL_IR_Lower_Scan_All_Source_Uses
+        (pu_root, NULL, definitions, source_symbols, &source_uses_valid,
+         &used_symbols);
+    std::set<DSL_IR_NODE_ID> effected_nodes;
+    for (UINT32 id = 1; id <= DSL_Effect_Image_State_Effect_Count(); ++id) {
+        DSL_STATE_EFFECT_RECORD effect;
+        if (!DSL_Effect_Image_Get_State_Effect(id, &effect))
+            return DSL_IR_Lower_Report
+                       (diagnostic, 0, "state-effect indexing failed");
+        effected_nodes.insert(effect.owner_node_id);
+    }
+    std::map<ST_IDX, UINT32> region_symbol_uses;
+    for (UINT32 id = 1; id <= DSL_Region_Interface_Count(pu_info); ++id) {
+        DSL_REGION_INTERFACE_RECORD interface_record;
+        if (!DSL_Region_Get_Interface(pu_info, id, &interface_record))
+            return DSL_IR_Lower_Report
+                       (diagnostic, 0, "REGION interface indexing failed");
+        ++region_symbol_uses[interface_record.st];
     }
 
     for (UINT32 i = 0; i < journal.size(); ++i) {
         DSL_IR_NATIVE_VALUE_LOWER_JOURNAL &entry = journal[i];
         const DSL_IR_NATIVE_VALUE_LOWER_REQUEST &request = *entry.request;
-        for (UINT32 effect_id = 1;
-             effect_id <= DSL_Effect_Image_State_Effect_Count();
-             ++effect_id) {
-            DSL_STATE_EFFECT_RECORD effect;
-            if (!DSL_Effect_Image_Get_State_Effect(effect_id, &effect) ||
-                effect.owner_node_id == entry.node.id)
-                return DSL_IR_Lower_Report
-                           (diagnostic, entry.request_index,
-                            "source node has a state effect");
-        }
-        DSL_IR_LOWER_SOURCE_USE_SCAN source_scan;
-        source_scan.source_st = entry.value.st;
-        source_scan.source_definition = request.native_definition;
-        source_scan.journal = &journal;
-        source_scan.definition_count = 0;
-        source_scan.valid = TRUE;
-        DSL_IR_Lower_Scan_Source_Uses(pu_root, NULL, &source_scan);
-        if (!source_scan.valid || source_scan.definition_count != 1 ||
-            !DSL_IR_Lower_Logical_Uses_Closed(entry, journal))
+        if (effected_nodes.find(entry.node.id) != effected_nodes.end())
+            return DSL_IR_Lower_Report
+                       (diagnostic, entry.request_index,
+                        "source node has a state effect");
+        if (!source_uses_valid[i] ||
+            !DSL_IR_Lower_Logical_Uses_Closed
+                (entry, relations, references_closed))
             return DSL_IR_Lower_Report
                        (diagnostic, entry.request_index,
                         "source value has an unlowered or escaping use");
 
-        if (DSL_Region_Symbol_Use_Count(pu_info, entry.value.st) != 0 &&
+        if (region_symbol_uses[entry.value.st] != 0 &&
             (request.mode !=
                  DSL_IR_NATIVE_LOWER_COMPUTED_STANDARD_BLOCK ||
              entry.handle_st == ST_IDX_ZERO))
@@ -679,10 +735,9 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
                   entry.node.operand_count != 0 ||
                   entry.value.value_kind != DSL_IR_VALUE_CONSTANT ||
                   (entry.local_projection_st != ST_IDX_ZERO &&
-                   (DSL_IR_Lower_Tree_Uses_ST
-                        (pu_root, entry.local_projection_st) ||
-                    DSL_Region_Symbol_Use_Count
-                        (pu_info, entry.local_projection_st) != 0)))))
+                   (used_symbols.find(entry.local_projection_st) !=
+                        used_symbols.end() ||
+                    region_symbol_uses[entry.local_projection_st] != 0)))))
                 return DSL_IR_Lower_Report
                            (diagnostic, entry.request_index,
                             "source elision contract mismatch");
@@ -693,7 +748,8 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
             request.standard_block == NULL ||
             WN_operator(request.standard_block) != OPR_BLOCK ||
             WN_first(request.standard_block) == NULL ||
-            DSL_IR_Lower_Tree_Contains(pu_root, request.standard_block) ||
+            attached_blocks.find(request.standard_block) !=
+                attached_blocks.end() ||
             WN_operator(WN_last(request.standard_block)) != OPR_STID ||
             WN_st_idx(WN_last(request.standard_block)) != entry.handle_st ||
             WN_ty(WN_last(request.standard_block)) != entry.handle_ty)
@@ -723,7 +779,7 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
     std::vector<DSL_REGION_SYMBOL_REDIRECT> region_redirects;
     for (UINT32 i = 0; i < journal.size(); ++i) {
         const DSL_IR_NATIVE_VALUE_LOWER_JOURNAL &entry = journal[i];
-        if (DSL_Region_Symbol_Use_Count(pu_info, entry.value.st) == 0)
+        if (region_symbol_uses[entry.value.st] == 0)
             continue;
         DSL_REGION_SYMBOL_REDIRECT redirect;
         redirect.old_st = entry.value.st;
@@ -811,5 +867,73 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
               DSL_IR_Image_Validate_Lowered_Relations(NULL) &&
               DSL_Region_Verify_PU(pu_info, NULL),
               ("lowered DSL value failed postcondition"));
+    return TRUE;
+}
+
+/* Reuse the complete native-lowering transaction for dead constant batches.
+ * The stricter identity record prevents a caller from selecting a different
+ * definition after its deadness decision was made. */
+BOOL
+DSL_IR_Elide_Dead_Native_Constants
+        (PU_Info *pu_info,
+         const DSL_IR_DEAD_NATIVE_CONSTANT_REQUEST *requests,
+         UINT32 request_count,
+         FILE *diagnostic,
+         UINT32 *elided_count)
+{
+    if (!DSL_IR_Lower_Current_PU_Is(pu_info) ||
+        PU_Info_tree_ptr(pu_info) == NULL || requests == NULL ||
+        request_count == 0 || elided_count == NULL ||
+        !DSL_IR_Image_Validate(NULL) ||
+        !DSL_IR_Image_Validate_Lowered_Relations(NULL) ||
+        !DSL_Region_Verify_PU(pu_info, NULL))
+        return DSL_IR_Lower_Report
+                   (diagnostic, 0, "dead-constant transaction is invalid");
+
+    std::vector<DSL_IR_NATIVE_VALUE_LOWER_REQUEST> lower_requests
+        (request_count);
+    std::vector<DSL_IR_NATIVE_VALUE_LOWER_RESULT> lower_results
+        (request_count);
+    DSL_IR_LOWER_VALUE_INDEX values;
+    if (!DSL_IR_Lower_Build_Value_Index(pu_info, &values))
+        return DSL_IR_Lower_Report
+                   (diagnostic, 0, "value indexing failed");
+    for (UINT32 i = 0; i < request_count; ++i) {
+        const DSL_IR_DEAD_NATIVE_CONSTANT_REQUEST &request = requests[i];
+        DSL_IR_VALUE_RECORD value;
+        DSL_IR_NODE_RECORD node;
+        if (request.reserved != 0 || request.expected_version == 0 ||
+            request.owner_pu_st != PU_Info_proc_sym(pu_info) ||
+            request.native_definition == NULL ||
+            WN_operator(request.native_definition) != OPR_STID ||
+            WN_st_idx(request.native_definition) != request.st ||
+            WN_ty(request.native_definition) != request.ty ||
+            !DSL_IR_Lower_Find_Native_Definition_Value
+                (request.native_definition, request.value_id,
+                 DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION,
+                 values, &value) ||
+            value.id != request.value_id || value.st != request.st ||
+            value.ty != request.ty ||
+            value.producer_node_id != request.node_id ||
+            !DSL_IR_Image_Get_Node(request.node_id, &node) ||
+            node.result_value_id != value.id)
+            return DSL_IR_Lower_Report
+                       (diagnostic, i, "dead-constant identity mismatch");
+
+        DSL_IR_NATIVE_VALUE_LOWER_REQUEST &lower = lower_requests[i];
+        memset(&lower, 0, sizeof(lower));
+        lower.native_definition = request.native_definition;
+        lower.source_value_id = request.value_id;
+        lower.expected_operator = OPR_DSLTENSORCONST;
+        lower.expected_version = request.expected_version;
+        lower.mode = DSL_IR_NATIVE_LOWER_VERIFIED_DEAD_SOURCE_ELISION;
+        lower.relation.relation_kind =
+            DSL_IR_LOWER_RELATION_VERIFIED_DEAD_SOURCE;
+    }
+    if (!DSL_IR_Lower_Native_Values_To_Standard_Blocks
+            (pu_info, &lower_requests[0], request_count, diagnostic,
+             &lower_results[0]))
+        return FALSE;
+    *elided_count = request_count;
     return TRUE;
 }

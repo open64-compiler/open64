@@ -40,13 +40,30 @@ class ImpactfulTestSelectorTest(unittest.TestCase):
         """An auditor change selects cached evidence, not materialization."""
 
         lanes = self.lanes("osprey/be/vho/tests/example_audit.py")
-        self.assertEqual(lanes, {"artifact-audit", "hygiene"})
+        self.assertEqual(lanes, {
+            "artifact-audit",
+            "complete-audit-format",
+            "hygiene",
+        })
 
     def test_pure_tail_plan_stays_focused(self) -> None:
         """A pure tail-plan change runs its oracle without full ResNet."""
 
         lanes = self.lanes("osprey/be/vho/fhe_ckks_tail_plan.cxx")
         self.assertEqual(lanes, {"hygiene", "tail-plan"})
+
+    def test_ckks2c_collector_reuses_cached_image(self) -> None:
+        """D2 collection selects focused and retained-image lanes only."""
+
+        lanes = self.lanes(
+            "osprey/be/vho/tests/fhe_ckks2c_collect_image_test.cxx"
+        )
+        self.assertEqual(lanes, {
+            "artifact-audit",
+            "ckks2c-cached-image",
+            "ckks2c-collector",
+            "hygiene",
+        })
 
     def test_materializer_requires_miniature_and_final_certification(self) -> None:
         """Executable mutation selects focused, miniature, and final gates."""
@@ -55,6 +72,19 @@ class ImpactfulTestSelectorTest(unittest.TestCase):
         self.assertIn("tail-plan", lanes)
         self.assertIn("miniature-checkpoint", lanes)
         self.assertIn("full-s6-0c-certification", lanes)
+
+    def test_ckks2c_group_lowering_reuses_cached_receipt(self) -> None:
+        """D4 lowering reruns cached evidence without model rematerialization."""
+
+        lanes = self.lanes("osprey/be/vho/fhe_ckks2c_lower.cxx")
+        self.assertEqual(lanes, {
+            "artifact-audit",
+            "backend-link-boundary",
+            "ckks2c-group-join",
+            "ckks2c-group-lowering",
+            "hygiene",
+            "mapped-reopen",
+        })
 
     def test_common_transaction_is_conservatively_broad(self) -> None:
         """A generic rewrite change reaches mapped, miniature, and full gates."""

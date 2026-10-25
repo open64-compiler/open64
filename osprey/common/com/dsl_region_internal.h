@@ -19,6 +19,9 @@ extern UINT32 DSL_Region_Interface_Count (PU_Info *pu);
 extern BOOL DSL_Region_Get_Interface (PU_Info *pu, UINT32 id,
                                       DSL_REGION_INTERFACE_RECORD *record);
 
+/* Prove a managed REGION's physical tree and result symbols survive output. */
+extern BOOL DSL_Region_Verify_Terminal_PU (PU_Info *pu, FILE *diagnostic);
+
 typedef struct {
     ST_IDX old_st;
     ST_IDX new_st;

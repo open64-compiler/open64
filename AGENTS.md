@@ -445,9 +445,10 @@ native representation, compatibility, verification, inspection, and lowering.
    validation process. Tests that produce meaningful WHIRL evidence should
    retain the binary `.B` file, `ir_b2a -st -src` output, requested phase `.t`
    traces, side payloads, and relevant diagnostics after the test exits.
-2. Clean the designated artifact directory at the start of the next run, not
-   at the end of the current run. A completed run must leave its evidence
-   available until it is replaced by a later run.
+2. Clean a designated disposable staging directory at the start of the next
+   run, not at the end of the current run. A completed run must leave its
+   evidence available until it is replaced by a later run. This rule never
+   authorizes cleaning the durable `artifacts/review` hierarchy.
 3. Docker tests must write reviewable artifacts through an explicit host bind
    mount. Do not leave the only copy in a container filesystem or a container
    temporary directory that disappears when Docker exits.
@@ -476,22 +477,44 @@ native representation, compatibility, verification, inspection, and lowering.
     `resnet.T` collides with a driver-produced `resnet.t`, preserve the phase
     trace under a descriptive non-colliding name such as `resnet.vho.t` before
     producing `resnet.T`.
-11. Every coding change that adds or modifies an IR transformation must retain
+11. The durable human-review root is `<primary-open64-root>/artifacts/review`.
+    It is intentionally ignored by Git and is distinct from disposable test
+    output under `/private/tmp` or a managed worktree. Expensive milestone
+    artifacts must be promoted there after certification; a temporary path is
+    not the sole retained copy.
+12. Organize durable evidence as
+    `artifacts/review/<domain>/<sync>/<milestone>/<receipt-id>/`, where the
+    receipt ID is content-addressed by the primary published artifact. Retain
+    the binary, matching trace, side payloads, source required by `-src`,
+    reports, logs, `SHA256SUMS`, and a machine-readable receipt together.
+13. Nothing under `artifacts/review` may be deleted, overwritten, truncated,
+    moved out, or pruned without the user's explicit approval naming the
+    affected path. Age, disk usage, a new run, branch deletion, worktree
+    cleanup, or test startup is not approval. When storage is insufficient,
+    stop and ask; never reclaim this directory automatically.
+14. Tests and automation may create a new receipt directory and may update an
+    index or `current` symlink after validation, but they must never run a
+    recursive cleanup against `artifacts/review` or any ancestor containing
+    it. Publish a receipt by no-replace atomic promotion from staging, and
+    reject a pre-existing destination rather than replacing it.
+15. Follow `doc/REVIEW-ARTIFACT-RETENTION-POLICY.md` for staging, receipt
+    contents, review indexing, approval-controlled removal, and recovery.
+16. Every coding change that adds or modifies an IR transformation must retain
     reviewable before-and-after WHIRL evidence. Produce `<case>.before.B` and
     `<case>.after.B`, reopen each independently with `ir_b2a -st -src` as
     `<case>.before.T` and `<case>.after.T`, and retain a unified diff such as
     `<case>.before-after.diff`. An in-memory phase trace alone is not a
     substitute for mapped binary WHIRL evidence.
-12. Capture the before image immediately before the transformation and the
+17. Capture the before image immediately before the transformation and the
     after image immediately after it, using the same input, options, target,
     compilation scope, and source mapping. If the normal driver cannot publish
     both boundaries, add a focused producer or reviewed checkpoint using the
     existing WHIRL writer rather than fabricating textual IR.
-13. The transformation diff must make intentional WN, ST, TY, TensorDescriptorIR,
+18. The transformation diff must make intentional WN, ST, TY, TensorDescriptorIR,
     REGION, and managed-table changes visible while also demonstrating relevant
     invariants. Preserve the raw `ir_b2a` diff; a focused or normalized excerpt
     may supplement it but must not replace it.
-14. Treat unexplained diff churn as a review blocker. The validation report and
+19. Treat unexplained diff churn as a review blocker. The validation report and
     pull-request summary must describe the expected semantic changes, identify
     important facts that remain unchanged, and link the retained before trace,
     after trace, and full diff. If a transformation is expected to be a no-op
@@ -556,6 +579,9 @@ Load these only when the task needs the detail:
    the relevant operator, node-layout, level, type, mapping, and ASCII-format
    sections before designing DSL extensions. The planned DSL appendix must
    remain consistent with this document or explicitly document extensions.
+10. `doc/REVIEW-ARTIFACT-RETENTION-POLICY.md` - permanent local review-artifact
+    location, content-addressed receipt, indexing, immutable retention, and
+    user-approved deletion rules.
 
 Treat MPL-related sources as reference material only. Do not use them as
 evidence for the Very High Level WHIRL DSL frontend or Python ingestion design.

@@ -22,6 +22,7 @@
 
 #include "fhe_semantic_convert.h"
 #include "fhe_convert.h"
+#include "fhe_ckks2c_checkpoint.h"
 #include "fhe_image.h"
 #include "fhe_plan.h"
 #include "dsl_ir_image.h"
@@ -3566,16 +3567,18 @@ VHO_FHE_Default_Checkpoint_Finalizer
                    (diagnostic, "CFHECNN-RELU-003",
                     "common.relu requires an approved identity-bound range");
     }
-    if (!VHO_FHE_artifacts_registered)
-        return TRUE;
-    return VHO_FHE_Write_Converted_Payload(diagnostic) &&
-           VHO_FHE_Write_Conversion_Report(aggregate, diagnostic);
+    if (VHO_FHE_artifacts_registered &&
+        (!VHO_FHE_Write_Converted_Payload(diagnostic) ||
+         !VHO_FHE_Write_Conversion_Report(aggregate, diagnostic)))
+        return FALSE;
+    return VHO_FHE_CKKS2C_Checkpoint_Finalize(
+               aggregate->conversion_pass_count, diagnostic);
 }
 
 static void
 VHO_FHE_Default_Checkpoint_Completion (BOOL committed)
 {
-    (void)committed;
+    VHO_FHE_CKKS2C_Checkpoint_Complete(committed);
     VHO_FHE_bn_context_folds.clear();
     VHO_FHE_converted_tensors.clear();
     VHO_FHE_converted_payload_temp.clear();

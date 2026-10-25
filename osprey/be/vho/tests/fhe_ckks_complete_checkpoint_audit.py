@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -105,6 +106,15 @@ def require_report(actual: dict[str, str], expected: dict[str, str],
                 f"{name} fact {key} is not {value}")
 
 
+def retained_path(artifact_dir: Path, category: str, name: str) -> Path:
+    """Resolve a legacy flat artifact or the durable receipt hierarchy."""
+
+    flat = artifact_dir / name
+    if flat.is_file():
+        return flat
+    return artifact_dir / category / name
+
+
 def audit(trace_path: Path, artifact_dir: Path) -> dict[str, object]:
     """Cross-check the full physical/logical census and published artifacts."""
 
@@ -166,15 +176,30 @@ def audit(trace_path: Path, artifact_dir: Path) -> dict[str, object]:
             "bootstrap_profile=pre_relu_refresh_v1" in trace,
             "pre-ReLU bootstrap-key requirement is absent")
 
-    stem = artifact_dir / "secure_resnet20.ckks_ops.B"
+    stem = retained_path(
+        artifact_dir, "binary", "secure_resnet20.ckks_ops.B")
     paths = {
-        "conv_asset": Path(f"{stem}.conv-plaintexts.f32"),
-        "relu_asset": Path(f"{stem}.relu-scalars.f64"),
-        "tail_asset": Path(f"{stem}.tail-plaintexts.f32"),
-        "conv_report": Path(f"{stem}.conv-report.txt"),
-        "residual_report": Path(f"{stem}.residual-report.txt"),
-        "relu_report": Path(f"{stem}.relu-report.txt"),
-        "tail_report": Path(f"{stem}.tail-report.txt"),
+        "conv_asset": retained_path(
+            artifact_dir, "payloads",
+            "secure_resnet20.ckks_ops.B.conv-plaintexts.f32"),
+        "relu_asset": retained_path(
+            artifact_dir, "payloads",
+            "secure_resnet20.ckks_ops.B.relu-scalars.f64"),
+        "tail_asset": retained_path(
+            artifact_dir, "payloads",
+            "secure_resnet20.ckks_ops.B.tail-plaintexts.f32"),
+        "conv_report": retained_path(
+            artifact_dir, "reports",
+            "secure_resnet20.ckks_ops.B.conv-report.txt"),
+        "residual_report": retained_path(
+            artifact_dir, "reports",
+            "secure_resnet20.ckks_ops.B.residual-report.txt"),
+        "relu_report": retained_path(
+            artifact_dir, "reports",
+            "secure_resnet20.ckks_ops.B.relu-report.txt"),
+        "tail_report": retained_path(
+            artifact_dir, "reports",
+            "secure_resnet20.ckks_ops.B.tail-report.txt"),
     }
     require(stem.is_file(), "published .ckks_ops.B is absent")
     for name, path in paths.items():
@@ -185,7 +210,7 @@ def audit(trace_path: Path, artifact_dir: Path) -> dict[str, object]:
             "ReLU scalar asset size disagrees")
     require(paths["tail_asset"].stat().st_size == 1572864,
             "tail plaintext asset size disagrees")
-    require(not list(artifact_dir.glob("*.tmp")),
+    require(not list(artifact_dir.rglob("*.tmp")),
             "published artifact family contains a temporary file")
 
     require_report(parse_report(paths["conv_report"]), {
@@ -242,10 +267,77 @@ def audit(trace_path: Path, artifact_dir: Path) -> dict[str, object]:
     }
 
 
+def render_text(result: dict[str, object]) -> str:
+    """Render the validated census as a concise human review report."""
+
+    return "\n".join([
+        "Open64 FHE S6-0c Complete Checkpoint Audit",
+        "===========================================",
+        "Status: PASS",
+        "",
+        "Program structure",
+        f"  Executable PUs: {result['func_entries']}",
+        "  Source interleave: secure_resnet20.py present",
+        "",
+        "CKKS semantic IR",
+        f"  Event/result/state joins: {result['ckks_events']}",
+        f"  Conv operations: {result['conv_operations']}",
+        f"  Residual operations: {result['residual_operations']}",
+        f"  ReLU operations: {result['relu_operations']}",
+        f"  Pool/linear tail operations: {result['tail_operations']}",
+        f"  Explicit bootstraps: {result['bootstraps']}",
+        "    PRE_RELU_REFRESH: "
+        f"{result['pre_relu_refresh_bootstraps']}",
+        "    DEPTH_EXHAUSTION: "
+        f"{result['depth_exhaustion_bootstraps']}",
+        f"  Rotation-key requirements: {result['rotation_keys']}",
+        "",
+        "High-level source disposition",
+        "  Conv2D lowered: 21",
+        "  Residual-add lowered: 9",
+        "  ReLU lowered: 19",
+        "  Global-average-pool lowered: 1",
+        "  Linear lowered: 1",
+        "  Flatten retired by redirection: 1",
+        "  Output-logits retired by redirection: 1",
+        f"  Live high-level computations: "
+        f"{result['live_high_level_computations']}",
+        "",
+        "Published side evidence",
+        "  Conv plaintexts: 202,620,928 bytes",
+        "  ReLU scalars: 4,712 bytes",
+        "  Tail plaintexts: 1,572,864 bytes",
+        "  Temporary files: none",
+        "",
+        "Conclusion",
+        "  The separately reopened WHIRL image has complete CKKS event,",
+        "  concrete-state, key, source-provenance, and side-asset evidence.",
+        "  No live high-level FHE computation remains.",
+        "",
+    ])
+
+
+def write_text_no_replace(path: Path, content: str) -> None:
+    """Publish one text report atomically without replacing prior evidence."""
+
+    require(not path.exists(), f"text report already exists: {path}")
+    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    require(not temporary.exists(), f"temporary report already exists: {temporary}")
+    try:
+        temporary.write_text(content, encoding="utf-8")
+        os.link(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def main() -> int:
     """Parse evidence paths and print a canonical review summary."""
 
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--text-output", type=Path,
+        help="atomically publish a concise human-readable audit report",
+    )
     parser.add_argument("trace", type=Path)
     parser.add_argument("artifact_dir", type=Path)
     args = parser.parse_args()
@@ -254,6 +346,12 @@ def main() -> int:
     except (OSError, UnicodeError, ValueError) as error:
         print(f"CFHEIR-COMPLETE-AUDIT-001: {error}", file=sys.stderr)
         return 1
+    if args.text_output is not None:
+        try:
+            write_text_no_replace(args.text_output, render_text(result))
+        except (OSError, UnicodeError, ValueError) as error:
+            print(f"CFHEIR-COMPLETE-AUDIT-002: {error}", file=sys.stderr)
+            return 1
     print(json.dumps(result, sort_keys=True, indent=2))
     return 0
 

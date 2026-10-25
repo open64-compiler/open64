@@ -5,11 +5,34 @@ S6-0d starts from the separately reopenable, gatekeeper-approved
 `secure_resnet20.ckks_ops.B`; it does not rematerialize Conv, residual, ReLU,
 or tail semantics.
 
-Current checkpoint: **D1 implemented and focused-certified.** The private v1
-facade, deterministic event-plan emitter, all-nine-primitive fixture,
-fail-closed negatives, generated-C compilation/link, and backend link boundary
-pass. D2-D6 remain open; no whole-image private C or S6-0d terminal artifact is
-claimed yet.
+Current checkpoint: **D1 through D4 are complete.** The D4 terminal checkpoint
+submits one M1 replacement per complete source context so only the typed-event
+`FINAL_RESULT` needs a runtime projection. The sole zero-private-work
+`common.flatten` binding is emitted as a local layout-convert step after the
+average-pool evaluator and before the final pool-context projection; no CKKS
+group is fabricated for the representation view.
+The D2 collector is wired into the backend and `ir_tools`, its two-PU positive
+and malformed-image contracts pass, and its complete cached-image receipt is
+retained under the durable review root. That receipt consumed 10 PUs, 146
+groups, and all 33,367 events without rematerializing the model. D3 now
+publishes the transactional private-output family from that immutable receipt,
+compiles the generated C, and reopens the last-published binary. The D4 join
+reconstructs 6 canonical PUs, 32 canonical source definitions, 87 static
+public ABI descriptors, and 147 dynamic bindings from the immutable S6-0c
+image. Those bindings comprise 146 private CKKS groups plus one zero-primitive
+representation-only `common.flatten`. The standard-only terminal artifact
+reopens with `ir_b2a -st -src`, unchanged `whirl2c` emits compilable C, and the
+trace executes exactly 147 selector/evaluator pairs. D5-D6 remain open.
+
+The D5 option spelling is staged independently: the backend recognizes
+`-FHE:codegen=ckks2c|poly2c` but does not yet select a route. Invalid
+spellings reject before phase loading. For a valid explicit route, the backend
+defers component loading until after `Read_Global_Info()`; an FHE-bearing
+image then rejects with no CG load or fallback, while unrelated WHIRL loads
+its normal components and ignores the FHE-only option. An absent option keeps
+the original early component-loading order. The cached ten-PU CKKS image
+exercises this post-read gate, but D5 still needs the actual conformance gate,
+CKKS2C exit, and continuous POLY2C path.
 
 ## Objective
 
@@ -66,22 +89,39 @@ actually justified.
 
 ### Reusable S6-0c baseline
 
-The accepted producer boundary is the PR #178 ten-PU artifact. Reuse is
-permitted only when the local file hashes match this receipt:
+The accepted producer boundary is the PR #178-equivalent ten-PU artifact in
+the durable S6-0c receipt. The regenerated binary differs from the lost
+historical file only in capture-path/provenance evidence and has passed the
+same semantic census and side-payload checks. Reuse is permitted only when the
+local file hashes match the active durable receipt:
 
 | Artifact | Accepted SHA-256 |
 | --- | --- |
-| `secure_resnet20.ckks_ops.B` | `d7bccc537c422b2266add7437040cac14ef7b33af93c9f5e65eb7ebb5f89876f` |
-| `secure_resnet20.ckks_ops.T` | `7f97cca89b20ff1654ff6486010a086d61b9cabe1ec5e8048188045a59dda629` |
+| `secure_resnet20.ckks_ops.B` | `bce7f16f06492933dac9a563f22c2c81e85920f210bf7e576dbfd1d14042132f` |
+| `secure_resnet20.ckks_ops.T` | `c37554fe689a290f7900a6d4a90384381f1d7d996f1d9a35d69ddcc6e01ae56e` |
 | Conv plaintext side payload | `50772c653e1c4a5fbd6ff253a5799d418a4f2fa8f61f55ffa389fae391f24e2e` |
 | ReLU plaintext side payload | `725e7d741be3ac8b58c624aae6871d79e468fe7eb81d7cde5f2bfc02f29372ca` |
 | Tail plaintext side payload | `44d0ca870a1c879c95ba36886fef26fcef640e6c77286b99ea6d9319ebead81c` |
 | Independent audit JSON | `d47f51c9626e2e3d16f21e578df6b4467147c8b87ca27c258179532991d55074` |
 
-The retained local family used during development is
-`/private/tmp/open64-fhe-sync6-fresh-pipeline/final-s6-0c-v8/`. A missing local
-copy is an artifact-retrieval problem, not automatic permission to rerun the
-one-hour producer.
+The historical retained family used during S6-0c development was
+`/private/tmp/open64-fhe-sync6-fresh-pipeline/final-s6-0c-v8/`. That temporary
+copy was subsequently lost. Its replacement must be promoted after
+recertification to the permanent, Git-ignored review location
+`/Users/shinmingliu/open64/artifacts/review/fhe/sync-6/s6-0c/` under the full
+primary-artifact SHA-256 receipt ID. See
+`doc/REVIEW-ARTIFACT-RETENTION-POLICY.md`. A missing durable copy is an
+artifact-retention failure, not automatic permission to rerun the one-hour
+producer.
+
+After promotion, reviewers use the stable paths
+`artifacts/review/fhe/sync-6/s6-0c/current/binary/secure_resnet20.ckks_ops.B`
+and
+`artifacts/review/fhe/sync-6/s6-0c/current/traces/secure_resnet20.ckks_ops.T`.
+The D3 generated C is retained separately at
+`artifacts/review/fhe/sync-6/s6-0d/d3/current/generated-c/secure_resnet20.ckks2c.c`
+with its checkpoint `.B`, reopened `.T`, compile evidence, and group report in
+the same immutable D3 receipt.
 
 Fresh S6-0c materialization is required only when a change can alter the input
 CKKS graph or its persisted contracts: a CKKS materializer, expansion/native
@@ -144,13 +184,13 @@ not be replaced silently with a full model run.
 | Lane | Command or artifact action |
 | --- | --- |
 | S6D-T0 | `python3 osprey/be/vho/tests/fhe_impactful_test_selector_test.py`; selector command above; `git diff --check` |
-| S6D-T1 | `sh osprey/be/vho/tests/fhe_ckks2c_emit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-emitter` |
-| S6D-T2 | `sh osprey/be/vho/tests/fhe_ckks2c_collect_test.sh /private/tmp/open64-fhe-impactful/ckks2c-collector` |
-| S6D-T3 | `sh osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.sh /private/tmp/open64-fhe-impactful/ckks2c-checkpoint` |
+| S6D-T1 | `bash osprey/be/vho/tests/fhe_ckks2c_emit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-emitter` |
+| S6D-T2 | `bash osprey/be/vho/tests/fhe_ckks2c_collect_test.sh /private/tmp/open64-fhe-impactful/ckks2c-collector` |
+| S6D-T3 | `bash osprey/be/vho/tests/fhe_ckks2c_checkpoint_test.sh /private/tmp/open64-fhe-impactful/ckks2c-checkpoint` |
 | S6D-T4 | Verify accepted hashes, reopen cached `.B`, emit private C/report, compile, and run the independent complete-image audit |
-| S6D-T5 | `sh osprey/be/vho/tests/fhe_ckks2c_group_join_test.sh /private/tmp/open64-fhe-impactful/ckks2c-group-join` |
-| S6D-T6 | `sh osprey/driver/tests/openpy_fhe_ckks2c_exit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-driver` |
-| S6D-T7 | `sh osprey/libopen64fhe/tests/fhe_ckks2c_ant_admission_test.sh /private/tmp/open64-fhe-impactful/ckks2c-ant` |
+| S6D-T5 | `bash osprey/be/vho/tests/fhe_ckks2c_group_join_test.sh /private/tmp/open64-fhe-impactful/ckks2c-group-join` |
+| S6D-T6 | `bash osprey/driver/tests/openpy_fhe_ckks2c_exit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-driver` |
+| S6D-T7 | `bash osprey/libopen64fhe/tests/fhe_ckks2c_ant_admission_test.sh /private/tmp/open64-fhe-impactful/ckks2c-ant` |
 | S6D-T8 | When selected by documented impact proof, run the retained `openpy -O0 -keep -FHE:codegen=ckks2c` ResNet command, followed by separate-process `ir_b2a -st -src`, C compile/link, ABI-mock comparison, hashes, and negative cleanup audit; otherwise verify and cite the matching receipt |
 
 ### Per-commit report template
@@ -235,7 +275,53 @@ CKKS2C artifact.
 Every emitted function maps to one complete certified group, and all 33,367
 events are consumed exactly once without changing the input `.B`.
 
+**Current D2 checkpoint**
+
+- Implementation complete: the all-PU collector, deterministic semantic
+  group identity, mapped-image driver, backend/`ir_tools` wiring, and impact
+  selector classification are present.
+- Focused certification complete: the two-PU fixture covers direct and called
+  contexts, source/prior-step/bound operands, external assets, keys, allocation
+  order independence, terminal-session rejection, and malformed joins.
+- Complete-image certification is retained under the durable review root. It
+  observes 10 PUs, 146 groups, 51 terminal source groups, 33,367 events,
+  6,417 external assets, and 6,359 key uses; it also compiles the approximately
+  17 MiB generated C translation unit.
+- D3 consumes this retained content-addressed T4 receipt at
+  `/Users/shinmingliu/open64/artifacts/review/fhe/sync-6/s6-0c/current/`;
+  it does not rely on the lost historical temporary family.
+
 ### D3: Add transactional private-output publication
+
+**Closure evidence**
+
+- `fhe_ckks2c_publish` builds and stages deterministic private C, facade
+  manifest, group report, and compile-command auxiliaries without publishing
+  or mutating WHIRL.
+- `fhe_ckks2c_checkpoint` preserves active-PU collection state and joins the
+  complete emitter census to the existing no-replace checkpoint lifecycle.
+- The conversion checkpoint remains the commit marker and is published only
+  after all four auxiliaries.
+- S6D-T3 is an automated six-case transaction lane covering success, stale
+  destination, write failure, compile failure, incomplete PU coverage, and
+  abort cleanup.
+- Commit `97a1c7df4350a2a61b971efda781cdfb0554fa0e` consumed the immutable S6-0c
+  binary with SHA-256
+  `bce7f16f06492933dac9a563f22c2c81e85920f210bf7e576dbfd1d14042132f`.
+  It published 10 PUs, 146 groups, 33,367 operations, 6,417 external assets,
+  and 6,359 key uses.
+- Generated C SHA-256
+  `ded9b9e271d6f3b39c0cbe786efc423e1324f1bbb5cd1d608f25ac11495f5c83`
+  compiled as C11 with `-Wall -Wextra -Werror`. The last-published `.B` has
+  SHA-256
+  `e12206d6d06121056ec7be308e8fe09f7d1b2af7d0c183b191cfd8b60cd4e77c`
+  and reopened separately with `ir_b2a -st -src`.
+- The independent complete audit proves 23 explicit bootstraps, 954 rotation
+  key requirements, and zero live high-level computations. A repeated run
+  rejected the occupied commit marker with `CFHE-CHECKPOINT-006`, preserved
+  its checksum, and left no `.tmp` file.
+- The immutable receipt and human-readable summary are at
+  `/Users/shinmingliu/open64/artifacts/review/fhe/sync-6/s6-0d/d3/current/`.
 
 **Code**
 
@@ -260,6 +346,53 @@ as one transaction.
 
 ### D4: Build the CKKS-group to public ABI-v1 join
 
+The `-O0` scope decision is to retain the ten specialized WHIRL PUs and
+construct the canonical six-PU public C surface from the authenticated
+origin/descriptor join. Do not rewrite caller/callee WHIRL across PUs or
+disguise a ten-to-six PU transformation inside `common/com`: `AGENTS.md`
+reserves cross-PU transformation for `-ipa`. The public-C join is an output
+construction proof, not a mutation of the input `.ckks_ops.B` or of another
+PU's local symbol table. Each active PU contributes immutable, owner-qualified
+fragments. File-level output assembly joins only those fragments and stable
+global identities after PU processing; it does not switch local symtabs to
+analyze another PU.
+
+M3 must prove the terminal binary's reader contract independently. A pre-M1
+reader rejects private lowered DSL rows even if the optional CKKS event
+section is absent. Event-section omission alone cannot satisfy prior-reader
+reopen. The terminal path must either pass a full standard-WHIRL/no-private-
+DSL-image preflight and omit incompatible private provenance sections, or
+revise the prior-reader acceptance claim through explicit compatibility
+review. Do not publish a partial terminal `.B` while this is unresolved.
+The staged `DSL_Gatekeeper_Verify_No_Native_PU()` supplies only the per-PU
+physical-tree preflight; it cannot by itself authorize M3 event consumption,
+whole-file section suppression, or prior-reader acceptance.
+The staged `Open_Standard_Only_Output_Info()` mode supplies the complementary
+writer/reader boundary: each flat PU must have a standard physical tree, all
+linked PUs must be written, optional DSL/FHE ELF sections are omitted, and the
+baseline revision is used. A focused two-PU file reopens in the pre-M1 reader.
+The mode leaves TY/symbol tables intact and does not infer that all CKKS events
+were consumed; D4 still owes the authenticated group-to-ABI join and a
+complete-model terminal checkpoint before M3 can be closed.
+The terminal writer now carries a managed `WT_REGIONS` subsection only after
+PU-local physical-tree, local-ST, and REGION result-definition preflight.
+A focused two-PU `cnn.basic_block.v1` image reopens in the current and pre-M1
+readers, while a stale result interface rejects. D4 still must prove the
+complete CKKS producer's output-symbol redirects and all-PU event/ABI join;
+the focused REGION roundtrip is not full-model terminal certification.
+The retained S6-0c `secure_resnet20.ckks_ops.T` has nine managed
+`cnn.basic_block.v1` REGIONs across ten PUs; their output/result interface
+symbols still name CKKS-stage values. D4 must redirect each such interface
+to the corresponding standard runtime-handle definition before the terminal
+writer can admit those PUs.
+The generic two-group test now exercises that redirect inside a managed
+REGION and proves it after mapped reopen. A second focused run elides the
+dead tensor seed, writes the actual grouped REGION tree as standard-only
+WHIRL, and reopens it in both current and pre-M1 readers. This is one-PU
+transaction-to-writer evidence; it does not select CKKS groups, authenticate
+ABI descriptors, or cover the complete FHE image. Those remain D4/FHE
+producer obligations.
+
 **Code**
 
 - Join specialized CKKS groups back to canonical six-PU source definitions,
@@ -283,6 +416,62 @@ as one transaction.
 
 Private C and public ABI-v1 C are independently derived siblings with a complete
 authenticated join and no ABI change.
+
+**Current D4 checkpoint**
+
+- FHE-owned read-only join is complete. It canonicalizes clone-equivalent PUs
+  with structured source-definition identity plus the full ordered formal TY
+  signature. Dynamic source instances come from certified private groups;
+  representative FHE dispositions authorize the canonical source family.
+  Clone-only source instances need not duplicate a disposition row.
+- Canonical source identity is definition signature, stable source value name,
+  logical operator/version, and result TY. Canonical schedule order is the
+  representative PU identity followed by representative source-node order.
+- The exact expansion is Conv=1, residual-add=1, ReLU=bootstrap + normalize +
+  three ordered polynomial stages + reconstruct, pool=1, flatten=one
+  representation-only binding, and linear=1.
+- The focused miniature proves deterministic ordering, caller-output atomicity,
+  representative-only disposition authorization, and rejection of duplicate
+  groups, ordinal drift, context mismatch, and missing flatten evidence.
+- Cached inspection of the accepted S6-0c image proves 10 specialized input
+  PUs, 146 private groups, 6 canonical public PUs, 32 canonical source
+  definitions, 87 static descriptors, 147 dynamic bindings, and exactly one
+  representation-only binding. This reuses the accepted `.ckks_ops.B`; it does
+  not rematerialize the 33,367 CKKS events.
+- The shared grouped-lowering, retired-view alias, terminal writer, and event
+  disposition contracts are merged and consumed. The FHE lowerer replaces 51
+  source contexts, retires all 33,367 private event definitions, promotes 44
+  external constants, and elides 6,543 verified-dead constants. The resulting
+  file contains only standard WHIRL sections and no executable `OPR_DSL`.
+- The terminal census is 146 private groups, 87 static descriptors, 147
+  dynamic bindings, and 294 checked standard calls. The atomic text report
+  contains every descriptor and binding plus join SHA-256
+  `6ff3cff9cace8d9e2ea1bd9c02dc43e62b89b13e664c5ffbf32860a3fdff4280`.
+  Generated execution authenticates against that report and ends with pool
+  ordinal 8, representation-only layout-convert ordinal 9, and linear ordinal
+  10.
+- S6D-T5 passes unchanged `whirl2c`, strict generated-C compilation, the
+  147-operation trace, the standalone ABI mock, and wrong-ordinal,
+  missing-resource, missing-coefficient, and wrong-handle rejection. The D4
+  output is a conversion/code-generation checkpoint; it does not claim real
+  ciphertext inference or the D5 backend early-exit route.
+- The handoff now fixes the proposed request/result layouts, ownership and
+  atomicity rules, malformed-input matrix, reviewable M1-M3 commit sequence,
+  and the terminal policy. The `-O0` terminal file omits the optional CKKS
+  event section only after complete event-consumption proof; it does not add a
+  new mapped terminal-status row or revise the v1 event image.
+- Real-image integration proved that intermediate private outputs are
+  deliberately unprojected. For owner `12801`, ReLU source value `10`, the
+  first private group output `600` has no projection, while the complete
+  context's typed-event `FINAL_RESULT` owns the one final projection. D4 must
+  never submit the six ReLU groups as six independently projected requests.
+- ReLU remains six public ABI operations, but its six private groups are
+  replaced by one standard-WHIRL context block. This keeps bootstrap output
+  and polynomial intermediates as local handle temporaries; it neither drops
+  an operation nor exposes private intermediates in the runtime-interface
+  image. The block stores only reconstruction into the `FINAL_RESULT`
+  projection. Other source contexts retain one private-group replacement
+  block because their sole group output is already the final source result.
 
 ### D5: Add the continuous backend selector
 
