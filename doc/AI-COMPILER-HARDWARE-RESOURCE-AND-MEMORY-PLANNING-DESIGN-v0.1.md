@@ -95,6 +95,20 @@ or "Blackwell" constant. H200 and Blackwell SKUs must remain distinguishable.
 | Transfer engines | Demand/vector load, async copy, TMA, issue cost, alignment, descriptor and barrier rules | Determines available movement schedules and possible overlap. |
 | Execution resources | SM count, warps/CTA, CTAs/SM, CTA clusters, barriers, scheduler support | Determines occupancy, wave effects, and persistent feasibility. |
 
+"Existing A/B/C allocation" means a validated live buffer binding, not a
+`cudaMalloc` emitted by the tile planner. The selected plan declares buffer
+requirements; `TargetBufferService` in
+`OPENPY-COMPILATION-AND-EXECUTION-MODES-DESIGN-v0.1.md` imports or allocates
+them through the configured target provider. The NVIDIA provider may use CUDA
+APIs, while a different target uses its own allocator and transfer mechanism.
+This ownership boundary is separate from planning per-CTA SMEM slots and
+optional cost-gated GMEM repacking.
+The host-call transformation must retain the selected plan's buffer
+requirements so the runtime can import existing device storage or allocate
+and transfer from host storage once per invocation. P7's lane map does not
+authorize a host-to-device copy on its own; P4/P6 residency and the selected
+execution plan determine whether that copy is needed.
+
 The current `DSL_MEMORY_TIER_RECORD` and movement-capability records are a
 starting point, but they lack an explicit SMEM bank model, target bandwidth,
 SIMT lane map, per-SM resource allocation, and TMEM tier [O4]. NVIDIA
@@ -155,6 +169,9 @@ is a concrete shared-memory, register, or TMEM object.
 | GMEM repacking | Optional creation of a new global allocation with a different layout. This is a separate, cost-gated transformation, not A/B staging. |
 | CTA output tile | `BM x BN` part of C owned by a CTA or cluster; `BK` is one reduction step. |
 | SIMT access map | Mapping from lane/warp/thread to tensor elements for GMEM load, SMEM store/read, compute, and output store. |
+| Source-warp memory issue | One scalar load or store from each active lane at the same source-level instruction point; PTX optimization may change its instruction shape. |
+| GMEM sector request | A distinct 32-byte segment touched by one source-warp issue; repeated requests count again. It is not an observed L2 miss or HBM transfer [N3]. |
+| Base-alignment case | Offset of an operand's first F32 element within a 32-byte sector, from zero through seven words. The planner retains the aligned case and costs the independent worst case for A, B, and C. |
 | Operand staging buffer | On-chip A or B storage consumed by a K step: `A_smem` and `B_smem` in the reference paths. |
 | Operand buffer slot | Independently reusable position in an operand staging buffer. A logical stage has an A slot and a B slot, possibly with distinct sizes. |
 | SMEM allocation ledger | Per-CTA list of SMEM objects with actual padded extent, alignment, offset, static/dynamic class, live interval, and owner. Proven non-overlapping intervals may share storage. |
@@ -184,8 +201,48 @@ padded A copy uses distinct banks across each 32-lane GMEM-to-SMEM store,
 while compute reads by distinct row groups avoid the compact layout's
 same-bank addresses. The selector charges an explicitly low-confidence
 bank-conflict-work proxy and lowers the selected A indices into WHIRL. It
-does not yet estimate GMEM sectors, model bank latency, or choose among
-multiple GMEM copy maps. The TMA sidecar remains compact-only.
+does not model bank latency. The TMA sidecar remains compact-only.
+
+Compiler-side GMEM planning update (2026-10-25): the first contiguous F32
+slice compares two CTA thread-to-output maps without repacking A, B, or C.
+Non-F32 element types are excluded from this sector-cost slice until their
+transaction width and legal lowering are modeled explicitly.
+The original `TM=8,TN=8` map assigns adjacent lanes output columns eight
+apart. The new `TM=16,TN=2` map uses 512 threads and assigns adjacent lanes
+columns two apart. Both retain linear A/B copy loops and the same
+`BM=BN=128,BK=32` CTA tile. P7 records each map in `CommonTilePlanIR`;
+VHO prices the complete candidate before selected device-WHIRL construction.
+The same generic WHIRL loop lowering emits either map from the selected
+thread dimensions. No independent CUDA-template decision is made. For the
+exact contiguous case, full A/B warp loads already request the minimum four
+32-byte sectors for 32 adjacent F32 values on aligned bases. A new physical
+GMEM representation is not justified by this case; the C-store map is the
+profitable search axis. Strided views may change that conclusion.
+
+For each candidate, enumerate the source-level A, B, and C warp issues.
+Within an issue, count distinct 32-byte sectors among valid lanes; masked
+edge lanes request none. Aggregate full and edge CTA/K classes instead of
+enumerating every CTA. CTA origins are multiples of eight F32 elements for
+these tile seeds, so their sector residue is invariant within each class.
+Evaluate each F32 base alignment from zero through seven words. The aligned
+total is diagnostic; the cost uses the independent worst case for each
+operand. Baseline traffic remains an optimistic useful-byte lower bound
+because no baseline CUDA lane map exists. `TILE_GMEM` and `COST_MODEL 4` in
+`.t` expose A/B/C sector bytes and shared-A load issue work. The relative
+memory score uses `floor((A+B+C worst sector bytes)/1024)` plus low-confidence
+`floor(bank_conflict_work/32)` and `floor(smem_a_load_issues/32)` terms; it
+does not predict nanoseconds.
+
+On the exact 128x128x32 fixture, the 16x2 candidate lowers modeled C-store
+sector requests from 524,288 to 147,456 bytes and wins the complete relative
+cost gate. On 128x128x128, its extra shared-A load issues outweigh that
+sector reduction under the current proxy, so padded 8x8 remains selected.
+Both emitted WHIRL-derived `.cu` paths pass host CTA parity. The compact A
+WHIRL declaration was corrected from `BK*BK` to `BM*BK` elements when this
+alternative first exercised it. These are source-model and host-simulation
+results, not native PTX transactions, cache traffic, or GPU speedup. General
+strided operands, repacked allocations, cache residency, and CTA scheduling
+remain later GMEM extensions.
 
 ## 4. Candidate construction: allocation, then schedule
 

@@ -196,8 +196,9 @@ DSL_Tile_Trace_Selection (const DSL_TILE_ANALYSIS *analysis,
     BOOL roofline_available = DSL_Tile_Roofline_Target
         (selection.target_profile_id, &fp32_gflops, &hbm_gbps);
     UINT32 trace_version = 7;
-    fprintf(file, "AI_OPT %u COST_MODEL 3 valid_predicated_elements "
-                  "dynamic_cta_k_barriers bank_conflict_work\n",
+    fprintf(file, "AI_OPT %u COST_MODEL 4 valid_predicated_elements "
+                  "dynamic_cta_k_barriers bank_conflict_work "
+                  "source_warp_sectors smem_a_load_issues\n",
             trace_version);
     fprintf(file, "AI_OPT %u ROOF_TARGET %u %s %llu %llu "
                   "traffic=global_requests_as_cold_hbm_proxy "
@@ -271,6 +272,14 @@ DSL_Tile_Trace_Selection (const DSL_TILE_ANALYSIS *analysis,
                 (unsigned long long)tile.smem_bank_conflict_work,
                 tile.thread_n == 0 ? 0 : tile.cta_n / tile.thread_n,
                 tile.warps_per_cta);
+        fprintf(file, "AI_OPT %u TILE_GMEM %u %u %u %u %llu %llu %llu %llu %llu\n",
+                trace_version, site.id, tile.id, tile.optimization_plan_id,
+                tile.family == DSL_TILE_FAMILY_BASELINE ? 0 : 32,
+                (unsigned long long)tile.gmem_a_sector_bytes,
+                (unsigned long long)tile.gmem_b_sector_bytes,
+                (unsigned long long)tile.gmem_c_sector_bytes,
+                (unsigned long long)tile.gmem_aligned_sector_bytes,
+                (unsigned long long)tile.smem_a_load_issue_work);
     }
     fprintf(file, "AI_OPT %u TILE_SELECT %u %u %u %u %u %u %u "
                   "selection_reason=%s\n",
@@ -290,6 +299,11 @@ static const DSL_TILE_FAMILY_SEED DSL_cuda_64 = {
 static const DSL_TILE_FAMILY_SEED DSL_cuda_128 = {
     DSL_TILE_FAMILY_CUDA_128,
     128, 128, 32, 64, 32, 8, 8, 1, 4, 1, 4
+};
+
+static const DSL_TILE_FAMILY_SEED DSL_cuda_128_coalesced = {
+    DSL_TILE_FAMILY_CUDA_128_COALESCED,
+    128, 128, 32, 64, 64, 16, 2, 1, 2, 1, 2
 };
 
 static const DSL_TILE_FAMILY_SEED DSL_blackwell_wide = {
@@ -479,7 +493,8 @@ DSL_Tile_Problem
         TY_tensor_element_ty(kid0.ty) !=
             TY_tensor_element_ty(tensor.descriptor_ty) ||
         TY_tensor_element_ty(kid1.ty) !=
-            TY_tensor_element_ty(tensor.descriptor_ty))
+            TY_tensor_element_ty(tensor.descriptor_ty) ||
+        TY_mtype(TY_tensor_element_ty(tensor.descriptor_ty)) != MTYPE_F4)
         return FALSE;
     *m = result_shape[0];
     *n = result_shape[1];
@@ -695,6 +710,127 @@ DSL_Tile_Dynamic_Barriers
         DSL_Tile_Mul_U64(ctas, plan->barrier_count, barriers);
 }
 
+/* Count distinct 32-byte sectors for each source-level warp memory issue.
+ * The CTA tile origins are multiples of eight F32 elements for these seeds,
+ * so their absolute positions do not change the sector residue. */
+static UINT64
+DSL_Tile_Local_Sectors (const DSL_TILE_PLAN_RECORD *tile, UINT32 operand,
+                        UINT32 valid_m, UINT32 valid_n, UINT32 valid_k,
+                        UINT32 base_words)
+{
+    UINT64 requests = 0;
+    const UINT32 threads = tile->threads_per_cta;
+    const UINT32 columns = tile->cta_n / tile->thread_n;
+    const UINT32 elements = operand == 0 ? tile->cta_m * tile->cta_k :
+                            tile->cta_k * tile->cta_n;
+    for (UINT32 warp = 0; warp < threads / 32; ++warp) {
+        const UINT32 repetitions = operand == 2 ?
+            tile->thread_m * tile->thread_n :
+            DSL_Tile_Ceil_Div(elements, threads);
+        for (UINT32 issue = 0; issue < repetitions; ++issue) {
+            UINT64 sectors[32];
+            UINT32 count = 0;
+            for (UINT32 lane = 0; lane < 32; ++lane) {
+                UINT32 tid = warp * 32 + lane;
+                UINT64 word;
+                if (operand == 2) {
+                    UINT32 i = issue / tile->thread_n;
+                    UINT32 j = issue % tile->thread_n;
+                    UINT32 row = (tid / columns) * tile->thread_m + i;
+                    UINT32 col = (tid % columns) * tile->thread_n + j;
+                    if (row >= valid_m || col >= valid_n)
+                        continue;
+                    word = (UINT64)row * tile->problem_n + col;
+                } else {
+                    UINT32 offset = tid + issue * threads;
+                    if (offset >= elements)
+                        continue;
+                    UINT32 row = offset / (operand == 0 ? tile->cta_k :
+                                           tile->cta_n);
+                    UINT32 col = offset % (operand == 0 ? tile->cta_k :
+                                           tile->cta_n);
+                    if ((operand == 0 && (row >= valid_m || col >= valid_k)) ||
+                        (operand == 1 && (row >= valid_k || col >= valid_n)))
+                        continue;
+                    word = operand == 0 ?
+                        (UINT64)row * tile->problem_k + col :
+                        (UINT64)row * tile->problem_n + col;
+                }
+                UINT64 sector = (word + base_words) / 8;
+                UINT32 index = 0;
+                while (index < count && sectors[index] != sector)
+                    ++index;
+                if (index == count)
+                    sectors[count++] = sector;
+            }
+            requests += count;
+        }
+    }
+    return requests;
+}
+
+static BOOL
+DSL_Tile_Sector_Bytes (DSL_TILE_PLAN_RECORD *tile)
+{
+    if (tile->cta_m % 8 != 0 || tile->cta_n % 8 != 0 ||
+        tile->cta_k % 8 != 0 || tile->threads_per_cta % 32 != 0 ||
+        tile->threads_per_cta == 0 || tile->thread_n == 0)
+        return FALSE;
+    const UINT64 m_full = tile->problem_m / tile->cta_m;
+    const UINT64 n_full = tile->problem_n / tile->cta_n;
+    const UINT64 k_full = tile->problem_k / tile->cta_k;
+    const UINT32 m_tail = tile->problem_m % tile->cta_m;
+    const UINT32 n_tail = tile->problem_n % tile->cta_n;
+    const UINT32 k_tail = tile->problem_k % tile->cta_k;
+    UINT64 aligned = 0;
+    for (UINT32 operand = 0; operand < 3; ++operand) {
+        UINT64 worst = 0;
+        for (UINT32 alignment = 0; alignment < 8; ++alignment) {
+            UINT64 requests = 0;
+            for (UINT32 mi = 0; mi < 2; ++mi) {
+                UINT64 mc = mi == 0 ? m_full : (m_tail != 0);
+                UINT32 vm = mi == 0 ? tile->cta_m : m_tail;
+                if (mc == 0) continue;
+                for (UINT32 ni = 0; ni < 2; ++ni) {
+                    UINT64 nc = ni == 0 ? n_full : (n_tail != 0);
+                    UINT32 vn = ni == 0 ? tile->cta_n : n_tail;
+                    if (nc == 0) continue;
+                    for (UINT32 ki = 0; ki < (operand == 2 ? 1U : 2U); ++ki) {
+                        UINT64 kc = operand == 2 ? 1 :
+                            (ki == 0 ? k_full : (k_tail != 0));
+                        UINT32 vk = ki == 0 ? tile->cta_k : k_tail;
+                        UINT64 multiplier, local, contribution;
+                        if (kc == 0) continue;
+                        if (!DSL_Tile_Mul_U64(mc, nc, &multiplier) ||
+                            !DSL_Tile_Mul_U64(multiplier, kc, &multiplier))
+                            return FALSE;
+                        local = DSL_Tile_Local_Sectors(tile, operand, vm,
+                                                       vn, vk, alignment);
+                        if (!DSL_Tile_Mul_U64(multiplier, local,
+                                              &contribution) ||
+                            !DSL_Tile_Add_U64(requests, contribution,
+                                              &requests))
+                            return FALSE;
+                    }
+                }
+            }
+            if (alignment == 0 &&
+                (!DSL_Tile_Mul_U64(requests, 32, &requests) ||
+                 !DSL_Tile_Add_U64(aligned, requests, &aligned)))
+                return FALSE;
+            if (alignment != 0 &&
+                !DSL_Tile_Mul_U64(requests, 32, &requests))
+                return FALSE;
+            worst = std::max(worst, requests);
+        }
+        if (operand == 0) tile->gmem_a_sector_bytes = worst;
+        else if (operand == 1) tile->gmem_b_sector_bytes = worst;
+        else tile->gmem_c_sector_bytes = worst;
+    }
+    tile->gmem_aligned_sector_bytes = aligned;
+    return TRUE;
+}
+
 static BOOL
 DSL_Tile_Bank_Work (const DSL_TILE_PLAN_RECORD *plan, UINT64 *work)
 {
@@ -717,6 +853,21 @@ DSL_Tile_Bank_Work (const DSL_TILE_PLAN_RECORD *plan, UINT64 *work)
            DSL_Tile_Mul_U64(*work, plan->warps_per_cta, work) &&
            DSL_Tile_Mul_U64(*work, plan->thread_m, work) &&
            DSL_Tile_Mul_U64(*work, groups - 1, work);
+}
+
+static BOOL
+DSL_Tile_SMEM_A_Issues (const DSL_TILE_PLAN_RECORD *plan, UINT64 *issues)
+{
+    UINT64 grid, k_steps;
+    return DSL_Tile_Mul_U64
+               (DSL_Tile_Ceil_Div(plan->problem_m, plan->cta_m),
+                DSL_Tile_Ceil_Div(plan->problem_n, plan->cta_n), &grid) &&
+           DSL_Tile_Mul_U64
+               (DSL_Tile_Ceil_Div(plan->problem_k, plan->cta_k),
+                plan->cta_k, &k_steps) &&
+           DSL_Tile_Mul_U64(grid, k_steps, issues) &&
+           DSL_Tile_Mul_U64(*issues, plan->warps_per_cta, issues) &&
+           DSL_Tile_Mul_U64(*issues, plan->thread_m, issues);
 }
 
 static BOOL
@@ -753,14 +904,18 @@ DSL_Tile_Add_Optimization_Plan
     cost.ordering_key = tile->id;
     if (complete_cost) {
         UINT64 traffic, sync, memory_work;
-        if (!DSL_Tile_Add_U64(tile->gmem_read_bytes,
-                              tile->gmem_write_bytes, &traffic) ||
+        if (!DSL_Tile_Add_U64(tile->gmem_a_sector_bytes,
+                              tile->gmem_b_sector_bytes, &traffic) ||
+            !DSL_Tile_Add_U64(traffic, tile->gmem_c_sector_bytes, &traffic) ||
             !DSL_Tile_Dynamic_Barriers(tile, &sync))
             return DSL_Tile_Report(diagnostic, "tile cost overflow", tile->id);
         UINT64 compute = std::max((UINT64)1,
                                   tile->operation_count / 1024);
         if (!DSL_Tile_Add_U64(std::max((UINT64)1, traffic / 1024),
                               tile->smem_bank_conflict_work / 32,
+                              &memory_work) ||
+            !DSL_Tile_Add_U64(memory_work,
+                              tile->smem_a_load_issue_work / 32,
                               &memory_work))
             return DSL_Tile_Report(diagnostic, "tile memory cost overflow",
                                    tile->id);
@@ -839,6 +994,11 @@ DSL_Tile_Add_Baseline
               &tile.gmem_read_bytes, &tile.gmem_write_bytes) ||
         !DSL_Tile_Add_Stages(analysis, &tile))
         return DSL_Tile_Report(diagnostic, "baseline cost overflow", tile.id);
+    tile.gmem_a_sector_bytes = tile.gmem_read_bytes;
+    tile.gmem_c_sector_bytes = tile.gmem_write_bytes;
+    if (!DSL_Tile_Add_U64(tile.gmem_read_bytes, tile.gmem_write_bytes,
+                          &tile.gmem_aligned_sector_bytes))
+        return DSL_Tile_Report(diagnostic, "baseline traffic overflow", tile.id);
     analysis->tile_plans.push_back(tile);
     if (!DSL_Tile_Add_Optimization_Plan
              (analysis, site, &analysis->tile_plans.back(), TRUE,
@@ -959,7 +1119,10 @@ DSL_Tile_Add_Family
         (seed.cta_n / seed.thread_n);
     tile.warps_per_cta =
         DSL_Tile_Ceil_Div(tile.threads_per_cta, 32);
-    if (!DSL_Tile_Bank_Work(&tile, &tile.smem_bank_conflict_work))
+    if (!DSL_Tile_Sector_Bytes(&tile))
+        return DSL_Tile_Report(diagnostic, "GMEM sector cost overflow", tile.id);
+    if (!DSL_Tile_Bank_Work(&tile, &tile.smem_bank_conflict_work) ||
+        !DSL_Tile_SMEM_A_Issues(&tile, &tile.smem_a_load_issue_work))
         return DSL_Tile_Report(diagnostic, "bank cost overflow", tile.id);
     tile.barrier_count = 2;
     if (!DSL_memory_hierarchy_find_tier
@@ -1147,6 +1310,14 @@ VHO_DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
                       DSL_cuda_128, FALSE, m, n, k, element_bytes,
                       diagnostic))
                 return FALSE;
+            if (analysis->control.enable_cuda_128 &&
+                !VHO_DSL_CUDA_TMA_Prefetch &&
+                site.tile_plan_count < analysis->control.max_plans_per_site &&
+                !DSL_Tile_Add_Family
+                     (analysis, &site, tensor, locality, source,
+                      DSL_cuda_128_coalesced, FALSE, m, n, k,
+                      element_bytes, diagnostic))
+                return FALSE;
             if (analysis->control.enable_blackwell_wide &&
                 analysis->control.target_profile_id ==
                     DSL_TARGET_PROFILE_NVIDIA_BLACKWELL &&
@@ -1254,7 +1425,7 @@ VHO_DSL_Tile_Verify
                       tile.source_evolution_node_id)) ||
                 (!baseline &&
                  (tile.family < DSL_TILE_FAMILY_CUDA_64 ||
-                  tile.family > DSL_TILE_FAMILY_BLACKWELL_WIDE ||
+                  tile.family > DSL_TILE_FAMILY_CUDA_128_COALESCED ||
                   tile.result_evolution_node_id == 0 ||
                   tile.evolution_edge_id == 0)))
                 return DSL_Tile_Report

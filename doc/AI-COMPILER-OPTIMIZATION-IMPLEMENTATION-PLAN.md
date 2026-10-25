@@ -672,8 +672,8 @@ PR boundary: one tile level or tightly related group per PR.
 
 Implemented first vertical slice:
 
-- one unchanged baseline and bounded `cuda_64`, `cuda_128`, and
-  `blackwell_wide` candidate families;
+- one unchanged baseline and bounded `cuda_64`, `cuda_128`,
+  `cuda_128_coalesced`, and `blackwell_wide` candidate families;
 - problem, CTA, warp, thread, register, vector, and instruction tile evidence;
 - explicit G0-G11 stage records aligned with P7.0-P7.11;
 - global-memory traffic, operation count, shared/register/thread/warp/barrier,
@@ -703,8 +703,81 @@ A layout, stride, and low-confidence bank-conflict work; the selected layout
 changes device-WHIRL A allocation, fill, and compute indices. The legacy CUDA
 sidecar mirrors that layout, and v7 `COST_MODEL 3` plus `TILE_LAYOUT` rows make
 the choice reviewable. A TMA request limits selection to the supported compact
-layout. This does not yet model GMEM sectors, B layout alternatives, or actual
-hardware bank latency.
+  layout. This does not model B layout alternatives or actual hardware bank
+  latency.
+
+The first contiguous-F32 GMEM planning slice is executable for the
+synchronous tile. `COST_MODEL 4` counts distinct 32-byte sector requests per
+source-level warp instruction for A/B loads and C stores, including edge
+predicates and all 4-byte-aligned base residues; `TILE_GMEM` records aligned
+and independent worst-case totals. The cost gate also charges low-confidence
+shared-A load issue work. A bounded `cuda_128_coalesced` alternative changes
+the thread tile from 8x8 to 16x2 while preserving the same 128x128x32 CTA
+tile and linear A/B copy map. The selected thread map lowers through the same
+device-WHIRL path. On 128x128x32, plan 4 selects the coalesced map; on
+128x128x128, plan 5 retains padded 8x8 because of the extra A-load issues.
+Both pass host CTA parity. The compact A WHIRL allocation was corrected to
+`BM*BK` elements when the new selection exposed its previous under-allocation.
+`m2-whirl-kernel/run-028/` retains both `.cu` outputs, raw traces, reports,
+device images, parity, and checksums; `run-024/` retains irregular-edge and
+I4 rejection evidence. This closes **compiler-side GMEM access-map planning
+for contiguous F32 synchronous GEMM**, not PTX transaction verification,
+strided/repacked GMEM layouts, cache modeling, or measured profitability.
+
+Compiler/runtime boundary: **M2-B1 target-buffer binding**. The selected
+GMEM tile is not itself an allocation. For the first synchronous F32
+standalone path, the generated-provider call already emitted in the host
+WHIRL PU is the plan-bound invocation point. Use a target-neutral
+`TargetBufferService` with validated import, allocate, transfer, and release
+operations; the fixed-shape NVIDIA review adapter supplies CUDA callbacks.
+Derive A/B/C sizes from the checked selected plan and invocation dimensions.
+Host-resident inputs require one allocation and transfer per invocation;
+borrowed device-resident inputs must not be recopied or freed. C may be
+borrowed on device or runtime-allocated and copied back only for a host
+result. Guard partial allocation, transfer failure, completion, and cleanup.
+Retain host-mock operation traces and the original host/device WHIRL evidence.
+The full standalone host-dispatch PU generator and service adapter remain
+subsequent milestones; do not label the review adapter production runtime.
+
+The first review-adapter slice is implemented: a C ABI and target-neutral
+service core bind host or borrowed-device buffers, while the NVIDIA adapter
+implements its callbacks with CUDA allocation, copy, pointer validation,
+and release APIs. The host-mock receipt records `AHAHADRRR` for host A/B/C
+(allocate/copy each input, allocate C, copy C home, release in reverse),
+`III` for three borrowed device buffers (import only), and `AHR` for a
+failed first transfer with cleanup (`AR` also covers a provider that fails
+after returning an allocation; `ARR` shows a failed release can be retried).
+The applied selected-plan package now
+includes and hashes the service source and ABI. This verifies runtime
+orchestration and packaging, not native CUDA compilation or the future
+generated standalone host PU.
+The verified compiler receipt is `m2-buffer-binding/compiler-run-001/`;
+`run-005/` retains Linux host-mock operation evidence, and `package-007/`
+retains the selected-plan native-review package with the buffer service.
+The V1 review adapter's public call still accepts host pointers; borrowed
+device buffers are proven at the service-core boundary, not yet through
+that adapter's invocation ABI.
+Applied synchronous compiler review artifacts also preserve the host CUDA
+adapter as `source/matmul.host.cu`, its generic buffer service dependencies,
+and a plan/source/trace hash join in `plans/host-buffer-review.json`. The
+matching review log describes allocation and transfer source actions; it
+does not claim those actions were executed on a GPU.
+`m2-buffer-binding/compiler-run-002/` retains this combined host/device source
+review with verified checksums.
+
+M2-B1 follow-on gates:
+
+1. [x] Preserve plan identity in the selected host-WHIRL provider call and
+   selected device PU; retain `.t`, `.B`, `.T`, and `.cu` evidence.
+2. [x] Exercise host staging, borrowed-device import, and partial-failure
+   cleanup with a target-neutral mock provider.
+3. [x] Package the generic service with the NVIDIA review adapter without
+   adding CUDA dependencies to `be.so`.
+4. [ ] Generate the standalone host dispatch PU and its buffer-requirement
+   metadata from the selected execution plan, rather than relying on the
+   fixed-shape review adapter for invocation policy.
+5. [ ] Compile and run the NVIDIA provider with native CUDA; verify actual
+   allocation/transfer behavior, completion, numerical result, and fallback.
 
 The remaining joint-plan design retains
 matching direct/cache-served, one-slot synchronous, and target-legal
@@ -1354,10 +1427,15 @@ GPU correctness, and calibrated speedup remain separate later gates.
    hash, selected plan/geometry/SMEM layout, trace and report pointers,
    and host-CTA parity. It rejects incomplete image/trace/parity provenance;
    it does not relabel the legacy template as the selected kernel. The
-   checksum-verified `m2-whirl-kernel/run-018/` is the current fixed-shape
+   checksum-verified `m2-whirl-kernel/run-018/` is a fixed-shape
    manual-review checkpoint. Its compiler-side gate is complete; native M2
-   acceptance is still open. The next compiler design action is GMEM copy-map
-   and sector-aware planning after the source algorithm is reviewed.
+   acceptance is still open. At that checkpoint, GMEM access-map and
+   sector-aware planning was the next compiler design action.
+   The subsequent contiguous-F32 GMEM slice is recorded above: `run-028/`
+   selects and emits the 16x2 lane map at K=32, while keeping padded 8x8 at
+   K=128. The raw `.t` and `tile.log` show A/B/C source-warp sector requests,
+   shared-A issue work, complete relative costs, and both decisions. No GPU
+   throughput or native transaction count is inferred from this choice.
 5. [ ] Extend the selected tile with P7.4/P8 staging and a reviewed
    fetch/pipeline plan. Retain movement engine, stages, issue/wait, barriers,
    hidden versus unhidden movement, fallback, correctness, and measurement

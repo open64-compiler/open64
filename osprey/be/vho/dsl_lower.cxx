@@ -2850,7 +2850,10 @@ VHO_DSL_CUDA_Build_Selected_Whirl
     c.a = formals[0]; c.b = formals[1]; c.c = formals[2];
     c.as = VHO_DSL_CUDA_New_Local
         ("as", Make_Array_Type(MTYPE_F4, 1,
-                                tile.cta_k * tile.a_shared_stride));
+                                tile.cta_k *
+                                (tile.a_shared_layout ==
+                                     DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+                                     tile.a_shared_stride : tile.cta_m)));
     c.bs = VHO_DSL_CUDA_New_Local
         ("bs", Make_Array_Type(MTYPE_F4, 1, tile.cta_k * tile.cta_n));
     c.acc = VHO_DSL_CUDA_New_Local

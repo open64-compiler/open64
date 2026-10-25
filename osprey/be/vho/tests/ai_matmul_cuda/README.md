@@ -108,6 +108,18 @@ The edge fixture checks transposed selection and source/WHIRL host-CTA
 parity; the TMA source path stays compact. This is not a measured bank
 throughput result or a complete GMEM sector/coalescing model.
 
+`run-027/` is the first contiguous-F32 GMEM planning checkpoint. It compares
+the original 8x8 and new 16x2 per-thread output maps with a v4 source-warp
+32-byte sector model for A/B loads and C stores, plus shared-A load issue
+work. On 128x128x32, the cost gate selects the 16x2 map and
+`k32/gemm.whirl.cu` shows its 512-thread indexing and corrected 4,096-element
+A shared allocation. On 128x128x128 it retains padded 8x8 in
+`k128/gemm.whirl.cu`. Both `.cu` files pass host CTA parity; an altered
+`TILE_GMEM` row is rejected by the report parser. The raw `.t`, `tile.log`,
+device `.B`/`.T`, receipts, and checksums are retained. `run-024/` covers
+irregular edges and the I4 geometry rejection. These are source-level
+coalescing estimates, not PTX transaction or GPU timing evidence.
+
 The compiler artifact runner can capture both source paths in one run:
 
 ```sh
@@ -254,6 +266,39 @@ separate x86-64 integration smoke links the actual rewritten object to a mock
 CUDA hook and checks the emitted descriptor. This is not a production tensor
 provider or a GPU verification result. The focused AIO-11 contract test also
 writes binary WHIRL and checks invalid-plan rejection and rollback.
+
+## M2-B1 target buffer binding
+
+The selected host-WHIRL generated-provider call remains the plan-bound
+invocation. The fixed-shape CUDA review adapter now binds A/B/C through the
+target-neutral `open64_target_buffer_service.h` contract. Its NVIDIA
+callbacks use CUDA allocation, copy, pointer validation, and release APIs;
+the service core has no CUDA dependency. The synchronous host-input path
+allocates A/B/C once per invocation, copies A/B to the target, launches and
+waits, copies C back, then releases owned buffers. A borrowed device buffer
+is validated and never copied or freed by the service. This is not the
+production runtime or a completed generated standalone host PU.
+
+Applied synchronous `compile_source.py` artifacts automatically retain
+`source/matmul.host.cu` beside the selected kernel sources. This is the
+fixed-shape CUDA review adapter, with allocation, A/B upload, launch,
+completion, C download, and cleanup visible in one source file. Its buffer
+service implementation and headers are retained alongside it.
+`plans/host-buffer-review.json` joins the adapter and dependency hashes to
+the selected plan, kernel, and compiler trace; `reports/host-buffer-review.log`
+summarizes the described sequence. Provenance identifies the adapter as
+handwritten runtime code, not a host PU emitted by `whirl2c`.
+
+```sh
+python3 osprey/be/vho/tests/ai_matmul_cuda/test_target_buffer_service.py \
+  --output-dir artifacts/ai_optimization/m2-buffer-binding/new-run
+```
+
+The retained `buffer-binding.log` shows host staging, borrowed-buffer
+zero-copy, and failed-transfer cleanup; its receipt explicitly says native
+CUDA was not compiled. `prepare_generated.py` now includes the generic
+service ABI and implementation in the native-review package, and the remote
+runner compiles and links that source before attempting GPU execution.
 
 To preserve the exact selected source and object for native execution:
 

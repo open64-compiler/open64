@@ -66,12 +66,17 @@ def main() -> None:
     run([cc, "-std=c11", "-O2", "-Isource", "-c",
          "source/generated_benchmark.c", "-o", "binary/benchmark.o"], root,
         root / "logs/benchmark-cc.log")
+    run([cc, "-std=c11", "-O2", "-Isource", "-c",
+         "source/target_buffer_service.c", "-o",
+         "binary/target_buffer_service.o"], root,
+        root / "logs/target-buffer-cc.log")
     run([nvcc, "-std=c++17", "-O3", "-arch=sm_90", "-Xptxas=-v",
          "-Isource", "-c",
          "source/generated_runtime.cu", "-o", "binary/generated_runtime.o"],
         root, root / "logs/nvcc.log")
     run([nvcc, "-Xcompiler=-no-pie", "binary/matmul.link.o", "binary/runtime.o",
-         "binary/benchmark.o", "binary/generated_runtime.o", "-o",
+         "binary/benchmark.o", "binary/target_buffer_service.o",
+         "binary/generated_runtime.o", "-o",
          "binary/matmul-generated"], root, root / "logs/link.log")
     run([nvcc, "-std=c++17", "-O3", "-arch=sm_90", "-Xptxas=-v",
          "-Isource", "source/kernel_control.cu", "-o",

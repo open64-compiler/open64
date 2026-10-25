@@ -27,6 +27,66 @@ PHASE_STATUSES = frozenset(("disabled_by_option", "disabled_by_policy",
                             "analyzed_no_rewrite", "rewritten", "failed"))
 
 
+def source_warp_sector_bytes(row: dict) -> tuple[int, int, int, int]:
+    m, n, k = row["grid"]["problem"]
+    bm, bn, bk = row["cta"]
+    threads = row["threads"]
+    columns = row["layout"]["thread_columns"]
+    tm = bm * columns // threads
+    tn = bn // columns
+    if threads % 32 or min(bm, bn, bk, tm, tn) <= 0:
+        raise ValueError("invalid source warp geometry")
+
+    def local_sectors(operand, vm, vn, vk, alignment):
+        sectors = 0
+        elements = bm * bk if operand == 0 else bk * bn
+        issues = tm * tn if operand == 2 else (elements + threads - 1) // threads
+        for warp in range(threads // 32):
+            for issue in range(issues):
+                touched = set()
+                for lane in range(32):
+                    tid = warp * 32 + lane
+                    if operand == 2:
+                        row_index = (tid // columns) * tm + issue // tn
+                        col_index = (tid % columns) * tn + issue % tn
+                        if row_index >= vm or col_index >= vn:
+                            continue
+                        word = row_index * n + col_index
+                    else:
+                        offset = tid + issue * threads
+                        if offset >= elements:
+                            continue
+                        width = bk if operand == 0 else bn
+                        row_index, col_index = divmod(offset, width)
+                        if (operand == 0 and (row_index >= vm or col_index >= vk)) or (
+                                operand == 1 and (row_index >= vk or col_index >= vn)):
+                            continue
+                        word = row_index * (k if operand == 0 else n) + col_index
+                    touched.add((word + alignment) // 8)
+                sectors += len(touched)
+        return sectors
+
+    def classes(extent, tile):
+        return ((tile, extent // tile), (extent % tile, int(extent % tile != 0)))
+
+    worst = []
+    aligned = 0
+    for operand in range(3):
+        totals = []
+        for alignment in range(8):
+            total = 0
+            for vm, mc in classes(m, bm):
+                for vn, nc in classes(n, bn):
+                    for vk, kc in (((bk, 1),) if operand == 2 else classes(k, bk)):
+                        if mc and nc and kc:
+                            total += mc * nc * kc * local_sectors(
+                                operand, vm, vn, vk, alignment)
+            totals.append(total * 32)
+        aligned += totals[0]
+        worst.append(max(totals))
+    return (*worst, aligned)
+
+
 def parse(trace: str) -> tuple[list[dict], dict, dict]:
     candidates: list[dict] = []
     grids: dict[int, dict] = {}
@@ -41,6 +101,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     fetch_action: dict | None = None
     cost_model: str | None = None
     layouts: dict[int, dict] = {}
+    gmem: dict[int, dict] = {}
     roof_target: dict | None = None
     context: dict | None = None
     phases: dict[int, dict] = {}
@@ -92,11 +153,14 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                                  read_bytes=int(read_bytes),
                                  write_bytes=int(write_bytes),
                                  producer=int(producer), last_use=int(last_use)))
-        elif kind == "COST_MODEL" and trace_version == "7" and len(fields) in (6, 7):
+        elif kind == "COST_MODEL" and trace_version == "7" and len(fields) in (6, 7, 9):
             if cost_model is not None or fields[3:] not in (
                     ["2", "valid_predicated_elements", "dynamic_cta_k_barriers"],
                     ["3", "valid_predicated_elements", "dynamic_cta_k_barriers",
-                     "bank_conflict_work"]):
+                     "bank_conflict_work"],
+                    ["4", "valid_predicated_elements", "dynamic_cta_k_barriers",
+                     "bank_conflict_work", "source_warp_sectors",
+                     "smem_a_load_issues"]):
                 raise ValueError("unknown or duplicate tile cost model")
             cost_model = "v" + fields[3]
         elif kind == "ROOF_TARGET" and trace_version in ("4", "5", "6", "7") and len(fields) == 9:
@@ -163,6 +227,13 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                                  a_layout=a_layout, a_stride=stride,
                                  bank_work=bank_work,
                                  thread_columns=thread_columns, warps=warps)
+        elif kind == "TILE_GMEM" and trace_version == "7" and len(fields) == 12:
+            site, tile, plan, sector, a, b, c, aligned, a_issues = map(int, fields[3:])
+            if (plan in gmem or min(a, b, c, aligned, a_issues) < 0 or
+                    sector not in (0, 32)):
+                raise ValueError("invalid or duplicate GMEM sector record")
+            gmem[plan] = dict(site=site, tile=tile, sector=sector,
+                              a=a, b=b, c=c, aligned=aligned, a_issues=a_issues)
         elif kind == "TILE_SELECT" and len(fields) == (11 if trace_version in ("3", "4", "5", "6", "7") else 10):
             if selection is not None:
                 raise ValueError("duplicate tile selection")
@@ -259,8 +330,9 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         if not candidates and selection is None and action is None:
             if phases[7]["status"] not in ("disabled_by_option", "no_eligible_region"):
                 raise ValueError("missing tile decision for active P7")
-            if fetch_candidates or fetch_selection or fetch_action or grids:
-                raise ValueError("fetch decision without tile selection")
+            if (fetch_candidates or fetch_selection or fetch_action or grids or
+                    layouts or gmem):
+                raise ValueError("optimization decision without tile selection")
             if semantic or locality:
                 raise ValueError("tensor facts without active tile analysis")
             return [], dict(context=context, phases=phases,
@@ -313,9 +385,13 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         raise ValueError("baseline or selected plan missing from candidates")
     if by_plan[selection["baseline"]]["family"] != "baseline":
         raise ValueError("baseline plan does not name baseline family")
-    if cost_model in ("v2", "v3"):
-        if cost_model == "v3" and set(layouts) != set(by_plan):
+    if cost_model != "v4" and gmem:
+        raise ValueError("GMEM sector records without v4 cost model")
+    if cost_model in ("v2", "v3", "v4"):
+        if cost_model in ("v3", "v4") and set(layouts) != set(by_plan):
             raise ValueError("incomplete tile layout coverage")
+        if cost_model == "v4" and set(gmem) != set(by_plan):
+            raise ValueError("incomplete GMEM sector coverage")
         for row in candidates:
             grid = row.get("grid")
             if grid is None:
@@ -330,7 +406,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                 sync = 2 * grid["ctas"] * grid["k_iterations"]
             total_bytes = read_bytes + m * n * 4
             bank_work = 0
-            if cost_model == "v3":
+            if cost_model in ("v3", "v4"):
                 layout = layouts[row["plan"]]
                 bm, bn, bk = row["cta"]
                 if (layout["site"] != row["site"] or
@@ -361,7 +437,33 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                     if layout["bank_work"] != bank_work:
                         raise ValueError("v3 bank work disagrees with geometry")
                 row["layout"] = layout
-            if (row["memory"] != max(1, total_bytes // 1024) + bank_work // 32 or
+            cost_bytes = total_bytes
+            if cost_model == "v4":
+                record = gmem[row["plan"]]
+                if record["site"] != row["site"] or record["tile"] != row["tile"]:
+                    raise ValueError("GMEM sector identity disagrees with candidate")
+                expected_gmem = ((read_bytes, 0, m * n * 4, total_bytes)
+                                 if row["family"] == "baseline" else
+                                 source_warp_sector_bytes(row))
+                if row["family"] == "baseline":
+                    expected_issues = 0
+                else:
+                    bm, bn, bk = row["cta"]
+                    cols = row["layout"]["thread_columns"]
+                    tm = bm * cols // row["threads"]
+                    expected_issues = (grid["ctas"] * grid["k_iterations"] *
+                                       bk * row["layout"]["warps"] * tm)
+                if ((record["a"], record["b"], record["c"], record["aligned"])
+                        != expected_gmem or
+                        record["a_issues"] != expected_issues or
+                        record["sector"] != (0 if row["family"] == "baseline" else 32)
+                        or sum(expected_gmem[:3]) < total_bytes):
+                    raise ValueError("GMEM sectors disagree with source access map")
+                row["gmem"] = record
+                cost_bytes = sum(expected_gmem[:3])
+            if (row["memory"] != max(1, cost_bytes // 1024) +
+                    bank_work // 32 +
+                    (row["gmem"]["a_issues"] // 32 if cost_model == "v4" else 0) or
                     row["sync"] != sync or
                     (row.get("roof_bytes") and
                      row["roof_bytes"] != total_bytes)):
@@ -622,7 +724,10 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
     if selection.get("cost_model"):
         summary.append(f"cost_model={selection['cost_model']} "
                        "reads=valid_predicated_elements "
-                       "sync=dynamic_cta_k_barriers confidence=low")
+                       "sync=dynamic_cta_k_barriers "
+                       + ("gmem=source_warp_sectors "
+                          if selection["cost_model"] == "v4" else "")
+                       + "confidence=low")
     (reports / "optimization.log").write_text(
         "# What it summarizes: Complete P0-P11 optimization process, including every phase decision and non-execution reason.\n"
         + "".join(phase_contents), encoding="utf-8")
@@ -642,18 +747,27 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
         "# Cost model: low-confidence relative score, not cycles, latency, or measured performance.",
         "# Symbols: M,N,K=problem extents; E=element bytes; BM,BN,BK=CTA tile extents; ceil=ceiling division.",
         "# compute=max(1,floor(2*M*N*K/1024)); one multiply-add counts as two operations.",
-        "# memory_unhidden=max(1,floor((read_bytes+write_bytes)/1024)); write_bytes=M*N*E.",
-        *( ["# v3 memory_unhidden adds floor(bank_conflict_work/32); this is a low-confidence bank-serialization proxy, not time."]
-           if selection.get("cost_model") == "v3" else [] ),
+        ("# memory_unhidden=max(1,floor((A+B+C worst sector bytes)/1024))+floor(bank_conflict_work/32)+floor(smem_a_load_issues/32)."
+         if selection.get("cost_model") == "v4" else
+         "# memory_unhidden=max(1,floor((read_bytes+write_bytes)/1024)); write_bytes=M*N*E."),
+        *( ["# v3/v4 memory_unhidden adds floor(bank_conflict_work/32); this is a low-confidence bank-serialization proxy, not time."]
+           if selection.get("cost_model") in ("v3", "v4") else [] ),
+        *( ["# v4 memory_unhidden also adds floor(smem_a_load_issues/32), a low-confidence issue-work proxy.",
+            "# v4 memory_unhidden uses worst 4-byte-aligned A/B/C source-warp 32-byte sector requests, not valid payload bytes.",
+            "# TILE_GMEM: A/B loads and C stores; aligned_bytes assumes 32-byte-aligned operand bases, cost uses independent worst-case bases.",
+            "# Sector counts model source-level scalar warp issues, not PTX vectorization, cache hits, or HBM transactions."]
+           if selection.get("cost_model") == "v4" else [] ),
         "# read_bytes baseline=2*M*N*K*E.",
         ("# read_bytes tiled=(M*K*ceil(N/BN)+K*N*ceil(M/BM))*E; invalid edge loads are zero-filled without GMEM requests."
-         if selection.get("cost_model") in ("v2", "v3") else
+         if selection.get("cost_model") in ("v2", "v3", "v4") else
          "# read_bytes tiled=ceil(M/BM)*ceil(N/BN)*ceil(K/BK)*(BM*BK+BK*BN)*E."),
         "# total=compute+memory_unhidden+communication_unhidden+sync+launch+runtime_selection.",
         ("# sync tiled=2*ceil(M/BM)*ceil(N/BN)*ceil(K/BK), baseline=0; this counts issued CTA barriers, not exposed latency."
-         if selection.get("cost_model") in ("v2", "v3") else
+         if selection.get("cost_model") in ("v2", "v3", "v4") else
          "# sync=static barrier_count (0 baseline, 2 tiled); communication_unhidden, launch, runtime_selection=0 here."),
-        ("# Caveat: valid element bytes are not sector transactions or HBM bytes; bandwidth, cache effects, overlap, and SM parallelism remain unmodeled."
+        ("# Caveat: source-warp sectors are not observed cache/HBM bytes; bandwidth, cache effects, overlap, and SM parallelism remain unmodeled."
+         if selection.get("cost_model") == "v4" else
+         "# Caveat: valid element bytes are not sector transactions or HBM bytes; bandwidth, cache effects, overlap, and SM parallelism remain unmodeled."
          if selection.get("cost_model") in ("v2", "v3") else
          "# Caveat: memory_unhidden is a traffic proxy; bandwidth, overlap, cache effects, and dynamic barrier frequency are not modeled."),
         "# Selection: lowest complete relative cost among proven plans; a modeled Roofline bound can resolve near-cost alternatives where available.",
@@ -690,7 +804,7 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
             tile_lines[-1] += (f" problem={','.join(map(str, grid['problem']))}"
                                f" grid={','.join(map(str, grid['grid']))}"
                                f" grid_ctas={grid['ctas']} k_iterations={grid['k_iterations']}")
-            if selection.get("cost_model") in ("v2", "v3") and row["family"] != "baseline":
+            if selection.get("cost_model") in ("v2", "v3", "v4") and row["family"] != "baseline":
                 m, n, k = grid["problem"]
                 grid_m, grid_n = grid["grid"]
                 tile_lines[-1] += (f" valid_a_load_bytes={m * k * grid_n * 4}"
@@ -701,6 +815,15 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
                                    f" a_smem_layout={layout['a_layout']}"
                                    f" a_stride={layout['a_stride']}"
                                    f" bank_conflict_work={layout['bank_work']}")
+            if "gmem" in row:
+                traffic = row["gmem"]
+                tile_lines[-1] += (f" gmem_sector_bytes={traffic['sector']}"
+                                   f" a_sector_bytes={traffic['a']}"
+                                   f" b_sector_bytes={traffic['b']}"
+                                   f" c_sector_bytes={traffic['c']}"
+                                   f" aligned_sector_bytes={traffic['aligned']}"
+                                   f" smem_a_load_issues={traffic['a_issues']}"
+                                   f" cost_basis=worst_base_alignment")
         if "roof_bound_ns" in row:
             tile_lines[-1] += (f" flops={row['flops']} global_bytes={row['roof_bytes']} "
                                f"roof_compute_ns={row['roof_compute_ns']} "

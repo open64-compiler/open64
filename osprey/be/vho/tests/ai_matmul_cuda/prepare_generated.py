@@ -14,6 +14,8 @@ import tempfile
 HERE = Path(__file__).resolve().parent
 M0 = HERE.parent / "ai_matmul_m0"
 ABI = HERE.parents[3] / "include/open64_dsl_runtime_abi.h"
+BUFFER_ABI = HERE.parents[3] / "include/open64_target_buffer_service.h"
+BUFFER_IMPL = HERE.parents[3] / "libopen64rt/target_buffer_service.c"
 
 
 def digest(path: Path) -> str:
@@ -65,7 +67,8 @@ def main() -> None:
         for path in (HERE / "generated_runtime.cu", HERE / "generated_benchmark.c",
                      HERE / "kernel_control.cu",
                      M0 / "runtime.c", M0 / "runtime.h",
-                     M0 / "generated_runtime.h", ABI):
+                     M0 / "generated_runtime.h", ABI, BUFFER_ABI,
+                     BUFFER_IMPL):
             shutil.copy2(path, stage / "source" / path.name)
         shutil.copy2(HERE / "run_generated_gpu.py", stage / "run_generated_gpu.py")
         shutil.copy2(HERE / "remote_generated.py", stage / "remote_generated.py")

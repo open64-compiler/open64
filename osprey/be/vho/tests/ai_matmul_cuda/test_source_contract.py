@@ -41,7 +41,10 @@ DEVICE_SOURCE = '''extern "C" __global__ void ai_matmul_tile_f32(
 {
   __shared__ _IEEE32 as[4096LL];
   __shared__ _IEEE32 bs[4096LL];
+  _IEEE32 acc[64LL];
   tid = (_INT32)((threadIdx).x);
+  local_row = (tid / 16) * 8;
+  local_col = (tid % 16) * 8;
   row0 = (_INT32)((blockIdx).y) * 128;
   for(base = 0; base < 128; base = base + 32) {
     __syncthreads();
@@ -79,6 +82,10 @@ class SourceContractTest(unittest.TestCase):
             validate_device_whirl_output(
                 DEVICE_SOURCE.replace("base + 32", "base + 16"), DEVICE_DUMP,
                 selection, selected)
+        with self.assertRaisesRegex(RuntimeError, "selected tile"):
+            validate_device_whirl_output(
+                DEVICE_SOURCE.replace("as[4096LL]", "as[1024LL]"),
+                DEVICE_DUMP, selection, selected)
         with self.assertRaisesRegex(RuntimeError, "shared staging"):
             validate_device_whirl_output(
                 DEVICE_SOURCE, DEVICE_DUMP.replace("(DEVICE_SYMBOL) 4", "", 1),
@@ -102,6 +109,17 @@ class SourceContractTest(unittest.TestCase):
         guarded_dump = DEVICE_DUMP + "IF {line: 0}\n" * 3
         validate_device_whirl_output(guarded_source, guarded_dump,
                                      selection, selected)
+
+    def test_device_lane_map_matches_costed_thread_tile(self):
+        selected = dict(CANDIDATES[0], grid=dict(problem=(128, 128, 128)),
+                        layout=dict(thread_columns=16))
+        selection = dict(SELECTION, whirl_kernel=dict(plan=3, tile=3))
+        validate_device_whirl_output(DEVICE_SOURCE, DEVICE_DUMP,
+                                     selection, selected)
+        with self.assertRaisesRegex(RuntimeError, "lost selected lane map"):
+            validate_device_whirl_output(
+                DEVICE_SOURCE.replace("(tid % 16) * 8", "(tid % 16) * 2"),
+                DEVICE_DUMP, selection, selected)
 
     def test_selected_tile_matches_source(self):
         validate_selected_source(SOURCE, CANDIDATES, SELECTION)

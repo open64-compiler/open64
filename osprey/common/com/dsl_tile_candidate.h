@@ -64,7 +64,8 @@ typedef enum {
     DSL_TILE_FAMILY_BASELINE = 1,
     DSL_TILE_FAMILY_CUDA_64 = 2,
     DSL_TILE_FAMILY_CUDA_128 = 3,
-    DSL_TILE_FAMILY_BLACKWELL_WIDE = 4
+    DSL_TILE_FAMILY_BLACKWELL_WIDE = 4,
+    DSL_TILE_FAMILY_CUDA_128_COALESCED = 5
 } DSL_TILE_FAMILY_KIND;
 
 typedef enum {
@@ -135,9 +136,14 @@ typedef struct {
     UINT32 transaction_bytes;
     UINT64 gmem_read_bytes;
     UINT64 gmem_write_bytes;
+    UINT64 gmem_a_sector_bytes;
+    UINT64 gmem_b_sector_bytes;
+    UINT64 gmem_c_sector_bytes;
+    UINT64 gmem_aligned_sector_bytes;
     UINT64 operation_count;
     UINT64 shared_bytes_per_stage;
     UINT64 smem_bank_conflict_work;
+    UINT64 smem_a_load_issue_work;
     UINT64 shared_capacity_bytes;
     UINT32 a_shared_layout;
     UINT32 a_shared_stride;

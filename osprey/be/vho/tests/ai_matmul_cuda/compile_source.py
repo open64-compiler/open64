@@ -16,6 +16,7 @@ import sys
 import tempfile
 
 from ai_opt_report import PHASE_LOGS, parse, render
+from host_buffer_review import publish_host_buffer_review
 
 
 HERE = Path(__file__).resolve().parent
@@ -122,6 +123,21 @@ def validate_device_whirl_output(source: str, dump: str,
     )
     if any(re.search(pattern, source) is None for pattern in required_source):
         raise RuntimeError("whirl2c CUDA output disagrees with selected tile")
+    if selected.get("layout"):
+        columns = selected["layout"]["thread_columns"]
+        if (columns <= 0 or bn % columns or selected["threads"] <= 0 or
+                bm * columns % selected["threads"]):
+            raise RuntimeError("selected lane geometry is invalid")
+        tm = bm * columns // selected["threads"]
+        tn = bn // columns
+        lane_patterns = (
+            rf'_IEEE32\s+acc\[{tm * tn}LL\]',
+            rf'local_row\s*=\s*\(tid\s*/\s*{columns}\)\s*\*\s*{tm}',
+            rf'local_col\s*=\s*\(tid\s*%\s*{columns}\)\s*\*\s*{tn}',
+        )
+        if any(re.search(pattern, source) is None
+               for pattern in lane_patterns):
+            raise RuntimeError("whirl2c CUDA output lost selected lane map")
     if len(re.findall(r'__syncthreads\s*\(\s*\)', source)) != 2:
         raise RuntimeError("whirl2c CUDA output lacks two K-tile barriers")
     if (re.search(r'FUNC_ENTRY\s*<[^>]*ai_matmul_tile_f32>', dump) is None or
@@ -531,6 +547,7 @@ def main() -> None:
                 stage / "logs/lowered-ir_b2a.log")
         (stage / "plans/m2-selected-tile.json").write_text(
             json.dumps(handoff, indent=2) + "\n", encoding="utf-8")
+        host_review = publish_host_buffer_review(stage) if args.apply else None
         receipt = {
             "schema": "ai-matmul-compiler-cuda-source-v1",
             "status": ("compiler_generated_tile_whirl_applied_unverified" if args.apply
@@ -545,6 +562,11 @@ def main() -> None:
             "review_cuda_path": "source/matmul.whirl.cu" if args.device_whirl else None,
             "review_cuda_sha256": sha256(device_cuda) if args.device_whirl else None,
             "review_record_path": "plans/cu-review.json" if args.device_whirl else None,
+            "host_cuda_review_path": host_review["host_source_path"] if host_review else None,
+            "host_cuda_review_sha256": sha256(stage / host_review["host_source_path"]) if host_review else None,
+            "host_buffer_review_record_path": "plans/host-buffer-review.json" if host_review else None,
+            "host_cuda_origin": host_review["origin"] if host_review else None,
+            "host_cuda_compiler_generated": False,
             "m2_handoff_path": "plans/m2-selected-tile.json",
             "m2_handoff_sha256": sha256(stage / "plans/m2-selected-tile.json"),
             "decision_trace_path": "traces/compile.t",

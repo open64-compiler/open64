@@ -312,6 +312,13 @@ The runtime requires abstract buffers, queues, completion events, collectives,
 and executables. It must not define these abstractions in CUDA-specific terms.
 For example, the generic contract carries an execution queue and completion
 token rather than a public `cudaStream_t` and `cudaEvent_t`.
+`TargetBufferService` is the named buffer boundary: selected-plan requirements
+are bound to validated imported storage or runtime-owned allocations, and
+transfers follow the declared residency and output contract. The initial V1
+core and NVIDIA review adapter implement a synchronous subset with host-mock
+evidence; asynchronous completion, service-JIT buffer leases, and native
+CUDA execution remain separate acceptance gates. See
+`OPENPY-COMPILATION-AND-EXECUTION-MODES-DESIGN-v0.1.md` for ownership.
 
 The runtime caches loaded executables by at least package checksum, selected
 image, provider, device, context or execution environment, and entry identity.
@@ -357,6 +364,7 @@ The initial NVIDIA provider maps the generic contract as follows:
 | Module loader | CUDA Driver Module or Library Management API |
 | Execution queue | CUDA stream hidden behind provider handle |
 | Completion token | CUDA event or graph dependency hidden behind provider handle |
+| TargetBufferService | CUDA allocation, pointer validation, copy, and release hidden behind provider callbacks |
 | Collectives | NCCL or another reviewed NVIDIA-capable provider |
 | Provider library | cuBLASLt, CUTLASS-based package, DeepGEMM, or another reviewed binding |
 
