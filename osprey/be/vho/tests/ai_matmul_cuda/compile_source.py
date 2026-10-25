@@ -122,6 +122,21 @@ def validate_device_whirl_output(source: str, dump: str,
     )
     if any(re.search(pattern, source) is None for pattern in required_source):
         raise RuntimeError("whirl2c CUDA output disagrees with selected tile")
+    if selected.get("layout"):
+        columns = selected["layout"]["thread_columns"]
+        if (columns <= 0 or bn % columns or selected["threads"] <= 0 or
+                bm * columns % selected["threads"]):
+            raise RuntimeError("selected lane geometry is invalid")
+        tm = bm * columns // selected["threads"]
+        tn = bn // columns
+        lane_patterns = (
+            rf'_IEEE32\s+acc\[{tm * tn}LL\]',
+            rf'local_row\s*=\s*\(tid\s*/\s*{columns}\)\s*\*\s*{tm}',
+            rf'local_col\s*=\s*\(tid\s*%\s*{columns}\)\s*\*\s*{tn}',
+        )
+        if any(re.search(pattern, source) is None
+               for pattern in lane_patterns):
+            raise RuntimeError("whirl2c CUDA output lost selected lane map")
     if len(re.findall(r'__syncthreads\s*\(\s*\)', source)) != 2:
         raise RuntimeError("whirl2c CUDA output lacks two K-tile barriers")
     if (re.search(r'FUNC_ENTRY\s*<[^>]*ai_matmul_tile_f32>', dump) is None or

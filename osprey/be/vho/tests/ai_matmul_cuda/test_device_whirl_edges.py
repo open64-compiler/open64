@@ -67,8 +67,8 @@ def main():
         trace_path = root / "edge.t"
         candidates, selection, action = parse(trace_path.read_text(
             encoding="utf-8"))
-        if selection.get("cost_model") != "v3":
-            raise RuntimeError("layout-aware tile cost model is missing")
+        if selection.get("cost_model") != "v4":
+            raise RuntimeError("sector-aware tile cost model is missing")
         selected = next(row for row in candidates
                         if row["plan"] == selection["selected"])
         if selected["layout"]["a_layout"] != "transposed_padded":
@@ -116,7 +116,7 @@ def main():
         summary = (root / "reports/optimization-summary.log").read_text(
             encoding="utf-8")
         if "edge_plan=predicated" not in summary or \
-                "cost_model=v3" not in summary:
+                "cost_model=v4" not in summary:
             raise RuntimeError("optimization summary omitted edge/cost decisions")
         return dict(selected_plan=selected["plan"], tile=selected["cta"],
                     problem=(m, n, k), cost_model=selection["cost_model"],

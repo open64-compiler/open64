@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from ai_opt_report import parse, render
+from ai_opt_report import parse, render, source_warp_sector_bytes
 
 
 def candidate(tile: int, family: str, total: int,
@@ -33,6 +33,18 @@ TRACE = "\n".join((
 
 
 class ReportTest(unittest.TestCase):
+    def test_source_warp_sector_model_exposes_output_lane_tradeoff(self):
+        regular = dict(grid=dict(problem=(128, 128, 128)),
+                       cta=(128, 128, 32), threads=256,
+                       layout=dict(thread_columns=16))
+        coalesced = dict(regular, threads=512,
+                         layout=dict(thread_columns=64))
+        old = source_warp_sector_bytes(regular)
+        new = source_warp_sector_bytes(coalesced)
+        self.assertEqual(old, (81920, 81920, 524288, 655360))
+        self.assertEqual(new, (81920, 81920, 147456, 262144))
+        self.assertLess(new[2], old[2])
+
     def test_p8_tma_trace_and_phase_report(self):
         trace = "\n".join((
             "AI_OPT 5 ROOF_TARGET 2 h100_sxm_reference 67000 3350 traffic=global_requests_as_cold_hbm_proxy ceiling=published_peak",

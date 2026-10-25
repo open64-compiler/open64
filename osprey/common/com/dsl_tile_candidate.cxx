@@ -31,7 +31,8 @@ static const char *DSL_tile_level_name_table[] = {
 };
 
 static const char *DSL_tile_family_name_table[] = {
-    "unknown", "baseline", "cuda_64", "cuda_128", "blackwell_wide"
+    "unknown", "baseline", "cuda_64", "cuda_128", "blackwell_wide",
+    "cuda_128_coalesced"
 };
 
 static const char *DSL_tile_edge_name_table[] = {
@@ -122,7 +123,7 @@ DSL_tile_plan_ir_verify (const DSL_TILE_PLAN_IR *ir, FILE *diagnostic)
             if (plan.id != expected_plan || plan.site_id != site.id ||
                 plan.target_profile_id == 0 ||
                 plan.family <= DSL_TILE_FAMILY_UNKNOWN ||
-                plan.family > DSL_TILE_FAMILY_BLACKWELL_WIDE ||
+                plan.family > DSL_TILE_FAMILY_CUDA_128_COALESCED ||
                 plan.source_descriptor_ty == TY_IDX_ZERO ||
                 plan.first_stage_id != expected_stage ||
                 plan.stage_count == 0 || plan.source_evolution_node_id == 0 ||

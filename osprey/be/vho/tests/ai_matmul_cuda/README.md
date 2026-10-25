@@ -108,6 +108,18 @@ The edge fixture checks transposed selection and source/WHIRL host-CTA
 parity; the TMA source path stays compact. This is not a measured bank
 throughput result or a complete GMEM sector/coalescing model.
 
+`run-027/` is the first contiguous-F32 GMEM planning checkpoint. It compares
+the original 8x8 and new 16x2 per-thread output maps with a v4 source-warp
+32-byte sector model for A/B loads and C stores, plus shared-A load issue
+work. On 128x128x32, the cost gate selects the 16x2 map and
+`k32/gemm.whirl.cu` shows its 512-thread indexing and corrected 4,096-element
+A shared allocation. On 128x128x128 it retains padded 8x8 in
+`k128/gemm.whirl.cu`. Both `.cu` files pass host CTA parity; an altered
+`TILE_GMEM` row is rejected by the report parser. The raw `.t`, `tile.log`,
+device `.B`/`.T`, receipts, and checksums are retained. `run-024/` covers
+irregular edges and the I4 geometry rejection. These are source-level
+coalescing estimates, not PTX transaction or GPU timing evidence.
+
 The compiler artifact runner can capture both source paths in one run:
 
 ```sh
