@@ -303,7 +303,13 @@ struct IPC_GLOBAL_IDX_MAP
 }; // IPC_GLOBAL_IDX_MAP
 
 typedef hash_map<ST_IDX, INITO_IDX> ST_TO_INITO_MAP;
-extern ST_TO_INITO_MAP ST_To_INITO_Map;
+
+// Merge globals now live in IPA_Context (ipa_context.h).
+#ifndef cxx_ipa_context_INCLUDED
+#include "ipa_context.h"
+#endif
+#define ST_To_INITO_Map \
+  (*(ST_TO_INITO_MAP*)(g_ipa_ctx->merge.st_to_inito_map))
 
 // ----------------------------------------------------------------------
 // Keep track of all elements of a common block
@@ -329,7 +335,8 @@ typedef std::map<const BLOCK_ELEMENT_DESC, ST_IDX, block_element_compare,
 typedef hash_map<ST_IDX, BLOCK_ELEMENTS*, __gnu_cxx::hash<ST_IDX>, std::equal_to<ST_IDX>,
     mempool_allocator<BLOCK_ELEMENTS*> > COMMON_BLOCK_ELEMENTS_MAP;
 
-extern COMMON_BLOCK_ELEMENTS_MAP *Common_Block_Elements_Map;
+#define Common_Block_Elements_Map \
+  (*(COMMON_BLOCK_ELEMENTS_MAP**)&(g_ipa_ctx->merge.common_block_elements_map))
 
 //----------------------------------------------------------------------
 // Auxiliary tables for STs and PUs
@@ -382,7 +389,8 @@ Inc_AUX_ST_modcount (AUX_ST& aux_st, INT32 count) {
 
 
 typedef RELATED_SEGMENTED_ARRAY<AUX_ST,1024> AUX_ST_TAB;
-extern AUX_ST_TAB Aux_St_Tab;
+#define Aux_St_Tab \
+  (*(AUX_ST_TAB*)(g_ipa_ctx->merge.aux_st_tab))
 
 struct AUX_ST_TABLE
 {
@@ -393,7 +401,8 @@ struct AUX_ST_TABLE
 
 };
 
-extern AUX_ST_TABLE Aux_St_Table;
+#define Aux_St_Table \
+  (*(AUX_ST_TABLE*)(g_ipa_ctx->merge.aux_st_table))
 
 struct AUX_PU
 {
@@ -433,7 +442,13 @@ AUX_PU_file_hdr (const AUX_PU& pu)
 
 
 typedef SEGMENTED_ARRAY<AUX_PU,256> AUX_PU_TAB;
+#ifndef _LIGHTWEIGHT_INLINER
+#define Aux_Pu_Table \
+  (*(AUX_PU_TAB*)(g_ipa_ctx->merge.aux_pu_table))
+#else
+/* lw_inline defines its own Aux_Pu_Table in inline.cxx */
 extern AUX_PU_TAB Aux_Pu_Table;
+#endif
     
 
 extern void Initialize_Auxiliary_Tables ();

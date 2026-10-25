@@ -88,6 +88,10 @@ public:
 
 }; // daVinci
 
-extern daVinci *cg_display;
+// cg_display now lives in IPA_Context (ipa_context.h).
+#ifndef cxx_ipa_context_INCLUDED
+#include "ipa_context.h"
+#endif
+#define cg_display (g_ipa_ctx->visualization.cg_display)
 
 #endif /* ipc_daVinci_INCLUDED */

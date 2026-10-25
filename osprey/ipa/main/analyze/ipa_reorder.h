@@ -100,9 +100,13 @@ struct MERGED_ACCESS{
 };
 typedef vector< struct MERGED_ACCESS*> MERGED_ACCESS_VECTOR;
 
-extern MERGED_ACCESS_VECTOR *merged_access;
-extern MEM_POOL reorder_local_pool;
-extern REORDER_CAND reorder_candidate; //identical in size with can_be_reorder_types
+// Reorder globals now live in IPA_Context (ipa_context.h).
+#ifndef cxx_ipa_context_INCLUDED
+#include "ipa_context.h"
+#endif
+#define merged_access      (g_ipa_ctx->reorder.merged_access)
+#define reorder_local_pool (g_ipa_ctx->reorder.local_pool)
+#define reorder_candidate  (*g_ipa_ctx->reorder.candidate_ptr)
 class SUMMARY_STRUCT_ACCESS;
 
 extern
