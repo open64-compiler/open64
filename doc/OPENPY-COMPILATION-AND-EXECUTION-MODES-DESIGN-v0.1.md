@@ -184,6 +184,32 @@ scratch or an explicitly requested output may be runtime-allocated. Failure,
 cancellation, fallback, and reuse all wait for the recorded completion event
 before a borrowed or owned buffer is released or rebound.
 
+For the first synchronous F32 GEMM implementation, the compiler-selected
+generated-matmul call in the host WHIRL PU carries the plan identity, tensor
+descriptor, and arguments. The runtime derives the checked A/B/C byte counts
+from those dimensions and routes the following sequence through
+`TargetBufferService`:
+
+```text
+validate selected plan, shape, provider, and A/B/C binding descriptors
+import device-resident A/B or allocate target A/B and transfer host inputs
+import device-resident C or allocate target C
+invoke the selected device PU with those target buffer handles
+on completion, transfer C only when the caller requested host output
+release runtime-owned buffers; leave imported buffers with their owner
+```
+
+This sequence is one invocation-level host action, not a CUDA allocation
+inside each CTA, K tile, or device PU. P4/P6 establish legal placement and
+residency, P7 fixes the GMEM access map, and P8 describes movement within the
+device hierarchy. The host-to-device transfer requirement and its lifetime
+are finalized with the selected execution plan before host-call lowering;
+the provider chooses the concrete allocation/copy implementation at runtime.
+The first reviewed path may be synchronous, but completion and ownership must
+be explicit so an asynchronous provider can be added without changing WHIRL.
+The current fixed-shape CUDA adapter is a validation fixture, not the final
+standalone host-PU generator or inference-service buffer policy.
+
 ### 3.2 Building blocks to build or adopt
 
 | Building block | Owner and decision | Build or adopt | First deliverable / gate |

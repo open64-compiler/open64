@@ -267,6 +267,29 @@ CUDA hook and checks the emitted descriptor. This is not a production tensor
 provider or a GPU verification result. The focused AIO-11 contract test also
 writes binary WHIRL and checks invalid-plan rejection and rollback.
 
+## M2-B1 target buffer binding
+
+The selected host-WHIRL generated-provider call remains the plan-bound
+invocation. The fixed-shape CUDA review adapter now binds A/B/C through the
+target-neutral `open64_target_buffer_service.h` contract. Its NVIDIA
+callbacks use CUDA allocation, copy, pointer validation, and release APIs;
+the service core has no CUDA dependency. The synchronous host-input path
+allocates A/B/C once per invocation, copies A/B to the target, launches and
+waits, copies C back, then releases owned buffers. A borrowed device buffer
+is validated and never copied or freed by the service. This is not the
+production runtime or a completed generated standalone host PU.
+
+```sh
+python3 osprey/be/vho/tests/ai_matmul_cuda/test_target_buffer_service.py \
+  --output-dir artifacts/ai_optimization/m2-buffer-binding/new-run
+```
+
+The retained `buffer-binding.log` shows host staging, borrowed-buffer
+zero-copy, and failed-transfer cleanup; its receipt explicitly says native
+CUDA was not compiled. `prepare_generated.py` now includes the generic
+service ABI and implementation in the native-review package, and the remote
+runner compiles and links that source before attempting GPU execution.
+
 To preserve the exact selected source and object for native execution:
 
 ```sh

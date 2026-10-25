@@ -103,6 +103,11 @@ them through the configured target provider. The NVIDIA provider may use CUDA
 APIs, while a different target uses its own allocator and transfer mechanism.
 This ownership boundary is separate from planning per-CTA SMEM slots and
 optional cost-gated GMEM repacking.
+The host-call transformation must retain the selected plan's buffer
+requirements so the runtime can import existing device storage or allocate
+and transfer from host storage once per invocation. P7's lane map does not
+authorize a host-to-device copy on its own; P4/P6 residency and the selected
+execution plan determine whether that copy is needed.
 
 The current `DSL_MEMORY_TIER_RECORD` and movement-capability records are a
 starting point, but they lack an explicit SMEM bank model, target bandwidth,

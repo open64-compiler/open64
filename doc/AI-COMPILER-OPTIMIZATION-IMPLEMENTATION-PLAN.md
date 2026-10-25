@@ -724,6 +724,54 @@ I4 rejection evidence. This closes **compiler-side GMEM access-map planning
 for contiguous F32 synchronous GEMM**, not PTX transaction verification,
 strided/repacked GMEM layouts, cache modeling, or measured profitability.
 
+Compiler/runtime boundary: **M2-B1 target-buffer binding**. The selected
+GMEM tile is not itself an allocation. For the first synchronous F32
+standalone path, the generated-provider call already emitted in the host
+WHIRL PU is the plan-bound invocation point. Use a target-neutral
+`TargetBufferService` with validated import, allocate, transfer, and release
+operations; the fixed-shape NVIDIA review adapter supplies CUDA callbacks.
+Derive A/B/C sizes from the checked selected plan and invocation dimensions.
+Host-resident inputs require one allocation and transfer per invocation;
+borrowed device-resident inputs must not be recopied or freed. C may be
+borrowed on device or runtime-allocated and copied back only for a host
+result. Guard partial allocation, transfer failure, completion, and cleanup.
+Retain host-mock operation traces and the original host/device WHIRL evidence.
+The full standalone host-dispatch PU generator and service adapter remain
+subsequent milestones; do not label the review adapter production runtime.
+
+The first review-adapter slice is implemented: a C ABI and target-neutral
+service core bind host or borrowed-device buffers, while the NVIDIA adapter
+implements its callbacks with CUDA allocation, copy, pointer validation,
+and release APIs. The host-mock receipt records `AHAHADRRR` for host A/B/C
+(allocate/copy each input, allocate C, copy C home, release in reverse),
+`III` for three borrowed device buffers (import only), and `AHR` for a
+failed first transfer with cleanup (`AR` also covers a provider that fails
+after returning an allocation; `ARR` shows a failed release can be retried).
+The applied selected-plan package now
+includes and hashes the service source and ABI. This verifies runtime
+orchestration and packaging, not native CUDA compilation or the future
+generated standalone host PU.
+The verified compiler receipt is `m2-buffer-binding/compiler-run-001/`;
+`run-005/` retains Linux host-mock operation evidence, and `package-007/`
+retains the selected-plan native-review package with the buffer service.
+The V1 review adapter's public call still accepts host pointers; borrowed
+device buffers are proven at the service-core boundary, not yet through
+that adapter's invocation ABI.
+
+M2-B1 follow-on gates:
+
+1. [x] Preserve plan identity in the selected host-WHIRL provider call and
+   selected device PU; retain `.t`, `.B`, `.T`, and `.cu` evidence.
+2. [x] Exercise host staging, borrowed-device import, and partial-failure
+   cleanup with a target-neutral mock provider.
+3. [x] Package the generic service with the NVIDIA review adapter without
+   adding CUDA dependencies to `be.so`.
+4. [ ] Generate the standalone host dispatch PU and its buffer-requirement
+   metadata from the selected execution plan, rather than relying on the
+   fixed-shape review adapter for invocation policy.
+5. [ ] Compile and run the NVIDIA provider with native CUDA; verify actual
+   allocation/transfer behavior, completion, numerical result, and fallback.
+
 The remaining joint-plan design retains
 matching direct/cache-served, one-slot synchronous, and target-legal
 multi-slot async A/B plans through AIO-10. Generate separate A/B copy and
