@@ -19,8 +19,18 @@ when a path is supplied. P7/P9 coverage then says
 `disabled_by_option cuda_legacy_emit_off` when no device-WHIRL output is
 requested. With `-Wb,-DSL:cuda_whirl_output=<new-file.B>`, cost selection
 and the synchronous `cuda_tile_apply=ON` host rewrite can proceed even when
-legacy emission is OFF. The selected device PU is currently a separate
-sidecar, not yet registered by the driver in the main compilation unit.
+legacy emission is OFF. VHO stages the selected tile and constructs the device
+PU at program boundary; the backend driver owns that `PU_Info`, writes its
+mapped image, and publishes it after host-PU traversal. Its image is still
+separate, not registered in the main compilation-unit PU tree. Multiple
+selected PUs publish one device image with deterministic entries:
+`ai_matmul_tile_f32` for ordinal zero and `ai_matmul_tile_f32_<ordinal>`
+thereafter. A `DEVICE_BIND` trace row joins each host PU, plan/tile, device
+entry, and image. Entry zero keeps the v1 provider contract; later entries
+carry a 72-byte v2 generated plan with a device-entry ordinal and call
+`__open64_dsl_matmul_generated_v2`. The package/runtime loader must resolve
+that ordinal to the named entry in the same image. This is compiler-side
+binding, not native GPU validation.
 Retain the legacy source, trace, and receipt separately when comparing it
 with `whirl2c -cuda` output from the same selected plan.
 
@@ -63,6 +73,34 @@ GEMM and each other. The first preserved zero-error evidence is
 WHIRL-only selection produces no legacy `.cu` and reports
 `device_whirl_sidecar` in the optimization trace. This does not establish
 native CUDA compilation, PTX generation, GPU correctness, or performance.
+
+The compiler artifact runner can capture both source paths in one run:
+
+```sh
+python3 osprey/be/vho/tests/ai_matmul_cuda/compile_source.py \
+  --build-dir /path/to/open64/build \
+  --output-dir /path/to/new/m2-whirl-kernel-run \
+  --device-whirl --apply
+```
+
+`--device-whirl` is synchronous-only. It checks that the `WHIRL_KERNEL` trace
+row follows the selected `TILE_ACTION` row and matches the selected plan and
+actual `binary/matmul.device.B`, retains its
+`ir_b2a -st -src` view, emits `source/matmul.whirl.cu`, verifies the kernel
+and shared A/B attributes, and runs host CTA parity against the legacy source.
+The receipt and handoff include paths and SHA256 hashes for both sources and
+the device image. Compiler options use paths relative to the artifact's
+`binary/` directory, so the trace remains readable after publication.
+`run-012/` records a passing `--apply` run with driver-owned `PU_Info` and
+mapped-image writing, plus zero host CTA error. `test_multi_device_whirl.py`
+compiles the two-PU fixture, reopens the two-kernel device image, checks both
+`whirl2c -cuda` entries and trace bindings, then checks v1/v2 host calls with
+`cuda_tile_apply=ON`. A linked host-only smoke executes both generated PUs
+through a mock provider and validates the v2 ordinal. The test renders per-PU
+phase logs and an aggregate `optimization-summary.log`; its receipt and
+checksums are retained in `artifacts/ai_optimization/m2-whirl-kernel/run-013/`.
+The device PUs are still in a separate image; this does
+not close M2.
 
 The backend option `-Wb,-DSL:ai_opt_trace=ON` defaults to ON for this
 development phase. It activates the reserved WOPT-style trace bit and opens

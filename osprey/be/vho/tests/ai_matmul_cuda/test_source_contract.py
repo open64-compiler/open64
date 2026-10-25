@@ -5,6 +5,8 @@ from pathlib import Path
 import tempfile
 
 from compile_source import (m2_handoff, selected_k_loop_dump,
+                            validate_device_publication_order,
+                            validate_device_whirl_output,
                             validate_selected_source)
 
 
@@ -34,9 +36,58 @@ SELECTION = dict(selected=3, reason="lowest_complete_relative_cost",
     dict(rank=2, shape="[128,128]"),
     dict(rank=2, shape="[128,128]"),
 ])
+DEVICE_SOURCE = '''extern "C" __global__ void ai_matmul_tile_f32(
+  _IEEE32 * a, _IEEE32 * b, _IEEE32 * c)
+{
+  __shared__ _IEEE32 as[4096LL];
+  __shared__ _IEEE32 bs[4096LL];
+  tid = (_INT32)((threadIdx).x);
+  row0 = (_INT32)((blockIdx).y) * 128;
+  for(base = 0; base < 128; base = base + 32) {
+    __syncthreads();
+    __syncthreads();
+  }
+}
+'''
+DEVICE_DUMP = '''FUNC_ENTRY <1,2,ai_matmul_tile_f32>
+(DEVICE_SYMBOL) 1
+(DEVICE_SYMBOL) 4
+(DEVICE_SYMBOL) 4
+DO_LOOP {line: 0}
+'''
 
 
 class SourceContractTest(unittest.TestCase):
+    def test_device_publication_follows_tile_action(self):
+        selection = dict(SELECTION, whirl_kernel=dict(
+            plan=3, tile=3, image="matmul.device.B"))
+        action = "AI_OPT 7 TILE_ACTION 1 3 source_sidecar generated_runtime_call\n"
+        publication = "AI_OPT 7 WHIRL_KERNEL 1 3 3 matmul.device.B\n"
+        validate_device_publication_order(action + publication, selection)
+        with self.assertRaisesRegex(RuntimeError, "did not follow"):
+            validate_device_publication_order(publication + action, selection)
+        with self.assertRaisesRegex(RuntimeError, "did not follow"):
+            validate_device_publication_order(action + publication * 2,
+                                              selection)
+
+    def test_device_whirl_matches_selected_tile(self):
+        selected = dict(CANDIDATES[0], grid=dict(problem=(128, 128, 128)))
+        selection = dict(SELECTION, whirl_kernel=dict(plan=3, tile=3))
+        validate_device_whirl_output(DEVICE_SOURCE, DEVICE_DUMP,
+                                     selection, selected)
+        with self.assertRaisesRegex(RuntimeError, "selected tile"):
+            validate_device_whirl_output(
+                DEVICE_SOURCE.replace("base + 32", "base + 16"), DEVICE_DUMP,
+                selection, selected)
+        with self.assertRaisesRegex(RuntimeError, "shared staging"):
+            validate_device_whirl_output(
+                DEVICE_SOURCE, DEVICE_DUMP.replace("(DEVICE_SYMBOL) 4", "", 1),
+                selection, selected)
+        with self.assertRaisesRegex(RuntimeError, "plan identity"):
+            validate_device_whirl_output(
+                DEVICE_SOURCE, DEVICE_DUMP,
+                dict(selection, whirl_kernel=dict(plan=2, tile=3)), selected)
+
     def test_selected_tile_matches_source(self):
         validate_selected_source(SOURCE, CANDIDATES, SELECTION)
 

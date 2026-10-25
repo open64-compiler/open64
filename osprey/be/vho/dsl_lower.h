@@ -30,6 +30,18 @@ typedef struct {
 /* DSL-specific peer of the existing language-oriented VHO_Lower_Driver. */
 extern WN *VHO_DSL_Lower_Driver (struct pu_info *pu_info, WN *tree);
 
+/* The driver owns the constructed device PUs and their program-boundary image. */
+extern UINT32 VHO_DSL_CUDA_Program_Kernel_Count(void);
+extern BOOL VHO_DSL_CUDA_Take_Program_Kernel
+    (UINT32 ordinal, struct pu_info **device_pu, UINT32 *plan_id,
+     UINT32 *tile_id, ST_IDX *owner,
+     FILE *diagnostic);
+
+extern BOOL VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile_Bound
+    (struct pu_info *pu_info, WN **tree,
+     const DSL_TILE_PLAN_RECORD *tile, UINT32 device_entry_ordinal,
+     FILE *diagnostic, VHO_DSL_LOWER_RESULT *result);
+
 /* Testable engine for a tree that has already passed the DSL gatekeeper. */
 extern BOOL VHO_DSL_Lower_Verified_Program_Unit
                                 (struct pu_info *pu_info,

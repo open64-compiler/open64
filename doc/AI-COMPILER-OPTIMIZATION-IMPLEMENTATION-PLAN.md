@@ -696,6 +696,18 @@ Deferred beyond this slice:
 - measured/autotuned cost evidence, runtime variants, and mapped publication;
 - explicit IPA summaries and cross-PU tile planning.
 
+Delayed SMEM cache-blocking follow-up (design only, not implemented): retain
+matching direct/cache-served, one-slot synchronous, and target-legal
+multi-slot async A/B plans through AIO-10. Generate separate A/B copy and
+consumer maps, padded SMEM ledgers, bank effects, and dynamic K-tile barrier
+counts. Register `-Wb,-DSL:gemm_plan_search=baseline|joint` only when bounded
+joint generation, P8 event schedules, P9 whole-plan cost/legality selection,
+selected-WHIRL rewrite, and `.t`/derived-log reporting are wired together.
+Default to `baseline`; diagnose an unsupported `joint` request until then.
+Use the white-paper candidate
+`AI-COMPILER-WHITE-PAPER-CANDIDATE-DELAYED-GEMM-PLAN-SELECTION.md` for the
+equal-budget evaluation and prior-art review, not as evidence of a speedup.
+
 ### AIO-10: AI-P8 Fetch, Prefetch, And Async Pipeline
 
 Status: implemented as a check-only, runtime-only, per-PU vertical slice on
@@ -1207,6 +1219,16 @@ phase-status rows still appear in the trace-derived summary.
    the control is not an Open64 M0 baseline. Host-only integrity and result
    parsing tests, the fresh artifact's SHA256 audit, and its compiled-PU mock
    launch pass; no remote GPU run has occurred.
+   The production tuning path requires an opt-in `openpy` driver performance
+   harness (provisional `-perf-harness`, default OFF), not a benchmark added
+   to every standalone executable. Its selected and independently certified
+   baseline implementations must share target, workload, numerical contract,
+   residency, and measurement scope. Correctness is a separate gate; the
+   harness reports paired kernel-only and end-to-end timings, the baseline
+   identity, selected plan, speedup, and model error only when a comparable
+   GPU run exists. Without an accepted baseline or GPU, retain diagnostics
+   and raw evidence but make no speedup claim. Preserve the raw `.t`, phase
+   logs, device images, launch configuration, measurements, and checksums.
    The opt-in `whirl2c -cuda` option now recognizes a target-neutral
    `ST_ATTR_DEVICE_SYMBOL` contract: kernel/device function and
    global/shared/constant data are distinct, serialized symbol attributes.
@@ -1252,10 +1274,33 @@ phase-status rows still appear in the trace-derived summary.
    `run-009/` verifies the same device PU can be selected and translated with
    `cuda_legacy_emit=OFF`, no legacy source file, and an accurate
    `device_whirl_sidecar` trace/report. This closes synchronous
-   source-behavior convergence for that fixture, not M2 acceptance. Device-PU
-   creation is still VHO-local and sidecar-only: register it at the driver
-   program boundary, prove plan/source provenance, add general edge guards,
-   then attempt NVISA/PTX lowering. Native CUDA compilation, ptxas resource
+   source-behavior convergence for that fixture, not M2 acceptance.
+   `m2-whirl-kernel/run-010/` adds a single compiler-artifact run with the
+   selected host rewrite, trace-linked device `.B`, separate-process `.T`,
+   `whirl2c -cuda` source, legacy source, zero-error host CTA parity, and a
+   SHA256-bound receipt. The traced device-image path is relative to `binary/`
+   and remains valid after publication. This establishes selected-plan/image/
+   source provenance for the fixed synchronous fixture, not native CUDA
+   code generation or GPU performance. In `run-011/`, VHO stages the
+   selected tile and the driver publishes the device image after host-PU
+   traversal. The `WHIRL_KERNEL` row follows `TILE_ACTION`; a two-PU
+   negative fixture rejects a second selection before image creation.
+   `run-012/` moves ownership of the constructed `PU_Info`, mapped-image
+   writing, and publication trace to the driver. VHO still selects the tile
+   and constructs the device PU under the driver's program-boundary pool.
+   Applied and selection-only paths round-trip; host CTA parity remains zero.
+   The image remains separate from the main PU tree. `run-013/` replaces the
+   one-kernel compiler-side limit for exact-divisible synchronous F32 matmul
+   PUs. VHO retains ordered selected plans; the driver publishes one device
+   image with deterministic names and `DEVICE_BIND` trace rows. Host PU zero
+   keeps the 64-byte v1 plan and fixed entry; later PUs carry a 72-byte v2
+   plan with a device-entry ordinal and call the v2 provider ABI. A two-PU
+   fixture verifies mapped-image round-trip, both `whirl2c -cuda` entries,
+   host-object descriptor sizes and relocations, linked host-only mock
+   execution, and per-PU plus aggregate `.t` reports. The package/runtime
+   loader still needs to resolve v2 ordinals to device entries; the mock is
+   not a production CUDA launch provider. Next, add general edge guards and
+   attempt NVISA/PTX lowering. Native CUDA compilation, ptxas resource
    inspection, GPU correctness, and same-target timing remain open.
 5. [ ] Extend the selected tile with P7.4/P8 staging and a reviewed
    fetch/pipeline plan. Retain movement engine, stages, issue/wait, barriers,

@@ -74,6 +74,9 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
+#include <vector>
+#include <unistd.h>
 #ifndef __MINGW32__
 #include <libgen.h>
 #endif
@@ -99,10 +102,12 @@
 #include "pu_info.h"		    /* for PU_Info */
 #include "ir_bread.h"		    /* for Read_Global_Info() */
 #include "ir_bwrite.h"		    /* for Write_Global_Info(), etc. */
+#include "dwarf_DST_mem.h"          /* for an independent device-image DST */
 #include "config.h"		    /* for LNO_Path, etc. */
 #include "config_opt.h"             /* for Instrumentation_Enabled */
 #include "config_list.h"	    /* for List_Enabled, etc. */
 #include "config_clist.h"        /* for CLIST_cuda */
+#include "config_dsl.h"          /* for the AI trace control */
 #include "config_lno.h"		    /* for LNO_Run_Lego, etc. */
 #include "config_cache.h"           /* for Mhd and Mhd_Options */
 #include "config_product.h"         /* for so names, etc. */
@@ -2555,6 +2560,107 @@ Process_DSL_PU_Specialization_Checkpoint (PU_Info *program)
   WN_Mem_Pop();
 }
 
+struct DSL_CUDA_PROGRAM_KERNEL {
+  PU_Info *pu;
+  UINT32 plan_id;
+  UINT32 tile_id;
+  ST_IDX owner;
+};
+
+/* Host PUs have completed their per-PU lifetime. Publish all selected
+ * device PUs together, or leave no final image. */
+static BOOL
+Publish_DSL_CUDA_Program_Kernels (const char *path, FILE *diagnostic)
+{
+  if (path == NULL || path[0] == '\0' || access(path, F_OK) == 0) {
+    fprintf(diagnostic, "DSL CUDA WHIRL output requires a fresh path\n");
+    return FALSE;
+  }
+  const UINT32 count = VHO_DSL_CUDA_Program_Kernel_Count();
+  if (count == 0) {
+    fprintf(diagnostic, "DSL CUDA WHIRL output has no selected device PU\n");
+    return FALSE;
+  }
+  std::vector<DSL_CUDA_PROGRAM_KERNEL> kernels;
+  for (UINT32 ordinal = 0; ordinal != count; ++ordinal) {
+    DSL_CUDA_PROGRAM_KERNEL kernel;
+    if (!VHO_DSL_CUDA_Take_Program_Kernel
+            (ordinal, &kernel.pu, &kernel.plan_id, &kernel.tile_id,
+             &kernel.owner, diagnostic))
+      return FALSE;
+    kernels.push_back(kernel);
+  }
+  for (UINT32 ordinal = 1; ordinal != count; ++ordinal)
+    PU_Info_next(kernels[ordinal - 1].pu) = kernels[ordinal].pu;
+
+  const SYMTAB_IDX level = CURRENT_SYMTAB;
+  const SCOPE saved_scope = Scope_tab[level];
+  PU *saved_pu = Current_pu;
+  WN_MAP_TAB *saved_map = Current_Map_Tab;
+  PU_Info *saved_info = Current_PU_Info;
+
+  const std::string temporary = std::string(path) + ".tmp";
+  Output_File *output = WN_open_output((char *)temporary.c_str());
+  FmtAssert(output != NULL, ("could not open CUDA WHIRL image %s", path));
+  for (UINT32 ordinal = 0; ordinal != count; ++ordinal) {
+    PU_Info *device_pu = kernels[ordinal].pu;
+    Restore_Local_Symtab(device_pu);
+    Current_pu = &PU_Info_pu(device_pu);
+    Current_Map_Tab = PU_Info_maptab(device_pu);
+    Current_PU_Info = device_pu;
+    WN_write_symtab(device_pu, output);
+    WN_write_tree(device_pu, WN_MAP_UNDEFINED, output);
+  }
+  WN_write_PU_Infos(kernels[0].pu, output);
+  WN_write_globals(output);
+  DST_TYPE saved_dst = Current_DST;
+  WN_write_dst(New_DST(), output);
+  Current_DST = saved_dst;
+  WN_write_dsl_ir_image(output);
+  WN_write_dsl_effect_image(output);
+  WN_write_dsl_callsite_image(output);
+  WN_write_dsl_pu_interface_image(output);
+  WN_write_dsl_call_abi_image(output);
+  WN_write_dsl_runtime_interface_image(output);
+  WN_write_dsl_program_interface_image(output);
+  WN_write_dsl_fhe_image(output);
+  WN_write_dsl_fhe_plan_image(output);
+  WN_write_dsl_fhe_approx_profile_image(output);
+  WN_write_dsl_fhe_context_state_image(output);
+  WN_write_dsl_fhe_materialization_image(output);
+  WN_write_dsl_ckks_event_image(output);
+  WN_write_strtab(Index_To_Str(0), STR_Table_Size(), output);
+  WN_write_revision(output);
+  WN_close_output(output);
+  const BOOL published = rename(temporary.c_str(), path) == 0;
+  if (!published)
+    remove(temporary.c_str());
+
+  Scope_tab[level] = saved_scope;
+  Current_scope = level;
+  Current_pu = saved_pu;
+  Current_Map_Tab = saved_map;
+  Current_PU_Info = saved_info;
+  if (!published) {
+    fprintf(diagnostic, "DSL CUDA WHIRL could not publish %s\n", path);
+    return FALSE;
+  }
+  if (VHO_DSL_AI_Opt_Trace && Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG)) {
+    for (UINT32 ordinal = 0; ordinal != count; ++ordinal) {
+      const DSL_CUDA_PROGRAM_KERNEL &kernel = kernels[ordinal];
+      fprintf(TFile, "AI_OPT 7 DEVICE_BIND %u %s %u %u %s %s\n",
+              ordinal, ST_name(St_Table[kernel.owner]), kernel.plan_id,
+              kernel.tile_id,
+              ST_name(St_Table[PU_Info_proc_sym(kernel.pu)]), path);
+    }
+    if (count == 1)
+      fprintf(TFile, "AI_OPT 7 WHIRL_KERNEL 1 %u %u %s\n",
+              kernels[0].plan_id, kernels[0].tile_id, path);
+    fflush(TFile);
+  }
+  return TRUE;
+}
+
 static void Print_Tlog_Header(INT argc, char **argv)
 {
   INT i;
@@ -2907,6 +3013,18 @@ main (INT argc, char **argv)
 #endif
   }
 #endif
+  }
+
+  if (VHO_DSL_CUDA_Whirl_Output != NULL) {
+    WN_Mem_Push();
+    MEM_POOL_Push(MEM_pu_nz_pool_ptr);
+    MEM_POOL_Push(MEM_pu_pool_ptr);
+    FmtAssert(Publish_DSL_CUDA_Program_Kernels
+                  (VHO_DSL_CUDA_Whirl_Output, stderr),
+              ("could not publish selected CUDA device PU at program boundary"));
+    MEM_POOL_Pop(MEM_pu_pool_ptr);
+    MEM_POOL_Pop(MEM_pu_nz_pool_ptr);
+    WN_Mem_Pop();
   }
 
   /* Terminate stdout line if showing PUs: */

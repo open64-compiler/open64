@@ -32,6 +32,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     grids: dict[int, dict] = {}
     k_loop: dict | None = None
     whirl_kernel: dict | None = None
+    device_binding: dict | None = None
     selection: dict | None = None
     action: dict | None = None
     fetch_candidates: list[dict] = []
@@ -177,6 +178,13 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
             site, plan, tile, image = fields[3:]
             whirl_kernel = dict(site=int(site), plan=int(plan),
                                 tile=int(tile), image=image)
+        elif kind == "DEVICE_BIND" and trace_version == "7" and len(fields) == 9:
+            if device_binding is not None:
+                raise ValueError("duplicate device binding in single-PU report")
+            ordinal, owner, plan, tile, entry, image = fields[3:]
+            device_binding = dict(ordinal=int(ordinal), owner=owner,
+                                  plan=int(plan), tile=int(tile),
+                                  entry=entry, image=image)
         elif kind == "FETCH_CAND" and trace_version in ("5", "6", "7") and len(fields) == 15:
             (site, plan, optimization_plan, engine, legality, reason,
              stages, distance, buffering, raw, hidden, unhidden) = fields[3:]
@@ -319,6 +327,11 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                  k_loop["end"] != chosen_loop_tile["grid"]["problem"][2])):
             raise ValueError("selected K loop disagrees with tile plan")
         selection["k_loop"] = k_loop
+    if whirl_kernel is None and device_binding is not None and selection is not None:
+        whirl_kernel = dict(site=selection["site"],
+                            plan=device_binding["plan"],
+                            tile=device_binding["tile"],
+                            image=device_binding["image"])
     if whirl_kernel is not None:
         chosen_kernel_tile = by_plan[selection["selected"]]
         if ((whirl_kernel["site"], whirl_kernel["plan"],
@@ -329,6 +342,19 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                 fetch_candidates):
             raise ValueError("device WHIRL kernel disagrees with selected tile")
         selection["whirl_kernel"] = whirl_kernel
+    if device_binding is not None:
+        ordinal = device_binding["ordinal"]
+        expected_entry = ("ai_matmul_tile_f32" if ordinal == 0 else
+                          f"ai_matmul_tile_f32_{ordinal}")
+        if (whirl_kernel is None or context is None or ordinal < 0 or
+                device_binding["owner"] != context["pu"] or
+                device_binding["entry"] != expected_entry or
+                (device_binding["plan"], device_binding["tile"],
+                 device_binding["image"]) !=
+                (whirl_kernel["plan"], whirl_kernel["tile"],
+                 whirl_kernel["image"])):
+            raise ValueError("device binding disagrees with selected kernel")
+        selection["device_binding"] = device_binding
     if action["emission"] == "device_whirl_sidecar" and whirl_kernel is None:
         raise ValueError("device WHIRL action has no kernel image")
     applied = action["tile_rewrite"] == "generated_runtime_call"
@@ -476,6 +502,12 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
             f"device_pu=ai_matmul_tile_f32 plan={kernel['plan']} "
             f"tile={kernel['tile']} image={kernel['image']} "
             "state=materialized_sidecar target_lowered=no")
+    if selection.get("device_binding"):
+        binding = selection["device_binding"]
+        summary.append(
+            f"device_binding owner={binding['owner']} "
+            f"entry={binding['entry']} ordinal={binding['ordinal']} "
+            f"plan={binding['plan']} image={binding['image']}")
     (reports / "optimization.log").write_text(
         "# What it summarizes: Complete P0-P11 optimization process, including every phase decision and non-execution reason.\n"
         + "".join(phase_contents), encoding="utf-8")
@@ -634,6 +666,75 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
     return selection, action
 
 
+def render_program(trace: Path, reports: Path) -> None:
+    """Render a multi-PU trace without conflating PU-local plan IDs."""
+    lines = trace.read_text(encoding="utf-8").splitlines()
+    bindings = [line.split() for line in lines
+                if line.startswith("AI_OPT 7 DEVICE_BIND ")]
+    segments: list[list[str]] = []
+    segment: list[str] = []
+    for line in lines:
+        if line.startswith("AI_OPT 7 DEVICE_BIND "):
+            continue
+        segment.append(line)
+        if line.startswith("AI_OPT 7 PHASE matmul_f32_source 11 "):
+            segments.append(segment)
+            segment = []
+    if (segment and any(line.startswith("AI_OPT ") for line in segment)) or \
+            len(segments) < 2 or len(bindings) != len(segments):
+        raise ValueError("incomplete multi-PU AI trace or device bindings")
+    reports.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(trace.read_bytes()).hexdigest()
+    summary = [
+        "# What it summarizes: Per-PU phase outcomes, selected costs, host rewrites, and device entry bindings.",
+        f"trace_sha256={digest} pu_count={len(segments)} schema=7",
+    ]
+    full = ["# What it summarizes: Complete optimization phase reports for every PU in program order.\n"]
+    phase_content = [[] for _ in PHASE_LOGS]
+    for ordinal, (segment_lines, fields) in enumerate(zip(segments, bindings)):
+        context_lines = [line.split() for line in segment_lines
+                         if line.startswith("AI_OPT 7 CONTEXT ")]
+        if (len(fields) != 9 or fields[3] != str(ordinal) or
+                len(context_lines) != 1 or fields[4] != context_lines[0][3]):
+            raise ValueError("multi-PU trace binding order or owner mismatch")
+        owner, plan, tile, entry, image = fields[4:]
+        segment_lines.append(" ".join(fields))
+        pu_trace = reports / f"pu-{ordinal}.t"
+        pu_reports = reports / f"pu-{ordinal}"
+        pu_trace.write_text("\n".join(segment_lines) + "\n", encoding="utf-8")
+        selection, action = render(pu_trace, pu_reports)
+        candidates, _, _ = parse(pu_trace.read_text(encoding="utf-8"))
+        selected = next(row for row in candidates
+                        if row["plan"] == selection["selected"])
+        summary.append(
+            f"pu={owner} ordinal={ordinal} plan={plan} tile={tile} "
+            f"entry={entry} image={image} selected_cost={selected['total']} "
+            f"cost_unit={selected['unit']} "
+            f"selection_reason={selection['reason']} "
+            f"transform={action['tile_rewrite']}")
+        summary.extend(f"pu={owner} {line}" for line in
+                       (pu_reports / "optimization-summary.log").read_text(
+                           encoding="utf-8").splitlines()
+                       if line and not line.startswith("#"))
+        full.append(f"## PU {ordinal} {owner}\n" +
+                    (pu_reports / "optimization.log").read_text(
+                        encoding="utf-8"))
+        for phase, (filename, _) in enumerate(PHASE_LOGS):
+            phase_content[phase].append(
+                f"pu={owner} ordinal={ordinal}\n" +
+                (pu_reports / "phases" / filename).read_text(
+                    encoding="utf-8"))
+    (reports / "phases").mkdir(exist_ok=True)
+    for phase, (filename, description) in enumerate(PHASE_LOGS):
+        (reports / "phases" / filename).write_text(
+            f"# What it summarizes: {description}\n" +
+            "".join(phase_content[phase]), encoding="utf-8")
+    (reports / "optimization.log").write_text(
+        "".join(full), encoding="utf-8")
+    (reports / "optimization-summary.log").write_text(
+        "\n".join(summary) + "\n", encoding="utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("trace_file", nargs="?", type=Path)
@@ -645,7 +746,11 @@ def main() -> None:
     if trace is None or (args.trace is not None and args.trace_file is not None):
         parser.error("provide exactly one trace file")
     reports = args.reports or trace.parent / "reports"
-    render(trace, reports)
+    if sum(line.startswith("AI_OPT 7 CONTEXT ") for line in
+           trace.read_text(encoding="utf-8").splitlines()) > 1:
+        render_program(trace, reports)
+    else:
+        render(trace, reports)
     if args.phase is not None:
         filename = PHASE_LOGS[int(args.phase[1:])][0]
         print((reports / "phases" / filename).read_text(encoding="utf-8"), end="")

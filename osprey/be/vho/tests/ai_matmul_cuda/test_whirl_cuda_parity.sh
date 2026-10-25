@@ -9,7 +9,7 @@ legacy=$1
 whirl=$2
 artifact_dir=$3
 test_dir=$(cd "$(dirname "$0")" && pwd)
-cxx=${CXX:-clang++}
+cxx=${CXX:-c++}
 for definition in 'M 128' 'N 128' 'K 128' 'BM 128' 'BN 128' \
                   'BK 32' 'TM 8' 'TN 8'; do
     grep -Fxq "#define $definition" "$legacy"

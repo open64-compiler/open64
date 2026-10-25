@@ -88,6 +88,7 @@ typedef struct {
     const DSL_PHYSICAL_PLAN_ANALYSIS *physical_plan;
     const DSL_PHYSICAL_PLAN_IR *physical_plan_ir;
     const DSL_TILE_PLAN_RECORD *generated_tile;
+    UINT32 generated_entry_ordinal;
 } VHO_DSL_LOWER_CONTEXT;
 
 typedef char VHO_DSL_Runtime_Cublaslt_Provider_Matches
@@ -420,9 +421,12 @@ VHO_DSL_Create_Generated_Tile_Symbol
 {
     if (tile == NULL || tile->shared_bytes_per_stage > UINT32_MAX)
         return NULL;
+    const BOOL bound_entry = context->generated_entry_ordinal != 0;
+    const UINT32 plan_size = bound_entry ?
+        OPEN64_DSL_GENERATED_MATMUL_PLAN_V2_SIZE :
+        OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE;
     TY_IDX blob_ty = Make_Array_Type
-                         (MTYPE_U1, 1,
-                          OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE);
+                         (MTYPE_U1, 1, plan_size);
     Set_TY_align(blob_ty, 8);
     ST *blob = Gen_Read_Only_Symbol(blob_ty, ".dsl_generated_matmul_plan");
     Set_ST_is_initialized(blob);
@@ -430,13 +434,13 @@ VHO_DSL_Create_Generated_Tile_Symbol
     INITV_IDX previous = INITV_IDX_ZERO;
     previous = VHO_DSL_Append_Integer
                    (inito, previous, MTYPE_U2,
-                    OPEN64_DSL_RUNTIME_ABI_VERSION);
+                    bound_entry ? 2 : OPEN64_DSL_RUNTIME_ABI_VERSION);
     previous = VHO_DSL_Append_Integer
                    (inito, previous, MTYPE_U2,
-                    OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE);
+                    plan_size);
     previous = VHO_DSL_Append_Integer
                    (inito, previous, MTYPE_U4,
-                    OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE);
+                    plan_size);
     const UINT32 fields[] = {
         OPEN64_DSL_PHYSICAL_PROVIDER_OPEN64_GENERATED,
         tile->target_profile_id,
@@ -452,8 +456,11 @@ VHO_DSL_Create_Generated_Tile_Symbol
         previous = VHO_DSL_Append_Integer
                        (inito, previous, MTYPE_U4, fields[index]);
     previous = VHO_DSL_Append_Integer(inito, previous, MTYPE_U8, 0);
-    if (Get_INITO_Size(inito) !=
-            OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE) {
+    if (bound_entry)
+        previous = VHO_DSL_Append_Integer
+                       (inito, previous, MTYPE_U8,
+                        context->generated_entry_ordinal);
+    if (Get_INITO_Size(inito) != plan_size) {
         VHO_DSL_Lower_Report
             (context, "generated matmul plan image has size %u",
              Get_INITO_Size(inito));
@@ -843,7 +850,10 @@ VHO_DSL_Runtime_Function
         slot = generated_matmul ? &context->runtime_matmul_generated :
                physical_matmul ? &context->runtime_matmul_physical :
                                  &context->runtime_matmul;
-        name = generated_matmul ? "__open64_dsl_matmul_generated_v1" :
+        name = generated_matmul ?
+                   (context->generated_entry_ordinal == 0 ?
+                    "__open64_dsl_matmul_generated_v1" :
+                    "__open64_dsl_matmul_generated_v2") :
                physical_matmul ? "__open64_dsl_matmul_physical_v1" :
                                  "__open64_dsl_matmul_v1";
         break;
@@ -1967,6 +1977,7 @@ VHO_DSL_Lower_Verified_Engine
          WN *tree,
          const DSL_PHYSICAL_PLAN_ANALYSIS *physical_plan,
          const DSL_TILE_PLAN_RECORD *generated_tile,
+         UINT32 generated_entry_ordinal,
          FILE *diagnostic,
          VHO_DSL_LOWER_RESULT *result)
 {
@@ -2003,6 +2014,7 @@ VHO_DSL_Lower_Verified_Engine
     context.physical_plan = physical_plan;
     context.physical_plan_ir = NULL;
     context.generated_tile = generated_tile;
+    context.generated_entry_ordinal = generated_entry_ordinal;
 
     BOOL valid = pu_info != NULL && tree != NULL &&
                  !(physical_plan != NULL && generated_tile != NULL);
@@ -2093,7 +2105,8 @@ VHO_DSL_Lower_Verified_Program_Unit_With_Physical_Plan
     memset(&working_result, 0, sizeof(working_result));
     BOOL valid = working_tree != NULL &&
                  VHO_DSL_Lower_Verified_Engine
-                     (pu_info, working_tree, physical_plan, NULL, diagnostic,
+                     (pu_info, working_tree, physical_plan, NULL, 0,
+                      diagnostic,
                       &working_result);
     if (!valid) {
         if (working_tree != NULL)
@@ -2118,6 +2131,19 @@ VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile
          FILE *diagnostic,
          VHO_DSL_LOWER_RESULT *result)
 {
+    return VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile_Bound
+               (pu_info, tree, tile, 0, diagnostic, result);
+}
+
+BOOL
+VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile_Bound
+        (struct pu_info *pu_info,
+         WN **tree,
+         const DSL_TILE_PLAN_RECORD *tile,
+         UINT32 device_entry_ordinal,
+         FILE *diagnostic,
+         VHO_DSL_LOWER_RESULT *result)
+{
     if (result != NULL)
         memset(result, 0, sizeof(*result));
     if (pu_info == NULL || tree == NULL || *tree == NULL || tile == NULL)
@@ -2127,7 +2153,8 @@ VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile
     memset(&working_result, 0, sizeof(working_result));
     BOOL valid = working_tree != NULL &&
                  VHO_DSL_Lower_Verified_Engine
-                     (pu_info, working_tree, NULL, tile, diagnostic,
+                     (pu_info, working_tree, NULL, tile,
+                      device_entry_ordinal, diagnostic,
                       &working_result);
     if (!valid) {
         if (working_tree != NULL)
@@ -2151,7 +2178,7 @@ VHO_DSL_Lower_Verified_Program_Unit
          VHO_DSL_LOWER_RESULT *result)
 {
     return VHO_DSL_Lower_Verified_Engine
-               (pu_info, tree, NULL, NULL, diagnostic, result);
+               (pu_info, tree, NULL, NULL, 0, diagnostic, result);
 }
 
 static DSL_TENSOR_CONTROL_SNAPSHOT *
@@ -2596,10 +2623,12 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
 }
 
 static BOOL
-VHO_DSL_CUDA_Write_Selected_Whirl
-        (const char *path, const DSL_TILE_PLAN_RECORD &tile, FILE *diagnostic)
+VHO_DSL_CUDA_Build_Selected_Whirl
+        (const DSL_TILE_PLAN_RECORD &tile, UINT32 ordinal,
+         PU_Info **device_pu,
+         FILE *diagnostic)
 {
-    if (path == NULL || path[0] == '\0' || access(path, F_OK) == 0 ||
+    if (device_pu == NULL ||
         tile.problem_m == 0 || tile.problem_n == 0 || tile.problem_k == 0 ||
         tile.problem_m > INT_MAX || tile.problem_n > INT_MAX ||
         tile.problem_k > INT_MAX || tile.cta_m == 0 || tile.cta_n == 0 ||
@@ -2613,8 +2642,8 @@ VHO_DSL_CUDA_Write_Selected_Whirl
         (tile.cta_n / tile.thread_n) != tile.threads_per_cta ||
         tile.threads_per_cta > 1024) {
         fprintf(diagnostic,
-                "DSL CUDA WHIRL requires a fresh path and an exact, "
-                "divisible synchronous tile\n");
+                "DSL CUDA WHIRL requires an exact, divisible "
+                "synchronous tile\n");
         return FALSE;
     }
     const SYMTAB_IDX level = CURRENT_SYMTAB;
@@ -2641,8 +2670,14 @@ VHO_DSL_CUDA_Write_Selected_Whirl
     PU_Init(pu, function_ty_idx, GLOBAL_SYMTAB + 1);
     Set_PU_c_lang(pu);
     Set_PU_no_inline(pu);
+    char kernel_name[64];
+    if (ordinal == 0)
+        snprintf(kernel_name, sizeof(kernel_name), "ai_matmul_tile_f32");
+    else
+        snprintf(kernel_name, sizeof(kernel_name),
+                 "ai_matmul_tile_f32_%u", ordinal);
     ST *kernel = New_ST(GLOBAL_SYMTAB);
-    ST_Init(kernel, Save_Str("ai_matmul_tile_f32"), CLASS_FUNC,
+    ST_Init(kernel, Save_Str(kernel_name), CLASS_FUNC,
             SCLASS_TEXT, EXPORT_PREEMPTIBLE, function_ty_idx);
     Set_ST_pu(kernel, pu_idx);
     Set_ST_device_symbol_kind(*kernel, DEVICE_SYMBOL_KERNEL);
@@ -2707,44 +2742,68 @@ VHO_DSL_CUDA_Write_Selected_Whirl
     Current_Map_Tab = PU_Info_maptab(info);
     Current_PU_Info = info;
     Save_Local_Symtab(CURRENT_SYMTAB, info);
-
-    std::string temporary = std::string(path) + ".tmp";
-    Output_File *output = WN_open_output((char *)temporary.c_str());
-    FmtAssert(output != NULL, ("could not open CUDA WHIRL image %s", path));
-    WN_write_symtab(info, output);
-    WN_write_tree(info, WN_MAP_UNDEFINED, output);
-    WN_write_PU_Infos(info, output);
-    WN_write_globals(output);
-    DST_TYPE saved_dst = Current_DST;
-    WN_write_dst(New_DST(), output);
-    Current_DST = saved_dst;
-    WN_write_dsl_ir_image(output);
-    WN_write_dsl_effect_image(output);
-    WN_write_dsl_callsite_image(output);
-    WN_write_dsl_pu_interface_image(output);
-    WN_write_dsl_call_abi_image(output);
-    WN_write_dsl_runtime_interface_image(output);
-    WN_write_dsl_program_interface_image(output);
-    WN_write_dsl_fhe_image(output);
-    WN_write_dsl_fhe_plan_image(output);
-    WN_write_dsl_fhe_approx_profile_image(output);
-    WN_write_dsl_fhe_context_state_image(output);
-    WN_write_dsl_fhe_materialization_image(output);
-    WN_write_dsl_ckks_event_image(output);
-    WN_write_strtab(Index_To_Str(0), STR_Table_Size(), output);
-    WN_write_revision(output);
-    WN_close_output(output);
-    BOOL valid = rename(temporary.c_str(), path) == 0;
-    if (!valid)
-        remove(temporary.c_str());
+    *device_pu = info;
     Scope_tab[level] = saved_scope;
     Current_scope = level;
     Current_pu = saved_pu;
     Current_Map_Tab = saved_map;
     Current_PU_Info = saved_info;
-    if (!valid)
-        fprintf(diagnostic, "DSL CUDA WHIRL could not publish %s\n", path);
-    return valid;
+    return TRUE;
+}
+
+struct VHO_DSL_CUDA_PENDING_KERNEL {
+    DSL_TILE_PLAN_RECORD tile;
+    ST_IDX owner;
+};
+
+static std::vector<VHO_DSL_CUDA_PENDING_KERNEL> VHO_DSL_CUDA_Pending_Kernels;
+
+static BOOL
+VHO_DSL_CUDA_Stage_Selected_Whirl
+        (PU_Info *pu_info, const DSL_TILE_PLAN_RECORD &tile,
+         UINT32 *ordinal, FILE *diagnostic)
+{
+    if (ordinal == NULL ||
+        VHO_DSL_CUDA_Pending_Kernels.size() >= UINT32_MAX) {
+        fprintf(diagnostic, "DSL CUDA device entry registry is full\n");
+        return FALSE;
+    }
+    *ordinal = (UINT32)VHO_DSL_CUDA_Pending_Kernels.size();
+    VHO_DSL_CUDA_PENDING_KERNEL pending;
+    pending.tile = tile;
+    pending.owner = PU_Info_proc_sym(pu_info);
+    VHO_DSL_CUDA_Pending_Kernels.push_back(pending);
+    return TRUE;
+}
+
+UINT32
+VHO_DSL_CUDA_Program_Kernel_Count(void)
+{
+    return (UINT32)VHO_DSL_CUDA_Pending_Kernels.size();
+}
+
+BOOL
+VHO_DSL_CUDA_Take_Program_Kernel
+        (UINT32 ordinal, PU_Info **device_pu, UINT32 *plan_id,
+         UINT32 *tile_id, ST_IDX *owner,
+         FILE *diagnostic)
+{
+    if (device_pu == NULL || plan_id == NULL || tile_id == NULL ||
+        owner == NULL || ordinal >= VHO_DSL_CUDA_Pending_Kernels.size()) {
+        fprintf(diagnostic,
+                "DSL CUDA WHIRL output requested without a selected "
+                "device PU\n");
+        return FALSE;
+    }
+    const VHO_DSL_CUDA_PENDING_KERNEL &pending =
+        VHO_DSL_CUDA_Pending_Kernels[ordinal];
+    if (!VHO_DSL_CUDA_Build_Selected_Whirl
+            (pending.tile, ordinal, device_pu, diagnostic))
+        return FALSE;
+    *plan_id = pending.tile.optimization_plan_id;
+    *tile_id = pending.tile.id;
+    *owner = pending.owner;
+    return TRUE;
 }
 
 /* Retain the synchronous CUDA template as a comparison baseline for the
@@ -3452,6 +3511,7 @@ VHO_DSL_Lower_Driver
     DSL_OPT_PLAN_ID emitted_fetch_plan_id = DSL_OPT_PLAN_INVALID_ID;
     UINT32 tile_candidate_count = 0, fetch_candidate_count = 0;
     DSL_TILE_PLAN_RECORD emitted_tile;
+    UINT32 device_entry_ordinal = 0;
     memset(&emitted_tile, 0, sizeof(emitted_tile));
     if (VHO_DSL_CUDA_Whirl_Output != NULL)
         FmtAssert(!VHO_DSL_CUDA_TMA_Prefetch,
@@ -3481,22 +3541,16 @@ VHO_DSL_Lower_Driver
         FmtAssert(emitted_tile_plan_id != DSL_OPT_PLAN_INVALID_ID &&
                   !VHO_DSL_CUDA_TMA_Prefetch,
                   ("CUDA WHIRL image requires a selected synchronous tile"));
-        FmtAssert(VHO_DSL_CUDA_Write_Selected_Whirl
-                      (VHO_DSL_CUDA_Whirl_Output, emitted_tile, stderr),
-                  ("DSL CUDA selected tile WHIRL emission failed"));
-        if (VHO_DSL_AI_Opt_Trace &&
-            Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG)) {
-            fprintf(TFile, "AI_OPT 7 WHIRL_KERNEL 1 %u %u %s\n",
-                    emitted_tile.optimization_plan_id, emitted_tile.id,
-                    VHO_DSL_CUDA_Whirl_Output);
-            fflush(TFile);
-        }
+        FmtAssert(VHO_DSL_CUDA_Stage_Selected_Whirl
+                      (pu_info, emitted_tile, &device_entry_ordinal, stderr),
+                  ("DSL CUDA selected tile staging failed"));
     }
 
     VHO_DSL_LOWER_RESULT lower_result;
     BOOL lower_valid = VHO_DSL_CUDA_Tile_Apply ?
-        VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile
-            (pu_info, &tree, &emitted_tile, stderr, &lower_result) :
+        VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile_Bound
+            (pu_info, &tree, &emitted_tile, device_entry_ordinal,
+             stderr, &lower_result) :
         VHO_DSL_Lower_Verified_Program_Unit
             (pu_info, tree, stderr, &lower_result);
     FmtAssert(lower_valid,

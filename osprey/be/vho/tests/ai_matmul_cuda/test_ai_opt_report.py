@@ -272,6 +272,19 @@ class ReportTest(unittest.TestCase):
             "TILE_ACTION 1 3 source_sidecar",
             "TILE_ACTION 1 3 device_whirl_sidecar")
         self.assertEqual(parse(whirl_only)[1]["whirl_kernel"]["tile"], 3)
+        bound = whirl_only.replace(
+            "AI_OPT 7 WHIRL_KERNEL 1 3 3 /artifact/matmul.device.B\n",
+            "AI_OPT 7 WHIRL_KERNEL 1 3 3 /artifact/matmul.device.B\n"
+            "AI_OPT 7 DEVICE_BIND 0 ai_matmul_m0 3 3 "
+            "ai_matmul_tile_f32 /artifact/matmul.device.B\n")
+        self.assertEqual(parse(bound)[1]["device_binding"]["entry"],
+                         "ai_matmul_tile_f32")
+        binding_only = bound.replace(
+            "AI_OPT 7 WHIRL_KERNEL 1 3 3 /artifact/matmul.device.B\n", "")
+        self.assertEqual(parse(binding_only)[1]["whirl_kernel"]["tile"], 3)
+        with self.assertRaisesRegex(ValueError, "device binding disagrees"):
+            parse(bound.replace("DEVICE_BIND 0 ai_matmul_m0 3",
+                                "DEVICE_BIND 0 other_pu 3"))
         with self.assertRaisesRegex(ValueError, "device WHIRL action has no kernel"):
             parse(whirl_only.replace(
                 "AI_OPT 7 WHIRL_KERNEL 1 3 3 /artifact/matmul.device.B\n", ""))

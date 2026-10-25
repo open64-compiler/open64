@@ -17,6 +17,7 @@ extern "C" {
 #define OPEN64_DSL_TENSOR_DESCRIPTOR_V1_SIZE 64
 #define OPEN64_DSL_PHYSICAL_PLAN_V1_SIZE 48
 #define OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE 64
+#define OPEN64_DSL_GENERATED_MATMUL_PLAN_V2_SIZE 72
 
 typedef void *OPEN64_DSL_TENSOR_HANDLE;
 typedef void *OPEN64_DSL_STATE_HANDLE;
@@ -235,6 +236,13 @@ typedef struct {
     uint64_t reserved;
 } OPEN64_DSL_GENERATED_MATMUL_PLAN_V1;
 
+/* V2 binds a generated host call to one entry in a multi-kernel package.
+ * Entry zero retains the V1 provider contract and fixed kernel symbol. */
+typedef struct {
+    OPEN64_DSL_GENERATED_MATMUL_PLAN_V1 base;
+    uint64_t device_entry_ordinal;
+} OPEN64_DSL_GENERATED_MATMUL_PLAN_V2;
+
 /*
  * Each successful call returns a distinct owning handle.  A NULL handle is a
  * runtime failure.  The compiler stores successful handles in distinct PREGs;
@@ -271,6 +279,12 @@ OPEN64_DSL_TENSOR_HANDLE __open64_dsl_matmul_generated_v1
                                  const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result,
                                  uint32_t flags,
                                  const OPEN64_DSL_GENERATED_MATMUL_PLAN_V1 *plan);
+OPEN64_DSL_TENSOR_HANDLE __open64_dsl_matmul_generated_v2
+                                (OPEN64_DSL_TENSOR_HANDLE kid0,
+                                 OPEN64_DSL_TENSOR_HANDLE kid1,
+                                 const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result,
+                                 uint32_t flags,
+                                 const OPEN64_DSL_GENERATED_MATMUL_PLAN_V2 *plan);
 OPEN64_DSL_TENSOR_HANDLE __open64_dsl_relu_v1
                                 (OPEN64_DSL_TENSOR_HANDLE kid0,
                                  const OPEN64_DSL_TENSOR_DESCRIPTOR_V1 *result);

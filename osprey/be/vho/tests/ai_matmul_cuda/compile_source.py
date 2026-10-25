@@ -90,6 +90,51 @@ def validate_selected_source(source: str, candidates: list[dict],
     return dimensions
 
 
+def validate_device_whirl_output(source: str, dump: str,
+                                 selection: dict, selected: dict) -> None:
+    kernel = selection.get("whirl_kernel")
+    if kernel is None or (kernel["plan"], kernel["tile"]) != (
+            selected["plan"], selected["tile"]):
+        raise RuntimeError("device WHIRL image lacks selected plan identity")
+    bm, bn, bk = selected["cta"]
+    problem = selected.get("grid", {}).get("problem")
+    if problem is None:
+        raise RuntimeError("device WHIRL needs traced problem geometry")
+    _, _, k = problem
+    required_source = (
+        r'extern\s+"C"\s+__global__\s+void\s+ai_matmul_tile_f32\s*\(',
+        rf'__shared__\s+_IEEE32\s+as\[{bm * bk}LL\]',
+        rf'__shared__\s+_IEEE32\s+bs\[{bk * bn}LL\]',
+        rf'for\s*\(base\s*=\s*0;\s*base\s*<\s*{k};\s*'
+        rf'base\s*=\s*base\s*\+\s*{bk}\)',
+        r'\(threadIdx\)\.x', r'\(blockIdx\)\.[xy]',
+    )
+    if any(re.search(pattern, source) is None for pattern in required_source):
+        raise RuntimeError("whirl2c CUDA output disagrees with selected tile")
+    if len(re.findall(r'__syncthreads\s*\(\s*\)', source)) != 2:
+        raise RuntimeError("whirl2c CUDA output lacks two K-tile barriers")
+    if (re.search(r'FUNC_ENTRY\s*<[^>]*ai_matmul_tile_f32>', dump) is None or
+            "DO_LOOP {line:" not in dump or
+            "(DEVICE_SYMBOL) 1" not in dump or
+            dump.count("(DEVICE_SYMBOL) 4") < 2):
+        raise RuntimeError("device WHIRL dump lacks kernel or shared staging")
+
+
+def validate_device_publication_order(trace: str, selection: dict) -> None:
+    action = f"AI_OPT 7 TILE_ACTION 1 {selection['selected']} "
+    kernel = selection["whirl_kernel"]
+    publication = (f"AI_OPT 7 WHIRL_KERNEL 1 {kernel['plan']} "
+                   f"{kernel['tile']} {kernel['image']}")
+    lines = trace.splitlines()
+    actions = [index for index, line in enumerate(lines)
+               if line.startswith(action)]
+    publications = [index for index, line in enumerate(lines)
+                    if line == publication]
+    if (len(actions) != 1 or len(publications) != 1 or
+            actions[0] >= publications[0]):
+        raise RuntimeError("device WHIRL publication did not follow tile action")
+
+
 def m2_handoff(source: Path, trace: Path, input_whirl: Path,
                lowered_artifact: Path, candidates: list[dict],
                selection: dict, applied: bool = False) -> dict:
@@ -193,18 +238,23 @@ def main() -> None:
                         help="request selected P8 multidimensional TMA source")
     parser.add_argument("--apply", action="store_true",
                         help="apply the selected synchronous tile to WHIRL at -O3")
+    parser.add_argument("--device-whirl", action="store_true",
+                        help="retain and check selected device WHIRL and whirl2c CUDA")
     parser.add_argument("--digest-output", action="store_true",
                         help="treat output-dir as a milestone root and publish by raw-trace digest")
     args = parser.parse_args()
     if args.apply and args.tma:
         parser.error("M2 generated-tile application requires synchronous movement")
+    if args.device_whirl and args.tma:
+        parser.error("selected device WHIRL currently requires synchronous movement")
     if sys.platform != "linux" or platform.machine() != "x86_64":
         parser.error("requires the Linux/x86-64 Open64 compiler build")
     build = args.build_dir.resolve()
     opencc = build / "osprey/targdir/driver/opencc"
     ir_b2a = build / "osprey/targdir/ir_tools/ir_b2a"
     backend = build / "osprey/targdir/be/be.so"
-    for tool in (opencc, ir_b2a, backend):
+    whirl2c = build / "osprey/targdir/whirl2c/whirl2c"
+    for tool in (opencc, ir_b2a, backend) + ((whirl2c,) if args.device_whirl else ()):
         if not tool.is_file() or not os.access(tool, os.X_OK):
             parser.error(f"required Open64 tool missing: {tool}")
     output = args.output_dir.resolve()
@@ -232,6 +282,9 @@ def main() -> None:
         run([str(ir_b2a), "-st", "-src", str(binary), str(whirl_dump)], stage,
             stage / "logs/ir_b2a.log")
         cuda_source = stage / "source/matmul.generated.cu"
+        device_image = stage / "binary/matmul.device.B"
+        device_dump = stage / "traces/matmul.device.T"
+        device_cuda = stage / "source/matmul.whirl.cu"
         optimization = "-O3" if args.apply else "-O0"
         inline_option = "-noinline" if args.apply else "-INLINE:none"
         baseline_command = [str(opencc), f"-run-build={build}", optimization,
@@ -267,8 +320,10 @@ def main() -> None:
             raise RuntimeError("CUDA source appeared with the option disabled")
         command = [str(opencc), f"-run-build={build}", optimization, inline_option,
                    "-c", "-keep",
-                   f"-Wb,-DSL:cuda_tile_output={cuda_source}",
+                   "-Wb,-DSL:cuda_tile_output=../source/matmul.generated.cu",
                    "matmul.B"]
+        if args.device_whirl:
+            command.insert(-1, "-Wb,-DSL:cuda_whirl_output=matmul.device.B")
         if args.apply:
             command.insert(-1, "-Wb,-DSL:dump_after_lower=ON")
         if args.tma:
@@ -282,6 +337,31 @@ def main() -> None:
             raise RuntimeError("AI optimization decision trace was not emitted")
         raw_trace.rename(trace)
         selection, action = render(trace, stage / "reports")
+        candidate_rows, _, _ = parse(trace.read_text(encoding="utf-8"))
+        if args.device_whirl:
+            kernel = selection.get("whirl_kernel")
+            if (kernel is None or
+                    kernel["image"] != device_image.name or
+                    not device_image.is_file()):
+                raise RuntimeError("device WHIRL trace/image provenance mismatch")
+            validate_device_publication_order(
+                trace.read_text(encoding="utf-8"), selection)
+            run([str(ir_b2a), "-st", "-src", "binary/matmul.device.B",
+                 "traces/matmul.device.T"], stage,
+                stage / "logs/device-ir_b2a.log")
+            run([str(whirl2c), "-cuda",
+                 "-CLIST:dotc_file=../source/matmul.whirl.cu",
+                 "-fB,matmul.device.B", "matmul.cu"],
+                stage / "binary", stage / "logs/whirl2c-cuda.log")
+            selected = next(row for row in candidate_rows
+                            if row["plan"] == selection["selected"])
+            validate_device_whirl_output(
+                device_cuda.read_text(encoding="utf-8"),
+                device_dump.read_text(encoding="utf-8"), selection, selected)
+            run(["bash", str(HERE / "test_whirl_cuda_parity.sh"),
+                 "source/matmul.generated.cu", "source/matmul.whirl.cu",
+                 "binary"],
+                stage, stage / "logs/device-parity.log")
         if "k_loop" not in selection:
             raise RuntimeError("selected K-tile WHIRL loop trace is missing")
         selected_k_loop_dump(trace, stage / "traces/selected-k-loop.T",
@@ -316,7 +396,6 @@ def main() -> None:
                         if isinstance(node, ast.Call)
                         and isinstance(node.func, ast.Attribute)
                         and node.func.attr == "common_matmul"]
-        candidate_rows, _, _ = parse(trace.read_text(encoding="utf-8"))
         if selection["reason"] not in ("lowest_complete_relative_cost",
                                        "roofline_near_cost"):
             raise RuntimeError("tile selection reason was not recorded")
@@ -334,6 +413,13 @@ def main() -> None:
             raise RuntimeError("compiler-emitted CUDA source is incomplete")
         handoff = m2_handoff(cuda_source, trace, binary, lowered,
                              candidate_rows, selection, args.apply)
+        if args.device_whirl:
+            handoff.update(device_whirl_path="binary/matmul.device.B",
+                           device_whirl_sha256=sha256(device_image),
+                           device_cuda_path="source/matmul.whirl.cu",
+                           device_cuda_sha256=sha256(device_cuda),
+                           device_dump_sha256=sha256(device_dump),
+                           device_parity_log_sha256=sha256(stage / "binary/parity.log"))
         if args.tma:
             tma_required = ("cp_async_bulk_tensor", "cuTensorMapEncodeTiled",
                             "mbarrier_try_wait_parity", "P8_STAGES",
@@ -382,6 +468,15 @@ def main() -> None:
             "m2_handoff_sha256": sha256(stage / "plans/m2-selected-tile.json"),
             "decision_trace_path": "traces/compile.t",
             "cuda_source_emitter": "legacy_template",
+            "device_whirl_emitted": args.device_whirl,
+            "device_whirl_path": "binary/matmul.device.B" if args.device_whirl else None,
+            "device_whirl_sha256": sha256(device_image) if args.device_whirl else None,
+            "device_whirl_dump_path": "traces/matmul.device.T" if args.device_whirl else None,
+            "device_cuda_path": "source/matmul.whirl.cu" if args.device_whirl else None,
+            "device_cuda_sha256": sha256(device_cuda) if args.device_whirl else None,
+            "whirl2c_sha256": sha256(whirl2c) if args.device_whirl else None,
+            "device_parity_passed": args.device_whirl,
+            "device_parity_log_path": "binary/parity.log" if args.device_whirl else None,
             "cuda_legacy_emit_default": True,
             "selected_k_loop_dump_path": "traces/selected-k-loop.T",
             "selected_k_loop_scope": selection["k_loop"]["scope"],
