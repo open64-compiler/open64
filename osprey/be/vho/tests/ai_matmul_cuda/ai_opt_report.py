@@ -39,6 +39,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     fetch_candidates: list[dict] = []
     fetch_selection: dict | None = None
     fetch_action: dict | None = None
+    cost_model: str | None = None
     roof_target: dict | None = None
     context: dict | None = None
     phases: dict[int, dict] = {}
@@ -90,6 +91,11 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                                  read_bytes=int(read_bytes),
                                  write_bytes=int(write_bytes),
                                  producer=int(producer), last_use=int(last_use)))
+        elif kind == "COST_MODEL" and trace_version == "7" and len(fields) == 6:
+            if cost_model is not None or fields[3:] != [
+                    "2", "valid_predicated_elements", "dynamic_cta_k_barriers"]:
+                raise ValueError("unknown or duplicate tile cost model")
+            cost_model = "v2"
         elif kind == "ROOF_TARGET" and trace_version in ("4", "5", "6", "7") and len(fields) == 9:
             if roof_target is not None:
                 raise ValueError("duplicate Roofline target")
@@ -293,6 +299,26 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         raise ValueError("baseline or selected plan missing from candidates")
     if by_plan[selection["baseline"]]["family"] != "baseline":
         raise ValueError("baseline plan does not name baseline family")
+    if cost_model == "v2":
+        for row in candidates:
+            grid = row.get("grid")
+            if grid is None:
+                raise ValueError("v2 cost model lacks candidate grid")
+            m, n, k = grid["problem"]
+            if row["family"] == "baseline":
+                read_bytes = 2 * m * n * k * 4
+                sync = 0
+            else:
+                grid_m, grid_n = grid["grid"]
+                read_bytes = (m * k * grid_n + k * n * grid_m) * 4
+                sync = 2 * grid["ctas"] * grid["k_iterations"]
+            total_bytes = read_bytes + m * n * 4
+            if (row["memory"] != max(1, total_bytes // 1024) or
+                    row["sync"] != sync or
+                    (row.get("roof_bytes") and
+                     row["roof_bytes"] != total_bytes)):
+                raise ValueError("v2 tile cost disagrees with traced geometry")
+        selection["cost_model"] = cost_model
     eligible = [row for row in candidates if row["legality"] == "proven"
                 and row["complete"] and row["unit"] != "unknown"]
     if (selection["legal"] != sum(row["legality"] == "proven"
@@ -545,6 +571,9 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
             f"edge_plan={edge['policy']} a_load={edge['a_load']} "
             f"b_load={edge['b_load']} c_store={edge['c_store']} "
             f"{edge['barriers']}")
+    if selection.get("cost_model"):
+        summary.append("cost_model=v2 reads=valid_predicated_elements "
+                       "sync=dynamic_cta_k_barriers confidence=low")
     (reports / "optimization.log").write_text(
         "# What it summarizes: Complete P0-P11 optimization process, including every phase decision and non-execution reason.\n"
         + "".join(phase_contents), encoding="utf-8")
@@ -566,10 +595,16 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
         "# compute=max(1,floor(2*M*N*K/1024)); one multiply-add counts as two operations.",
         "# memory_unhidden=max(1,floor((read_bytes+write_bytes)/1024)); write_bytes=M*N*E.",
         "# read_bytes baseline=2*M*N*K*E.",
-        "# read_bytes tiled=ceil(M/BM)*ceil(N/BN)*ceil(K/BK)*(BM*BK+BK*BN)*E.",
+        ("# read_bytes tiled=(M*K*ceil(N/BN)+K*N*ceil(M/BM))*E; invalid edge loads are zero-filled without GMEM requests."
+         if selection.get("cost_model") == "v2" else
+         "# read_bytes tiled=ceil(M/BM)*ceil(N/BN)*ceil(K/BK)*(BM*BK+BK*BN)*E."),
         "# total=compute+memory_unhidden+communication_unhidden+sync+launch+runtime_selection.",
-        "# sync=static barrier_count (0 baseline, 2 tiled); communication_unhidden, launch, runtime_selection=0 here.",
-        "# Caveat: memory_unhidden is a traffic proxy; bandwidth, overlap, cache effects, and dynamic barrier frequency are not modeled.",
+        ("# sync tiled=2*ceil(M/BM)*ceil(N/BN)*ceil(K/BK), baseline=0; this counts issued CTA barriers, not exposed latency."
+         if selection.get("cost_model") == "v2" else
+         "# sync=static barrier_count (0 baseline, 2 tiled); communication_unhidden, launch, runtime_selection=0 here."),
+        ("# Caveat: valid element bytes are not sector transactions or HBM bytes; bandwidth, cache effects, overlap, and SM parallelism remain unmodeled."
+         if selection.get("cost_model") == "v2" else
+         "# Caveat: memory_unhidden is a traffic proxy; bandwidth, overlap, cache effects, and dynamic barrier frequency are not modeled."),
         "# Selection: lowest complete relative cost among proven plans; a modeled Roofline bound can resolve near-cost alternatives where available.",
         f"site={selection['site']} target={selection['target']} baseline={selection['baseline']} selected={selection['selected']}",
     ]
@@ -604,6 +639,11 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
             tile_lines[-1] += (f" problem={','.join(map(str, grid['problem']))}"
                                f" grid={','.join(map(str, grid['grid']))}"
                                f" grid_ctas={grid['ctas']} k_iterations={grid['k_iterations']}")
+            if selection.get("cost_model") == "v2" and row["family"] != "baseline":
+                m, n, k = grid["problem"]
+                grid_m, grid_n = grid["grid"]
+                tile_lines[-1] += (f" valid_a_load_bytes={m * k * grid_n * 4}"
+                                   f" valid_b_load_bytes={k * n * grid_m * 4}")
         if "roof_bound_ns" in row:
             tile_lines[-1] += (f" flops={row['flops']} global_bytes={row['roof_bytes']} "
                                f"roof_compute_ns={row['roof_compute_ns']} "

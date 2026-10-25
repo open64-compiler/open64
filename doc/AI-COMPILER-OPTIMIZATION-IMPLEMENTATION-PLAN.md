@@ -1312,10 +1312,20 @@ phase-status rows still appear in the trace-derived summary.
    negative fixture is rejected without publishing an I4-unsafe device image.
    The artifact retains `.B`, `.T`, `.cu`, `.t`, phase reports, host object,
    negative compile log, receipt, and checksums.
-   The current cost model still prices full tile-load requests at edges and
-   static barrier count, not measured masked traffic or dynamic barriers.
-   Next, resolve v2 ordinals in the package/runtime, refine edge-aware cost
-   estimates, and attempt NVISA/PTX lowering. Native CUDA compilation,
+   `run-015/` revises the low-confidence relative cost model: A/B global
+   read bytes count only valid predicated elements, and the sync term counts
+   two CTA barriers per grid CTA and K tile. The `COST_MODEL 2` row makes
+   that interpretation explicit while old v7 traces keep their earlier
+   formula. The all-tail 130x133x135 c128 candidate changes from relative
+   cost 5267 (padded loads, static sync=2) to 4942 (valid loads, dynamic
+   sync=40); it remains selected. The artifact retains both compilation
+   modes, K-only and I4-negative fixtures, raw `.t`, phase reports, CUDA,
+   WHIRL, host parity, receipt, and checksums. Valid element bytes still
+   omit sector overfetch, cache/HBM behavior, and SM parallelism; the sync
+   term counts issued barriers, not exposed latency. No measured speedup
+   follows from the revised score. Next, resolve v2 ordinals in the
+   package/runtime, model transactions and exposed latency, and attempt
+   NVISA/PTX lowering. Native CUDA compilation,
    ptxas resource inspection, GPU correctness, and same-target timing remain
    open.
 5. [ ] Extend the selected tile with P7.4/P8 staging and a reviewed

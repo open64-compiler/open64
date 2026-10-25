@@ -88,6 +88,17 @@ retains raw `.t`, phase reports, device `.B`/`.T`, `.cu`, host object, negative
 compile log, receipt, and checksums. The
 compiler-only checkpoint is `artifacts/ai_optimization/m2-whirl-kernel/run-014/`.
 
+`run-015/` repeats those compiler checks after cost-model revision 2. Its
+`COST_MODEL 2` trace row identifies two changes: tiled A/B read bytes count
+only valid predicated elements,
+`(M*K*ceil(N/BN)+K*N*ceil(M/BM))*4`, and the sync score counts
+`2*ceil(M/BM)*ceil(N/BN)*ceil(K/BK)` CTA barrier executions. The report
+validates both quantities against every traced candidate's grid; older v7
+traces without the marker retain their earlier report formula. This is still
+a low-confidence relative work score, not a latency prediction: sector
+transactions, cache/HBM behavior, exposed barrier latency, and SM parallelism
+need later target modeling and measurement.
+
 The compiler artifact runner can capture both source paths in one run:
 
 ```sh

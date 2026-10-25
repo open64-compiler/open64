@@ -262,6 +262,44 @@ class ReportTest(unittest.TestCase):
                         f"{int(active)} {3 if phase == 7 else 0} "
                         f"{3 if phase in (7, 9) else 0} 0")
         trace = "\n".join(rows) + "\n"
+        def v2_candidate(tile, family, cta, memory, sync, traffic):
+            fields = candidate(tile, family, 100, version="7").split()
+            fields[13] = "4096"
+            fields[14] = str(memory)
+            fields[16] = str(sync)
+            fields[19] = str(4096 + memory + sync)
+            fields[23:26] = [str(value) for value in cta]
+            fields[27] = "4194304"
+            fields[28] = str(traffic)
+            fields[29] = str((4194304 + 66999) // 67000)
+            fields[30] = str((traffic + 3349) // 3350)
+            fields[31] = str(max(int(fields[29]), int(fields[30])))
+            return " ".join(fields)
+
+        v2_rows = (
+            v2_candidate(1, "baseline", (0, 0, 0), 16448, 0, 16842752),
+            v2_candidate(2, "cuda_64", (64, 64, 16), 320, 64, 327680),
+            v2_candidate(3, "cuda_128", (128, 128, 32), 192, 8, 196608),
+        )
+        v2_trace = "\n".join(
+            ["AI_OPT 7 COST_MODEL 2 valid_predicated_elements "
+             "dynamic_cta_k_barriers"] +
+            [v2_rows[int(line.split()[4]) - 1]
+             if line.startswith("AI_OPT 7 TILE_CAND ") else line
+             for line in trace.splitlines()]) + "\n"
+        self.assertEqual(parse(v2_trace)[1]["cost_model"], "v2")
+        self.assertEqual(parse(v2_trace)[0][2]["total"], 4296)
+        with self.assertRaisesRegex(ValueError, "v2 tile cost disagrees"):
+            parse(v2_trace.replace(" 4096 192 0 8 0 0 4296 ",
+                                   " 4096 193 0 8 0 0 4297 "))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "compile.t"
+            source.write_text(v2_trace, encoding="utf-8")
+            render(source, root / "reports")
+            tile_report = (root / "reports/phases/tile.log").read_text()
+            self.assertIn("valid_a_load_bytes=65536", tile_report)
+            self.assertIn("sync tiled=2*ceil(M/BM)", tile_report)
         self.assertEqual(len(parse(trace)[1]["locality"]), 3)
         self.assertEqual(parse(trace)[0][2]["grid"]["ctas"], 1)
         with_kernel = trace.replace(

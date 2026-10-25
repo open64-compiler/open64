@@ -67,6 +67,8 @@ def main():
         trace_path = root / "edge.t"
         candidates, selection, action = parse(trace_path.read_text(
             encoding="utf-8"))
+        if selection.get("cost_model") != "v2":
+            raise RuntimeError("edge-aware tile cost model is missing")
         selected = next(row for row in candidates
                         if row["plan"] == selection["selected"])
         dimensions = validate_selected_source(
@@ -111,10 +113,15 @@ def main():
         render(trace_path, root / "reports")
         summary = (root / "reports/optimization-summary.log").read_text(
             encoding="utf-8")
-        if "edge_plan=predicated" not in summary:
-            raise RuntimeError("optimization summary omitted edge guard plan")
+        if "edge_plan=predicated" not in summary or \
+                "cost_model=v2" not in summary:
+            raise RuntimeError("optimization summary omitted edge/cost decisions")
         return dict(selected_plan=selected["plan"], tile=selected["cta"],
-                    problem=(m, n, k), host_rewrite=action["tile_rewrite"],
+                    problem=(m, n, k), cost_model=selection["cost_model"],
+                    selected_relative_cost=selected["total"],
+                    memory_unhidden=selected["memory"],
+                    sync=selected["sync"],
+                    host_rewrite=action["tile_rewrite"],
                     parity=parity.strip())
 
     source_only = compile_tile(output, False, True)

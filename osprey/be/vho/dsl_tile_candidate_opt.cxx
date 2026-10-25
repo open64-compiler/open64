@@ -196,6 +196,8 @@ DSL_Tile_Trace_Selection (const DSL_TILE_ANALYSIS *analysis,
     BOOL roofline_available = DSL_Tile_Roofline_Target
         (selection.target_profile_id, &fp32_gflops, &hbm_gbps);
     UINT32 trace_version = 7;
+    fprintf(file, "AI_OPT %u COST_MODEL 2 valid_predicated_elements "
+                  "dynamic_cta_k_barriers\n", trace_version);
     fprintf(file, "AI_OPT %u ROOF_TARGET %u %s %llu %llu "
                   "traffic=global_requests_as_cold_hbm_proxy "
                   "ceiling=published_peak\n",
@@ -642,22 +644,18 @@ DSL_Tile_Tiled_Traffic
 {
     UINT64 a_elements;
     UINT64 b_elements;
-    UINT64 per_k_tile;
-    UINT64 tile_count;
     UINT64 read_elements;
     UINT64 mn;
-    if (!DSL_Tile_Mul_U64(plan->cta_m, plan->cta_k, &a_elements) ||
-        !DSL_Tile_Mul_U64(plan->cta_k, plan->cta_n, &b_elements) ||
-        !DSL_Tile_Add_U64(a_elements, b_elements, &per_k_tile) ||
+    if (!DSL_Tile_Mul_U64(plan->problem_m, plan->problem_k, &a_elements) ||
         !DSL_Tile_Mul_U64
-             (DSL_Tile_Ceil_Div(plan->problem_m, plan->cta_m),
-              DSL_Tile_Ceil_Div(plan->problem_n, plan->cta_n),
-              &tile_count) ||
+             (a_elements, DSL_Tile_Ceil_Div(plan->problem_n, plan->cta_n),
+              &a_elements) ||
+        !DSL_Tile_Mul_U64(plan->problem_k, plan->problem_n, &b_elements) ||
         !DSL_Tile_Mul_U64
-             (tile_count,
-              DSL_Tile_Ceil_Div(plan->problem_k, plan->cta_k),
-              &tile_count) ||
-        !DSL_Tile_Mul_U64(tile_count, per_k_tile, &read_elements) ||
+             (b_elements,
+              DSL_Tile_Ceil_Div(plan->problem_m, plan->cta_m),
+              &b_elements) ||
+        !DSL_Tile_Add_U64(a_elements, b_elements, &read_elements) ||
         !DSL_Tile_Mul_U64(read_elements, element_bytes,
                           &plan->gmem_read_bytes) ||
         !DSL_Tile_Mul_U64(plan->problem_m, plan->problem_n, &mn) ||
@@ -665,6 +663,26 @@ DSL_Tile_Tiled_Traffic
                           &plan->gmem_write_bytes))
         return FALSE;
     return TRUE;
+}
+
+static BOOL
+DSL_Tile_Dynamic_Barriers
+        (const DSL_TILE_PLAN_RECORD *plan, UINT64 *barriers)
+{
+    if (plan->barrier_count == 0) {
+        *barriers = 0;
+        return TRUE;
+    }
+    UINT64 ctas;
+    return plan->cta_m != 0 && plan->cta_n != 0 && plan->cta_k != 0 &&
+        DSL_Tile_Mul_U64
+            (DSL_Tile_Ceil_Div(plan->problem_m, plan->cta_m),
+             DSL_Tile_Ceil_Div(plan->problem_n, plan->cta_n),
+             &ctas) &&
+        DSL_Tile_Mul_U64
+            (ctas, DSL_Tile_Ceil_Div(plan->problem_k, plan->cta_k),
+             &ctas) &&
+        DSL_Tile_Mul_U64(ctas, plan->barrier_count, barriers);
 }
 
 static BOOL
@@ -700,17 +718,21 @@ DSL_Tile_Add_Optimization_Plan
     cost.target_profile_id = analysis->control.target_profile_id;
     cost.ordering_key = tile->id;
     if (complete_cost) {
+        UINT64 traffic, sync;
+        if (!DSL_Tile_Add_U64(tile->gmem_read_bytes,
+                              tile->gmem_write_bytes, &traffic) ||
+            !DSL_Tile_Dynamic_Barriers(tile, &sync))
+            return DSL_Tile_Report(diagnostic, "tile cost overflow", tile->id);
         UINT64 compute = std::max((UINT64)1,
                                   tile->operation_count / 1024);
         UINT64 memory = std::max
-            ((UINT64)1,
-             (tile->gmem_read_bytes + tile->gmem_write_bytes) / 1024);
+            ((UINT64)1, traffic / 1024);
         for (UINT32 i = 0; i < DSL_OPT_COST_TERM_COUNT; ++i)
             DSL_Tile_Cost_Term
                 (&cost.terms[i],
                  i == DSL_OPT_COST_COMPUTE ? compute :
                  i == DSL_OPT_COST_MEMORY_UNHIDDEN ? memory :
-                 i == DSL_OPT_COST_SYNC ? tile->barrier_count : 0,
+                 i == DSL_OPT_COST_SYNC ? sync : 0,
                  DSL_OPT_COST_CONFIDENCE_LOW,
                  (tile->flags & DSL_TILE_PLAN_FLAG_BASELINE) != 0 ?
                      DSL_OPT_COST_EVIDENCE_BASELINE_POLICY :
