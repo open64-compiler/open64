@@ -4,7 +4,9 @@ import unittest
 from pathlib import Path
 import tempfile
 
-from compile_source import (m2_handoff, selected_k_loop_dump,
+from compile_source import (m2_handoff, review_record, selected_k_loop_dump,
+                            validate_device_publication_order,
+                            validate_device_whirl_output,
                             validate_selected_source)
 
 
@@ -34,9 +36,73 @@ SELECTION = dict(selected=3, reason="lowest_complete_relative_cost",
     dict(rank=2, shape="[128,128]"),
     dict(rank=2, shape="[128,128]"),
 ])
+DEVICE_SOURCE = '''extern "C" __global__ void ai_matmul_tile_f32(
+  _IEEE32 * a, _IEEE32 * b, _IEEE32 * c)
+{
+  __shared__ _IEEE32 as[4096LL];
+  __shared__ _IEEE32 bs[4096LL];
+  tid = (_INT32)((threadIdx).x);
+  row0 = (_INT32)((blockIdx).y) * 128;
+  for(base = 0; base < 128; base = base + 32) {
+    __syncthreads();
+    __syncthreads();
+  }
+}
+'''
+DEVICE_DUMP = '''FUNC_ENTRY <1,2,ai_matmul_tile_f32>
+(DEVICE_SYMBOL) 1
+(DEVICE_SYMBOL) 4
+(DEVICE_SYMBOL) 4
+DO_LOOP {line: 0}
+'''
 
 
 class SourceContractTest(unittest.TestCase):
+    def test_device_publication_follows_tile_action(self):
+        selection = dict(SELECTION, whirl_kernel=dict(
+            plan=3, tile=3, image="matmul.device.B"))
+        action = "AI_OPT 7 TILE_ACTION 1 3 source_sidecar generated_runtime_call\n"
+        publication = "AI_OPT 7 WHIRL_KERNEL 1 3 3 matmul.device.B\n"
+        validate_device_publication_order(action + publication, selection)
+        with self.assertRaisesRegex(RuntimeError, "did not follow"):
+            validate_device_publication_order(publication + action, selection)
+        with self.assertRaisesRegex(RuntimeError, "did not follow"):
+            validate_device_publication_order(action + publication * 2,
+                                              selection)
+
+    def test_device_whirl_matches_selected_tile(self):
+        selected = dict(CANDIDATES[0], grid=dict(problem=(128, 128, 128)))
+        selection = dict(SELECTION, whirl_kernel=dict(plan=3, tile=3))
+        validate_device_whirl_output(DEVICE_SOURCE, DEVICE_DUMP,
+                                     selection, selected)
+        with self.assertRaisesRegex(RuntimeError, "selected tile"):
+            validate_device_whirl_output(
+                DEVICE_SOURCE.replace("base + 32", "base + 16"), DEVICE_DUMP,
+                selection, selected)
+        with self.assertRaisesRegex(RuntimeError, "shared staging"):
+            validate_device_whirl_output(
+                DEVICE_SOURCE, DEVICE_DUMP.replace("(DEVICE_SYMBOL) 4", "", 1),
+                selection, selected)
+        with self.assertRaisesRegex(RuntimeError, "plan identity"):
+            validate_device_whirl_output(
+                DEVICE_SOURCE, DEVICE_DUMP,
+                dict(selection, whirl_kernel=dict(plan=2, tile=3)), selected)
+
+    def test_predicated_device_requires_three_whirl_guards(self):
+        selected = dict(CANDIDATES[0], grid=dict(problem=(130, 133, 135)))
+        selection = dict(SELECTION, whirl_kernel=dict(plan=3, tile=3))
+        source = DEVICE_SOURCE.replace("base < 128", "base < 135")
+        with self.assertRaisesRegex(RuntimeError, "required edge guards"):
+            validate_device_whirl_output(source, DEVICE_DUMP,
+                                         selection, selected)
+        guarded_source = source.replace(
+            "    __syncthreads();",
+            "    if (valid) {}\n    if (valid) {}\n    if (valid) {}\n"
+            "    __syncthreads();", 1)
+        guarded_dump = DEVICE_DUMP + "IF {line: 0}\n" * 3
+        validate_device_whirl_output(guarded_source, guarded_dump,
+                                     selection, selected)
+
     def test_selected_tile_matches_source(self):
         validate_selected_source(SOURCE, CANDIDATES, SELECTION)
 
@@ -120,6 +186,37 @@ class SourceContractTest(unittest.TestCase):
                              320)
             self.assertFalse(handoff["whirl_rewrite_applied"])
             self.assertEqual(len(handoff["source_sha256"]), 64)
+
+    def test_review_record_names_whirl_source_and_requires_parity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for name, data in (
+                    ("source/matmul.whirl.cu", DEVICE_SOURCE),
+                    ("binary/matmul.device.B", "selected image"),
+                    ("traces/compile.t", "selection"),
+                    ("binary/parity.log",
+                     "whirl_vs_reference=0 legacy_vs_reference=0 "
+                     "whirl_vs_legacy=0\n")):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(data, encoding="utf-8")
+            selected = dict(CANDIDATES[0],
+                            grid=dict(problem=(128, 128, 128)))
+            selection = dict(SELECTION, whirl_kernel=dict(
+                plan=3, tile=3, image="matmul.device.B"))
+            review = review_record(root, selection, [selected], True)
+            self.assertEqual(review["canonical_cuda_path"],
+                             "source/matmul.whirl.cu")
+            self.assertEqual(review["selected_optimization_plan_id"], 3)
+            self.assertTrue(review["host_cta_parity_passed"])
+            self.assertFalse(review["gpu_correctness_verified"])
+            with self.assertRaisesRegex(RuntimeError, "disagree with selection"):
+                review_record(root, dict(selection, whirl_kernel=dict(
+                    plan=2, tile=3, image="matmul.device.B")), [selected], True)
+            (root / "binary/parity.log").write_text(
+                "whirl_vs_reference=1 whirl_vs_legacy=0\n", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "failed host CTA parity"):
+                review_record(root, selection, [selected], True)
 
 
 if __name__ == "__main__":

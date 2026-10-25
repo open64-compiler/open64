@@ -88,6 +88,7 @@ typedef struct {
     const DSL_PHYSICAL_PLAN_ANALYSIS *physical_plan;
     const DSL_PHYSICAL_PLAN_IR *physical_plan_ir;
     const DSL_TILE_PLAN_RECORD *generated_tile;
+    UINT32 generated_entry_ordinal;
 } VHO_DSL_LOWER_CONTEXT;
 
 typedef char VHO_DSL_Runtime_Cublaslt_Provider_Matches
@@ -420,9 +421,12 @@ VHO_DSL_Create_Generated_Tile_Symbol
 {
     if (tile == NULL || tile->shared_bytes_per_stage > UINT32_MAX)
         return NULL;
+    const BOOL bound_entry = context->generated_entry_ordinal != 0;
+    const UINT32 plan_size = bound_entry ?
+        OPEN64_DSL_GENERATED_MATMUL_PLAN_V2_SIZE :
+        OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE;
     TY_IDX blob_ty = Make_Array_Type
-                         (MTYPE_U1, 1,
-                          OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE);
+                         (MTYPE_U1, 1, plan_size);
     Set_TY_align(blob_ty, 8);
     ST *blob = Gen_Read_Only_Symbol(blob_ty, ".dsl_generated_matmul_plan");
     Set_ST_is_initialized(blob);
@@ -430,13 +434,13 @@ VHO_DSL_Create_Generated_Tile_Symbol
     INITV_IDX previous = INITV_IDX_ZERO;
     previous = VHO_DSL_Append_Integer
                    (inito, previous, MTYPE_U2,
-                    OPEN64_DSL_RUNTIME_ABI_VERSION);
+                    bound_entry ? 2 : OPEN64_DSL_RUNTIME_ABI_VERSION);
     previous = VHO_DSL_Append_Integer
                    (inito, previous, MTYPE_U2,
-                    OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE);
+                    plan_size);
     previous = VHO_DSL_Append_Integer
                    (inito, previous, MTYPE_U4,
-                    OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE);
+                    plan_size);
     const UINT32 fields[] = {
         OPEN64_DSL_PHYSICAL_PROVIDER_OPEN64_GENERATED,
         tile->target_profile_id,
@@ -452,8 +456,11 @@ VHO_DSL_Create_Generated_Tile_Symbol
         previous = VHO_DSL_Append_Integer
                        (inito, previous, MTYPE_U4, fields[index]);
     previous = VHO_DSL_Append_Integer(inito, previous, MTYPE_U8, 0);
-    if (Get_INITO_Size(inito) !=
-            OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE) {
+    if (bound_entry)
+        previous = VHO_DSL_Append_Integer
+                       (inito, previous, MTYPE_U8,
+                        context->generated_entry_ordinal);
+    if (Get_INITO_Size(inito) != plan_size) {
         VHO_DSL_Lower_Report
             (context, "generated matmul plan image has size %u",
              Get_INITO_Size(inito));
@@ -843,7 +850,10 @@ VHO_DSL_Runtime_Function
         slot = generated_matmul ? &context->runtime_matmul_generated :
                physical_matmul ? &context->runtime_matmul_physical :
                                  &context->runtime_matmul;
-        name = generated_matmul ? "__open64_dsl_matmul_generated_v1" :
+        name = generated_matmul ?
+                   (context->generated_entry_ordinal == 0 ?
+                    "__open64_dsl_matmul_generated_v1" :
+                    "__open64_dsl_matmul_generated_v2") :
                physical_matmul ? "__open64_dsl_matmul_physical_v1" :
                                  "__open64_dsl_matmul_v1";
         break;
@@ -1962,11 +1972,50 @@ VHO_DSL_Preflight_Physical_Plan
 }
 
 static BOOL
+VHO_DSL_CUDA_I4_Geometry_Safe (const DSL_TILE_PLAN_RECORD &tile)
+{
+    if (tile.problem_m == 0 || tile.problem_n == 0 || tile.problem_k == 0 ||
+        tile.cta_m == 0 || tile.cta_n == 0 || tile.cta_k == 0 ||
+        tile.problem_m > INT_MAX || tile.problem_n > INT_MAX ||
+        tile.problem_k > INT_MAX || tile.cta_m > INT_MAX ||
+        tile.cta_n > INT_MAX || tile.cta_k > INT_MAX)
+        return FALSE;
+    const UINT64 padded_m =
+        ((tile.problem_m - 1) / tile.cta_m + 1) * tile.cta_m;
+    const UINT64 padded_n =
+        ((tile.problem_n - 1) / tile.cta_n + 1) * tile.cta_n;
+    const UINT64 padded_k =
+        ((tile.problem_k - 1) / tile.cta_k + 1) * tile.cta_k;
+    return padded_m <= INT_MAX && padded_n <= INT_MAX &&
+           padded_k <= INT_MAX &&
+           tile.problem_m * tile.problem_k <= INT_MAX &&
+           tile.problem_k * tile.problem_n <= INT_MAX &&
+           tile.problem_m * tile.problem_n <= INT_MAX &&
+           (UINT64)tile.cta_m * tile.cta_k <= INT_MAX &&
+           (UINT64)tile.cta_k * tile.a_shared_stride <= INT_MAX &&
+           (UINT64)tile.cta_k * tile.cta_n <= INT_MAX &&
+           (UINT64)tile.thread_m * tile.thread_n <= INT_MAX;
+}
+
+static BOOL
+VHO_DSL_CUDA_Edge_Policy_Consistent (const DSL_TILE_PLAN_RECORD &tile)
+{
+    if (tile.cta_m == 0 || tile.cta_n == 0 || tile.cta_k == 0)
+        return FALSE;
+    const BOOL has_tail = tile.problem_m % tile.cta_m != 0 ||
+                          tile.problem_n % tile.cta_n != 0 ||
+                          tile.problem_k % tile.cta_k != 0;
+    return tile.edge_policy ==
+        (has_tail ? DSL_TILE_EDGE_PREDICATED : DSL_TILE_EDGE_EXACT);
+}
+
+static BOOL
 VHO_DSL_Lower_Verified_Engine
         (struct pu_info *pu_info,
          WN *tree,
          const DSL_PHYSICAL_PLAN_ANALYSIS *physical_plan,
          const DSL_TILE_PLAN_RECORD *generated_tile,
+         UINT32 generated_entry_ordinal,
          FILE *diagnostic,
          VHO_DSL_LOWER_RESULT *result)
 {
@@ -2003,6 +2052,7 @@ VHO_DSL_Lower_Verified_Engine
     context.physical_plan = physical_plan;
     context.physical_plan_ir = NULL;
     context.generated_tile = generated_tile;
+    context.generated_entry_ordinal = generated_entry_ordinal;
 
     BOOL valid = pu_info != NULL && tree != NULL &&
                  !(physical_plan != NULL && generated_tile != NULL);
@@ -2029,6 +2079,7 @@ VHO_DSL_Lower_Verified_Engine
                     MTYPE_F4 &&
                 tile.problem_m != 0 && tile.problem_n != 0 &&
                 tile.problem_k != 0 &&
+                VHO_DSL_CUDA_I4_Geometry_Safe(tile) &&
                 tile.cta_m != 0 && tile.cta_n != 0 && tile.cta_k != 0 &&
                 tile.thread_m != 0 && tile.thread_n != 0 &&
                 tile.cta_m % tile.thread_m == 0 &&
@@ -2038,11 +2089,19 @@ VHO_DSL_Lower_Verified_Engine
                     (tile.cta_n / tile.thread_n) &&
                 tile.threads_per_cta <= 1024 &&
                 tile.shared_bytes_per_stage <= UINT32_MAX &&
+                tile.a_shared_layout <=
+                    DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED &&
+                tile.a_shared_stride ==
+                    (tile.a_shared_layout ==
+                         DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+                     tile.cta_m + 1 : tile.cta_k) &&
                 tile.shared_bytes_per_stage ==
                     4ULL * tile.cta_k *
-                    ((UINT64)tile.cta_m + tile.cta_n) &&
+                    ((UINT64)(tile.a_shared_layout ==
+                          DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+                          tile.cta_m + 1 : tile.cta_m) + tile.cta_n) &&
                 tile.shared_bytes_per_stage <= tile.shared_capacity_bytes &&
-                tile.edge_policy == DSL_TILE_EDGE_EXACT &&
+                VHO_DSL_CUDA_Edge_Policy_Consistent(tile) &&
                 tile.instruction_family == DSL_TILE_INSTRUCTION_VECTOR_FMA;
             if (!preflight_valid)
                 VHO_DSL_Lower_Report
@@ -2093,7 +2152,8 @@ VHO_DSL_Lower_Verified_Program_Unit_With_Physical_Plan
     memset(&working_result, 0, sizeof(working_result));
     BOOL valid = working_tree != NULL &&
                  VHO_DSL_Lower_Verified_Engine
-                     (pu_info, working_tree, physical_plan, NULL, diagnostic,
+                     (pu_info, working_tree, physical_plan, NULL, 0,
+                      diagnostic,
                       &working_result);
     if (!valid) {
         if (working_tree != NULL)
@@ -2118,6 +2178,19 @@ VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile
          FILE *diagnostic,
          VHO_DSL_LOWER_RESULT *result)
 {
+    return VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile_Bound
+               (pu_info, tree, tile, 0, diagnostic, result);
+}
+
+BOOL
+VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile_Bound
+        (struct pu_info *pu_info,
+         WN **tree,
+         const DSL_TILE_PLAN_RECORD *tile,
+         UINT32 device_entry_ordinal,
+         FILE *diagnostic,
+         VHO_DSL_LOWER_RESULT *result)
+{
     if (result != NULL)
         memset(result, 0, sizeof(*result));
     if (pu_info == NULL || tree == NULL || *tree == NULL || tile == NULL)
@@ -2127,7 +2200,8 @@ VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile
     memset(&working_result, 0, sizeof(working_result));
     BOOL valid = working_tree != NULL &&
                  VHO_DSL_Lower_Verified_Engine
-                     (pu_info, working_tree, NULL, tile, diagnostic,
+                     (pu_info, working_tree, NULL, tile,
+                      device_entry_ordinal, diagnostic,
                       &working_result);
     if (!valid) {
         if (working_tree != NULL)
@@ -2151,7 +2225,7 @@ VHO_DSL_Lower_Verified_Program_Unit
          VHO_DSL_LOWER_RESULT *result)
 {
     return VHO_DSL_Lower_Verified_Engine
-               (pu_info, tree, NULL, NULL, diagnostic, result);
+               (pu_info, tree, NULL, NULL, 0, diagnostic, result);
 }
 
 static DSL_TENSOR_CONTROL_SNAPSHOT *
@@ -2330,6 +2404,21 @@ VHO_DSL_CUDA_I4 (INT32 value)
 }
 
 static WN *
+VHO_DSL_CUDA_Bounds2 (WN *first, INT32 first_extent,
+                      WN *second, INT32 second_extent)
+{
+    if (first == NULL)
+        return second == NULL ? NULL :
+            WN_LT(MTYPE_I4, second, VHO_DSL_CUDA_I4(second_extent));
+    WN *first_test =
+        WN_LT(MTYPE_I4, first, VHO_DSL_CUDA_I4(first_extent));
+    return second == NULL ? first_test :
+        WN_CAND(first_test,
+                WN_LT(MTYPE_I4, second,
+                      VHO_DSL_CUDA_I4(second_extent)));
+}
+
+static WN *
 VHO_DSL_CUDA_Index (ST *array, WN *index)
 {
     WN *base = ST_sclass(array) == SCLASS_FORMAL ?
@@ -2434,7 +2523,10 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
     const INT32 bm = tile.cta_m, bn = tile.cta_n, bk = tile.cta_k;
     const INT32 tm = tile.thread_m, tn = tile.thread_n;
     const INT32 threads = tile.threads_per_cta;
-    const INT32 k = tile.problem_k, n = tile.problem_n;
+    const INT32 m = tile.problem_m, k = tile.problem_k, n = tile.problem_n;
+    const BOOL guard_m = tile.problem_m % tile.cta_m != 0;
+    const BOOL guard_n = tile.problem_n % tile.cta_n != 0;
+    const BOOL guard_k = tile.problem_k % tile.cta_k != 0;
     WN *body = WN_CreateBlock();
     WN_INSERT_BlockLast
         (body, VHO_DSL_CUDA_I4_Store
@@ -2486,10 +2578,55 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
                    VHO_DSL_CUDA_I4(bk)));
     WN *a_index = WN_Add(MTYPE_I4, WN_Mpy(MTYPE_I4, a_row,
                                           VHO_DSL_CUDA_I4(k)), a_col);
-    WN_INSERT_BlockLast
-        (a_body, VHO_DSL_CUDA_F4_Store
-                     (c, c.as, VHO_DSL_CUDA_I4_Load(c.offset),
-                      VHO_DSL_CUDA_F4_Load(c, c.a, a_index)));
+    WN *a_smem_index = tile.a_shared_layout ==
+            DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+        WN_Add(MTYPE_I4,
+               WN_Mpy(MTYPE_I4,
+                      WN_Binary(OPR_REM, MTYPE_I4,
+                                VHO_DSL_CUDA_I4_Load(c.offset),
+                                VHO_DSL_CUDA_I4(bk)),
+                      VHO_DSL_CUDA_I4(bm + 1)),
+               WN_Div(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.offset),
+                      VHO_DSL_CUDA_I4(bk))) :
+        VHO_DSL_CUDA_I4_Load(c.offset);
+    WN *a_store = VHO_DSL_CUDA_F4_Store
+        (c, c.as, a_smem_index,
+         VHO_DSL_CUDA_F4_Load(c, c.a, a_index));
+    if (guard_m || guard_k) {
+        WN *valid = VHO_DSL_CUDA_Bounds2
+            (guard_m ?
+                 WN_Add(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.row0),
+                        WN_Div(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.offset),
+                               VHO_DSL_CUDA_I4(bk))) : NULL, m,
+             guard_k ?
+                 WN_Add(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.base),
+                        WN_Binary(OPR_REM, MTYPE_I4,
+                                  VHO_DSL_CUDA_I4_Load(c.offset),
+                                  VHO_DSL_CUDA_I4(bk))) : NULL, k);
+        WN *then_block = WN_CreateBlock();
+        WN *else_block = WN_CreateBlock();
+        WN_INSERT_BlockLast(then_block, a_store);
+        WN_INSERT_BlockLast
+            (else_block, VHO_DSL_CUDA_F4_Store
+                             (c, c.as,
+                              tile.a_shared_layout ==
+                                  DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+                              WN_Add(MTYPE_I4,
+                                     WN_Mpy(MTYPE_I4,
+                                            WN_Binary(OPR_REM, MTYPE_I4,
+                                                VHO_DSL_CUDA_I4_Load(c.offset),
+                                                VHO_DSL_CUDA_I4(bk)),
+                                            VHO_DSL_CUDA_I4(bm + 1)),
+                                     WN_Div(MTYPE_I4,
+                                            VHO_DSL_CUDA_I4_Load(c.offset),
+                                            VHO_DSL_CUDA_I4(bk))) :
+                              VHO_DSL_CUDA_I4_Load(c.offset),
+                              WN_Floatconst(MTYPE_F4, 0.0)));
+        WN_INSERT_BlockLast
+            (a_body, WN_CreateIf(valid, then_block, else_block));
+    } else {
+        WN_INSERT_BlockLast(a_body, a_store);
+    }
     WN_INSERT_BlockLast
         (k_body, VHO_DSL_CUDA_Do
                      (c.offset, VHO_DSL_CUDA_I4_Load(c.tid),
@@ -2506,10 +2643,32 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
                    VHO_DSL_CUDA_I4(bn)));
     WN *b_index = WN_Add(MTYPE_I4, WN_Mpy(MTYPE_I4, b_row,
                                           VHO_DSL_CUDA_I4(n)), b_col);
-    WN_INSERT_BlockLast
-        (b_body, VHO_DSL_CUDA_F4_Store
-                     (c, c.bs, VHO_DSL_CUDA_I4_Load(c.offset),
-                      VHO_DSL_CUDA_F4_Load(c, c.b, b_index)));
+    WN *b_store = VHO_DSL_CUDA_F4_Store
+        (c, c.bs, VHO_DSL_CUDA_I4_Load(c.offset),
+         VHO_DSL_CUDA_F4_Load(c, c.b, b_index));
+    if (guard_k || guard_n) {
+        WN *valid = VHO_DSL_CUDA_Bounds2
+            (guard_k ?
+                 WN_Add(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.base),
+                        WN_Div(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.offset),
+                               VHO_DSL_CUDA_I4(bn))) : NULL, k,
+             guard_n ?
+                 WN_Add(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.col0),
+                        WN_Binary(OPR_REM, MTYPE_I4,
+                                  VHO_DSL_CUDA_I4_Load(c.offset),
+                                  VHO_DSL_CUDA_I4(bn))) : NULL, n);
+        WN *then_block = WN_CreateBlock();
+        WN *else_block = WN_CreateBlock();
+        WN_INSERT_BlockLast(then_block, b_store);
+        WN_INSERT_BlockLast
+            (else_block, VHO_DSL_CUDA_F4_Store
+                             (c, c.bs, VHO_DSL_CUDA_I4_Load(c.offset),
+                              WN_Floatconst(MTYPE_F4, 0.0)));
+        WN_INSERT_BlockLast
+            (b_body, WN_CreateIf(valid, then_block, else_block));
+    } else {
+        WN_INSERT_BlockLast(b_body, b_store);
+    }
     WN_INSERT_BlockLast
         (k_body, VHO_DSL_CUDA_Do
                      (c.offset, VHO_DSL_CUDA_I4_Load(c.tid),
@@ -2521,12 +2680,17 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
         (MTYPE_I4,
          WN_Mpy(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.i), VHO_DSL_CUDA_I4(tn)),
          VHO_DSL_CUDA_I4_Load(c.j));
-    WN *as_index = WN_Add
-        (MTYPE_I4,
-         WN_Mpy(MTYPE_I4,
-                WN_Add(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.local_row),
-                       VHO_DSL_CUDA_I4_Load(c.i)), VHO_DSL_CUDA_I4(bk)),
-         VHO_DSL_CUDA_I4_Load(c.q));
+    WN *as_row = WN_Add(MTYPE_I4,
+                         VHO_DSL_CUDA_I4_Load(c.local_row),
+                         VHO_DSL_CUDA_I4_Load(c.i));
+    WN *as_index = tile.a_shared_layout ==
+            DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+        WN_Add(MTYPE_I4,
+               WN_Mpy(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.q),
+                      VHO_DSL_CUDA_I4(bm + 1)), as_row) :
+        WN_Add(MTYPE_I4,
+               WN_Mpy(MTYPE_I4, as_row, VHO_DSL_CUDA_I4(bk)),
+               VHO_DSL_CUDA_I4_Load(c.q));
     WN *bs_index = WN_Add
         (MTYPE_I4,
          WN_Mpy(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.q), VHO_DSL_CUDA_I4(bn)),
@@ -2583,8 +2747,26 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
                 WN_Mpy(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.i),
                        VHO_DSL_CUDA_I4(tn)),
                 VHO_DSL_CUDA_I4_Load(c.j)));
-    WN_INSERT_BlockLast(store_j,
-        VHO_DSL_CUDA_F4_Store(c, c.c, c_index, result));
+    WN *c_store = VHO_DSL_CUDA_F4_Store(c, c.c, c_index, result);
+    if (guard_m || guard_n) {
+        WN *valid = VHO_DSL_CUDA_Bounds2
+            (guard_m ?
+                 WN_Add(MTYPE_I4,
+                        WN_Add(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.row0),
+                               VHO_DSL_CUDA_I4_Load(c.local_row)),
+                        VHO_DSL_CUDA_I4_Load(c.i)) : NULL, m,
+             guard_n ?
+                 WN_Add(MTYPE_I4,
+                        WN_Add(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.col0),
+                               VHO_DSL_CUDA_I4_Load(c.local_col)),
+                        VHO_DSL_CUDA_I4_Load(c.j)) : NULL, n);
+        WN *then_block = WN_CreateBlock();
+        WN_INSERT_BlockLast(then_block, c_store);
+        WN_INSERT_BlockLast
+            (store_j, WN_CreateIf(valid, then_block, WN_CreateBlock()));
+    } else {
+        WN_INSERT_BlockLast(store_j, c_store);
+    }
     WN *store_i = WN_CreateBlock();
     WN_INSERT_BlockLast
         (store_i, VHO_DSL_CUDA_Do(c.j, VHO_DSL_CUDA_I4(0),
@@ -2596,25 +2778,23 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
 }
 
 static BOOL
-VHO_DSL_CUDA_Write_Selected_Whirl
-        (const char *path, const DSL_TILE_PLAN_RECORD &tile, FILE *diagnostic)
+VHO_DSL_CUDA_Build_Selected_Whirl
+        (const DSL_TILE_PLAN_RECORD &tile, UINT32 ordinal,
+         PU_Info **device_pu,
+         FILE *diagnostic)
 {
-    if (path == NULL || path[0] == '\0' || access(path, F_OK) == 0 ||
-        tile.problem_m == 0 || tile.problem_n == 0 || tile.problem_k == 0 ||
-        tile.problem_m > INT_MAX || tile.problem_n > INT_MAX ||
-        tile.problem_k > INT_MAX || tile.cta_m == 0 || tile.cta_n == 0 ||
-        tile.cta_k == 0 || tile.thread_m == 0 || tile.thread_n == 0 ||
-        tile.problem_m % tile.cta_m != 0 ||
-        tile.problem_n % tile.cta_n != 0 ||
-        tile.problem_k % tile.cta_k != 0 ||
+    if (device_pu == NULL ||
+        !VHO_DSL_CUDA_I4_Geometry_Safe(tile) ||
+        tile.thread_m == 0 || tile.thread_n == 0 ||
+        !VHO_DSL_CUDA_Edge_Policy_Consistent(tile) ||
         tile.cta_m % tile.thread_m != 0 ||
         tile.cta_n % tile.thread_n != 0 ||
         (tile.cta_m / tile.thread_m) *
         (tile.cta_n / tile.thread_n) != tile.threads_per_cta ||
         tile.threads_per_cta > 1024) {
         fprintf(diagnostic,
-                "DSL CUDA WHIRL requires a fresh path and an exact, "
-                "divisible synchronous tile\n");
+                "DSL CUDA WHIRL requires a consistent synchronous "
+                "edge policy and tile geometry\n");
         return FALSE;
     }
     const SYMTAB_IDX level = CURRENT_SYMTAB;
@@ -2641,8 +2821,14 @@ VHO_DSL_CUDA_Write_Selected_Whirl
     PU_Init(pu, function_ty_idx, GLOBAL_SYMTAB + 1);
     Set_PU_c_lang(pu);
     Set_PU_no_inline(pu);
+    char kernel_name[64];
+    if (ordinal == 0)
+        snprintf(kernel_name, sizeof(kernel_name), "ai_matmul_tile_f32");
+    else
+        snprintf(kernel_name, sizeof(kernel_name),
+                 "ai_matmul_tile_f32_%u", ordinal);
     ST *kernel = New_ST(GLOBAL_SYMTAB);
-    ST_Init(kernel, Save_Str("ai_matmul_tile_f32"), CLASS_FUNC,
+    ST_Init(kernel, Save_Str(kernel_name), CLASS_FUNC,
             SCLASS_TEXT, EXPORT_PREEMPTIBLE, function_ty_idx);
     Set_ST_pu(kernel, pu_idx);
     Set_ST_device_symbol_kind(*kernel, DEVICE_SYMBOL_KERNEL);
@@ -2663,7 +2849,8 @@ VHO_DSL_CUDA_Write_Selected_Whirl
     }
     c.a = formals[0]; c.b = formals[1]; c.c = formals[2];
     c.as = VHO_DSL_CUDA_New_Local
-        ("as", Make_Array_Type(MTYPE_F4, 1, tile.cta_m * tile.cta_k));
+        ("as", Make_Array_Type(MTYPE_F4, 1,
+                                tile.cta_k * tile.a_shared_stride));
     c.bs = VHO_DSL_CUDA_New_Local
         ("bs", Make_Array_Type(MTYPE_F4, 1, tile.cta_k * tile.cta_n));
     c.acc = VHO_DSL_CUDA_New_Local
@@ -2707,44 +2894,68 @@ VHO_DSL_CUDA_Write_Selected_Whirl
     Current_Map_Tab = PU_Info_maptab(info);
     Current_PU_Info = info;
     Save_Local_Symtab(CURRENT_SYMTAB, info);
-
-    std::string temporary = std::string(path) + ".tmp";
-    Output_File *output = WN_open_output((char *)temporary.c_str());
-    FmtAssert(output != NULL, ("could not open CUDA WHIRL image %s", path));
-    WN_write_symtab(info, output);
-    WN_write_tree(info, WN_MAP_UNDEFINED, output);
-    WN_write_PU_Infos(info, output);
-    WN_write_globals(output);
-    DST_TYPE saved_dst = Current_DST;
-    WN_write_dst(New_DST(), output);
-    Current_DST = saved_dst;
-    WN_write_dsl_ir_image(output);
-    WN_write_dsl_effect_image(output);
-    WN_write_dsl_callsite_image(output);
-    WN_write_dsl_pu_interface_image(output);
-    WN_write_dsl_call_abi_image(output);
-    WN_write_dsl_runtime_interface_image(output);
-    WN_write_dsl_program_interface_image(output);
-    WN_write_dsl_fhe_image(output);
-    WN_write_dsl_fhe_plan_image(output);
-    WN_write_dsl_fhe_approx_profile_image(output);
-    WN_write_dsl_fhe_context_state_image(output);
-    WN_write_dsl_fhe_materialization_image(output);
-    WN_write_dsl_ckks_event_image(output);
-    WN_write_strtab(Index_To_Str(0), STR_Table_Size(), output);
-    WN_write_revision(output);
-    WN_close_output(output);
-    BOOL valid = rename(temporary.c_str(), path) == 0;
-    if (!valid)
-        remove(temporary.c_str());
+    *device_pu = info;
     Scope_tab[level] = saved_scope;
     Current_scope = level;
     Current_pu = saved_pu;
     Current_Map_Tab = saved_map;
     Current_PU_Info = saved_info;
-    if (!valid)
-        fprintf(diagnostic, "DSL CUDA WHIRL could not publish %s\n", path);
-    return valid;
+    return TRUE;
+}
+
+struct VHO_DSL_CUDA_PENDING_KERNEL {
+    DSL_TILE_PLAN_RECORD tile;
+    ST_IDX owner;
+};
+
+static std::vector<VHO_DSL_CUDA_PENDING_KERNEL> VHO_DSL_CUDA_Pending_Kernels;
+
+static BOOL
+VHO_DSL_CUDA_Stage_Selected_Whirl
+        (PU_Info *pu_info, const DSL_TILE_PLAN_RECORD &tile,
+         UINT32 *ordinal, FILE *diagnostic)
+{
+    if (ordinal == NULL ||
+        VHO_DSL_CUDA_Pending_Kernels.size() >= UINT32_MAX) {
+        fprintf(diagnostic, "DSL CUDA device entry registry is full\n");
+        return FALSE;
+    }
+    *ordinal = (UINT32)VHO_DSL_CUDA_Pending_Kernels.size();
+    VHO_DSL_CUDA_PENDING_KERNEL pending;
+    pending.tile = tile;
+    pending.owner = PU_Info_proc_sym(pu_info);
+    VHO_DSL_CUDA_Pending_Kernels.push_back(pending);
+    return TRUE;
+}
+
+UINT32
+VHO_DSL_CUDA_Program_Kernel_Count(void)
+{
+    return (UINT32)VHO_DSL_CUDA_Pending_Kernels.size();
+}
+
+BOOL
+VHO_DSL_CUDA_Take_Program_Kernel
+        (UINT32 ordinal, PU_Info **device_pu, UINT32 *plan_id,
+         UINT32 *tile_id, ST_IDX *owner,
+         FILE *diagnostic)
+{
+    if (device_pu == NULL || plan_id == NULL || tile_id == NULL ||
+        owner == NULL || ordinal >= VHO_DSL_CUDA_Pending_Kernels.size()) {
+        fprintf(diagnostic,
+                "DSL CUDA WHIRL output requested without a selected "
+                "device PU\n");
+        return FALSE;
+    }
+    const VHO_DSL_CUDA_PENDING_KERNEL &pending =
+        VHO_DSL_CUDA_Pending_Kernels[ordinal];
+    if (!VHO_DSL_CUDA_Build_Selected_Whirl
+            (pending.tile, ordinal, device_pu, diagnostic))
+        return FALSE;
+    *plan_id = pending.tile.optimization_plan_id;
+    *tile_id = pending.tile.id;
+    *owner = pending.owner;
+    return TRUE;
 }
 
 /* Retain the synchronous CUDA template as a comparison baseline for the
@@ -2793,19 +3004,23 @@ VHO_DSL_CUDA_Write_Selected_Tile
             "// tile_plan=%u optimization_plan=%u candidate=%u family=%s\n"
             "// legality=proven cost=%llu unit=relative confidence=low\n"
             "// shared_ab_bytes_per_stage=%llu threads_per_cta=%u\n"
+            "// a_smem_layout=%s a_stride=%u\n"
             "// whirl_k_loop=DO_LOOP scope=detached_plan_only start=0 end=%llu step=%u\n"
             "#include <cuda_runtime.h>\n"
             "#define AI_TILE_PLAN_ID %u\n"
             "#define AI_OPTIMIZATION_PLAN_ID %u\n"
             "#define M %llu\n#define N %llu\n#define K %llu\n"
             "#define BM %u\n#define BN %u\n#define BK %u\n"
-            "#define TM %u\n#define TN %u\n"
+            "#define TM %u\n#define TN %u\n#define A_STRIDE %u\n"
+            "#define AI_A_SHARED_ELEMS %u\n"
             "#define THREADS ((BM / TM) * (BN / TN))\n",
             tile.id, tile.optimization_plan_id, tile.candidate_id,
             DSL_tile_family_name(tile.family),
             (unsigned long long)cost.total,
             (unsigned long long)tile.shared_bytes_per_stage,
             tile.threads_per_cta,
+            tile.a_shared_layout == DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+                "transposed_padded" : "row_major", tile.a_shared_stride,
             (unsigned long long)WN_const_val(WN_kid1(WN_end(k_loop))),
             (UINT32)WN_const_val(WN_kid1(WN_kid0(WN_step(k_loop)))),
             tile.id, tile.optimization_plan_id,
@@ -2813,14 +3028,16 @@ VHO_DSL_CUDA_Write_Selected_Tile
             (unsigned long long)tile.problem_n,
             (unsigned long long)tile.problem_k,
             tile.cta_m, tile.cta_n, tile.cta_k,
-            tile.thread_m, tile.thread_n);
+            tile.thread_m, tile.thread_n, tile.a_shared_stride,
+            tile.cta_k * (tile.a_shared_layout ==
+                DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+                tile.cta_m + 1 : tile.cta_m));
     fprintf(file,
         "extern \"C\" __global__ void %s(\n",
         tma_fallback ? "ai_matmul_tile_f32_sync" : "ai_matmul_tile_f32");
     fputs(
         "    const float *__restrict__ a, const float *__restrict__ b,\n"
         "    float *__restrict__ c) {\n"
-        "  __shared__ float as[BM][BK];\n"
         "  __shared__ float bs[BK][BN];\n"
         "  const int tid = threadIdx.x;\n"
         "  const int local_row = (tid / (BN / TN)) * TM;\n"
@@ -2828,14 +3045,20 @@ VHO_DSL_CUDA_Write_Selected_Tile
         "  const int row0 = blockIdx.y * BM;\n"
         "  const int col0 = blockIdx.x * BN;\n"
         "  float acc[TM][TN] = {};\n", file);
+    fputs(tile.a_shared_layout == DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+          "  __shared__ float as[BK][A_STRIDE];\n" :
+          "  __shared__ float as[BM][BK];\n", file);
     fprintf(file, "  for (int base = 0; base < %lld; base += %lld) {\n",
             (long long)WN_const_val(WN_kid1(WN_end(k_loop))),
             (long long)WN_const_val(WN_kid1(WN_kid0(WN_step(k_loop)))));
     fputs(
         "    for (int offset = tid; offset < BM * BK; offset += THREADS) {\n"
         "      const int r = offset / BK, q = offset % BK;\n"
-        "      as[r][q] = row0+r < M && base+q < K\n"
-        "          ? a[(row0+r)*K + base+q] : 0.0f;\n"
+        "      const float av = row0+r < M && base+q < K\n"
+        "          ? a[(row0+r)*K + base+q] : 0.0f;\n", file);
+    fputs(tile.a_shared_layout == DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+          "      as[q][r] = av;\n" : "      as[r][q] = av;\n", file);
+    fputs(
         "    }\n"
         "    for (int offset = tid; offset < BK * BN; offset += THREADS) {\n"
         "      const int q = offset / BN, col = offset % BN;\n"
@@ -2844,8 +3067,11 @@ VHO_DSL_CUDA_Write_Selected_Tile
         "    }\n"
         "    __syncthreads();\n"
         "    for (int q = 0; q < BK; ++q)\n"
-        "      for (int i = 0; i < TM; ++i) {\n"
-        "        const float av = as[local_row+i][q];\n"
+        "      for (int i = 0; i < TM; ++i) {\n", file);
+    fputs(tile.a_shared_layout == DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+          "        const float av = as[q][local_row+i];\n" :
+          "        const float av = as[local_row+i][q];\n", file);
+    fputs(
         "        for (int j = 0; j < TN; ++j)\n"
         "          acc[i][j] += av * bs[q][local_col+j];\n"
         "      }\n"
@@ -3452,6 +3678,7 @@ VHO_DSL_Lower_Driver
     DSL_OPT_PLAN_ID emitted_fetch_plan_id = DSL_OPT_PLAN_INVALID_ID;
     UINT32 tile_candidate_count = 0, fetch_candidate_count = 0;
     DSL_TILE_PLAN_RECORD emitted_tile;
+    UINT32 device_entry_ordinal = 0;
     memset(&emitted_tile, 0, sizeof(emitted_tile));
     if (VHO_DSL_CUDA_Whirl_Output != NULL)
         FmtAssert(!VHO_DSL_CUDA_TMA_Prefetch,
@@ -3481,22 +3708,16 @@ VHO_DSL_Lower_Driver
         FmtAssert(emitted_tile_plan_id != DSL_OPT_PLAN_INVALID_ID &&
                   !VHO_DSL_CUDA_TMA_Prefetch,
                   ("CUDA WHIRL image requires a selected synchronous tile"));
-        FmtAssert(VHO_DSL_CUDA_Write_Selected_Whirl
-                      (VHO_DSL_CUDA_Whirl_Output, emitted_tile, stderr),
-                  ("DSL CUDA selected tile WHIRL emission failed"));
-        if (VHO_DSL_AI_Opt_Trace &&
-            Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG)) {
-            fprintf(TFile, "AI_OPT 7 WHIRL_KERNEL 1 %u %u %s\n",
-                    emitted_tile.optimization_plan_id, emitted_tile.id,
-                    VHO_DSL_CUDA_Whirl_Output);
-            fflush(TFile);
-        }
+        FmtAssert(VHO_DSL_CUDA_Stage_Selected_Whirl
+                      (pu_info, emitted_tile, &device_entry_ordinal, stderr),
+                  ("DSL CUDA selected tile staging failed"));
     }
 
     VHO_DSL_LOWER_RESULT lower_result;
     BOOL lower_valid = VHO_DSL_CUDA_Tile_Apply ?
-        VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile
-            (pu_info, &tree, &emitted_tile, stderr, &lower_result) :
+        VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile_Bound
+            (pu_info, &tree, &emitted_tile, device_entry_ordinal,
+             stderr, &lower_result) :
         VHO_DSL_Lower_Verified_Program_Unit
             (pu_info, tree, stderr, &lower_result);
     FmtAssert(lower_valid,
@@ -3512,6 +3733,21 @@ VHO_DSL_Lower_Driver
                     "source_sidecar" : "device_whirl_sidecar",
                 VHO_DSL_CUDA_Tile_Apply ? "generated_runtime_call" : "none",
                 lower_result.lowered_node_count);
+        if (VHO_DSL_CUDA_Whirl_Output != NULL) {
+            const BOOL guard_m =
+                emitted_tile.problem_m % emitted_tile.cta_m != 0;
+            const BOOL guard_n =
+                emitted_tile.problem_n % emitted_tile.cta_n != 0;
+            const BOOL guard_k =
+                emitted_tile.problem_k % emitted_tile.cta_k != 0;
+            fprintf(TFile, "AI_OPT 7 EDGE_PLAN 1 %u %s %s %s %s "
+                           "barriers=uniform\n",
+                    emitted_tile_plan_id,
+                    DSL_tile_edge_policy_name(emitted_tile.edge_policy),
+                    guard_m || guard_k ? "a=zero_fill" : "a=direct",
+                    guard_k || guard_n ? "b=zero_fill" : "b=direct",
+                    guard_m || guard_n ? "c=guarded_store" : "c=direct");
+        }
         if (emitted_fetch_plan_id != DSL_OPT_PLAN_INVALID_ID)
             fprintf(TFile,
                     "AI_OPT 7 FETCH_ACTION 1 %u source_sidecar tma_2d "

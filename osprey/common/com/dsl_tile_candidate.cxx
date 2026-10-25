@@ -129,6 +129,13 @@ DSL_tile_plan_ir_verify (const DSL_TILE_PLAN_IR *ir, FILE *diagnostic)
                 plan.problem_m == 0 || plan.problem_n == 0 ||
                 plan.problem_k == 0 || plan.edge_policy <= DSL_TILE_EDGE_UNKNOWN ||
                 plan.edge_policy > DSL_TILE_EDGE_PREDICATED ||
+                plan.a_shared_layout >
+                    DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ||
+                (!baseline && plan.a_shared_stride != 0 &&
+                 plan.a_shared_stride !=
+                     (plan.a_shared_layout ==
+                          DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+                      plan.cta_m + 1 : plan.cta_k)) ||
                 plan.instruction_family <= DSL_TILE_INSTRUCTION_UNKNOWN ||
                 plan.instruction_family > DSL_TILE_INSTRUCTION_VECTOR_FMA ||
                 plan.legality > DSL_OPT_LEGALITY_REJECTED ||

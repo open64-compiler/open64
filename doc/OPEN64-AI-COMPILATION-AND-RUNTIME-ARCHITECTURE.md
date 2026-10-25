@@ -1,6 +1,6 @@
 # Open64 AI Compilation, Packaging, And Runtime Architecture
 
-Version v0.1 | Architecture skeleton | Draft for continuous refinement
+Version v0.2 | Architecture skeleton | Draft for continuous refinement
 
 ## 1. Purpose
 
@@ -457,11 +457,38 @@ model must distinguish:
 - permission or prohibition of late compilation;
 - AOT and late compiler options;
 - package output and installation location;
-- retained artifact level; and
+- retained artifact level;
+- opt-in performance-harness generation and its baseline identity; and
 - runtime tracing and telemetry controls.
 
 The selected package mode and target set must appear in retained driver and
 package evidence. No environment-dependent fallback may remain invisible.
+
+Performance-harness generation is a proposed driver output mode, disabled by
+default and not yet registered in `openpy`. The provisional driver spelling
+is `-perf-harness`; it is distinct from
+`-keep`, optimization level, ordinary executable emission, and correctness
+testing. When selected, the driver produces a runnable benchmark executable
+from the cost-selected device plan, a reviewed baseline implementation, and
+a measurement harness. The default compilation path must never add benchmark
+iterations, reference execution, or timing code to an application or service.
+
+The driver must name both selected and baseline plan/package identities before
+it publishes a performance harness. The baseline must be independently
+correctness-certified and comparable on the same target, shape, dtype,
+layout, numerical contract, input distribution, memory-residency policy, and
+launch scope. A validation-only CUDA control or CPU fallback is not silently
+an Open64 GPU optimization baseline. If no qualifying baseline exists, the
+driver diagnoses the missing comparison; exploratory raw timing may be saved
+but no speedup or optimization-success claim is produced.
+
+The harness checks numerical correctness separately from timing. It warms
+up before paired repeated measurements, excludes compilation, module load,
+and late JIT from the steady-state interval, and reports kernel-only and
+end-to-end measurements with transfer and allocation costs identified.
+Compilation, load/JIT, and profiling-counter runs receive separate timing
+scopes. A target without a usable GPU may preserve compilation and CPU
+correctness evidence, but must report GPU performance as `not_measured`.
 
 ## 16. Diagnostics And Review Artifacts
 
@@ -497,6 +524,7 @@ runtime selection trace
 provider launch trace
 numerical outputs
 performance and telemetry reports
+baseline identity, correctness result, paired timings, and comparison scope
 ```
 
 Artifacts remain grouped by test, target, and stage. Failed runs retain useful
@@ -521,6 +549,9 @@ The generic certification matrix includes:
 13. Serving-adapter cancellation, batching, and result correctness.
 14. Provider conformance for NVIDIA and TPU.
 15. Reopening compiler artifacts through standard Open64 inspection tools.
+16. Opt-in performance-harness generation with a certified same-target
+    baseline, a separate numerical-correctness gate, paired kernel-only and
+    end-to-end measurements, and an explicit missing-GPU result.
 
 Performance certification names the exact native executable and target. A
 late-compiled result may have its own separately identified measurements but

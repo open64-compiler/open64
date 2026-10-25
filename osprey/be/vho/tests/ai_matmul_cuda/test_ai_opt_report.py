@@ -262,6 +262,70 @@ class ReportTest(unittest.TestCase):
                         f"{int(active)} {3 if phase == 7 else 0} "
                         f"{3 if phase in (7, 9) else 0} 0")
         trace = "\n".join(rows) + "\n"
+        def v2_candidate(tile, family, cta, memory, sync, traffic):
+            fields = candidate(tile, family, 100, version="7").split()
+            fields[13] = "4096"
+            fields[14] = str(memory)
+            fields[16] = str(sync)
+            fields[19] = str(4096 + memory + sync)
+            fields[23:26] = [str(value) for value in cta]
+            fields[27] = "4194304"
+            fields[28] = str(traffic)
+            fields[29] = str((4194304 + 66999) // 67000)
+            fields[30] = str((traffic + 3349) // 3350)
+            fields[31] = str(max(int(fields[29]), int(fields[30])))
+            return " ".join(fields)
+
+        v2_rows = (
+            v2_candidate(1, "baseline", (0, 0, 0), 16448, 0, 16842752),
+            v2_candidate(2, "cuda_64", (64, 64, 16), 320, 64, 327680),
+            v2_candidate(3, "cuda_128", (128, 128, 32), 192, 8, 196608),
+        )
+        v2_trace = "\n".join(
+            ["AI_OPT 7 COST_MODEL 2 valid_predicated_elements "
+             "dynamic_cta_k_barriers"] +
+            [v2_rows[int(line.split()[4]) - 1]
+             if line.startswith("AI_OPT 7 TILE_CAND ") else line
+             for line in trace.splitlines()]) + "\n"
+        self.assertEqual(parse(v2_trace)[1]["cost_model"], "v2")
+        self.assertEqual(parse(v2_trace)[0][2]["total"], 4296)
+        with self.assertRaisesRegex(ValueError, "v2 tile cost disagrees"):
+            parse(v2_trace.replace(" 4096 192 0 8 0 0 4296 ",
+                                   " 4096 193 0 8 0 0 4297 "))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "compile.t"
+            source.write_text(v2_trace, encoding="utf-8")
+            render(source, root / "reports")
+            tile_report = (root / "reports/phases/tile.log").read_text()
+            self.assertIn("valid_a_load_bytes=65536", tile_report)
+            self.assertIn("sync tiled=2*ceil(M/BM)", tile_report)
+        v3_rows = [row.split() for row in v2_rows]
+        v3_rows[0][20:23] = ["0", "0", "0"]
+        v3_rows[1][20] = "8192"
+        v3_rows[1][14] = "832"
+        v3_rows[1][19] = "4992"
+        v3_rows[2][20] = "32896"
+        v3_trace = "\n".join(
+            ["AI_OPT 7 COST_MODEL 3 valid_predicated_elements "
+             "dynamic_cta_k_barriers bank_conflict_work"] +
+            [" ".join(v3_rows[int(line.split()[4]) - 1])
+             if line.startswith("AI_OPT 7 TILE_CAND ") else line
+             for line in trace.splitlines()] +
+            ["AI_OPT 7 TILE_LAYOUT 1 1 1 linear row_major 0 0 0 0",
+             "AI_OPT 7 TILE_LAYOUT 1 2 2 linear row_major 16 16384 16 8",
+             "AI_OPT 7 TILE_LAYOUT 1 3 3 linear transposed_padded 129 0 16 8"]
+        ) + "\n"
+        self.assertEqual(parse(v3_trace)[1]["cost_model"], "v3")
+        self.assertEqual(parse(v3_trace)[0][1]["layout"]["bank_work"], 16384)
+        self.assertEqual(parse(v3_trace)[0][2]["layout"]["a_stride"], 129)
+        with self.assertRaisesRegex(ValueError, "v3 bank work disagrees"):
+            parse(v3_trace.replace("row_major 16 16384", "row_major 16 16383"))
+        with self.assertRaisesRegex(ValueError, "v3 invalid SMEM layout"):
+            parse(v3_trace.replace("transposed_padded 129", "transposed_padded 128"))
+        with self.assertRaisesRegex(ValueError, "incomplete tile layout"):
+            parse(v3_trace.replace(
+                "AI_OPT 7 TILE_LAYOUT 1 3 3 linear transposed_padded 129 0 16 8\n", ""))
         self.assertEqual(len(parse(trace)[1]["locality"]), 3)
         self.assertEqual(parse(trace)[0][2]["grid"]["ctas"], 1)
         with_kernel = trace.replace(
@@ -272,6 +336,38 @@ class ReportTest(unittest.TestCase):
             "TILE_ACTION 1 3 source_sidecar",
             "TILE_ACTION 1 3 device_whirl_sidecar")
         self.assertEqual(parse(whirl_only)[1]["whirl_kernel"]["tile"], 3)
+        with_edge = whirl_only.replace(
+            "AI_OPT 7 TILE_ACTION 1 3",
+            "AI_OPT 7 EDGE_PLAN 1 3 exact a=direct b=direct c=direct "
+            "barriers=uniform\nAI_OPT 7 TILE_ACTION 1 3")
+        self.assertEqual(parse(with_edge)[1]["edge_plan"]["policy"], "exact")
+        with self.assertRaisesRegex(ValueError, "device edge plan disagrees"):
+            parse(with_edge.replace("EDGE_PLAN 1 3 exact", "EDGE_PLAN 1 3 predicated"))
+        with self.assertRaisesRegex(ValueError, "duplicate device edge plan"):
+            parse(with_edge + "AI_OPT 7 EDGE_PLAN 1 3 exact a=direct b=direct "
+                  "c=direct barriers=uniform\n")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "compile.t"
+            source.write_text(with_edge, encoding="utf-8")
+            render(source, root / "reports")
+            self.assertIn("edge_plan=exact",
+                          (root / "reports/phases/tile.log").read_text())
+            self.assertIn("barriers=uniform",
+                          (root / "reports/optimization-summary.log").read_text())
+        bound = whirl_only.replace(
+            "AI_OPT 7 WHIRL_KERNEL 1 3 3 /artifact/matmul.device.B\n",
+            "AI_OPT 7 WHIRL_KERNEL 1 3 3 /artifact/matmul.device.B\n"
+            "AI_OPT 7 DEVICE_BIND 0 ai_matmul_m0 3 3 "
+            "ai_matmul_tile_f32 /artifact/matmul.device.B\n")
+        self.assertEqual(parse(bound)[1]["device_binding"]["entry"],
+                         "ai_matmul_tile_f32")
+        binding_only = bound.replace(
+            "AI_OPT 7 WHIRL_KERNEL 1 3 3 /artifact/matmul.device.B\n", "")
+        self.assertEqual(parse(binding_only)[1]["whirl_kernel"]["tile"], 3)
+        with self.assertRaisesRegex(ValueError, "device binding disagrees"):
+            parse(bound.replace("DEVICE_BIND 0 ai_matmul_m0 3",
+                                "DEVICE_BIND 0 other_pu 3"))
         with self.assertRaisesRegex(ValueError, "device WHIRL action has no kernel"):
             parse(whirl_only.replace(
                 "AI_OPT 7 WHIRL_KERNEL 1 3 3 /artifact/matmul.device.B\n", ""))

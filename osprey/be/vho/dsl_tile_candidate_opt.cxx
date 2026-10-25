@@ -196,6 +196,9 @@ DSL_Tile_Trace_Selection (const DSL_TILE_ANALYSIS *analysis,
     BOOL roofline_available = DSL_Tile_Roofline_Target
         (selection.target_profile_id, &fp32_gflops, &hbm_gbps);
     UINT32 trace_version = 7;
+    fprintf(file, "AI_OPT %u COST_MODEL 3 valid_predicated_elements "
+                  "dynamic_cta_k_barriers bank_conflict_work\n",
+            trace_version);
     fprintf(file, "AI_OPT %u ROOF_TARGET %u %s %llu %llu "
                   "traffic=global_requests_as_cold_hbm_proxy "
                   "ceiling=published_peak\n",
@@ -259,6 +262,15 @@ DSL_Tile_Trace_Selection (const DSL_TILE_ANALYSIS *analysis,
                 (unsigned long long)grid_n,
                 (unsigned long long)(grid_m * grid_n),
                 (unsigned long long)k_iterations);
+        fprintf(file, "AI_OPT %u TILE_LAYOUT %u %u %u linear %s %u %llu %u %u\n",
+                trace_version, site.id, tile.id, tile.optimization_plan_id,
+                tile.a_shared_layout ==
+                    DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+                    "transposed_padded" : "row_major",
+                tile.a_shared_stride,
+                (unsigned long long)tile.smem_bank_conflict_work,
+                tile.thread_n == 0 ? 0 : tile.cta_n / tile.thread_n,
+                tile.warps_per_cta);
     }
     fprintf(file, "AI_OPT %u TILE_SELECT %u %u %u %u %u %u %u "
                   "selection_reason=%s\n",
@@ -642,22 +654,18 @@ DSL_Tile_Tiled_Traffic
 {
     UINT64 a_elements;
     UINT64 b_elements;
-    UINT64 per_k_tile;
-    UINT64 tile_count;
     UINT64 read_elements;
     UINT64 mn;
-    if (!DSL_Tile_Mul_U64(plan->cta_m, plan->cta_k, &a_elements) ||
-        !DSL_Tile_Mul_U64(plan->cta_k, plan->cta_n, &b_elements) ||
-        !DSL_Tile_Add_U64(a_elements, b_elements, &per_k_tile) ||
+    if (!DSL_Tile_Mul_U64(plan->problem_m, plan->problem_k, &a_elements) ||
         !DSL_Tile_Mul_U64
-             (DSL_Tile_Ceil_Div(plan->problem_m, plan->cta_m),
-              DSL_Tile_Ceil_Div(plan->problem_n, plan->cta_n),
-              &tile_count) ||
+             (a_elements, DSL_Tile_Ceil_Div(plan->problem_n, plan->cta_n),
+              &a_elements) ||
+        !DSL_Tile_Mul_U64(plan->problem_k, plan->problem_n, &b_elements) ||
         !DSL_Tile_Mul_U64
-             (tile_count,
-              DSL_Tile_Ceil_Div(plan->problem_k, plan->cta_k),
-              &tile_count) ||
-        !DSL_Tile_Mul_U64(tile_count, per_k_tile, &read_elements) ||
+             (b_elements,
+              DSL_Tile_Ceil_Div(plan->problem_m, plan->cta_m),
+              &b_elements) ||
+        !DSL_Tile_Add_U64(a_elements, b_elements, &read_elements) ||
         !DSL_Tile_Mul_U64(read_elements, element_bytes,
                           &plan->gmem_read_bytes) ||
         !DSL_Tile_Mul_U64(plan->problem_m, plan->problem_n, &mn) ||
@@ -665,6 +673,50 @@ DSL_Tile_Tiled_Traffic
                           &plan->gmem_write_bytes))
         return FALSE;
     return TRUE;
+}
+
+static BOOL
+DSL_Tile_Dynamic_Barriers
+        (const DSL_TILE_PLAN_RECORD *plan, UINT64 *barriers)
+{
+    if (plan->barrier_count == 0) {
+        *barriers = 0;
+        return TRUE;
+    }
+    UINT64 ctas;
+    return plan->cta_m != 0 && plan->cta_n != 0 && plan->cta_k != 0 &&
+        DSL_Tile_Mul_U64
+            (DSL_Tile_Ceil_Div(plan->problem_m, plan->cta_m),
+             DSL_Tile_Ceil_Div(plan->problem_n, plan->cta_n),
+             &ctas) &&
+        DSL_Tile_Mul_U64
+            (ctas, DSL_Tile_Ceil_Div(plan->problem_k, plan->cta_k),
+             &ctas) &&
+        DSL_Tile_Mul_U64(ctas, plan->barrier_count, barriers);
+}
+
+static BOOL
+DSL_Tile_Bank_Work (const DSL_TILE_PLAN_RECORD *plan, UINT64 *work)
+{
+    *work = 0;
+    if (plan->a_shared_layout == DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED)
+        return TRUE;
+    UINT32 thread_columns = plan->cta_n / plan->thread_n;
+    if (thread_columns >= 32)
+        return TRUE;
+    UINT64 groups = DSL_Tile_Ceil_Div(32, thread_columns);
+    UINT64 grid;
+    UINT64 k_steps;
+    return DSL_Tile_Mul_U64
+               (DSL_Tile_Ceil_Div(plan->problem_m, plan->cta_m),
+                DSL_Tile_Ceil_Div(plan->problem_n, plan->cta_n), &grid) &&
+           DSL_Tile_Mul_U64
+               (DSL_Tile_Ceil_Div(plan->problem_k, plan->cta_k),
+                plan->cta_k, &k_steps) &&
+           DSL_Tile_Mul_U64(grid, k_steps, work) &&
+           DSL_Tile_Mul_U64(*work, plan->warps_per_cta, work) &&
+           DSL_Tile_Mul_U64(*work, plan->thread_m, work) &&
+           DSL_Tile_Mul_U64(*work, groups - 1, work);
 }
 
 static BOOL
@@ -700,17 +752,25 @@ DSL_Tile_Add_Optimization_Plan
     cost.target_profile_id = analysis->control.target_profile_id;
     cost.ordering_key = tile->id;
     if (complete_cost) {
+        UINT64 traffic, sync, memory_work;
+        if (!DSL_Tile_Add_U64(tile->gmem_read_bytes,
+                              tile->gmem_write_bytes, &traffic) ||
+            !DSL_Tile_Dynamic_Barriers(tile, &sync))
+            return DSL_Tile_Report(diagnostic, "tile cost overflow", tile->id);
         UINT64 compute = std::max((UINT64)1,
                                   tile->operation_count / 1024);
-        UINT64 memory = std::max
-            ((UINT64)1,
-             (tile->gmem_read_bytes + tile->gmem_write_bytes) / 1024);
+        if (!DSL_Tile_Add_U64(std::max((UINT64)1, traffic / 1024),
+                              tile->smem_bank_conflict_work / 32,
+                              &memory_work))
+            return DSL_Tile_Report(diagnostic, "tile memory cost overflow",
+                                   tile->id);
+        UINT64 memory = memory_work;
         for (UINT32 i = 0; i < DSL_OPT_COST_TERM_COUNT; ++i)
             DSL_Tile_Cost_Term
                 (&cost.terms[i],
                  i == DSL_OPT_COST_COMPUTE ? compute :
                  i == DSL_OPT_COST_MEMORY_UNHIDDEN ? memory :
-                 i == DSL_OPT_COST_SYNC ? tile->barrier_count : 0,
+                 i == DSL_OPT_COST_SYNC ? sync : 0,
                  DSL_OPT_COST_CONFIDENCE_LOW,
                  (tile->flags & DSL_TILE_PLAN_FLAG_BASELINE) != 0 ?
                      DSL_OPT_COST_EVIDENCE_BASELINE_POLICY :
@@ -825,7 +885,7 @@ DSL_Tile_Add_Family
          const DSL_TENSOR_FACT_RECORD &tensor,
          const DSL_TENSOR_LOCALITY_FACT_RECORD &locality,
          const DSL_TENSOR_EVOLUTION_NODE_RECORD &source,
-         const DSL_TILE_FAMILY_SEED &seed,
+         const DSL_TILE_FAMILY_SEED &seed, BOOL transpose_a,
          UINT64 m, UINT64 n, UINT64 k, UINT64 element_bytes,
          FILE *diagnostic)
 {
@@ -849,6 +909,9 @@ DSL_Tile_Add_Family
     tile.cta_m = seed.cta_m;
     tile.cta_n = seed.cta_n;
     tile.cta_k = seed.cta_k;
+    tile.a_shared_layout = transpose_a ?
+        DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED : DSL_TILE_A_LAYOUT_ROW_MAJOR;
+    tile.a_shared_stride = transpose_a ? seed.cta_m + 1 : seed.cta_k;
     tile.warp_m = seed.warp_m;
     tile.warp_n = seed.warp_n;
     tile.thread_m = seed.thread_m;
@@ -866,7 +929,7 @@ DSL_Tile_Add_Family
     tile.flags = DSL_TILE_PLAN_FLAG_PROVISIONAL |
                  DSL_TILE_PLAN_FLAG_SEMANTICS_PRESERVING |
                  DSL_TILE_PLAN_FLAG_PREFETCH_HINT;
-    if (tile.edge_policy == DSL_TILE_EDGE_EXACT)
+    if (!transpose_a && tile.edge_policy == DSL_TILE_EDGE_EXACT)
         tile.flags |= DSL_TILE_PLAN_FLAG_TMA_CANDIDATE;
     if (!DSL_Tile_Problem_Cost
              (m, n, k, element_bytes, &tile.operation_count,
@@ -875,7 +938,9 @@ DSL_Tile_Add_Family
         seed.thread_m == 0 || seed.thread_n == 0 ||
         seed.cta_m % seed.thread_m != 0 ||
         seed.cta_n % seed.thread_n != 0 ||
-        !DSL_Tile_Mul_U64(seed.cta_m, seed.cta_k, &shared_a) ||
+        !DSL_Tile_Mul_U64
+             (transpose_a ? seed.cta_m + 1 : seed.cta_m,
+              seed.cta_k, &shared_a) ||
         !DSL_Tile_Mul_U64(seed.cta_k, seed.cta_n, &shared_b) ||
         !DSL_Tile_Add_U64(shared_a, shared_b, &shared_elements) ||
         !DSL_Tile_Mul_U64
@@ -894,6 +959,8 @@ DSL_Tile_Add_Family
         (seed.cta_n / seed.thread_n);
     tile.warps_per_cta =
         DSL_Tile_Ceil_Div(tile.threads_per_cta, 32);
+    if (!DSL_Tile_Bank_Work(&tile, &tile.smem_bank_conflict_work))
+        return DSL_Tile_Report(diagnostic, "bank cost overflow", tile.id);
     tile.barrier_count = 2;
     if (!DSL_memory_hierarchy_find_tier
              (analysis->control.target_profile_id,
@@ -1071,19 +1138,39 @@ VHO_DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
             if (analysis->control.enable_cuda_64 &&
                 !DSL_Tile_Add_Family
                      (analysis, &site, tensor, locality, source,
-                      DSL_cuda_64, m, n, k, element_bytes, diagnostic))
+                      DSL_cuda_64, FALSE, m, n, k, element_bytes,
+                      diagnostic))
                 return FALSE;
             if (analysis->control.enable_cuda_128 &&
                 !DSL_Tile_Add_Family
                      (analysis, &site, tensor, locality, source,
-                      DSL_cuda_128, m, n, k, element_bytes, diagnostic))
+                      DSL_cuda_128, FALSE, m, n, k, element_bytes,
+                      diagnostic))
                 return FALSE;
             if (analysis->control.enable_blackwell_wide &&
                 analysis->control.target_profile_id ==
                     DSL_TARGET_PROFILE_NVIDIA_BLACKWELL &&
                 !DSL_Tile_Add_Family
                      (analysis, &site, tensor, locality, source,
-                      DSL_blackwell_wide, m, n, k, element_bytes,
+                      DSL_blackwell_wide, FALSE, m, n, k, element_bytes,
+                      diagnostic))
+                return FALSE;
+            if (analysis->control.enable_cuda_128 &&
+                !VHO_DSL_CUDA_TMA_Prefetch &&
+                site.tile_plan_count < analysis->control.max_plans_per_site &&
+                !DSL_Tile_Add_Family
+                     (analysis, &site, tensor, locality, source,
+                      DSL_cuda_128, TRUE, m, n, k, element_bytes,
+                      diagnostic))
+                return FALSE;
+            if (analysis->control.enable_blackwell_wide &&
+                analysis->control.target_profile_id ==
+                    DSL_TARGET_PROFILE_NVIDIA_BLACKWELL &&
+                !VHO_DSL_CUDA_TMA_Prefetch &&
+                site.tile_plan_count < analysis->control.max_plans_per_site &&
+                !DSL_Tile_Add_Family
+                     (analysis, &site, tensor, locality, source,
+                      DSL_blackwell_wide, TRUE, m, n, k, element_bytes,
                       diagnostic))
                 return FALSE;
         }

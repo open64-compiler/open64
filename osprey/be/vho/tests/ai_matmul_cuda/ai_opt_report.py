@@ -32,11 +32,15 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     grids: dict[int, dict] = {}
     k_loop: dict | None = None
     whirl_kernel: dict | None = None
+    device_binding: dict | None = None
+    edge_plan: dict | None = None
     selection: dict | None = None
     action: dict | None = None
     fetch_candidates: list[dict] = []
     fetch_selection: dict | None = None
     fetch_action: dict | None = None
+    cost_model: str | None = None
+    layouts: dict[int, dict] = {}
     roof_target: dict | None = None
     context: dict | None = None
     phases: dict[int, dict] = {}
@@ -88,6 +92,13 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                                  read_bytes=int(read_bytes),
                                  write_bytes=int(write_bytes),
                                  producer=int(producer), last_use=int(last_use)))
+        elif kind == "COST_MODEL" and trace_version == "7" and len(fields) in (6, 7):
+            if cost_model is not None or fields[3:] not in (
+                    ["2", "valid_predicated_elements", "dynamic_cta_k_barriers"],
+                    ["3", "valid_predicated_elements", "dynamic_cta_k_barriers",
+                     "bank_conflict_work"]):
+                raise ValueError("unknown or duplicate tile cost model")
+            cost_model = "v" + fields[3]
         elif kind == "ROOF_TARGET" and trace_version in ("4", "5", "6", "7") and len(fields) == 9:
             if roof_target is not None:
                 raise ValueError("duplicate Roofline target")
@@ -141,6 +152,17 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                                problem=(problem_m, problem_n, problem_k),
                                grid=(grid_m, grid_n),
                                ctas=grid_ctas, k_iterations=k_iterations)
+        elif kind == "TILE_LAYOUT" and trace_version == "7" and len(fields) == 12:
+            site, tile, plan = map(int, fields[3:6])
+            copy_map, a_layout = fields[6:8]
+            stride, bank_work, thread_columns, warps = map(int, fields[8:])
+            if (plan in layouts or copy_map != "linear" or a_layout not in
+                    ("row_major", "transposed_padded")):
+                raise ValueError("invalid or duplicate tile layout")
+            layouts[plan] = dict(site=site, tile=tile, copy_map=copy_map,
+                                 a_layout=a_layout, a_stride=stride,
+                                 bank_work=bank_work,
+                                 thread_columns=thread_columns, warps=warps)
         elif kind == "TILE_SELECT" and len(fields) == (11 if trace_version in ("3", "4", "5", "6", "7") else 10):
             if selection is not None:
                 raise ValueError("duplicate tile selection")
@@ -164,6 +186,17 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
             action = dict(site=int(site), plan=int(plan), emission=emission,
                           tile_rewrite=tile_rewrite, lower=lower,
                           lowered_count=int(count))
+        elif kind == "EDGE_PLAN" and trace_version == "7" and len(fields) == 10:
+            if edge_plan is not None:
+                raise ValueError("duplicate device edge plan")
+            site, plan, policy, a_load, b_load, c_store, barriers = fields[3:]
+            if not (a_load.startswith("a=") and b_load.startswith("b=")
+                    and c_store.startswith("c=")):
+                raise ValueError("malformed device edge plan")
+            edge_plan = dict(site=int(site), plan=int(plan), policy=policy,
+                             a_load=a_load[2:], b_load=b_load[2:],
+                             c_store=c_store[2:],
+                             barriers=barriers)
         elif kind == "K_LOOP" and trace_version == "7" and len(fields) == 10:
             if k_loop is not None:
                 raise ValueError("duplicate selected K loop")
@@ -177,6 +210,13 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
             site, plan, tile, image = fields[3:]
             whirl_kernel = dict(site=int(site), plan=int(plan),
                                 tile=int(tile), image=image)
+        elif kind == "DEVICE_BIND" and trace_version == "7" and len(fields) == 9:
+            if device_binding is not None:
+                raise ValueError("duplicate device binding in single-PU report")
+            ordinal, owner, plan, tile, entry, image = fields[3:]
+            device_binding = dict(ordinal=int(ordinal), owner=owner,
+                                  plan=int(plan), tile=int(tile),
+                                  entry=entry, image=image)
         elif kind == "FETCH_CAND" and trace_version in ("5", "6", "7") and len(fields) == 15:
             (site, plan, optimization_plan, engine, legality, reason,
              stages, distance, buffering, raw, hidden, unhidden) = fields[3:]
@@ -273,6 +313,60 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         raise ValueError("baseline or selected plan missing from candidates")
     if by_plan[selection["baseline"]]["family"] != "baseline":
         raise ValueError("baseline plan does not name baseline family")
+    if cost_model in ("v2", "v3"):
+        if cost_model == "v3" and set(layouts) != set(by_plan):
+            raise ValueError("incomplete tile layout coverage")
+        for row in candidates:
+            grid = row.get("grid")
+            if grid is None:
+                raise ValueError("v2 cost model lacks candidate grid")
+            m, n, k = grid["problem"]
+            if row["family"] == "baseline":
+                read_bytes = 2 * m * n * k * 4
+                sync = 0
+            else:
+                grid_m, grid_n = grid["grid"]
+                read_bytes = (m * k * grid_n + k * n * grid_m) * 4
+                sync = 2 * grid["ctas"] * grid["k_iterations"]
+            total_bytes = read_bytes + m * n * 4
+            bank_work = 0
+            if cost_model == "v3":
+                layout = layouts[row["plan"]]
+                bm, bn, bk = row["cta"]
+                if (layout["site"] != row["site"] or
+                        layout["tile"] != row["tile"] or
+                        layout["warps"] != (row["threads"] + 31) // 32):
+                    raise ValueError("v3 tile layout disagrees with candidate")
+                if row["family"] == "baseline":
+                    if (layout["a_stride"] or layout["bank_work"] or
+                            layout["thread_columns"]):
+                        raise ValueError("v3 baseline has physical tile layout")
+                else:
+                    cols = layout["thread_columns"]
+                    if (cols <= 0 or bn % cols or row["threads"] == 0 or
+                            bm * cols % row["threads"]):
+                        raise ValueError("v3 invalid thread layout")
+                    thread_m = bm * cols // row["threads"]
+                    transpose = layout["a_layout"] == "transposed_padded"
+                    stride = bm + 1 if transpose else bk
+                    if (layout["a_stride"] != stride or
+                            (transpose and bk < 32) or
+                            row["shared"] != (bk * (bm + 1 if transpose else bm)
+                                              + bk * bn) * 4):
+                        raise ValueError("v3 invalid SMEM layout")
+                    groups = (32 + cols - 1) // cols
+                    bank_work = (0 if transpose or cols >= 32 else
+                                 grid["ctas"] * grid["k_iterations"] * bk *
+                                 layout["warps"] * thread_m * (groups - 1))
+                    if layout["bank_work"] != bank_work:
+                        raise ValueError("v3 bank work disagrees with geometry")
+                row["layout"] = layout
+            if (row["memory"] != max(1, total_bytes // 1024) + bank_work // 32 or
+                    row["sync"] != sync or
+                    (row.get("roof_bytes") and
+                     row["roof_bytes"] != total_bytes)):
+                raise ValueError(f"{cost_model} tile cost disagrees with traced geometry")
+        selection["cost_model"] = cost_model
     eligible = [row for row in candidates if row["legality"] == "proven"
                 and row["complete"] and row["unit"] != "unknown"]
     if (selection["legal"] != sum(row["legality"] == "proven"
@@ -319,6 +413,11 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                  k_loop["end"] != chosen_loop_tile["grid"]["problem"][2])):
             raise ValueError("selected K loop disagrees with tile plan")
         selection["k_loop"] = k_loop
+    if whirl_kernel is None and device_binding is not None and selection is not None:
+        whirl_kernel = dict(site=selection["site"],
+                            plan=device_binding["plan"],
+                            tile=device_binding["tile"],
+                            image=device_binding["image"])
     if whirl_kernel is not None:
         chosen_kernel_tile = by_plan[selection["selected"]]
         if ((whirl_kernel["site"], whirl_kernel["plan"],
@@ -329,6 +428,38 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                 fetch_candidates):
             raise ValueError("device WHIRL kernel disagrees with selected tile")
         selection["whirl_kernel"] = whirl_kernel
+    if edge_plan is not None:
+        chosen = by_plan[selection["selected"]]
+        problem = chosen.get("grid", {}).get("problem")
+        guards = tuple(extent % tile != 0 for extent, tile in
+                       zip(problem, chosen["cta"])) if problem else ()
+        expected = "predicated" if any(guards) else "exact"
+        movement = (("zero_fill" if guards[0] or guards[2] else "direct",
+                     "zero_fill" if guards[2] or guards[1] else "direct",
+                     "guarded_store" if guards[0] or guards[1] else "direct")
+                    if guards else ())
+        if (whirl_kernel is None or problem is None or
+                (edge_plan["site"], edge_plan["plan"],
+                 edge_plan["policy"], edge_plan["a_load"],
+                 edge_plan["b_load"], edge_plan["c_store"],
+                 edge_plan["barriers"]) !=
+                (selection["site"], selection["selected"], expected,
+                 *movement, "barriers=uniform")):
+            raise ValueError("device edge plan disagrees with selected tile")
+        selection["edge_plan"] = edge_plan
+    if device_binding is not None:
+        ordinal = device_binding["ordinal"]
+        expected_entry = ("ai_matmul_tile_f32" if ordinal == 0 else
+                          f"ai_matmul_tile_f32_{ordinal}")
+        if (whirl_kernel is None or context is None or ordinal < 0 or
+                device_binding["owner"] != context["pu"] or
+                device_binding["entry"] != expected_entry or
+                (device_binding["plan"], device_binding["tile"],
+                 device_binding["image"]) !=
+                (whirl_kernel["plan"], whirl_kernel["tile"],
+                 whirl_kernel["image"])):
+            raise ValueError("device binding disagrees with selected kernel")
+        selection["device_binding"] = device_binding
     if action["emission"] == "device_whirl_sidecar" and whirl_kernel is None:
         raise ValueError("device WHIRL action has no kernel image")
     applied = action["tile_rewrite"] == "generated_runtime_call"
@@ -476,6 +607,22 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
             f"device_pu=ai_matmul_tile_f32 plan={kernel['plan']} "
             f"tile={kernel['tile']} image={kernel['image']} "
             "state=materialized_sidecar target_lowered=no")
+    if selection.get("device_binding"):
+        binding = selection["device_binding"]
+        summary.append(
+            f"device_binding owner={binding['owner']} "
+            f"entry={binding['entry']} ordinal={binding['ordinal']} "
+            f"plan={binding['plan']} image={binding['image']}")
+    if selection.get("edge_plan"):
+        edge = selection["edge_plan"]
+        summary.append(
+            f"edge_plan={edge['policy']} a_load={edge['a_load']} "
+            f"b_load={edge['b_load']} c_store={edge['c_store']} "
+            f"{edge['barriers']}")
+    if selection.get("cost_model"):
+        summary.append(f"cost_model={selection['cost_model']} "
+                       "reads=valid_predicated_elements "
+                       "sync=dynamic_cta_k_barriers confidence=low")
     (reports / "optimization.log").write_text(
         "# What it summarizes: Complete P0-P11 optimization process, including every phase decision and non-execution reason.\n"
         + "".join(phase_contents), encoding="utf-8")
@@ -496,11 +643,19 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
         "# Symbols: M,N,K=problem extents; E=element bytes; BM,BN,BK=CTA tile extents; ceil=ceiling division.",
         "# compute=max(1,floor(2*M*N*K/1024)); one multiply-add counts as two operations.",
         "# memory_unhidden=max(1,floor((read_bytes+write_bytes)/1024)); write_bytes=M*N*E.",
+        *( ["# v3 memory_unhidden adds floor(bank_conflict_work/32); this is a low-confidence bank-serialization proxy, not time."]
+           if selection.get("cost_model") == "v3" else [] ),
         "# read_bytes baseline=2*M*N*K*E.",
-        "# read_bytes tiled=ceil(M/BM)*ceil(N/BN)*ceil(K/BK)*(BM*BK+BK*BN)*E.",
+        ("# read_bytes tiled=(M*K*ceil(N/BN)+K*N*ceil(M/BM))*E; invalid edge loads are zero-filled without GMEM requests."
+         if selection.get("cost_model") in ("v2", "v3") else
+         "# read_bytes tiled=ceil(M/BM)*ceil(N/BN)*ceil(K/BK)*(BM*BK+BK*BN)*E."),
         "# total=compute+memory_unhidden+communication_unhidden+sync+launch+runtime_selection.",
-        "# sync=static barrier_count (0 baseline, 2 tiled); communication_unhidden, launch, runtime_selection=0 here.",
-        "# Caveat: memory_unhidden is a traffic proxy; bandwidth, overlap, cache effects, and dynamic barrier frequency are not modeled.",
+        ("# sync tiled=2*ceil(M/BM)*ceil(N/BN)*ceil(K/BK), baseline=0; this counts issued CTA barriers, not exposed latency."
+         if selection.get("cost_model") in ("v2", "v3") else
+         "# sync=static barrier_count (0 baseline, 2 tiled); communication_unhidden, launch, runtime_selection=0 here."),
+        ("# Caveat: valid element bytes are not sector transactions or HBM bytes; bandwidth, cache effects, overlap, and SM parallelism remain unmodeled."
+         if selection.get("cost_model") in ("v2", "v3") else
+         "# Caveat: memory_unhidden is a traffic proxy; bandwidth, overlap, cache effects, and dynamic barrier frequency are not modeled."),
         "# Selection: lowest complete relative cost among proven plans; a modeled Roofline bound can resolve near-cost alternatives where available.",
         f"site={selection['site']} target={selection['target']} baseline={selection['baseline']} selected={selection['selected']}",
     ]
@@ -535,6 +690,17 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
             tile_lines[-1] += (f" problem={','.join(map(str, grid['problem']))}"
                                f" grid={','.join(map(str, grid['grid']))}"
                                f" grid_ctas={grid['ctas']} k_iterations={grid['k_iterations']}")
+            if selection.get("cost_model") in ("v2", "v3") and row["family"] != "baseline":
+                m, n, k = grid["problem"]
+                grid_m, grid_n = grid["grid"]
+                tile_lines[-1] += (f" valid_a_load_bytes={m * k * grid_n * 4}"
+                                   f" valid_b_load_bytes={k * n * grid_m * 4}")
+            if "layout" in row:
+                layout = row["layout"]
+                tile_lines[-1] += (f" gmem_copy_map={layout['copy_map']}"
+                                   f" a_smem_layout={layout['a_layout']}"
+                                   f" a_stride={layout['a_stride']}"
+                                   f" bank_conflict_work={layout['bank_work']}")
         if "roof_bound_ns" in row:
             tile_lines[-1] += (f" flops={row['flops']} global_bytes={row['roof_bytes']} "
                                f"roof_compute_ns={row['roof_compute_ns']} "
@@ -566,6 +732,12 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
             f"device_pu=ai_matmul_tile_f32 plan={kernel['plan']} "
             f"tile={kernel['tile']} image={kernel['image']} "
             "state=materialized_sidecar target_lowered=no")
+    if "edge_plan" in selection:
+        edge = selection["edge_plan"]
+        tile_lines.append(
+            f"edge_plan={edge['policy']} a_load={edge['a_load']} "
+            f"b_load={edge['b_load']} c_store={edge['c_store']} "
+            f"{edge['barriers']}")
     chosen = next(row for row in candidates if row["plan"] == selection["selected"])
     if "grid" in chosen:
         selection["selected_grid_ctas"] = chosen["grid"]["ctas"]
@@ -634,6 +806,75 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
     return selection, action
 
 
+def render_program(trace: Path, reports: Path) -> None:
+    """Render a multi-PU trace without conflating PU-local plan IDs."""
+    lines = trace.read_text(encoding="utf-8").splitlines()
+    bindings = [line.split() for line in lines
+                if line.startswith("AI_OPT 7 DEVICE_BIND ")]
+    segments: list[list[str]] = []
+    segment: list[str] = []
+    for line in lines:
+        if line.startswith("AI_OPT 7 DEVICE_BIND "):
+            continue
+        segment.append(line)
+        if line.startswith("AI_OPT 7 PHASE matmul_f32_source 11 "):
+            segments.append(segment)
+            segment = []
+    if (segment and any(line.startswith("AI_OPT ") for line in segment)) or \
+            len(segments) < 2 or len(bindings) != len(segments):
+        raise ValueError("incomplete multi-PU AI trace or device bindings")
+    reports.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(trace.read_bytes()).hexdigest()
+    summary = [
+        "# What it summarizes: Per-PU phase outcomes, selected costs, host rewrites, and device entry bindings.",
+        f"trace_sha256={digest} pu_count={len(segments)} schema=7",
+    ]
+    full = ["# What it summarizes: Complete optimization phase reports for every PU in program order.\n"]
+    phase_content = [[] for _ in PHASE_LOGS]
+    for ordinal, (segment_lines, fields) in enumerate(zip(segments, bindings)):
+        context_lines = [line.split() for line in segment_lines
+                         if line.startswith("AI_OPT 7 CONTEXT ")]
+        if (len(fields) != 9 or fields[3] != str(ordinal) or
+                len(context_lines) != 1 or fields[4] != context_lines[0][3]):
+            raise ValueError("multi-PU trace binding order or owner mismatch")
+        owner, plan, tile, entry, image = fields[4:]
+        segment_lines.append(" ".join(fields))
+        pu_trace = reports / f"pu-{ordinal}.t"
+        pu_reports = reports / f"pu-{ordinal}"
+        pu_trace.write_text("\n".join(segment_lines) + "\n", encoding="utf-8")
+        selection, action = render(pu_trace, pu_reports)
+        candidates, _, _ = parse(pu_trace.read_text(encoding="utf-8"))
+        selected = next(row for row in candidates
+                        if row["plan"] == selection["selected"])
+        summary.append(
+            f"pu={owner} ordinal={ordinal} plan={plan} tile={tile} "
+            f"entry={entry} image={image} selected_cost={selected['total']} "
+            f"cost_unit={selected['unit']} "
+            f"selection_reason={selection['reason']} "
+            f"transform={action['tile_rewrite']}")
+        summary.extend(f"pu={owner} {line}" for line in
+                       (pu_reports / "optimization-summary.log").read_text(
+                           encoding="utf-8").splitlines()
+                       if line and not line.startswith("#"))
+        full.append(f"## PU {ordinal} {owner}\n" +
+                    (pu_reports / "optimization.log").read_text(
+                        encoding="utf-8"))
+        for phase, (filename, _) in enumerate(PHASE_LOGS):
+            phase_content[phase].append(
+                f"pu={owner} ordinal={ordinal}\n" +
+                (pu_reports / "phases" / filename).read_text(
+                    encoding="utf-8"))
+    (reports / "phases").mkdir(exist_ok=True)
+    for phase, (filename, description) in enumerate(PHASE_LOGS):
+        (reports / "phases" / filename).write_text(
+            f"# What it summarizes: {description}\n" +
+            "".join(phase_content[phase]), encoding="utf-8")
+    (reports / "optimization.log").write_text(
+        "".join(full), encoding="utf-8")
+    (reports / "optimization-summary.log").write_text(
+        "\n".join(summary) + "\n", encoding="utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("trace_file", nargs="?", type=Path)
@@ -645,7 +886,11 @@ def main() -> None:
     if trace is None or (args.trace is not None and args.trace_file is not None):
         parser.error("provide exactly one trace file")
     reports = args.reports or trace.parent / "reports"
-    render(trace, reports)
+    if sum(line.startswith("AI_OPT 7 CONTEXT ") for line in
+           trace.read_text(encoding="utf-8").splitlines()) > 1:
+        render_program(trace, reports)
+    else:
+        render(trace, reports)
     if args.phase is not None:
         filename = PHASE_LOGS[int(args.phase[1:])][0]
         print((reports / "phases" / filename).read_text(encoding="utf-8"), end="")

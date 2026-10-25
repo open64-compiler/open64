@@ -3,9 +3,10 @@
 Version: v0.1
 Status: design proposal for peer review
 Scope: standalone dense GEMM first; Hopper and Blackwell are reference targets
-Revision: 2026-10-20, explicit SMEM and precision-policy gates
+Revision: 2026-10-22, delayed SMEM cache-blocking alternatives and opt-in joint-plan search
 Companion: `AI_compiler_optimization_design_v0.3.md` and
-`AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md`
+`AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md`; rationale candidate:
+`AI-COMPILER-WHITE-PAPER-CANDIDATE-DELAYED-GEMM-PLAN-SELECTION.md`
 
 ## 1. Architecture and decision boundary
 
@@ -176,6 +177,16 @@ lane-to-address map; CTA reuse and SMEM staging control temporal reuse.
 Neither merely putting A/B in GMEM nor allocating SMEM slots guarantees
 coalescing or reuse [N3, N1].
 
+Implementation note (2026-10-25): the synchronous F32 GEMM slice retains a
+fixed linear GMEM copy map but now compares compact row-major A with
+transposed A padded to stride `BM+1`; B stays row-major. For `BK=32`, the
+padded A copy uses distinct banks across each 32-lane GMEM-to-SMEM store,
+while compute reads by distinct row groups avoid the compact layout's
+same-bank addresses. The selector charges an explicitly low-confidence
+bank-conflict-work proxy and lowers the selected A indices into WHIRL. It
+does not yet estimate GMEM sectors, model bank latency, or choose among
+multiple GMEM copy maps. The TMA sidecar remains compact-only.
+
 ## 4. Candidate construction: allocation, then schedule
 
 ### 4.1 Resource-allocation plan
@@ -187,8 +198,10 @@ For each numerically permitted and target-legal
    edge policy, and alias ranges. Record repacked GMEM as a separate candidate.
 2. CTA/warp/lane-to-element maps for loads, SMEM access, compute fragments,
    and stores. Compute GMEM transaction utilization and SMEM bank conflicts.
-3. Separate A and B SMEM layouts, bytes per slot, slot counts, padding,
-   swizzles, alignment, CTA/cluster scope, and lifetimes.
+3. A direct/cache-served path with no A/B SMEM slot, plus separately proposed
+   one-slot synchronous and target-legal multi-slot staging paths. For staged
+   paths record distinct A/B copy maps and SMEM layouts, bytes per slot,
+   slot counts, padding, swizzles, alignment, CTA/cluster scope, and lifetimes.
 4. Accumulator shape, precision, storage tier, live count, and epilogue
    storage. A second accumulator is not implied by two A/B slots.
 5. Barrier and pipeline state, warp roles, register and SMEM footprint,
@@ -252,6 +265,13 @@ expected overlap window, and buffer-depth feasibility. These are advisory
 facts; P8 makes the movement schedule. Current AIO-9 only records a combined
 `shared_bytes_per_stage` and a maximum stage count [O5].
 
+The direct path is not a degenerate SMEM stage. It has its own A/B warp-load
+transactions, L1/L2 hit assumptions, register demand, and no A/B allocation or
+staging barriers. For staged paths, count per-operation GMEM requested sectors,
+cache-level bytes, SMEM writes and consumer reads, bank conflicts/broadcasts,
+layout-conversion work, and dynamic synchronization separately. The same CTA
+and register tile may rank differently under those complete movement plans.
+
 ### 4.2 Movement-schedule plan
 
 For each allocation candidate, P8 builds at least the following legal
@@ -267,6 +287,23 @@ Hopper/Blackwell overlap candidate. It is not automatically superior: small K,
 irregular strides, setup cost, barriers, or occupancy loss may favor another
 schedule. TMA transfers are GMEM-to-SMEM; they do not promise that each byte
 comes from HBM instead of cache [N4].
+
+P8 schedules each surviving direct or staged alternative; it does not pick
+SMEM residency on availability alone. Model the full event critical path,
+including `ceil(K/BK)` iterations and their dynamic barriers. The one-slot
+synchronous path normally has an arrival barrier and a pre-overwrite barrier
+per K tile; prove any first/last-iteration elision. For async stages, prove
+arrival, wait, and release ordering before crediting overlap. P9 chooses the
+lowest credible complete legal plan with a conservative fallback.
+
+The proposed `-Wb,-DSL:gemm_plan_search=baseline|joint` option defaults to
+`baseline`. `joint` requests a bounded cross-product of tile, copy map, A/B
+SMEM layout, register fragment, and movement-schedule alternatives, including
+the direct path. It is not registered or implemented; until supported, the
+driver must reject `joint` explicitly. It never bypasses legality, numerical
+permission, the rewrite gate, or the trace contract. This control allows an
+equal-budget comparison of delayed joint choice against the current selector
+without claiming a performance result in advance.
 
 The current AIO-10 records engine, nominal stage count, issue/wait points,
 and aggregate buffering bytes, but does not allocate A/B slots or emit an

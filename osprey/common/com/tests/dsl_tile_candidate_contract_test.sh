@@ -68,14 +68,14 @@ OPEN64_AIO9_MODE=effect OPEN64_AIO9_ANALYSIS="$effect" \
   "$producer" >> "$validation" 2>&1
 OPEN64_AIO9_MODE=control "$producer" >> "$validation" 2>&1
 
-grep -q "VHOTilePlanDecision:.*target=nvidia_hopper.*plans=3.*stages=25" "$hopper"
+grep -q "VHOTilePlanDecision:.*target=nvidia_hopper.*plans=4.*stages=37" "$hopper"
 grep -q "family=cuda_64" "$hopper"
 grep -q "family=cuda_128" "$hopper"
 if grep -q "family=blackwell_wide" "$hopper"; then
   echo "error: Hopper plan contains Blackwell-only tile family" >&2
   exit 1
 fi
-grep -q "VHOTilePlanDecision:.*target=nvidia_blackwell.*plans=4.*stages=37" "$blackwell"
+grep -q "VHOTilePlanDecision:.*target=nvidia_blackwell.*plans=6.*stages=61" "$blackwell"
 grep -q "family=blackwell_wide" "$blackwell"
 grep -q "cta=\[128,256,32\]" "$blackwell"
 grep -q "legality=rejected reason=effect" "$effect"

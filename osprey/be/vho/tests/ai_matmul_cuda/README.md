@@ -19,23 +19,48 @@ when a path is supplied. P7/P9 coverage then says
 `disabled_by_option cuda_legacy_emit_off` when no device-WHIRL output is
 requested. With `-Wb,-DSL:cuda_whirl_output=<new-file.B>`, cost selection
 and the synchronous `cuda_tile_apply=ON` host rewrite can proceed even when
-legacy emission is OFF. The selected device PU is currently a separate
-sidecar, not yet registered by the driver in the main compilation unit.
+legacy emission is OFF. VHO stages the selected tile and constructs the device
+PU at program boundary; the backend driver owns that `PU_Info`, writes its
+mapped image, and publishes it after host-PU traversal. Its image is still
+separate, not registered in the main compilation-unit PU tree. Multiple
+selected PUs publish one device image with deterministic entries:
+`ai_matmul_tile_f32` for ordinal zero and `ai_matmul_tile_f32_<ordinal>`
+thereafter. A `DEVICE_BIND` trace row joins each host PU, plan/tile, device
+entry, and image. Entry zero keeps the v1 provider contract; later entries
+carry a 72-byte v2 generated plan with a device-entry ordinal and call
+`__open64_dsl_matmul_generated_v2`. The package/runtime loader must resolve
+that ordinal to the named entry in the same image. This is compiler-side
+binding, not native GPU validation.
 Retain the legacy source, trace, and receipt separately when comparing it
 with `whirl2c -cuda` output from the same selected plan.
 
 ## Selected Device WHIRL Parity
 
-For the exact-divisible fixed F32 GEMM subset, `cuda_whirl_output` writes
+For the selected synchronous F32 GEMM subset, `cuda_whirl_output` writes
 `ai_matmul_tile_f32` as high-level device WHIRL with cooperative global-to-
 shared A/B staging, two CTA barriers per K tile, register accumulation, and
-output stores. Translate the saved image with `whirl2c -cuda matmul.device.B`;
-the resulting `matmul.device.w2c.c` is CUDA C despite its `.c` suffix. The
-review artifacts also retain the same bytes as `source/matmul.whirl.cu` for
-future native CUDA compilation. The
-legacy emitter remains the default-on transition baseline. Byte-for-byte
-source equality is not required: the device PU omits bounds guards only
-where the exact-divisibility gate proves they are redundant.
+output stores. Non-divisible M/N/K tails conditionally zero-fill only the A/B
+accesses that can cross a boundary and guard only potentially invalid C
+stores; both CTA barriers remain unconditional. The 32-bit index gate rejects
+flattened or padded geometry that can overflow an I4 index. The emitted
+declarations contain `__shared__` for both `as` and `bs`; `acc` remains
+per-thread. To write a CUDA-suffixed output directly, run:
+
+```sh
+whirl2c -cuda -CLIST:dotc_file=matmul.whirl.cu \
+  -fB,matmul.device.B matmul.cu
+```
+
+Here `matmul.cu` names the original source for translation metadata; it is
+not the output path. Without `dotc_file`, the default output is a `.w2c.c`
+file containing CUDA C. The review artifacts retain those bytes as
+`source/matmul.whirl.cu` for future native CUDA compilation. The checked-in
+`generated_runtime.cu` is a host launch adapter, not `whirl2c` kernel output;
+it has no A/B tile declarations. The legacy emitter remains the default-on
+transition baseline. Byte-for-byte source equality is not required: the device
+PU omits bounds guards on axes where divisibility proves them redundant. The
+`EDGE_PLAN` row in `.t`, `tile.log`, and `optimization-summary.log` records
+A/B zero-fill, C-store guard, and uniform-barrier decisions.
 
 For the selected 128x128x128, BM=BN=128, BK=32, TM=TN=8 case, run:
 
@@ -45,13 +70,83 @@ bash osprey/be/vho/tests/ai_matmul_cuda/test_whirl_cuda_parity.sh \
   path/to/artifact/binary
 ```
 
-The test compiles both sources with a CUDA host stub and simulates one
-256-thread CTA with real barriers. It compares both outputs with reference
+The test compiles both sources with a CUDA host stub and simulates one CTA per
+output tile with real barriers. It compares both outputs with reference
 GEMM and each other. The first preserved zero-error evidence is
 `artifacts/ai_optimization/m2-whirl-kernel/run-008/`; `run-009/` shows that
 WHIRL-only selection produces no legacy `.cu` and reports
 `device_whirl_sidecar` in the optimization trace. This does not establish
 native CUDA compilation, PTX generation, GPU correctness, or performance.
+
+`test_device_whirl_edges.py --build-dir /path/to/build --output-dir /new/run`
+exercises 130x133x135 with all M/N/K tails in source-only and applied modes,
+plus 128x128x135 with only a K tail. It reopens the device image, checks `IF`
+counts and `EDGE_PLAN`, translates with `whirl2c -cuda`, runs multi-CTA host
+parity against legacy source and reference GEMM, and rejects a 50000x50000x128
+shape whose flattened C index cannot fit I4 before device publication. It
+retains raw `.t`, phase reports, device `.B`/`.T`, `.cu`, host object, negative
+compile log, receipt, and checksums. The
+compiler-only checkpoint is `artifacts/ai_optimization/m2-whirl-kernel/run-014/`.
+
+`run-015/` repeats those compiler checks after cost-model revision 2. Its
+`COST_MODEL 2` trace row identifies two changes: tiled A/B read bytes count
+only valid predicated elements,
+`(M*K*ceil(N/BN)+K*N*ceil(M/BM))*4`, and the sync score counts
+`2*ceil(M/BM)*ceil(N/BN)*ceil(K/BK)` CTA barrier executions. The report
+validates both quantities against every traced candidate's grid; older v7
+traces without the marker retain their earlier report formula. This is still
+a low-confidence relative work score, not a latency prediction: sector
+transactions, cache/HBM behavior, exposed barrier latency, and SM parallelism
+need later target modeling and measurement.
+
+`run-016/` adds a synchronous F32 A-layout choice for the c128 family:
+compact row-major or transposed with one padded column. `TILE_LAYOUT`
+records the linear GMEM copy map, selected A stride, and modeled bank work;
+`COST_MODEL 3` charges `floor(bank_conflict_work/32)` to the relative memory
+term. Both the transitional `.cu` and device WHIRL use the selected layout.
+The edge fixture checks transposed selection and source/WHIRL host-CTA
+parity; the TMA source path stays compact. This is not a measured bank
+throughput result or a complete GMEM sector/coalescing model.
+
+The compiler artifact runner can capture both source paths in one run:
+
+```sh
+python3 osprey/be/vho/tests/ai_matmul_cuda/compile_source.py \
+  --build-dir /path/to/open64/build \
+  --output-dir /path/to/new/m2-whirl-kernel-run \
+  --device-whirl --apply
+```
+
+`--device-whirl` is synchronous-only. It checks that the `WHIRL_KERNEL` trace
+row follows the selected `TILE_ACTION` row and matches the selected plan and
+actual `binary/matmul.device.B`, retains its
+`ir_b2a -st -src` view, emits `source/matmul.whirl.cu`, verifies the kernel
+and shared A/B attributes, and runs host CTA parity against the legacy source.
+The receipt and handoff include paths and SHA256 hashes for both sources and
+the device image. Compiler options use paths relative to the artifact's
+`binary/` directory, so the trace remains readable after publication.
+For manual algorithm review, open `source/matmul.whirl.cu` first: this is the
+canonical selected-kernel output from `whirl2c -cuda`. The generated
+`plans/cu-review.json` records its hash, selected plan, geometry, SMEM layout,
+movement mode, trace/report paths, and host-CTA parity. Then inspect
+`reports/phases/tile.log` for candidate costs and selection,
+`traces/matmul.device.T` for the WHIRL body, and `traces/compile.t` for raw
+decisions. `source/matmul.generated.cu` is only the transitional parity
+baseline, even though older receipt fields name it `source_path`.
+This checkpoint certifies compiler provenance and CPU-simulated CTA behavior,
+not native CUDA compilation, GPU correctness, or throughput. GMEM placement
+and sector-aware planning can proceed after source review without treating a
+GPU run as a prerequisite.
+`run-012/` records a passing `--apply` run with driver-owned `PU_Info` and
+mapped-image writing, plus zero host CTA error. `test_multi_device_whirl.py`
+compiles the two-PU fixture, reopens the two-kernel device image, checks both
+`whirl2c -cuda` entries and trace bindings, then checks v1/v2 host calls with
+`cuda_tile_apply=ON`. A linked host-only smoke executes both generated PUs
+through a mock provider and validates the v2 ordinal. The test renders per-PU
+phase logs and an aggregate `optimization-summary.log`; its receipt and
+checksums are retained in `artifacts/ai_optimization/m2-whirl-kernel/run-013/`.
+The device PUs are still in a separate image; this does
+not close M2.
 
 The backend option `-Wb,-DSL:ai_opt_trace=ON` defaults to ON for this
 development phase. It activates the reserved WOPT-style trace bit and opens

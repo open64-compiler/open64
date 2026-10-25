@@ -74,6 +74,11 @@ typedef enum {
 } DSL_TILE_EDGE_POLICY;
 
 typedef enum {
+    DSL_TILE_A_LAYOUT_ROW_MAJOR = 0,
+    DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED = 1
+} DSL_TILE_A_SHARED_LAYOUT;
+
+typedef enum {
     DSL_TILE_INSTRUCTION_UNKNOWN = 0,
     DSL_TILE_INSTRUCTION_SCALAR_FMA = 1,
     DSL_TILE_INSTRUCTION_VECTOR_FMA = 2
@@ -132,7 +137,10 @@ typedef struct {
     UINT64 gmem_write_bytes;
     UINT64 operation_count;
     UINT64 shared_bytes_per_stage;
+    UINT64 smem_bank_conflict_work;
     UINT64 shared_capacity_bytes;
+    UINT32 a_shared_layout;
+    UINT32 a_shared_stride;
     UINT32 maximum_buffer_stages;
     UINT32 registers_per_thread;
     UINT32 register_capacity_per_thread;

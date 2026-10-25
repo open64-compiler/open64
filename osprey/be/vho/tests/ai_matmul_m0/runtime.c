@@ -157,7 +157,7 @@ __open64_dsl_matmul_v1(OPEN64_DSL_TENSOR_HANDLE kid0,
 static int
 valid_generated_plan(const OPEN64_DSL_GENERATED_MATMUL_PLAN_V1 *plan)
 {
-    uint64_t shared, threads;
+    uint64_t shared, padded_shared, threads;
     if (plan == NULL ||
         plan->abi_version != OPEN64_DSL_RUNTIME_ABI_VERSION ||
         plan->header_size != OPEN64_DSL_GENERATED_MATMUL_PLAN_V1_SIZE ||
@@ -174,9 +174,12 @@ valid_generated_plan(const OPEN64_DSL_GENERATED_MATMUL_PLAN_V1 *plan)
         return 0;
     shared = ((uint64_t)plan->cta_m * plan->cta_k +
               (uint64_t)plan->cta_k * plan->cta_n) * sizeof(float);
+    padded_shared = shared + (uint64_t)plan->cta_k * sizeof(float);
     threads = (uint64_t)(plan->cta_m / plan->thread_m) *
               (plan->cta_n / plan->thread_n);
-    return shared == plan->shared_bytes_per_stage &&
+    return (shared == plan->shared_bytes_per_stage ||
+            (plan->cta_k >= 32 &&
+             padded_shared == plan->shared_bytes_per_stage)) &&
            threads == plan->threads_per_cta && threads <= 1024;
 }
 

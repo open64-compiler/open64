@@ -56,6 +56,47 @@ only when the current task needs detail.
    demonstrated and documented.
 13. Follow the coding guidelines below for every touched file.
 
+## Commit-Ready Milestones
+
+1. End each completed coding milestone with focused validation, `git diff --check`,
+   and a review of the exact files to be committed. Commit coherent verified
+   work promptly; do not leave finished milestones in a mixed dirty worktree.
+2. Stage explicit paths. Preserve unrelated or pre-existing edits, and split
+   design changes from implementation changes when that makes review clearer.
+3. Keep generated validation artifacts under their designated artifact
+   directories with receipts and checksums. Respect `.gitignore` unless a
+   milestone explicitly requires tracking those artifacts. Never claim GPU
+   correctness or performance from compiler-only or host-only evidence.
+4. If a milestone cannot be committed, state the blocker and the precise
+   uncommitted files before moving on to another coding milestone.
+
+## WHIRL Single Source Of Truth For CUDA
+
+1. Treat the selected, lowered WHIRL image as the source of truth for generated
+   CUDA device code. Do not independently implement an optimization in a CUDA
+   source template or infer a missing decision inside `whirl2c -cuda`.
+2. Capture required CUDA meaning in WHIRL before emission: symbol, type, and
+   parameter attributes for qualifiers and address spaces; selected kernel
+   metadata for launch and resource constraints; and explicit operations or
+   well-defined intrinsics for async copies, barriers, warp operations,
+   atomics, and tensor compute. Preserve legality, target, and ordering
+   information needed by downstream consumers.
+3. The owning optimization phase performs analysis, legality, profitability,
+   and plan selection. `whirl2c -cuda` validates and prints the selected
+   semantics; it must not choose tiling, placement, scheduling, or resource
+   budgets from source-emission heuristics. Host launch configuration and
+   runtime setup remain explicit consumers of the same selected kernel plan.
+4. For each newly needed CUDA extension, record its WHIRL representation,
+   producing phase, target and legality rules, emitter spelling, host-side
+   obligation, and verification status. If WHIRL cannot carry the required
+   meaning, extend it with the binary-compatibility and verifier discipline
+   above before claiming `whirl2c` support. Diagnose unsupported semantics
+   rather than silently dropping them.
+5. The existing independently generated `.cu` path may remain option-controlled
+   as a transitional parity baseline. Compare it with WHIRL-derived output and
+   retire each duplicate path only after source, compile, and behavior checks
+   establish parity. Do not treat the baseline as a second authoritative IR.
+
 ## Open64 Design Continuity
 
 1. When new DSL infrastructure overlaps an established Open64 service, first
