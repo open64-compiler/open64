@@ -279,6 +279,16 @@ waits, copies C back, then releases owned buffers. A borrowed device buffer
 is validated and never copied or freed by the service. This is not the
 production runtime or a completed generated standalone host PU.
 
+Applied synchronous `compile_source.py` artifacts automatically retain
+`source/matmul.host.cu` beside the selected kernel sources. This is the
+fixed-shape CUDA review adapter, with allocation, A/B upload, launch,
+completion, C download, and cleanup visible in one source file. Its buffer
+service implementation and headers are retained alongside it.
+`plans/host-buffer-review.json` joins the adapter and dependency hashes to
+the selected plan, kernel, and compiler trace; `reports/host-buffer-review.log`
+summarizes the described sequence. Provenance identifies the adapter as
+handwritten runtime code, not a host PU emitted by `whirl2c`.
+
 ```sh
 python3 osprey/be/vho/tests/ai_matmul_cuda/test_target_buffer_service.py \
   --output-dir artifacts/ai_optimization/m2-buffer-binding/new-run

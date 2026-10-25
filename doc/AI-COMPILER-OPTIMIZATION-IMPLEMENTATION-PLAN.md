@@ -757,6 +757,13 @@ retains the selected-plan native-review package with the buffer service.
 The V1 review adapter's public call still accepts host pointers; borrowed
 device buffers are proven at the service-core boundary, not yet through
 that adapter's invocation ABI.
+Applied synchronous compiler review artifacts also preserve the host CUDA
+adapter as `source/matmul.host.cu`, its generic buffer service dependencies,
+and a plan/source/trace hash join in `plans/host-buffer-review.json`. The
+matching review log describes allocation and transfer source actions; it
+does not claim those actions were executed on a GPU.
+`m2-buffer-binding/compiler-run-002/` retains this combined host/device source
+review with verified checksums.
 
 M2-B1 follow-on gates:
 
