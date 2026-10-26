@@ -13,6 +13,7 @@
  * commit only after canonical verification succeeds.
  * Controlling designs: doc/WHIRL-DSL-INFRASTRUCTURE.md,
  * doc/AI-COMPILER-OPTIMIZATION-AIO11-PHYSICAL-PLAN.md,
+ * doc/AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md,
  * doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md, and
  * doc/AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.1.md.
  */
@@ -2075,27 +2076,7 @@ VHO_DSL_Preflight_Physical_Plan
 static BOOL
 VHO_DSL_CUDA_I4_Geometry_Safe (const DSL_TILE_PLAN_RECORD &tile)
 {
-    if (tile.problem_m == 0 || tile.problem_n == 0 || tile.problem_k == 0 ||
-        tile.cta_m == 0 || tile.cta_n == 0 || tile.cta_k == 0 ||
-        tile.problem_m > INT_MAX || tile.problem_n > INT_MAX ||
-        tile.problem_k > INT_MAX || tile.cta_m > INT_MAX ||
-        tile.cta_n > INT_MAX || tile.cta_k > INT_MAX)
-        return FALSE;
-    const UINT64 padded_m =
-        ((tile.problem_m - 1) / tile.cta_m + 1) * tile.cta_m;
-    const UINT64 padded_n =
-        ((tile.problem_n - 1) / tile.cta_n + 1) * tile.cta_n;
-    const UINT64 padded_k =
-        ((tile.problem_k - 1) / tile.cta_k + 1) * tile.cta_k;
-    return padded_m <= INT_MAX && padded_n <= INT_MAX &&
-           padded_k <= INT_MAX &&
-           tile.problem_m * tile.problem_k <= INT_MAX &&
-           tile.problem_k * tile.problem_n <= INT_MAX &&
-           tile.problem_m * tile.problem_n <= INT_MAX &&
-           (UINT64)tile.cta_m * tile.cta_k <= INT_MAX &&
-           (UINT64)tile.cta_k * tile.a_shared_stride <= INT_MAX &&
-           (UINT64)tile.cta_k * tile.cta_n <= INT_MAX &&
-           (UINT64)tile.thread_m * tile.thread_n <= INT_MAX;
+    return VHO_DSL_cuda_i4_geometry_safe(tile);
 }
 
 /* Check that the selected exact/predicated policy agrees with all three
@@ -2507,33 +2488,7 @@ static BOOL
 VHO_DSL_CUDA_Pipeline_Valid (const DSL_TILE_PLAN_RECORD &tile,
                              const DSL_FETCH_PLAN_RECORD &fetch)
 {
-    if (tile.cta_m == 0 || tile.cta_n == 0 || tile.cta_k == 0 ||
-        fetch.id == 0 || fetch.tile_plan_id != tile.id ||
-        fetch.target_profile_id != tile.target_profile_id ||
-        fetch.legality != DSL_OPT_LEGALITY_PROVEN ||
-        fetch.edge_policy != tile.edge_policy || fetch.fetch_count != 2 ||
-        fetch.buffering_bytes != tile.shared_bytes_per_stage * fetch.stage_count)
-        return FALSE;
-    if (fetch.engine == DSL_MEMORY_MOVEMENT_DEMAND ||
-        fetch.engine == DSL_MEMORY_MOVEMENT_VECTOR)
-        return fetch.stage_count == 1 && fetch.prefetch_distance == 0 &&
-               fetch.buffering_bytes <= tile.shared_capacity_bytes;
-    return fetch.engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC &&
-           fetch.stage_count == 2 && fetch.prefetch_distance == 1 &&
-           fetch.issue_point == DSL_FETCH_ISSUE_PROLOGUE &&
-           fetch.arrival_barrier == DSL_FETCH_BARRIER_ARRIVAL &&
-           fetch.wait_point == DSL_FETCH_WAIT_PIPELINE_STAGE &&
-           tile.edge_policy == DSL_TILE_EDGE_EXACT &&
-           tile.a_shared_layout == DSL_TILE_A_LAYOUT_ROW_MAJOR &&
-           tile.b_shared_layout == DSL_TILE_B_LAYOUT_ROW_MAJOR &&
-           tile.problem_m % tile.cta_m == 0 &&
-           tile.problem_n % tile.cta_n == 0 &&
-           tile.problem_k % tile.cta_k == 0 &&
-           tile.problem_n % 4 == 0 && tile.problem_k % 4 == 0 &&
-           tile.shared_bytes_per_stage % 128 == 0 &&
-           // Static arrays cannot use the larger dynamic-SMEM opt-in allowance.
-           fetch.buffering_bytes + 16 <= 48 * 1024 &&
-           fetch.buffering_bytes + 16 <= tile.shared_capacity_bytes;
+    return VHO_DSL_fetch_pipeline_can_lower(tile, fetch);
 }
 
 /* Create an automatic symbol in the currently owned device scope; callers
@@ -3885,6 +3840,101 @@ VHO_DSL_CUDA_Trace_Tensor_Facts
     return !ferror(TFile);
 }
 
+/* Enumerate bounded tile/schedule pairs without mutating executable WHIRL.
+ * Keep the cheapest proven synchronous pair as fallback; trace all examined
+ * pairs, including rejected TMA siblings. Caller rebuilds only the winner. */
+static BOOL
+VHO_DSL_cuda_select_joint_plan
+        (PU_Info *pu, DSL_TENSOR_EVOLUTION_GRAPH *graph,
+         DSL_TENSOR_LOCALITY_ANALYSIS *locality, DSL_TILE_ANALYSIS *tiles,
+         const DSL_TILE_SITE_RECORD &site, DSL_TILE_PLAN_ID *winner,
+         UINT32 *candidate_count,
+         FILE *diagnostic)
+{
+    const DSL_TILE_PLAN_IR *ir = VHO_DSL_Tile_Get_IR(tiles);
+    UINT64 best = ~(UINT64)0, fallback_cost = ~(UINT64)0;
+    UINT32 count = 0, chosen = 0, fallback = 0;
+    const BOOL trace = VHO_DSL_AI_Opt_Trace && Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG);
+    const BOOL tma_allowed = VHO_DSL_CUDA_TMA_Prefetch && !VHO_DSL_CUDA_Tile_Apply;
+    DSL_IR_VALUE_RECORD value;
+    const UINT32 source_line = DSL_IR_Image_Get_Value(site.semantic_value_id, &value) &&
+        value.st != ST_IDX_ZERO ? ST_Line(St_Table[value.st]) : 0;
+    *winner = 0;
+    *candidate_count = 0;
+    if (trace)
+        fprintf(TFile, "AI_OPT 7 JOINT_MODE joint 32 %u %u relative low model=1\n",
+                site.tile_plan_count, tma_allowed);
+    for (UINT32 i = 0; i < site.tile_plan_count; ++i) {
+        DSL_TILE_PLAN_RECORD tile;
+        if (!DSL_tile_plan_ir_get_plan(ir, site.first_tile_plan_id + i, &tile))
+            return FALSE;
+        if (tile.family == DSL_TILE_FAMILY_BASELINE || tile.legality != DSL_OPT_LEGALITY_PROVEN)
+            continue;
+        VHO_DSL_FETCH_PIPELINE_CONTROL control;
+        VHO_DSL_Fetch_Pipeline_Control_Init(&control);
+        control.select_plans = 0;
+        control.joint_cost = 1;
+        control.tile_plan_id = tile.id;
+        control.enable_vector = control.enable_async_copy = 0;
+        control.enable_multidimensional_async = tma_allowed;
+        control.maximum_buffer_stages = 2;
+        DSL_FETCH_PIPELINE_ANALYSIS *fetch = VHO_DSL_Fetch_Pipeline_Create
+            (pu, graph, locality, NULL, tiles, &control, diagnostic);
+        if (fetch == NULL)
+            return FALSE;
+        BOOL valid = VHO_DSL_Fetch_Pipeline_Build(fetch, diagnostic);
+        const DSL_FETCH_PIPELINE_IR *fetch_ir = VHO_DSL_Fetch_Pipeline_Get_IR(fetch);
+        const DSL_OPT_PLAN_CONTEXT *context = VHO_DSL_Fetch_Pipeline_Get_Plan_Context(fetch, 1);
+        for (UINT32 p = 1; valid && p <= DSL_fetch_pipeline_ir_plan_count(fetch_ir); ++p) {
+            DSL_FETCH_PLAN_RECORD pipeline;
+            DSL_OPT_PLAN_RECORD plan;
+            DSL_OPT_COST_RECORD cost;
+            valid = ++count <= 32 && DSL_fetch_pipeline_ir_get_plan(fetch_ir, p, &pipeline) &&
+                DSL_opt_plan_get_plan(context, pipeline.optimization_plan_id, &plan) &&
+                DSL_opt_plan_get_cost(context, plan.cost_id, &cost);
+            if (!valid)
+                break;
+            if (trace)
+                fprintf(TFile, "AI_OPT 7 JOINT_CAND %u %u %u %u %s %s %s "
+                    "%llu %llu %llu %llu %llu %llu %llu %llu %llu %u\n",
+                    count, tile.id, tile.optimization_plan_id, pipeline.optimization_plan_id,
+                    DSL_memory_movement_name(pipeline.engine),
+                    DSL_opt_legality_name(plan.legality),
+                    DSL_opt_rejection_reason_name(plan.rejection_reason),
+                    (unsigned long long)cost.terms[DSL_OPT_COST_COMPUTE].amount,
+                    (unsigned long long)cost.terms[DSL_OPT_COST_MEMORY_UNHIDDEN].amount,
+                    (unsigned long long)cost.terms[DSL_OPT_COST_COMMUNICATION_UNHIDDEN].amount,
+                    (unsigned long long)cost.terms[DSL_OPT_COST_SYNC].amount,
+                    (unsigned long long)cost.terms[DSL_OPT_COST_LAUNCH].amount,
+                    (unsigned long long)cost.terms[DSL_OPT_COST_RUNTIME_SELECTION].amount,
+                    (unsigned long long)cost.total,
+                    (unsigned long long)pipeline.buffering_bytes,
+                    (unsigned long long)tile.shared_capacity_bytes, source_line);
+            if (plan.legality != DSL_OPT_LEGALITY_PROVEN || !cost.complete)
+                continue;
+            if (cost.total < best) {
+                best = cost.total;
+                *winner = tile.id;
+                chosen = count;
+            }
+            if (pipeline.engine == DSL_MEMORY_MOVEMENT_DEMAND && cost.total < fallback_cost) {
+                fallback_cost = cost.total;
+                fallback = count;
+            }
+        }
+        VHO_DSL_Fetch_Pipeline_Destroy(fetch);
+        if (!valid)
+            return FALSE;
+    }
+    if (chosen == 0 || fallback == 0)
+        return FALSE;
+    *candidate_count = count;
+    if (trace)
+        fprintf(TFile, "AI_OPT 7 JOINT_SELECT %u %u %u "
+                "selection_reason=lowest_complete_joint_cost\n", chosen, fallback, count);
+    return TRUE;
+}
+
 /* Build PU-local analyses, legality/cost-select tile and fetch plans, and
  * copy their completed records to the caller before destroying analyses.
  * Emit legacy source only when requested; device construction is driver-owned. */
@@ -3894,6 +3944,7 @@ VHO_DSL_CUDA_Emit_Selected_Tile
          DSL_OPT_PLAN_ID *emitted_plan_id,
          DSL_OPT_PLAN_ID *emitted_fetch_plan_id,
          UINT32 *tile_candidate_count, UINT32 *fetch_candidate_count,
+         UINT32 *joint_candidate_count,
          DSL_TILE_PLAN_RECORD *emitted_tile,
          DSL_FETCH_PLAN_RECORD *emitted_fetch,
          FILE *diagnostic)
@@ -3916,6 +3967,9 @@ VHO_DSL_CUDA_Emit_Selected_Tile
     VHO_DSL_TILE_CONTROL control;
     VHO_DSL_FETCH_PIPELINE_CONTROL fetch_control;
     BOOL valid = FALSE;
+    const BOOL joint = VHO_DSL_GEMM_Plan_Search != NULL &&
+                       strcmp(VHO_DSL_GEMM_Plan_Search, "joint") == 0;
+    DSL_TILE_PLAN_ID joint_tile = 0;
     if (emitted_plan_id != NULL)
         *emitted_plan_id = DSL_OPT_PLAN_INVALID_ID;
     if (emitted_fetch_plan_id != NULL)
@@ -3924,6 +3978,7 @@ VHO_DSL_CUDA_Emit_Selected_Tile
         *tile_candidate_count = 0;
     if (fetch_candidate_count != NULL)
         *fetch_candidate_count = 0;
+    *joint_candidate_count = 0;
     if (emitted_tile != NULL)
         memset(emitted_tile, 0, sizeof(*emitted_tile));
     if (emitted_fetch != NULL)
@@ -3948,6 +4003,8 @@ VHO_DSL_CUDA_Emit_Selected_Tile
         !VHO_DSL_Tensor_Locality_Build(locality, diagnostic))
         goto done;
     VHO_DSL_Tile_Control_Init(&control);
+    if (joint)
+        control.select_plans = 0;
     analysis = VHO_DSL_Tile_Create
                    (pu_info, graph, tensor, locality, NULL,
                     &control, diagnostic);
@@ -3967,6 +4024,15 @@ VHO_DSL_CUDA_Emit_Selected_Tile
     if (tile_candidate_count != NULL)
         *tile_candidate_count = site.tile_plan_count;
     plans = VHO_DSL_Tile_Get_Plan_Context(analysis, site.id);
+    if (joint) {
+        if (!VHO_DSL_cuda_select_joint_plan(pu_info, graph, locality, analysis,
+                                           site, &joint_tile, joint_candidate_count, diagnostic) ||
+            !VHO_DSL_tile_finalize_joint_selection(analysis, site.id, joint_tile, diagnostic))
+            goto done;
+        ir = VHO_DSL_Tile_Get_IR(analysis);
+        if (!DSL_tile_plan_ir_get_site(ir, 1, &site))
+            goto done;
+    }
     if (plans == NULL || site.selected_plan_id == site.baseline_plan_id ||
         !DSL_opt_plan_get_plan(plans, site.selected_plan_id, &selected) ||
         !DSL_opt_plan_get_cost(plans, selected.cost_id, &cost) ||
@@ -3978,6 +4044,13 @@ VHO_DSL_CUDA_Emit_Selected_Tile
     if (VHO_DSL_CUDA_TMA_Prefetch || VHO_DSL_CUDA_Whirl_Output != NULL) {
         VHO_DSL_Fetch_Pipeline_Control_Init(&fetch_control);
         fetch_control.focus_value_id = site.semantic_value_id;
+        if (joint) {
+            fetch_control.joint_cost = 1;
+            fetch_control.tile_plan_id = joint_tile;
+            fetch_control.enable_vector = fetch_control.enable_async_copy = 0;
+            fetch_control.enable_multidimensional_async =
+                VHO_DSL_CUDA_TMA_Prefetch && !VHO_DSL_CUDA_Tile_Apply;
+        }
         fetch_control.maximum_buffer_stages = VHO_DSL_CUDA_TMA_Prefetch ? 2 : 1;
         fetch_control.prefetch_distance_hint = VHO_DSL_CUDA_TMA_Prefetch ? 1 : 0;
         if (!VHO_DSL_CUDA_TMA_Prefetch) {
@@ -4027,21 +4100,28 @@ VHO_DSL_CUDA_Emit_Selected_Tile
                 selected_fetch = candidate;
         }
         if (selected_fetch.id == 0 ||
-            (VHO_DSL_CUDA_TMA_Prefetch && selected_fetch.engine !=
+            (!joint && VHO_DSL_CUDA_TMA_Prefetch && selected_fetch.engine !=
                 DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC) ||
             selected_fetch.legality != DSL_OPT_LEGALITY_PROVEN) {
             fprintf(diagnostic,
                     "DSL CUDA TMA requested but P8 selected no legal TMA plan\n");
             goto done;
         }
+        if (joint) {
+            DSL_OPT_PLAN_RECORD whole_plan;
+            if (!DSL_opt_plan_get_plan(fetch_plans, selected_fetch.optimization_plan_id, &whole_plan) ||
+                !DSL_opt_plan_get_cost(fetch_plans, whole_plan.cost_id, &cost) || !cost.complete)
+                goto done;
+        }
         if (VHO_DSL_AI_Opt_Trace &&
             Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG)) {
             fprintf(TFile,
                 "AI_OPT 7 FETCH_SELECT %u %u %u %s "
-                "selection_reason=lowest_complete_relative_cost\n",
+                "selection_reason=%s\n",
                 fetch_site.id, fetch_site.baseline_plan_id,
                 fetch_site.selected_plan_id,
-                DSL_memory_movement_name(selected_fetch.engine));
+                DSL_memory_movement_name(selected_fetch.engine),
+                joint ? "lowest_complete_joint_cost" : "lowest_complete_relative_cost");
             fflush(TFile);
         }
     }
@@ -4071,10 +4151,11 @@ VHO_DSL_CUDA_Emit_Selected_Tile
             fprintf(diagnostic, "DSL CUDA P8 selected schedule failed legality\n");
             goto done;
         }
+        const BOOL tma = selected_fetch.engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC;
         valid = path == NULL || VHO_DSL_CUDA_Write_Selected_Tile
-                    (path, tile, cost, VHO_DSL_CUDA_TMA_Prefetch,
+                    (path, tile, cost, tma,
                      diagnostic);
-        if (valid && path != NULL && VHO_DSL_CUDA_TMA_Prefetch)
+        if (valid && path != NULL && tma)
             valid = VHO_DSL_CUDA_Append_TMA_Pipeline
                         (path, tile, selected_fetch, diagnostic);
         if (valid && emitted_plan_id != NULL)
@@ -4105,6 +4186,7 @@ VHO_DSL_AI_Trace_Phases (PU_Info *pu_info,
                          DSL_OPT_PLAN_ID tile_plan_id,
                          DSL_OPT_PLAN_ID fetch_plan_id,
                          UINT32 tile_candidates, UINT32 fetch_candidates,
+                         UINT32 joint_candidates,
                          BOOL tile_applied)
 {
     if (!VHO_DSL_AI_Opt_Trace ||
@@ -4154,6 +4236,10 @@ VHO_DSL_AI_Trace_Phases (PU_Info *pu_info,
                      tile ? "source_sidecar_no_whirl_rewrite" :
                      no_tile_reason;
             regions = tile ? 1 : 0;
+            if (joint_candidates != 0) {
+                candidates = joint_candidates;
+                reason = tile_applied ? "joint_generated_runtime_call" : "joint_selected_device_plan";
+            }
             selected = tile ? tile_plan_id : 0;
         } else if (phase == 10) {
             reason = "runtime_variants_not_in_matmul_slice";
@@ -4207,6 +4293,14 @@ VHO_DSL_Lower_Driver
         (struct pu_info *pu_info,
          WN *tree)
 {
+    FmtAssert(VHO_DSL_GEMM_Plan_Search == NULL ||
+              strcmp(VHO_DSL_GEMM_Plan_Search, "baseline") == 0 ||
+              strcmp(VHO_DSL_GEMM_Plan_Search, "joint") == 0,
+              ("gemm_plan_search requires baseline or joint"));
+    const BOOL joint = VHO_DSL_GEMM_Plan_Search != NULL &&
+                       strcmp(VHO_DSL_GEMM_Plan_Search, "joint") == 0;
+    FmtAssert(!joint || (Opt_Level >= 3 && VHO_DSL_CUDA_Whirl_Output != NULL),
+              ("gemm_plan_search=joint requires -O3 and cuda_whirl_output"));
     BOOL shape_current = VHO_DSL_Shape_Refinement_Is_Current
                              (pu_info, tree, stderr);
     FmtAssert(shape_current,
@@ -4258,7 +4352,7 @@ VHO_DSL_Lower_Driver
 
     DSL_OPT_PLAN_ID emitted_tile_plan_id = DSL_OPT_PLAN_INVALID_ID;
     DSL_OPT_PLAN_ID emitted_fetch_plan_id = DSL_OPT_PLAN_INVALID_ID;
-    UINT32 tile_candidate_count = 0, fetch_candidate_count = 0;
+    UINT32 tile_candidate_count = 0, fetch_candidate_count = 0, joint_candidate_count = 0;
     DSL_TILE_PLAN_RECORD emitted_tile;
     DSL_FETCH_PLAN_RECORD emitted_fetch;
     UINT32 device_entry_ordinal = 0;
@@ -4268,7 +4362,7 @@ VHO_DSL_Lower_Driver
                   ((VHO_DSL_CUDA_Tile_Output != NULL &&
                     VHO_DSL_CUDA_Legacy_Emit) ||
                    VHO_DSL_CUDA_Whirl_Output != NULL) &&
-                  !VHO_DSL_CUDA_TMA_Prefetch,
+                  (!VHO_DSL_CUDA_TMA_Prefetch || joint),
                   ("M2 generated tile requires -O3, one matmul, a CUDA "
                    "output, and synchronous movement"));
     if ((VHO_DSL_CUDA_Tile_Output != NULL && VHO_DSL_CUDA_Legacy_Emit) ||
@@ -4279,6 +4373,7 @@ VHO_DSL_Lower_Driver
                                 VHO_DSL_CUDA_Tile_Output : NULL,
                             &emitted_tile_plan_id, &emitted_fetch_plan_id,
                             &tile_candidate_count, &fetch_candidate_count,
+                            &joint_candidate_count,
                             &emitted_tile,
                             &emitted_fetch,
                             stderr);
@@ -4333,7 +4428,8 @@ VHO_DSL_Lower_Driver
                     "AI_OPT 7 FETCH_ACTION 1 %u %s %s %s\n",
                     emitted_fetch_plan_id,
                     VHO_DSL_CUDA_Whirl_Output != NULL ? "device_whirl_sidecar" : "source_sidecar",
-                    VHO_DSL_CUDA_TMA_Prefetch ? "tma_2d" : "cooperative_scalar",
+                    emitted_fetch.engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC ?
+                        "tma_2d" : "cooperative_scalar",
                     VHO_DSL_CUDA_Whirl_Output != NULL ?
                         "whirl_rewrite=device_pipeline" : "whirl_rewrite=none");
         fflush(TFile);
@@ -4342,6 +4438,7 @@ VHO_DSL_Lower_Driver
         VHO_DSL_AI_Trace_Phases(pu_info, emitted_tile_plan_id,
                                 emitted_fetch_plan_id, tile_candidate_count,
                                 fetch_candidate_count,
+                                joint_candidate_count,
                                 VHO_DSL_CUDA_Tile_Apply);
     if (VHO_DSL_Dump_After_Lowering) {
         fprintf(TFile,

@@ -50,8 +50,11 @@ BOOL VHO_DSL_CUDA_Legacy_Emit_Set = FALSE;
 char *VHO_DSL_PU_Specialization_Checkpoint_Output = NULL;
 char *VHO_DSL_CUDA_Tile_Output = NULL;
 char *VHO_DSL_CUDA_Whirl_Output = NULL;
+char *VHO_DSL_GEMM_Plan_Search = NULL;
 
 static OPTION_DESC Options_DSL[] = {
+  { OVK_NAME, OV_VISIBLE, FALSE, "gemm_plan_search", "gemm_plan_search",
+    0, 0, 0, &VHO_DSL_GEMM_Plan_Search, NULL },
   { OVK_BOOL, OV_VISIBLE, TRUE, "cuda_smem_layout_search", "cuda_smem_layout_search",
     FALSE, 0, 0, &VHO_DSL_CUDA_SMEM_Layout_Search,
     &VHO_DSL_CUDA_SMEM_Layout_Search_Set },

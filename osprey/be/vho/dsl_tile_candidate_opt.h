@@ -63,4 +63,11 @@ extern const DSL_OPT_PLAN_CONTEXT *VHO_DSL_Tile_Get_Plan_Context
                                 (const DSL_TILE_ANALYSIS *analysis,
                                  DSL_TILE_SITE_ID id);
 
+/* Finalize a previously unselected PU-local tile analysis after whole-plan
+ * selection. Validate lineage/cost and publish one authoritative tile trace. */
+extern BOOL VHO_DSL_tile_finalize_joint_selection
+                                (DSL_TILE_ANALYSIS *analysis,
+                                 DSL_TILE_SITE_ID site_id,
+                                 DSL_TILE_PLAN_ID tile_id, FILE *diagnostic);
+
 #endif /* dsl_tile_candidate_opt_INCLUDED */

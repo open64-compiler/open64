@@ -88,12 +88,15 @@ fallback. Rewrite only the winner into a device WHIRL PU.
 
 ## 3. Experimental control and trace
 
-Proposed driver spelling: `-Wb,-DSL:gemm_plan_search=baseline|joint`.
+Registered driver spelling: `-Wb,-DSL:gemm_plan_search=baseline|joint`.
 `baseline` is the default and preserves the current supported selection
-path. `joint` opts into bounded D/S1/SN whole-plan comparison. The option
-is **not implemented or registered**. Until it is, the driver must reject
-`joint` explicitly. It cannot override `-O0`, the existing rewrite gate,
-precision permission, target legality, or the conservative fallback.
+path. Initial `joint` compares existing S1/two-slot-TMA pairs before tile
+commitment; D and `cp.async` remain future extensions. The exact executable
+subset, cost model and compile-time fallback are specified in
+`AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md`. Joint requires `-O3` and
+device-WHIRL output and cannot override host-provider capability, precision
+permission, target legality, or the fallback. This implementation is not
+evidence of novelty or measured speedup.
 
 The `.t` source trace and derived `tile.log`, `fetch-pipeline.log`, and
 `optimization-summary.log` must record option mode and budget, target-profile

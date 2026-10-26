@@ -5,6 +5,7 @@
 /*
  * VHO ownership for AIO-10 movement-plan generation, overlap estimates,
  * barrier/resource legality, costing, selection, and semantic verification.
+ * Scope and joint contract: doc/AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md.
  */
 
 #ifndef dsl_fetch_pipeline_opt_INCLUDED
@@ -36,6 +37,9 @@ typedef struct {
     UINT32 enable_vector;
     UINT32 enable_async_copy;
     UINT32 enable_multidimensional_async;
+    /* Runtime-only controls: full-GEMM costing and deferred tile override. */
+    UINT32 joint_cost;
+    DSL_TILE_PLAN_ID tile_plan_id;
     UINT32 reserved;
 } VHO_DSL_FETCH_PIPELINE_CONTROL;
 
@@ -65,5 +69,15 @@ extern const DSL_FETCH_PIPELINE_IR *VHO_DSL_Fetch_Pipeline_Get_IR
 extern const DSL_OPT_PLAN_CONTEXT *VHO_DSL_Fetch_Pipeline_Get_Plan_Context
                                 (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
                                  DSL_FETCH_SITE_ID id);
+
+/* PU-local executable joint-plan preflight shared by planning and lowering;
+ * reject unsupported schedules without modifying WHIRL or plan records. */
+extern BOOL VHO_DSL_fetch_pipeline_can_lower
+                                (const DSL_TILE_PLAN_RECORD &tile,
+                                 const DSL_FETCH_PLAN_RECORD &fetch);
+
+/* Prove signed-I4 index and padded loop bounds before either plan selection
+ * or source/device construction; do not mutate the supplied runtime record. */
+extern BOOL VHO_DSL_cuda_i4_geometry_safe (const DSL_TILE_PLAN_RECORD &tile);
 
 #endif /* dsl_fetch_pipeline_opt_INCLUDED */

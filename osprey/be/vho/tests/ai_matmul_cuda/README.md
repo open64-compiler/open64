@@ -1,5 +1,22 @@
 # Hopper CUDA Validation Bundle
 
+## Joint Tile And Movement Search
+
+`-Wb,-DSL:gemm_plan_search=baseline|joint` defaults to `baseline`.
+With `-O3` and `cuda_whirl_output`, joint mode compares complete lowerable
+tile/layout plus synchronous/TMA pairs before selecting. TMA is permitted
+by `cuda_tma_prefetch=ON`, not forced; the synchronous compile-time fallback
+remains in the census. Host application remains synchronous-only.
+
+Run `test_joint_plan_search.py --build-dir <build> --output-dir <fresh-dir>`
+to retain source/device WHIRL, `.cu`, `.t`, full reports, numerical host-only
+simulation, mode controls, rejection and deterministic-repeat evidence.
+`physical-plan.log` contains authoritative complete costs, selection and
+fallback; tile/per-stage fetch scores are explicitly diagnostic in this mode.
+See `doc/AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md` for formulas,
+limits, and the distinction between this executable subset and future direct
+GMEM/`cp.async` variants. None of these tests claims native GPU performance.
+
 ## Compiler-selected source
 
 The opt-in backend switch `-Wb,-DSL:cuda_tile_output=<new-file.cu>` runs

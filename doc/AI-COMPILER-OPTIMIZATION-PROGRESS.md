@@ -8,6 +8,16 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+Latest compiler-side increment (2026-10-25, after PR 190): registered
+`gemm_plan_search=baseline|joint`, default `baseline`. Joint mode defers tile
+commitment until bounded synchronous/TMA whole-plan comparison and lowers the
+winner through the existing device-WHIRL path. It retains a synchronous
+compile-time fallback and records the complete census, costs and decision in
+the raw trace and `physical-plan.log`. This does not enable runtime TMA launch
+integration or claim calibrated performance. The exact supported subset is in
+[joint plan search](AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md).
+Historical snapshots below retain their original milestone context.
+
 The AIO-0 through AIO-13 planning and analysis queue is marked complete in
 the implementation plan. Most slices produce check-only candidate, legality,
 cost, or feedback evidence. AIO-11 also has an executable rank-2 F4
@@ -258,12 +268,20 @@ plan and their linked AIO documents.
 | AI-P5 communication | AIO-7 check-only | Out of scope for first single-device matmul; report coverage. |
 | AI-P6 residency | AIO-8 check-only | Verify compiled SMEM/register usage and CTA residency against the selected plan. |
 | AI-P7 multi-level tiling | AIO-9 candidate/selection plus opt-in generated-provider rewrite; A/B SMEM and 8x8 versus 16x2 GMEM lane maps lower into WHIRL | Integrate multi-stage/TMA WHIRL plans; calibrate source-sector, bank, occupancy, and resource use; execute on a GPU. |
-| AI-P8 fetch and pipeline | AIO-10 check-only | Allocate A/B slots and emit legal copy, wait, compute, and release events. |
+| AI-P8 fetch and pipeline | Executable synchronous/two-slot exact TMA device WHIRL after PR 190; joint selection available | Native GPU acceptance, TMA host-provider integration, direct kernels and `cp.async` remain open. |
 | AI-P9 physical plan | AIO-11 F4 provider rewrite; F32 generated-provider call linked to a fixed-shape review adapter and mock-tested | Verify the actual CUDA launch, fallback diagnostics, and production tensor-provider boundary. |
 | AI-P10 runtime variants | AIO-12 check-only guarded variant evidence | Defer executable variants until the kernel and fallback are certified. |
 | AI-P11 feedback | AIO-13 check-only telemetry join | Add reviewed profile transport and measured feedback after executable work. |
 
 ## Options and observability
+
+Joint-plan checkpoint `0084f7fe`: 59 unit tests plus joint-search,
+executable-P8 and AIO-10 regressions pass. For 128x128x144, 16 complete pairs
+select synchronous XOR-B tile 6 at relative cost 9279; legal compact TMA costs
+11646. All host simulations have zero reference error. Native CUDA and GPU
+performance remain unverified. The immutable evidence, including the raw
+decision trace, generated CUDA and discussion PDF, is retained at:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m3/joint-gemm-plan-search/sha256-4d4174f64dcf7706275132574f6d592b49aed3f743b0c18a0e5c21a551dd9dfa/`.
 
 Keep registered switches distinct from proposals. The
 [backend option registry](../osprey/common/com/config_dsl.cxx) is the source for registered
@@ -281,6 +299,7 @@ are frontend settings, not backend optimization controls.
 | `-Wb,-DSL:cuda_whirl_output=<new-file.B>` | Registered opt-in device-image sidecar | Emits a complete synchronous F32 GEMM device PU for exact-divisible fixed shapes after cost selection; `whirl2c -cuda` translates the image. Independent of legacy source emission. No native PTX claim. |
 | `-Wb,-DSL:cuda_tile_apply=ON` | Registered, OFF by default; requires `-O3`, `-noinline`, one matmul, a legacy source or device-WHIRL output, and synchronous movement | Rewrites the host matmul to `__open64_dsl_matmul_generated_v1`; P7/P9 trace rows report one rewrite. The fixed-shape review adapter links and mock-tests this call; native GPU and production-provider integration remain open. |
 | `-Wb,-DSL:cuda_smem_layout_search=ON\|OFF` | Registered, default ON | Adds B column-XOR siblings before full-plan selection; OFF keeps compact B, existing A alternatives, and bank analysis. Synchronous F32 only; no TMA swizzle authorization. |
+| `-Wb,-DSL:gemm_plan_search=baseline\|joint` | Registered, default baseline; joint requires `-O3` and device-WHIRL output | Bounded lowerable tile/layout plus movement costs; `.t` records winner and compile-time synchronous fallback. TMA ON permits, not forces, TMA. Host application is still synchronous-only. |
 | `-trOP2` | Existing IR-dump selector | Separate from the proposed AI decision-trace mask. |
 | `-DSL:gemm_precision=preserve|allow_narrow` | Proposed; not registered | Default preserves source precision; narrowing also needs a numerical contract and full-plan legality/profitability. |
 | `-DSL:gemm_schedule=auto|conventional|persistent` | Proposed; not registered | Do not expose until a persistent kernel is implemented and verified. |
