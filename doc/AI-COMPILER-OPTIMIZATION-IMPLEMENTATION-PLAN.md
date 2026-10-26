@@ -783,10 +783,12 @@ The remaining joint-plan design retains
 matching direct/cache-served, one-slot synchronous, and target-legal
 multi-slot async A/B plans through AIO-10. Generate separate A/B copy and
 consumer maps, padded SMEM ledgers, bank effects, and dynamic K-tile barrier
-counts. Register `-Wb,-DSL:gemm_plan_search=baseline|joint` only when bounded
-joint generation, P8 event schedules, P9 whole-plan cost/legality selection,
-selected-WHIRL rewrite, and `.t`/derived-log reporting are wired together.
-Default to `baseline`; diagnose an unsupported `joint` request until then.
+counts. `-Wb,-DSL:gemm_plan_search=baseline|joint` is now registered for
+the bounded existing synchronous/TMA subset with whole-plan costing,
+selected-WHIRL lowering and `.t`/derived reports. Default remains `baseline`.
+Joint requires `-O3` and device-WHIRL output; direct/cache-served kernels and
+`cp.async` remain follow-on work. See
+`AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md` for the exact contract.
 Use the white-paper candidate
 `AI-COMPILER-WHITE-PAPER-CANDIDATE-DELAYED-GEMM-PLAN-SELECTION.md` for the
 equal-budget evaluation and prior-art review, not as evidence of a speedup.
@@ -1538,6 +1540,41 @@ Hopper/Blackwell/CPU/unsafe-distance regressions pass. Accepted artifacts are:
 The bundle includes exact commands, binary hashes, mapped images/dumps, `.cu`,
 target-operation header, raw `.t`, reports, simulations, receipts and checksums.
 This does not close native-GPU M3 acceptance or the TMA host launch adapter.
+
+## Joint Profitability And Lowering After PR 190
+
+- [x] Defer P7 selection and preserve generated layout/thread-map siblings
+  while constructing each permitted synchronous/TMA P8 alternative.
+- [x] Share executable and signed-I4 preflight between the planner/lowerer;
+  reject unsupported pairs before they can win, without binary-IR changes.
+- [x] Evaluate full-GEMM relative compute, exposed input/output movement,
+  SMEM work, dynamic synchronization, bounded overlap, setup and provisional
+  capacity pressure exactly once per pair.
+- [x] Select deterministic minimum complete cost; retain and report the best
+  legal synchronous compile-time fallback. Lower only the selected pair.
+- [x] Register `gemm_plan_search=baseline|joint`, default baseline, with
+  explicit optimization/output gates and synchronous host-provider policy.
+- [x] Independently audit the pair census/costs/winner/fallback and summarize
+  P9 complete candidates in `physical-plan.log` and aggregate reports.
+- [ ] Native CUDA/GPU correctness, launch integration and cost calibration.
+- [ ] Direct/cache-served kernels, `cp.async`, calibrated occupancy/grid waves,
+  dynamic shared memory and runtime multiversion fallback dispatch.
+
+The exact formulas and trace columns are in
+`AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md`. These are explicit
+low-confidence relative scores, not measured latency or speedup.
+
+Compiler checkpoint `0084f7fe` passes 59 unit tests, the joint short/long/edge
+and option-control suite, the executable-P8 synchronous and delayed-copy TMA
+regression, and the AIO-10 Hopper/Blackwell/CPU/unsafe-distance contract.
+The 128x128x144 fixture compares 16 complete pairs and selects synchronous
+XOR-B tile plan 6 at relative total 9279; compact TMA remains legal but loses
+at 11646. Every host-only numerical simulation reports zero reference error.
+These are model decisions and compiler-review results, not GPU measurements.
+
+Durable evidence (raw `.t`, source/device `.B/.T`, explicit before/after
+scope/diff, `.cu`, reports, commands, PDF, receipts and checksums):
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m3/joint-gemm-plan-search/sha256-4d4174f64dcf7706275132574f6d592b49aed3f743b0c18a0e5c21a551dd9dfa/`.
 
 ## Related Documents
 

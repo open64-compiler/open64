@@ -353,11 +353,14 @@ per K tile; prove any first/last-iteration elision. For async stages, prove
 arrival, wait, and release ordering before crediting overlap. P9 chooses the
 lowest credible complete legal plan with a conservative fallback.
 
-The proposed `-Wb,-DSL:gemm_plan_search=baseline|joint` option defaults to
+The registered `-Wb,-DSL:gemm_plan_search=baseline|joint` option defaults to
 `baseline`. `joint` requests a bounded cross-product of tile, copy map, A/B
 SMEM layout, register fragment, and movement-schedule alternatives, including
-the direct path. It is not registered or implemented; until supported, the
-driver must reject `joint` explicitly. It never bypasses legality, numerical
+the direct path in the full design. Initially only the existing lowerable
+synchronous/TMA pairs are implemented; direct kernels and `cp.async` remain
+open. See `AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md` for the exact
+cost model, compile-time fallback and reporting. Joint requires `-O3` and
+device-WHIRL output. It never bypasses legality, numerical
 permission, the rewrite gate, or the trace contract. This control allows an
 equal-budget comparison of delayed joint choice against the current selector
 without claiming a performance result in advance.
