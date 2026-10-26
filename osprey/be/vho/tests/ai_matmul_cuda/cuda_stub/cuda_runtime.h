@@ -8,6 +8,8 @@
 #define __device__
 #define __shared__ static
 #define __constant__
+#define __align__(bytes) __attribute__((aligned(bytes)))
+#define __forceinline__ inline
 
 struct dim3 {
     unsigned x, y, z;

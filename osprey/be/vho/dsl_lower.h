@@ -9,6 +9,7 @@
 
 #include "defs.h"
 #include "dsl_physical_plan_opt.h"
+#include "dsl_fetch_pipeline.h"
 
 class WN;
 struct pu_info;
@@ -30,11 +31,13 @@ typedef struct {
 /* DSL-specific peer of the existing language-oriented VHO_Lower_Driver. */
 extern WN *VHO_DSL_Lower_Driver (struct pu_info *pu_info, WN *tree);
 
-/* The driver owns the constructed device PUs and their program-boundary image. */
+/* The driver owns device PUs and atomic program-boundary publication. Count
+ * inspects staged handoffs; Take constructs one validated device PU and copies
+ * its selected fetch record to caller storage. No analysis pointers escape. */
 extern UINT32 VHO_DSL_CUDA_Program_Kernel_Count(void);
 extern BOOL VHO_DSL_CUDA_Take_Program_Kernel
     (UINT32 ordinal, struct pu_info **device_pu, UINT32 *plan_id,
-     UINT32 *tile_id, ST_IDX *owner,
+     UINT32 *tile_id, ST_IDX *owner, DSL_FETCH_PLAN_RECORD *fetch,
      FILE *diagnostic);
 
 extern BOOL VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile_Bound

@@ -281,6 +281,8 @@ DSL_Fetch_Cost_Term
     term->evidence = evidence;
 }
 
+/* Adapt one PU-local fetch alternative to the shared candidate/plan service;
+ * preserve its selected tile lineage and report rejected input before selection. */
 static BOOL
 DSL_Fetch_Add_Optimization_Plan
         (DSL_FETCH_PIPELINE_ANALYSIS *analysis, DSL_FETCH_SITE_RECORD *site,
@@ -311,8 +313,14 @@ DSL_Fetch_Add_Optimization_Plan
         DSL_OPT_CANDIDATE_FLAG_BASELINE :
         DSL_OPT_CANDIDATE_FLAG_PROVISIONAL;
     if (!DSL_opt_plan_add_candidate
-             (context, &candidate, &pipeline->candidate_id, diagnostic))
+             (context, &candidate, &pipeline->candidate_id, diagnostic)) {
+        fprintf(diagnostic, "P8 candidate: pipeline=%u kind=%u semantic=%u "
+                "source=%u result=%u parent=%u legality=%u reason=%u\n",
+                pipeline->id, candidate.kind, candidate.semantic_node_id,
+                candidate.source_evolution_node_id, candidate.result_evolution_node_id,
+                candidate.parent_candidate_id, candidate.legality, candidate.rejection_reason);
         return FALSE;
+    }
 
     DSL_OPT_COST_INPUT cost;
     memset(&cost, 0, sizeof(cost));
@@ -377,6 +385,8 @@ DSL_Fetch_Add_Stages
     return TRUE;
 }
 
+/* Build one fetch alternative from the selected PU-local tile, accounting for
+ * physical staging padding separately from transfer payload; no WHIRL is mutated. */
 static BOOL
 DSL_Fetch_Add_Plan
         (DSL_FETCH_PIPELINE_ANALYSIS *analysis, DSL_FETCH_SITE_RECORD *site,
@@ -484,11 +494,14 @@ DSL_Fetch_Add_Plan
     }
 
     UINT64 stage_bytes;
-    if (!DSL_Fetch_Add_U64(bytes[0], bytes[1], &stage_bytes) ||
-        (!baseline &&
+    if (!DSL_Fetch_Add_U64(bytes[0], bytes[1], &stage_bytes))
+        return DSL_Fetch_Pipeline_Report(diagnostic, "stage payload overflow", pipeline.id);
+    // Shared layout padding consumes capacity even though no GMEM bytes fill it.
+    stage_bytes = std::max(stage_bytes, tile.shared_bytes_per_stage);
+    if (!baseline &&
          !DSL_Fetch_Mul_U64
               (stage_bytes, pipeline.stage_count,
-               &pipeline.buffering_bytes)))
+               &pipeline.buffering_bytes))
         return DSL_Fetch_Pipeline_Report
                    (diagnostic, "buffering cost overflow", pipeline.id);
     pipeline.buffering_capacity_bytes = tile.shared_capacity_bytes;

@@ -1,6 +1,7 @@
 """The emitted CUDA geometry must match the cost-selected tile."""
 
 import unittest
+import re
 from pathlib import Path
 import tempfile
 
@@ -235,6 +236,21 @@ class SourceContractTest(unittest.TestCase):
                 "whirl_vs_reference=1 whirl_vs_legacy=0\n", encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "failed host CTA parity"):
                 review_record(root, selection, [selected], True)
+
+
+class LoweringCommentContractTest(unittest.TestCase):
+    def test_lowering_entry_contracts_and_design_references(self):
+        source = (Path(__file__).resolve().parents[2] / "dsl_lower.cxx").read_text()
+        self.assertIn("doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md", source[:1600])
+        self.assertIn("doc/WHIRL-DSL-INFRASTRUCTURE.md", source[:1600])
+        functions = list(re.finditer(
+            r"(?m)^(?:static )?[A-Za-z_][A-Za-z_0-9 *]*?(?:\n| )(VHO_DSL_\w+)\s*(?:\n\s*)?\(", source))
+        self.assertGreaterEqual(len(functions), 80)
+        for function in functions:
+            prefix = source[:function.start()].rstrip()
+            self.assertTrue(prefix.endswith("*/"), function[1])
+            contract = prefix[prefix.rfind("/*"):]
+            self.assertGreater(len(contract.split()), 8, function[1])
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@
 #include "errors.h"
 #include "err_host.tab"
 #include "config.h"
+#include "config_dsl.h"
 #include "controls.h"
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
@@ -216,6 +217,8 @@ Destroy_Analysis (AIO10_ANALYSIS *analysis)
     memset(analysis, 0, sizeof(*analysis));
 }
 
+/* Build PU-local check-only movement alternatives using a compact TMA-capable
+ * P7 fixture; restore the caller option after candidate construction. */
 static BOOL
 Build_Analysis (const AIO10_FIXTURE *fixture, UINT32 profile,
                 UINT32 prefetch_distance, BOOL select_plans,
@@ -243,15 +246,19 @@ Build_Analysis (const AIO10_FIXTURE *fixture, UINT32 profile,
         return FALSE;
 
     VHO_DSL_Tile_Control_Init(&tile_control);
+    const BOOL saved_tma = VHO_DSL_CUDA_TMA_Prefetch;
+    VHO_DSL_CUDA_TMA_Prefetch = TRUE;
     tile_control.target_profile_id = profile;
     tile_control.focus_value_id =
         DSL_Builder_Get_Value_Image_Id(fixture->values[2]);
     analysis->tile = VHO_DSL_Tile_Create
                          (fixture->pu, analysis->graph, analysis->tensor,
                           analysis->locality, NULL, &tile_control, stderr);
-    if (analysis->tile == NULL ||
-        !VHO_DSL_Tile_Build(analysis->tile, stderr) ||
-        !VHO_DSL_Tile_Verify(analysis->tile, stderr))
+    const BOOL tile_valid = analysis->tile != NULL &&
+        VHO_DSL_Tile_Build(analysis->tile, stderr) &&
+        VHO_DSL_Tile_Verify(analysis->tile, stderr);
+    VHO_DSL_CUDA_TMA_Prefetch = saved_tma;
+    if (!tile_valid)
         return FALSE;
 
     VHO_DSL_Fetch_Pipeline_Control_Init(&fetch_control);

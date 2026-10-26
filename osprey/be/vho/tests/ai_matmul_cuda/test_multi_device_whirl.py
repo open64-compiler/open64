@@ -163,7 +163,7 @@ def main():
         content = (applied / "reports/phases" / filename).read_text(
             encoding="utf-8")
         if not content.startswith("# What it summarizes:") or \
-                content.count("ordinal=") != 2:
+                len(re.findall(r"(?m)^pu=\S+ ordinal=\d+$", content)) != 2:
             raise RuntimeError(f"multi-PU phase report is incomplete: {filename}")
     receipt = {
         "schema": "ai-multi-device-whirl-v1",

@@ -2635,6 +2635,7 @@ struct DSL_CUDA_PROGRAM_KERNEL {
   UINT32 plan_id;
   UINT32 tile_id;
   ST_IDX owner;
+  DSL_FETCH_PLAN_RECORD fetch;
 };
 
 /* Host PUs have completed their per-PU lifetime. Publish all selected
@@ -2656,7 +2657,7 @@ Publish_DSL_CUDA_Program_Kernels (const char *path, FILE *diagnostic)
     DSL_CUDA_PROGRAM_KERNEL kernel;
     if (!VHO_DSL_CUDA_Take_Program_Kernel
             (ordinal, &kernel.pu, &kernel.plan_id, &kernel.tile_id,
-             &kernel.owner, diagnostic))
+             &kernel.owner, &kernel.fetch, diagnostic))
       return FALSE;
     kernels.push_back(kernel);
   }
@@ -2722,6 +2723,16 @@ Publish_DSL_CUDA_Program_Kernels (const char *path, FILE *diagnostic)
               ordinal, ST_name(St_Table[kernel.owner]), kernel.plan_id,
               kernel.tile_id,
               ST_name(St_Table[PU_Info_proc_sym(kernel.pu)]), path);
+      fprintf(TFile, "AI_OPT 7 PIPELINE_KERNEL %u %s %u %u %s %u %llu "
+                     "acquire_issue_wait_compute_release "
+                     "whirl_order=verified abi=%s\n",
+              ordinal, ST_name(St_Table[kernel.owner]), kernel.plan_id,
+              kernel.fetch.optimization_plan_id,
+              DSL_memory_movement_name(kernel.fetch.engine),
+              kernel.fetch.stage_count,
+              (unsigned long long)(kernel.fetch.buffering_bytes +
+                  (kernel.fetch.stage_count == 2 ? 16 : 0)),
+              kernel.fetch.stage_count == 2 ? "tma_maps_ptr_v1" : "sync_ptr_v1");
     }
     if (count == 1)
       fprintf(TFile, "AI_OPT 7 WHIRL_KERNEL 1 %u %u %s\n",

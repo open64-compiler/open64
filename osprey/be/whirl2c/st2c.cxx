@@ -535,7 +535,16 @@ ST2C_basic_decl(TOKEN_BUFFER tokens, const ST *st, CONTEXT context)
                    kind == DEVICE_SYMBOL_NONE,
                    ("CUDA parameter storage is distinct from pointee memory"));
          if (kind == DEVICE_SYMBOL_SHARED)
+         {
+            if (TY_is_user_align(tidx))
+            {
+               char alignment[48];
+               snprintf(alignment, sizeof(alignment), "__align__(%u)",
+                        TY_align(tidx));
+               Prepend_Token_String(decl_tokens, alignment);
+            }
             Prepend_Token_String(decl_tokens, "__shared__");
+         }
          else if (kind == DEVICE_SYMBOL_CONSTANT)
             Prepend_Token_String(decl_tokens, "__constant__");
          else if (kind == DEVICE_SYMBOL_GLOBAL)
