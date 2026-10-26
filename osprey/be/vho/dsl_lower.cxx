@@ -2,6 +2,21 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * VHO-owned DSL lowering for the active PU: validate semantic/runtime
+ * contracts, materialize descriptors and effectful calls, and apply selected
+ * physical/GEMM plans transactionally where the caller supplies a tree slot.
+ * CUDA plans become ordinary high-level WHIRL device bodies; the backend
+ * driver owns their program-boundary publication and whirl2c only emits the
+ * selected semantics. This file does not perform IPA or change WHIRL binary
+ * layouts. Direct lowering may mutate its tree; copied-tree entry points
+ * commit only after canonical verification succeeds.
+ * Controlling designs: doc/WHIRL-DSL-INFRASTRUCTURE.md,
+ * doc/AI-COMPILER-OPTIMIZATION-AIO11-PHYSICAL-PLAN.md,
+ * doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md, and
+ * doc/AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.1.md.
+ */
+
 #include <ctype.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -29,6 +44,7 @@
 #include "dsl_tile_candidate_opt.h"
 #include "errors.h"
 #include "wn.h"
+#include "wn_simp.h"
 #include "wn_map.h"
 #include "ir_reader.h"
 #include "ir_bwrite.h"
@@ -108,6 +124,8 @@ typedef struct {
     TYPE_ID mtype;
 } VHO_DSL_RUNTIME_TYPE;
 
+/* Record a lowering failure in the active context and optional diagnostic;
+ * return FALSE so callers preserve their own rollback boundary. */
 static BOOL
 VHO_DSL_Lower_Report
         (VHO_DSL_LOWER_CONTEXT *context,
@@ -125,12 +143,15 @@ VHO_DSL_Lower_Report
     return FALSE;
 }
 
+/* Borrow a process-lifetime string-table entry; zero denotes absent metadata. */
 static const char *
 VHO_DSL_Str (STR_IDX index)
 {
     return index == 0 ? NULL : Index_To_Str(index);
 }
 
+/* Translate a supported semantic dtype to the runtime scalar ABI; reject
+ * unknown names without inventing a precision conversion. */
 static BOOL
 VHO_DSL_Runtime_Type
         (const char *name,
@@ -185,6 +206,8 @@ VHO_DSL_Runtime_Type
     return FALSE;
 }
 
+/* Parse a descriptor shape into caller-owned dimensions, preserving unknown
+ * extents as -1; FALSE leaves only a partial scratch vector, never committed IR. */
 static BOOL
 VHO_DSL_Parse_Dimensions
         (const char *text,
@@ -240,6 +263,8 @@ VHO_DSL_Parse_Dimensions
     return *cursor == '\0' && dimensions->size() == (size_t) rank;
 }
 
+/* Map supported descriptor layouts to stable runtime ABI tags; unknown
+ * layouts fail rather than silently using contiguous storage. */
 static BOOL
 VHO_DSL_Runtime_Layout (const char *name, UINT32 *value)
 {
@@ -257,6 +282,8 @@ VHO_DSL_Runtime_Layout (const char *name, UINT32 *value)
     return TRUE;
 }
 
+/* Translate a descriptor memory-space name for runtime dispatch; unsupported
+ * spaces remain a lowering failure, not a placement decision. */
 static BOOL
 VHO_DSL_Runtime_Memory (const char *name, UINT32 *value)
 {
@@ -277,6 +304,8 @@ VHO_DSL_Runtime_Memory (const char *name, UINT32 *value)
     return TRUE;
 }
 
+/* Encode a supported sharding contract for the runtime; reject unsupported
+ * distributions without altering the compiler placement plan. */
 static BOOL
 VHO_DSL_Runtime_Sharding (const char *name, UINT32 *value)
 {
@@ -291,6 +320,8 @@ VHO_DSL_Runtime_Sharding (const char *name, UINT32 *value)
     return TRUE;
 }
 
+/* Encode a supported target placement for the runtime boundary; no device
+ * discovery or cross-PU ownership inference is performed here. */
 static BOOL
 VHO_DSL_Runtime_Placement (const char *name, UINT32 *value)
 {
@@ -307,6 +338,8 @@ VHO_DSL_Runtime_Placement (const char *name, UINT32 *value)
     return TRUE;
 }
 
+/* Validate the descriptor quantization spelling against runtime ABI tags;
+ * this mapping never authorizes lossy arithmetic. */
 static BOOL
 VHO_DSL_Runtime_Quantization (const char *name, UINT32 *value)
 {
@@ -321,6 +354,8 @@ VHO_DSL_Runtime_Quantization (const char *name, UINT32 *value)
     return TRUE;
 }
 
+/* Encode supported runtime-state semantics; unknown state contracts fail
+ * before descriptor emission. */
 static BOOL
 VHO_DSL_Runtime_State (const char *name, UINT32 *value)
 {
@@ -335,6 +370,8 @@ VHO_DSL_Runtime_State (const char *name, UINT32 *value)
     return TRUE;
 }
 
+/* Append one typed integer to a caller-owned initializer chain; the caller
+ * owns the containing symbol and commit decision. */
 static INITV_IDX
 VHO_DSL_Append_Integer
         (INITO_IDX inito,
@@ -347,6 +384,8 @@ VHO_DSL_Append_Integer
     return Append_INITV(initv, inito, previous);
 }
 
+/* Materialize the already-selected physical-provider ABI as an immutable
+ * constant in the active compilation tables; do not reselect its provider. */
 static ST *
 VHO_DSL_Create_Physical_Plan_Symbol
         (const DSL_PHYSICAL_IMPLEMENTATION_RECORD *implementation,
@@ -469,6 +508,8 @@ VHO_DSL_Create_Generated_Tile_Symbol
     return blob;
 }
 
+/* Validate a tensor descriptor and materialize its runtime ABI constant;
+ * malformed shape, dtype or layout facts fail without an executable call. */
 static ST *
 VHO_DSL_Create_Descriptor_Symbol
         (TY_IDX tensor_ty,
@@ -560,6 +601,8 @@ VHO_DSL_Create_Descriptor_Symbol
     return blob;
 }
 
+/* Read one named operator-payload field into caller scratch storage; absent
+ * or malformed fields are reported to the lowering caller. */
 static BOOL
 VHO_DSL_Payload_Value
         (const char *payload,
@@ -593,6 +636,8 @@ VHO_DSL_Payload_Value
     return FALSE;
 }
 
+/* Encode an FP32 value as FP16 scalar bits for an explicitly requested
+ * runtime scalar representation; this is not a GEMM narrowing policy. */
 static UINT16
 VHO_DSL_Float_To_Half (float value)
 {
@@ -613,6 +658,8 @@ VHO_DSL_Float_To_Half (float value)
                      ((mantissa + 0x1000) >> 13));
 }
 
+/* Convert a validated scalar payload into its declared ABI bit encoding;
+ * reject unsupported types rather than changing the tensor numerical contract. */
 static BOOL
 VHO_DSL_Scalar_Bits
         (const VHO_DSL_RUNTIME_TYPE *runtime_type,
@@ -651,6 +698,8 @@ VHO_DSL_Scalar_Bits
     return end != text && *end == '\0';
 }
 
+/* Materialize a typed immutable scalar ABI object from semantic payload;
+ * failures propagate before its consuming runtime call is inserted. */
 static ST *
 VHO_DSL_Create_Scalar_Symbol
         (const DSL_OPCODE_ANNOTATION *annotation,
@@ -694,6 +743,8 @@ VHO_DSL_Create_Scalar_Symbol
     return blob;
 }
 
+/* Look up a result already lowered in this PU; the returned entry is
+ * borrowed and no value is created on a miss. */
 static PREG_NUM
 VHO_DSL_Find_Result_Preg
         (ST_IDX source_st,
@@ -706,6 +757,8 @@ VHO_DSL_Find_Result_Preg
     return 0;
 }
 
+/* Find a normalized compatibility value in the active lowering context;
+ * no symbol or descriptor is synthesized by this lookup. */
 static const VHO_DSL_COMPATIBILITY_VALUE *
 VHO_DSL_Find_Compatibility_Value
         (const char *name,
@@ -720,6 +773,8 @@ VHO_DSL_Find_Compatibility_Value
     return NULL;
 }
 
+/* Create a tensor type for the legacy carrier from explicit payload facts;
+ * reject incomplete contracts rather than guessing storage or dtype. */
 static TY_IDX
 VHO_DSL_Create_Compatibility_Tensor_Type
         (const char *name,
@@ -751,6 +806,8 @@ VHO_DSL_Create_Compatibility_Tensor_Type
     return ty;
 }
 
+/* Derive the legacy matmul result type from operand contracts; require
+ * compatible contraction dimensions before normalizing its result. */
 static TY_IDX
 VHO_DSL_Create_Compatibility_Matmul_Type
         (TY_IDX kid0_ty,
@@ -805,6 +862,8 @@ VHO_DSL_Create_Compatibility_Matmul_Type
     return result_ty;
 }
 
+/* Create and register a PU-local normalized result for a legacy carrier;
+ * the surrounding normalization owns executable-tree mutation. */
 static ST_IDX
 VHO_DSL_Create_Compatibility_Result
         (const char *name,
@@ -820,6 +879,8 @@ VHO_DSL_Create_Compatibility_Result
     return ST_st_idx(result);
 }
 
+/* Lazily bind the runtime entry for a supported logical operator in the
+ * active context; return no binding for an unsupported runtime contract. */
 static ST *
 VHO_DSL_Runtime_Function
         (DSL_OPERATOR dsl_operator,
@@ -949,6 +1010,8 @@ VHO_DSL_Runtime_Function
     return *slot;
 }
 
+/* Wrap a newly owned address expression as a by-value pointer argument;
+ * ownership of the expression transfers to the returned WHIRL parameter. */
 static WN *
 VHO_DSL_Pointer_Parm (WN *value)
 {
@@ -956,6 +1019,8 @@ VHO_DSL_Pointer_Parm (WN *value)
                          MTYPE_To_TY(Pointer_Mtype), WN_PARM_BY_VALUE);
 }
 
+/* Build a by-reference state argument with read/write effects matching its
+ * semantic contract; the runtime call must remain conservatively effectful. */
 static WN *
 VHO_DSL_State_Parm
         (const DSL_STATE_OBJECT_RECORD *state,
@@ -972,6 +1037,8 @@ VHO_DSL_State_Parm
                 MTYPE_To_TY(Pointer_Mtype), flags);
 }
 
+/* Find the semantic image node defining a result symbol; zero means no
+ * matching definition and does not authorize an executable rewrite. */
 static DSL_IR_NODE_ID
 VHO_DSL_Image_Node_For_Result (ST_IDX result_st)
 {
@@ -983,6 +1050,7 @@ VHO_DSL_Image_Node_For_Result (ST_IDX result_st)
     return DSL_IR_NODE_INVALID_ID;
 }
 
+/* Create a by-value unsigned 32-bit runtime ABI constant argument. */
 static WN *
 VHO_DSL_U4_Parm (UINT32 value)
 {
@@ -990,6 +1058,7 @@ VHO_DSL_U4_Parm (UINT32 value)
                          MTYPE_To_TY(MTYPE_U4), WN_PARM_BY_VALUE);
 }
 
+/* Create a by-value signed 32-bit runtime ABI constant argument. */
 static WN *
 VHO_DSL_I4_Parm (INT32 value)
 {
@@ -997,6 +1066,7 @@ VHO_DSL_I4_Parm (INT32 value)
                          MTYPE_To_TY(MTYPE_I4), WN_PARM_BY_VALUE);
 }
 
+/* Create a by-value unsigned 64-bit runtime ABI constant argument. */
 static WN *
 VHO_DSL_U8_Parm (UINT64 value)
 {
@@ -1004,6 +1074,8 @@ VHO_DSL_U8_Parm (UINT64 value)
                          MTYPE_To_TY(MTYPE_U8), WN_PARM_BY_VALUE);
 }
 
+/* Decode a payload integer within unsigned ABI range; absent or invalid
+ * values fail instead of being truncated into a runtime argument. */
 static BOOL
 VHO_DSL_Payload_U4
         (const char *payload,
@@ -1024,6 +1096,7 @@ VHO_DSL_Payload_U4
     return TRUE;
 }
 
+/* Decode a payload integer within signed ABI range before call emission. */
 static BOOL
 VHO_DSL_Payload_I4
         (const char *payload,
@@ -1043,6 +1116,8 @@ VHO_DSL_Payload_I4
     return TRUE;
 }
 
+/* Decode a two-dimensional operator attribute into caller-owned values;
+ * reject malformed arity or unsupported values before lowering. */
 static BOOL
 VHO_DSL_Payload_Pair
         (const char *payload,
@@ -1072,6 +1147,8 @@ VHO_DSL_Payload_Pair
     return TRUE;
 }
 
+/* Decode an operator boolean under the accepted payload syntax; report
+ * malformed values to the enclosing runtime-call builder. */
 static BOOL
 VHO_DSL_Payload_Bool
         (const char *payload,
@@ -1091,6 +1168,8 @@ VHO_DSL_Payload_Bool
     return TRUE;
 }
 
+/* Resolve a supported operator-specific layout for runtime ABI emission;
+ * do not make a new profitability or tensor-placement choice. */
 static BOOL
 VHO_DSL_Payload_Operator_Layout
         (const char *payload,
@@ -1112,6 +1191,8 @@ VHO_DSL_Payload_Operator_Layout
     return TRUE;
 }
 
+/* Read a floating-point payload as its double-width ABI bit pattern;
+ * reject malformed numeric text before constructing the runtime call. */
 static BOOL
 VHO_DSL_Payload_Double_Bits
         (const char *payload,
@@ -1135,6 +1216,9 @@ VHO_DSL_Payload_Double_Bits
     return TRUE;
 }
 
+/* Lower a validated definition to an effectful runtime call using PU-local
+ * operand bindings and any preselected provider; failures propagate without
+ * installing the call. The enclosing tree engine owns replacement/rollback. */
 static BOOL
 VHO_DSL_Build_Runtime_Call
         (WN *native,
@@ -1552,11 +1636,15 @@ VHO_DSL_Build_Runtime_Call
     return TRUE;
 }
 
+/* Forward contract for compatibility normalization: lower one definition in
+ * the caller-owned working block; transactional isolation belongs to its caller. */
 static BOOL VHO_DSL_Lower_Definition
                                 (WN *block,
                                  WN *statement,
                                  VHO_DSL_LOWER_CONTEXT *context);
 
+/* Normalize a legacy DSL carrier into explicit semantic result/operand
+ * bindings for this PU; reject unsupported carriers before runtime lowering. */
 static BOOL
 VHO_DSL_Normalize_Compatibility
         (WN *block,
@@ -1678,6 +1766,8 @@ VHO_DSL_Normalize_Compatibility
     return VHO_DSL_Lower_Definition(block, definition, context);
 }
 
+/* Replace one validated definition with runtime call/result WHIRL and
+ * register its result binding; the caller owns transactional tree isolation. */
 static BOOL
 VHO_DSL_Lower_Definition
         (WN *block,
@@ -1752,6 +1842,9 @@ VHO_DSL_Lower_Definition
     return TRUE;
 }
 
+/* Visit the active tree in execution order, lower supported definitions and
+ * recurse within the PU; failures may leave this working tree partially
+ * changed, so transactional callers must discard it rather than commit. */
 static BOOL
 VHO_DSL_Lower_Tree
         (WN *wn,
@@ -1822,6 +1915,8 @@ VHO_DSL_Lower_Tree
     return valid;
 }
 
+/* Count remaining executable DSL carriers recursively without mutating
+ * the tree; retained comments are evidence, not executable operations. */
 static void
 VHO_DSL_Count_Executable_Carriers
         (WN *wn,
@@ -1843,6 +1938,8 @@ VHO_DSL_Count_Executable_Carriers
         VHO_DSL_Count_Executable_Carriers(WN_kid(wn, kid), count);
 }
 
+/* Verify that lowering left no executable semantic carrier; return a
+ * diagnostic/count without repairing or mutating an invalid tree. */
 BOOL
 VHO_DSL_Lowered_Tree_Is_Canonical
         (WN *tree,
@@ -1860,6 +1957,8 @@ VHO_DSL_Lowered_Tree_Is_Canonical
     return count == 0;
 }
 
+/* Validate selected provider/site bindings against the active PU before
+ * executable mutation; no plan selection or cross-PU traversal is allowed. */
 static BOOL
 VHO_DSL_Preflight_Physical_Plan
         (struct pu_info *pu_info,
@@ -1971,6 +2070,8 @@ VHO_DSL_Preflight_Physical_Plan
     return TRUE;
 }
 
+/* Prove generated signed-I4 loop and address arithmetic stays in range,
+ * including predicated edge expressions; reject unsafe fixed shapes. */
 static BOOL
 VHO_DSL_CUDA_I4_Geometry_Safe (const DSL_TILE_PLAN_RECORD &tile)
 {
@@ -1997,6 +2098,8 @@ VHO_DSL_CUDA_I4_Geometry_Safe (const DSL_TILE_PLAN_RECORD &tile)
            (UINT64)tile.thread_m * tile.thread_n <= INT_MAX;
 }
 
+/* Check that the selected exact/predicated policy agrees with all three
+ * problem extents; no edge policy is chosen during source emission. */
 static BOOL
 VHO_DSL_CUDA_Edge_Policy_Consistent (const DSL_TILE_PLAN_RECORD &tile)
 {
@@ -2009,6 +2112,9 @@ VHO_DSL_CUDA_Edge_Policy_Consistent (const DSL_TILE_PLAN_RECORD &tile)
         (has_tail ? DSL_TILE_EDGE_PREDICATED : DSL_TILE_EDGE_EXACT);
 }
 
+/* Preflight the active PU and selected plan, lower its working tree, then
+ * verify canonical form and site coverage. The caller decides whether this
+ * working tree is direct mutation or a copy that can be discarded on failure. */
 static BOOL
 VHO_DSL_Lower_Verified_Engine
         (struct pu_info *pu_info,
@@ -2138,6 +2244,9 @@ VHO_DSL_Lower_Verified_Engine
     return valid;
 }
 
+/* Preflight and lower a copied PU tree using the selected physical plan;
+ * install the copy only after canonical verification, leaving the original
+ * tree binding intact on failure. */
 BOOL
 VHO_DSL_Lower_Verified_Program_Unit_With_Physical_Plan
         (struct pu_info *pu_info,
@@ -2186,6 +2295,9 @@ VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile
                (pu_info, tree, tile, 0, diagnostic, result);
 }
 
+/* Apply the selected generated tile to an isolated tree copy with its device
+ * ordinal; commit only after canonical/site verification. Failure preserves
+ * the caller tree binding; temporary table allocations remain pool-owned. */
 BOOL
 VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile_Bound
         (struct pu_info *pu_info,
@@ -2221,6 +2333,8 @@ VHO_DSL_Lower_Verified_Program_Unit_With_Generated_Tile_Bound
     return TRUE;
 }
 
+/* Lower a gatekeeper-verified active PU directly to runtime WHIRL; the
+ * caller owns the tree and must not assume copied-tree rollback on failure. */
 BOOL
 VHO_DSL_Lower_Verified_Program_Unit
         (struct pu_info *pu_info,
@@ -2232,6 +2346,8 @@ VHO_DSL_Lower_Verified_Program_Unit
                (pu_info, tree, NULL, NULL, 0, diagnostic, result);
 }
 
+/* Capture PU-local straight-line definition/use order for tile analysis;
+ * reject unsupported control flow rather than claiming a whole-program view. */
 static DSL_TENSOR_CONTROL_SNAPSHOT *
 VHO_DSL_CUDA_Linear_Snapshot (PU_Info *pu_info, WN *tree, FILE *diagnostic)
 {
@@ -2378,9 +2494,50 @@ struct VHO_DSL_CUDA_WH_CONTEXT {
     ST *tid, *local_row, *local_col, *row0, *col0;
     ST *base, *offset, *q, *i, *j, *av;
     ST *thread_idx, *block_idx, *barrier;
+    ST *slot, *ready, *a_map, *b_map;
+    ST *ready_init, *proxy_publish, *acquire, *issue, *wait, *invalidate;
     const DSL_TILE_PLAN_RECORD *tile;
+    const DSL_FETCH_PLAN_RECORD *fetch;
 };
 
+/* Preflight the selected tile/fetch pair for this executable lowering: one
+ * synchronous slot or exact compact two-slot TMA with barrier capacity.
+ * Unsupported engines/layouts/resources fail without constructing a device PU. */
+static BOOL
+VHO_DSL_CUDA_Pipeline_Valid (const DSL_TILE_PLAN_RECORD &tile,
+                             const DSL_FETCH_PLAN_RECORD &fetch)
+{
+    if (tile.cta_m == 0 || tile.cta_n == 0 || tile.cta_k == 0 ||
+        fetch.id == 0 || fetch.tile_plan_id != tile.id ||
+        fetch.target_profile_id != tile.target_profile_id ||
+        fetch.legality != DSL_OPT_LEGALITY_PROVEN ||
+        fetch.edge_policy != tile.edge_policy || fetch.fetch_count != 2 ||
+        fetch.buffering_bytes != tile.shared_bytes_per_stage * fetch.stage_count)
+        return FALSE;
+    if (fetch.engine == DSL_MEMORY_MOVEMENT_DEMAND ||
+        fetch.engine == DSL_MEMORY_MOVEMENT_VECTOR)
+        return fetch.stage_count == 1 && fetch.prefetch_distance == 0 &&
+               fetch.buffering_bytes <= tile.shared_capacity_bytes;
+    return fetch.engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC &&
+           fetch.stage_count == 2 && fetch.prefetch_distance == 1 &&
+           fetch.issue_point == DSL_FETCH_ISSUE_PROLOGUE &&
+           fetch.arrival_barrier == DSL_FETCH_BARRIER_ARRIVAL &&
+           fetch.wait_point == DSL_FETCH_WAIT_PIPELINE_STAGE &&
+           tile.edge_policy == DSL_TILE_EDGE_EXACT &&
+           tile.a_shared_layout == DSL_TILE_A_LAYOUT_ROW_MAJOR &&
+           tile.b_shared_layout == DSL_TILE_B_LAYOUT_ROW_MAJOR &&
+           tile.problem_m % tile.cta_m == 0 &&
+           tile.problem_n % tile.cta_n == 0 &&
+           tile.problem_k % tile.cta_k == 0 &&
+           tile.problem_n % 4 == 0 && tile.problem_k % 4 == 0 &&
+           tile.shared_bytes_per_stage % 128 == 0 &&
+           // Static arrays cannot use the larger dynamic-SMEM opt-in allowance.
+           fetch.buffering_bytes + 16 <= 48 * 1024 &&
+           fetch.buffering_bytes + 16 <= tile.shared_capacity_bytes;
+}
+
+/* Create an automatic symbol in the currently owned device scope; callers
+ * must supply its exact type and attach any CUDA address-space attributes. */
 static ST *
 VHO_DSL_CUDA_New_Local (const char *name, TY_IDX ty)
 {
@@ -2389,24 +2546,31 @@ VHO_DSL_CUDA_New_Local (const char *name, TY_IDX ty)
     return st;
 }
 
+/* Create a fresh signed-I4 load of a device-local scalar; no tree node is
+ * shared with another parent. */
 static WN *
 VHO_DSL_CUDA_I4_Load (ST *st)
 {
     return WN_Ldid(MTYPE_I4, 0, ST_st_idx(st), ST_type(st));
 }
 
+/* Create a device-local signed-I4 assignment, taking ownership of its value
+ * tree; the schedule builder owns placement and ordering. */
 static WN *
 VHO_DSL_CUDA_I4_Store (ST *st, WN *value)
 {
     return WN_Stid(MTYPE_I4, 0, st, ST_type(st), value);
 }
 
+/* Create a fresh signed-I4 constant for a previously range-checked plan. */
 static WN *
 VHO_DSL_CUDA_I4 (INT32 value)
 {
     return WN_Intconst(MTYPE_I4, value);
 }
 
+/* Build the conjunction of only the needed upper-bound predicates; consume
+ * supplied expression trees and return NULL when neither axis needs a guard. */
 static WN *
 VHO_DSL_CUDA_Bounds2 (WN *first, INT32 first_extent,
                       WN *second, INT32 second_extent)
@@ -2422,6 +2586,8 @@ VHO_DSL_CUDA_Bounds2 (WN *first, INT32 first_extent,
                       VHO_DSL_CUDA_I4(second_extent)));
 }
 
+/* Build an F32 element address from a formal pointer or local array; consume
+ * the index tree. Geometry legality is established before body construction. */
 static WN *
 VHO_DSL_CUDA_Index (ST *array, WN *index)
 {
@@ -2434,6 +2600,8 @@ VHO_DSL_CUDA_Index (ST *array, WN *index)
     return WN_Add(Pointer_Mtype, base, bytes);
 }
 
+/* Create a typed F32 memory read at a selected physical element address;
+ * consume its index without choosing layout or placement. */
 static WN *
 VHO_DSL_CUDA_F4_Load (const VHO_DSL_CUDA_WH_CONTEXT &context,
                       ST *array, WN *index)
@@ -2442,6 +2610,8 @@ VHO_DSL_CUDA_F4_Load (const VHO_DSL_CUDA_WH_CONTEXT &context,
                     VHO_DSL_CUDA_Index(array, index));
 }
 
+/* Create a typed F32 store at a selected physical element address; consume
+ * index/value trees, with ordering supplied by the schedule builder. */
 static WN *
 VHO_DSL_CUDA_F4_Store (const VHO_DSL_CUDA_WH_CONTEXT &context,
                        ST *array, WN *index, WN *value)
@@ -2450,6 +2620,8 @@ VHO_DSL_CUDA_F4_Store (const VHO_DSL_CUDA_WH_CONTEXT &context,
                      VHO_DSL_CUDA_Index(array, index), value);
 }
 
+/* Construct a high-level DO_LOOP around an owned body and selected limits;
+ * every index/load/step is a fresh node to preserve strict-tree ownership. */
 static WN *
 VHO_DSL_CUDA_Do (ST *index, WN *first, WN *limit, INT32 step, WN *body)
 {
@@ -2462,6 +2634,8 @@ VHO_DSL_CUDA_Do (ST *index, WN *first, WN *limit, INT32 step, WN *body)
          body, NULL);
 }
 
+/* Read one CUDA execution-coordinate field through its recorded symbol/type;
+ * field identity and offsets must match the dim3 declaration. */
 static WN *
 VHO_DSL_CUDA_Builtin_Dim (ST *symbol, INT32 offset, UINT field_id)
 {
@@ -2470,15 +2644,30 @@ VHO_DSL_CUDA_Builtin_Dim (ST *symbol, INT32 offset, UINT field_id)
                           ST_type(symbol), field_id));
 }
 
+/* Reuse or declare one global CUDA coordinate identity, so multiple device
+ * PUs cannot rename the builtin. This lookup is not cross-PU analysis. */
 static ST *
 VHO_DSL_CUDA_Builtin_Symbol (const char *name, TY_IDX dim_ty)
 {
+    const ST *existing;
+    ST_IDX index;
+    FOREACH_SYMBOL(GLOBAL_SYMTAB, existing, index) {
+        if (ST_class(existing) == CLASS_VAR && strcmp(ST_name(existing), name) == 0) {
+            FmtAssert(ST_sclass(existing) == SCLASS_EXTERN &&
+                      TY_kind(ST_type(existing)) == KIND_STRUCT &&
+                      TY_size(ST_type(existing)) == TY_size(dim_ty),
+                      ("CUDA coordinate builtin has an incompatible declaration"));
+            return &St_Table[ST_st_idx(existing)];
+        }
+    }
     ST *st = New_ST(GLOBAL_SYMTAB);
     ST_Init(st, Save_Str(name), CLASS_VAR, SCLASS_EXTERN,
             EXPORT_PREEMPTIBLE, dim_ty);
     return st;
 }
 
+/* Construct the three-U4 coordinate type used by threadIdx/blockIdx reads;
+ * retain explicit field offsets for mapped-image and CUDA emission. */
 static TY_IDX
 VHO_DSL_CUDA_Dim_Type ()
 {
@@ -2499,6 +2688,8 @@ VHO_DSL_CUDA_Dim_Type ()
     return ty_idx;
 }
 
+/* Declare the uniform CTA barrier builtin; calls remain effectful and the
+ * schedule builder must prove convergence before inserting them. */
 static ST *
 VHO_DSL_CUDA_Barrier_Symbol ()
 {
@@ -2514,12 +2705,219 @@ VHO_DSL_CUDA_Barrier_Symbol ()
     return st;
 }
 
+/* Create an effectful CTA barrier call; caller placement supplies the
+ * publication or release invariant, not this leaf constructor. */
 static WN *
 VHO_DSL_CUDA_Barrier (ST *barrier)
 {
     return WN_Call(MTYPE_V, MTYPE_V, 0, ST_st_idx(barrier));
 }
 
+/* Declare a typed device-operation ABI with no purity assumptions; this is
+ * target-mechanism binding, never a scheduling or profitability decision. */
+static ST *
+VHO_DSL_CUDA_Operation (const char *name, UINT32 count,
+                        const TY_IDX *parameters)
+{
+    const ST *existing;
+    ST_IDX index;
+    FOREACH_SYMBOL(GLOBAL_SYMTAB, existing, index) {
+        if (ST_class(existing) != CLASS_FUNC || strcmp(ST_name(existing), name) != 0)
+            continue;
+        FmtAssert(ST_device_symbol_kind(*existing) == DEVICE_SYMBOL_FUNCTION,
+                  ("CUDA operation name collides with a non-device function"));
+        TYLIST_IDX types = TY_tylist(ST_pu_type(existing));
+        FmtAssert(TYLIST_type(Tylist_Table[types]) == MTYPE_To_TY(MTYPE_V),
+                  ("CUDA pipeline operation has incompatible return type"));
+        for (UINT32 i = 0; i < count; ++i)
+            FmtAssert(TYLIST_type(Tylist_Table[types + i + 1]) == parameters[i],
+                      ("CUDA pipeline operation has incompatible parameter type"));
+        FmtAssert(TYLIST_type(Tylist_Table[types + count + 1]) == TY_IDX_ZERO,
+                  ("CUDA pipeline operation has incompatible arity"));
+        return &St_Table[ST_st_idx(existing)];
+    }
+    TY_IDX type;
+    TY &ty = New_TY(type);
+    TY_Init(ty, 0, KIND_FUNCTION, MTYPE_UNKNOWN, 0);
+    Set_TY_has_prototype(type);
+    TYLIST_IDX list;
+    Set_TYLIST_type(New_TYLIST(list), MTYPE_To_TY(MTYPE_V));
+    Set_TY_tylist(ty, list);
+    for (UINT32 i = 0; i < count; ++i)
+        Set_TYLIST_type(New_TYLIST(list), parameters[i]);
+    Set_TYLIST_type(New_TYLIST(list), TY_IDX_ZERO);
+    PU_IDX pu_idx;
+    PU &pu = New_PU(pu_idx);
+    PU_Init(pu, type, GLOBAL_SYMTAB + 1);
+    Set_PU_c_lang(pu);
+    ST *st = New_ST(GLOBAL_SYMTAB);
+    ST_Init(st, Save_Str(name), CLASS_FUNC, SCLASS_EXTERN,
+            EXPORT_PREEMPTIBLE, type);
+    Set_ST_pu(st, pu_idx);
+    Set_ST_device_symbol_kind(*st, DEVICE_SYMBOL_FUNCTION);
+    return st;
+}
+
+/* Create an effectful typed device call, transferring argument-tree
+ * ownership to its parameters; the caller supplies the complete operation ABI. */
+static WN *
+VHO_DSL_CUDA_Operation_Call (ST *operation, const std::vector<WN *> &args)
+{
+    WN *call = WN_Call(MTYPE_V, MTYPE_V, args.size(), ST_st_idx(operation));
+    TYLIST_IDX types = TY_tylist(ST_pu_type(operation)) + 1;
+    for (UINT32 i = 0; i < args.size(); ++i)
+        WN_kid(call, i) = WN_CreateParm
+            (WN_rtype(args[i]), args[i], Tylist_Table[types + i], WN_PARM_BY_VALUE);
+    return call;
+}
+
+/* Build the eight-byte ready-barrier address for a proven slot index;
+ * consume the slot expression and preserve the selected shared-storage base. */
+static WN *
+VHO_DSL_CUDA_Ready_Address (const VHO_DSL_CUDA_WH_CONTEXT &c, WN *slot)
+{
+    return WN_Add(Pointer_Mtype, WN_Lda(Pointer_Mtype, 0, c.ready),
+                   WN_Mpy(Pointer_Mtype,
+                          WN_Cvt(MTYPE_I4, Pointer_Mtype, slot),
+                          WN_Intconst(Pointer_Mtype, 8)));
+}
+
+/* Guard an owned producer block by elected thread zero and an optional
+ * refill predicate; uniform consumer barriers must stay outside this branch. */
+static WN *
+VHO_DSL_CUDA_Producer_Only (const VHO_DSL_CUDA_WH_CONTEXT &c, WN *body,
+                           WN *extra = NULL)
+{
+    WN *test = WN_EQ(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.tid),
+                      VHO_DSL_CUDA_I4(0));
+    if (extra != NULL) test = WN_CAND(test, extra);
+    return WN_CreateIf(test, body, WN_CreateBlock());
+}
+
+/* Build acquire/expect-bytes followed by A/B issues into one selected slot;
+ * consume the tile-base expression. The enclosing prologue/refill must prove
+ * that the slot is free or CTA-released before entering this block. */
+static WN *
+VHO_DSL_CUDA_TMA_Issue_Pair (const VHO_DSL_CUDA_WH_CONTEXT &c, WN *base)
+{
+    WN *body = WN_CreateBlock();
+    std::vector<WN *> args;
+    args.push_back(VHO_DSL_CUDA_Ready_Address(c, VHO_DSL_CUDA_I4_Load(c.slot)));
+    args.push_back(VHO_DSL_CUDA_I4(c.tile->shared_bytes_per_stage));
+    WN_INSERT_BlockLast(body, VHO_DSL_CUDA_Operation_Call(c.acquire, args));
+    for (UINT32 operand = 0; operand < 2; ++operand) {
+        args.clear();
+        args.push_back(VHO_DSL_CUDA_Index
+            (operand == 0 ? c.as : c.bs,
+             WN_Mpy(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.slot),
+                    VHO_DSL_CUDA_I4(c.tile->cta_k *
+                        (operand == 0 ? c.tile->cta_m : c.tile->cta_n)))));
+        ST *map = operand == 0 ? c.a_map : c.b_map;
+        args.push_back(WN_Ldid(Pointer_Mtype, 0, ST_st_idx(map), ST_type(map)));
+        args.push_back(operand == 0 ? WN_COPY_Tree(base) :
+                                                   VHO_DSL_CUDA_I4_Load(c.col0));
+        args.push_back(operand == 0 ? VHO_DSL_CUDA_I4_Load(c.row0) :
+                                                   WN_COPY_Tree(base));
+        args.push_back(VHO_DSL_CUDA_Ready_Address(c, VHO_DSL_CUDA_I4_Load(c.slot)));
+        WN_INSERT_BlockLast(body, VHO_DSL_CUDA_Operation_Call(c.issue, args));
+    }
+    WN_DELETE_Tree(base);
+    return body;
+}
+
+/* Collect direct calls in structured lexical order for the pipeline proof;
+ * this read-only walk does not reorder or infer effects. */
+static void
+VHO_DSL_CUDA_Collect_Calls (WN *tree, std::vector<WN *> *calls)
+{
+    if (tree == NULL) return;
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (WN *stmt = WN_first(tree); stmt != NULL; stmt = WN_next(stmt))
+            VHO_DSL_CUDA_Collect_Calls(stmt, calls);
+    } else {
+        if (WN_operator(tree) == OPR_CALL) calls->push_back(tree);
+        for (INT32 i = 0; i < WN_kid_count(tree); ++i)
+            VHO_DSL_CUDA_Collect_Calls(WN_kid(tree, i), calls);
+    }
+}
+
+/* Prove canonical selected bounds/index/step; a different generation extent
+ * must not be accepted merely because its operation sequence looks similar. */
+static BOOL
+VHO_DSL_CUDA_Verify_Pipeline_Loop (WN *loop, ST *index, INT32 limit, INT32 step)
+{
+    if (loop == NULL || WN_operator(loop) != OPR_DO_LOOP ||
+        WN_operator(WN_start(loop)) != OPR_STID || WN_st(WN_start(loop)) != index ||
+        WN_operator(WN_kid0(WN_start(loop))) != OPR_INTCONST ||
+        WN_const_val(WN_kid0(WN_start(loop))) != 0 ||
+        WN_operator(WN_step(loop)) != OPR_STID || WN_st(WN_step(loop)) != index)
+        return FALSE;
+    WN *end = WN_LT(MTYPE_I4, VHO_DSL_CUDA_I4_Load(index), VHO_DSL_CUDA_I4(limit));
+    WN *increment = WN_Add(MTYPE_I4, VHO_DSL_CUDA_I4_Load(index), VHO_DSL_CUDA_I4(step));
+    const BOOL valid = WN_Simp_Compare_Trees(WN_end(loop), end) == 0 &&
+        WN_Simp_Compare_Trees(WN_kid0(WN_step(loop)), increment) == 0;
+    WN_DELETE_Tree(end);
+    WN_DELETE_Tree(increment);
+    return valid;
+}
+
+/* Check constructed WHIRL publication, wait/compute/release/refill order
+ * and slot/parity expressions against the fixed selected schedule. Reject
+ * malformed ordering before the driver may publish the device image. */
+static BOOL
+VHO_DSL_CUDA_Verify_Pipeline_Order
+        (const VHO_DSL_CUDA_WH_CONTEXT &c, WN *body, WN *k_loop,
+         WN *compute, WN *prologue, WN *refill)
+{
+    std::vector<WN *> calls;
+    VHO_DSL_CUDA_Collect_Calls(body, &calls);
+    if (!VHO_DSL_CUDA_Verify_Pipeline_Loop
+            (k_loop, c.base, c.tile->problem_k, c.tile->cta_k) ||
+        !VHO_DSL_CUDA_Verify_Pipeline_Loop(compute, c.q, c.tile->cta_k, 1))
+        return FALSE;
+    if (c.ready == NULL)
+        return calls.size() == 2 && WN_st(calls[0]) == c.barrier &&
+               WN_st(calls[1]) == c.barrier &&
+               WN_prev(compute) == calls[0] && WN_next(compute) == calls[1] &&
+               WN_first(WN_do_body(k_loop)) != compute;
+    ST *expected[] = {c.ready_init, c.ready_init, c.proxy_publish, c.barrier,
+                      c.acquire, c.issue, c.issue, c.wait, c.barrier,
+                      c.acquire, c.issue, c.issue, c.invalidate, c.invalidate};
+    if (calls.size() != sizeof(expected) / sizeof(expected[0])) return FALSE;
+    for (UINT32 i = 0; i < calls.size(); ++i)
+        if (WN_st(calls[i]) != expected[i]) return FALSE;
+    WN *slot = WN_first(WN_do_body(k_loop));
+    WN *expected_slot = WN_Binary(OPR_REM, MTYPE_I4,
+        WN_Div(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.base),
+               VHO_DSL_CUDA_I4(c.tile->cta_k)), VHO_DSL_CUDA_I4(2));
+    WN *expected_phase = WN_Binary(OPR_REM, MTYPE_I4,
+        WN_Div(MTYPE_I4,
+            WN_Div(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.base),
+                   VHO_DSL_CUDA_I4(c.tile->cta_k)), VHO_DSL_CUDA_I4(2)),
+        VHO_DSL_CUDA_I4(2));
+    WN *expected_guard = WN_CAND(
+        WN_EQ(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.tid), VHO_DSL_CUDA_I4(0)),
+        WN_LT(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.base),
+              VHO_DSL_CUDA_I4((INT32)c.tile->problem_k - 2 * (INT32)c.tile->cta_k)));
+    const BOOL valid = WN_operator(slot) == OPR_STID && WN_st(slot) == c.slot &&
+        WN_Simp_Compare_Trees(WN_kid0(slot), expected_slot) == 0 &&
+        WN_next(slot) == calls[7] && WN_next(calls[7]) == compute &&
+        WN_next(compute) == calls[8] && WN_next(calls[8]) == refill &&
+        WN_next(refill) == NULL &&
+        WN_Simp_Compare_Trees(WN_kid0(WN_kid(calls[7], 1)), expected_phase) == 0 &&
+        WN_Simp_Compare_Trees(WN_if_test(refill), expected_guard) == 0 &&
+        WN_prev(k_loop) == prologue &&
+        VHO_DSL_CUDA_Verify_Pipeline_Loop
+            (WN_first(WN_then(prologue)), c.slot,
+             std::min((UINT64)2, c.tile->problem_k / c.tile->cta_k), 1);
+    WN_DELETE_Tree(expected_slot);
+    WN_DELETE_Tree(expected_phase);
+    WN_DELETE_Tree(expected_guard);
+    return valid;
+}
+
+/* Lower the selected compact/XOR B representation into a fresh address
+ * expression; copy repeated column subtrees to preserve strict WHIRL trees. */
 static WN *
 VHO_DSL_CUDA_B_Shared_Index (const DSL_TILE_PLAN_RECORD &tile,
                              WN *row, WN *col)
@@ -2532,6 +2930,9 @@ VHO_DSL_CUDA_B_Shared_Index (const DSL_TILE_PLAN_RECORD &tile,
                    WN_Mpy(MTYPE_I4, row, VHO_DSL_CUDA_I4(tile.cta_n)), col);
 }
 
+/* Construct device control flow from the selected tile/fetch pair, including
+ * slot storage, predication, synchronization and epilogue. Assert structural
+ * schedule proof before returning; no independent emitter policy is allowed. */
 static WN *
 VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
 {
@@ -2717,10 +3118,18 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
         WN_Add(MTYPE_I4,
                WN_Mpy(MTYPE_I4, as_row, VHO_DSL_CUDA_I4(bk)),
                VHO_DSL_CUDA_I4_Load(c.q));
+    if (c.ready != NULL)
+        as_index = WN_Add(MTYPE_I4, as_index,
+            WN_Mpy(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.slot),
+                   VHO_DSL_CUDA_I4(bm * bk)));
     WN *bs_index = VHO_DSL_CUDA_B_Shared_Index
         (tile, VHO_DSL_CUDA_I4_Load(c.q),
          WN_Add(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.local_col),
                 VHO_DSL_CUDA_I4_Load(c.j)));
+    if (c.ready != NULL)
+        bs_index = WN_Add(MTYPE_I4, bs_index,
+            WN_Mpy(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.slot),
+                   VHO_DSL_CUDA_I4(bk * bn)));
     WN *sum = WN_Add
         (MTYPE_F4,
          VHO_DSL_CUDA_F4_Load
@@ -2745,13 +3154,67 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
     WN_INSERT_BlockLast
         (q_body, VHO_DSL_CUDA_Do(c.i, VHO_DSL_CUDA_I4(0),
                                  VHO_DSL_CUDA_I4(tm), 1, i_body));
-    WN_INSERT_BlockLast
-        (k_body, VHO_DSL_CUDA_Do(c.q, VHO_DSL_CUDA_I4(0),
-                                 VHO_DSL_CUDA_I4(bk), 1, q_body));
+    WN *compute = VHO_DSL_CUDA_Do(c.q, VHO_DSL_CUDA_I4(0),
+                                  VHO_DSL_CUDA_I4(bk), 1, q_body);
+    WN_INSERT_BlockLast(k_body, compute);
     WN_INSERT_BlockLast(k_body, VHO_DSL_CUDA_Barrier(c.barrier));
-    WN_INSERT_BlockLast
-        (body, VHO_DSL_CUDA_Do(c.base, VHO_DSL_CUDA_I4(0),
-                               VHO_DSL_CUDA_I4(k), bk, k_body));
+    WN *prologue = NULL, *refill = NULL;
+    if (c.ready != NULL) {
+        WN_EXTRACT_FromBlock(k_body, compute);
+        WN_DELETE_Tree(k_body);
+        WN *init = WN_CreateBlock();
+        for (UINT32 slot = 0; slot < 2; ++slot) {
+            std::vector<WN *> args;
+            args.push_back(VHO_DSL_CUDA_Ready_Address(c, VHO_DSL_CUDA_I4(slot)));
+            WN_INSERT_BlockLast(init, VHO_DSL_CUDA_Operation_Call(c.ready_init, args));
+        }
+        std::vector<WN *> args;
+        WN_INSERT_BlockLast(init, VHO_DSL_CUDA_Operation_Call(c.proxy_publish, args));
+        WN_INSERT_BlockLast(body, VHO_DSL_CUDA_Producer_Only(c, init));
+        WN_INSERT_BlockLast(body, VHO_DSL_CUDA_Barrier(c.barrier));
+        WN *prime = WN_CreateBlock();
+        WN_INSERT_BlockLast(prime,
+            VHO_DSL_CUDA_Do(c.slot, VHO_DSL_CUDA_I4(0),
+                VHO_DSL_CUDA_I4(std::min(2, k / bk)), 1,
+                VHO_DSL_CUDA_TMA_Issue_Pair(c,
+                    WN_Mpy(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.slot),
+                           VHO_DSL_CUDA_I4(bk)))));
+        prologue = VHO_DSL_CUDA_Producer_Only(c, prime);
+        WN_INSERT_BlockLast(body, prologue);
+        k_body = WN_CreateBlock();
+        WN_INSERT_BlockLast(k_body, VHO_DSL_CUDA_I4_Store(c.slot,
+            WN_Binary(OPR_REM, MTYPE_I4,
+                WN_Div(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.base),
+                       VHO_DSL_CUDA_I4(bk)), VHO_DSL_CUDA_I4(2))));
+        args.push_back(VHO_DSL_CUDA_Ready_Address(c, VHO_DSL_CUDA_I4_Load(c.slot)));
+        args.push_back(WN_Binary(OPR_REM, MTYPE_I4,
+            WN_Div(MTYPE_I4,
+                WN_Div(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.base),
+                       VHO_DSL_CUDA_I4(bk)), VHO_DSL_CUDA_I4(2)),
+            VHO_DSL_CUDA_I4(2)));
+        WN_INSERT_BlockLast(k_body, VHO_DSL_CUDA_Operation_Call(c.wait, args));
+        WN_INSERT_BlockLast(k_body, compute);
+        WN_INSERT_BlockLast(k_body, VHO_DSL_CUDA_Barrier(c.barrier));
+        refill = VHO_DSL_CUDA_Producer_Only(c,
+            VHO_DSL_CUDA_TMA_Issue_Pair(c,
+                WN_Add(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.base),
+                       VHO_DSL_CUDA_I4(2 * bk))),
+            WN_LT(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.base),
+                  VHO_DSL_CUDA_I4(k - 2 * bk)));
+        WN_INSERT_BlockLast(k_body, refill);
+    }
+    WN *k_loop = VHO_DSL_CUDA_Do(c.base, VHO_DSL_CUDA_I4(0),
+                                  VHO_DSL_CUDA_I4(k), bk, k_body);
+    WN_INSERT_BlockLast(body, k_loop);
+    if (c.ready != NULL) {
+        WN *drain = WN_CreateBlock();
+        for (UINT32 slot = 0; slot < 2; ++slot) {
+            std::vector<WN *> args;
+            args.push_back(VHO_DSL_CUDA_Ready_Address(c, VHO_DSL_CUDA_I4(slot)));
+            WN_INSERT_BlockLast(drain, VHO_DSL_CUDA_Operation_Call(c.invalidate, args));
+        }
+        WN_INSERT_BlockLast(body, VHO_DSL_CUDA_Producer_Only(c, drain));
+    }
 
     WN *store_j = WN_CreateBlock();
     WN *c_row = WN_Add
@@ -2799,16 +3262,23 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
     WN_INSERT_BlockLast
         (body, VHO_DSL_CUDA_Do(c.i, VHO_DSL_CUDA_I4(0),
                                VHO_DSL_CUDA_I4(tm), 1, store_i));
+    FmtAssert(VHO_DSL_CUDA_Verify_Pipeline_Order
+                  (c, body, k_loop, compute, prologue, refill),
+              ("CUDA P8 WHIRL acquire/issue/wait/release proof failed"));
     return body;
 }
 
+/* Under backend-driver ownership, preflight the selected schedule and build
+ * one device PU with its own scope/map; restore the caller context before
+ * returning. No final image is published by this construction service. */
 static BOOL
 VHO_DSL_CUDA_Build_Selected_Whirl
-        (const DSL_TILE_PLAN_RECORD &tile, UINT32 ordinal,
+        (const DSL_TILE_PLAN_RECORD &tile, const DSL_FETCH_PLAN_RECORD &fetch,
+         UINT32 ordinal,
          PU_Info **device_pu,
          FILE *diagnostic)
 {
-    if (device_pu == NULL ||
+    if (device_pu == NULL || !VHO_DSL_CUDA_Pipeline_Valid(tile, fetch) ||
         !VHO_DSL_CUDA_I4_Geometry_Safe(tile) ||
         tile.thread_m == 0 || tile.thread_n == 0 ||
         !VHO_DSL_CUDA_Edge_Policy_Consistent(tile) ||
@@ -2823,6 +3293,8 @@ VHO_DSL_CUDA_Build_Selected_Whirl
         return FALSE;
     }
     const SYMTAB_IDX level = CURRENT_SYMTAB;
+    const BOOL tma = fetch.engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC;
+    const UINT32 parameter_count = tma ? 5 : 3;
     SCOPE saved_scope = Scope_tab[level];
     PU *saved_pu = Current_pu;
     WN_MAP_TAB *saved_map = Current_Map_Tab;
@@ -2837,8 +3309,10 @@ VHO_DSL_CUDA_Build_Selected_Whirl
     TYLIST_IDX tylist_idx;
     Set_TYLIST_type(New_TYLIST(tylist_idx), MTYPE_To_TY(MTYPE_V));
     Set_TY_tylist(function_ty, tylist_idx);
-    for (UINT32 ordinal = 0; ordinal != 3; ++ordinal)
-        Set_TYLIST_type(New_TYLIST(tylist_idx), float_pointer_ty);
+    TY_IDX void_pointer_ty = Make_Pointer_Type(MTYPE_To_TY(MTYPE_V));
+    for (UINT32 ordinal = 0; ordinal != parameter_count; ++ordinal)
+        Set_TYLIST_type(New_TYLIST(tylist_idx),
+                        ordinal < 3 ? float_pointer_ty : void_pointer_ty);
     Set_TYLIST_type(New_TYLIST(tylist_idx), TY_IDX_ZERO);
 
     PU_IDX pu_idx;
@@ -2863,24 +3337,27 @@ VHO_DSL_CUDA_Build_Selected_Whirl
     VHO_DSL_CUDA_WH_CONTEXT c;
     memset(&c, 0, sizeof(c));
     c.tile = &tile;
+    c.fetch = &fetch;
     c.float_pointer_ty = float_pointer_ty;
-    const char *formal_names[] = {"a", "b", "c"};
-    ST *formals[3];
-    for (UINT32 ordinal = 0; ordinal != 3; ++ordinal) {
+    const char *formal_names[] = {"a", "b", "c", "a_map", "b_map"};
+    ST *formals[5];
+    for (UINT32 ordinal = 0; ordinal != parameter_count; ++ordinal) {
         formals[ordinal] = New_ST(CURRENT_SYMTAB);
         ST_Init(formals[ordinal], Save_Str(formal_names[ordinal]), CLASS_VAR,
-                SCLASS_FORMAL, EXPORT_LOCAL, float_pointer_ty);
+                SCLASS_FORMAL, EXPORT_LOCAL,
+                ordinal < 3 ? float_pointer_ty : void_pointer_ty);
         Set_ST_is_value_parm(formals[ordinal]);
     }
     c.a = formals[0]; c.b = formals[1]; c.c = formals[2];
     c.as = VHO_DSL_CUDA_New_Local
         ("as", Make_Array_Type(MTYPE_F4, 1,
-                                tile.cta_k *
+                                fetch.stage_count * tile.cta_k *
                                 (tile.a_shared_layout ==
                                      DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
                                      tile.a_shared_stride : tile.cta_m)));
     c.bs = VHO_DSL_CUDA_New_Local
-        ("bs", Make_Array_Type(MTYPE_F4, 1, tile.cta_k * tile.cta_n));
+        ("bs", Make_Array_Type(MTYPE_F4, 1,
+                                fetch.stage_count * tile.cta_k * tile.cta_n));
     c.acc = VHO_DSL_CUDA_New_Local
         ("acc", Make_Array_Type(MTYPE_F4, 1,
                                 tile.thread_m * tile.thread_n));
@@ -2901,10 +3378,33 @@ VHO_DSL_CUDA_Build_Selected_Whirl
     c.thread_idx = VHO_DSL_CUDA_Builtin_Symbol("threadIdx", dim_ty);
     c.block_idx = VHO_DSL_CUDA_Builtin_Symbol("blockIdx", dim_ty);
     c.barrier = VHO_DSL_CUDA_Barrier_Symbol();
+    if (tma) {
+        c.a_map = formals[3]; c.b_map = formals[4];
+        c.slot = VHO_DSL_CUDA_New_Local("slot", MTYPE_To_TY(MTYPE_I4));
+        c.ready = VHO_DSL_CUDA_New_Local("ready", Make_Array_Type(MTYPE_U8, 1, 2));
+        Set_ST_device_symbol_kind(*c.ready, DEVICE_SYMBOL_SHARED);
+        ST *arrays[] = {c.as, c.bs};
+        for (UINT32 i = 0; i < 2; ++i) {
+            TY_IDX aligned = ST_type(arrays[i]);
+            Set_TY_align(aligned, 128);
+            Set_TY_is_user_align(aligned);
+            Set_ST_type(arrays[i], aligned);
+        }
+        TY_IDX one[] = {void_pointer_ty};
+        TY_IDX two[] = {void_pointer_ty, MTYPE_To_TY(MTYPE_I4)};
+        TY_IDX five[] = {void_pointer_ty, void_pointer_ty,
+                         MTYPE_To_TY(MTYPE_I4), MTYPE_To_TY(MTYPE_I4), void_pointer_ty};
+        c.ready_init = VHO_DSL_CUDA_Operation("__open64_cuda_barrier_init", 1, one);
+        c.proxy_publish = VHO_DSL_CUDA_Operation("__open64_cuda_proxy_publish", 0, NULL);
+        c.acquire = VHO_DSL_CUDA_Operation("__open64_cuda_tma_acquire", 2, two);
+        c.issue = VHO_DSL_CUDA_Operation("__open64_cuda_tma_issue", 5, five);
+        c.wait = VHO_DSL_CUDA_Operation("__open64_cuda_tma_wait", 2, two);
+        c.invalidate = VHO_DSL_CUDA_Operation("__open64_cuda_barrier_invalidate", 1, one);
+    }
 
-    WN *entry = WN_CreateEntry(3, kernel, VHO_DSL_CUDA_Build_Body(c),
+    WN *entry = WN_CreateEntry(parameter_count, kernel, VHO_DSL_CUDA_Build_Body(c),
                                NULL, NULL);
-    for (UINT32 ordinal = 0; ordinal != 3; ++ordinal)
+    for (UINT32 ordinal = 0; ordinal != parameter_count; ++ordinal)
         WN_kid(entry, ordinal) = WN_CreateIdname(0, formals[ordinal]);
     PU_Info *info = TYPE_MEM_POOL_ALLOC(PU_Info, MEM_pu_nz_pool_ptr);
     PU_Info_init(info);
@@ -2933,17 +3433,22 @@ VHO_DSL_CUDA_Build_Selected_Whirl
 
 struct VHO_DSL_CUDA_PENDING_KERNEL {
     DSL_TILE_PLAN_RECORD tile;
+    DSL_FETCH_PLAN_RECORD fetch;
     ST_IDX owner;
 };
 
 static std::vector<VHO_DSL_CUDA_PENDING_KERNEL> VHO_DSL_CUDA_Pending_Kernels;
 
+/* Validate and copy selected numeric tile/fetch records into the driver
+ * handoff registry while the analysis PU is active; do not retain analysis
+ * pointers or construct another PU from this per-PU phase. */
 static BOOL
 VHO_DSL_CUDA_Stage_Selected_Whirl
         (PU_Info *pu_info, const DSL_TILE_PLAN_RECORD &tile,
+         const DSL_FETCH_PLAN_RECORD &fetch,
          UINT32 *ordinal, FILE *diagnostic)
 {
-    if (ordinal == NULL ||
+    if (ordinal == NULL || !VHO_DSL_CUDA_Pipeline_Valid(tile, fetch) ||
         VHO_DSL_CUDA_Pending_Kernels.size() >= UINT32_MAX) {
         fprintf(diagnostic, "DSL CUDA device entry registry is full\n");
         return FALSE;
@@ -2951,25 +3456,31 @@ VHO_DSL_CUDA_Stage_Selected_Whirl
     *ordinal = (UINT32)VHO_DSL_CUDA_Pending_Kernels.size();
     VHO_DSL_CUDA_PENDING_KERNEL pending;
     pending.tile = tile;
+    pending.fetch = fetch;
     pending.owner = PU_Info_proc_sym(pu_info);
     VHO_DSL_CUDA_Pending_Kernels.push_back(pending);
     return TRUE;
 }
 
+/* Return the number of staged driver handoffs without changing ownership
+ * or consuming any selected plan. */
 UINT32
 VHO_DSL_CUDA_Program_Kernel_Count(void)
 {
     return (UINT32)VHO_DSL_CUDA_Pending_Kernels.size();
 }
 
+/* Build one staged device PU for the backend driver and return its binding;
+ * reject invalid ordinals/outputs before publication. The driver owns the
+ * resulting PU lifetime and atomic program-image commit. */
 BOOL
 VHO_DSL_CUDA_Take_Program_Kernel
         (UINT32 ordinal, PU_Info **device_pu, UINT32 *plan_id,
-         UINT32 *tile_id, ST_IDX *owner,
+         UINT32 *tile_id, ST_IDX *owner, DSL_FETCH_PLAN_RECORD *fetch,
          FILE *diagnostic)
 {
     if (device_pu == NULL || plan_id == NULL || tile_id == NULL ||
-        owner == NULL || ordinal >= VHO_DSL_CUDA_Pending_Kernels.size()) {
+        owner == NULL || fetch == NULL || ordinal >= VHO_DSL_CUDA_Pending_Kernels.size()) {
         fprintf(diagnostic,
                 "DSL CUDA WHIRL output requested without a selected "
                 "device PU\n");
@@ -2978,11 +3489,12 @@ VHO_DSL_CUDA_Take_Program_Kernel
     const VHO_DSL_CUDA_PENDING_KERNEL &pending =
         VHO_DSL_CUDA_Pending_Kernels[ordinal];
     if (!VHO_DSL_CUDA_Build_Selected_Whirl
-            (pending.tile, ordinal, device_pu, diagnostic))
+            (pending.tile, pending.fetch, ordinal, device_pu, diagnostic))
         return FALSE;
     *plan_id = pending.tile.optimization_plan_id;
     *tile_id = pending.tile.id;
     *owner = pending.owner;
+    *fetch = pending.fetch;
     return TRUE;
 }
 
@@ -3130,6 +3642,8 @@ VHO_DSL_CUDA_Write_Selected_Tile
     return valid;
 }
 
+/* Append the retained legacy TMA parity-source path after revalidating its
+ * selected fetch contract; this is not WHIRL application or GPU acceptance. */
 static BOOL
 VHO_DSL_CUDA_Append_TMA_Pipeline
         (const char *path, const DSL_TILE_PLAN_RECORD &tile,
@@ -3310,6 +3824,8 @@ VHO_DSL_CUDA_Append_TMA_Pipeline
     return valid;
 }
 
+/* Emit active-PU semantic/locality evidence under the AI trace option;
+ * malformed facts fail rather than generating an untrustworthy report. */
 static BOOL
 VHO_DSL_CUDA_Trace_Tensor_Facts
         (const DSL_TENSOR_ANALYSIS *tensor,
@@ -3369,6 +3885,9 @@ VHO_DSL_CUDA_Trace_Tensor_Facts
     return !ferror(TFile);
 }
 
+/* Build PU-local analyses, legality/cost-select tile and fetch plans, and
+ * copy their completed records to the caller before destroying analyses.
+ * Emit legacy source only when requested; device construction is driver-owned. */
 static BOOL
 VHO_DSL_CUDA_Emit_Selected_Tile
         (PU_Info *pu_info, WN *tree, const char *path,
@@ -3376,6 +3895,7 @@ VHO_DSL_CUDA_Emit_Selected_Tile
          DSL_OPT_PLAN_ID *emitted_fetch_plan_id,
          UINT32 *tile_candidate_count, UINT32 *fetch_candidate_count,
          DSL_TILE_PLAN_RECORD *emitted_tile,
+         DSL_FETCH_PLAN_RECORD *emitted_fetch,
          FILE *diagnostic)
 {
     DSL_TENSOR_EVOLUTION_GRAPH *graph = NULL;
@@ -3406,6 +3926,8 @@ VHO_DSL_CUDA_Emit_Selected_Tile
         *fetch_candidate_count = 0;
     if (emitted_tile != NULL)
         memset(emitted_tile, 0, sizeof(*emitted_tile));
+    if (emitted_fetch != NULL)
+        memset(emitted_fetch, 0, sizeof(*emitted_fetch));
     memset(&selected_fetch, 0, sizeof(selected_fetch));
     if ((snapshot = VHO_DSL_CUDA_Linear_Snapshot
                         (pu_info, tree, diagnostic)) == NULL) {
@@ -3453,11 +3975,15 @@ VHO_DSL_CUDA_Emit_Selected_Tile
                 "DSL CUDA output has no cost-selected legal tile\n");
         goto done;
     }
-    if (VHO_DSL_CUDA_TMA_Prefetch) {
+    if (VHO_DSL_CUDA_TMA_Prefetch || VHO_DSL_CUDA_Whirl_Output != NULL) {
         VHO_DSL_Fetch_Pipeline_Control_Init(&fetch_control);
         fetch_control.focus_value_id = site.semantic_value_id;
-        fetch_control.maximum_buffer_stages = 2;
-        fetch_control.prefetch_distance_hint = 1;
+        fetch_control.maximum_buffer_stages = VHO_DSL_CUDA_TMA_Prefetch ? 2 : 1;
+        fetch_control.prefetch_distance_hint = VHO_DSL_CUDA_TMA_Prefetch ? 1 : 0;
+        if (!VHO_DSL_CUDA_TMA_Prefetch) {
+            fetch_control.enable_async_copy = 0;
+            fetch_control.enable_multidimensional_async = 0;
+        }
         fetch_analysis = VHO_DSL_Fetch_Pipeline_Create
             (pu_info, graph, locality, NULL, analysis, &fetch_control,
              diagnostic);
@@ -3468,8 +3994,7 @@ VHO_DSL_CUDA_Emit_Selected_Tile
         fetch_ir = VHO_DSL_Fetch_Pipeline_Get_IR(fetch_analysis);
         if (DSL_fetch_pipeline_ir_site_count(fetch_ir) != 1 ||
             !DSL_fetch_pipeline_ir_get_site(fetch_ir, 1, &fetch_site) ||
-            fetch_site.selected_tile_plan_id == 0 ||
-            fetch_site.selected_plan_id == fetch_site.baseline_plan_id)
+            fetch_site.selected_tile_plan_id == 0)
             goto done;
         if (fetch_candidate_count != NULL)
             *fetch_candidate_count = fetch_site.pipeline_plan_count;
@@ -3502,8 +4027,8 @@ VHO_DSL_CUDA_Emit_Selected_Tile
                 selected_fetch = candidate;
         }
         if (selected_fetch.id == 0 ||
-            selected_fetch.engine !=
-                DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC ||
+            (VHO_DSL_CUDA_TMA_Prefetch && selected_fetch.engine !=
+                DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC) ||
             selected_fetch.legality != DSL_OPT_LEGALITY_PROVEN) {
             fprintf(diagnostic,
                     "DSL CUDA TMA requested but P8 selected no legal TMA plan\n");
@@ -3541,18 +4066,25 @@ VHO_DSL_CUDA_Emit_Selected_Tile
                     "DSL CUDA output selected tile exceeds F32 kernel contract\n");
             goto done;
         }
+        if (VHO_DSL_CUDA_Whirl_Output != NULL &&
+            !VHO_DSL_CUDA_Pipeline_Valid(tile, selected_fetch)) {
+            fprintf(diagnostic, "DSL CUDA P8 selected schedule failed legality\n");
+            goto done;
+        }
         valid = path == NULL || VHO_DSL_CUDA_Write_Selected_Tile
                     (path, tile, cost, VHO_DSL_CUDA_TMA_Prefetch,
                      diagnostic);
-        if (valid && VHO_DSL_CUDA_TMA_Prefetch)
+        if (valid && path != NULL && VHO_DSL_CUDA_TMA_Prefetch)
             valid = VHO_DSL_CUDA_Append_TMA_Pipeline
                         (path, tile, selected_fetch, diagnostic);
         if (valid && emitted_plan_id != NULL)
             *emitted_plan_id = selected.id;
         if (valid && emitted_tile != NULL)
             *emitted_tile = tile;
+        if (valid && emitted_fetch != NULL)
+            *emitted_fetch = selected_fetch;
         if (valid && emitted_fetch_plan_id != NULL &&
-            VHO_DSL_CUDA_TMA_Prefetch)
+            selected_fetch.id != 0)
             *emitted_fetch_plan_id = selected_fetch.optimization_plan_id;
         break;
     }
@@ -3566,6 +4098,8 @@ done:
     return valid;
 }
 
+/* Report each phase decision or non-execution reason for this PU; distinguish
+ * host rewrite, staged device pipeline and source-only analysis evidence. */
 static void
 VHO_DSL_AI_Trace_Phases (PU_Info *pu_info,
                          DSL_OPT_PLAN_ID tile_plan_id,
@@ -3605,8 +4139,10 @@ VHO_DSL_AI_Trace_Phases (PU_Info *pu_info,
             candidates = tile ? tile_candidates : 0;
             selected = tile ? tile_plan_id : 0;
         } else if (phase == 8) {
-            status = fetch ? "analyzed_no_rewrite" : "disabled_by_option";
-            reason = fetch ? "source_sidecar_no_whirl_rewrite" :
+            status = fetch && VHO_DSL_CUDA_Whirl_Output != NULL ? "rewritten" :
+                     fetch ? "analyzed_no_rewrite" : "disabled_by_option";
+            reason = fetch && VHO_DSL_CUDA_Whirl_Output != NULL ? "device_pipeline" :
+                     fetch ? "source_sidecar_no_whirl_rewrite" :
                      (tile ? "cuda_tma_prefetch_off" : no_tile_reason);
             regions = fetch ? 1 : 0;
             candidates = fetch ? fetch_candidates : 0;
@@ -3628,11 +4164,14 @@ VHO_DSL_AI_Trace_Phases (PU_Info *pu_info,
         fprintf(TFile, "AI_OPT 7 PHASE matmul_f32_source %u %s %s "
                        "%u %u %u %u\n", phase, status, reason,
                 regions, candidates, selected,
-                tile_applied && (phase == 7 || phase == 9) ? 1U : 0U);
+                (tile_applied && (phase == 7 || phase == 9)) ||
+                (phase == 8 && fetch && VHO_DSL_CUDA_Whirl_Output != NULL) ? 1U : 0U);
     }
     fflush(TFile);
 }
 
+/* Recognize the bounded one-matmul PU admitted by generated-provider
+ * application; do not enlarge scope or infer fusion across call boundaries. */
 static BOOL
 VHO_DSL_AI_Is_Standalone_Matmul (WN *tree)
 {
@@ -3659,6 +4198,10 @@ VHO_DSL_AI_Is_Standalone_Matmul (WN *tree)
     return matmul_count == 1;
 }
 
+/* Own the active-PU VHO sequence: validate/refine, select, stage device plans,
+ * lower host semantics and emit controlled trace evidence. Device-image
+ * construction/publication stays in the backend driver; failed gates abort
+ * rather than silently accepting an incomplete optimized program. */
 WN *
 VHO_DSL_Lower_Driver
         (struct pu_info *pu_info,
@@ -3717,12 +4260,9 @@ VHO_DSL_Lower_Driver
     DSL_OPT_PLAN_ID emitted_fetch_plan_id = DSL_OPT_PLAN_INVALID_ID;
     UINT32 tile_candidate_count = 0, fetch_candidate_count = 0;
     DSL_TILE_PLAN_RECORD emitted_tile;
+    DSL_FETCH_PLAN_RECORD emitted_fetch;
     UINT32 device_entry_ordinal = 0;
     memset(&emitted_tile, 0, sizeof(emitted_tile));
-    if (VHO_DSL_CUDA_Whirl_Output != NULL)
-        FmtAssert(!VHO_DSL_CUDA_TMA_Prefetch,
-                  ("CUDA WHIRL output currently supports synchronous "
-                   "movement only"));
     if (VHO_DSL_CUDA_Tile_Apply)
         FmtAssert(Opt_Level >= 3 && standalone_matmul &&
                   ((VHO_DSL_CUDA_Tile_Output != NULL &&
@@ -3740,15 +4280,16 @@ VHO_DSL_Lower_Driver
                             &emitted_tile_plan_id, &emitted_fetch_plan_id,
                             &tile_candidate_count, &fetch_candidate_count,
                             &emitted_tile,
+                            &emitted_fetch,
                             stderr);
         FmtAssert(emitted, ("DSL CUDA tile plan selection failed"));
     }
     if (VHO_DSL_CUDA_Whirl_Output != NULL) {
-        FmtAssert(emitted_tile_plan_id != DSL_OPT_PLAN_INVALID_ID &&
-                  !VHO_DSL_CUDA_TMA_Prefetch,
-                  ("CUDA WHIRL image requires a selected synchronous tile"));
+        FmtAssert(emitted_tile_plan_id != DSL_OPT_PLAN_INVALID_ID,
+                  ("CUDA WHIRL image requires a selected tile"));
         FmtAssert(VHO_DSL_CUDA_Stage_Selected_Whirl
-                      (pu_info, emitted_tile, &device_entry_ordinal, stderr),
+                      (pu_info, emitted_tile, emitted_fetch,
+                       &device_entry_ordinal, stderr),
                   ("DSL CUDA selected tile staging failed"));
     }
 
@@ -3789,8 +4330,12 @@ VHO_DSL_Lower_Driver
         }
         if (emitted_fetch_plan_id != DSL_OPT_PLAN_INVALID_ID)
             fprintf(TFile,
-                    "AI_OPT 7 FETCH_ACTION 1 %u source_sidecar tma_2d "
-                    "whirl_rewrite=none\n", emitted_fetch_plan_id);
+                    "AI_OPT 7 FETCH_ACTION 1 %u %s %s %s\n",
+                    emitted_fetch_plan_id,
+                    VHO_DSL_CUDA_Whirl_Output != NULL ? "device_whirl_sidecar" : "source_sidecar",
+                    VHO_DSL_CUDA_TMA_Prefetch ? "tma_2d" : "cooperative_scalar",
+                    VHO_DSL_CUDA_Whirl_Output != NULL ?
+                        "whirl_rewrite=device_pipeline" : "whirl_rewrite=none");
         fflush(TFile);
     }
     if (standalone_matmul)

@@ -142,6 +142,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     k_loop: dict | None = None
     whirl_kernel: dict | None = None
     device_binding: dict | None = None
+    pipeline_kernel: dict | None = None
     edge_plan: dict | None = None
     selection: dict | None = None
     action: dict | None = None
@@ -203,6 +204,15 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                                  read_bytes=int(read_bytes),
                                  write_bytes=int(write_bytes),
                                  producer=int(producer), last_use=int(last_use)))
+        elif kind == "PIPELINE_KERNEL" and trace_version == "7" and len(fields) == 13:
+            if pipeline_kernel is not None:
+                raise ValueError("duplicate executable pipeline")
+            ordinal, owner, tile_plan, fetch_plan, engine, stages, size = fields[3:10]
+            if fields[10] != "acquire_issue_wait_compute_release" or fields[11] != "whirl_order=verified":
+                raise ValueError("unproven executable pipeline order")
+            pipeline_kernel = dict(ordinal=int(ordinal), owner=owner, tile_plan=int(tile_plan),
+                                   fetch_plan=int(fetch_plan), engine=engine, stages=int(stages),
+                                   bytes=int(size), order=fields[10], abi=fields[12][4:])
         elif kind == "COST_MODEL" and trace_version == "7" and len(fields) in (6, 7, 9, 10):
             if cost_model is not None or fields[3:] not in (
                     ["2", "valid_predicated_elements", "dynamic_cta_k_barriers"],
@@ -392,7 +402,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
             if phases[7]["status"] not in ("disabled_by_option", "no_eligible_region"):
                 raise ValueError("missing tile decision for active P7")
             if (fetch_candidates or fetch_selection or fetch_action or grids or
-                    layouts or gmem or smem):
+                    layouts or gmem or smem or pipeline_kernel):
                 raise ValueError("optimization decision without tile selection")
             if semantic or locality:
                 raise ValueError("tensor facts without active tile analysis")
@@ -612,8 +622,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
              whirl_kernel["tile"]) !=
             (selection["site"], selection["selected"],
              chosen_kernel_tile["tile"]) or
-                not whirl_kernel["image"].endswith(".B") or
-                fetch_candidates):
+                not whirl_kernel["image"].endswith(".B")):
             raise ValueError("device WHIRL kernel disagrees with selected tile")
         selection["whirl_kernel"] = whirl_kernel
     if edge_plan is not None:
@@ -651,7 +660,9 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     if action["emission"] == "device_whirl_sidecar" and whirl_kernel is None:
         raise ValueError("device WHIRL action has no kernel image")
     applied = action["tile_rewrite"] == "generated_runtime_call"
-    if applied and (trace_version != "7" or fetch_candidates):
+    if applied and (trace_version != "7" or
+                    any(row["engine"] == "tma_like" and row["optimization_plan"] ==
+                        fetch_selection["selected"] for row in fetch_candidates)):
         raise ValueError("generated M2 rewrite requires v7 synchronous tile")
     if trace_version in ("5", "6", "7") and fetch_candidates:
         if not fetch_candidates or fetch_selection is None or fetch_action is None:
@@ -667,16 +678,37 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                 (row["unhidden"] + int(row["engine"] != "demand"),
                  row["optimization_plan"]))):
             raise ValueError("fetch selection disagrees with movement cost")
-        if (chosen["engine"] != "tma_like" or chosen["stages"] != 2
-                or chosen["distance"] != 1
+        tma = chosen["engine"] == "tma_like"
+        device = fetch_action["source"] == "device_whirl_sidecar"
+        if (chosen["engine"] not in ("demand", "vector", "tma_like")
+                or chosen["stages"] != (2 if tma else 1)
+                or chosen["distance"] != int(tma)
                 or chosen["buffering"] !=
                     by_plan[selection["selected"]]["shared"] * chosen["stages"]
                 or fetch_selection["engine"] != chosen["engine"]
                 or fetch_action != dict(site=fetch_selection["site"],
                                         selected=fetch_selection["selected"],
-                                        source="source_sidecar", movement="tma_2d",
-                                        rewrite="whirl_rewrite=none")):
-            raise ValueError("P8 TMA action disagrees with selected plan")
+                                        source="device_whirl_sidecar" if device else "source_sidecar",
+                                        movement="tma_2d" if tma else "cooperative_scalar",
+                                        rewrite="whirl_rewrite=device_pipeline" if device else "whirl_rewrite=none")
+                or (not device and not tma)):
+            raise ValueError("P8 action disagrees with selected plan")
+        if device:
+            selected_tile = by_plan[selection["selected"]]
+            if (whirl_kernel is None or pipeline_kernel is None or device_binding is None
+                    or pipeline_kernel != dict(
+                        ordinal=device_binding["ordinal"], owner=device_binding["owner"],
+                        tile_plan=selection["selected"], fetch_plan=chosen["optimization_plan"],
+                        engine=chosen["engine"], stages=chosen["stages"],
+                        bytes=chosen["buffering"] + (16 if tma else 0),
+                        order="acquire_issue_wait_compute_release",
+                        abi="tma_maps_ptr_v1" if tma else "sync_ptr_v1")
+                    or (tma and (selected_tile["layout"]["a_layout"] != "row_major" or
+                                 selected_tile["smem"]["b_layout"] != "row_major"))):
+                raise ValueError("executable pipeline proof disagrees with selected plan")
+            selection["pipeline_kernel"] = pipeline_kernel
+        elif pipeline_kernel is not None:
+            raise ValueError("pipeline proof without device WHIRL action")
         selection["fetch"] = dict(candidates=fetch_candidates,
                                   selection=fetch_selection,
                                   action=fetch_action)
@@ -684,6 +716,8 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         raise ValueError("missing P8 fetch decision or action")
     elif fetch_selection is not None or fetch_action is not None:
         raise ValueError("incomplete P8 fetch decision or action")
+    elif pipeline_kernel is not None:
+        raise ValueError("pipeline proof without fetch decision")
     if trace_version in ("6", "7"):
         expected_status = "rewritten" if applied else "analyzed_no_rewrite"
         expected_rewrites = 1 if applied else 0
@@ -696,7 +730,9 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                 or phases[9]["rewrites"] != expected_rewrites):
             raise ValueError("P7/P9 coverage disagrees with selected tile")
         if "fetch" in selection:
-            if (phases[8]["status"] != "analyzed_no_rewrite"
+            device = "pipeline_kernel" in selection
+            if (phases[8]["status"] != ("rewritten" if device else "analyzed_no_rewrite")
+                    or phases[8]["rewrites"] != int(device)
                     or phases[8]["candidates"] != len(fetch_candidates)
                     or phases[8]["selected"] != fetch_selection["selected"]):
                 raise ValueError("P8 coverage disagrees with selected fetch plan")
@@ -818,6 +854,9 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
         summary.append("selected_smem " + " ".join(
             f"{key}={value}" for key, value in selection["selected_smem"].items()
             if key not in ("site", "tile")))
+    if "pipeline_kernel" in selection:
+        summary.append("executable_pipeline " + " ".join(
+            f"{key}={value}" for key, value in selection["pipeline_kernel"].items()))
     (reports / "optimization.log").write_text(
         "# What it summarizes: Complete P0-P11 optimization process, including every phase decision and non-execution reason.\n"
         + "".join(phase_contents), encoding="utf-8")
@@ -1002,6 +1041,14 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
             f"action source={fetch['action']['source']} "
             f"movement={fetch['action']['movement']} "
             f"{fetch['action']['rewrite']}")
+        if "pipeline_kernel" in selection:
+            pipeline = selection["pipeline_kernel"]
+            fetch_lines.extend((
+                "# Order: initially free slot -> acquire/arm bytes -> issue A/B -> acquire-wait -> compute -> uniform CTA release -> guarded refill; drain before invalidation.",
+                "# Two-slot identity: slot=kt%2, phase=(kt//2)%2; refill tile=kt+2 only after release. Non-TMA uses one synchronous slot and CTA publication/release barriers.",
+                "# Proof is structural WHIRL plus slot induction; native GPU correctness and measured overlap remain unverified.",
+                "executable " + " ".join(f"{key}={value}" for key, value in pipeline.items()),
+            ))
         fetch_content = "\n".join(fetch_lines) + "\n"
     summary = (
         "# What it summarizes: Observed optimization-phase outcomes in this trace; untraced phases are not certified.\n"
@@ -1040,10 +1087,12 @@ def render_program(trace: Path, reports: Path) -> None:
     lines = trace.read_text(encoding="utf-8").splitlines()
     bindings = [line.split() for line in lines
                 if line.startswith("AI_OPT 7 DEVICE_BIND ")]
+    pipelines = [line.split() for line in lines
+                 if line.startswith("AI_OPT 7 PIPELINE_KERNEL ")]
     segments: list[list[str]] = []
     segment: list[str] = []
     for line in lines:
-        if line.startswith("AI_OPT 7 DEVICE_BIND "):
+        if line.startswith(("AI_OPT 7 DEVICE_BIND ", "AI_OPT 7 PIPELINE_KERNEL ")):
             continue
         segment.append(line)
         if line.startswith("AI_OPT 7 PHASE matmul_f32_source 11 "):
@@ -1068,6 +1117,10 @@ def render_program(trace: Path, reports: Path) -> None:
             raise ValueError("multi-PU trace binding order or owner mismatch")
         owner, plan, tile, entry, image = fields[4:]
         segment_lines.append(" ".join(fields))
+        matching = [row for row in pipelines if row[3] == str(ordinal) and row[4] == owner]
+        if pipelines and len(matching) != 1:
+            raise ValueError("multi-PU pipeline proof owner mismatch")
+        segment_lines.extend(" ".join(row) for row in matching)
         pu_trace = reports / f"pu-{ordinal}.t"
         pu_reports = reports / f"pu-{ordinal}"
         pu_trace.write_text("\n".join(segment_lines) + "\n", encoding="utf-8")

@@ -1057,6 +1057,21 @@ W2C_Outfile_Init(BOOL emit_global_decls)
                    "typedef unsigned long long _UINT64;\n"
                    "typedef float _IEEE32;\n"
                    "typedef double _IEEE64;\n\n");
+   if (W2C_Cuda_Mode)
+   {
+      const ST *st;
+      ST_IDX st_idx;
+      FOREACH_SYMBOL(GLOBAL_SYMTAB, st, st_idx)
+      {
+         if (ST_sym_class(st) == CLASS_FUNC &&
+             strcmp(ST_name(st), "__open64_cuda_tma_issue") == 0)
+         {
+            Write_String(W2C_File[W2C_DOTC_FILE], NULL,
+                         "#include <open64_cuda_pipeline.cuh>\n\n");
+            break;
+         }
+      }
+   }
 
    /* Emit the header file if appropriate */
    if (emit_global_decls)

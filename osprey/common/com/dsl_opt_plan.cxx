@@ -141,6 +141,8 @@ DSL_Opt_Selection_Record_Valid
            selection->rejected_plan_count == rejected;
 }
 
+/* Validate structural legality/reason pairs, including a phase rejecting a
+ * target-incompatible candidate; no target policy is decided by this service. */
 static BOOL
 DSL_Opt_Legality_Valid (UINT32 legality, UINT32 reason)
 {
@@ -152,6 +154,7 @@ DSL_Opt_Legality_Valid (UINT32 legality, UINT32 reason)
         return (reason >= DSL_OPT_REJECT_INVALID_REFERENCE &&
                 reason <= DSL_OPT_REJECT_RESOURCE) ||
                reason == DSL_OPT_REJECT_MALFORMED ||
+               reason == DSL_OPT_REJECT_TARGET_MISMATCH ||
                reason == DSL_OPT_REJECT_PROVIDER_MISMATCH ||
                reason == DSL_OPT_REJECT_PROVIDER_UNAVAILABLE;
     return FALSE;

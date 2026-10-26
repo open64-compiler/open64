@@ -1492,6 +1492,53 @@ phase and summary logs, search-OFF comparisons, receipts and checksums.
 This closes only the synchronous SMEM compiler-review slice, not `m3` native
 prefetch/pipeline acceptance.
 
+## Executable P8 Package After PR 189
+
+Compiler-side scope: materialize the selected P8 schedule in device WHIRL,
+not just in the legacy CUDA template. Synchronous selected fetch plans use
+one cooperative scalar staging slot with publication and release barriers.
+`cuda_tma_prefetch=ON` plus `cuda_whirl_output` now constructs the two-slot
+exact compact TMA schedule. Expected transaction bytes are armed before
+the two operand issues; all consumers acquire-wait before reading and release
+through a uniform CTA barrier before guarded refill. Prologue bounds,
+slot/parity expressions, operation order, K-loop bounds and refill conditions
+are structurally checked; per-slot induction establishes generation lifetime.
+The driver emits `PIPELINE_KERNEL` only after verified image construction and
+publication. Calls remain conservatively effectful; common binary formats
+are unchanged. The scalar source implementation of a logical vector fetch
+plan is not a claim of vector PTX.
+
+The report tool must require selected tile/fetch/binding agreement and summarize
+engine, slot count, total logical storage including barriers, operation order,
+proof status, kernel ABI and actual device-WHIRL action in `fetch-pipeline.log`
+and the aggregate summary. Missing or contradictory proof is a hard error.
+Preserve the raw `.t` as the first debugging artifact, not just its reports.
+
+The five-argument pointer-map TMA entry is source-reviewable but deliberately
+not admitted to the existing synchronous generated-host provider ABI. Native
+map setup/launch integration is the next runtime boundary. Static TMA storage
+is capped conservatively at 48 KiB until dynamic shared allocation is lowered;
+irregular TMA, padded/XOR TMA, cp.async, cluster multicast, GPU correctness,
+resource calibration and measured overlap remain open. See the executable
+contract in `AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md`.
+
+The `dsl_lower.cxx` architectural header and all function definitions/forward
+declarations now have entry contracts, enforced by `test_source_contract.py`.
+Do not confuse the active P8 worktree with the older primary checkout.
+
+Verified compiler milestone: `5fb45858`. All 53 unit tests pass. The executable
+suite retains synchronous K=135 and TMA K=16/32/48/80/144 kernels (one through
+multiple slot wraps), with zero host-simulated reference error and matched
+issue/completion/release censuses. It rejects corrupted order/parity/refill
+source, corrupted proof traces, irregular TMA and the unsupported host ABI.
+Two TMA PUs share target-operation and CUDA coordinate builtin identities.
+Applied synchronous, SMEM-choice, edge, multi-PU, legacy TMA and AIO-10
+Hopper/Blackwell/CPU/unsafe-distance regressions pass. Accepted artifacts are:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m3/executable-p8/sha256-46791c6a18371b6766acf3f30d006974d1de8a9d4b18302dee8b717ecd1b903d/`.
+The bundle includes exact commands, binary hashes, mapped images/dumps, `.cu`,
+target-operation header, raw `.t`, reports, simulations, receipts and checksums.
+This does not close native-GPU M3 acceptance or the TMA host launch adapter.
+
 ## Related Documents
 
 - `AI-COMPILER-OPTIMIZATION-PROGRESS.md` - running status, execution gates,

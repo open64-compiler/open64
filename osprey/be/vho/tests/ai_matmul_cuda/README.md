@@ -493,3 +493,31 @@ layout. Preserve all `.t`, `.B/.T`, `.cu` and derived phase logs under a new
 The target-bank and full-score algorithm is documented in the hardware
 resource/memory planning design. This is a single-stage synchronous package,
 not native NVCC/PTX/GPU or multi-stage TMA acceptance.
+## Executable P8 WHIRL Review
+
+Run `test_executable_pipeline.py --build-dir <build> --output-dir <fresh-dir>`
+inside the integration image. It retains input/device binary WHIRL, source-
+interleaved `.T`, canonical `.cu`, operation header, raw `.t`, phase/summary
+logs, exact commands, simulator output and checksums. It tests synchronous
+irregular K and exact TMA K=16/32/48/80/144, giving one, two, three, five and
+nine K tiles for the selected 64x64x16 plan. The host-only operation model
+defers transfers until wait, completes B before A, counts every generation,
+and rejects early reuse/invalidation. It permits a consumer to reach wait
+before the producer issues, just as a blocking barrier must. It does not
+simulate native PTX timing or prove GPU correctness.
+
+Negative audits alter source wait/parity/refill order and trace proof rows.
+Irregular TMA and synchronous-provider application of the five-argument TMA
+ABI must fail before publication. A two-PU TMA case checks shared operation
+symbols and per-PU proof/report routing. The existing synchronous applied,
+multi-PU, edge and legacy-TMA tests remain separate regressions.
+
+The new canonical TMA entry is `(float *A, float *B, float *C, void *A_map,
+void *B_map)`. The runtime owns correctly encoded/uploaded immutable maps,
+stream ordering and map/buffer lifetimes. Do not launch it through the old
+three-pointer provider ABI or the legacy by-value tensor-map adapter. Its
+support header contains target operations only; schedule control flow is in
+WHIRL. A prepared native compile command is
+`nvcc -std=c++17 -arch=sm_90 -I. -c gemm.whirl.cu` from a case directory with
+the retained `open64_cuda_pipeline.cuh`. NVCC/PTX and GPU validation have not
+been performed on the current host.

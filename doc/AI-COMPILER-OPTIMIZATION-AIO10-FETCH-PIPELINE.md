@@ -158,6 +158,9 @@ next run.
 
 ## Deferred Work
 
+The check-only description above remains the AIO-10 baseline. The executable
+P8 slice below supersedes only its synchronous/two-slot TMA deferral.
+
 - executable prefetch and pipeline scheduling;
 - exact cp.async, TMA, mbarrier, cluster, multicast, and Blackwell contracts;
 - LNO-backed issue-point and loop dependence proof;
@@ -169,3 +172,84 @@ next run.
 - AIO-11 complete physical-plan selection and atomic WHIRL rewriting;
 - mapped-image publication, if later justified;
 - explicit IPA summaries and cross-PU planning.
+
+## Executable P8 Contract
+
+Scope: one selected fixed-shape F32 GEMM per active analysis PU. VHO owns
+plan validation and schedule construction; the backend driver owns device-PU
+construction/publication. No binary WHIRL layout or opcode changes are needed:
+use ordinary DO_LOOP, IF, scalar address expressions, shared-attributed symbols
+and conservatively effectful device CALLs. No new logical tensor operations
+are introduced after semantic lowering. The repository's existing high-level
+WHIRL construction/strict-tree rules remain applicable. The external
+`WHIRL.pdf` baseline is not present in this checkout.
+
+| Term | Definition |
+| --- | --- |
+| Slot | One A staging allocation and one B staging allocation reused together for a K tile |
+| Generation | For two slots, `floor(tile_index/2)`; ready-barrier phase is generation modulo two |
+| Acquire | Producer reuses an initially free or CTA-released slot and arms its ready barrier for exactly A+B payload bytes |
+| Issue | One TMA copy for A and one for B, targeting that slot and generation |
+| Wait | Every consumer observes the ready barrier with acquire semantics before any shared reads |
+| Release | A uniform CTA barrier after all compute reads; producer may then overwrite the slot |
+| Drain | Every issued generation has been waited, consumed and released before barrier invalidation/kernel exit |
+| Tensor map | Immutable, host-encoded 128-byte CUDA descriptor in device-global storage, at least 64-byte aligned; describes the exact row-major unswizzled A/B tile |
+
+Non-TMA: one slot, cooperative predicated scalar fills, CTA publication wait,
+compute, CTA release, next fill. Zero-fill preserves irregular-edge behavior.
+It is a synchronous schedule; it does not claim asynchronous overlap.
+
+Two-slot TMA: compact exact tiles only, depth two, distance one, no XOR or
+padded-A layout. Initialize two 8-byte ready barriers with one arrival each,
+publish initialization to the async proxy, and synchronize the CTA. Thread
+zero issues `min(2,K_tiles)` prologue pairs, arming expected bytes **before**
+the copies. All threads wait for slot `kt%2`, phase `(kt/2)%2`, compute, then
+release together. Thread zero can acquire/issue `kt+2` into the released slot
+only if that future tile exists. Drain and invalidate both barriers. No
+consumer-warp specialization or cluster multicast is implied.
+
+The ordering proof uses the fixed schedule form and a per-slot induction:
+initially free; issue(g) precedes wait(g); wait(g) precedes all reads(g);
+release(g) follows every read(g); issue(g+1) occurs only after release(g).
+The guarded prologue/refill produce every tile exactly once, and the final
+release drains the outstanding generation. Barrier parity alternates on
+successive uses of the same slot. Structural WHIRL checks and independent
+source/slot-state tests must accompany this argument; a trace label alone is
+not a proof. Unsupported geometry, resources, ordering or ABI must fail closed
+before device-image publication.
+
+`osprey/include/open64_cuda_pipeline.cuh` defines the concrete device-call ABI
+for single PTX operations (init, async-proxy publish, arrive/expect-tx acquire,
+2-D issue, acquire-wait, invalidate). It contains no slot selection, prologue,
+refill policy or GEMM schedule. Those decisions and control flow reside in
+WHIRL. `whirl2c -cuda` prints recorded user alignment and includes the operation
+header when its symbols are present; it cannot select a schedule.
+
+The TMA device entry takes `(A,B,C,A_map,B_map)`, with maps passed by pointer;
+it is distinct from the legacy by-value/grid-constant template ABI. Host maps
+must be prepared by `cuTensorMapEncodeTiled`, uploaded and kept alive through
+completion in the same correctly ordered stream. A/B map extents, strides,
+tile boxes, dtype, swizzle and base pointers must match the selected plan.
+Launch only on sm_90+ with enough opt-in shared memory. The existing generated
+host-provider ABI remains synchronous-only and must reject TMA application
+until a reviewed launch adapter consumes this new contract.
+
+Capacity includes both A/B slots and both ready barriers, not just payload.
+Shared arrays carry explicit 128-byte alignment; ready storage is 8-byte
+aligned. All seeded tile footprints are multiples of 128 bytes. Runtime
+device resource checks and native compiler resource reports remain required.
+This first WHIRL lowering uses static arrays and conservatively gates total
+TMA storage at 48 KiB; it cannot spend the larger dynamic-SMEM opt-in budget.
+Larger selected TMA plans fail closed until dynamic shared storage is lowered.
+The logical vector fetch alternative lowers to cooperative scalar source
+fills here; its name is not a claim of vector PTX or asynchronous execution.
+Generic async-copy plans and TMA edges/swizzles are not silently lowered as
+this schedule. The existing `cuda_tma_prefetch` option selects the TMA request;
+device-image output must no longer reject it solely for being asynchronous.
+
+The operation contract follows the
+[NVIDIA PTX ISA](https://docs.nvidia.com/cuda/parallel-thread-execution/)
+and [CUDA asynchronous-copy guide](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/async-copies.html).
+Our fixed schedule, proof checks, option behavior and trace schema are Open64
+design proposals. Host simulation and compiler inspection are not native PTX,
+GPU correctness, race-sanitizer or performance certification.
