@@ -8,6 +8,15 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+Priority update (2026-10-25): further partial-sum promotion/numerical work is
+**deferred until explicit FP8 support begins**. Preserve the prototype below;
+production optimization remains fixed-shape F32 D/S1/T2. The next proposed
+compiler package is movement-aware candidate/resource discovery, followed by
+resource/profitability refinement and independently gated movement/launch
+extensions. See
+[remaining FP32 compiler work](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#remaining-fp32-multilevel-tiling-compiler-work).
+GPU certification remains open and separate from compiler-side source review.
+
 Numerical-contract increment (2026-10-25): common runtime records and an
 active-PU VHO segment planner now have a verified scalar F32 WHIRL adapter.
 The linked fixture retains same-PU before/after images, direct CUDA emission,

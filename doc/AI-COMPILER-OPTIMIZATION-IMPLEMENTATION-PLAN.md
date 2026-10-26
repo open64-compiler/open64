@@ -1613,7 +1613,39 @@ Immutable SHA256-verified evidence, including before/after WHIRL, direct
 CUDA, raw traces, reports, commands and producer-source/binary fingerprints:
 `/Users/shinmingliu/open64/artifacts/review/ai-optimization/m3/d-s1-t2-comparison/sha256-e90e39c0a17ac15ac58ba41338cb4ca774d5da21a9d70bb138857bf42d845918/`.
 
+## Remaining FP32 Multilevel-Tiling Compiler Work
+
+Current priority (2026-10-25): continue fixed-shape F32 D/S1/T2 optimization
+without requiring a GPU. The selected-plan WHIRL and its `whirl2c -cuda`
+output remain the review authority. Historical M0-M3 acceptance boxes above
+also include native execution and must not be read as evidence that the
+implemented compiler transformations are absent.
+
+| Order | Remaining compiler work | Required review evidence |
+| --- | --- | --- |
+| 1 | Movement-aware candidate/resource discovery: evaluate D, S1 and T2 resource legality before staged-only filtering can discard a useful D seed; refine register estimates independently of SMEM use. Keep enumeration bounded and deterministic. | Candidate census, per-plan rejection reasons, resource accounting, selected/fallback records and WHIRL-derived CUDA; tests in which staged resource rejection does not incorrectly reject D. |
+| 2 | Complete the analytic resource/profitability model: register and SMEM allocation granularity, resident blocks/warps, grid underfill and tail waves, and a D-specific traffic/Roofline diagnostic. Keep issued-sector demand distinct from unknown cache/HBM service. | Auditable cost components and resource bounds for every candidate; analytic oracles and sensitivity tests. Unknown/calibration-dependent quantities remain explicitly low-confidence. |
+| 3 | Expand executable movement choices as separately gated increments: actual aligned vector loads with scalar tails, non-TMA asynchronous copies, and additional legal stage/layout combinations. Dynamic SMEM beyond the current conservative static limit requires a matching launch-resource contract. | Plan-to-WHIRL address, alignment, capacity and acquire/issue/wait/release proofs; no vector/overlap credit for scalar or synchronous code. Preserve a legal synchronous fallback. |
+| 4 | Complete selected-plan launch integration: generated-host application currently supports S1 only; carry D/T2 requirements, tensor-map setup, selected-entry resolution and buffer/stream ordering through the generic provider ABI and target launch adapter. | Compiler-generated host/device review sources, ABI and mock-runtime tests; distinguish compiler completion from native launch certification. |
+| 5 | Close the compiler-only review matrix for the supported subset, including shapes/tails, multiple PUs, option controls and rejected plans. | Immutable raw `.t`, before/after WHIRL, `.cu`, `tile.log`, `fetch-pipeline.log`, `physical-plan.log`, `optimization.log` and `optimization-summary.log`, with costs, selection reasons and actual transformation actions. |
+
+Recommended next package is order 1. Resource/profitability refinement follows;
+movement extensions should be selected by explicit legality and cost evidence,
+not enabled as unconditional rewrites. The list is a remaining-work roadmap,
+not a claim that each optional movement extension is necessary for the current
+bounded FP32 subset to compile correctly.
+
+Native CUDA compilation, PTX/SASS inspection, measured resource/spill counts,
+GPU correctness, baseline timing and cache/overlap calibration remain separate
+acceptance gates. Host simulation and relative cost minima cannot close them.
+
 ## Target-Specific Numerical Planning Follow-On
+
+**Deferred (2026-10-25, user direction):** resume native partial-sum promotion
+and related numerical integration only when FP8 support is explicitly started.
+Retain the existing contract prototype, tests and evidence; do not make further
+FP8 work a prerequisite for FP32 multilevel-tiling milestones. Blackwell FP4
+remains a separate future target-profile effort.
 
 The proposed
 [numerical accumulation design](AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md)
