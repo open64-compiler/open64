@@ -95,3 +95,11 @@ The existing 3x5x7 example still selects D among 19 pairs at relative cost 4;
 speedup is claimed. The source-review harness stops the compiler driver at
 `-S`; generated CUDA is separately host-compiled and simulated. Native CUDA,
 PTX/SASS, actual register/spill allocation and GPU acceptance remain open.
+
+Producer checkpoint: `ef7cebce`. Immutable evidence (1007 checksummed files,
+including raw traces, before/after `.B/.T`, diffs, `.cu`, audited reports,
+commands, build/restoration logs, source snapshots and binary fingerprints):
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m5/movement-resources/sha256-792700b3a528cd2cf07ac04097e0b437f42d0ca6b27a1f78d4f458bd1de10872/`.
+The retained tail-case device image was independently reopened from that
+read-only receipt with `ir_b2a -st -src` and reproduced the retained dump;
+replaying its `.t` reproduced `optimization-summary.log` exactly.

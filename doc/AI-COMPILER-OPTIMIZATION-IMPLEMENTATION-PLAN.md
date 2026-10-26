@@ -1625,6 +1625,10 @@ See [movement-resource design](AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md).
 Occupancy, allocation granularity, actual registers/spills and grid waves are
 not implemented by this increment. The constrained native contracts, rather
 than a new production tile family, demonstrate staged rejection preserving D.
+Checkpoint `ef7cebce` passes 77 unit tests, D/S1/T2 integration, joint
+controls/baseline parity, executable P8 and linked AIO-10 contracts. The
+immutable receipt and independent reopen/replay results are indexed in
+the movement-resource design's Compiler Checkpoint section.
 
 Current priority (2026-10-25): continue fixed-shape F32 D/S1/T2 optimization
 without requiring a GPU. The selected-plan WHIRL and its `whirl2c -cuda`

@@ -21,6 +21,10 @@ FP8 support or unconditional movement rewriting.
 Validation: 77 unit tests, D/S1/T2 integration, joint controls/baseline parity,
 executable P8 and linked AIO-10 contracts pass; eleven malformed common
 records are rejected. Generated-source host simulations report zero error.
+Producer checkpoint `ef7cebce`; SHA256-verified immutable evidence:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m5/movement-resources/sha256-792700b3a528cd2cf07ac04097e0b437f42d0ca6b27a1f78d4f458bd1de10872/`.
+Retained device-WHIRL reopen and trace-report replay reproduce the review
+outputs. No existing review receipt was modified or removed.
 
 Priority update (2026-10-25): further partial-sum promotion/numerical work is
 **deferred until explicit FP8 support begins**. Preserve the prototype below;
