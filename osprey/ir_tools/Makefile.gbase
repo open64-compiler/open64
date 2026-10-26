@@ -188,6 +188,7 @@ LDIRT += dsl_runtime_variant_opt.o
 LDIRT += dsl_telemetry_feedback_opt.o
 LDIRT += dsl_physical_plan_opt.o
 LDIRT += dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o
+LDIRT += dsl_accumulation_contract_test dsl_accumulation_contract_test.o dsl_accumulation_opt.o
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
 LDIRT += dsl_opt_contract_test dsl_opt_contract_test.o
 LDIRT += dsl_shape_refine_contract_test dsl_shape_refine_contract_test.o
@@ -253,6 +254,7 @@ COMMON_COM_CXX_SRC =	\
 	dsl_residency_candidate.cxx \
 	dsl_tile_candidate.cxx \
 	dsl_fetch_pipeline.cxx \
+        dsl_accumulation.cxx \
 	dsl_physical_plan.cxx \
 	dsl_runtime_variant.cxx \
 	dsl_telemetry_profile.cxx \
@@ -499,6 +501,15 @@ dsl_tile_candidate_contract_test: $(OBJECTS) controls.o \
 
 dsl_tile_candidate_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_tile_candidate_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_accumulation_contract_test: $(OBJECTS) controls.o dsl_accumulation_opt.o dsl_accumulation_contract_test.o
+	$(link.c++f) -o $@ dsl_accumulation_contract_test.o controls.o dsl_accumulation_opt.o $(OBJECTS) $(LDFLAGS)
+
+dsl_accumulation_contract_test.o: $(BE_VHO_DIR)/tests/dsl_accumulation_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_accumulation_opt.o: $(BE_VHO_DIR)/dsl_accumulation_opt.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_fetch_pipeline_contract_test: $(OBJECTS) controls.o \

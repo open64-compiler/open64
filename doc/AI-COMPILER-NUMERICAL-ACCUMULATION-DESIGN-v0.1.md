@@ -1,7 +1,8 @@
 # Numerical Accumulation And Scaled GEMM Design v0.1
 
-Date: 2026-10-25. Status: proposed numerical planning contract, not executable
-FP8/FP4 support. Current D/S1/T2 device kernels remain scalar FP32. Open64
+Date: 2026-10-25. Status: common contract, VHO segment planning and a verified
+scalar WHIRL adapter implemented; native FP8/FP4 support remains planned.
+Current D/S1/T2 device kernels remain scalar FP32. Open64
 `F4` means four-byte FP32, not four-bit FP4.
 
 ## 1. Purpose And Terms
@@ -151,7 +152,8 @@ choose the model's calibration recipe or prove model accuracy.
 
 ## 4. Proposed Common Records And Ownership
 
-Names below are design proposals; do not claim they are implemented C++ IR.
+These are architectural record names. Section 7 identifies the implemented
+C++ subset; the full numerical-policy fields below are not all implemented.
 
 | Owner/tag | Record or extension | Required information |
 | --- | --- | --- |
@@ -249,5 +251,77 @@ Next implementation slices, not completed by this document:
 6. Certify exact instruction sequences, target-native numerical results,
    cost calibration and end-to-end model quality when hardware is available.
 
-No executable option, trace schema, WHIRL binary format or FP32 kernel behavior
-is changed by this design note.
+## 7. Implemented Contract Slice
+
+Partial-sum promotion is adopted as an internal semantic obligation, not a
+required out-of-line function call. The selected WHIRL must expose bounded
+partial computation, completion, scale application when required, ordered
+outer merge and reset. Standard WHIRL is reused; no new opcode, mapped-image
+row or binary format is added. A target implementation may inline the entire
+sequence. Inlining removes call overhead, not the waits, additions or live
+accumulator storage. Promotion means merging partial results, not converting
+every FP8 input to FP16 and not recovering previously discarded bits.
+CUTLASS is a reference mechanism: its
+[accumulation helper](https://github.com/NVIDIA/cutlass/blob/main/include/cutlass/gemm/collective/fp8_accumulation.hpp)
+exposes the wait/merge/reset sequence and its device methods use
+[force-inline device annotations](https://github.com/NVIDIA/cutlass/blob/main/include/cutlass/detail/helper_macros.hpp).
+Our contract adopts the semantics, not the C++ template ABI or a guarantee
+that every target uses the same promotion interval.
+
+The implemented initial APIs are:
+
+| Layer | Implemented interface and limit |
+| --- | --- |
+| Common substrate | `dsl_accumulation.h/.cxx`: runtime-only `DSL_NUMERICAL_CONTRACT_RECORD`, `DSL_ACCUMULATION_PLAN_RECORD`, segment records, structural verification and compact printing. Initial formats include F32, E4M3, E5M2 and E2M1; partial/outer records require F32. |
+| VHO | `dsl_accumulation_opt.h/.cxx`: active-PU, -O3-only segment planning; numerical permission/evidence gates; exact coverage and tail accounting; instruction alignment and optional software scale-group subdivision. |
+| Scalar materializer | `VHO_DSL_accumulation_materialize_f32`: detached ordinary DO_LOOP/LDID/ILOAD/MPY/ADD/STID/ISTORE code, private partial resets and outer merges. Caller commits only after verification. This adapter is synchronous and needs no completion instruction. |
+| Postcheck | `VHO_DSL_accumulation_verify_f32`: checks the selected sequence, types, addresses, bounds, nesting and unique WN ownership using Open64 WN equivalence/traversal. Wrong scope, symbol aliasing or unsupported native profiles cannot publish an output block. |
+| Hopper profile | Planning only: K=32 WGMMA reduction quantum, FP8 inputs, requested/effective element intervals. Internal bits remain unknown; ISA evidence ID 2 records the WGMMA precision caveat, not a fabricated guaranteed 14-bit width. |
+| Blackwell profile | Rejected until independent scaled-MMA, packing, scales and resource semantics are implemented. It cannot reuse Hopper's limitation or scalar lowering. |
+| Trace/report | Separate `AI_ACC 1` contract/plan/segment/action/rejection stream and standalone report audit. Existing `AI_OPT 7` remains unchanged. |
+
+The scalar profile uses ISA evidence ID 1 for F32's 24-bit significand.
+Contract evidence IDs identify caller-accepted numerical recipes; they are
+not populated by guessing LLM accuracy. VHO supplies internal precision
+facts; requests cannot override them with an invented bit count. The planner
+rounds a requested interval down to an instruction boundary, subdivides at
+software scale groups and records any final neutral padding separately as
+issued versus valid K. It caps expansion at 4096 segments and rejects unsafe
+I4 geometry. `BK` remains independent of the promotion interval.
+
+This is an opt-in internal service, exercised by a linked native producer;
+it is not automatically invoked for existing D/S1/T2 matmul kernels and adds
+no `openpy` driver option. The generic scalar fixture is a dot product, not
+a new optimized GEMM. Hopper can be planned, but attempts to pass it through
+the scalar materializer fail. No Hopper WGMMA code generation, native GPU
+accuracy fix or Blackwell FP4 implementation is claimed.
+
+The records currently live for the owning phase. The executable reset/merge
+sequence survives ordinary mapped-image writing; semantic annotations for
+protection through later optimizing phases and automatic phase-boundary
+verification remain required before production native FP8 enablement. A
+later pass must not collapse bounded partial sums into an unrestricted native
+accumulation chain. The caller must invalidate/revalidate the contract after
+changes to reduction order, instructions, scales, loop bounds or accumulators.
+
+`test_accumulation_contract.py` retains independently produced same-PU before
+and after `.B`, source-interleaved `.T`, the raw diff and WHIRL-derived `.cu`.
+The producer checks 45 scalar K/interval combinations, scale subdivision,
+14 malformed contracts, four altered WHIRL sequences, -O0/-O1/-O2 rejection,
+aliased private-symbol rollback and unsupported Hopper/Blackwell lowering.
+Host execution checks exact and varying-sign inputs plus an absorption stress
+case; an improvement for that case is not a universal error bound.
+
+Reports start with `What it summarizes`. `accumulation.log` and
+`optimization.log` retain the complete accumulation stream;
+`optimization-summary.log` distinguishes scalar materialization from planned
+Hopper and rejected native paths. They are fixture-scoped, not an assertion
+of coverage by every P0-P11 phase of the matmul compiler. The standalone tool
+can audit a retained trace without rebuilding:
+
+```sh
+python3 osprey/be/vho/tests/ai_matmul_cuda/test_accumulation_contract.py \
+  --trace /absolute/path/accumulation.t --output-dir /new/report/directory
+```
+
+Existing FP32 matmul option behavior and WHIRL binary format are unchanged.

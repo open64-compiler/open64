@@ -554,3 +554,18 @@ WHIRL. A prepared native compile command is
 `nvcc -std=c++17 -arch=sm_90 -I. -c gemm.whirl.cu` from a case directory with
 the retained `open64_cuda_pipeline.cuh`. NVCC/PTX and GPU validation have not
 been performed on the current host.
+
+## Bounded Accumulation Contract Fixture
+
+`test_accumulation_contract.py --build-dir <build> --output-dir <new-dir>`
+runs the linked `dsl_accumulation_contract_test` producer, reopens same-PU
+before/after images with `ir_b2a -st -src`, emits both through `whirl2c -cuda`
+and executes the scalar source on the host. It retains the raw `.t`, mapped
+images, diff, `.cu`, numerical logs, commands, reports and checksums. The
+producer target is built by `make dsl_accumulation_contract_test` in ir_tools.
+
+`--trace <retained.t> --output-dir <new-report-dir>` audits and regenerates
+the fixture-scoped accumulation reports independently. `AI_ACC 1` is separate
+from production `AI_OPT 7`. Reports distinguish actual scalar resets/merges
+from planned Hopper and rejected native FP8/FP4 paths. This test does not
+enable native FP8 GEMM or establish GPU/model accuracy.
