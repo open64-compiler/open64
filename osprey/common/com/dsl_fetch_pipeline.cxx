@@ -6,6 +6,7 @@
  * Policy-free AIO-10 CommonFetchPlanIR/CommonPipelineIR storage and
  * structural services. Movement selection and target reasoning belong to VHO.
  * Direct-record contract: doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md.
+ * Resource ledger: doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md.
  */
 
 #include <vector>
@@ -67,7 +68,9 @@ DSL_fetch_wait_point_name (UINT32 point)
 
 /* Validate runtime-only movement records without choosing a target policy.
  * Direct plans have no software staging or synchronization; reject mixed
- * direct/staged contracts before any owning phase can consume them. */
+ * direct/staged contracts before any owning phase can consume them. A supplied
+ * resource ledger must be structurally complete and fit for a proven plan;
+ * target-specific formulas are deliberately not recomputed here. */
 BOOL
 DSL_fetch_pipeline_ir_verify
         (const DSL_FETCH_PIPELINE_IR *ir, FILE *diagnostic)
@@ -124,6 +127,24 @@ DSL_fetch_pipeline_ir_verify
                 return DSL_Fetch_IR_Report
                            (diagnostic, "invalid plan", plan.id);
             const BOOL direct = (plan.flags & DSL_FETCH_PLAN_FLAG_DIRECT) != 0;
+            const DSL_FETCH_RESOURCE_RECORD &resource = plan.resources;
+            if (resource.model > 1 || resource.reserved != 0 ||
+                (resource.model == 0 &&
+                 (resource.register_bytes_per_thread != 0 ||
+                  resource.register_capacity_per_thread != 0 ||
+                  resource.threads_per_cta != 0 || resource.thread_limit != 0 ||
+                  resource.shared_bytes != 0 || resource.shared_limit_bytes != 0)) ||
+                (resource.model == 1 &&
+                 (resource.register_bytes_per_thread == 0 ||
+                  resource.register_capacity_per_thread == 0 ||
+                  resource.threads_per_cta == 0 || resource.thread_limit == 0 ||
+                  (direct && resource.shared_bytes != 0) ||
+                  (!direct && resource.shared_bytes < plan.buffering_bytes) ||
+                  (plan.legality == DSL_OPT_LEGALITY_PROVEN &&
+                   (resource.register_bytes_per_thread > resource.register_capacity_per_thread ||
+                    resource.threads_per_cta > resource.thread_limit ||
+                    resource.shared_bytes > resource.shared_limit_bytes)))))
+                return DSL_Fetch_IR_Report(diagnostic, "invalid movement resources", plan.id);
             if (direct && (baseline || plan.engine != DSL_MEMORY_MOVEMENT_DEMAND ||
                 plan.stage_count != 1 || plan.buffering_bytes != 0 || plan.prefetch_distance != 0 ||
                 plan.barrier_count != 0 || plan.arrival_barrier != DSL_FETCH_BARRIER_NONE ||
@@ -247,6 +268,8 @@ DSL_fetch_pipeline_ir_destroy (DSL_FETCH_PIPELINE_IR *ir)
     delete ir;
 }
 
+/* Print stored runtime evidence only; absent resource ledgers stay absent.
+ * This inspector neither derives target limits nor changes plan selection. */
 void
 DSL_fetch_pipeline_ir_print (FILE *file, const DSL_FETCH_PIPELINE_IR *ir)
 {
@@ -285,6 +308,14 @@ DSL_fetch_pipeline_ir_print (FILE *file, const DSL_FETCH_PIPELINE_IR *ir)
                     plan.barrier_count, DSL_opt_legality_name(plan.legality),
                     DSL_opt_rejection_reason_name(plan.rejection_reason),
                     plan.candidate_id, plan.optimization_plan_id);
+            if (plan.resources.model != 0)
+                fprintf(file,
+                    "      resources model=%u register_bytes=%u/%u shared=%llu/%llu threads=%u/%u\n",
+                    plan.resources.model, plan.resources.register_bytes_per_thread,
+                    plan.resources.register_capacity_per_thread,
+                    (unsigned long long)plan.resources.shared_bytes,
+                    (unsigned long long)plan.resources.shared_limit_bytes,
+                    plan.resources.threads_per_cta, plan.resources.thread_limit);
             for (UINT32 f = 0; f < plan.fetch_count; ++f) {
                 const DSL_FETCH_RECORD &fetch =
                     ir->fetches[plan.first_fetch_id - 1 + f];

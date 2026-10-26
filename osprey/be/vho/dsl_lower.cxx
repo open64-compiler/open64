@@ -15,6 +15,7 @@
  * doc/AI-COMPILER-OPTIMIZATION-AIO11-PHYSICAL-PLAN.md,
  * doc/AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md,
  * doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md,
+ * doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md,
  * doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md, and
  * doc/AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.1.md.
  */
@@ -3902,7 +3903,9 @@ VHO_DSL_CUDA_Trace_Tensor_Facts
 
 /* Enumerate bounded tile/schedule pairs without mutating executable WHIRL.
  * Keep the cheapest proven synchronous pair as fallback; trace all examined
- * pairs, including rejected TMA siblings. Caller rebuilds only the winner. */
+ * pairs and movement resources, including rejected staged siblings. P7
+ * topology legality does not imply movement feasibility; rebuild only the
+ * verified winner. See doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md. */
 static BOOL
 VHO_DSL_cuda_select_joint_plan
         (PU_Info *pu, DSL_TENSOR_EVOLUTION_GRAPH *graph,
@@ -3922,7 +3925,7 @@ VHO_DSL_cuda_select_joint_plan
     *winner = 0;
     *candidate_count = 0;
     if (trace)
-        fprintf(TFile, "AI_OPT 7 JOINT_MODE joint 48 %u %u relative low model=2 direct=%u\n",
+        fprintf(TFile, "AI_OPT 7 JOINT_MODE joint 48 %u %u relative low model=3 direct=%u\n",
                 site.tile_plan_count, tma_allowed, !VHO_DSL_CUDA_Tile_Apply);
     for (UINT32 i = 0; i < site.tile_plan_count; ++i) {
         DSL_TILE_PLAN_RECORD tile;
@@ -3973,6 +3976,14 @@ VHO_DSL_cuda_select_joint_plan
                     (unsigned long long)tile.shared_capacity_bytes,
                     (pipeline.flags & DSL_FETCH_PLAN_FLAG_DIRECT) != 0 ? "D" :
                         pipeline.engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC ? "T2" : "S1", source_line);
+            if (trace) {
+                const DSL_FETCH_RESOURCE_RECORD &resource = pipeline.resources;
+                fprintf(TFile, "AI_OPT 7 JOINT_RESOURCE %u %u %u %llu %llu %u %u %u\n",
+                    count, resource.register_bytes_per_thread, resource.register_capacity_per_thread,
+                    (unsigned long long)resource.shared_bytes,
+                    (unsigned long long)resource.shared_limit_bytes,
+                    resource.threads_per_cta, resource.thread_limit, source_line);
+            }
             if (trace && (pipeline.flags & DSL_FETCH_PLAN_FLAG_DIRECT) != 0) {
                 UINT64 sectors[2];
                 if (!VHO_DSL_direct_gmem_sectors(tile, sectors)) { valid = FALSE; break; }
@@ -4074,8 +4085,10 @@ VHO_DSL_CUDA_Emit_Selected_Tile
         !VHO_DSL_Tensor_Locality_Build(locality, diagnostic))
         goto done;
     VHO_DSL_Tile_Control_Init(&control);
-    if (joint)
+    if (joint) {
         control.select_plans = 0;
+        control.defer_movement_resources = 1;
+    }
     analysis = VHO_DSL_Tile_Create
                    (pu_info, graph, tensor, locality, NULL,
                     &control, diagnostic);

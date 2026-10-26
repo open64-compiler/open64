@@ -10,6 +10,7 @@
  * resources, and adds provisional TensorEvolutionGraph overlays. It does not
  * rewrite executable or binary WHIRL. See
  * doc/AI-COMPILER-OPTIMIZATION-AIO9-HIERARCHICAL-TILING.md.
+ * Joint resource gate: doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md.
  */
 
 #include <algorithm>
@@ -373,6 +374,8 @@ VHO_DSL_Tile_Control_Init (VHO_DSL_TILE_CONTROL *control)
     control->enable_blackwell_wide = 1;
 }
 
+/* Validate PU-local controls; resource deferral is only a candidate-building
+ * mode and cannot be combined with standalone P7 selection. */
 static BOOL
 DSL_Tile_Control_Valid (const VHO_DSL_TILE_CONTROL &control)
 {
@@ -385,6 +388,8 @@ DSL_Tile_Control_Valid (const VHO_DSL_TILE_CONTROL &control)
            control.max_sites != 0 && control.max_plans_per_site >= 2 &&
            control.enable_cuda_64 <= 1 && control.enable_cuda_128 <= 1 &&
            control.enable_blackwell_wide <= 1 && control.reserved == 0 &&
+           control.defer_movement_resources <= 1 &&
+           (!control.defer_movement_resources || !control.select_plans) &&
            (!control.select_plans || control.generate_candidates);
 }
 
@@ -1090,9 +1095,12 @@ DSL_Tile_Add_Baseline
     return TRUE;
 }
 
-static void
-DSL_Tile_Classify
+/* Retain semantic/thread safety before any resource decision. Joint callers
+ * defer movement budgets; ordinary P7 callers retain staged feasibility. */
+void
+VHO_DSL_tile_classify
         (const DSL_TENSOR_LOCALITY_FACT_RECORD &locality,
+         BOOL defer_movement_resources,
          DSL_TILE_PLAN_RECORD *tile)
 {
     /* Resource feasibility is meaningful only after locality and ownership. */
@@ -1108,11 +1116,18 @@ DSL_Tile_Classify
         tile->rejection_reason = DSL_OPT_REJECT_INCOMPLETE_ANALYSIS;
     } else if (tile->threads_per_cta == 0 ||
                tile->threads_per_cta > 1024 ||
-               tile->shared_bytes_per_stage >
-                   tile->shared_capacity_bytes ||
-               tile->registers_per_thread >
-                   tile->register_capacity_per_thread ||
-               tile->maximum_buffer_stages == 0) {
+               tile->thread_m == 0 || tile->thread_n == 0 ||
+               tile->cta_m == 0 || tile->cta_n == 0 || tile->cta_k == 0 ||
+               tile->cta_m % tile->thread_m != 0 ||
+               tile->cta_n % tile->thread_n != 0 ||
+               (UINT64)(tile->cta_m / tile->thread_m) *
+                   (tile->cta_n / tile->thread_n) != tile->threads_per_cta ||
+               (!defer_movement_resources &&
+                (tile->shared_bytes_per_stage >
+                     tile->shared_capacity_bytes ||
+                 tile->registers_per_thread >
+                     tile->register_capacity_per_thread ||
+                 tile->maximum_buffer_stages == 0))) {
         tile->legality = DSL_OPT_LEGALITY_REJECTED;
         tile->rejection_reason = DSL_OPT_REJECT_RESOURCE;
     } else {
@@ -1121,6 +1136,9 @@ DSL_Tile_Classify
     }
 }
 
+/* Construct an immutable topology and staged comparator ledger, then apply
+ * PU-local safety classification. Joint mode defers movement budgets only;
+ * this adds planning overlays, never executable WHIRL or a final decision. */
 static BOOL
 DSL_Tile_Add_Family
         (DSL_TILE_ANALYSIS *analysis, DSL_TILE_SITE_RECORD *site,
@@ -1173,6 +1191,8 @@ DSL_Tile_Add_Family
     tile.flags = DSL_TILE_PLAN_FLAG_PROVISIONAL |
                  DSL_TILE_PLAN_FLAG_SEMANTICS_PRESERVING |
                  DSL_TILE_PLAN_FLAG_PREFETCH_HINT;
+    if (analysis->control.defer_movement_resources)
+        tile.flags |= DSL_TILE_PLAN_FLAG_DEFERRED_RESOURCES;
     if (!transpose_a && !swizzle_b && tile.edge_policy == DSL_TILE_EDGE_EXACT)
         tile.flags |= DSL_TILE_PLAN_FLAG_TMA_CANDIDATE;
     if (!DSL_Tile_Problem_Cost
@@ -1232,7 +1252,8 @@ DSL_Tile_Add_Family
         tile.legality = DSL_OPT_LEGALITY_UNKNOWN;
         tile.rejection_reason = DSL_OPT_REJECT_INCOMPLETE_ANALYSIS;
     } else {
-        DSL_Tile_Classify(locality, &tile);
+        VHO_DSL_tile_classify(locality,
+                              analysis->control.defer_movement_resources, &tile);
     }
     if (!DSL_tensor_evolution_add_tile
              (analysis->graph, source.id, tile.id,

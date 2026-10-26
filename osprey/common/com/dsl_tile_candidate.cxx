@@ -90,6 +90,8 @@ DSL_tile_instruction_name (UINT32 instruction)
            DSL_tile_instruction_name_table[instruction] : "unknown";
 }
 
+/* Verify runtime tile topology and lineage without selecting a movement.
+ * Deferred resource flags are nonbaseline-only; capacity policy belongs to VHO. */
 BOOL
 DSL_tile_plan_ir_verify (const DSL_TILE_PLAN_IR *ir, FILE *diagnostic)
 {
@@ -119,7 +121,8 @@ DSL_tile_plan_ir_verify (const DSL_TILE_PLAN_IR *ir, FILE *diagnostic)
                                  DSL_TILE_PLAN_FLAG_PROVISIONAL |
                                  DSL_TILE_PLAN_FLAG_SEMANTICS_PRESERVING |
                                  DSL_TILE_PLAN_FLAG_PREFETCH_HINT |
-                                 DSL_TILE_PLAN_FLAG_TMA_CANDIDATE;
+                                 DSL_TILE_PLAN_FLAG_TMA_CANDIDATE |
+                                 DSL_TILE_PLAN_FLAG_DEFERRED_RESOURCES;
             if (plan.id != expected_plan || plan.site_id != site.id ||
                 plan.target_profile_id == 0 ||
                 plan.family <= DSL_TILE_FAMILY_UNKNOWN ||
@@ -157,6 +160,7 @@ DSL_tile_plan_ir_verify (const DSL_TILE_PLAN_IR *ir, FILE *diagnostic)
                     ((plan.flags & DSL_TILE_PLAN_FLAG_BASELINE) != 0) ||
                 (baseline &&
                  (plan.family != DSL_TILE_FAMILY_BASELINE ||
+                  (plan.flags & DSL_TILE_PLAN_FLAG_DEFERRED_RESOURCES) != 0 ||
                   plan.stage_count != 1 ||
                   plan.result_evolution_node_id !=
                       plan.source_evolution_node_id ||

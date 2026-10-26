@@ -1,5 +1,21 @@
 # Hopper CUDA Validation Bundle
 
+Joint model 3 adds movement-aware resource discovery; see
+`doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md`. P7 retains topology and
+safety evidence while P8 checks D/S1/T2 value-storage, active SMEM (including
+TMA barriers), and thread budgets independently. `JOINT_RESOURCE` is mandatory
+for every pair and ends with the input line. The report tool audits its
+formula/coverage and summarizes it in P7/P8/P9 and aggregate logs. These are
+provisional logical values, not native registers, spills or occupancy.
+`test_movement_resources.py` covers malformed trace ledgers; the linked AIO-10
+`direct` mode covers constrained staged rejection preserving D, zero SMEM,
+D's own register limit, barrier capacity, altered/missing proof and safety
+negatives. Existing baseline and model-1/model-2 trace compatibility remain.
+The executable-P8/joint/direct source-review harnesses use driver `-S` to
+retain optimization and code generation without invoking the legacy CPU
+assembler driver. Generated CUDA is still independently compiled and run by
+the host simulator; neither boundary claims native CUDA/GPU certification.
+
 ## Joint Tile And Movement Search
 
 The current joint model is D/S1/T2 model 2. D lowers a guarded direct-global

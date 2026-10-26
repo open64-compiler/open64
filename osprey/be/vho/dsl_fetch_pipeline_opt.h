@@ -7,6 +7,7 @@
  * barrier/resource legality, costing, selection, and semantic verification.
  * Scope and joint contract: doc/AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md.
  * Direct extension: doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md.
+ * Resources: doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md.
  */
 
 #ifndef dsl_fetch_pipeline_opt_INCLUDED
@@ -77,6 +78,14 @@ extern const DSL_OPT_PLAN_CONTEXT *VHO_DSL_Fetch_Pipeline_Get_Plan_Context
 extern BOOL VHO_DSL_fetch_pipeline_can_lower
                                 (const DSL_TILE_PLAN_RECORD &tile,
                                  const DSL_FETCH_PLAN_RECORD &fetch);
+
+/* Derive a per-movement value-storage/capacity ledger without changing the
+ * supplied tile/fetch. FALSE denotes malformed geometry or arithmetic;
+ * capacity excess is represented in the returned ledger, not hidden. */
+extern BOOL VHO_DSL_fetch_resource_requirements
+                                (const DSL_TILE_PLAN_RECORD &tile,
+                                 const DSL_FETCH_PLAN_RECORD &fetch,
+                                 DSL_FETCH_RESOURCE_RECORD *resources);
 
 /* Prove signed-I4 index and padded loop bounds before either plan selection
  * or source/device construction; do not mutate the supplied runtime record. */

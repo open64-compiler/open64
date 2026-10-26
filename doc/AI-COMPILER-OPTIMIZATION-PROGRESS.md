@@ -8,6 +8,20 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+Movement-resource increment (2026-10-26, after merged PR 192): joint P7
+resource deferral and independent P8 D/S1/T2 resource ledgers are implemented.
+The shared lowering preflight recomputes the ledger; joint model 3 traces and
+the report tool audit all movement siblings and summarize selected resources.
+Constrained native tests prove that staged SMEM/register rejection does not
+reject a legal D sibling, including zero available SMEM. Native registers,
+spills, occupancy, grid waves and GPU calibration remain unknown. See the
+[movement-resource design](AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md).
+The next compiler package is analytic resource/profitability refinement, not
+FP8 support or unconditional movement rewriting.
+Validation: 77 unit tests, D/S1/T2 integration, joint controls/baseline parity,
+executable P8 and linked AIO-10 contracts pass; eleven malformed common
+records are rejected. Generated-source host simulations report zero error.
+
 Priority update (2026-10-25): further partial-sum promotion/numerical work is
 **deferred until explicit FP8 support begins**. Preserve the prototype below;
 production optimization remains fixed-shape F32 D/S1/T2. The next proposed

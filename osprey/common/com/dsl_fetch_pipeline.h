@@ -6,6 +6,7 @@
  * Policy-free AIO-10 CommonFetchPlanIR/CommonPipelineIR records and services.
  * Design: doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md.
  * Direct flag: doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md.
+ * Resources: doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md.
  */
 
 #ifndef dsl_fetch_pipeline_INCLUDED
@@ -79,6 +80,19 @@ typedef struct {
 } DSL_FETCH_SITE_RECORD;
 
 typedef struct {
+    /* Version zero means absent (legacy/check-only planning). Version one
+     * is a generic provisional value-storage/capacity ledger, not occupancy. */
+    UINT32 model;
+    UINT32 register_bytes_per_thread;
+    UINT32 register_capacity_per_thread;
+    UINT32 threads_per_cta;
+    UINT32 thread_limit;
+    UINT32 reserved;
+    UINT64 shared_bytes;
+    UINT64 shared_limit_bytes;
+} DSL_FETCH_RESOURCE_RECORD;
+
+typedef struct {
     DSL_FETCH_PLAN_ID id;
     DSL_FETCH_SITE_ID site_id;
     DSL_TILE_PLAN_ID tile_plan_id;
@@ -105,6 +119,7 @@ typedef struct {
     DSL_OPT_PLAN_ID optimization_plan_id;
     UINT32 flags;
     UINT32 reserved;
+    DSL_FETCH_RESOURCE_RECORD resources;
 } DSL_FETCH_PLAN_RECORD;
 
 typedef struct {

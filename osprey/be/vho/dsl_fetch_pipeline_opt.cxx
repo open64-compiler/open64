@@ -321,12 +321,60 @@ VHO_DSL_cuda_i4_geometry_safe (const DSL_TILE_PLAN_RECORD &tile)
         (UINT64)tile.thread_m * tile.thread_n <= INT_MAX;
 }
 
+/* Derive independent logical storage for each movement. D has only current
+ * A/B operands, not the staged TM/TN operand envelope. Native address/control
+ * registers and spills are unknown; this is not an occupancy prediction. */
+BOOL
+VHO_DSL_fetch_resource_requirements
+        (const DSL_TILE_PLAN_RECORD &tile, const DSL_FETCH_PLAN_RECORD &fetch,
+         DSL_FETCH_RESOURCE_RECORD *resources)
+{
+    if (resources == NULL || tile.thread_m == 0 || tile.thread_n == 0 ||
+        fetch.stage_count == 0 || tile.register_capacity_per_thread == 0)
+        return FALSE;
+    const BOOL direct = (fetch.flags & DSL_FETCH_PLAN_FLAG_DIRECT) != 0;
+    UINT64 values, bytes;
+    if (!DSL_Fetch_Mul_U64(tile.thread_m, tile.thread_n, &values) ||
+        !DSL_Fetch_Add_U64(values, direct ? 2 :
+                          (UINT64)tile.thread_m + tile.thread_n, &values) ||
+        !DSL_Fetch_Mul_U64(values, 4, &bytes) || bytes > UINT32_MAX)
+        return FALSE;
+    DSL_FETCH_RESOURCE_RECORD result;
+    memset(&result, 0, sizeof(result));
+    result.model = 1;
+    result.register_bytes_per_thread = bytes;
+    result.register_capacity_per_thread = tile.register_capacity_per_thread;
+    result.threads_per_cta = tile.threads_per_cta;
+    result.thread_limit = 1024;
+    result.shared_limit_bytes = std::min((UINT64)48 * 1024, tile.shared_capacity_bytes);
+    if (!direct &&
+        (!DSL_Fetch_Mul_U64(tile.shared_bytes_per_stage, fetch.stage_count, &result.shared_bytes) ||
+         result.shared_bytes != fetch.buffering_bytes ||
+         (fetch.engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC &&
+          !DSL_Fetch_Add_U64(result.shared_bytes, 16, &result.shared_bytes))))
+        return FALSE;
+    if (direct && fetch.buffering_bytes != 0)
+        return FALSE;
+    *resources = result;
+    return TRUE;
+}
+
 /* Share the executable P8 contract with lowering so unsupported engines,
  * layouts, static storage, and tensor-map geometry cannot win joint search. */
 BOOL
 VHO_DSL_fetch_pipeline_can_lower
         (const DSL_TILE_PLAN_RECORD &tile, const DSL_FETCH_PLAN_RECORD &fetch)
 {
+    if ((tile.flags & DSL_TILE_PLAN_FLAG_DEFERRED_RESOURCES) != 0 ||
+        fetch.resources.model != 0) {
+        DSL_FETCH_RESOURCE_RECORD resources;
+        if (!VHO_DSL_fetch_resource_requirements(tile, fetch, &resources) ||
+            memcmp(&resources, &fetch.resources, sizeof(resources)) != 0 ||
+            resources.register_bytes_per_thread > resources.register_capacity_per_thread ||
+            resources.threads_per_cta == 0 || resources.threads_per_cta > resources.thread_limit ||
+            resources.shared_bytes > resources.shared_limit_bytes)
+            return FALSE;
+    }
     if (!VHO_DSL_cuda_i4_geometry_safe(tile) ||
         tile.legality != DSL_OPT_LEGALITY_PROVEN ||
         tile.cta_m == 0 || tile.cta_n == 0 || tile.cta_k == 0 ||
@@ -655,7 +703,7 @@ DSL_Fetch_Add_Plan
         (desired_stages,
          std::min(capability.maximum_stages,
                   analysis->control.maximum_buffer_stages));
-    if (!baseline && tile.maximum_buffer_stages != 0)
+    if (!baseline && !analysis->control.joint_cost && tile.maximum_buffer_stages != 0)
         pipeline.stage_count = std::min
             (pipeline.stage_count, tile.maximum_buffer_stages);
     pipeline.prefetch_distance =
@@ -711,7 +759,7 @@ DSL_Fetch_Add_Plan
         pipeline.legality = DSL_OPT_LEGALITY_REJECTED;
         pipeline.rejection_reason = DSL_OPT_REJECT_RESOURCE;
     }
-    if (engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC &&
+    if (!analysis->control.joint_cost && engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC &&
         ((tile.flags & DSL_TILE_PLAN_FLAG_TMA_CANDIDATE) == 0 ||
          tile.edge_policy != DSL_TILE_EDGE_EXACT)) {
         pipeline.legality = DSL_OPT_LEGALITY_REJECTED;
@@ -735,6 +783,18 @@ DSL_Fetch_Add_Plan
         pipeline.buffering_bytes > pipeline.buffering_capacity_bytes) {
         pipeline.legality = DSL_OPT_LEGALITY_REJECTED;
         pipeline.rejection_reason = DSL_OPT_REJECT_RESOURCE;
+    }
+    if (analysis->control.joint_cost) {
+        if (!VHO_DSL_fetch_resource_requirements(tile, pipeline, &pipeline.resources))
+            return DSL_Fetch_Pipeline_Report(diagnostic, "movement resource overflow", pipeline.id);
+        const DSL_FETCH_RESOURCE_RECORD &resources = pipeline.resources;
+        if (pipeline.legality == DSL_OPT_LEGALITY_PROVEN &&
+            (resources.register_bytes_per_thread > resources.register_capacity_per_thread ||
+             resources.shared_bytes > resources.shared_limit_bytes ||
+             resources.threads_per_cta == 0 || resources.threads_per_cta > resources.thread_limit)) {
+            pipeline.legality = DSL_OPT_LEGALITY_REJECTED;
+            pipeline.rejection_reason = DSL_OPT_REJECT_RESOURCE;
+        }
     }
     if (analysis->control.joint_cost && pipeline.legality == DSL_OPT_LEGALITY_PROVEN &&
         !VHO_DSL_fetch_pipeline_can_lower(tile, pipeline)) {
@@ -991,6 +1051,9 @@ VHO_DSL_Fetch_Pipeline_Build
            VHO_DSL_Fetch_Pipeline_Verify(analysis, diagnostic);
 }
 
+/* Revalidate active-PU records and graph/plan lineage without mutation. Joint
+ * records must reproduce the owning VHO resource formulas and a proven plan
+ * must satisfy the same executable contract consumed by device lowering. */
 BOOL
 VHO_DSL_Fetch_Pipeline_Verify
         (const DSL_FETCH_PIPELINE_ANALYSIS *analysis, FILE *diagnostic)
@@ -1125,7 +1188,19 @@ VHO_DSL_Fetch_Pipeline_Verify
                 pipeline.unhidden_movement_cost != unhidden)
                 return DSL_Fetch_Pipeline_Report
                            (diagnostic, "pipeline cost mismatch",
-                            pipeline.id);
+                           pipeline.id);
+            if (analysis->control.joint_cost) {
+                DSL_TILE_SITE_RECORD tile_site;
+                DSL_TILE_PLAN_RECORD tile;
+                DSL_FETCH_RESOURCE_RECORD resources;
+                if (!DSL_tile_plan_ir_get_site(analysis->tile_ir, site.tile_site_id, &tile_site) ||
+                    !DSL_Fetch_Selected_Tile(analysis, tile_site, &tile) ||
+                    !VHO_DSL_fetch_resource_requirements(tile, pipeline, &resources) ||
+                    memcmp(&resources, &pipeline.resources, sizeof(resources)) != 0 ||
+                    (pipeline.legality == DSL_OPT_LEGALITY_PROVEN &&
+                     !VHO_DSL_fetch_pipeline_can_lower(tile, pipeline)))
+                    return DSL_Fetch_Pipeline_Report(diagnostic, "invalid movement resource proof", pipeline.id);
+            }
             for (UINT32 s = 0; s < pipeline.stage_count; ++s) {
                 const DSL_PIPELINE_STAGE_RECORD &stage =
                     analysis->stages[expected_stage - 1];

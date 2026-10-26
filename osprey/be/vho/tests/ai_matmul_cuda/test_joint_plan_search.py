@@ -171,7 +171,7 @@ def main():
     case.mkdir()
     shutil.copy2(root / "short/gemm.B", case / "gemm.B")
     run([str(build / "osprey/targdir/driver/opencc"), f"-run-build={build}", "-O3",
-         "-noinline", "-c", "-keep", "-Wb,-DSL:gemm_plan_search=joint",
+         "-noinline", "-S", "-keep", "-Wb,-DSL:gemm_plan_search=joint",
          "-Wb,-DSL:ai_opt_trace=OFF", "-Wb,-DSL:cuda_tma_prefetch=ON",
          "-Wb,-DSL:cuda_whirl_output=gemm.device.B", "gemm.B"], case, env, "compiler.log")
     if not (case / "gemm.device.B").exists() or ((case / "gemm.t").exists() and

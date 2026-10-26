@@ -170,11 +170,11 @@ def direct_sector_bytes(m, n, k, bm, bn, bk, tm, tn, threads):
     return tuple(worst)
 
 
-def verify_joint(mode, rows, decision, candidates, direct_access=None):
+def verify_joint(mode, rows, decision, candidates, direct_access=None, resources=None):
     """Independently reproduce bounded whole-plan costs and deterministic choice."""
     by_tile = {row["tile"]: row for row in candidates}
     model = mode.get("model", 1) if mode else 1
-    if (mode is None or decision is None or mode["budget"] != (48 if model == 2 else 32)
+    if (mode is None or decision is None or mode["budget"] != (48 if model >= 2 else 32)
             or mode["tiles"] != len(candidates) or mode["tma"] not in (0, 1)
             or not rows or len(rows) > mode["budget"] or decision["count"] != len(rows)):
         raise ValueError("incomplete joint search census")
@@ -184,7 +184,7 @@ def verify_joint(mode, rows, decision, candidates, direct_access=None):
         if tile["family"] == "baseline" or tile["legality"] != "proven":
             continue
         kinds = ["S1"]
-        if model == 2 and mode["direct"] and tile["layout"]["a_layout"] == "row_major" and tile["smem"]["b_layout"] == "row_major":
+        if model >= 2 and mode["direct"] and tile["layout"]["a_layout"] == "row_major" and tile["smem"]["b_layout"] == "row_major":
             kinds.append("D")
         if mode["tma"]:
             kinds.append("T2")
@@ -230,6 +230,19 @@ def verify_joint(mode, rows, decision, candidates, direct_access=None):
             sync = 0
         launch = 32 * ctas if tma else 0
         legal = (allocation + (16 if tma else 0) <= min(48 * 1024, row["capacity"]))
+        resource_legal = legal
+        if model == 3:
+            columns = tile["layout"]["thread_columns"]
+            tm, tn = bm * columns // tile["threads"], bn // columns
+            expected_resource = dict(register_bytes=4 * (tm * tn + (2 if direct else tm + tn)),
+                register_capacity=1020, shared_bytes=allocation + (16 if tma else 0),
+                shared_limit=min(48 * 1024, row["capacity"]), threads=tile["threads"],
+                thread_limit=1024, source_line=row["source_line"])
+            if resources is None or resources.get(row["id"]) != expected_resource:
+                raise ValueError("movement resources disagree with tile/schedule")
+            resource_legal &= (expected_resource["register_bytes"] <= expected_resource["register_capacity"]
+                               and 0 < tile["threads"] <= expected_resource["thread_limit"])
+            legal = resource_legal
         if tma:
             legal &= (tile["layout"]["a_layout"] == "row_major" and
                       smem["b_layout"] == "row_major" and
@@ -237,11 +250,12 @@ def verify_joint(mode, rows, decision, candidates, direct_access=None):
                       and tile["shared"] % 128 == 0)
         if (row["id"] != ordinal or row["tile_plan"] != tile["plan"]
                 or row["fetch_plan"] != expected_fetch[(row["tile"], row.get("kind", "T2" if tma else "S1"))]
-                or row["engine"] != ("tma_like" if row.get("kind") == "T2" else "demand") and model == 2
+                or row["engine"] != ("tma_like" if row.get("kind") == "T2" else "demand") and model >= 2
                 or row["source_line"] != tile["source_line"]
                 or row["buffering"] != allocation
                 or row["legality"] != ("proven" if legal else "rejected")
                 or (legal and row["reason"] != "none")
+                or (model == 3 and not legal and row["reason"] != ("resource" if not resource_legal else "target_mismatch"))
                 or (row["compute"], row["memory"], row["communication"], row["sync"],
                     row["launch"], row["runtime"], row["total"]) !=
                    (compute, memory, 0, sync, launch, 0, compute + memory + sync + launch)):
@@ -249,13 +263,15 @@ def verify_joint(mode, rows, decision, candidates, direct_access=None):
     eligible = [row for row in rows if row["legality"] == "proven"]
     if set(direct_access or {}) != {row["id"] for row in rows if row.get("kind") == "D"}:
         raise ValueError("direct sector coverage mismatch")
+    if (model == 3 and set(resources or {}) != {row["id"] for row in rows}) or (model != 3 and resources):
+        raise ValueError("movement resource coverage mismatch")
     synchronous = [row for row in eligible if row["engine"] == "demand" and row.get("kind") != "D"]
     if (not synchronous or decision["selected"] != min(eligible, key=lambda row: (row["total"], row["id"]))["id"]
             or decision["fallback"] != min(synchronous, key=lambda row: (row["total"], row["id"]))["id"]):
         raise ValueError("joint selection or synchronous fallback disagrees with costs")
     return dict(mode=mode, candidates=rows, selection=decision,
                 chosen=rows[decision["selected"] - 1], fallback=rows[decision["fallback"] - 1], derived=derived,
-                direct_access=direct_access or {})
+                direct_access=direct_access or {}, resources=resources or {})
 
 
 def parse(trace: str) -> tuple[list[dict], dict, dict]:
@@ -284,6 +300,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     joint_mode, joint_selection = None, None
     joint_candidates = []
     direct_access = {}
+    joint_resources = {}
     trace_version: str | None = None
     for line in trace.splitlines():
         if not line.startswith("AI_OPT "):
@@ -296,13 +313,19 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         trace_version = fields[1]
         kind = fields[2]
         if kind == "JOINT_MODE" and trace_version == "7" and len(fields) in (10, 11):
-            if joint_mode is not None or fields[3] != "joint" or fields[7:9] != ["relative", "low"] or fields[9] not in ("model=1", "model=2"):
+            if joint_mode is not None or fields[3] != "joint" or fields[7:9] != ["relative", "low"] or fields[9] not in ("model=1", "model=2", "model=3"):
                 raise ValueError("invalid joint mode")
             joint_mode = dict(budget=int(fields[4]), tiles=int(fields[5]), tma=int(fields[6]))
-            if fields[9] == "model=2":
+            if fields[9] in ("model=2", "model=3"):
                 if len(fields) != 11 or fields[10] not in ("direct=0", "direct=1"):
                     raise ValueError("invalid direct search policy")
-                joint_mode.update(model=2, direct=int(fields[10][-1]))
+                joint_mode.update(model=int(fields[9][-1]), direct=int(fields[10][-1]))
+        elif kind == "JOINT_RESOURCE" and trace_version == "7" and len(fields) == 11:
+            ident = int(fields[3])
+            if ident in joint_resources or min(map(int, fields[4:])) < 0:
+                raise ValueError("invalid or duplicate movement resource record")
+            joint_resources[ident] = dict(zip(("register_bytes", "register_capacity", "shared_bytes",
+                "shared_limit", "threads", "thread_limit", "source_line"), map(int, fields[4:])))
         elif kind == "DIRECT_ACCESS" and trace_version == "7" and len(fields) == 8:
             ident, a, b, c = map(int, fields[3:7])
             if ident in direct_access or fields[7] != "cache=unknown" or min(a, b, c) <= 0:
@@ -561,7 +584,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
             if phases[7]["status"] not in ("disabled_by_option", "no_eligible_region"):
                 raise ValueError("missing tile decision for active P7")
             if (fetch_candidates or fetch_selection or fetch_action or grids or
-                    layouts or gmem or smem or pipeline_kernel or joint_mode or joint_candidates or joint_selection or direct_access):
+                    layouts or gmem or smem or pipeline_kernel or joint_mode or joint_candidates or joint_selection or direct_access or joint_resources):
                 raise ValueError("optimization decision without tile selection")
             if semantic or locality:
                 raise ValueError("tensor facts without active tile analysis")
@@ -740,10 +763,10 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                 expected, best_bound = row, row["roof_bound_ns"]
                 expected_reason = "roofline_near_cost"
     joint = None
-    if direct_access and joint_mode is None:
+    if (direct_access or joint_resources) and joint_mode is None:
         raise ValueError("direct access without joint search")
     if joint_mode is not None or joint_candidates or joint_selection is not None:
-        joint = verify_joint(joint_mode, joint_candidates, joint_selection, candidates, direct_access)
+        joint = verify_joint(joint_mode, joint_candidates, joint_selection, candidates, direct_access, joint_resources)
         expected = by_plan[joint["chosen"]["tile_plan"]]
         expected_reason = "lowest_complete_joint_cost"
         selection["joint"] = joint
@@ -848,7 +871,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         eligible_fetch = [row for row in fetch_candidates if row["legality"] == "proven"]
         if joint:
             if ((chosen["optimization_plan"], chosen["engine"]) != (joint["chosen"]["fetch_plan"], joint["chosen"]["engine"]) or
-                (joint["mode"].get("model") == 2 and chosen.get("kind") != joint["chosen"].get("kind"))):
+                (joint["mode"].get("model", 1) >= 2 and chosen.get("kind") != joint["chosen"].get("kind"))):
                 raise ValueError("joint selection disagrees with selected fetch plan")
         elif (not eligible_fetch or chosen != min(eligible_fetch, key=lambda row:
                 (row["unhidden"] + int(row["engine"] != "demand"),
@@ -963,6 +986,12 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
         details = tile_content if number == 7 else fetch_content if number == 8 else ""
         if details:
             details = "\n".join(details.splitlines()[1:]) + "\n"
+            if number in (7, 8) and selection.get("joint", {}).get("resources"):
+                joint = selection["joint"]
+                details += "# P7 staged resources are comparators only; each P8 movement is gated independently.\n"
+                details += "# Selected JOINT_RESOURCE columns: joint_id register_bytes register_capacity active_smem_bytes smem_limit threads thread_limit source_line; provisional, not native allocation.\n"
+                details += f"JOINT_RESOURCE {joint['chosen']['id']} " + " ".join(
+                    map(str, joint["resources"][joint["chosen"]["id"]].values())) + "\n"
         elif number == 0 and selection.get("semantic"):
             details = "".join(
                 f"tensor={row['fact']} value={row['value']} role={row['role']} "
@@ -994,7 +1023,7 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
                 details += f"# Joint cost model {joint['mode'].get('model', 1)}: low-confidence relative units; not measured latency.\n"
                 details += "# Formula: total=compute_with_pressure+memory_unhidden+communication_unhidden+sync+setup+runtime; memory_unhidden=raw_input-hidden_input+C_store_sectors/1024+local_SMEM_work.\n"
                 details += "# Overlap: min(raw_input/(CTAs*K_tiles),base_compute/(CTAs*K_tiles))*(K_tiles-1)*CTAs for lowerable two-slot TMA; zero synchronously. Pressure=(base_compute+memory_unhidden)*physical_storage/shared_capacity.\n"
-                details += "# Columns: id tile tile_plan fetch_plan engine legality reason compute memory_unhidden communication_unhidden sync setup runtime total buffer_bytes capacity_bytes " + ("kind " if joint['mode'].get('model') == 2 else "") + "raw_input hidden_input pressure source_line\n"
+                details += "# Columns: id tile tile_plan fetch_plan engine legality reason compute memory_unhidden communication_unhidden sync setup runtime total buffer_bytes capacity_bytes " + ("kind " if joint['mode'].get('model', 1) >= 2 else "") + "raw_input hidden_input pressure source_line\n"
                 details += "".join("joint " + " ".join(str(value) for key, value in candidate.items() if key != "source_line")
                                    + " " + " ".join(str(value) for value in joint["derived"][candidate["id"]].values())
                                    + f" {candidate['source_line']}\n" for candidate in joint["candidates"])
@@ -1004,6 +1033,10 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
                 if joint["direct_access"]:
                     details += "# DIRECT_ACCESS columns: joint_id A_sector_bytes B_sector_bytes C_sector_bytes; cache=unknown, source warp requests, not measured HBM bytes.\n"
                     details += "".join(f"DIRECT_ACCESS {ident} {a} {b} {c}\n" for ident, (a, b, c) in joint["direct_access"].items())
+                if joint["resources"]:
+                    details += "# JOINT_RESOURCE columns: joint_id register_bytes register_capacity active_smem_bytes smem_limit threads thread_limit source_line. Provisional value storage, not native registers/occupancy; staged P7 resource filtering is deferred.\n"
+                    details += "".join(f"JOINT_RESOURCE {ident} " + " ".join(map(str, resource.values())) + "\n"
+                                       for ident, resource in joint["resources"].items())
         else:
             details = "detail=not_recorded\n" if row["status"] == "analyzed_no_rewrite" else ""
         content = f"# What it summarizes: {description}\n{metadata}{details}"
@@ -1066,6 +1099,10 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
                        f"kind={joint['chosen'].get('kind', 'not_recorded')} "
                        f"fallback={joint['fallback']['id']} fallback_tile={joint['fallback']['tile_plan']} "
                        "fallback_kind=compile_time_plan selection_reason=lowest_complete_joint_cost")
+        if joint["resources"]:
+            resource = joint["resources"][joint["chosen"]["id"]]
+            summary.append("movement_resources model=logical_v1 " + " ".join(f"{key}={value}" for key, value in resource.items())
+                           + " native_registers=unknown occupancy=unknown p7_resource_gate=deferred")
     (reports / "optimization.log").write_text(
         "# What it summarizes: Complete P0-P11 optimization process, including every phase decision and non-execution reason.\n"
         + "".join(phase_contents), encoding="utf-8")
