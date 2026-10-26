@@ -755,3 +755,79 @@ while output_tile_scheduler.has_work():
 # one group's epilogue may overlap the other's MMA. An ordered producer
 # protocol feeds both groups. It still needs its own A/B input pipeline.
 ```
+
+## Synchronous SMEM Planning Package (2026-10-25)
+
+This implemented slice plans scalar-F32 staging for the existing bounded GEMM
+families. It does not close the later multi-stage async/TMA WHIRL milestone.
+SMEM means CTA-local shared memory; a bank round is one service round for
+distinct 32-bit words requested from the same bank by a source warp instruction.
+The Hopper/Blackwell profile adapter supplies 32 banks, four bytes per word,
+and 32 lanes per warp. Identical-word **loads** are broadcasts, not conflicts.
+These rules follow the [NVIDIA CUDA Best Practices Guide, shared memory](https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#shared-memory).
+The compiler's relative weighting is our design proposal, not NVIDIA guidance.
+
+| Planned object or action | Representation and legality | Cost/report obligation |
+| --- | --- | --- |
+| A staging allocation | Separate static `__shared__` array: `BM*BK*4` bytes for row-major, or `BK*(BM+1)*4` for padded-transposed A | Record bytes, stride, fill-store and compute-load conflicts |
+| B staging allocation | Separate static `__shared__` array: `BK*BN*4` bytes; compact or column-XOR addressing | Record bytes, fill-store and compute-load conflicts; same mapping on fills, zero-fill and reads |
+| Accumulator | `TM*TN` F32 elements per thread; not part of the A/B SMEM allocation | Retain register estimate and resource gate; final register allocation remains backend work |
+| Lifetime and reuse | One synchronous slot per operand; fill, uniform CTA barrier, compute, uniform CTA barrier, reuse | Two dynamic barriers per CTA/K tile; no overlap claim |
+| Full-plan search | Keep original A-layout/thread-map choices and add B-XOR siblings before selection | Compare complete low-confidence relative scores; transform only the selected plan |
+
+For `BN` a power of two in `[32,1024]`, define
+`physical_col = col ^ (col / 32)` and
+`B_shared_index = q*BN + physical_col`. The high column-group bits affect only
+the low five bits, so this is a bijection within each 32-column group. GMEM
+indices, tensor ownership and host/device transfers do not change. This is
+a **shared-memory representation change**, not a global tensor re-layout.
+The VHO producer emits the selected mapping into ordinary WHIRL integer
+address expressions; `whirl2c -cuda` only prints them. Legacy emission remains
+an option-controlled parity baseline.
+
+For each source warp issue, count unique physical words per bank and charge
+`max(words_per_bank)-1` excess rounds. Sum separately for A/B fill stores and
+A/B compute loads. Edge loads zero-fill all staging positions, so shared
+work includes the full physical tile even when GMEM requests are predicated.
+For these layouts changing `q` rotates all bank numbers equally; count one
+compute `q`, then scale by `BK*ceil(K/BK)` and CTA count. B loads remain inside
+the `i,j` loops, so their issue count includes `TM*TN`; do not assume future
+backend hoisting or vectorization.
+
+`COST_MODEL 5` replaces the former A-only bank approximation:
+
+```text
+compute = max(1, floor(2*M*N*K/1024)) + floor(smem_address_work/1024)
+memory_unhidden = max(1, floor(worst_A_B_C_sector_bytes/1024))
+                + floor(total_excess_bank_rounds/32)
+                + floor(A_compute_warp_issues/32)
+                + floor(B_compute_warp_issues/32)
+sync = 2*ceil(M/BM)*ceil(N/BN)*ceil(K/BK)
+smem_address_work = 2*(B_fill_warp_issues+B_compute_warp_issues) for XOR;
+                    zero for compact B
+```
+
+The extra address term approximates the shift/divide and XOR. These are
+dimensionless source-work proxies, not calibrated cycles or latency.
+Copy base issue work, occupancy, instruction lowering, shared bandwidth,
+cache behavior and overlap are not fully priced. Capacity and thread/resource
+legality remain hard gates. Layout search is controlled by
+`-Wb,-DSL:cuda_smem_layout_search=ON|OFF` (default ON); OFF suppresses the new
+B-XOR alternatives, not shared analysis or existing A alternatives. TMA
+sidecar planning stays compact-only until its distinct swizzle contract is
+represented and lowered in WHIRL.
+
+The raw `.t` uses the existing AI trace bit and adds a positional record:
+
+```text
+AI_OPT 7 TILE_SMEM site tile plan banks word_bytes b_layout a_bytes b_bytes a_copy_excess b_copy_excess a_read_excess b_read_excess b_read_issues address_work
+```
+
+The report tool must independently recompute these fields, verify the A/B
+allocation sum, reject altered rows, and summarize each candidate's layout,
+four conflict terms, issue/address work, complete cost, selection reason and
+actual WHIRL action in `tile.log`. Preserve `.t`, input and device `.B/.T`,
+WHIRL-derived `.cu`, legacy parity source, option-OFF comparison, receipts
+and checksums. Compiler/host-CTA tests do not establish native GPU correctness
+or performance. Later work must integrate stage depth, TMA swizzling,
+issue/wait/reuse hazards and occupancy into the same explicit plan gate.

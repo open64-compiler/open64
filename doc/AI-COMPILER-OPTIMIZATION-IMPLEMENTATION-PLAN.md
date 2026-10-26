@@ -1452,6 +1452,46 @@ GPU correctness, and calibrated speedup remain separate later gates.
    prediction error by compute, memory, synchronization, launch, and
    occupancy term without presenting relative scores as cycles.
 
+## SMEM Package After PR 188
+
+The next compiler-side package is synchronous F32 A/B staging planning, not
+closure of native-GPU or asynchronous-P8 acceptance. The implementation:
+
+1. Exposes target bank count/word width/warp width through the common hardware
+   description adapter; preserves all WHIRL binary layouts.
+2. Retains compact/padded A and compact/column-XOR B alternatives with the
+   existing thread maps. `cuda_smem_layout_search=ON|OFF` controls B expansion
+   (default ON). No transformation before legality and complete-cost selection.
+3. Counts A/B fill stores and compute loads separately, preserving broadcasts;
+   records per-operand bytes, read issues and incremental XOR address work.
+   `COST_MODEL 5` explicitly charges all these modeled bank/read/address terms.
+4. Lowers selected B addressing into device WHIRL, including zero-fill. Emits
+   canonical CUDA through `whirl2c -cuda`; preserves legacy source for parity.
+5. Requires the trace tool to recompute `TILE_SMEM`, reject corrupt records and
+   summarize allocation, four bank terms, costs, selection and WHIRL actions
+   in `tile.log` and the aggregate logs. Retain `.t` and option-OFF evidence.
+6. Validates short/long K, irregular edges, model unit contracts, option gating,
+   mapped-image inspection, host CTA parity, and AIO-9 compatibility. Publish
+   artifacts under `m3-smem-planning`; no GPU speedup claim follows from this.
+
+Next compiler work after this synchronous package: represent multi-stage
+allocation, TMA-specific shared swizzles and issue/wait/reuse semantics in
+WHIRL; couple stage depth and layout choices before selecting a P7/P8 plan.
+Occupancy calibration, native CUDA/PTX inspection and GPU testing remain open.
+The complete algorithm and report schema are in the synchronous-SMEM addendum
+of `AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.1.md`.
+
+Compiler-side package verified at `7efdf8da`: 52 unit tests, short/long K
+and search-OFF selection, corrupt trace rejection, irregular edges/I4 rejection,
+Hopper/Blackwell AIO-9 compatibility, multi-device-PU binding, and compact TMA
+source-sidecar regression. Host CTA simulations report zero error against
+reference and legacy kernels. The durable SHA256-verified bundle is
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m3/smem-planning/sha256-0dbd3c72e90e8036f947036821ad9bb3f5c8191189c2cc3f04b3431a738a3534/`.
+It preserves canonical and parity `.cu`, input/device `.B/.T`, raw `.t`,
+phase and summary logs, search-OFF comparisons, receipts and checksums.
+This closes only the synchronous SMEM compiler-review slice, not `m3` native
+prefetch/pipeline acceptance.
+
 ## Related Documents
 
 - `AI-COMPILER-OPTIMIZATION-PROGRESS.md` - running status, execution gates,
