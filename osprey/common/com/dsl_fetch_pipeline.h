@@ -5,6 +5,7 @@
 /*
  * Policy-free AIO-10 CommonFetchPlanIR/CommonPipelineIR records and services.
  * Design: doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md.
+ * Direct flag: doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md.
  */
 
 #ifndef dsl_fetch_pipeline_INCLUDED
@@ -51,7 +52,9 @@ enum {
     DSL_FETCH_PLAN_FLAG_BASELINE = 0x00000001,
     DSL_FETCH_PLAN_FLAG_PROVISIONAL = 0x00000002,
     DSL_FETCH_PLAN_FLAG_ASYNC = 0x00000004,
-    DSL_FETCH_PLAN_FLAG_SEMANTICS_PRESERVING = 0x00000008
+    DSL_FETCH_PLAN_FLAG_SEMANTICS_PRESERVING = 0x00000008,
+    /* A logical demand stage with no physical software-managed buffer. */
+    DSL_FETCH_PLAN_FLAG_DIRECT = 0x00000010
 };
 
 enum {

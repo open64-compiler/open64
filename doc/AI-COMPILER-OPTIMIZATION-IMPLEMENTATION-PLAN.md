@@ -1557,7 +1557,9 @@ This does not close native-GPU M3 acceptance or the TMA host launch adapter.
 - [x] Independently audit the pair census/costs/winner/fallback and summarize
   P9 complete candidates in `physical-plan.log` and aggregate reports.
 - [ ] Native CUDA/GPU correctness, launch integration and cost calibration.
-- [ ] Direct/cache-served kernels, `cp.async`, calibrated occupancy/grid waves,
+- [x] Compiler-side direct GMEM alternative within the existing proven P7
+  family, with zero staging storage and distinct warp-request accounting.
+- [ ] Measured cache service, `cp.async`, calibrated occupancy/grid waves,
   dynamic shared memory and runtime multiversion fallback dispatch.
 
 The exact formulas and trace columns are in
@@ -1575,6 +1577,112 @@ These are model decisions and compiler-review results, not GPU measurements.
 Durable evidence (raw `.t`, source/device `.B/.T`, explicit before/after
 scope/diff, `.cu`, reports, commands, PDF, receipts and checksums):
 `/Users/shinmingliu/open64/artifacts/review/ai-optimization/m3/joint-gemm-plan-search/sha256-4d4174f64dcf7706275132574f6d592b49aed3f743b0c18a0e5c21a551dd9dfa/`.
+
+## D/S1/T2 Comparison After PR 191
+
+The current joint model is model 2, specified by
+`AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md`. The model-1 Markdown/PDF
+pair remains the prior checkpoint, not the current D algorithm specification.
+
+- [x] Construct D in device WHIRL with guarded global A/B loads, A-register
+  reuse across j, register accumulation and guarded C stores. No A/B shared
+  symbols, barrier symbols or async operations are constructed for D.
+- [x] Enumerate S1, optional D for compact layouts, and permitted T2 before
+  final selection. Bound 16 tile records by 48 complete pairs.
+- [x] Price D's actual warp-issued sectors and repeated loads without cache
+  hit/overlap assumptions; remove all inactive SMEM charges.
+- [x] Retain the best S1 fallback even when D wins; explicitly restrict the
+  generated-host provider to S1 and avoid an independent D source template.
+- [x] Trace D/S1/T2 kind and `DIRECT_ACCESS`; independently audit costs,
+  direct traffic, selected zero allocation and actual device publication.
+- [x] Cover direct/staged winners, non-square tails, multi-CTA shapes, mixed
+  D/S1 PU images and malformed direct planning/evidence.
+- [ ] Native CUDA/GPU correctness and calibration. No GPU result is inferred
+  from host simulation or a relative model minimum.
+
+Compiler-side checkpoint: `be85a5c0` (2026-10-25). All 64 Python unit tests,
+the direct/staged integration suite, joint-search controls and executable P8
+regressions pass. The rebuilt native record test rejects six malformed direct
+contracts and checks two analytic sector-count oracles. Host numerical
+simulations report zero reference error. The 3x5x7 tail case selects D from
+19 pairs at relative cost 4, retaining S1 pair 12 as fallback; 128x128x144
+selects S1 at 9279 rather than compact T2 at 11646. These are uncalibrated
+model scores, not FLOP rates or measured time.
+
+Immutable SHA256-verified evidence, including before/after WHIRL, direct
+CUDA, raw traces, reports, commands and producer-source/binary fingerprints:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m3/d-s1-t2-comparison/sha256-e90e39c0a17ac15ac58ba41338cb4ca774d5da21a9d70bb138857bf42d845918/`.
+
+## Remaining FP32 Multilevel-Tiling Compiler Work
+
+Current priority (2026-10-25): continue fixed-shape F32 D/S1/T2 optimization
+without requiring a GPU. The selected-plan WHIRL and its `whirl2c -cuda`
+output remain the review authority. Historical M0-M3 acceptance boxes above
+also include native execution and must not be read as evidence that the
+implemented compiler transformations are absent.
+
+| Order | Remaining compiler work | Required review evidence |
+| --- | --- | --- |
+| 1 | Movement-aware candidate/resource discovery: evaluate D, S1 and T2 resource legality before staged-only filtering can discard a useful D seed; refine register estimates independently of SMEM use. Keep enumeration bounded and deterministic. | Candidate census, per-plan rejection reasons, resource accounting, selected/fallback records and WHIRL-derived CUDA; tests in which staged resource rejection does not incorrectly reject D. |
+| 2 | Complete the analytic resource/profitability model: register and SMEM allocation granularity, resident blocks/warps, grid underfill and tail waves, and a D-specific traffic/Roofline diagnostic. Keep issued-sector demand distinct from unknown cache/HBM service. | Auditable cost components and resource bounds for every candidate; analytic oracles and sensitivity tests. Unknown/calibration-dependent quantities remain explicitly low-confidence. |
+| 3 | Expand executable movement choices as separately gated increments: actual aligned vector loads with scalar tails, non-TMA asynchronous copies, and additional legal stage/layout combinations. Dynamic SMEM beyond the current conservative static limit requires a matching launch-resource contract. | Plan-to-WHIRL address, alignment, capacity and acquire/issue/wait/release proofs; no vector/overlap credit for scalar or synchronous code. Preserve a legal synchronous fallback. |
+| 4 | Complete selected-plan launch integration: generated-host application currently supports S1 only; carry D/T2 requirements, tensor-map setup, selected-entry resolution and buffer/stream ordering through the generic provider ABI and target launch adapter. | Compiler-generated host/device review sources, ABI and mock-runtime tests; distinguish compiler completion from native launch certification. |
+| 5 | Close the compiler-only review matrix for the supported subset, including shapes/tails, multiple PUs, option controls and rejected plans. | Immutable raw `.t`, before/after WHIRL, `.cu`, `tile.log`, `fetch-pipeline.log`, `physical-plan.log`, `optimization.log` and `optimization-summary.log`, with costs, selection reasons and actual transformation actions. |
+
+Recommended next package is order 1. Resource/profitability refinement follows;
+movement extensions should be selected by explicit legality and cost evidence,
+not enabled as unconditional rewrites. The list is a remaining-work roadmap,
+not a claim that each optional movement extension is necessary for the current
+bounded FP32 subset to compile correctly.
+
+Native CUDA compilation, PTX/SASS inspection, measured resource/spill counts,
+GPU correctness, baseline timing and cache/overlap calibration remain separate
+acceptance gates. Host simulation and relative cost minima cannot close them.
+
+## Target-Specific Numerical Planning Follow-On
+
+**Deferred (2026-10-25, user direction):** resume native partial-sum promotion
+and related numerical integration only when FP8 support is explicitly started.
+Retain the existing contract prototype, tests and evidence; do not make further
+FP8 work a prerequisite for FP32 multilevel-tiling milestones. Blackwell FP4
+remains a separate future target-profile effort.
+
+The proposed
+[numerical accumulation design](AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md)
+separates Hopper FP8 WGMMA promotion from Blackwell FP4 block-scaled MMA.
+This follow-on does not change the completed FP32 D/S1/T2 checkpoint or close
+its native GPU gate. Minimum execution sequence:
+
+- [ ] Policy-free numerical/accumulation records, target evidence and verifier.
+- [ ] Explicit Hopper partial/reset/wait/scale/FP32-merge WHIRL; prove maximum
+  reduction span independently of SMEM BK and slot count.
+- [ ] Joint numerical-legality and profitability search with source-format
+  fallback, complete trace/report evidence and adversarial numerical tests.
+- [ ] Separate Blackwell NVFP4/MXFP4 representation, scale and instruction
+  lowering; do not inherit Hopper's empirical accumulation penalty.
+- [ ] Exact-target native accuracy/performance and model-level acceptance.
+
+The first compiler-side contract slice now implements common runtime records,
+an active-PU -O3 segment planner and detached scalar F32 WHIRL materialization
+with postchecks. It includes an independent `AI_ACC 1` audit/report stream.
+It does not close the first full target-profile gate: rounding policy,
+production phase protection and actual Hopper WGMMA reset/wait/merge lowering
+remain open. Native FP8 requests cannot use the scalar adapter; Blackwell
+planning is rejected until its independent scaled profile exists. See
+Section 7 of the numerical design for exact implemented APIs and tests.
+Current AI_OPT v7 and production D/S1/T2 FP32 behavior remain unchanged.
+
+Contract checkpoint `f606852c`: 71 Python tests, 45 scalar segment cases,
+14 malformed contracts and four altered WHIRL sequences pass, along with
+the final D/S1/T2 regression. Production backend build and the no-frontend-
+builder symbol-boundary check pass. The standalone 257-element scalar case
+emits three resets and three outer merges. Native Hopper/Blackwell lowering,
+pipeline integration, optimizing-phase protection and model acceptance remain
+open; scalar host evidence must not close those gates.
+
+Immutable evidence (same-PU before/after `.B/.T`, raw diff, WHIRL-derived
+`.cu`, `.t`, complete reports, commands, build logs and checksums):
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m4/accumulation-contract/sha256-ca49313ac3fa783e29803efe7137fd92b4660cdf64bfdd6671af77eac99f19e8/`.
 
 ## Related Documents
 

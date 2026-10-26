@@ -6,11 +6,13 @@
  * Certifies AIO-10 fetch/pipeline planning, target capability fallback,
  * buffering, overlap cost, safety rejection, and unchanged binary WHIRL.
  * Design: doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md.
+ * Direct negatives: doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <vector>
 
 #include "defs.h"
 #include "mempool.h"
@@ -107,6 +109,8 @@ Set_Source (DSL_BUILDER_VALUE value, UINT32 file_id, UINT32 line)
            DSL_Builder_Set_Value_Source_Position(value, &source);
 }
 
+/* Build one test-owned semantic PU and preserve exact builder source lines
+ * for independent -src inspection; failure stops certification before output. */
 static BOOL
 Create_Fixture (const char *name, AIO10_FIXTURE *fixture)
 {
@@ -117,6 +121,7 @@ Create_Fixture (const char *name, AIO10_FIXTURE *fixture)
     DSL_OPCODE_ID matmul;
     DSL_OPCODE_ID relu;
     TY_IDX tensor_ty;
+    UINT32 source_lines[4];
 
     memset(fixture, 0, sizeof(*fixture));
     fixture->pu = DSL_Builder_Create_Minimal_PU(name);
@@ -139,9 +144,11 @@ Create_Fixture (const char *name, AIO10_FIXTURE *fixture)
         matmul == DSL_OPCODE_INVALID_ID || relu == DSL_OPCODE_INVALID_ID)
         return FALSE;
 
+    source_lines[0] = __LINE__ + 1;
     fixture->values[0] = DSL_Builder_Create_Tensor_Constant
                              ("aio10_kid0", tensor_ty, "float32", 2,
                               "[64,64]", "splat", "1.0");
+    source_lines[1] = __LINE__ + 1;
     fixture->values[1] = DSL_Builder_Create_Tensor_Constant
                              ("aio10_kid1", tensor_ty, "float32", 2,
                               "[64,64]", "splat", "1.0");
@@ -151,14 +158,15 @@ Create_Fixture (const char *name, AIO10_FIXTURE *fixture)
     attributes[1].value = "false";
     kids[0] = fixture->values[0];
     kids[1] = fixture->values[1];
+    source_lines[2] = __LINE__ + 1;
     fixture->values[2] = DSL_Builder_Create_Operator_With_Result
                              (matmul, 1, kids, 2, attributes, 2,
                               "aio10_matmul", tensor_ty);
     kids[0] = fixture->values[2];
+    source_lines[3] = __LINE__ + 1;
     fixture->values[3] = DSL_Builder_Create_Operator_With_Result
                              (relu, 2, kids, 1, NULL, 0,
                               "aio10_relu", tensor_ty);
-    const UINT32 source_lines[4] = { 132, 135, 144, 148 };
     for (UINT32 i = 0; i < 4; ++i) {
         if (fixture->values[i] == NULL ||
             !Set_Source(fixture->values[i], fixture->file_id,
@@ -460,6 +468,87 @@ Run_Control(void)
     return 0;
 }
 
+/* Exercise direct-plan runtime records and malformed-copy rejection without
+ * publishing an image. The active PU supplies all ownership/alias facts;
+ * copied arrays isolate each negative and analysis destruction owns cleanup. */
+static int
+DSL_test_direct_record_contracts ()
+{
+    AIO10_FIXTURE fixture;
+    AIO10_ANALYSIS analysis;
+    DSL_Opcode_Register_Common_Substrate();
+    if (!Create_Fixture("aio10_direct", &fixture) ||
+        !Build_Analysis(&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 1, FALSE, NULL, &analysis))
+        return 1;
+    VHO_DSL_Fetch_Pipeline_Destroy(analysis.pipeline);
+    VHO_DSL_FETCH_PIPELINE_CONTROL control;
+    VHO_DSL_Fetch_Pipeline_Control_Init(&control);
+    control.joint_cost = control.enable_direct = 1;
+    control.tile_plan_id = 2;
+    control.select_plans = control.enable_vector = control.enable_async_copy = 0;
+    control.maximum_buffer_stages = 2;
+    analysis.pipeline = VHO_DSL_Fetch_Pipeline_Create(fixture.pu, analysis.graph,
+        analysis.locality, NULL, analysis.tile, &control, stderr);
+    if (analysis.pipeline == NULL || !VHO_DSL_Fetch_Pipeline_Build(analysis.pipeline, stderr)) return 1;
+    const DSL_FETCH_PIPELINE_IR *ir = VHO_DSL_Fetch_Pipeline_Get_IR(analysis.pipeline);
+    DSL_FETCH_SITE_RECORD site;
+    if (!DSL_fetch_pipeline_ir_get_site(ir, 1, &site) || site.pipeline_plan_count != 3) return 1;
+    std::vector<DSL_FETCH_PLAN_RECORD> plans(DSL_fetch_pipeline_ir_plan_count(ir));
+    std::vector<DSL_FETCH_RECORD> fetches(DSL_fetch_pipeline_ir_fetch_count(ir));
+    std::vector<DSL_PIPELINE_STAGE_RECORD> stages(DSL_fetch_pipeline_ir_stage_count(ir));
+    UINT32 direct = 0;
+    for (UINT32 i = 0; i < plans.size(); ++i) {
+        if (!DSL_fetch_pipeline_ir_get_plan(ir, i + 1, &plans[i])) return 1;
+        if ((plans[i].flags & DSL_FETCH_PLAN_FLAG_DIRECT) != 0) direct = i;
+    }
+    if (direct != 1 || plans[direct].buffering_bytes != 0 ||
+        plans[direct].barrier_count != 0 || plans[direct].legality != DSL_OPT_LEGALITY_PROVEN) return 1;
+    DSL_TILE_PLAN_RECORD geometry;
+    UINT64 sector_bytes[2];
+    if (!DSL_tile_plan_ir_get_plan(VHO_DSL_Tile_Get_IR(analysis.tile), 2, &geometry)) return 1;
+    geometry.problem_m = geometry.cta_m = 8;
+    geometry.problem_n = geometry.cta_n = 32;
+    geometry.problem_k = geometry.cta_k = 8;
+    geometry.thread_m = geometry.thread_n = 1;
+    geometry.threads_per_cta = 256;
+    if (!VHO_DSL_direct_gmem_sectors(geometry, sector_bytes) ||
+        sector_bytes[0] != 2048 || sector_bytes[1] != 10240) return 1;
+    geometry.problem_m = geometry.problem_n = geometry.problem_k = 1;
+    if (!VHO_DSL_direct_gmem_sectors(geometry, sector_bytes) ||
+        sector_bytes[0] != 32 || sector_bytes[1] != 32) return 1;
+    for (UINT32 i = 0; i < fetches.size(); ++i)
+        if (!DSL_fetch_pipeline_ir_get_fetch(ir, i + 1, &fetches[i])) return 1;
+    for (UINT32 i = 0; i < stages.size(); ++i)
+        if (!DSL_fetch_pipeline_ir_get_stage(ir, i + 1, &stages[i])) return 1;
+    DSL_FETCH_PIPELINE_IR_CREATE_INFO info;
+    memset(&info, 0, sizeof(info));
+    info.owner_pu_st = site.owner_pu_st;
+    info.sites = &site; info.site_count = 1;
+    info.plan_count = plans.size(); info.fetch_count = fetches.size(); info.stage_count = stages.size();
+    FILE *quiet = tmpfile();
+    if (quiet == NULL) return 1;
+    for (UINT32 fault = 0; fault < 6; ++fault) {
+        std::vector<DSL_FETCH_PLAN_RECORD> bad_plans = plans;
+        std::vector<DSL_FETCH_RECORD> bad_fetches = fetches;
+        UINT32 f = plans[direct].first_fetch_id - 1;
+        if (fault == 0) bad_plans[direct].buffering_bytes = 4;
+        if (fault == 1) bad_plans[direct].barrier_count = 1;
+        if (fault == 2) bad_plans[direct].flags |= DSL_FETCH_PLAN_FLAG_ASYNC;
+        if (fault == 3) bad_fetches[f].destination_tier_kind = DSL_MEMORY_TIER_SHARED;
+        if (fault == 4) bad_fetches[f].flags = DSL_FETCH_RECORD_FLAG_STAGED;
+        if (fault == 5) bad_fetches[f].evolution_edge_id = 1;
+        info.plans = &bad_plans[0]; info.fetches = &bad_fetches[0]; info.stages = &stages[0];
+        DSL_FETCH_PIPELINE_IR *bad = DSL_fetch_pipeline_ir_create(&info, quiet);
+        if (bad != NULL) { DSL_fetch_pipeline_ir_destroy(bad); return 1; }
+    }
+    fclose(quiet);
+    Destroy_Analysis(&analysis);
+    printf("D/S1/T2 direct record contract passed: six malformed contracts rejected\n");
+    return 0;
+}
+
+/* Dispatch one isolated contract mode; individual producers own all artifacts
+ * and return failure before the shell harness may certify a receipt. */
 int
 main(void)
 {
@@ -482,5 +571,7 @@ main(void)
         return Run_Target(DSL_TARGET_PROFILE_NVIDIA_HOPPER, TRUE);
     if (strcmp(mode, "control") == 0)
         return Run_Control();
+    if (strcmp(mode, "direct") == 0)
+        return DSL_test_direct_record_contracts();
     return 1;
 }

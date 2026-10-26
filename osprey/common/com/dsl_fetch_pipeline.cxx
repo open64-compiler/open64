@@ -5,6 +5,7 @@
 /*
  * Policy-free AIO-10 CommonFetchPlanIR/CommonPipelineIR storage and
  * structural services. Movement selection and target reasoning belong to VHO.
+ * Direct-record contract: doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md.
  */
 
 #include <vector>
@@ -64,6 +65,9 @@ DSL_fetch_wait_point_name (UINT32 point)
            DSL_fetch_wait_name_table[point] : "unknown";
 }
 
+/* Validate runtime-only movement records without choosing a target policy.
+ * Direct plans have no software staging or synchronization; reject mixed
+ * direct/staged contracts before any owning phase can consume them. */
 BOOL
 DSL_fetch_pipeline_ir_verify
         (const DSL_FETCH_PIPELINE_IR *ir, FILE *diagnostic)
@@ -93,6 +97,7 @@ DSL_fetch_pipeline_ir_verify
             UINT32 known_flags = DSL_FETCH_PLAN_FLAG_BASELINE |
                                  DSL_FETCH_PLAN_FLAG_PROVISIONAL |
                                  DSL_FETCH_PLAN_FLAG_ASYNC |
+                                 DSL_FETCH_PLAN_FLAG_DIRECT |
                                  DSL_FETCH_PLAN_FLAG_SEMANTICS_PRESERVING;
             if (plan.id != expected_plan || plan.site_id != site.id ||
                 plan.tile_plan_id != site.selected_tile_plan_id ||
@@ -118,6 +123,13 @@ DSL_fetch_pipeline_ir_verify
                 (baseline && plan.engine != DSL_MEMORY_MOVEMENT_DEMAND))
                 return DSL_Fetch_IR_Report
                            (diagnostic, "invalid plan", plan.id);
+            const BOOL direct = (plan.flags & DSL_FETCH_PLAN_FLAG_DIRECT) != 0;
+            if (direct && (baseline || plan.engine != DSL_MEMORY_MOVEMENT_DEMAND ||
+                plan.stage_count != 1 || plan.buffering_bytes != 0 || plan.prefetch_distance != 0 ||
+                plan.barrier_count != 0 || plan.arrival_barrier != DSL_FETCH_BARRIER_NONE ||
+                plan.wait_point != DSL_FETCH_WAIT_NONE ||
+                (plan.flags & DSL_FETCH_PLAN_FLAG_ASYNC) != 0))
+                return DSL_Fetch_IR_Report(diagnostic, "invalid direct plan", plan.id);
             if (site.selected_plan_id == plan.optimization_plan_id)
                 selected_found = TRUE;
             UINT64 raw = 0;
@@ -156,6 +168,10 @@ DSL_fetch_pipeline_ir_verify
                     return DSL_Fetch_IR_Report
                                (diagnostic, "invalid fetch", fetch.id);
                 raw += fetch.raw_movement_cost;
+                if (direct && (fetch.destination_tier_kind != DSL_MEMORY_TIER_REGISTER ||
+                    fetch.flags != 0 || fetch.evolution_edge_id != 0 ||
+                    fetch.source_evolution_node_id != fetch.result_evolution_node_id))
+                    return DSL_Fetch_IR_Report(diagnostic, "invalid direct fetch", fetch.id);
                 hidden += fetch.hidden_movement_cost;
                 unhidden += fetch.unhidden_movement_cost;
                 ++expected_fetch;

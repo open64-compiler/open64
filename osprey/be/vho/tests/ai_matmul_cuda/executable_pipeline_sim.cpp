@@ -14,7 +14,11 @@
 #include <cuda_runtime.h>
 
 namespace {
-const int M = 128, N = 128, K = AI_TEST_K;
+#ifndef AI_TEST_M
+#define AI_TEST_M 128
+#define AI_TEST_N 128
+#endif
+const int M = AI_TEST_M, N = AI_TEST_N, K = AI_TEST_K;
 const int BM = AI_TEST_BM, BN = AI_TEST_BN, BK = AI_TEST_BK;
 const int Threads = AI_TEST_THREADS;
 struct TensorMap { float *data; int rows, cols, box_rows, box_cols; };

@@ -28,10 +28,26 @@ def run(command, cwd, env, name):
     return result.stdout
 
 
-def audit_source(source, dump, tile, tma):
+def audit_source(source, dump, tile, tma, direct=False):
     compact = re.sub(r"\s+", "", source)
     bm, bn, bk = tile["cta"]
     stages = 2 if tma else 1
+    if direct:
+        body = source[source.index("{", source.index('extern "C" __global__')):]
+        columns = tile["layout"]["thread_columns"]
+        tm, tn = bm * columns // tile["threads"], bn // columns
+        k = tile["grid"]["problem"][2]
+        if ("__shared__" in source or "__syncthreads" in body or "__open64_cuda_" in body
+                or "IF" not in dump or not re.search(r"\*\s*\(a\s*\+", source)
+                or not re.search(r"\*\s*\(b\s*\+", source)
+                or "q=" not in compact or "acc[" not in source):
+            raise ValueError("direct kernel lost guarded global/register contract")
+        if any(fragment not in compact for fragment in (
+                f"for(base=0;base<{k};base=base+{bk})",
+                f"for(q=0;q<{bk};q=q+1)", f"if((base+q)<{k})",
+                f"local_row=(tid/{columns})*{tm};", f"local_col=(tid%{columns})*{tn};")):
+            raise ValueError("direct source disagrees with selected register map or reduction bounds")
+        return
     a_size = stages * bk * (bm + int(tile["layout"]["a_layout"] == "transposed_padded"))
     for name, size in (("as", a_size), ("bs", stages * bk * bn)):
         if re.search(rf"__shared__\s+(?:__align__\(128\)\s+)?_IEEE32\s+{name}\[{size}LL\]", source) is None:
@@ -64,10 +80,10 @@ def audit_source(source, dump, tile, tma):
         raise ValueError("slot, phase, or refill bound disagrees with selected tile")
 
 
-def compile_case(root, build, env, k, tma, extra_options=()):
+def compile_case(root, build, env, k, tma, extra_options=(), dimensions=(128, 128)):
     root.mkdir()
     run([sys.executable, str(HERE / "edge_matmul_fixture.py"),
-         "gemm.B", "128", "128", str(k)], root, env, "fixture.log")
+         "gemm.B", str(dimensions[0]), str(dimensions[1]), str(k)], root, env, "fixture.log")
     run([str(build / "osprey/targdir/ir_tools/ir_b2a"), "-st", "-src",
          "gemm.B", "gemm.input.T"], root, env, "input-dump.log")
     command = [str(build / "osprey/targdir/driver/opencc"),
@@ -84,9 +100,10 @@ def compile_case(root, build, env, k, tma, extra_options=()):
     if proof is None or ("joint" not in selection and (proof["stages"] == 2) != tma):
         raise RuntimeError("selected executable P8 pipeline missing")
     tma = proof["stages"] == 2
+    direct = proof["abi"] == "direct_ptr_v1"
     trace = (root / "gemm.t").read_text()
     for old, new in (("whirl_order=verified", "whirl_order=unverified"),
-                     ("acquire_issue_wait_compute_release", "issue_compute_release")):
+                     (proof["order"], "issue_compute_release")):
         try:
             parse(trace.replace(old, new, 1))
         except ValueError:
@@ -100,7 +117,7 @@ def compile_case(root, build, env, k, tma, extra_options=()):
         root, env, "whirl2c.log")
     source = (root / "gemm.whirl.cu").read_text()
     dump = (root / "gemm.dump.T").read_text()
-    audit_source(source, dump, selected, tma)
+    audit_source(source, dump, selected, tma, direct)
     if tma:
         for before, after in (("__open64_cuda_tma_wait(", "__open64_cuda_missing_wait("),
                                (" / 2) % 2", " / 2) % 3"),
@@ -115,6 +132,7 @@ def compile_case(root, build, env, k, tma, extra_options=()):
             else:
                 raise RuntimeError("corrupt pipeline source order was accepted")
     flags = [f"-DAI_TEST_K={k}", f"-DAI_TEST_TMA={int(tma)}",
+             f"-DAI_TEST_M={dimensions[0]}", f"-DAI_TEST_N={dimensions[1]}",
              f"-DAI_TEST_THREADS={selected['threads']}"]
     flags += [f"-DAI_TEST_{name}={value}" for name, value in
               zip(("BM", "BN", "BK"), selected["cta"])]
@@ -128,7 +146,7 @@ def compile_case(root, build, env, k, tma, extra_options=()):
     simulation = run([str(root / "pipeline-sim")], root, env, "host-sim.log")
     render(root / "gemm.t", root / "reports")
     shutil.copy2(REPO / "osprey/include/open64_cuda_pipeline.cuh", root)
-    return dict(problem=(128, 128, k), selected_tile=selected["plan"],
+    return dict(problem=(*dimensions, k), selected_tile=selected["plan"],
                 tile=selected["cta"], pipeline=proof,
                 host_rewrite=action["tile_rewrite"], simulation=simulation.strip(),
                 native_cuda_verified=False, joint=selection.get("joint"))

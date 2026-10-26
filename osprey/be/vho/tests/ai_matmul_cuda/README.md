@@ -2,6 +2,22 @@
 
 ## Joint Tile And Movement Search
 
+The current joint model is D/S1/T2 model 2. D lowers a guarded direct-global
+register-tiled kernel without A/B SMEM; S1 and T2 retain their existing
+synchronous/TMA lowerings. Compact tiles get D alternatives; irrelevant
+padded/XOR staging siblings do not duplicate D. The budget is 48 pairs.
+`DIRECT_ACCESS` records whole-kernel requested sectors with unknown cache
+service. The selected kind is explicit in the trace and reports, and the
+retained staged fallback is always S1, even when D wins.
+
+`test_direct_staged_comparison.py --build-dir <build> --output-dir <fresh-dir>`
+retains direct/staged winners, non-square tails, multi-CTA correctness,
+mixed D/S1 device PUs, before/after images and malformed-evidence checks.
+See `doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md` for the exact algorithm,
+traffic model and limitations. Joint legacy-template output is unsupported;
+use `cuda_legacy_emit=OFF` and `whirl2c -cuda`. Generated-host application
+remains S1-only, explicitly recorded as `direct=0`.
+
 `-Wb,-DSL:gemm_plan_search=baseline|joint` defaults to `baseline`.
 With `-O3` and `cuda_whirl_output`, joint mode compares complete lowerable
 tile/layout plus synchronous/TMA pairs before selecting. TMA is permitted
@@ -538,3 +554,18 @@ WHIRL. A prepared native compile command is
 `nvcc -std=c++17 -arch=sm_90 -I. -c gemm.whirl.cu` from a case directory with
 the retained `open64_cuda_pipeline.cuh`. NVCC/PTX and GPU validation have not
 been performed on the current host.
+
+## Bounded Accumulation Contract Fixture
+
+`test_accumulation_contract.py --build-dir <build> --output-dir <new-dir>`
+runs the linked `dsl_accumulation_contract_test` producer, reopens same-PU
+before/after images with `ir_b2a -st -src`, emits both through `whirl2c -cuda`
+and executes the scalar source on the host. It retains the raw `.t`, mapped
+images, diff, `.cu`, numerical logs, commands, reports and checksums. The
+producer target is built by `make dsl_accumulation_contract_test` in ir_tools.
+
+`--trace <retained.t> --output-dir <new-report-dir>` audits and regenerates
+the fixture-scoped accumulation reports independently. `AI_ACC 1` is separate
+from production `AI_OPT 7`. Reports distinguish actual scalar resets/merges
+from planned Hopper and rejected native FP8/FP4 paths. This test does not
+enable native FP8 GEMM or establish GPU/model accuracy.

@@ -157,6 +157,22 @@ AI-domain-specific; the common candidate records carry option provenance,
 source/selected formats, legality evidence, and fallback without owning the
 AI acceptance policy or deciding that precision loss is acceptable.
 
+### 2.2 Internal accumulation is a separate target contract
+
+Operand and output formats do not establish internal MMA addition precision.
+Model Hopper FP8 WGMMA partial-sum promotion separately from Blackwell
+NVFP4/MXFP4 scaled MMA. Record product/internal/outer precision evidence,
+explicit segment boundaries and promotion intervals, scale handling,
+completion dependencies and accumulator allocation. `BK`, instruction K,
+scale-group K and the promotion interval are independent parameters.
+Numerical acceptance gates profitability; narrower storage or an FP32 result
+type alone cannot establish that gate. See
+[Numerical Accumulation And Scaled GEMM Design v0.1](AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md)
+for DeepSeek-V3 evidence, pinned Triton analysis, ownership, cost and report
+requirements. The initial common records, VHO segmentation and scalar WHIRL
+adapter are implemented as a contract fixture. Native Hopper FP8, Blackwell
+FP4 and production pipeline integration remain open; D/S1/T2 remain FP32.
+
 ## 3. Definitions used by the schedule
 
 These terms are defined here before the movement sequence. "Allocation" in a
@@ -356,10 +372,11 @@ lowest credible complete legal plan with a conservative fallback.
 The registered `-Wb,-DSL:gemm_plan_search=baseline|joint` option defaults to
 `baseline`. `joint` requests a bounded cross-product of tile, copy map, A/B
 SMEM layout, register fragment, and movement-schedule alternatives, including
-the direct path in the full design. Initially only the existing lowerable
-synchronous/TMA pairs are implemented; direct kernels and `cp.async` remain
-open. See `AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md` for the exact
-cost model, compile-time fallback and reporting. Joint requires `-O3` and
+the direct path in the full design. Model 2 now implements direct register
+loads alongside synchronous/TMA pairs in the existing proven P7 family;
+`cp.async` and calibrated cache service remain open. See
+`AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md` for the current cost model,
+compile-time S1 fallback and reporting. Joint requires `-O3` and
 device-WHIRL output. It never bypasses legality, numerical
 permission, the rewrite gate, or the trace contract. This control allows an
 equal-budget comparison of delayed joint choice against the current selector

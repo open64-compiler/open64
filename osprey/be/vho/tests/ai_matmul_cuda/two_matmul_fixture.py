@@ -8,8 +8,8 @@ from open64_dsc.module import WhirlModule, WhirlProgramUnitRecord
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: two_matmul_fixture.py OUTPUT.B")
+    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] != "--direct-first"):
+        raise SystemExit("usage: two_matmul_fixture.py OUTPUT.B [--direct-first]")
     builder = load_builder("native")
     builder.begin_program()
     first_pu = None
@@ -22,9 +22,10 @@ def main() -> int:
         builder.set_pu_source_identity(pu, name, "ai.matmul.duplicate",
                                        source, 1)
         source_id = builder.register_source_file(pu, source)
-        lhs = builder.tensor_constant("lhs", "float32", 2, "[128,128]",
+        shape = "[1,1]" if ordinal == 0 and len(sys.argv) == 3 else "[128,128]"
+        lhs = builder.tensor_constant("lhs", "float32", 2, shape,
                                       "splat", "1.0")
-        rhs = builder.tensor_constant("rhs", "float32", 2, "[128,128]",
+        rhs = builder.tensor_constant("rhs", "float32", 2, shape,
                                       "splat", "1.0")
         result = builder.common_matmul(lhs, rhs)
         for value in (lhs, rhs, result):
