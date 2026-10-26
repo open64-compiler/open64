@@ -94,6 +94,16 @@ typedef struct {
 } DSL_MEMORY_TIER_RECORD;
 
 typedef struct {
+    UINT32 bank_count;
+    UINT32 word_bytes;
+    UINT32 warp_lanes;
+} DSL_SHARED_BANK_MODEL_RECORD;
+
+extern BOOL DSL_memory_hierarchy_shared_bank_model
+                                (UINT32 profile_id,
+                                 DSL_SHARED_BANK_MODEL_RECORD *model);
+
+typedef struct {
     DSL_MEMORY_MOVEMENT_CAPABILITY_ID id;
     UINT32 engine;
     UINT32 source_tier_kind;

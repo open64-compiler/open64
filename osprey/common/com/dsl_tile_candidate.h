@@ -80,6 +80,11 @@ typedef enum {
 } DSL_TILE_A_SHARED_LAYOUT;
 
 typedef enum {
+    DSL_TILE_B_LAYOUT_ROW_MAJOR = 0,
+    DSL_TILE_B_LAYOUT_XOR_COLUMNS = 1
+} DSL_TILE_B_SHARED_LAYOUT;
+
+typedef enum {
     DSL_TILE_INSTRUCTION_UNKNOWN = 0,
     DSL_TILE_INSTRUCTION_SCALAR_FMA = 1,
     DSL_TILE_INSTRUCTION_VECTOR_FMA = 2
@@ -144,9 +149,20 @@ typedef struct {
     UINT64 shared_bytes_per_stage;
     UINT64 smem_bank_conflict_work;
     UINT64 smem_a_load_issue_work;
+    UINT64 smem_b_load_issue_work;
+    UINT64 smem_a_copy_conflicts;
+    UINT64 smem_b_copy_conflicts;
+    UINT64 smem_a_read_conflicts;
+    UINT64 smem_b_read_conflicts;
+    UINT64 smem_address_work;
+    UINT64 smem_a_allocation_bytes;
+    UINT64 smem_b_allocation_bytes;
     UINT64 shared_capacity_bytes;
     UINT32 a_shared_layout;
     UINT32 a_shared_stride;
+    UINT32 b_shared_layout;
+    UINT32 smem_bank_count;
+    UINT32 smem_bank_word_bytes;
     UINT32 maximum_buffer_stages;
     UINT32 registers_per_thread;
     UINT32 register_capacity_per_thread;

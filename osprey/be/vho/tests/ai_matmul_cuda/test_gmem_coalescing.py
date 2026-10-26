@@ -25,7 +25,7 @@ def run(command, cwd, env, log):
     return result.stdout
 
 
-def compile_case(root, build, env, k, expected_family):
+def compile_case(root, build, env, k, expected_family, smem_search=True):
     root.mkdir()
     (root / "traces").mkdir()
     opencc = build / "osprey/targdir/driver/opencc"
@@ -36,6 +36,7 @@ def compile_case(root, build, env, k, expected_family):
     run([str(opencc), f"-run-build={build}", "-O3", "-noinline", "-c", "-keep",
          "-Wb,-DSL:cuda_tile_output=gemm.generated.cu",
          "-Wb,-DSL:cuda_whirl_output=gemm.device.B",
+         f"-Wb,-DSL:cuda_smem_layout_search={'ON' if smem_search else 'OFF'}",
          "-Wb,-DSL:cuda_tile_apply=ON", "gemm.B"],
         root, env, "opencc.log")
     trace = root / "gemm.t"
@@ -53,10 +54,25 @@ def compile_case(root, build, env, k, expected_family):
             raise
     else:
         raise RuntimeError("altered GMEM sector trace was accepted")
-    if selection.get("cost_model") != "v4":
+    if selection.get("cost_model") != "v5":
         raise RuntimeError("GMEM sector cost model was not selected")
     selected = next(row for row in candidates
                     if row["plan"] == selection["selected"])
+    if (any(row["smem"]["b_layout"] == "xor_columns" for row in candidates)
+            != smem_search or
+            (selected["smem"]["b_layout"] == "xor_columns") != smem_search):
+        raise RuntimeError("SMEM search option or selected B layout was lost")
+    smem_line = next(line for line in trace.read_text().splitlines()
+                     if line.startswith(f"AI_OPT 7 TILE_SMEM 1 {selected['tile']} "))
+    changed = smem_line.split()
+    changed[14] = str(int(changed[14]) + 1)
+    try:
+        parse(trace.read_text().replace(smem_line, " ".join(changed), 1))
+    except ValueError as error:
+        if "SMEM record disagrees" not in str(error):
+            raise
+    else:
+        raise RuntimeError("altered SMEM bank trace was accepted")
     if (selected["family"] != expected_family or
             action["tile_rewrite"] != "generated_runtime_call"):
         raise RuntimeError("unexpected cost-selected GMEM lane map")
@@ -87,6 +103,7 @@ def compile_case(root, build, env, k, expected_family):
     return dict(problem=(128, 128, k), selected_plan=selected["plan"],
                 selected_family=selected["family"],
                 selected_relative_cost=selected["total"],
+                smem=selected["smem"], smem_search=smem_search,
                 old_c_sector_bytes=old["gmem"]["c"],
                 coalesced_c_sector_bytes=coalesced["gmem"]["c"],
                 parity=parity.strip())
@@ -109,8 +126,10 @@ def main():
     short = compile_case(output / "k32", build, env, 32,
                          "cuda_128_coalesced")
     long = compile_case(output / "k128", build, env, 128, "cuda_128")
+    no_search = compile_case(output / "no-smem-search", build, env, 128,
+                             "cuda_128_coalesced", smem_search=False)
     receipt = dict(schema="ai-gmem-coalescing-v1", short_k=short,
-                   long_k=long, host_cta_parity_passed=True,
+                   long_k=long, no_smem_search=no_search, host_cta_parity_passed=True,
                    native_cuda_compiled=False, gpu_performance_verified=False)
     (output / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n",
                                            encoding="utf-8")

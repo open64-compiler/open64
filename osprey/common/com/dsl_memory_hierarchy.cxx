@@ -277,6 +277,20 @@ DSL_memory_hierarchy_get_tier
 }
 
 BOOL
+DSL_memory_hierarchy_shared_bank_model
+        (UINT32 profile_id, DSL_SHARED_BANK_MODEL_RECORD *model)
+{
+    if (model == NULL ||
+        (profile_id != DSL_TARGET_PROFILE_NVIDIA_HOPPER &&
+         profile_id != DSL_TARGET_PROFILE_NVIDIA_BLACKWELL))
+        return FALSE;
+    model->bank_count = 32;
+    model->word_bytes = 4;
+    model->warp_lanes = 32;
+    return TRUE;
+}
+
+BOOL
 DSL_memory_hierarchy_find_tier
         (UINT32 profile_id, UINT32 kind, DSL_MEMORY_TIER_RECORD *tier)
 {

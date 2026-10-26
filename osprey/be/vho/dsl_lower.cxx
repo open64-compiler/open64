@@ -2091,6 +2091,10 @@ VHO_DSL_Lower_Verified_Engine
                 tile.shared_bytes_per_stage <= UINT32_MAX &&
                 tile.a_shared_layout <=
                     DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED &&
+                tile.b_shared_layout <= DSL_TILE_B_LAYOUT_XOR_COLUMNS &&
+                (tile.b_shared_layout != DSL_TILE_B_LAYOUT_XOR_COLUMNS ||
+                 (tile.cta_n >= 32 && tile.cta_n <= 1024 &&
+                  (tile.cta_n & (tile.cta_n - 1)) == 0)) &&
                 tile.a_shared_stride ==
                     (tile.a_shared_layout ==
                          DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
@@ -2517,6 +2521,18 @@ VHO_DSL_CUDA_Barrier (ST *barrier)
 }
 
 static WN *
+VHO_DSL_CUDA_B_Shared_Index (const DSL_TILE_PLAN_RECORD &tile,
+                             WN *row, WN *col)
+{
+    if (tile.b_shared_layout == DSL_TILE_B_LAYOUT_XOR_COLUMNS)
+        col = WN_Binary(OPR_BXOR, MTYPE_I4, col,
+                       WN_Div(MTYPE_I4, WN_COPY_Tree(col),
+                              VHO_DSL_CUDA_I4(32)));
+    return WN_Add(MTYPE_I4,
+                   WN_Mpy(MTYPE_I4, row, VHO_DSL_CUDA_I4(tile.cta_n)), col);
+}
+
+static WN *
 VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
 {
     const DSL_TILE_PLAN_RECORD &tile = *c.tile;
@@ -2644,7 +2660,11 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
     WN *b_index = WN_Add(MTYPE_I4, WN_Mpy(MTYPE_I4, b_row,
                                           VHO_DSL_CUDA_I4(n)), b_col);
     WN *b_store = VHO_DSL_CUDA_F4_Store
-        (c, c.bs, VHO_DSL_CUDA_I4_Load(c.offset),
+        (c, c.bs, VHO_DSL_CUDA_B_Shared_Index
+            (tile, WN_Div(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.offset),
+                          VHO_DSL_CUDA_I4(bn)),
+             WN_Binary(OPR_REM, MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.offset),
+                       VHO_DSL_CUDA_I4(bn))),
          VHO_DSL_CUDA_F4_Load(c, c.b, b_index));
     if (guard_k || guard_n) {
         WN *valid = VHO_DSL_CUDA_Bounds2
@@ -2662,7 +2682,13 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
         WN_INSERT_BlockLast(then_block, b_store);
         WN_INSERT_BlockLast
             (else_block, VHO_DSL_CUDA_F4_Store
-                             (c, c.bs, VHO_DSL_CUDA_I4_Load(c.offset),
+                             (c, c.bs, VHO_DSL_CUDA_B_Shared_Index
+                                 (tile, WN_Div(MTYPE_I4,
+                                     VHO_DSL_CUDA_I4_Load(c.offset),
+                                     VHO_DSL_CUDA_I4(bn)),
+                                  WN_Binary(OPR_REM, MTYPE_I4,
+                                     VHO_DSL_CUDA_I4_Load(c.offset),
+                                     VHO_DSL_CUDA_I4(bn))),
                               WN_Floatconst(MTYPE_F4, 0.0)));
         WN_INSERT_BlockLast
             (b_body, WN_CreateIf(valid, then_block, else_block));
@@ -2691,9 +2717,8 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
         WN_Add(MTYPE_I4,
                WN_Mpy(MTYPE_I4, as_row, VHO_DSL_CUDA_I4(bk)),
                VHO_DSL_CUDA_I4_Load(c.q));
-    WN *bs_index = WN_Add
-        (MTYPE_I4,
-         WN_Mpy(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.q), VHO_DSL_CUDA_I4(bn)),
+    WN *bs_index = VHO_DSL_CUDA_B_Shared_Index
+        (tile, VHO_DSL_CUDA_I4_Load(c.q),
          WN_Add(MTYPE_I4, VHO_DSL_CUDA_I4_Load(c.local_col),
                 VHO_DSL_CUDA_I4_Load(c.j)));
     WN *sum = WN_Add
@@ -3008,6 +3033,7 @@ VHO_DSL_CUDA_Write_Selected_Tile
             "// legality=proven cost=%llu unit=relative confidence=low\n"
             "// shared_ab_bytes_per_stage=%llu threads_per_cta=%u\n"
             "// a_smem_layout=%s a_stride=%u\n"
+            "// b_smem_layout=%s\n"
             "// whirl_k_loop=DO_LOOP scope=detached_plan_only start=0 end=%llu step=%u\n"
             "#include <cuda_runtime.h>\n"
             "#define AI_TILE_PLAN_ID %u\n"
@@ -3016,6 +3042,7 @@ VHO_DSL_CUDA_Write_Selected_Tile
             "#define BM %u\n#define BN %u\n#define BK %u\n"
             "#define TM %u\n#define TN %u\n#define A_STRIDE %u\n"
             "#define AI_A_SHARED_ELEMS %u\n"
+            "#define AI_B_SMEM_XOR_COLUMNS %u\n"
             "#define THREADS ((BM / TM) * (BN / TN))\n",
             tile.id, tile.optimization_plan_id, tile.candidate_id,
             DSL_tile_family_name(tile.family),
@@ -3024,6 +3051,8 @@ VHO_DSL_CUDA_Write_Selected_Tile
             tile.threads_per_cta,
             tile.a_shared_layout == DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
                 "transposed_padded" : "row_major", tile.a_shared_stride,
+            tile.b_shared_layout == DSL_TILE_B_LAYOUT_XOR_COLUMNS ?
+                "xor_columns" : "row_major",
             (unsigned long long)WN_const_val(WN_kid1(WN_end(k_loop))),
             (UINT32)WN_const_val(WN_kid1(WN_kid0(WN_step(k_loop)))),
             tile.id, tile.optimization_plan_id,
@@ -3034,7 +3063,8 @@ VHO_DSL_CUDA_Write_Selected_Tile
             tile.thread_m, tile.thread_n, tile.a_shared_stride,
             tile.cta_k * (tile.a_shared_layout ==
                 DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
-                tile.cta_m + 1 : tile.cta_m));
+                tile.cta_m + 1 : tile.cta_m),
+            tile.b_shared_layout == DSL_TILE_B_LAYOUT_XOR_COLUMNS ? 1 : 0);
     fprintf(file,
         "extern \"C\" __global__ void %s(\n",
         tma_fallback ? "ai_matmul_tile_f32_sync" : "ai_matmul_tile_f32");
@@ -3064,8 +3094,11 @@ VHO_DSL_CUDA_Write_Selected_Tile
     fputs(
         "    }\n"
         "    for (int offset = tid; offset < BK * BN; offset += THREADS) {\n"
-        "      const int q = offset / BN, col = offset % BN;\n"
-        "      bs[q][col] = base+q < K && col0+col < N\n"
+        "      const int q = offset / BN, col = offset % BN;\n", file);
+    fputs(tile.b_shared_layout == DSL_TILE_B_LAYOUT_XOR_COLUMNS ?
+        "      bs[q][col ^ (col / 32)] = base+q < K && col0+col < N\n" :
+        "      bs[q][col] = base+q < K && col0+col < N\n", file);
+    fputs(
         "          ? b[(base+q)*N + col0+col] : 0.0f;\n"
         "    }\n"
         "    __syncthreads();\n"
@@ -3075,8 +3108,11 @@ VHO_DSL_CUDA_Write_Selected_Tile
           "        const float av = as[q][local_row+i];\n" :
           "        const float av = as[local_row+i][q];\n", file);
     fputs(
-        "        for (int j = 0; j < TN; ++j)\n"
-        "          acc[i][j] += av * bs[q][local_col+j];\n"
+        "        for (int j = 0; j < TN; ++j)\n", file);
+    fputs(tile.b_shared_layout == DSL_TILE_B_LAYOUT_XOR_COLUMNS ?
+        "          acc[i][j] += av * bs[q][(local_col+j) ^ ((local_col+j)/32)];\n" :
+        "          acc[i][j] += av * bs[q][local_col+j];\n", file);
+    fputs(
         "      }\n"
         "    __syncthreads();\n"
         "  }\n"

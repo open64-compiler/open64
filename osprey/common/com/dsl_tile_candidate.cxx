@@ -132,6 +132,16 @@ DSL_tile_plan_ir_verify (const DSL_TILE_PLAN_IR *ir, FILE *diagnostic)
                 plan.edge_policy > DSL_TILE_EDGE_PREDICATED ||
                 plan.a_shared_layout >
                     DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ||
+                plan.b_shared_layout > DSL_TILE_B_LAYOUT_XOR_COLUMNS ||
+                (plan.b_shared_layout == DSL_TILE_B_LAYOUT_XOR_COLUMNS &&
+                 (plan.cta_n < 32 || plan.cta_n > 1024 ||
+                  (plan.cta_n & (plan.cta_n - 1)) != 0)) ||
+                (plan.smem_bank_count != 0 &&
+                 (plan.smem_bank_word_bytes == 0 ||
+                  plan.smem_a_allocation_bytes >
+                      ~(UINT64)0 - plan.smem_b_allocation_bytes ||
+                  plan.shared_bytes_per_stage !=
+                      plan.smem_a_allocation_bytes + plan.smem_b_allocation_bytes)) ||
                 (!baseline && plan.a_shared_stride != 0 &&
                  plan.a_shared_stride !=
                      (plan.a_shared_layout ==

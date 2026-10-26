@@ -1106,3 +1106,22 @@ Specify the selected-plan-to-`DO_LOOP` schema, plan/source provenance, GPU execu
 - NVIDIA Nsight Compute Profiling Guide, Roofline Charts and Memory Workload Analysis (https://docs.nvidia.com/nsight-compute/ProfilingGuide/): research-derived definition of arithmetic intensity, compute and bandwidth ceilings, hierarchical Roofline and measured achieved performance. Section 7.2A's compiler evidence fields, consistency gate, and selection-feedback use are DSC design proposals, not features attributed to NVIDIA.
 
 - Triton compiler documentation and source metadata: used as design evidence for block meta-parameters, autotune configurations, MLIR-based lowering, target-specific layout/pipeline passes, TMA/MMA lowering, barriers, and tensor-memory handling.
+
+# SMEM Implementation Addendum (2026-10-25)
+
+After PR 188, synchronous F32 P7 planning retains compact/padded A and
+compact/column-XOR B alternatives. `CommonTilePlanIR` now carries per-operand
+staging bytes, physical B layout, A/B fill and compute bank-excess rounds,
+B compute issue work and incremental address work. A target adapter supplies
+the shared bank model. The default-ON
+`-Wb,-DSL:cuda_smem_layout_search=ON|OFF` controls B-layout search.
+`COST_MODEL 5` gates selection on all four shared-access classes, GMEM
+sectors, read-issue work, XOR address work and synchronization. These are
+low-confidence relative scores, not measured latency. Selected mappings are
+lowered into device WHIRL before `whirl2c -cuda` emission; source templates
+remain a parity baseline. `.t` adds positional `TILE_SMEM` evidence, which the
+tool independently checks and summarizes in `tile.log` and the aggregate
+logs. The complete formula, bijection, legality and scope are in the
+[hardware planning addendum](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.1.md#synchronous-smem-planning-package-2026-10-25).
+Multi-stage/TMA WHIRL lowering, occupancy calibration and native GPU
+acceptance remain open; this package does not close them.
