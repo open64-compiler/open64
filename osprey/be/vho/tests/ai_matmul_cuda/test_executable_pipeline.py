@@ -64,7 +64,7 @@ def audit_source(source, dump, tile, tma):
         raise ValueError("slot, phase, or refill bound disagrees with selected tile")
 
 
-def compile_case(root, build, env, k, tma):
+def compile_case(root, build, env, k, tma, extra_options=()):
     root.mkdir()
     run([sys.executable, str(HERE / "edge_matmul_fixture.py"),
          "gemm.B", "128", "128", str(k)], root, env, "fixture.log")
@@ -76,12 +76,14 @@ def compile_case(root, build, env, k, tma):
                "-Wb,-DSL:cuda_whirl_output=gemm.device.B"]
     if tma:
         command.append("-Wb,-DSL:cuda_tma_prefetch=ON")
+    command.extend(extra_options)
     run(command + ["gemm.B"], root, env, "compiler.log")
     candidates, selection, action = parse((root / "gemm.t").read_text())
     selected = next(row for row in candidates if row["plan"] == selection["selected"])
     proof = selection.get("pipeline_kernel")
-    if proof is None or (proof["stages"] == 2) != tma:
+    if proof is None or ("joint" not in selection and (proof["stages"] == 2) != tma):
         raise RuntimeError("selected executable P8 pipeline missing")
+    tma = proof["stages"] == 2
     trace = (root / "gemm.t").read_text()
     for old, new in (("whirl_order=verified", "whirl_order=unverified"),
                      ("acquire_issue_wait_compute_release", "issue_compute_release")):
@@ -129,7 +131,7 @@ def compile_case(root, build, env, k, tma):
     return dict(problem=(128, 128, k), selected_tile=selected["plan"],
                 tile=selected["cta"], pipeline=proof,
                 host_rewrite=action["tile_rewrite"], simulation=simulation.strip(),
-                native_cuda_verified=False)
+                native_cuda_verified=False, joint=selection.get("joint"))
 
 
 def negative_case(root, build, env, apply):

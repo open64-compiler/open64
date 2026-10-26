@@ -1315,6 +1315,9 @@ DSL_Tile_Materialize_IR (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
     return analysis->ir != NULL;
 }
 
+/* Generate the current PU's bounded family without rewriting WHIRL. A caller
+ * may defer selection to joint P8 costing; analysis-only mode preserves all
+ * layout siblings even when TMA candidates are also requested. */
 BOOL
 VHO_DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
 {
@@ -1396,7 +1399,7 @@ VHO_DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
                       diagnostic))
                 return FALSE;
             if (analysis->control.enable_cuda_128 &&
-                !VHO_DSL_CUDA_TMA_Prefetch &&
+                (!VHO_DSL_CUDA_TMA_Prefetch || !analysis->control.select_plans) &&
                 site.tile_plan_count < analysis->control.max_plans_per_site &&
                 !DSL_Tile_Add_Family
                      (analysis, &site, tensor, locality, source,
@@ -1412,7 +1415,7 @@ VHO_DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
                       diagnostic))
                 return FALSE;
             if (analysis->control.enable_cuda_128 &&
-                !VHO_DSL_CUDA_TMA_Prefetch &&
+                (!VHO_DSL_CUDA_TMA_Prefetch || !analysis->control.select_plans) &&
                 site.tile_plan_count < analysis->control.max_plans_per_site &&
                 !DSL_Tile_Add_Family
                      (analysis, &site, tensor, locality, source,
@@ -1422,7 +1425,7 @@ VHO_DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
             if (analysis->control.enable_blackwell_wide &&
                 analysis->control.target_profile_id ==
                     DSL_TARGET_PROFILE_NVIDIA_BLACKWELL &&
-                !VHO_DSL_CUDA_TMA_Prefetch &&
+                (!VHO_DSL_CUDA_TMA_Prefetch || !analysis->control.select_plans) &&
                 site.tile_plan_count < analysis->control.max_plans_per_site &&
                 !DSL_Tile_Add_Family
                      (analysis, &site, tensor, locality, source,
@@ -1431,7 +1434,7 @@ VHO_DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
                 return FALSE;
         }
         if (cuda_profile && VHO_DSL_CUDA_SMEM_Layout_Search &&
-            !VHO_DSL_CUDA_TMA_Prefetch) {
+            (!VHO_DSL_CUDA_TMA_Prefetch || !analysis->control.select_plans)) {
             const UINT32 original_count = site.tile_plan_count;
             for (UINT32 p = 1; p < original_count &&
                  site.tile_plan_count < analysis->control.max_plans_per_site; ++p) {
@@ -1470,6 +1473,53 @@ VHO_DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
     analysis->built = TRUE;
     return DSL_Tile_Materialize_IR(analysis, diagnostic) &&
            VHO_DSL_Tile_Verify(analysis, diagnostic);
+}
+
+/* Commit only the tile lineage selected by the owning whole-plan gate. No
+ * executable WHIRL changes here; rematerialize runtime IR before tracing. */
+BOOL
+VHO_DSL_tile_finalize_joint_selection
+        (DSL_TILE_ANALYSIS *analysis, DSL_TILE_SITE_ID site_id,
+         DSL_TILE_PLAN_ID tile_id, FILE *diagnostic)
+{
+    if (!DSL_Tile_Active(analysis) || !analysis->built ||
+        analysis->control.select_plans || site_id == 0 ||
+        site_id > analysis->sites.size())
+        return FALSE;
+    DSL_TILE_SITE_RECORD &site = analysis->sites[site_id - 1];
+    DSL_OPT_SELECTION_RESULT selection;
+    memset(&selection, 0, sizeof(selection));
+    selection.target_profile_id = analysis->control.target_profile_id;
+    for (UINT32 i = 0; i < site.tile_plan_count; ++i) {
+        const DSL_TILE_PLAN_RECORD &tile =
+            analysis->tile_plans[site.first_tile_plan_id - 1 + i];
+        DSL_OPT_PLAN_RECORD plan;
+        DSL_OPT_COST_RECORD cost;
+        if (!DSL_opt_plan_get_plan(analysis->plans[site_id - 1],
+                                  tile.optimization_plan_id, &plan) ||
+            !DSL_opt_plan_get_cost(analysis->plans[site_id - 1], plan.cost_id, &cost))
+            return FALSE;
+        if (plan.legality != DSL_OPT_LEGALITY_PROVEN) {
+            ++selection.rejected_plan_count;
+            continue;
+        }
+        ++selection.legal_plan_count;
+        if (!cost.complete || cost.target_profile_id != selection.target_profile_id)
+            continue;
+        ++selection.complete_cost_count;
+        if (tile.id == tile_id)
+            selection.selected_plan_id = tile.optimization_plan_id;
+    }
+    if (selection.selected_plan_id == 0 ||
+        !DSL_opt_plan_record_selection(analysis->plans[site_id - 1],
+                                       &selection, diagnostic))
+        return FALSE;
+    site.selected_plan_id = selection.selected_plan_id;
+    return DSL_Tile_Materialize_IR(analysis, diagnostic) &&
+           VHO_DSL_Tile_Verify(analysis, diagnostic) &&
+           (!VHO_DSL_AI_Opt_Trace || !Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG) ||
+            DSL_Tile_Trace_Selection(analysis, site, selection,
+                                     "lowest_complete_joint_cost"));
 }
 
 BOOL

@@ -136,6 +136,66 @@ def source_smem_work(row: dict) -> dict:
                 b_issues=b_issues, address=2 * (b_copies * iterations + b_issues) if xor else 0)
 
 
+def verify_joint(mode, rows, decision, candidates):
+    """Independently reproduce bounded whole-plan costs and deterministic choice."""
+    by_tile = {row["tile"]: row for row in candidates}
+    if (mode is None or decision is None or mode["budget"] != 32
+            or mode["tiles"] != len(candidates) or mode["tma"] not in (0, 1)
+            or not rows or len(rows) > mode["budget"] or decision["count"] != len(rows)):
+        raise ValueError("incomplete joint search census")
+    expected_pairs = [(tile["tile"], engine) for tile in candidates
+                      if tile["family"] != "baseline" and tile["legality"] == "proven"
+                      for engine in (("demand", "tma_like") if mode["tma"] else ("demand",))]
+    if [(row["tile"], row["engine"]) for row in rows] != expected_pairs:
+        raise ValueError("joint candidate budget/coverage mismatch")
+    derived = {}
+    for ordinal, row in enumerate(rows, 1):
+        tile = by_tile[row["tile"]]
+        grid, gmem, smem = tile["grid"], tile["gmem"], tile["smem"]
+        tma = row["engine"] == "tma_like"
+        ctas, steps = grid["ctas"], grid["k_iterations"]
+        m, n, k = grid["problem"]
+        bm, bn, bk = tile["cta"]
+        allocation = tile["shared"] * (2 if tma else 1)
+        raw_bytes = ((m * k * grid["grid"][1] + k * n * grid["grid"][0]) * 4
+                     if tma else gmem["a"] + gmem["b"])
+        raw = max(1, raw_bytes // 1024)
+        compute = max(1, tile["flops"] // 1024) + smem["address"] // 1024
+        hidden = min(raw // (ctas * steps), compute // (ctas * steps)) * (steps - 1) * ctas if tma else 0
+        local = tile["layout"]["bank_work"] // 32 + gmem["a_issues"] // 32 + smem["b_issues"] // 32
+        memory = raw - hidden + gmem["c"] // 1024 + local
+        if row["capacity"] != 227 * 1024:
+            raise ValueError("unknown joint capacity")
+        pressure = (compute + memory) * (allocation + (16 if tma else 0)) // row["capacity"]
+        compute += pressure
+        derived[row["id"]] = dict(raw_input=raw, hidden_input=hidden, pressure=pressure)
+        sync = 2 * ctas * steps + (ctas if tma else 0)
+        launch = 32 * ctas if tma else 0
+        legal = (allocation + (16 if tma else 0) <= min(48 * 1024, row["capacity"]))
+        if tma:
+            legal &= (tile["layout"]["a_layout"] == "row_major" and
+                      smem["b_layout"] == "row_major" and
+                      m % bm == n % bn == k % bk == 0 and n % 4 == k % 4 == 0
+                      and tile["shared"] % 128 == 0)
+        if (row["id"] != ordinal or row["tile_plan"] != tile["plan"]
+                or row["fetch_plan"] != (2 if tma else 1)
+                or row["source_line"] != tile["source_line"]
+                or row["buffering"] != allocation
+                or row["legality"] != ("proven" if legal else "rejected")
+                or (legal and row["reason"] != "none")
+                or (row["compute"], row["memory"], row["communication"], row["sync"],
+                    row["launch"], row["runtime"], row["total"]) !=
+                   (compute, memory, 0, sync, launch, 0, compute + memory + sync + launch)):
+            raise ValueError("joint cost or lowerability disagrees with tile/schedule")
+    eligible = [row for row in rows if row["legality"] == "proven"]
+    synchronous = [row for row in eligible if row["engine"] == "demand"]
+    if (not synchronous or decision["selected"] != min(eligible, key=lambda row: (row["total"], row["id"]))["id"]
+            or decision["fallback"] != min(synchronous, key=lambda row: (row["total"], row["id"]))["id"]):
+        raise ValueError("joint selection or synchronous fallback disagrees with costs")
+    return dict(mode=mode, candidates=rows, selection=decision,
+                chosen=rows[decision["selected"] - 1], fallback=rows[decision["fallback"] - 1], derived=derived)
+
+
 def parse(trace: str) -> tuple[list[dict], dict, dict]:
     candidates: list[dict] = []
     grids: dict[int, dict] = {}
@@ -149,6 +209,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     fetch_candidates: list[dict] = []
     fetch_selection: dict | None = None
     fetch_action: dict | None = None
+    fetch_reason = None
     cost_model: str | None = None
     layouts: dict[int, dict] = {}
     gmem: dict[int, dict] = {}
@@ -158,6 +219,8 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     phases: dict[int, dict] = {}
     semantic: list[dict] = []
     locality: list[dict] = []
+    joint_mode, joint_selection = None, None
+    joint_candidates = []
     trace_version: str | None = None
     for line in trace.splitlines():
         if not line.startswith("AI_OPT "):
@@ -169,7 +232,20 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
             raise ValueError("mixed AI_OPT schema versions")
         trace_version = fields[1]
         kind = fields[2]
-        if kind == "CONTEXT" and trace_version in ("6", "7") and len(fields) == 5:
+        if kind == "JOINT_MODE" and trace_version == "7" and len(fields) == 10:
+            if joint_mode is not None or fields[3] != "joint" or fields[7:] != ["relative", "low", "model=1"]:
+                raise ValueError("invalid joint mode")
+            joint_mode = dict(budget=int(fields[4]), tiles=int(fields[5]), tma=int(fields[6]))
+        elif kind == "JOINT_CAND" and trace_version == "7" and len(fields) == 20:
+            row = dict(zip(("id", "tile", "tile_plan", "fetch_plan"), map(int, fields[3:7])))
+            row.update(zip(("engine", "legality", "reason"), fields[7:10]))
+            row.update(zip(("compute", "memory", "communication", "sync", "launch", "runtime", "total", "buffering", "capacity", "source_line"), map(int, fields[10:])))
+            joint_candidates.append(row)
+        elif kind == "JOINT_SELECT" and trace_version == "7" and len(fields) == 7:
+            if joint_selection is not None or fields[-1] != "selection_reason=lowest_complete_joint_cost":
+                raise ValueError("invalid joint selection")
+            joint_selection = dict(zip(("selected", "fallback", "count"), map(int, fields[3:6])))
+        elif kind == "CONTEXT" and trace_version in ("6", "7") and len(fields) == 5:
             if context is not None or fields[4] != "matmul_f32_source":
                 raise ValueError("duplicate or unknown AI optimization context")
             context = dict(pu=fields[3], scope=fields[4])
@@ -310,6 +386,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                 raise ValueError("duplicate tile selection")
             reason = fields[-1] if trace_version in ("3", "4", "5", "6", "7") else "not_recorded"
             allowed = ("selection_reason=lowest_complete_relative_cost",
+                       "selection_reason=lowest_complete_joint_cost",
                        "selection_reason=roofline_near_cost") if trace_version in ("4", "5", "6", "7") else (
                        "selection_reason=lowest_complete_relative_cost",)
             if trace_version in ("3", "4", "5", "6", "7") and reason not in allowed:
@@ -375,8 +452,9 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
             if fetch_selection is not None:
                 raise ValueError("duplicate fetch selection")
             site, baseline, selected, engine, reason = fields[3:]
-            if reason != "selection_reason=lowest_complete_relative_cost":
+            if reason not in ("selection_reason=lowest_complete_relative_cost", "selection_reason=lowest_complete_joint_cost"):
                 raise ValueError("unknown fetch selection reason")
+            fetch_reason = reason.partition("=")[2]
             fetch_selection = dict(site=int(site), baseline=int(baseline),
                                    selected=int(selected), engine=engine)
         elif kind == "FETCH_ACTION" and trace_version in ("5", "6", "7") and len(fields) == 8:
@@ -402,7 +480,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
             if phases[7]["status"] not in ("disabled_by_option", "no_eligible_region"):
                 raise ValueError("missing tile decision for active P7")
             if (fetch_candidates or fetch_selection or fetch_action or grids or
-                    layouts or gmem or smem or pipeline_kernel):
+                    layouts or gmem or smem or pipeline_kernel or joint_mode or joint_candidates or joint_selection):
                 raise ValueError("optimization decision without tile selection")
             if semantic or locality:
                 raise ValueError("tensor facts without active tile analysis")
@@ -580,6 +658,12 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                     and row["roof_bound_ns"] <= best_bound - best_bound // 20):
                 expected, best_bound = row, row["roof_bound_ns"]
                 expected_reason = "roofline_near_cost"
+    joint = None
+    if joint_mode is not None or joint_candidates or joint_selection is not None:
+        joint = verify_joint(joint_mode, joint_candidates, joint_selection, candidates)
+        expected = by_plan[joint["chosen"]["tile_plan"]]
+        expected_reason = "lowest_complete_joint_cost"
+        selection["joint"] = joint
     if not eligible or selection["selected"] != expected["plan"]:
         raise ValueError("selection disagrees with comparable cost minimum")
     if trace_version in ("4", "5", "6", "7") and selection["reason"] != expected_reason:
@@ -673,8 +757,13 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         if fetch_selection["selected"] not in by_fetch_plan:
             raise ValueError("selected fetch plan missing")
         chosen = by_fetch_plan[fetch_selection["selected"]]
+        if fetch_reason != ("lowest_complete_joint_cost" if joint else "lowest_complete_relative_cost"):
+            raise ValueError("fetch reason disagrees with joint search mode")
         eligible_fetch = [row for row in fetch_candidates if row["legality"] == "proven"]
-        if (not eligible_fetch or chosen != min(eligible_fetch, key=lambda row:
+        if joint:
+            if (chosen["optimization_plan"], chosen["engine"]) != (joint["chosen"]["fetch_plan"], joint["chosen"]["engine"]):
+                raise ValueError("joint selection disagrees with selected fetch plan")
+        elif (not eligible_fetch or chosen != min(eligible_fetch, key=lambda row:
                 (row["unhidden"] + int(row["engine"] != "demand"),
                  row["optimization_plan"]))):
             raise ValueError("fetch selection disagrees with movement cost")
@@ -729,6 +818,8 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                 or phases[9]["selected"] != selection["selected"]
                 or phases[9]["rewrites"] != expected_rewrites):
             raise ValueError("P7/P9 coverage disagrees with selected tile")
+        if joint and phases[9]["candidates"] != len(joint_candidates):
+            raise ValueError("P9 coverage disagrees with complete joint plans")
         if "fetch" in selection:
             device = "pipeline_kernel" in selection
             if (phases[8]["status"] != ("rewritten" if device else "analyzed_no_rewrite")
@@ -806,6 +897,18 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
             details = (f"device_pu=ai_matmul_tile_f32 plan={kernel['plan']} "
                        f"tile={kernel['tile']} image={kernel['image']} "
                        "state=materialized_sidecar target_lowered=no\n")
+            if "joint" in selection:
+                joint = selection["joint"]
+                details += "# Joint cost model 1: low-confidence relative units; not measured latency.\n"
+                details += "# Formula: total=compute_with_pressure+memory_unhidden+communication_unhidden+sync+setup+runtime; memory_unhidden=raw_input-hidden_input+C_store_sectors/1024+local_SMEM_work.\n"
+                details += "# Overlap: min(raw_input/(CTAs*K_tiles),base_compute/(CTAs*K_tiles))*(K_tiles-1)*CTAs for lowerable two-slot TMA; zero synchronously. Pressure=(base_compute+memory_unhidden)*physical_storage/shared_capacity.\n"
+                details += "# Columns: id tile tile_plan fetch_plan engine legality reason compute memory_unhidden communication_unhidden sync setup runtime total buffer_bytes capacity_bytes raw_input hidden_input pressure source_line\n"
+                details += "".join("joint " + " ".join(str(value) for key, value in candidate.items() if key != "source_line")
+                                   + " " + " ".join(str(value) for value in joint["derived"][candidate["id"]].values())
+                                   + f" {candidate['source_line']}\n" for candidate in joint["candidates"])
+                details += (f"selection joint={joint['chosen']['id']} fallback={joint['fallback']['id']} "
+                            f"fallback_tile={joint['fallback']['tile_plan']} fallback_engine=demand "
+                            "selection_reason=lowest_complete_joint_cost fallback_kind=compile_time_plan\n")
         else:
             details = "detail=not_recorded\n" if row["status"] == "analyzed_no_rewrite" else ""
         content = f"# What it summarizes: {description}\n{metadata}{details}"
@@ -857,6 +960,13 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
     if "pipeline_kernel" in selection:
         summary.append("executable_pipeline " + " ".join(
             f"{key}={value}" for key, value in selection["pipeline_kernel"].items()))
+    if "joint" in selection:
+        joint = selection["joint"]
+        summary.append(f"gemm_plan_search=joint model=1 candidates={len(joint['candidates'])} "
+                       f"selected={joint['chosen']['id']} tile_plan={joint['chosen']['tile_plan']} "
+                       f"engine={joint['chosen']['engine']} total={joint['chosen']['total']} "
+                       f"fallback={joint['fallback']['id']} fallback_tile={joint['fallback']['tile_plan']} "
+                       "fallback_kind=compile_time_plan selection_reason=lowest_complete_joint_cost")
     (reports / "optimization.log").write_text(
         "# What it summarizes: Complete P0-P11 optimization process, including every phase decision and non-execution reason.\n"
         + "".join(phase_contents), encoding="utf-8")
@@ -902,6 +1012,8 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
         "# Selection: lowest complete relative cost among proven plans; a modeled Roofline bound can resolve near-cost alternatives where available.",
         f"site={selection['site']} target={selection['target']} baseline={selection['baseline']} selected={selection['selected']}",
     ]
+    if "joint" in selection:
+        tile_lines.append("# Joint mode: TILE_CAND costs are tile-only diagnostics; physical-plan.log contains the authoritative complete costs and selection.")
     if selection.get("cost_model") == "v5":
         tile_lines[3:5] = [
             "# compute=max(1,floor(2*M*N*K/1024))+floor(smem_address_work/1024).",
@@ -1025,6 +1137,8 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
             "# Cost model: low-confidence relative movement score; hidden movement is a planning estimate, not measured latency.",
             "# Selection: lowest complete relative movement cost among proven plans; TMA source is emitted only for a selected multidimensional-async plan.",
         ]
+        if "joint" in selection:
+            fetch_lines.append("# Joint mode: raw/hidden/unhidden below are legacy per-stage diagnostics, not the selection score. Whole-K costs, bounded overlap, resource pressure, setup, and retained synchronous fallback are in physical-plan.log.")
         for row in fetch["candidates"]:
             fetch_lines.append(
                 f"candidate={row['plan']} optimization_plan={row['optimization_plan']} "
@@ -1036,7 +1150,7 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
             f"selection baseline={fetch['selection']['baseline']} "
             f"chosen={fetch['selection']['selected']} "
             f"engine={fetch['selection']['engine']} "
-            "selection_reason=lowest_complete_relative_cost")
+            f"selection_reason={'lowest_complete_joint_cost' if 'joint' in selection else 'lowest_complete_relative_cost'}")
         fetch_lines.append(
             f"action source={fetch['action']['source']} "
             f"movement={fetch['action']['movement']} "

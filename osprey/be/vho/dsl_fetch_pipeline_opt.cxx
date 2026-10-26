@@ -4,14 +4,17 @@
 
 /*
  * Builds the AIO-10 runtime-only CommonFetchPlanIR and CommonPipelineIR.
- * AIO-9 supplies tile and buffering hints; this phase selects no target
- * instruction and does not mutate executable or binary WHIRL. See
- * doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md.
+ * AIO-9 supplies tile and buffering hints. Optional joint costing keeps
+ * executable schedule alternatives until whole-plan selection; this phase
+ * does not mutate executable or binary WHIRL. See
+ * doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md and
+ * doc/AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md.
  */
 
 #include <algorithm>
 #include <string.h>
 #include <vector>
+#include <limits.h>
 
 #include "dsl_fetch_pipeline_opt.h"
 #include "dsl_opt_plan_opt.h"
@@ -87,6 +90,8 @@ VHO_DSL_Fetch_Pipeline_Control_Init
     control->enable_multidimensional_async = 1;
 }
 
+/* Validate PU-local generation controls; joint overrides name an existing
+ * tile rather than granting this phase authority to discover another PU. */
 static BOOL
 DSL_Fetch_Pipeline_Control_Valid
         (const VHO_DSL_FETCH_PIPELINE_CONTROL &control)
@@ -100,6 +105,7 @@ DSL_Fetch_Pipeline_Control_Valid
            control.maximum_buffer_stages != 0 &&
            control.enable_vector <= 1 && control.enable_async_copy <= 1 &&
            control.enable_multidimensional_async <= 1 &&
+           control.joint_cost <= 1 &&
            control.reserved == 0 &&
            (!control.select_plans || control.generate_candidates);
 }
@@ -144,6 +150,8 @@ DSL_Fetch_Node_Operand
            DSL_IR_Image_Get_Value(reference.value_id, value);
 }
 
+/* Resolve a selected tile, or an explicitly enumerated deferred tile in
+ * joint mode. Copy the record; do not commit any tile-selection decision. */
 static BOOL
 DSL_Fetch_Selected_Tile
         (const DSL_FETCH_PIPELINE_ANALYSIS *analysis,
@@ -151,6 +159,12 @@ DSL_Fetch_Selected_Tile
 {
     if (tile == NULL)
         return FALSE;
+    if (analysis->control.tile_plan_id != 0)
+        return analysis->control.joint_cost &&
+            analysis->control.tile_plan_id >= site.first_tile_plan_id &&
+            analysis->control.tile_plan_id - site.first_tile_plan_id < site.tile_plan_count &&
+            DSL_tile_plan_ir_get_plan(analysis->tile_ir,
+                                       analysis->control.tile_plan_id, tile);
     for (UINT32 i = 0; i < site.tile_plan_count; ++i) {
         DSL_TILE_PLAN_RECORD candidate;
         if (!DSL_tile_plan_ir_get_plan
@@ -281,6 +295,130 @@ DSL_Fetch_Cost_Term
     term->evidence = evidence;
 }
 
+/* Prove generated signed-I4 loop/address arithmetic including predicated
+ * edges. Shared by candidate preflight, host rewrite and device construction. */
+BOOL
+VHO_DSL_cuda_i4_geometry_safe (const DSL_TILE_PLAN_RECORD &tile)
+{
+    if (tile.problem_m == 0 || tile.problem_n == 0 || tile.problem_k == 0 ||
+        tile.cta_m == 0 || tile.cta_n == 0 || tile.cta_k == 0 ||
+        tile.problem_m > INT_MAX || tile.problem_n > INT_MAX ||
+        tile.problem_k > INT_MAX || tile.cta_m > INT_MAX ||
+        tile.cta_n > INT_MAX || tile.cta_k > INT_MAX)
+        return FALSE;
+    const UINT64 padded_m = ((tile.problem_m - 1) / tile.cta_m + 1) * tile.cta_m;
+    const UINT64 padded_n = ((tile.problem_n - 1) / tile.cta_n + 1) * tile.cta_n;
+    const UINT64 padded_k = ((tile.problem_k - 1) / tile.cta_k + 1) * tile.cta_k;
+    return padded_m <= INT_MAX && padded_n <= INT_MAX && padded_k <= INT_MAX &&
+        tile.problem_m * tile.problem_k <= INT_MAX &&
+        tile.problem_k * tile.problem_n <= INT_MAX &&
+        tile.problem_m * tile.problem_n <= INT_MAX &&
+        (UINT64)tile.cta_m * tile.cta_k <= INT_MAX &&
+        (UINT64)tile.cta_k * tile.a_shared_stride <= INT_MAX &&
+        (UINT64)tile.cta_k * tile.cta_n <= INT_MAX &&
+        (UINT64)tile.thread_m * tile.thread_n <= INT_MAX;
+}
+
+/* Share the executable P8 contract with lowering so unsupported engines,
+ * layouts, static storage, and tensor-map geometry cannot win joint search. */
+BOOL
+VHO_DSL_fetch_pipeline_can_lower
+        (const DSL_TILE_PLAN_RECORD &tile, const DSL_FETCH_PLAN_RECORD &fetch)
+{
+    if (!VHO_DSL_cuda_i4_geometry_safe(tile) ||
+        tile.legality != DSL_OPT_LEGALITY_PROVEN ||
+        tile.cta_m == 0 || tile.cta_n == 0 || tile.cta_k == 0 ||
+        tile.problem_m > INT_MAX || tile.problem_n > INT_MAX || tile.problem_k > INT_MAX ||
+        tile.thread_m == 0 || tile.thread_n == 0 ||
+        tile.threads_per_cta == 0 || tile.threads_per_cta > 1024 ||
+        tile.cta_m % tile.thread_m != 0 || tile.cta_n % tile.thread_n != 0 ||
+        (tile.cta_m / tile.thread_m) * (tile.cta_n / tile.thread_n) != tile.threads_per_cta ||
+        !TY_is_tensor_extension(tile.source_descriptor_ty) ||
+        TY_mtype(TY_tensor_element_ty(tile.source_descriptor_ty)) != MTYPE_F4 ||
+        fetch.id == 0 || fetch.tile_plan_id != tile.id ||
+        fetch.target_profile_id != tile.target_profile_id ||
+        fetch.legality != DSL_OPT_LEGALITY_PROVEN ||
+        fetch.edge_policy != tile.edge_policy || fetch.fetch_count != 2 ||
+        fetch.buffering_bytes != tile.shared_bytes_per_stage * fetch.stage_count)
+        return FALSE;
+    const BOOL tail = tile.problem_m % tile.cta_m != 0 ||
+        tile.problem_n % tile.cta_n != 0 || tile.problem_k % tile.cta_k != 0;
+    if (tile.edge_policy != (tail ? DSL_TILE_EDGE_PREDICATED : DSL_TILE_EDGE_EXACT))
+        return FALSE;
+    if (fetch.engine == DSL_MEMORY_MOVEMENT_DEMAND || fetch.engine == DSL_MEMORY_MOVEMENT_VECTOR)
+        return fetch.stage_count == 1 && fetch.prefetch_distance == 0 &&
+            fetch.buffering_bytes <= 48 * 1024 &&
+            fetch.buffering_bytes <= tile.shared_capacity_bytes;
+    return fetch.engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC &&
+        fetch.stage_count == 2 && fetch.prefetch_distance == 1 &&
+        fetch.issue_point == DSL_FETCH_ISSUE_PROLOGUE &&
+        fetch.arrival_barrier == DSL_FETCH_BARRIER_ARRIVAL &&
+        fetch.wait_point == DSL_FETCH_WAIT_PIPELINE_STAGE &&
+        tile.edge_policy == DSL_TILE_EDGE_EXACT &&
+        tile.a_shared_layout == DSL_TILE_A_LAYOUT_ROW_MAJOR &&
+        tile.b_shared_layout == DSL_TILE_B_LAYOUT_ROW_MAJOR &&
+        tile.problem_m % tile.cta_m == 0 && tile.problem_n % tile.cta_n == 0 &&
+        tile.problem_k % tile.cta_k == 0 && tile.problem_n % 4 == 0 &&
+        tile.problem_k % 4 == 0 && tile.shared_bytes_per_stage % 128 == 0 &&
+        fetch.buffering_bytes + 16 <= 48 * 1024 &&
+        fetch.buffering_bytes + 16 <= tile.shared_capacity_bytes;
+}
+
+/* Cost the entire PU-local GEMM in relative units, never add the old fetch
+ * transaction score to the tile traffic score. Credit only bounded steady
+ * overlap; retain startup, output traffic, local work and resource pressure.
+ * Unknown/calibrated hardware timing is not inferred from this heuristic. */
+static BOOL
+DSL_fetch_joint_cost
+        (const DSL_TILE_PLAN_RECORD &tile, const DSL_FETCH_PLAN_RECORD &pipeline,
+         DSL_OPT_COST_INPUT *cost)
+{
+    UINT64 ctas, steps, pairs, traffic, raw, hidden = 0, sync, local, compute;
+    const BOOL tma = pipeline.engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC;
+    if (!DSL_Fetch_Mul_U64(DSL_Fetch_Ceil_Div(tile.problem_m, tile.cta_m),
+                           DSL_Fetch_Ceil_Div(tile.problem_n, tile.cta_n), &ctas) ||
+        (steps = DSL_Fetch_Ceil_Div(tile.problem_k, tile.cta_k)) == 0 ||
+        !DSL_Fetch_Mul_U64(ctas, steps, &pairs) || pairs == 0 ||
+        !DSL_Fetch_Add_U64(tma ? tile.gmem_read_bytes : tile.gmem_a_sector_bytes,
+                           tma ? 0 : tile.gmem_b_sector_bytes, &traffic) ||
+        !DSL_Fetch_Add_U64(std::max((UINT64)1, tile.operation_count / 1024),
+                           tile.smem_address_work / 1024, &compute))
+        return FALSE;
+    raw = std::max((UINT64)1, traffic / 1024);
+    if (tma && steps > 1) {
+        UINT64 window = std::min(raw / pairs, compute / pairs);
+        if (!DSL_Fetch_Mul_U64(window, steps - 1, &hidden) ||
+            !DSL_Fetch_Mul_U64(hidden, ctas, &hidden))
+            return FALSE;
+    }
+    if (!DSL_Fetch_Add_U64(tile.smem_bank_conflict_work / 32,
+                           tile.smem_a_load_issue_work / 32, &local) ||
+        !DSL_Fetch_Add_U64(local, tile.smem_b_load_issue_work / 32, &local) ||
+        !DSL_Fetch_Add_U64(raw - hidden, tile.gmem_c_sector_bytes / 1024, &traffic) ||
+        !DSL_Fetch_Add_U64(traffic, local, &traffic) ||
+        !DSL_Fetch_Mul_U64(pairs, 2, &sync) ||
+        (tma && !DSL_Fetch_Add_U64(sync, ctas, &sync)))
+        return FALSE;
+    // Fractional-capacity pressure is explicit, not an occupancy prediction.
+    UINT64 allocation, pressure, work, setup;
+    if (tile.shared_capacity_bytes == 0 ||
+        !DSL_Fetch_Add_U64(pipeline.buffering_bytes, tma ? 16 : 0, &allocation) ||
+        !DSL_Fetch_Add_U64(compute, traffic, &work) ||
+        !DSL_Fetch_Mul_U64(work, allocation, &pressure) ||
+        !DSL_Fetch_Mul_U64(ctas, tma ? 32 : 0, &setup))
+        return FALSE;
+    pressure /= tile.shared_capacity_bytes;
+    if (!DSL_Fetch_Add_U64(compute, pressure, &compute))
+        return FALSE;
+    for (UINT32 i = 0; i < DSL_OPT_COST_TERM_COUNT; ++i)
+        DSL_Fetch_Cost_Term(&cost->terms[i],
+            i == DSL_OPT_COST_COMPUTE ? compute :
+            i == DSL_OPT_COST_MEMORY_UNHIDDEN ? traffic :
+            i == DSL_OPT_COST_SYNC ? sync : i == DSL_OPT_COST_LAUNCH ? setup : 0,
+            DSL_OPT_COST_EVIDENCE_TARGET_MODEL);
+    return TRUE;
+}
+
 /* Adapt one PU-local fetch alternative to the shared candidate/plan service;
  * preserve its selected tile lineage and report rejected input before selection. */
 static BOOL
@@ -336,6 +474,8 @@ DSL_Fetch_Add_Optimization_Plan
                  DSL_OPT_COST_EVIDENCE_BASELINE_POLICY :
                  DSL_OPT_COST_EVIDENCE_TARGET_MODEL);
     }
+    if (analysis->control.joint_cost && !DSL_fetch_joint_cost(tile, *pipeline, &cost))
+        return DSL_Fetch_Pipeline_Report(diagnostic, "joint cost overflow", pipeline->id);
     DSL_OPT_COST_ID cost_id;
     if (!DSL_opt_plan_add_cost(context, &cost, &cost_id, diagnostic))
         return FALSE;
@@ -460,10 +600,15 @@ DSL_Fetch_Add_Plan
         pipeline.arrival_barrier == DSL_FETCH_BARRIER_NONE ? 0 : 1;
     if ((capability.flags & DSL_MEMORY_MOVEMENT_FLAG_ASYNC) != 0)
         pipeline.flags |= DSL_FETCH_PLAN_FLAG_ASYNC;
+    if (analysis->control.joint_cost && engine == DSL_MEMORY_MOVEMENT_DEMAND) {
+        pipeline.arrival_barrier = DSL_FETCH_BARRIER_CTA;
+        pipeline.wait_point = DSL_FETCH_WAIT_BEFORE_CONSUMER;
+        pipeline.barrier_count = 2;
+    }
 
     UINT32 safety_reason = DSL_OPT_REJECT_NONE;
     for (UINT32 ordinal = 0; ordinal < 2; ++ordinal) {
-        if (!baseline &&
+        if ((!baseline || analysis->control.joint_cost) &&
             !DSL_Fetch_Operand_Safe
                  (analysis, operands[ordinal].id, &safety_reason) &&
             pipeline.legality != DSL_OPT_LEGALITY_REJECTED) {
@@ -473,7 +618,7 @@ DSL_Fetch_Add_Plan
             pipeline.rejection_reason = safety_reason;
         }
     }
-    if (!baseline && tile.legality != DSL_OPT_LEGALITY_PROVEN) {
+    if ((!baseline || analysis->control.joint_cost) && tile.legality != DSL_OPT_LEGALITY_PROVEN) {
         pipeline.legality = tile.legality;
         pipeline.rejection_reason = tile.rejection_reason;
     }
@@ -498,7 +643,7 @@ DSL_Fetch_Add_Plan
         return DSL_Fetch_Pipeline_Report(diagnostic, "stage payload overflow", pipeline.id);
     // Shared layout padding consumes capacity even though no GMEM bytes fill it.
     stage_bytes = std::max(stage_bytes, tile.shared_bytes_per_stage);
-    if (!baseline &&
+    if ((!baseline || analysis->control.joint_cost) &&
          !DSL_Fetch_Mul_U64
               (stage_bytes, pipeline.stage_count,
                &pipeline.buffering_bytes))
@@ -511,6 +656,13 @@ DSL_Fetch_Add_Plan
         pipeline.legality = DSL_OPT_LEGALITY_REJECTED;
         pipeline.rejection_reason = DSL_OPT_REJECT_RESOURCE;
     }
+    if (analysis->control.joint_cost && pipeline.legality == DSL_OPT_LEGALITY_PROVEN &&
+        !VHO_DSL_fetch_pipeline_can_lower(tile, pipeline)) {
+        pipeline.legality = DSL_OPT_LEGALITY_REJECTED;
+        pipeline.rejection_reason = pipeline.buffering_bytes >
+            48 * 1024 - (engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC ? 16 : 0) ?
+            DSL_OPT_REJECT_RESOURCE : DSL_OPT_REJECT_TARGET_MISMATCH;
+    }
 
     for (UINT32 ordinal = 0; ordinal < 2; ++ordinal) {
         DSL_FETCH_RECORD fetch;
@@ -521,7 +673,8 @@ DSL_Fetch_Add_Plan
         fetch.value_id = operands[ordinal].id;
         fetch.descriptor_ty = operands[ordinal].ty;
         fetch.source_tier_kind = capability.source_tier_kind;
-        fetch.destination_tier_kind = capability.destination_tier_kind;
+        fetch.destination_tier_kind = analysis->control.joint_cost && baseline ?
+            DSL_MEMORY_TIER_SHARED : capability.destination_tier_kind;
         fetch.engine = engine;
         fetch.transaction_bytes = capability.transaction_bytes;
         fetch.minimum_alignment = capability.minimum_alignment;
@@ -659,6 +812,9 @@ DSL_Fetch_Pipeline_Materialize_IR
     return analysis->ir != NULL;
 }
 
+/* Build runtime plans for the current PU and named tile, preserving rejected
+ * alternatives. Selection is optional during joint enumeration; failure
+ * publishes no executable WHIRL and the caller destroys partial analysis. */
 BOOL
 VHO_DSL_Fetch_Pipeline_Build
         (DSL_FETCH_PIPELINE_ANALYSIS *analysis, FILE *diagnostic)
@@ -682,7 +838,7 @@ VHO_DSL_Fetch_Pipeline_Build
              tile_site.semantic_value_id !=
                  analysis->control.focus_value_id))
             continue;
-        if (tile_site.selected_plan_id == 0 ||
+        if ((tile_site.selected_plan_id == 0 && analysis->control.tile_plan_id == 0) ||
             !DSL_Fetch_Selected_Tile(analysis, tile_site, &tile))
             return DSL_Fetch_Pipeline_Report
                        (diagnostic, "missing selected tile", tile_site_id);
