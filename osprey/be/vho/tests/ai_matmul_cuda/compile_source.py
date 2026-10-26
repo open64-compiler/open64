@@ -59,6 +59,11 @@ def validate_selected_source(source: str, candidates: list[dict],
                 f"#define A_STRIDE {stride}" not in source or
                 f"#define AI_A_SHARED_ELEMS {a_elements}" not in source):
             raise RuntimeError("generated A layout disagrees with selected plan")
+    if selected.get("smem"):
+        xor = selected["smem"]["b_layout"] == "xor_columns"
+        if (f"#define AI_B_SMEM_XOR_COLUMNS {int(xor)}" not in source or
+                f"// b_smem_layout={selected['smem']['b_layout']}" not in source):
+            raise RuntimeError("generated B layout disagrees with selected plan")
     for name, expected in (("AI_TILE_PLAN_ID", selected["tile"]),
                            ("AI_OPTIMIZATION_PLAN_ID", selected["plan"])):
         match = re.search(rf"^#define {name} (\d+)$", source, re.MULTILINE)
@@ -140,6 +145,10 @@ def validate_device_whirl_output(source: str, dump: str,
             raise RuntimeError("whirl2c CUDA output lost selected lane map")
     if len(re.findall(r'__syncthreads\s*\(\s*\)', source)) != 2:
         raise RuntimeError("whirl2c CUDA output lacks two K-tile barriers")
+    if selected.get("smem", {}).get("b_layout") == "xor_columns":
+        expected = 3 if k % bk or n % bn else 2
+        if source.count("^") < expected or dump.count("BXOR") < expected:
+            raise RuntimeError("device WHIRL lost selected B fill/read permutation")
     if (re.search(r'FUNC_ENTRY\s*<[^>]*ai_matmul_tile_f32>', dump) is None or
             "DO_LOOP {line:" not in dump or
             "(DEVICE_SYMBOL) 1" not in dump or
@@ -265,6 +274,7 @@ def review_record(stage: Path, selection: dict, candidates: list[dict],
         "gmem_copy_map": selected.get("layout", {}).get("copy_map", "linear"),
         "a_smem_layout": selected.get("layout", {}).get("a_layout", "compact"),
         "a_smem_stride": selected.get("layout", {}).get("a_stride", selected["cta"][2]),
+        "b_smem_layout": selected.get("smem", {}).get("b_layout", "row_major"),
         "b_smem_layout": "row_major",
         "shared_bytes_per_stage": selected["shared"],
         "movement": "one_slot_synchronous",

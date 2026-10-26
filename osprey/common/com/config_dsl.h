@@ -39,6 +39,8 @@ extern BOOL VHO_DSL_AI_Opt_Trace;
 extern BOOL VHO_DSL_AI_Opt_Trace_Set;
 extern BOOL VHO_DSL_CUDA_TMA_Prefetch;
 extern BOOL VHO_DSL_CUDA_TMA_Prefetch_Set;
+extern BOOL VHO_DSL_CUDA_SMEM_Layout_Search;
+extern BOOL VHO_DSL_CUDA_SMEM_Layout_Search_Set;
 extern BOOL VHO_DSL_CUDA_Tile_Apply;
 extern BOOL VHO_DSL_CUDA_Tile_Apply_Set;
 extern BOOL VHO_DSL_CUDA_Legacy_Emit;

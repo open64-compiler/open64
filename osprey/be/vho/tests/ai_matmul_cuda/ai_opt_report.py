@@ -87,6 +87,55 @@ def source_warp_sector_bytes(row: dict) -> tuple[int, int, int, int]:
     return (*worst, aligned)
 
 
+def source_smem_work(row: dict) -> dict:
+    """Count distinct scalar words per bank, preserving same-word broadcasts."""
+    if row["family"] == "baseline":
+        return dict.fromkeys(("a_copy", "b_copy", "a_read", "b_read",
+                              "b_issues", "address"), 0)
+    bm, bn, bk = row["cta"]
+    columns = row["layout"]["thread_columns"]
+    threads = row["threads"]
+    tm, tn = bm * columns // threads, bn // columns
+    transpose = row["layout"]["a_layout"] == "transposed_padded"
+    xor = row["smem"]["b_layout"] == "xor_columns"
+
+    def excess(words):
+        banks = [set() for _ in range(32)]
+        for word in words:
+            banks[word % 32].add(word)
+        return max(map(len, banks), default=0) - 1 if words else 0
+
+    counts = [0, 0, 0, 0]
+    b_copies = 0
+    for warp in range(threads // 32):
+        tids = range(warp * 32, (warp + 1) * 32)
+        for operand, elements, width in ((0, bm * bk, bk), (1, bk * bn, bn)):
+            for start in range(0, elements, threads):
+                words = []
+                for tid in tids:
+                    offset = start + tid
+                    if offset >= elements:
+                        continue
+                    r, c = divmod(offset, width)
+                    words.append(c * (bm + 1) + r if operand == 0 and transpose
+                                 else r * width + (c ^ (c // 32) if xor else c)
+                                 if operand == 1 else offset)
+                counts[operand] += excess(words)
+                b_copies += int(operand == 1 and bool(words))
+        for i in range(tm):
+            words = [(tid // columns) * tm + i for tid in tids]
+            counts[2] += excess(words if transpose else [r * bk for r in words])
+        for j in range(tn):
+            cols = [(tid % columns) * tn + j for tid in tids]
+            counts[3] += tm * excess([c ^ (c // 32) for c in cols] if xor else cols)
+    iterations = row["grid"]["ctas"] * row["grid"]["k_iterations"]
+    steps = iterations * bk
+    b_issues = steps * (threads // 32) * tm * tn
+    return dict(a_copy=counts[0] * iterations, b_copy=counts[1] * iterations,
+                a_read=counts[2] * steps, b_read=counts[3] * steps,
+                b_issues=b_issues, address=2 * (b_copies * iterations + b_issues) if xor else 0)
+
+
 def parse(trace: str) -> tuple[list[dict], dict, dict]:
     candidates: list[dict] = []
     grids: dict[int, dict] = {}
@@ -102,6 +151,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     cost_model: str | None = None
     layouts: dict[int, dict] = {}
     gmem: dict[int, dict] = {}
+    smem: dict[int, dict] = {}
     roof_target: dict | None = None
     context: dict | None = None
     phases: dict[int, dict] = {}
@@ -153,14 +203,17 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                                  read_bytes=int(read_bytes),
                                  write_bytes=int(write_bytes),
                                  producer=int(producer), last_use=int(last_use)))
-        elif kind == "COST_MODEL" and trace_version == "7" and len(fields) in (6, 7, 9):
+        elif kind == "COST_MODEL" and trace_version == "7" and len(fields) in (6, 7, 9, 10):
             if cost_model is not None or fields[3:] not in (
                     ["2", "valid_predicated_elements", "dynamic_cta_k_barriers"],
                     ["3", "valid_predicated_elements", "dynamic_cta_k_barriers",
                      "bank_conflict_work"],
                     ["4", "valid_predicated_elements", "dynamic_cta_k_barriers",
                      "bank_conflict_work", "source_warp_sectors",
-                     "smem_a_load_issues"]):
+                     "smem_a_load_issues"],
+                    ["5", "valid_predicated_elements", "dynamic_cta_k_barriers",
+                     "bank_conflict_work", "source_warp_sectors",
+                     "smem_all_operand_issues", "smem_address_work"]):
                 raise ValueError("unknown or duplicate tile cost model")
             cost_model = "v" + fields[3]
         elif kind == "ROOF_TARGET" and trace_version in ("4", "5", "6", "7") and len(fields) == 9:
@@ -227,6 +280,14 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                                  a_layout=a_layout, a_stride=stride,
                                  bank_work=bank_work,
                                  thread_columns=thread_columns, warps=warps)
+        elif kind == "TILE_SMEM" and trace_version == "7" and len(fields) == 17:
+            site, tile, plan, banks, word = map(int, fields[3:8])
+            b_layout = fields[8]
+            keys = ("a_bytes", "b_bytes", "a_copy", "b_copy", "a_read", "b_read", "b_issues", "address")
+            if plan in smem or b_layout not in ("row_major", "xor_columns"):
+                raise ValueError("invalid or duplicate SMEM record")
+            smem[plan] = dict(zip(keys, map(int, fields[9:])), site=site,
+                              tile=tile, banks=banks, word=word, b_layout=b_layout)
         elif kind == "TILE_GMEM" and trace_version == "7" and len(fields) == 12:
             site, tile, plan, sector, a, b, c, aligned, a_issues = map(int, fields[3:])
             if (plan in gmem or min(a, b, c, aligned, a_issues) < 0 or
@@ -331,7 +392,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
             if phases[7]["status"] not in ("disabled_by_option", "no_eligible_region"):
                 raise ValueError("missing tile decision for active P7")
             if (fetch_candidates or fetch_selection or fetch_action or grids or
-                    layouts or gmem):
+                    layouts or gmem or smem):
                 raise ValueError("optimization decision without tile selection")
             if semantic or locality:
                 raise ValueError("tensor facts without active tile analysis")
@@ -385,12 +446,14 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         raise ValueError("baseline or selected plan missing from candidates")
     if by_plan[selection["baseline"]]["family"] != "baseline":
         raise ValueError("baseline plan does not name baseline family")
-    if cost_model != "v4" and gmem:
+    if cost_model not in ("v4", "v5") and gmem:
         raise ValueError("GMEM sector records without v4 cost model")
-    if cost_model in ("v2", "v3", "v4"):
-        if cost_model in ("v3", "v4") and set(layouts) != set(by_plan):
+    if (cost_model == "v5" and set(smem) != set(by_plan)) or (cost_model != "v5" and smem):
+        raise ValueError("inconsistent SMEM record coverage")
+    if cost_model in ("v2", "v3", "v4", "v5"):
+        if cost_model in ("v3", "v4", "v5") and set(layouts) != set(by_plan):
             raise ValueError("incomplete tile layout coverage")
-        if cost_model == "v4" and set(gmem) != set(by_plan):
+        if cost_model in ("v4", "v5") and set(gmem) != set(by_plan):
             raise ValueError("incomplete GMEM sector coverage")
         for row in candidates:
             grid = row.get("grid")
@@ -406,7 +469,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                 sync = 2 * grid["ctas"] * grid["k_iterations"]
             total_bytes = read_bytes + m * n * 4
             bank_work = 0
-            if cost_model in ("v3", "v4"):
+            if cost_model in ("v3", "v4", "v5"):
                 layout = layouts[row["plan"]]
                 bm, bn, bk = row["cta"]
                 if (layout["site"] != row["site"] or
@@ -434,11 +497,29 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                     bank_work = (0 if transpose or cols >= 32 else
                                  grid["ctas"] * grid["k_iterations"] * bk *
                                  layout["warps"] * thread_m * (groups - 1))
-                    if layout["bank_work"] != bank_work:
+                    if cost_model != "v5" and layout["bank_work"] != bank_work:
                         raise ValueError("v3 bank work disagrees with geometry")
                 row["layout"] = layout
+            if cost_model == "v5":
+                record = smem[row["plan"]]
+                row["smem"] = record
+                baseline = row["family"] == "baseline"
+                expected = source_smem_work(row)
+                bm, bn, bk = row["cta"]
+                a_bytes = bk * (bm + int(row["layout"]["a_layout"] == "transposed_padded")) * 4
+                if (record["site"] != row["site"] or record["tile"] != row["tile"]
+                        or (record["banks"], record["word"]) != ((0, 0) if baseline else (32, 4))
+                        or (record["a_bytes"], record["b_bytes"]) != (a_bytes, bk * bn * 4)
+                        or any(record[key] != value for key, value in expected.items())
+                        or (record["b_layout"] == "xor_columns" and
+                            (bn < 32 or bn > 1024 or bn & (bn - 1)))):
+                    raise ValueError("SMEM record disagrees with source access map")
+                bank_work = sum(record[key] for key in ("a_copy", "b_copy", "a_read", "b_read"))
+                if (row["layout"]["bank_work"] != bank_work or
+                        row["compute"] != max(1, row["flops"] // 1024) + record["address"] // 1024):
+                    raise ValueError("SMEM work disagrees with candidate cost")
             cost_bytes = total_bytes
-            if cost_model == "v4":
+            if cost_model in ("v4", "v5"):
                 record = gmem[row["plan"]]
                 if record["site"] != row["site"] or record["tile"] != row["tile"]:
                     raise ValueError("GMEM sector identity disagrees with candidate")
@@ -463,7 +544,8 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                 cost_bytes = sum(expected_gmem[:3])
             if (row["memory"] != max(1, cost_bytes // 1024) +
                     bank_work // 32 +
-                    (row["gmem"]["a_issues"] // 32 if cost_model == "v4" else 0) or
+                    (row["gmem"]["a_issues"] // 32 if cost_model in ("v4", "v5") else 0) +
+                    (row["smem"]["b_issues"] // 32 if cost_model == "v5" else 0) or
                     row["sync"] != sync or
                     (row.get("roof_bytes") and
                      row["roof_bytes"] != total_bytes)):
@@ -492,6 +574,10 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         raise ValueError("selection disagrees with comparable cost minimum")
     if trace_version in ("4", "5", "6", "7") and selection["reason"] != expected_reason:
         raise ValueError("selection reason disagrees with Roofline decision")
+    if cost_model == "v5":
+        chosen = by_plan[selection["selected"]]
+        selection["selected_smem"] = dict(chosen["smem"],
+                                            a_layout=chosen["layout"]["a_layout"])
     if selection["reason"] == "lowest_complete_relative_cost" and any(
             row["unit"] != "relative" for row in eligible):
         raise ValueError("relative-cost reason disagrees with cost units")
@@ -726,8 +812,12 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
                        "reads=valid_predicated_elements "
                        "sync=dynamic_cta_k_barriers "
                        + ("gmem=source_warp_sectors "
-                          if selection["cost_model"] == "v4" else "")
+                          if selection["cost_model"] in ("v4", "v5") else "")
                        + "confidence=low")
+    if "selected_smem" in selection:
+        summary.append("selected_smem " + " ".join(
+            f"{key}={value}" for key, value in selection["selected_smem"].items()
+            if key not in ("site", "tile")))
     (reports / "optimization.log").write_text(
         "# What it summarizes: Complete P0-P11 optimization process, including every phase decision and non-execution reason.\n"
         + "".join(phase_contents), encoding="utf-8")
@@ -759,20 +849,31 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
            if selection.get("cost_model") == "v4" else [] ),
         "# read_bytes baseline=2*M*N*K*E.",
         ("# read_bytes tiled=(M*K*ceil(N/BN)+K*N*ceil(M/BM))*E; invalid edge loads are zero-filled without GMEM requests."
-         if selection.get("cost_model") in ("v2", "v3", "v4") else
+         if selection.get("cost_model") in ("v2", "v3", "v4", "v5") else
          "# read_bytes tiled=ceil(M/BM)*ceil(N/BN)*ceil(K/BK)*(BM*BK+BK*BN)*E."),
         "# total=compute+memory_unhidden+communication_unhidden+sync+launch+runtime_selection.",
         ("# sync tiled=2*ceil(M/BM)*ceil(N/BN)*ceil(K/BK), baseline=0; this counts issued CTA barriers, not exposed latency."
-         if selection.get("cost_model") in ("v2", "v3", "v4") else
+         if selection.get("cost_model") in ("v2", "v3", "v4", "v5") else
          "# sync=static barrier_count (0 baseline, 2 tiled); communication_unhidden, launch, runtime_selection=0 here."),
         ("# Caveat: source-warp sectors are not observed cache/HBM bytes; bandwidth, cache effects, overlap, and SM parallelism remain unmodeled."
-         if selection.get("cost_model") == "v4" else
+         if selection.get("cost_model") in ("v4", "v5") else
          "# Caveat: valid element bytes are not sector transactions or HBM bytes; bandwidth, cache effects, overlap, and SM parallelism remain unmodeled."
          if selection.get("cost_model") in ("v2", "v3") else
          "# Caveat: memory_unhidden is a traffic proxy; bandwidth, overlap, cache effects, and dynamic barrier frequency are not modeled."),
         "# Selection: lowest complete relative cost among proven plans; a modeled Roofline bound can resolve near-cost alternatives where available.",
         f"site={selection['site']} target={selection['target']} baseline={selection['baseline']} selected={selection['selected']}",
     ]
+    if selection.get("cost_model") == "v5":
+        tile_lines[3:5] = [
+            "# compute=max(1,floor(2*M*N*K/1024))+floor(smem_address_work/1024).",
+            "# memory_unhidden=max(1,floor(worst_sector_bytes/1024))+floor(bank_conflict_work/32)+floor(A_read_issues/32)+floor(B_read_issues/32).",
+            "# bank_conflict_work=sum of excess rounds for A/B staging stores and compute loads; identical-word loads are broadcasts.",
+            "# smem_address_work=2*(B staging warp issues+B compute warp issues) for XOR columns; otherwise zero.",
+            "# A/B allocation bytes describe separate static __shared__ arrays, single stage; accumulator bytes remain per thread.",
+            "# b_smem_layout=xor_columns maps col to col^(col/32) on both fills and reads; global layout is unchanged.",
+            "# v5 uses scalar source warp issues, not PTX/SASS transactions or measured latency; bandwidth, caches, occupancy and overlap remain unmodeled.",
+        ]
+        tile_lines = [line for line in tile_lines if not line.startswith("# sync=")]
     if any("grid" in row for row in candidates):
         tile_lines.insert(-2, "# Grid: CTA counts and K iterations are traced, but SM count, occupancy, grid waves, and underfilled-device throughput are not priced.")
     if candidates[0].get("roof_bound_ns") is not None:
@@ -804,7 +905,7 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
             tile_lines[-1] += (f" problem={','.join(map(str, grid['problem']))}"
                                f" grid={','.join(map(str, grid['grid']))}"
                                f" grid_ctas={grid['ctas']} k_iterations={grid['k_iterations']}")
-            if selection.get("cost_model") in ("v2", "v3", "v4") and row["family"] != "baseline":
+            if selection.get("cost_model") in ("v2", "v3", "v4", "v5") and row["family"] != "baseline":
                 m, n, k = grid["problem"]
                 grid_m, grid_n = grid["grid"]
                 tile_lines[-1] += (f" valid_a_load_bytes={m * k * grid_n * 4}"
@@ -824,6 +925,11 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
                                    f" aligned_sector_bytes={traffic['aligned']}"
                                    f" smem_a_load_issues={traffic['a_issues']}"
                                    f" cost_basis=worst_base_alignment")
+            if "smem" in row:
+                record = row["smem"]
+                tile_lines[-1] += " " + " ".join(
+                    f"smem_{key}={value}" for key, value in record.items()
+                    if key not in ("site", "tile"))
         if "roof_bound_ns" in row:
             tile_lines[-1] += (f" flops={row['flops']} global_bytes={row['roof_bytes']} "
                                f"roof_compute_ns={row['roof_compute_ns']} "

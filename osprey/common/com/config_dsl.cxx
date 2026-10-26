@@ -41,6 +41,8 @@ BOOL VHO_DSL_AI_Opt_Trace = TRUE;
 BOOL VHO_DSL_AI_Opt_Trace_Set = FALSE;
 BOOL VHO_DSL_CUDA_TMA_Prefetch = FALSE;
 BOOL VHO_DSL_CUDA_TMA_Prefetch_Set = FALSE;
+BOOL VHO_DSL_CUDA_SMEM_Layout_Search = TRUE;
+BOOL VHO_DSL_CUDA_SMEM_Layout_Search_Set = FALSE;
 BOOL VHO_DSL_CUDA_Tile_Apply = FALSE;
 BOOL VHO_DSL_CUDA_Tile_Apply_Set = FALSE;
 BOOL VHO_DSL_CUDA_Legacy_Emit = TRUE;
@@ -50,6 +52,9 @@ char *VHO_DSL_CUDA_Tile_Output = NULL;
 char *VHO_DSL_CUDA_Whirl_Output = NULL;
 
 static OPTION_DESC Options_DSL[] = {
+  { OVK_BOOL, OV_VISIBLE, TRUE, "cuda_smem_layout_search", "cuda_smem_layout_search",
+    FALSE, 0, 0, &VHO_DSL_CUDA_SMEM_Layout_Search,
+    &VHO_DSL_CUDA_SMEM_Layout_Search_Set },
   { OVK_BOOL, OV_VISIBLE, TRUE, "ai_opt_trace", "ai_opt_trace",
     FALSE, 0, 0, &VHO_DSL_AI_Opt_Trace,
     &VHO_DSL_AI_Opt_Trace_Set },

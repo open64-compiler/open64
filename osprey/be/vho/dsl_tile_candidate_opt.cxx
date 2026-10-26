@@ -196,9 +196,9 @@ DSL_Tile_Trace_Selection (const DSL_TILE_ANALYSIS *analysis,
     BOOL roofline_available = DSL_Tile_Roofline_Target
         (selection.target_profile_id, &fp32_gflops, &hbm_gbps);
     UINT32 trace_version = 7;
-    fprintf(file, "AI_OPT %u COST_MODEL 4 valid_predicated_elements "
+    fprintf(file, "AI_OPT %u COST_MODEL 5 valid_predicated_elements "
                   "dynamic_cta_k_barriers bank_conflict_work "
-                  "source_warp_sectors smem_a_load_issues\n",
+                  "source_warp_sectors smem_all_operand_issues smem_address_work\n",
             trace_version);
     fprintf(file, "AI_OPT %u ROOF_TARGET %u %s %llu %llu "
                   "traffic=global_requests_as_cold_hbm_proxy "
@@ -280,6 +280,20 @@ DSL_Tile_Trace_Selection (const DSL_TILE_ANALYSIS *analysis,
                 (unsigned long long)tile.gmem_c_sector_bytes,
                 (unsigned long long)tile.gmem_aligned_sector_bytes,
                 (unsigned long long)tile.smem_a_load_issue_work);
+        fprintf(file, "AI_OPT %u TILE_SMEM %u %u %u %u %u %s "
+                      "%llu %llu %llu %llu %llu %llu %llu %llu\n",
+                trace_version, site.id, tile.id, tile.optimization_plan_id,
+                tile.smem_bank_count, tile.smem_bank_word_bytes,
+                tile.b_shared_layout == DSL_TILE_B_LAYOUT_XOR_COLUMNS ?
+                    "xor_columns" : "row_major",
+                (unsigned long long)tile.smem_a_allocation_bytes,
+                (unsigned long long)tile.smem_b_allocation_bytes,
+                (unsigned long long)tile.smem_a_copy_conflicts,
+                (unsigned long long)tile.smem_b_copy_conflicts,
+                (unsigned long long)tile.smem_a_read_conflicts,
+                (unsigned long long)tile.smem_b_read_conflicts,
+                (unsigned long long)tile.smem_b_load_issue_work,
+                (unsigned long long)tile.smem_address_work);
     }
     fprintf(file, "AI_OPT %u TILE_SELECT %u %u %u %u %u %u %u "
                   "selection_reason=%s\n",
@@ -353,7 +367,7 @@ VHO_DSL_Tile_Control_Init (VHO_DSL_TILE_CONTROL *control)
     control->target_profile_id = DSL_TARGET_PROFILE_NVIDIA_HOPPER;
     control->maximum_phase = DSL_TILE_PHASE_P7_11_INSTRUCTION;
     control->max_sites = 16;
-    control->max_plans_per_site = 8;
+    control->max_plans_per_site = 16;
     control->enable_cuda_64 = 1;
     control->enable_cuda_128 = 1;
     control->enable_blackwell_wide = 1;
@@ -831,43 +845,106 @@ DSL_Tile_Sector_Bytes (DSL_TILE_PLAN_RECORD *tile)
     return TRUE;
 }
 
-static BOOL
-DSL_Tile_Bank_Work (const DSL_TILE_PLAN_RECORD *plan, UINT64 *work)
+static UINT32
+DSL_Tile_Bank_Excess (const UINT32 *words, UINT32 count)
 {
-    *work = 0;
-    if (plan->a_shared_layout == DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED)
-        return TRUE;
-    UINT32 thread_columns = plan->cta_n / plan->thread_n;
-    if (thread_columns >= 32)
-        return TRUE;
-    UINT64 groups = DSL_Tile_Ceil_Div(32, thread_columns);
-    UINT64 grid;
-    UINT64 k_steps;
-    return DSL_Tile_Mul_U64
-               (DSL_Tile_Ceil_Div(plan->problem_m, plan->cta_m),
-                DSL_Tile_Ceil_Div(plan->problem_n, plan->cta_n), &grid) &&
-           DSL_Tile_Mul_U64
-               (DSL_Tile_Ceil_Div(plan->problem_k, plan->cta_k),
-                plan->cta_k, &k_steps) &&
-           DSL_Tile_Mul_U64(grid, k_steps, work) &&
-           DSL_Tile_Mul_U64(*work, plan->warps_per_cta, work) &&
-           DSL_Tile_Mul_U64(*work, plan->thread_m, work) &&
-           DSL_Tile_Mul_U64(*work, groups - 1, work);
+    UINT32 banks[32] = {0};
+    UINT32 rounds = 0;
+    for (UINT32 i = 0; i < count; ++i) {
+        BOOL duplicate = FALSE;
+        for (UINT32 j = 0; j < i; ++j)
+            if (words[j] == words[i]) duplicate = TRUE;
+        if (!duplicate)
+            rounds = std::max(rounds, ++banks[words[i] % 32]);
+    }
+    return rounds == 0 ? 0 : rounds - 1;
 }
 
 static BOOL
-DSL_Tile_SMEM_A_Issues (const DSL_TILE_PLAN_RECORD *plan, UINT64 *issues)
+DSL_Tile_SMEM_Work (DSL_TILE_PLAN_RECORD *plan)
 {
-    UINT64 grid, k_steps;
-    return DSL_Tile_Mul_U64
-               (DSL_Tile_Ceil_Div(plan->problem_m, plan->cta_m),
-                DSL_Tile_Ceil_Div(plan->problem_n, plan->cta_n), &grid) &&
-           DSL_Tile_Mul_U64
-               (DSL_Tile_Ceil_Div(plan->problem_k, plan->cta_k),
-                plan->cta_k, &k_steps) &&
-           DSL_Tile_Mul_U64(grid, k_steps, issues) &&
-           DSL_Tile_Mul_U64(*issues, plan->warps_per_cta, issues) &&
-           DSL_Tile_Mul_U64(*issues, plan->thread_m, issues);
+    DSL_SHARED_BANK_MODEL_RECORD model;
+    if (!DSL_memory_hierarchy_shared_bank_model(plan->target_profile_id, &model) ||
+        model.bank_count != 32 || model.word_bytes != 4 || model.warp_lanes != 32)
+        return FALSE;
+    plan->smem_bank_count = model.bank_count;
+    plan->smem_bank_word_bytes = model.word_bytes;
+    plan->smem_address_work = 0;
+    UINT64 conflicts[4] = {0, 0, 0, 0};
+    UINT64 b_copy_issues = 0;
+    const UINT32 columns = plan->cta_n / plan->thread_n;
+    for (UINT32 warp = 0; warp < plan->warps_per_cta; ++warp) {
+        for (UINT32 operand = 0; operand < 2; ++operand) {
+            UINT32 elements = plan->cta_k *
+                (operand == 0 ? plan->cta_m : plan->cta_n);
+            UINT32 width = operand == 0 ? plan->cta_k : plan->cta_n;
+            for (UINT32 issue = 0;
+                 issue < DSL_Tile_Ceil_Div(elements, plan->threads_per_cta); ++issue) {
+                UINT32 words[32], count = 0;
+                for (UINT32 lane = 0; lane < 32; ++lane) {
+                    UINT32 offset = warp * 32 + lane + issue * plan->threads_per_cta;
+                    if (offset >= elements) continue;
+                    UINT32 row = offset / width, col = offset % width;
+                    words[count++] = operand == 0 ?
+                        (plan->a_shared_layout == DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+                         col * plan->a_shared_stride + row : offset) :
+                        row * width + (plan->b_shared_layout == DSL_TILE_B_LAYOUT_XOR_COLUMNS ?
+                                       col ^ (col / 32) : col);
+                }
+                conflicts[operand] += DSL_Tile_Bank_Excess(words, count);
+                if (operand == 1 && count != 0) ++b_copy_issues;
+            }
+        }
+        // q changes all bank indices by the same offset; count one q then scale.
+        for (UINT32 i = 0; i < plan->thread_m; ++i) {
+            UINT32 words[32];
+            for (UINT32 lane = 0; lane < 32; ++lane) {
+                UINT32 row = ((warp * 32 + lane) / columns) * plan->thread_m + i;
+                words[lane] = plan->a_shared_layout == DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED ?
+                              row : row * plan->cta_k;
+            }
+            conflicts[2] += DSL_Tile_Bank_Excess(words, 32);
+        }
+        for (UINT32 j = 0; j < plan->thread_n; ++j) {
+            UINT32 words[32];
+            for (UINT32 lane = 0; lane < 32; ++lane) {
+                UINT32 col = ((warp * 32 + lane) % columns) * plan->thread_n + j;
+                words[lane] = plan->b_shared_layout == DSL_TILE_B_LAYOUT_XOR_COLUMNS ?
+                              col ^ (col / 32) : col;
+            }
+            conflicts[3] += DSL_Tile_Bank_Excess(words, 32) * plan->thread_m;
+        }
+    }
+    UINT64 grid, iterations, compute_steps;
+    if (!DSL_Tile_Mul_U64(DSL_Tile_Ceil_Div(plan->problem_m, plan->cta_m),
+                          DSL_Tile_Ceil_Div(plan->problem_n, plan->cta_n), &grid) ||
+        !DSL_Tile_Mul_U64(grid, DSL_Tile_Ceil_Div(plan->problem_k, plan->cta_k),
+                          &iterations) ||
+        !DSL_Tile_Mul_U64(iterations, plan->cta_k, &compute_steps) ||
+        !DSL_Tile_Mul_U64(conflicts[0], iterations, &plan->smem_a_copy_conflicts) ||
+        !DSL_Tile_Mul_U64(conflicts[1], iterations, &plan->smem_b_copy_conflicts) ||
+        !DSL_Tile_Mul_U64(conflicts[2], compute_steps, &plan->smem_a_read_conflicts) ||
+        !DSL_Tile_Mul_U64(conflicts[3], compute_steps, &plan->smem_b_read_conflicts) ||
+        !DSL_Tile_Mul_U64(compute_steps, plan->warps_per_cta,
+                          &plan->smem_a_load_issue_work) ||
+        !DSL_Tile_Mul_U64(plan->smem_a_load_issue_work, plan->thread_m,
+                          &plan->smem_a_load_issue_work) ||
+        !DSL_Tile_Mul_U64(plan->smem_a_load_issue_work, plan->thread_n,
+                          &plan->smem_b_load_issue_work) ||
+        !DSL_Tile_Add_U64(plan->smem_a_copy_conflicts, plan->smem_b_copy_conflicts,
+                          &plan->smem_bank_conflict_work) ||
+        !DSL_Tile_Add_U64(plan->smem_bank_conflict_work, plan->smem_a_read_conflicts,
+                          &plan->smem_bank_conflict_work) ||
+        !DSL_Tile_Add_U64(plan->smem_bank_conflict_work, plan->smem_b_read_conflicts,
+                          &plan->smem_bank_conflict_work))
+        return FALSE;
+    if (plan->b_shared_layout == DSL_TILE_B_LAYOUT_XOR_COLUMNS &&
+        (!DSL_Tile_Mul_U64(b_copy_issues, iterations, &plan->smem_address_work) ||
+         !DSL_Tile_Add_U64(plan->smem_address_work, plan->smem_b_load_issue_work,
+                           &plan->smem_address_work) ||
+         !DSL_Tile_Mul_U64(plan->smem_address_work, 2, &plan->smem_address_work)))
+        return FALSE;
+    return TRUE;
 }
 
 static BOOL
@@ -911,11 +988,16 @@ DSL_Tile_Add_Optimization_Plan
             return DSL_Tile_Report(diagnostic, "tile cost overflow", tile->id);
         UINT64 compute = std::max((UINT64)1,
                                   tile->operation_count / 1024);
+        if (!DSL_Tile_Add_U64(compute, tile->smem_address_work / 1024, &compute))
+            return DSL_Tile_Report(diagnostic, "tile address cost overflow", tile->id);
         if (!DSL_Tile_Add_U64(std::max((UINT64)1, traffic / 1024),
                               tile->smem_bank_conflict_work / 32,
                               &memory_work) ||
             !DSL_Tile_Add_U64(memory_work,
                               tile->smem_a_load_issue_work / 32,
+                              &memory_work) ||
+            !DSL_Tile_Add_U64(memory_work,
+                              tile->smem_b_load_issue_work / 32,
                               &memory_work))
             return DSL_Tile_Report(diagnostic, "tile memory cost overflow",
                                    tile->id);
@@ -1047,7 +1129,7 @@ DSL_Tile_Add_Family
          const DSL_TENSOR_EVOLUTION_NODE_RECORD &source,
          const DSL_TILE_FAMILY_SEED &seed, BOOL transpose_a,
          UINT64 m, UINT64 n, UINT64 k, UINT64 element_bytes,
-         FILE *diagnostic)
+         FILE *diagnostic, BOOL swizzle_b = FALSE)
 {
     DSL_MEMORY_TIER_RECORD shared;
     DSL_MEMORY_TIER_RECORD registers;
@@ -1072,6 +1154,8 @@ DSL_Tile_Add_Family
     tile.a_shared_layout = transpose_a ?
         DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED : DSL_TILE_A_LAYOUT_ROW_MAJOR;
     tile.a_shared_stride = transpose_a ? seed.cta_m + 1 : seed.cta_k;
+    tile.b_shared_layout = swizzle_b ? DSL_TILE_B_LAYOUT_XOR_COLUMNS :
+                                     DSL_TILE_B_LAYOUT_ROW_MAJOR;
     tile.warp_m = seed.warp_m;
     tile.warp_n = seed.warp_n;
     tile.thread_m = seed.thread_m;
@@ -1089,7 +1173,7 @@ DSL_Tile_Add_Family
     tile.flags = DSL_TILE_PLAN_FLAG_PROVISIONAL |
                  DSL_TILE_PLAN_FLAG_SEMANTICS_PRESERVING |
                  DSL_TILE_PLAN_FLAG_PREFETCH_HINT;
-    if (!transpose_a && tile.edge_policy == DSL_TILE_EDGE_EXACT)
+    if (!transpose_a && !swizzle_b && tile.edge_policy == DSL_TILE_EDGE_EXACT)
         tile.flags |= DSL_TILE_PLAN_FLAG_TMA_CANDIDATE;
     if (!DSL_Tile_Problem_Cost
              (m, n, k, element_bytes, &tile.operation_count,
@@ -1119,10 +1203,11 @@ DSL_Tile_Add_Family
         (seed.cta_n / seed.thread_n);
     tile.warps_per_cta =
         DSL_Tile_Ceil_Div(tile.threads_per_cta, 32);
+    tile.smem_a_allocation_bytes = shared_a * element_bytes;
+    tile.smem_b_allocation_bytes = shared_b * element_bytes;
     if (!DSL_Tile_Sector_Bytes(&tile))
         return DSL_Tile_Report(diagnostic, "GMEM sector cost overflow", tile.id);
-    if (!DSL_Tile_Bank_Work(&tile, &tile.smem_bank_conflict_work) ||
-        !DSL_Tile_SMEM_A_Issues(&tile, &tile.smem_a_load_issue_work))
+    if (!DSL_Tile_SMEM_Work(&tile))
         return DSL_Tile_Report(diagnostic, "bank cost overflow", tile.id);
     tile.barrier_count = 2;
     if (!DSL_memory_hierarchy_find_tier
@@ -1345,6 +1430,25 @@ VHO_DSL_Tile_Build (DSL_TILE_ANALYSIS *analysis, FILE *diagnostic)
                       diagnostic))
                 return FALSE;
         }
+        if (cuda_profile && VHO_DSL_CUDA_SMEM_Layout_Search &&
+            !VHO_DSL_CUDA_TMA_Prefetch) {
+            const UINT32 original_count = site.tile_plan_count;
+            for (UINT32 p = 1; p < original_count &&
+                 site.tile_plan_count < analysis->control.max_plans_per_site; ++p) {
+                const DSL_TILE_PLAN_RECORD original =
+                    analysis->tile_plans[site.first_tile_plan_id - 1 + p];
+                const DSL_TILE_FAMILY_SEED &seed =
+                    original.family == DSL_TILE_FAMILY_CUDA_64 ? DSL_cuda_64 :
+                    original.family == DSL_TILE_FAMILY_CUDA_128 ? DSL_cuda_128 :
+                    original.family == DSL_TILE_FAMILY_CUDA_128_COALESCED ?
+                        DSL_cuda_128_coalesced : DSL_blackwell_wide;
+                if (!DSL_Tile_Add_Family
+                         (analysis, &site, tensor, locality, source, seed,
+                          original.a_shared_layout == DSL_TILE_A_LAYOUT_TRANSPOSED_PADDED,
+                          m, n, k, element_bytes, diagnostic, TRUE))
+                    return FALSE;
+            }
+        }
         if (analysis->control.select_plans) {
             DSL_OPT_SELECTION_RESULT selection;
             const char *selection_reason;
@@ -1430,6 +1534,19 @@ VHO_DSL_Tile_Verify
                   tile.evolution_edge_id == 0)))
                 return DSL_Tile_Report
                            (diagnostic, "invalid tile plan", tile.id);
+            if (!baseline) {
+                DSL_TILE_PLAN_RECORD expected = tile;
+                if (!DSL_Tile_SMEM_Work(&expected) ||
+                    expected.smem_bank_conflict_work != tile.smem_bank_conflict_work ||
+                    expected.smem_a_copy_conflicts != tile.smem_a_copy_conflicts ||
+                    expected.smem_b_copy_conflicts != tile.smem_b_copy_conflicts ||
+                    expected.smem_a_read_conflicts != tile.smem_a_read_conflicts ||
+                    expected.smem_b_read_conflicts != tile.smem_b_read_conflicts ||
+                    expected.smem_a_load_issue_work != tile.smem_a_load_issue_work ||
+                    expected.smem_b_load_issue_work != tile.smem_b_load_issue_work ||
+                    expected.smem_address_work != tile.smem_address_work)
+                    return DSL_Tile_Report(diagnostic, "invalid shared bank work", tile.id);
+            }
             for (UINT32 s = 0; s < tile.stage_count; ++s) {
                 const DSL_TILE_STAGE_RECORD &stage =
                     analysis->stages[expected_stage - 1];

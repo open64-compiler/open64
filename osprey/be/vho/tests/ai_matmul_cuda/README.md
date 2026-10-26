@@ -479,3 +479,17 @@ Run host-only package tests with:
 ```sh
 python3 -m unittest discover -s osprey/be/vho/tests/ai_matmul_cuda -p 'test_*.py'
 ```
+## Synchronous SMEM Planning Review
+
+`test_smem_model.py` checks broadcasts, source-warp conflicts and the B
+column-XOR bijection. `test_gmem_coalescing.py` now checks COST_MODEL 5,
+short/long K, `cuda_smem_layout_search=OFF`, corrupt GMEM/SMEM trace rejection,
+device WHIRL inspection and reference/legacy/WHIRL host-CTA parity.
+`test_device_whirl_edges.py` checks all-tail and K-only zero-fill through the
+same selected B mapping. The irregular fixture may select a smaller tile;
+tests must validate the complete decision, not insist on the historical A
+layout. Preserve all `.t`, `.B/.T`, `.cu` and derived phase logs under a new
+`artifacts/ai_optimization/m3-smem-planning/` run, without reusing old runs.
+The target-bank and full-score algorithm is documented in the hardware
+resource/memory planning design. This is a single-stage synchronous package,
+not native NVCC/PTX/GPU or multi-stage TMA acceptance.

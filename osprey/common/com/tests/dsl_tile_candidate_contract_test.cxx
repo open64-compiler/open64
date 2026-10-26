@@ -299,8 +299,8 @@ Check_Main_Contract (const AIO9_ANALYSIS *analysis, UINT32 profile,
     DSL_TILE_SITE_RECORD site;
     UINT32 alternatives = phase == 0 ? 0 :
                           profile == DSL_TARGET_PROFILE_NVIDIA_BLACKWELL ?
-                          6 : profile == DSL_TARGET_PROFILE_NVIDIA_HOPPER ?
-                          4 : 0;
+                          12 : profile == DSL_TARGET_PROFILE_NVIDIA_HOPPER ?
+                          8 : 0;
     UINT32 plans = 1 + alternatives;
     UINT32 stages = 1 + alternatives * (phase + 1);
     const DSL_TILE_PLAN_IR *tile_ir = VHO_DSL_Tile_Get_IR(analysis->tile);
