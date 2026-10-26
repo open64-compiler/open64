@@ -321,6 +321,8 @@ For each legal `(BM, BN, BK, warp/thread tile)` family, build a bounded set of c
 
 This option isolates the potential contribution for evaluation: delayed transformation permits *cross-axis* choices that a sequential, one-pass tile or staging decision may discard. The claim is an architectural hypothesis until equal-search-budget comparisons against the baseline, schedule-search systems, and hardware measurements establish a gain. The rationale, evaluation questions, and related work are retained in `AI-COMPILER-WHITE-PAPER-CANDIDATE-DELAYED-GEMM-PLAN-SELECTION.md`.
 
+**Numerical planning extension (proposed).** Reduced-precision plans must distinguish operand/product precision, internal MMA accumulation and outer accumulation. Hopper FP8 promotion intervals are independent of SMEM BK and prefetch depth; Blackwell NVFP4/MXFP4 require separate scale/packing/instruction profiles rather than inheriting Hopper's empirical precision limitation. Numerical acceptance precedes profitability. See [Numerical Accumulation And Scaled GEMM Design v0.1](AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md) for DeepSeek-V3 evidence, pinned Triton behavior, common versus AI ownership, WHIRL actions, costs and required reports. These contracts are not implemented by the current FP32 D/S1/T2 milestone.
+
 ## 6A.4 P7.4 To P8 Prefetch Hint Contract
 
 P7.4 should not generate the async copy schedule directly. It describes both direct/cache-served and SMEM-staged alternatives, preserving enough tile structure for P8 to decide whether a TMA, cp.async, vectorized-load, or scalar movement plan can hide latency. P8 may return a schedule that makes an S1 or SN candidate unprofitable; it does not itself commit the residency choice.

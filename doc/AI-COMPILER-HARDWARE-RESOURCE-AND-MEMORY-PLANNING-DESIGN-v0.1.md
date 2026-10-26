@@ -157,6 +157,20 @@ AI-domain-specific; the common candidate records carry option provenance,
 source/selected formats, legality evidence, and fallback without owning the
 AI acceptance policy or deciding that precision loss is acceptable.
 
+### 2.2 Internal accumulation is a separate target contract
+
+Operand and output formats do not establish internal MMA addition precision.
+Model Hopper FP8 WGMMA partial-sum promotion separately from Blackwell
+NVFP4/MXFP4 scaled MMA. Record product/internal/outer precision evidence,
+explicit segment boundaries and promotion intervals, scale handling,
+completion dependencies and accumulator allocation. `BK`, instruction K,
+scale-group K and the promotion interval are independent parameters.
+Numerical acceptance gates profitability; narrower storage or an FP32 result
+type alone cannot establish that gate. See
+[Numerical Accumulation And Scaled GEMM Design v0.1](AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md)
+for DeepSeek-V3 evidence, pinned Triton analysis, ownership, cost and report
+requirements. This is a proposed extension; D/S1/T2 remain FP32 today.
+
 ## 3. Definitions used by the schedule
 
 These terms are defined here before the movement sequence. "Allocation" in a

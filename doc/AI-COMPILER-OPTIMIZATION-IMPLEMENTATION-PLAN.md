@@ -1613,6 +1613,26 @@ Immutable SHA256-verified evidence, including before/after WHIRL, direct
 CUDA, raw traces, reports, commands and producer-source/binary fingerprints:
 `/Users/shinmingliu/open64/artifacts/review/ai-optimization/m3/d-s1-t2-comparison/sha256-e90e39c0a17ac15ac58ba41338cb4ca774d5da21a9d70bb138857bf42d845918/`.
 
+## Target-Specific Numerical Planning Follow-On
+
+The proposed
+[numerical accumulation design](AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md)
+separates Hopper FP8 WGMMA promotion from Blackwell FP4 block-scaled MMA.
+This follow-on does not change the completed FP32 D/S1/T2 checkpoint or close
+its native GPU gate. Minimum execution sequence:
+
+- [ ] Policy-free numerical/accumulation records, target evidence and verifier.
+- [ ] Explicit Hopper partial/reset/wait/scale/FP32-merge WHIRL; prove maximum
+  reduction span independently of SMEM BK and slot count.
+- [ ] Joint numerical-legality and profitability search with source-format
+  fallback, complete trace/report evidence and adversarial numerical tests.
+- [ ] Separate Blackwell NVFP4/MXFP4 representation, scale and instruction
+  lowering; do not inherit Hopper's empirical accumulation penalty.
+- [ ] Exact-target native accuracy/performance and model-level acceptance.
+
+All are planned, not implemented. Proposed precision and trace controls need
+their own reviewed implementation; current v7 trace and FP32 behavior remain.
+
 ## Related Documents
 
 - `AI-COMPILER-OPTIMIZATION-PROGRESS.md` - running status, execution gates,
