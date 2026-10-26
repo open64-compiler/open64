@@ -2724,7 +2724,7 @@ Publish_DSL_CUDA_Program_Kernels (const char *path, FILE *diagnostic)
               kernel.tile_id,
               ST_name(St_Table[PU_Info_proc_sym(kernel.pu)]), path);
       fprintf(TFile, "AI_OPT 7 PIPELINE_KERNEL %u %s %u %u %s %u %llu "
-                     "acquire_issue_wait_compute_release "
+                     "%s "
                      "whirl_order=verified abi=%s\n",
               ordinal, ST_name(St_Table[kernel.owner]), kernel.plan_id,
               kernel.fetch.optimization_plan_id,
@@ -2732,7 +2732,10 @@ Publish_DSL_CUDA_Program_Kernels (const char *path, FILE *diagnostic)
               kernel.fetch.stage_count,
               (unsigned long long)(kernel.fetch.buffering_bytes +
                   (kernel.fetch.stage_count == 2 ? 16 : 0)),
-              kernel.fetch.stage_count == 2 ? "tma_maps_ptr_v1" : "sync_ptr_v1");
+              (kernel.fetch.flags & DSL_FETCH_PLAN_FLAG_DIRECT) != 0 ?
+                  "direct_load_compute_store" : "acquire_issue_wait_compute_release",
+              (kernel.fetch.flags & DSL_FETCH_PLAN_FLAG_DIRECT) != 0 ? "direct_ptr_v1" :
+                  kernel.fetch.stage_count == 2 ? "tma_maps_ptr_v1" : "sync_ptr_v1");
     }
     if (count == 1)
       fprintf(TFile, "AI_OPT 7 WHIRL_KERNEL 1 %u %u %s\n",

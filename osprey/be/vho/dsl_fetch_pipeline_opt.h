@@ -6,6 +6,7 @@
  * VHO ownership for AIO-10 movement-plan generation, overlap estimates,
  * barrier/resource legality, costing, selection, and semantic verification.
  * Scope and joint contract: doc/AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md.
+ * Direct extension: doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md.
  */
 
 #ifndef dsl_fetch_pipeline_opt_INCLUDED
@@ -39,6 +40,7 @@ typedef struct {
     UINT32 enable_multidimensional_async;
     /* Runtime-only controls: full-GEMM costing and deferred tile override. */
     UINT32 joint_cost;
+    UINT32 enable_direct;
     DSL_TILE_PLAN_ID tile_plan_id;
     UINT32 reserved;
 } VHO_DSL_FETCH_PIPELINE_CONTROL;
@@ -79,5 +81,10 @@ extern BOOL VHO_DSL_fetch_pipeline_can_lower
 /* Prove signed-I4 index and padded loop bounds before either plan selection
  * or source/device construction; do not mutate the supplied runtime record. */
 extern BOOL VHO_DSL_cuda_i4_geometry_safe (const DSL_TILE_PLAN_RECORD &tile);
+
+/* Count whole-kernel warp-issued A/B sectors for the direct register map,
+ * including tails and worst F32 base alignment; no cache-hit credit or IR mutation. */
+extern BOOL VHO_DSL_direct_gmem_sectors
+                                (const DSL_TILE_PLAN_RECORD &tile, UINT64 bytes[2]);
 
 #endif /* dsl_fetch_pipeline_opt_INCLUDED */
