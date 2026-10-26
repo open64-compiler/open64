@@ -8,6 +8,19 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+Numerical-contract increment (2026-10-25): common runtime records and an
+active-PU VHO segment planner now have a verified scalar F32 WHIRL adapter.
+The linked fixture retains same-PU before/after images, direct CUDA emission,
+raw accumulation trace and audited reports. This is not a native Hopper FP8
+accuracy fix: Hopper is planning-only, Blackwell is separate and unsupported,
+and production D/S1/T2 behavior is unchanged. See
+[Numerical Accumulation Design, Section 7](AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md#7-implemented-contract-slice).
+
+Checkpoint `f606852c`: 71 Python tests, 45 scalar K/interval combinations,
+14 malformed contracts, four altered WHIRL sequences, the production backend
+build and D/S1/T2 regression pass. Review evidence is retained at
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m4/accumulation-contract/sha256-ca49313ac3fa783e29803efe7137fd92b4660cdf64bfdd6671af77eac99f19e8/`.
+
 Latest compiler-side increment (2026-10-25, after PR 191): joint model 2
 compares actual D/S1/T2 alternatives. D is generated from WHIRL with guarded
 global/register loads, no A/B SMEM and no staging barriers. It has separate

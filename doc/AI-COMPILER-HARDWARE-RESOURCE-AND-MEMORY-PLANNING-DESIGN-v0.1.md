@@ -169,7 +169,9 @@ Numerical acceptance gates profitability; narrower storage or an FP32 result
 type alone cannot establish that gate. See
 [Numerical Accumulation And Scaled GEMM Design v0.1](AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md)
 for DeepSeek-V3 evidence, pinned Triton analysis, ownership, cost and report
-requirements. This is a proposed extension; D/S1/T2 remain FP32 today.
+requirements. The initial common records, VHO segmentation and scalar WHIRL
+adapter are implemented as a contract fixture. Native Hopper FP8, Blackwell
+FP4 and production pipeline integration remain open; D/S1/T2 remain FP32.
 
 ## 3. Definitions used by the schedule
 

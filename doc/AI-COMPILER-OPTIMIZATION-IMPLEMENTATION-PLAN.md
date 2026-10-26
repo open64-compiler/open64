@@ -1630,8 +1630,27 @@ its native GPU gate. Minimum execution sequence:
   lowering; do not inherit Hopper's empirical accumulation penalty.
 - [ ] Exact-target native accuracy/performance and model-level acceptance.
 
-All are planned, not implemented. Proposed precision and trace controls need
-their own reviewed implementation; current v7 trace and FP32 behavior remain.
+The first compiler-side contract slice now implements common runtime records,
+an active-PU -O3 segment planner and detached scalar F32 WHIRL materialization
+with postchecks. It includes an independent `AI_ACC 1` audit/report stream.
+It does not close the first full target-profile gate: rounding policy,
+production phase protection and actual Hopper WGMMA reset/wait/merge lowering
+remain open. Native FP8 requests cannot use the scalar adapter; Blackwell
+planning is rejected until its independent scaled profile exists. See
+Section 7 of the numerical design for exact implemented APIs and tests.
+Current AI_OPT v7 and production D/S1/T2 FP32 behavior remain unchanged.
+
+Contract checkpoint `f606852c`: 71 Python tests, 45 scalar segment cases,
+14 malformed contracts and four altered WHIRL sequences pass, along with
+the final D/S1/T2 regression. Production backend build and the no-frontend-
+builder symbol-boundary check pass. The standalone 257-element scalar case
+emits three resets and three outer merges. Native Hopper/Blackwell lowering,
+pipeline integration, optimizing-phase protection and model acceptance remain
+open; scalar host evidence must not close those gates.
+
+Immutable evidence (same-PU before/after `.B/.T`, raw diff, WHIRL-derived
+`.cu`, `.t`, complete reports, commands, build logs and checksums):
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m4/accumulation-contract/sha256-ca49313ac3fa783e29803efe7137fd92b4660cdf64bfdd6671af77eac99f19e8/`.
 
 ## Related Documents
 
