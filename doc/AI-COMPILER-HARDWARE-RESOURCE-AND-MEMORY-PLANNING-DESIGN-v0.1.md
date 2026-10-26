@@ -356,10 +356,11 @@ lowest credible complete legal plan with a conservative fallback.
 The registered `-Wb,-DSL:gemm_plan_search=baseline|joint` option defaults to
 `baseline`. `joint` requests a bounded cross-product of tile, copy map, A/B
 SMEM layout, register fragment, and movement-schedule alternatives, including
-the direct path in the full design. Initially only the existing lowerable
-synchronous/TMA pairs are implemented; direct kernels and `cp.async` remain
-open. See `AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md` for the exact
-cost model, compile-time fallback and reporting. Joint requires `-O3` and
+the direct path in the full design. Model 2 now implements direct register
+loads alongside synchronous/TMA pairs in the existing proven P7 family;
+`cp.async` and calibrated cache service remain open. See
+`AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md` for the current cost model,
+compile-time S1 fallback and reporting. Joint requires `-O3` and
 device-WHIRL output. It never bypasses legality, numerical
 permission, the rewrite gate, or the trace contract. This control allows an
 equal-budget comparison of delayed joint choice against the current selector

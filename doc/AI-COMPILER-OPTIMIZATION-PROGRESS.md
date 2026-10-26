@@ -8,7 +8,23 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
-Latest compiler-side increment (2026-10-25, after PR 190): registered
+Latest compiler-side increment (2026-10-25, after PR 191): joint model 2
+compares actual D/S1/T2 alternatives. D is generated from WHIRL with guarded
+global/register loads, no A/B SMEM and no staging barriers. It has separate
+warp-sector evidence, unknown cache service and no overlap credit. The S1
+fallback remains distinct even when D wins. See
+[D/S1/T2 design](AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md).
+Native correctness and calibration remain open without NVIDIA hardware.
+
+Verified compiler checkpoint: `be85a5c0`; 64 Python unit tests, direct/staged
+and mixed-PU integration, joint-search controls, executable P8 regressions,
+six malformed native direct contracts and two native sector-count oracles
+pass. Host simulations have zero reference error. D wins the 3x5x7 case
+among 19 pairs; S1 wins 128x128x144. The scores remain relative,
+low-confidence and uncalibrated. Durable review evidence:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m3/d-s1-t2-comparison/sha256-e90e39c0a17ac15ac58ba41338cb4ca774d5da21a9d70bb138857bf42d845918/`.
+
+Previous compiler-side increment (after PR 190): registered
 `gemm_plan_search=baseline|joint`, default `baseline`. Joint mode defers tile
 commitment until bounded synchronous/TMA whole-plan comparison and lowers the
 winner through the existing device-WHIRL path. It retains a synchronous
@@ -268,7 +284,7 @@ plan and their linked AIO documents.
 | AI-P5 communication | AIO-7 check-only | Out of scope for first single-device matmul; report coverage. |
 | AI-P6 residency | AIO-8 check-only | Verify compiled SMEM/register usage and CTA residency against the selected plan. |
 | AI-P7 multi-level tiling | AIO-9 candidate/selection plus opt-in generated-provider rewrite; A/B SMEM and 8x8 versus 16x2 GMEM lane maps lower into WHIRL | Integrate multi-stage/TMA WHIRL plans; calibrate source-sector, bank, occupancy, and resource use; execute on a GPU. |
-| AI-P8 fetch and pipeline | Executable synchronous/two-slot exact TMA device WHIRL after PR 190; joint selection available | Native GPU acceptance, TMA host-provider integration, direct kernels and `cp.async` remain open. |
+| AI-P8 fetch and pipeline | D direct-register, S1 synchronous and T2 exact two-slot TMA device WHIRL; bounded joint comparison | Native GPU acceptance, D/TMA host-provider integration and `cp.async` remain open. |
 | AI-P9 physical plan | AIO-11 F4 provider rewrite; F32 generated-provider call linked to a fixed-shape review adapter and mock-tested | Verify the actual CUDA launch, fallback diagnostics, and production tensor-provider boundary. |
 | AI-P10 runtime variants | AIO-12 check-only guarded variant evidence | Defer executable variants until the kernel and fallback are certified. |
 | AI-P11 feedback | AIO-13 check-only telemetry join | Add reviewed profile transport and measured feedback after executable work. |

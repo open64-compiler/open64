@@ -90,10 +90,11 @@ fallback. Rewrite only the winner into a device WHIRL PU.
 
 Registered driver spelling: `-Wb,-DSL:gemm_plan_search=baseline|joint`.
 `baseline` is the default and preserves the current supported selection
-path. Initial `joint` compares existing S1/two-slot-TMA pairs before tile
-commitment; D and `cp.async` remain future extensions. The exact executable
-subset, cost model and compile-time fallback are specified in
-`AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md`. Joint requires `-O3` and
+path. Joint model 2 compares D/S1/two-slot-TMA pairs before tile commitment
+within the existing proven P7 family; `cp.async` remains future work.
+The current executable subset, direct warp-request model and S1 fallback
+are specified in `AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md`;
+the model-1 joint-search document is the preceding checkpoint. Joint requires `-O3` and
 device-WHIRL output and cannot override host-provider capability, precision
 permission, target legality, or the fallback. This implementation is not
 evidence of novelty or measured speedup.
