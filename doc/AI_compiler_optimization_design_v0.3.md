@@ -4,6 +4,14 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-27 R1 implementation amendment:
+[Row semantic characterization and numerical acceptance v0.1](AI-COMPILER-ROW-SEMANTIC-CHARACTERIZATION-v0.1.md)
+derives reduction, stable Softmax and affine LayerNorm domains/accesses/state
+from actual FX dataflows. Numerical permissions and CPU acceptance witnesses
+remain separate gates; native canonical-WHIRL characterization, optimization
+and physical scheduling remain open. This frontend-only slice is independent
+of MMA1 and changes no compute profile or native IR contract.
+
 2026-10-27 compute-realization proposal:
 [MMA compute realization and SIMT fallback v0.1](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md)
 defines Hopper WGMMA and Blackwell SM100 `tcgen05` as separate complete-plan

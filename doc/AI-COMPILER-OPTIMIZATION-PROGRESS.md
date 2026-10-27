@@ -8,6 +8,20 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 R1 frontend-analysis increment:
+[Row semantic characterization](AI-COMPILER-ROW-SEMANTIC-CHARACTERIZATION-v0.1.md)
+now recognizes exact reduction, stable Softmax and affine LayerNorm dataflows
+and derives domains, accesses, numerical/state obligations and conditional
+realizations. CPU FP32 witnesses compare with independent FP64 references;
+permission, domain and numerical failures are retained separately. This is
+source analysis only: no native WHIRL ingestion/transformation, cost selection,
+MMA profile or GPU claim. R1-d canonical-WHIRL characterization remains open.
+Validation: 21 new tests, 37 focused tests and 86 torch-enabled capture tests
+plus driver smoke pass. The 12-case report retains 30 accepted samples,
+11 permission rejections, 9 numerical rejections and 2 domain rejections.
+Full Docker suite: 265 tests, 14 skips, one unchanged FHE authority-digest
+failure. The detail design links the immutable source-analysis receipt.
+
 2026-10-27 design-only increment:
 [MMA compute realization and SIMT fallback v0.1](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md)
 proposes exact Hopper WGMMA and Blackwell SM100 tcgen05 recipes, numerical and

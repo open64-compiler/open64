@@ -116,6 +116,21 @@ Accepted source/capture receipt (primary artifact `report.json`):
 
 ## Next Gates
 
+R1 frontend analysis now also implements
+[source-derived row characterization and numerical acceptance](../../doc/AI-COMPILER-ROW-SEMANTIC-CHARACTERIZATION-v0.1.md).
+`open64_dsc/row_characterization.py` recognizes exact rank-2 FP32 reduction,
+stable Softmax and affine LayerNorm dataflows without changing export APIs or
+native mappings. It reports domains, accesses, states/merge/finalize,
+permissions, graph/descriptor invalidation fingerprint and native requirements.
+`python/tests/row_semantic_report.py` retains strict/permitted CPU witnesses,
+including rejected samples; the optional row suite runs in the torch Docker
+lane. No common/com, backend, MMA1 profile or mapped-image contract changes.
+The original six-case validation receipt above remains immutable historical
+evidence; new row-analysis evidence is a distinct milestone.
+The row milestone passes 21 new tests, 37 focused regressions, the 86-test
+capture lane and driver smoke; its detail design links numerical outcomes,
+retained source replay and the known full-suite baseline failure.
+
 1. R1 remainder: agree native expression/region contracts from this census;
    reuse existing common services, preserve semantic boundaries and define
    PREOPT canonical forms before optimizer matching. Certify mapped `.B`/`.T`
