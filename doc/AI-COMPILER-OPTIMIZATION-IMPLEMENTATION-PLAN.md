@@ -44,6 +44,39 @@ options/selection and native performance evidence remain open.
 
 ## Adoption Decision
 
+2026-10-27 addition: adopt
+[Common execution planning](AI-COMPILER-COMMON-EXECUTION-PLANNING.md) without
+changing P0-P11 order or current compiler controls. Upstream characterization
+and verified algebraic alternatives feed joint Work Partition, Resource
+Lifetime and Execution Events views of one complete candidate. P8 gains a
+planned access-lifetime/physical-storage-assignment contract; generic
+allocation and event lowering are not implemented by this documentation change.
+
+### Building Block Research Queue
+
+This queue is separate from bounded GEMM production work and native GPU
+certification. Follow the
+[worked milestone and reproduction](research_library/building_block_planning/README.md).
+
+| Gate | Deliverable and evidence | Status |
+| --- | --- | --- |
+| R0 | GEMM, reduction, stable Softmax and mean/variance normalization: two specified legal-under-contract realizations each, ownership/state characterization, storage/events and full declared-model costs. | Research demo passed: 21 tests, 32 synthetic candidate comparisons, 16 decisions, nine host numerical checks. No new production lowering. |
+| R1 | Representative frontend capture/operator census and canonical WHIRL characterization using existing services. | Open; no speculative opcode publication. |
+| R2 | Shared state/equivalence/numerical contracts and bounded algorithm-alternative generation. | Open; strict FP and unsupported-state failures required. |
+| R3 | General P8 access-lifetime, range-alias, storage-interference/packing and symbolic event/progress proof. | Open; fixed F32 slot protocol remains the implemented baseline. |
+| R4 | Real target costs, complete-plan choice, selected WHIRL transformation, before/after mapped reopen and emitted CUDA. | Open for general cases; preserve existing GEMM controls/fallbacks. |
+| R5 | Native numerical/resource/performance verification and calibration. | Open; GPU not allocated. |
+| R6 | Attention as compositional normalization/weighted-state reformulation, online vs partition/merge alternatives. | Open research extension. |
+| R7 | MoE as dynamic domains/routing ownership; packed/grouped vs block-sparse alternatives with all routing/combine costs. | Open research extension. |
+
+Every gate must retain semantic and numerical conditions, complete cost
+components/units/provenance, rejection/fallback and actual maturity.
+`locality.log` summarizes access-lifetime/alias obligations;
+`residency.log` physical assignment/reservation; `fetch-pipeline.log`
+generation/completion/reuse and added waits; `physical-plan.log` complete
+selection and WHIRL actions. R0's standalone `comparison.log` is research
+output, not a WOPT `.t` trace or a compiler transformation report.
+
 Open64 adopts the following design rules from the versioned design:
 
 1. Tensor identity is preserved through a TensorEvolutionGraph rather than
