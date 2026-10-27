@@ -51,8 +51,14 @@ char *VHO_DSL_PU_Specialization_Checkpoint_Output = NULL;
 char *VHO_DSL_CUDA_Tile_Output = NULL;
 char *VHO_DSL_CUDA_Whirl_Output = NULL;
 char *VHO_DSL_GEMM_Plan_Search = NULL;
+char *VHO_DSL_GEMM_Cost_Model = NULL;
+UINT32 VHO_DSL_GEMM_Memory_Latency = 100;
 
 static OPTION_DESC Options_DSL[] = {
+  { OVK_NAME, OV_VISIBLE, FALSE, "gemm_cost_model", "gemm_cost_model",
+    0, 0, 0, &VHO_DSL_GEMM_Cost_Model, NULL },
+  { OVK_UINT32, OV_VISIBLE, FALSE, "gemm_memory_latency", "gemm_memory_latency",
+    100, 0, 1000000, &VHO_DSL_GEMM_Memory_Latency, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "gemm_plan_search", "gemm_plan_search",
     0, 0, 0, &VHO_DSL_GEMM_Plan_Search, NULL },
   { OVK_BOOL, OV_VISIBLE, TRUE, "cuda_smem_layout_search", "cuda_smem_layout_search",

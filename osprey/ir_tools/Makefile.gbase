@@ -525,6 +525,9 @@ dsl_fetch_pipeline_contract_test: $(OBJECTS) controls.o \
 		dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o \
 		$(OBJECTS) $(LDFLAGS)
 
+dsl_fetch_pipeline_contract_test.o: $(BE_VHO_DIR)/dsl_fetch_pipeline_opt.h \
+    $(BE_VHO_DIR)/dsl_gemm_readiness.h
+
 dsl_fetch_pipeline_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_fetch_pipeline_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
@@ -604,6 +607,9 @@ dsl_tensor_locality_opt.o: $(BE_VHO_DIR)/dsl_tensor_locality_opt.cxx
 
 dsl_tile_candidate_opt.o: $(BE_VHO_DIR)/dsl_tile_candidate_opt.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_fetch_pipeline_opt.o: $(BE_VHO_DIR)/dsl_fetch_pipeline_opt.h \
+    $(BE_VHO_DIR)/dsl_gemm_readiness.h
 
 dsl_fetch_pipeline_opt.o: $(BE_VHO_DIR)/dsl_fetch_pipeline_opt.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@

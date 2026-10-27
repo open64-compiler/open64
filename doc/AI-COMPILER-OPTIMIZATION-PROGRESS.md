@@ -8,6 +8,21 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+Analytical readiness increment (2026-10-26): the compiler's opt-in joint path
+now defaults to a schedule-aware reference-cycle model instead of traffic-score
+overlap credit. D/S1/T2 share an explicit assumed profile; T2 models preload,
+ready waits, consume/release/refill and drain in O(log K). Relative model 3
+remains available. This is separate from the downstream simulator below.
+102 unit tests and 2340 literal recurrence oracles pass; ten compiler/source
+configurations pass independent trace/WHIRL/CUDA and host-only checks.
+128x128x144 now emits T2 #3 instead of relative S1 #12; its modeled total
+31336 compares with best synchronous S1 #1 at 43237 in the same assumed unit.
+65x67x17 emits S1 #1 instead of D #8; three tiny/tail shapes retain D #2.
+Low-latency selection differs from the shadow simulator and remains an
+explicit calibration question, not evidence of simulator or GPU accuracy.
+No native GPU timing or calibrated ranking is claimed. See the
+[analytical design](AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md).
+
 Design-review increment (2026-10-26): a
 [bubble-prediction algorithm](AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md)
 and B0-B5 queue are proposed inside FP32 analytic refinement. First compare

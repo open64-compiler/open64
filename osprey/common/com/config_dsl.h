@@ -39,6 +39,8 @@ extern BOOL VHO_DSL_AI_Opt_Trace;
 extern BOOL VHO_DSL_AI_Opt_Trace_Set;
 extern BOOL VHO_DSL_CUDA_TMA_Prefetch;
 extern char *VHO_DSL_GEMM_Plan_Search;
+extern char *VHO_DSL_GEMM_Cost_Model;
+extern UINT32 VHO_DSL_GEMM_Memory_Latency;
 extern BOOL VHO_DSL_CUDA_TMA_Prefetch_Set;
 extern BOOL VHO_DSL_CUDA_SMEM_Layout_Search;
 extern BOOL VHO_DSL_CUDA_SMEM_Layout_Search_Set;

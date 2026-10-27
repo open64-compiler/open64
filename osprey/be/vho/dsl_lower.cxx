@@ -3919,14 +3919,20 @@ VHO_DSL_cuda_select_joint_plan
     UINT32 count = 0, chosen = 0, fallback = 0;
     const BOOL trace = VHO_DSL_AI_Opt_Trace && Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG);
     const BOOL tma_allowed = VHO_DSL_CUDA_TMA_Prefetch && !VHO_DSL_CUDA_Tile_Apply;
+    const BOOL readiness = VHO_DSL_GEMM_Cost_Model == NULL ||
+        strcmp(VHO_DSL_GEMM_Cost_Model, "readiness") == 0;
     DSL_IR_VALUE_RECORD value;
     const UINT32 source_line = DSL_IR_Image_Get_Value(site.semantic_value_id, &value) &&
         value.st != ST_IDX_ZERO ? ST_Line(St_Table[value.st]) : 0;
     *winner = 0;
     *candidate_count = 0;
     if (trace)
-        fprintf(TFile, "AI_OPT 7 JOINT_MODE joint 48 %u %u relative low model=3 direct=%u\n",
-                site.tile_plan_count, tma_allowed, !VHO_DSL_CUDA_Tile_Apply);
+        fprintf(TFile, "AI_OPT 7 JOINT_MODE joint 48 %u %u %s low model=%u direct=%u\n",
+                site.tile_plan_count, tma_allowed, readiness ? "cycles" : "relative",
+                readiness ? 4 : 3, !VHO_DSL_CUDA_Tile_Apply);
+    if (trace && readiness)
+        fprintf(TFile, "AI_OPT 7 READINESS_PROFILE assumed_v1 %u 4 32 128 4 8 2 one_cta_per_sm\n",
+                VHO_DSL_GEMM_Memory_Latency);
     for (UINT32 i = 0; i < site.tile_plan_count; ++i) {
         DSL_TILE_PLAN_RECORD tile;
         if (!DSL_tile_plan_ir_get_plan(ir, site.first_tile_plan_id + i, &tile))
@@ -3937,6 +3943,8 @@ VHO_DSL_cuda_select_joint_plan
         VHO_DSL_Fetch_Pipeline_Control_Init(&control);
         control.select_plans = 0;
         control.joint_cost = 1;
+        control.readiness_cost = readiness;
+        control.memory_latency = VHO_DSL_GEMM_Memory_Latency;
         control.enable_direct = !VHO_DSL_CUDA_Tile_Apply;
         control.tile_plan_id = tile.id;
         control.enable_vector = control.enable_async_copy = 0;
@@ -3983,6 +3991,21 @@ VHO_DSL_cuda_select_joint_plan
                     (unsigned long long)resource.shared_bytes,
                     (unsigned long long)resource.shared_limit_bytes,
                     resource.threads_per_cta, resource.thread_limit, source_line);
+            }
+            if (trace && readiness) {
+                DSL_GEMM_READINESS_INPUT input;
+                DSL_GEMM_READINESS_RESULT result;
+                if (!VHO_DSL_fetch_readiness_cost(tile, pipeline, control.memory_latency, &input, &result)) {
+                    valid = FALSE;
+                    break;
+                }
+                fprintf(TFile, "AI_OPT 7 JOINT_READINESS %u %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %u\n",
+                    count, (unsigned long long)input.ctas, (unsigned long long)input.steps,
+                    (unsigned long long)input.consumer, (unsigned long long)input.input_bytes,
+                    (unsigned long long)input.output_bytes, (unsigned long long)input.copy,
+                    (unsigned long long)input.warps, (unsigned long long)result.delivery,
+                    (unsigned long long)result.window, (unsigned long long)result.wait,
+                    (unsigned long long)result.waves, (unsigned long long)result.total, source_line);
             }
             if (trace && (pipeline.flags & DSL_FETCH_PLAN_FLAG_DIRECT) != 0) {
                 UINT64 sectors[2];
@@ -4130,6 +4153,9 @@ VHO_DSL_CUDA_Emit_Selected_Tile
         fetch_control.focus_value_id = site.semantic_value_id;
         if (joint) {
             fetch_control.joint_cost = 1;
+            fetch_control.readiness_cost = VHO_DSL_GEMM_Cost_Model == NULL ||
+                strcmp(VHO_DSL_GEMM_Cost_Model, "readiness") == 0;
+            fetch_control.memory_latency = VHO_DSL_GEMM_Memory_Latency;
             fetch_control.enable_direct = !VHO_DSL_CUDA_Tile_Apply;
             fetch_control.tile_plan_id = joint_tile;
             fetch_control.enable_vector = fetch_control.enable_async_copy = 0;
@@ -4391,6 +4417,10 @@ VHO_DSL_Lower_Driver
               ("gemm_plan_search requires baseline or joint"));
     const BOOL joint = VHO_DSL_GEMM_Plan_Search != NULL &&
                        strcmp(VHO_DSL_GEMM_Plan_Search, "joint") == 0;
+    FmtAssert(VHO_DSL_GEMM_Cost_Model == NULL ||
+              strcmp(VHO_DSL_GEMM_Cost_Model, "relative") == 0 ||
+              strcmp(VHO_DSL_GEMM_Cost_Model, "readiness") == 0,
+              ("gemm_cost_model requires relative or readiness"));
     FmtAssert(!joint || (Opt_Level >= 3 && VHO_DSL_CUDA_Whirl_Output != NULL),
               ("gemm_plan_search=joint requires -O3 and cuda_whirl_output"));
     FmtAssert(!joint || !VHO_DSL_CUDA_Legacy_Emit || VHO_DSL_CUDA_Tile_Output == NULL,

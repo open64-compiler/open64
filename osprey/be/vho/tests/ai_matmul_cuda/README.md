@@ -1,5 +1,16 @@
 # Hopper CUDA Validation Bundle
 
+Joint model 4 now defaults to analytical readiness. See
+`doc/AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md` for assumed reference-cycle
+profile, limitations and schedule pseudocode. `gemm_cost_model=relative`
+preserves model 3; `gemm_memory_latency=N` changes assumed startup latency.
+Run `run_readiness_review.py --build-dir <build> --output-dir <fresh-output>`
+for real compiler selection, malformed trace/option checks, retained before/
+after WHIRL and CUDA, and host-only execution. `test_readiness.py` compiles
+the production pure evaluator and compares 2340 literal T2 schedule oracles.
+No instruction simulator or GPU is required by compilation. TMA host-provider
+limitations and all existing executable legality gates remain in effect.
+
 Joint model 3 adds movement-aware resource discovery; see
 `doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md`. P7 retains topology and
 safety evidence while P8 checks D/S1/T2 value-storage, active SMEM (including

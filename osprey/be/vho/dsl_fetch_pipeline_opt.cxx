@@ -10,6 +10,7 @@
  * doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md and
  * doc/AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md.
  * Direct residency extension: doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md.
+ * Analytical timing: doc/AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md.
  */
 
 #include <algorithm>
@@ -107,6 +108,8 @@ DSL_Fetch_Pipeline_Control_Valid
            control.enable_vector <= 1 && control.enable_async_copy <= 1 &&
            control.enable_multidimensional_async <= 1 &&
            control.joint_cost <= 1 &&
+           control.readiness_cost <= 1 && (!control.readiness_cost || control.joint_cost) &&
+           control.memory_latency <= 1000000 &&
            control.enable_direct <= 1 && (!control.enable_direct || control.joint_cost) &&
            control.reserved == 0 &&
            (!control.select_plans || control.generate_candidates);
@@ -484,7 +487,7 @@ VHO_DSL_direct_gmem_sectors (const DSL_TILE_PLAN_RECORD &tile, UINT64 bytes[2])
  * overlap; retain startup, output traffic, local work and resource pressure.
  * Unknown/calibrated hardware timing is not inferred from this heuristic. */
 static BOOL
-DSL_fetch_joint_cost
+DSL_fetch_joint_relative_cost
         (const DSL_TILE_PLAN_RECORD &tile, const DSL_FETCH_PLAN_RECORD &pipeline,
          DSL_OPT_COST_INPUT *cost)
 {
@@ -546,6 +549,78 @@ DSL_fetch_joint_cost
     return TRUE;
 }
 
+/* Derive conservative average-CTA traffic and padded scalar consumer work
+ * from the same P7 ledger used by lowering. No Tensor Core throughput is
+ * assumed. Tails use average traffic but full padded consumer work. */
+BOOL
+VHO_DSL_fetch_readiness_cost(const DSL_TILE_PLAN_RECORD &tile,
+    const DSL_FETCH_PLAN_RECORD &fetch, UINT32 latency,
+    DSL_GEMM_READINESS_INPUT *input, DSL_GEMM_READINESS_RESULT *result)
+{
+    DSL_GEMM_READINESS_INPUT in = {};
+    const BOOL direct = (fetch.flags & DSL_FETCH_PLAN_FLAG_DIRECT) != 0;
+    const BOOL tma = fetch.engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC;
+    UINT64 pairs, traffic, operations, local, temporary;
+    in.kind = direct ? 0 : tma ? 2 : 1;
+    in.latency = latency;
+    in.warps = DSL_Fetch_Ceil_Div(tile.threads_per_cta, 32);
+    if (!tile.cta_m || !tile.cta_n || !tile.cta_k || !in.warps ||
+        !DSL_readiness_mul(DSL_Fetch_Ceil_Div(tile.problem_m, tile.cta_m),
+                          DSL_Fetch_Ceil_Div(tile.problem_n, tile.cta_n), &in.ctas)) return FALSE;
+    in.steps = direct ? tile.problem_k : DSL_Fetch_Ceil_Div(tile.problem_k, tile.cta_k);
+    if (!in.steps || !DSL_Fetch_Mul_U64(in.ctas, in.steps, &pairs) || !pairs) return FALSE;
+    if (direct) {
+        UINT64 bytes[2];
+        if (!VHO_DSL_direct_gmem_sectors(tile, bytes) ||
+            !DSL_Fetch_Add_U64(bytes[0], bytes[1], &traffic)) return FALSE;
+    } else if (tma) {
+        traffic = tile.gmem_read_bytes;
+    } else if (!DSL_Fetch_Add_U64(tile.gmem_a_sector_bytes, tile.gmem_b_sector_bytes, &traffic)) return FALSE;
+    in.input_bytes = DSL_Fetch_Ceil_Div(traffic, pairs);
+    in.output_bytes = DSL_Fetch_Ceil_Div(tile.gmem_c_sector_bytes, in.ctas);
+    if (!DSL_Fetch_Mul_U64(tile.cta_m, tile.cta_n, &operations) ||
+        !DSL_Fetch_Mul_U64(operations, direct ? 2 : (UINT64)2 * tile.cta_k, &operations)) return FALSE;
+    in.consumer = DSL_Fetch_Ceil_Div(operations, 128);
+    if (!direct) {
+        if (!DSL_Fetch_Add_U64(tile.smem_a_load_issue_work, tile.smem_b_load_issue_work, &local) ||
+            !DSL_Fetch_Add_U64(local, tile.smem_bank_conflict_work, &local) ||
+            !DSL_Fetch_Add_U64(local, tile.smem_address_work, &local) ||
+            !DSL_Fetch_Mul_U64(pairs, 4, &temporary) ||
+            !DSL_readiness_add(in.consumer, DSL_Fetch_Ceil_Div(local, temporary), &in.consumer)) return FALSE;
+        if (!tma) {
+            if (!DSL_Fetch_Add_U64(tile.cta_m, tile.cta_n, &temporary) ||
+                !DSL_Fetch_Mul_U64(temporary, tile.cta_k, &temporary)) return FALSE;
+            in.copy = DSL_Fetch_Ceil_Div(temporary, 128);
+        }
+    }
+    if (!DSL_readiness_evaluate(in, result)) return FALSE;
+    *input = in;
+    return TRUE;
+}
+
+/* Select one coherent cost unit for the whole candidate census; never mix
+ * analytical reference cycles with legacy relative work scores. */
+static BOOL
+DSL_fetch_joint_cost(const DSL_TILE_PLAN_RECORD &tile,
+    const DSL_FETCH_PLAN_RECORD &fetch, const VHO_DSL_FETCH_PIPELINE_CONTROL &control,
+    DSL_OPT_COST_INPUT *cost)
+{
+    if (!control.readiness_cost) return DSL_fetch_joint_relative_cost(tile, fetch, cost);
+    DSL_GEMM_READINESS_INPUT input;
+    DSL_GEMM_READINESS_RESULT result;
+    if (!VHO_DSL_fetch_readiness_cost(tile, fetch, control.memory_latency, &input, &result)) return FALSE;
+    for (UINT32 i = 0; i < DSL_OPT_COST_TERM_COUNT; ++i) {
+        DSL_Fetch_Cost_Term(&cost->terms[i],
+            i == DSL_OPT_COST_COMPUTE ? result.compute :
+            i == DSL_OPT_COST_MEMORY_UNHIDDEN ? result.memory :
+            i == DSL_OPT_COST_SYNC ? result.sync :
+            i == DSL_OPT_COST_LAUNCH ? result.issue : 0,
+            DSL_OPT_COST_EVIDENCE_TARGET_MODEL);
+        cost->terms[i].unit = DSL_OPT_COST_UNIT_CYCLES;
+    }
+    return TRUE;
+}
+
 /* Adapt one PU-local fetch alternative to the shared candidate/plan service;
  * preserve its selected tile lineage and report rejected input before selection. */
 static BOOL
@@ -601,7 +676,7 @@ DSL_Fetch_Add_Optimization_Plan
                  DSL_OPT_COST_EVIDENCE_BASELINE_POLICY :
                  DSL_OPT_COST_EVIDENCE_TARGET_MODEL);
     }
-    if (analysis->control.joint_cost && !DSL_fetch_joint_cost(tile, *pipeline, &cost))
+    if (analysis->control.joint_cost && !DSL_fetch_joint_cost(tile, *pipeline, analysis->control, &cost))
         return DSL_Fetch_Pipeline_Report(diagnostic, "joint cost overflow", pipeline->id);
     DSL_OPT_COST_ID cost_id;
     if (!DSL_opt_plan_add_cost(context, &cost, &cost_id, diagnostic))

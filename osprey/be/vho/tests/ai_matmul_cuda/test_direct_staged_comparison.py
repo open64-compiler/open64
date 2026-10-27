@@ -77,7 +77,7 @@ def main():
                            ("staged", 128, 128, 144)):
         case = root / label
         result = compile_case(case, build, env, k, True,
-                              ("-Wb,-DSL:gemm_plan_search=joint",), (m, n))
+                              ("-Wb,-DSL:gemm_plan_search=joint", "-Wb,-DSL:gemm_cost_model=relative"), (m, n))
         candidates, selection, _ = parse((case / "gemm.t").read_text())
         joint = selection["joint"]
         if joint["mode"].get("model") != 3 or not joint["direct_access"] or not joint["resources"]:
@@ -140,7 +140,7 @@ def main():
     case.mkdir()
     run([sys.executable, str(HERE / "two_matmul_fixture.py"), "two.B", "--direct-first"], case, env, "fixture.log")
     run([str(build / "osprey/targdir/driver/opencc"), f"-run-build={build}", "-O3", "-noinline",
-         "-S", "-keep", "-Wb,-DSL:cuda_legacy_emit=OFF", "-Wb,-DSL:gemm_plan_search=joint",
+         "-S", "-keep", "-Wb,-DSL:cuda_legacy_emit=OFF", "-Wb,-DSL:gemm_plan_search=joint", "-Wb,-DSL:gemm_cost_model=relative",
          "-Wb,-DSL:cuda_tma_prefetch=ON", "-Wb,-DSL:cuda_whirl_output=two.device.B", "two.B"], case, env, "compiler.log")
     run([str(build / "osprey/targdir/ir_tools/ir_b2a"), "-st", "-src", "two.device.B", "two.device.T"], case, env, "device-dump.log")
     run([str(build / "osprey/targdir/whirl2c/whirl2c"), "-cuda", "-CLIST:dotc_file=two.whirl.cu",

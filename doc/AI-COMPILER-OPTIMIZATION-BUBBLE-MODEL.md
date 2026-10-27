@@ -8,6 +8,15 @@ runtime variants or binary WHIRL format change.
 
 ## 1. Intent And Success Criterion
 
+Follow-on decision (2026-10-26): use a
+[compact analytical readiness model](AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md)
+for compiler joint selection, with explicit assumed-cycle profile and no
+instruction simulator in the compilation path. The simulator described here
+remains a downstream diagnostic and future calibration aid. Its B2/B4 options
+and production event-based selection remain unimplemented; the historical
+unchanged-emission statements below apply to the retained shadow experiment,
+not to the separately implemented analytical selector.
+
 Minimize the latency of completing a GEMM. Resource utilization is a means,
 not the objective: reduce operand demand through reuse, deliver remaining
 demand efficiently, and issue movement early enough that useful computation

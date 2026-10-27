@@ -99,7 +99,7 @@ def main():
         ("repeat", 144, True, ()),
     ):
         result = compile_case(root / label, build, env, k, tma,
-                              ("-Wb,-DSL:gemm_plan_search=joint", *extra))
+                              ("-Wb,-DSL:gemm_plan_search=joint", "-Wb,-DSL:gemm_cost_model=relative", *extra))
         case = root / label
         # This is semantic source -> newly created device PU, not an in-place
         # mutation of the analysis/host PU. Preserve both mapped boundaries.

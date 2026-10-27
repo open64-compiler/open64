@@ -1666,6 +1666,26 @@ acceptance gates. Host simulation and relative cost minima cannot close them.
 
 ## Bubble Model Experiment
 
+Priority update 2026-10-26: implement the lightweight
+[analytical readiness selector](AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md)
+before production simulator integration. This is a separate path, not a claim
+that the B2/B4 event-model gates below are complete.
+
+| Analytical step | Status and acceptance |
+| --- | --- |
+| AR0: contract and definitions | Defined assumed profile, units, D/S1/T2 formulas, ownership, uncertainty, trace obligations and exclusions. |
+| AR1: pure schedule evaluator | Implemented max-plus two-slot recurrence; literal schedule oracle, large-K, overflow and invalid-input coverage. |
+| AR2: joint selector integration | Compiler/source review passed for five shapes and ten configurations. Model 4 defaults in opt-in joint search; relative model 3 retained; winner reconstruction uses identical controls. |
+| AR3: trace/report verification | Independent profile/ledger/recurrence/winner audits and missing/duplicate/corrupt record rejection pass. Raw trace, WHIRL/CUDA and reports retained; durable receipt promotion follows acceptance. |
+| AR4: calibration/refinement | Open: measured target profiles, exact tail classes, native occupancy, cache/queue effects, uncertainty-aware selection and GPU verification. |
+
+Initial analytical outcome: 128x128x144 changes actual selection from S1 #12
+to T2 #3, costing 31336 versus best S1 #1 at 43237 assumed reference cycles.
+65x67x17 changes from D #8 to S1 #1; three tiny/tail shapes retain D #2.
+102 unit tests and 2340 literal recurrence oracles pass. Low-latency T2 also
+wins in the analytical model; its disagreement with the shadow simulator is
+recorded for calibration rather than hidden or coefficient-fitted away.
+
 Controlling design:
 [GEMM Bubble Prediction And Candidate-Selection Experiment](AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md),
 with selection/event/simulation pseudocode in Sections 4-5. This queue refines

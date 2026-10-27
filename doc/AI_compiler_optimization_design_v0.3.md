@@ -461,7 +461,23 @@ The compiler can construct a predicted Roofline before GPU execution using model
 
 To measure effectiveness, compile and run the baseline and alternatives as comparable GPU kernels on the same device, verify numerical results, and retain kernel time, actual instruction path, resource use, and observed traffic at each available memory level. Join those measurements to the compile-time plan and source identity. Plot observed intensity W / B_observed,L and achieved performance W / T_kernel against the matching measured or calibrated ceiling. Report Roofline efficiency P_achieved / P_roof, model error T_predicted versus T_kernel, and whether the selected plan actually outranks rejected candidates. A GPU Roofline must not use the current direct CPU fallback as its GPU baseline. Profiling changes execution conditions, so preserve unprofiled timing separately from counter collection. Where no native GPU evidence exists, report `measured=unavailable`, not an inferred speedup.
 
-## 7.2B Dependency And Resource Bubble Prediction
+## 7.2B Analytical Readiness Selection And Bubble Diagnostics
+
+Update 2026-10-26: production joint selection now follows the separate
+[analytical readiness design](AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md).
+It replaces traffic-score overlap credit with a bounded schedule recurrence
+for operand readiness, consumer work, slot release/refill, bandwidth service,
+startup and drain. Complete D/S1/T2 alternatives share one assumed-cycle
+profile before transformation. Joint model 4 defaults to readiness; explicit
+`gemm_cost_model=relative` preserves model 3 for comparison. Baseline mode is
+unchanged. The source-warp simulator below remains a separate diagnostic;
+its proposed production integration/select controls are not implemented.
+
+This initial analytical selector is assumption-driven, not confidence-certified
+or calibrated GPU performance. Native occupancy/cache/queue refinements remain
+open. Its explicit profile, formulas, provenance, candidate costs and waits
+must be audited in `.t` and the phase/summary logs. Do not mix reference cycles,
+relative traffic scores, Roofline nanoseconds or simulator waits in one total.
 
 The objective is minimum GEMM completion latency, not maximum occupancy,
 allocated storage or bandwidth consumption independently. Tiling reduces

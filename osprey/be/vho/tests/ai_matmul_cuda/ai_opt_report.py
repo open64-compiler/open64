@@ -6,6 +6,7 @@ import argparse
 import hashlib
 from functools import lru_cache
 from pathlib import Path
+from readiness_report import readiness_cost
 
 
 PHASE_LOGS = (
@@ -170,7 +171,8 @@ def direct_sector_bytes(m, n, k, bm, bn, bk, tm, tn, threads):
     return tuple(worst)
 
 
-def verify_joint(mode, rows, decision, candidates, direct_access=None, resources=None):
+def verify_joint(mode, rows, decision, candidates, direct_access=None, resources=None,
+                 readiness=None, profile=None):
     """Independently reproduce bounded whole-plan costs and deterministic choice."""
     by_tile = {row["tile"]: row for row in candidates}
     model = mode.get("model", 1) if mode else 1
@@ -231,7 +233,7 @@ def verify_joint(mode, rows, decision, candidates, direct_access=None, resources
         launch = 32 * ctas if tma else 0
         legal = (allocation + (16 if tma else 0) <= min(48 * 1024, row["capacity"]))
         resource_legal = legal
-        if model == 3:
+        if model >= 3:
             columns = tile["layout"]["thread_columns"]
             tm, tn = bm * columns // tile["threads"], bn // columns
             expected_resource = dict(register_bytes=4 * (tm * tn + (2 if direct else tm + tn)),
@@ -248,6 +250,15 @@ def verify_joint(mode, rows, decision, candidates, direct_access=None, resources
                       smem["b_layout"] == "row_major" and
                       m % bm == n % bn == k % bk == 0 and n % 4 == k % 4 == 0
                       and tile["shared"] % 128 == 0)
+        if model == 4:
+            if profile is None:
+                raise ValueError("missing readiness profile")
+            record, terms = readiness_cost(tile, row["kind"], profile["latency"],
+                                            (direct_access or {}).get(row["id"]))
+            if (readiness or {}).get(row["id"]) != record:
+                raise ValueError("readiness ledger or recurrence mismatch")
+            compute, memory, _, sync, launch, _, total = terms
+            derived[row["id"]] = dict(delivery=record["delivery"], window=record["window"], wait=record["wait"])
         if (row["id"] != ordinal or row["tile_plan"] != tile["plan"]
                 or row["fetch_plan"] != expected_fetch[(row["tile"], row.get("kind", "T2" if tma else "S1"))]
                 or row["engine"] != ("tma_like" if row.get("kind") == "T2" else "demand") and model >= 2
@@ -255,7 +266,7 @@ def verify_joint(mode, rows, decision, candidates, direct_access=None, resources
                 or row["buffering"] != allocation
                 or row["legality"] != ("proven" if legal else "rejected")
                 or (legal and row["reason"] != "none")
-                or (model == 3 and not legal and row["reason"] != ("resource" if not resource_legal else "target_mismatch"))
+                or (model >= 3 and not legal and row["reason"] != ("resource" if not resource_legal else "target_mismatch"))
                 or (row["compute"], row["memory"], row["communication"], row["sync"],
                     row["launch"], row["runtime"], row["total"]) !=
                    (compute, memory, 0, sync, launch, 0, compute + memory + sync + launch)):
@@ -263,15 +274,18 @@ def verify_joint(mode, rows, decision, candidates, direct_access=None, resources
     eligible = [row for row in rows if row["legality"] == "proven"]
     if set(direct_access or {}) != {row["id"] for row in rows if row.get("kind") == "D"}:
         raise ValueError("direct sector coverage mismatch")
-    if (model == 3 and set(resources or {}) != {row["id"] for row in rows}) or (model != 3 and resources):
+    if (model >= 3 and set(resources or {}) != {row["id"] for row in rows}) or (model < 3 and resources):
         raise ValueError("movement resource coverage mismatch")
+    if (model == 4 and set(readiness or {}) != {row["id"] for row in rows}) or (model != 4 and (readiness or profile)):
+        raise ValueError("readiness coverage mismatch")
     synchronous = [row for row in eligible if row["engine"] == "demand" and row.get("kind") != "D"]
     if (not synchronous or decision["selected"] != min(eligible, key=lambda row: (row["total"], row["id"]))["id"]
             or decision["fallback"] != min(synchronous, key=lambda row: (row["total"], row["id"]))["id"]):
         raise ValueError("joint selection or synchronous fallback disagrees with costs")
     return dict(mode=mode, candidates=rows, selection=decision,
                 chosen=rows[decision["selected"] - 1], fallback=rows[decision["fallback"] - 1], derived=derived,
-                direct_access=direct_access or {}, resources=resources or {})
+                direct_access=direct_access or {}, resources=resources or {},
+                readiness=readiness or {}, profile=profile)
 
 
 def parse(trace: str) -> tuple[list[dict], dict, dict]:
@@ -301,6 +315,8 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     joint_candidates = []
     direct_access = {}
     joint_resources = {}
+    joint_readiness = {}
+    readiness_profile = None
     trace_version: str | None = None
     for line in trace.splitlines():
         if not line.startswith("AI_OPT "):
@@ -313,13 +329,25 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         trace_version = fields[1]
         kind = fields[2]
         if kind == "JOINT_MODE" and trace_version == "7" and len(fields) in (10, 11):
-            if joint_mode is not None or fields[3] != "joint" or fields[7:9] != ["relative", "low"] or fields[9] not in ("model=1", "model=2", "model=3"):
+            if joint_mode is not None or fields[3] != "joint" or fields[8] != "low" or fields[9] not in ("model=1", "model=2", "model=3", "model=4") or fields[7] != ("cycles" if fields[9] == "model=4" else "relative"):
                 raise ValueError("invalid joint mode")
             joint_mode = dict(budget=int(fields[4]), tiles=int(fields[5]), tma=int(fields[6]))
-            if fields[9] in ("model=2", "model=3"):
+            if fields[9] in ("model=2", "model=3", "model=4"):
                 if len(fields) != 11 or fields[10] not in ("direct=0", "direct=1"):
                     raise ValueError("invalid direct search policy")
                 joint_mode.update(model=int(fields[9][-1]), direct=int(fields[10][-1]))
+        elif kind == "READINESS_PROFILE" and trace_version == "7" and len(fields) == 12:
+            if (readiness_profile is not None or fields[3] != "assumed_v1" or
+                    fields[5:] != ["4", "32", "128", "4", "8", "2", "one_cta_per_sm"] or
+                    not 0 <= int(fields[4]) <= 1000000):
+                raise ValueError("invalid readiness profile")
+            readiness_profile = dict(name=fields[3], latency=int(fields[4]))
+        elif kind == "JOINT_READINESS" and trace_version == "7" and len(fields) == 17:
+            ident = int(fields[3])
+            if ident in joint_readiness or min(map(int, fields[4:])) < 0:
+                raise ValueError("invalid or duplicate readiness row")
+            joint_readiness[ident] = dict(zip(("ctas", "steps", "consumer", "input_bytes",
+                "output_bytes", "copy", "warps", "delivery", "window", "wait", "waves", "total", "source_line"), map(int, fields[4:])))
         elif kind == "JOINT_RESOURCE" and trace_version == "7" and len(fields) == 11:
             ident = int(fields[3])
             if ident in joint_resources or min(map(int, fields[4:])) < 0:
@@ -763,10 +791,11 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                 expected, best_bound = row, row["roof_bound_ns"]
                 expected_reason = "roofline_near_cost"
     joint = None
-    if (direct_access or joint_resources) and joint_mode is None:
+    if (direct_access or joint_resources or joint_readiness or readiness_profile) and joint_mode is None:
         raise ValueError("direct access without joint search")
     if joint_mode is not None or joint_candidates or joint_selection is not None:
-        joint = verify_joint(joint_mode, joint_candidates, joint_selection, candidates, direct_access, joint_resources)
+        joint = verify_joint(joint_mode, joint_candidates, joint_selection, candidates,
+                             direct_access, joint_resources, joint_readiness, readiness_profile)
         expected = by_plan[joint["chosen"]["tile_plan"]]
         expected_reason = "lowest_complete_joint_cost"
         selection["joint"] = joint
@@ -992,6 +1021,13 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
                 details += "# Selected JOINT_RESOURCE columns: joint_id register_bytes register_capacity active_smem_bytes smem_limit threads thread_limit source_line; provisional, not native allocation.\n"
                 details += f"JOINT_RESOURCE {joint['chosen']['id']} " + " ".join(
                     map(str, joint["resources"][joint["chosen"]["id"]].values())) + "\n"
+                if joint["readiness"]:
+                    details += "# Tile-only relative scores above are diagnostics, not the joint selection cost.\n"
+                    details += "# Analytical readiness: assumed_v1 reference cycles, low confidence; total=compute+exposed_movement+sync+transfer_issue.\n"
+                    details += f"# Assumed startup={joint['profile']['latency']}; one CTA/SM, four SMs; no native calibration.\n"
+                    details += "# JOINT_READINESS columns: id CTAs steps consumer input_bytes output_bytes copy warps delivery window wait waves total source_line.\n"
+                    details += "".join(f"JOINT_READINESS {ident} " + " ".join(map(str, record.values())) + "\n"
+                                       for ident, record in joint["readiness"].items())
         elif number == 0 and selection.get("semantic"):
             details = "".join(
                 f"tensor={row['fact']} value={row['value']} role={row['role']} "
@@ -1020,10 +1056,18 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
                        "state=materialized_sidecar target_lowered=no\n")
             if "joint" in selection:
                 joint = selection["joint"]
-                details += f"# Joint cost model {joint['mode'].get('model', 1)}: low-confidence relative units; not measured latency.\n"
-                details += "# Formula: total=compute_with_pressure+memory_unhidden+communication_unhidden+sync+setup+runtime; memory_unhidden=raw_input-hidden_input+C_store_sectors/1024+local_SMEM_work.\n"
-                details += "# Overlap: min(raw_input/(CTAs*K_tiles),base_compute/(CTAs*K_tiles))*(K_tiles-1)*CTAs for lowerable two-slot TMA; zero synchronously. Pressure=(base_compute+memory_unhidden)*physical_storage/shared_capacity.\n"
-                details += "# Columns: id tile tile_plan fetch_plan engine legality reason compute memory_unhidden communication_unhidden sync setup runtime total buffer_bytes capacity_bytes " + ("kind " if joint['mode'].get('model', 1) >= 2 else "") + "raw_input hidden_input pressure source_line\n"
+                if joint["mode"].get("model") == 4:
+                    details += ("# Joint cost model 4: assumed_v1 low-confidence reference cycles, not measured GPU timing.\n"
+                                "# total=consumer_compute+exposed_movement_and_copy+sync+transfer_issue; wait is diagnostic, not added twice.\n"
+                                "# T2: wait next-ready, consume, release, then refill; two-slot prologue and final drain retained.\n"
+                                "# One CTA/SM, four assumed SMs; no cache/native occupancy claim.\n")
+                    suffix = "delivery window wait"
+                else:
+                    details += f"# Joint cost model {joint['mode'].get('model', 1)}: low-confidence relative units; not measured latency.\n"
+                    details += "# Formula: total=compute_with_pressure+memory_unhidden+communication_unhidden+sync+setup+runtime; memory_unhidden=raw_input-hidden_input+C_store_sectors/1024+local_SMEM_work.\n"
+                    details += "# Overlap: min(raw_input/(CTAs*K_tiles),base_compute/(CTAs*K_tiles))*(K_tiles-1)*CTAs for lowerable two-slot TMA; zero synchronously. Pressure=(base_compute+memory_unhidden)*physical_storage/shared_capacity.\n"
+                    suffix = "raw_input hidden_input pressure"
+                details += "# Columns: id tile tile_plan fetch_plan engine legality reason compute memory_unhidden communication_unhidden sync setup runtime total buffer_bytes capacity_bytes " + ("kind " if joint['mode'].get('model', 1) >= 2 else "") + suffix + " source_line\n"
                 details += "".join("joint " + " ".join(str(value) for key, value in candidate.items() if key != "source_line")
                                    + " " + " ".join(str(value) for value in joint["derived"][candidate["id"]].values())
                                    + f" {candidate['source_line']}\n" for candidate in joint["candidates"])
@@ -1037,6 +1081,11 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
                     details += "# JOINT_RESOURCE columns: joint_id register_bytes register_capacity active_smem_bytes smem_limit threads thread_limit source_line. Provisional value storage, not native registers/occupancy; staged P7 resource filtering is deferred.\n"
                     details += "".join(f"JOINT_RESOURCE {ident} " + " ".join(map(str, resource.values())) + "\n"
                                        for ident, resource in joint["resources"].items())
+                if joint["readiness"]:
+                    details += f"# READINESS_PROFILE {joint['profile']}\n"
+                    details += "# JOINT_READINESS columns: id CTAs steps consumer input_bytes output_bytes copy warps delivery window wait waves total source_line.\n"
+                    details += "".join(f"JOINT_READINESS {ident} " + " ".join(map(str, record.values())) + "\n"
+                                       for ident, record in joint["readiness"].items())
         else:
             details = "detail=not_recorded\n" if row["status"] == "analyzed_no_rewrite" else ""
         content = f"# What it summarizes: {description}\n{metadata}{details}"
@@ -1052,7 +1101,7 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
             f"regions={row['regions']} candidates={row['candidates']} "
             f"selected={row['selected']} rewrites={row['rewrites']} "
             + (f"selected_grid_ctas={selection['selected_grid_ctas']} "
-               "grid_parallelism_cost=unmodeled "
+               f"grid_parallelism_cost={'assumed_wave_model' if selection.get('joint', {}).get('mode', {}).get('model') == 4 else 'unmodeled'} "
                if number == 7 and 'selected_grid_ctas' in selection else "")
             + f"next={next_step}"
         )
@@ -1103,6 +1152,12 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
             resource = joint["resources"][joint["chosen"]["id"]]
             summary.append("movement_resources model=logical_v1 " + " ".join(f"{key}={value}" for key, value in resource.items())
                            + " native_registers=unknown occupancy=unknown p7_resource_gate=deferred")
+        if joint["readiness"]:
+            record = joint["readiness"][joint["chosen"]["id"]]
+            summary.append(f"readiness profile=assumed_v1 latency={joint['profile']['latency']} "
+                           f"delivery={record['delivery']} window={record['window']} "
+                           f"wait={record['wait']} waves={record['waves']} unit=reference_cycles "
+                           "confidence=low calibration=none selection_model=analytical_schedule")
     (reports / "optimization.log").write_text(
         "# What it summarizes: Complete P0-P11 optimization process, including every phase decision and non-execution reason.\n"
         + "".join(phase_contents), encoding="utf-8")
@@ -1149,7 +1204,7 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
         f"site={selection['site']} target={selection['target']} baseline={selection['baseline']} selected={selection['selected']}",
     ]
     if "joint" in selection:
-        tile_lines.append("# Joint mode: TILE_CAND costs are tile-only diagnostics; physical-plan.log contains the authoritative complete costs and selection.")
+        tile_lines.append("# Joint mode: TILE_CAND costs and the tile-only selection description above are diagnostics; physical-plan.log contains the authoritative complete costs and selection.")
     if selection.get("cost_model") == "v5":
         tile_lines[3:5] = [
             "# compute=max(1,floor(2*M*N*K/1024))+floor(smem_address_work/1024).",
@@ -1259,7 +1314,7 @@ def render(trace: Path, reports: Path) -> tuple[dict, dict]:
         selection["selected_grid_ctas"] = chosen["grid"]["ctas"]
         tile_lines.append(
             f"selection_grid_ctas={chosen['grid']['ctas']} "
-            "grid_parallelism_cost=unmodeled "
+            f"grid_parallelism_cost={'assumed_wave_model' if selection.get('joint', {}).get('mode', {}).get('model') == 4 else 'unmodeled'} "
             "selection_confidence=requires_native_calibration")
     tile_lines.append(
         f"action source={action['emission']} tile_whirl_rewrite={action['tile_rewrite']} "
