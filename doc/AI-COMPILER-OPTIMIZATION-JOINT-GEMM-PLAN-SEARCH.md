@@ -4,6 +4,15 @@ Date: 2026-10-25. Scope: compiler-side, PU-local, contiguous F32 GEMM.
 Owners: VHO candidate/selection policy; backend driver device-image publication;
 `whirl2c -cuda` emission. No binary WHIRL schema changes.
 
+2026-10-26 proposal: the
+[bubble-model experiment](AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md)
+will compare the current model-3 winner against a dependency/resource cycle
+prediction on the same D/S1/T2 census. Shadow mode preserves actual selection
+and existing legality/launch restrictions. No bubble option or cycle selector
+is implemented. The model-1/S1-T2 description below is historical; current
+D/model-2 and movement-resource/model-3 amendments are in the companion
+comparison and movement-resource designs.
+
 ## Control And Supported Search Space
 
 `-Wb,-DSL:gemm_plan_search=baseline|joint` is registered. Omission means

@@ -517,6 +517,27 @@ must exceed the baseline by a confidence-aware margin before a rewrite; a
 tie or missing evidence retains the baseline. Post-run telemetry should
 calibrate, not retroactively legalize, a plan.
 
+### 5.3 Bubble-model review experiment (2026-10-26)
+
+The proposed
+[bubble-model design](AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md)
+refines Section 5.2 with a dependency/resource event schedule, rather than a
+larger fixed overlap credit. It defines timing terms before use and includes
+pseudocode for graph construction, finite-resource simulation and shadow
+candidate comparison. Distinguish result latency, initiation interval,
+aggregate service demand and queue capacity in the hardware profile. An
+allocated stage is not evidence of hidden latency; the modeled delivery must
+precede its actual consumer and respect slot release and memory visibility.
+
+Initial scope is existing fixed-shape F32 D/S1/T2 only. Profiles explicitly
+separate architectural facts, synthetic scenarios and measurements. Residency,
+clock domains and scheduler assumptions must be stated; unsupported native
+facts remain unknown. Shadow results do not change current selection,
+lowering or launch requirements. Future cycle-based selection replaces, not
+adds to, the old overlap score and requires separate confidence review.
+No Tensor Core, persistent, deeper-stage or cluster performance credit is
+permitted before the corresponding executable contract exists.
+
 ## 6. Transformation and CUDA lowering contract
 
 The CUDA-facing lowering is a **target adapter proposal**. Open64 must first

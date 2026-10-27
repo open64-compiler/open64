@@ -8,6 +8,15 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+Design-review increment (2026-10-26): a
+[bubble-prediction algorithm](AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md)
+and B0-B5 queue are proposed inside FP32 analytic refinement. First compare
+the same legal D/S1/T2 census in shadow mode, reporting operand readiness,
+finite-resource waits and old/shadow/emitted winners without changing actual
+selection. Options, simulator, cycle ranking and `bubble.log` are not yet
+implemented. No ranking change or speedup is claimed. See the
+[implementation queue](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#bubble-model-experiment-design-review-not-implemented).
+
 Movement-resource increment (2026-10-26, after merged PR 192): joint P7
 resource deferral and independent P8 D/S1/T2 resource ledgers are implemented.
 The shared lowering preflight recomputes the ledger; joint model 3 traces and

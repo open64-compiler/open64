@@ -33,6 +33,14 @@ check-only; the first generated tile must produce a verified executable
 rewrite and measured baseline-versus-tiled result before it is reported as
 an implemented optimization.
 
+2026-10-26 design-review increment: add a bounded, shadow-only bubble-model
+experiment inside remaining FP32 order 2. The objective is minimum GEMM
+completion latency with auditable operand readiness and resource waits, not
+maximum tile size or occupancy. See the
+[algorithm proposal](AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md)
+and the Bubble Model Experiment queue below. No new option, simulator or
+changed ranking has been implemented or measured by this documentation update.
+
 ## Adoption Decision
 
 Open64 adopts the following design rules from the versioned design:
@@ -1639,7 +1647,7 @@ implemented compiler transformations are absent.
 | Order | Remaining compiler work | Required review evidence |
 | --- | --- | --- |
 | 1 (implemented) | Movement-aware candidate/resource discovery: evaluate D, S1 and T2 resource legality before staged-only filtering can discard a useful D seed; refine register estimates independently of SMEM use. Keep enumeration bounded and deterministic. | Candidate census, per-plan rejection reasons, resource accounting, selected/fallback records and WHIRL-derived CUDA; tests in which staged resource rejection does not incorrectly reject D. |
-| 2 | Complete the analytic resource/profitability model: register and SMEM allocation granularity, resident blocks/warps, grid underfill and tail waves, and a D-specific traffic/Roofline diagnostic. Keep issued-sector demand distinct from unknown cache/HBM service. | Auditable cost components and resource bounds for every candidate; analytic oracles and sensitivity tests. Unknown/calibration-dependent quantities remain explicitly low-confidence. |
+| 2 | Complete the analytic resource/profitability model: register and SMEM allocation granularity, resident blocks/warps, grid underfill and tail waves, and a D-specific traffic/Roofline diagnostic. Add the staged shadow bubble experiment below to compare complete event schedules on an unchanged D/S1/T2 census. Keep issued-sector demand distinct from unknown cache/HBM service. | Auditable cost components/resource bounds, operand-ready and compute-bubble evidence, analytic oracles and scenario sensitivity. Report old/shadow/emitted winners even when unchanged; unknown or incomplete models cannot authorize selection. |
 | 3 | Expand executable movement choices as separately gated increments: actual aligned vector loads with scalar tails, non-TMA asynchronous copies, and additional legal stage/layout combinations. Dynamic SMEM beyond the current conservative static limit requires a matching launch-resource contract. | Plan-to-WHIRL address, alignment, capacity and acquire/issue/wait/release proofs; no vector/overlap credit for scalar or synchronous code. Preserve a legal synchronous fallback. |
 | 4 | Complete selected-plan launch integration: generated-host application currently supports S1 only; carry D/T2 requirements, tensor-map setup, selected-entry resolution and buffer/stream ordering through the generic provider ABI and target launch adapter. | Compiler-generated host/device review sources, ABI and mock-runtime tests; distinguish compiler completion from native launch certification. |
 | 5 | Close the compiler-only review matrix for the supported subset, including shapes/tails, multiple PUs, option controls and rejected plans. | Immutable raw `.t`, before/after WHIRL, `.cu`, `tile.log`, `fetch-pipeline.log`, `physical-plan.log`, `optimization.log` and `optimization-summary.log`, with costs, selection reasons and actual transformation actions. |
@@ -1654,6 +1662,48 @@ bounded FP32 subset to compile correctly.
 Native CUDA compilation, PTX/SASS inspection, measured resource/spill counts,
 GPU correctness, baseline timing and cache/overlap calibration remain separate
 acceptance gates. Host simulation and relative cost minima cannot close them.
+
+## Bubble Model Experiment (Design Review, Not Implemented)
+
+Controlling design:
+[GEMM Bubble Prediction And Candidate-Selection Experiment](AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md),
+with selection/event/simulation pseudocode in Sections 4-5. This queue refines
+FP32 order 2; it does not reopen numerical work, add executable candidates or
+require a GPU to begin. Every item is pending. A predicted ranking change is
+not a measured performance improvement.
+
+| Step | Deliverable and owner | Acceptance evidence |
+| --- | --- | --- |
+| B0: representation and profile audit | VHO/target owners review LNO cache modeling, CG dependence/SWP/resource estimation, existing plan/lowering recipe and hardware descriptors. Define reusable runtime-only evidence and explain any adapter mismatch; no new backend library dependency. | Reviewed units, actors, latency versus initiation interval, shared service/queue rules, scope and provenance. Synthetic profiles cannot impersonate calibrated hardware. |
+| B1: deterministic event-model oracle | Implement pure dependency/resource simulation with explicit instruction-group accuracy, fixed scheduling policy and finite capacities. No compiler selector change. | Hand-calculated load-use waits, covered/all-warp stalls, bandwidth/queue contention, initiation interval, recurrence, bank, barrier/slot-generation, fill/drain and output-completion tests. Overflow, unknown facts, budget and deadlock cases fail closed; cause accounting does not double count. |
+| B2: read-only plan adapter and shadow control | VHO derives event graphs from the same supported F32 D/S1/T2 lowering contracts; integrate proposed off/shadow controls with joint/-O3/output gates. Preserve the current winner, S1 fallback and candidate census. | Compare per-plan predicted operations/actor behavior with generated WHIRL; source/plan identities and full candidate coverage. Shadow on/off yields equivalent actual WHIRL/CUDA; O0/O1/O2, invalid modes, host restrictions and multiple-PU isolation covered. |
+| B3: candidate comparison and trace/report audit | Compare model-3 and cycle-model rankings on retained 3x5x7/128x128x144 cases plus bounded shapes, tails, small grids and coherent hardware/scenario sweeps. Extend positional `.t` producer and analyzer together. | Old/shadow/emitted IDs, same-model cycle margin, changed/unchanged/incomplete reason, profile/model identity, unknowns and sensitivity. Independent event/resource/winner replay; log first lines, aggregate/summary and trace-off compatibility. No forced reversal or native speedup claim. |
+| B4: separately reviewed selection gate | Only after B0-B3, propose enabling select with complete comparisons, uncertainty policy and the same executable legality/fallback/publication gates. Retain current selector when evidence is incomplete or inconclusive. | Positive/negative confidence-margin tests, deterministic ties, no mutation/publication on failure, correct actual transformation trace. Synthetic selection is test-only; diagnostic cycles never mix with old relative scores. |
+| B5: native refinement and calibration | When toolchain/hardware becomes available, map events to SASS, import actual registers/spills, calibrate memory/issue assumptions and compare timings with profiling evidence. | Retained native binaries/disassembly, unprofiled timings separately from counters, numerical correctness, prediction error, rank agreement and regret. No exact cycle claim from sampled stalls or instruction count alone. |
+
+Proposed `-Wb,-DSL:gemm_bubble_model=off|shadow|select` and
+`-Wb,-DSL:gemm_bubble_profile=<versioned-profile-path>` are NOT registered.
+Compatibility default is off. B2 implements shadow, not select; B4 requires
+explicit review before selection changes. Existing WOPT trace controls remain
+the raw `.t` authority; introduce no separate ad hoc compiler log or new trace
+bit for this experiment.
+
+The analyzer obligations are phase-specific: `tile.log` explains reuse/traffic
+and resource assumptions; `fetch-pipeline.log` explains readiness, queues,
+slot lifetimes and fill/drain; `physical-plan.log` compares complete rankings;
+new proposed `bubble.log` attributes unused compute opportunities and model
+limitations. `optimization-summary.log` states the actual versus hypothetical
+winner, and `optimization.log` includes completed phase bodies. Every file's
+first line starts `What it summarizes:`. Disabled/skipped/unknown phases remain
+visible in the summary rather than appearing successfully executed.
+
+Preserve raw `.t`, exact profiles/scenarios and revisions, graph/timeline,
+all reports, generated sources, before/after mapped `.B` plus independent
+`ir_b2a -st -src` `.T`, diffs, commands and checksums in a new immutable review
+receipt. The first experiment must distinguish algorithm-oracle success,
+compiler ranking outcome and still-open GPU correctness/performance evidence.
+Complete B0-B3 before deciding whether the cycle model is strong enough to
+change selection; B5 remains separate from GPU-free compiler progress.
 
 ## Target-Specific Numerical Planning Follow-On
 
