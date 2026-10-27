@@ -141,3 +141,50 @@ The native target is `make -C <build>/osprey/targdir/ir_tools
 dsl_compute_shadow_contract_test`; capture its stdout as the oracle input.
 Accepted receipt paths and source checkpoint follow in the durable acceptance
 record. No PR or push is part of this local milestone.
+
+## Durable Acceptance Record
+
+Implementation checkpoint: `e0a50cbb46c99a767175236e135b14e4ffbcdf92`, based on
+updated develop `7019e53bcfc0c2cef1521d7119f6f0c457f263cb` (merged PR #195).
+Branch: `codex/ai-mma2-shadow`. Local only, no PR/push.
+
+Immutable primary receipt (1064 checksummed files, source snapshots, copied
+Linux binaries, exact command vectors, raw traces, mapped images, CUDA,
+native/host results, all phase reports and empty MMA2 delta diffs):
+
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/mma2/shadow/sha256-7d3a792cac5e23b258f4a447f6d488107b1e6ceeb213339195ba421fbefa2ba3/`
+
+Independent read-only durable replay: copied native output and synthetic
+summary are byte-identical; six separate `ir_b2a -st -src` processes reopen
+both images for direct/staged/large-tail; regenerated phase and aggregate
+reports match exactly:
+
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/mma2/reopen/sha256-4f0a23e3404af1cf4c73ee141a2f9ffc93b277ce2b110337a52591e5e055649f/`
+
+The replay's `verification.json` records a metadata correction: the primary
+command record's `build_root` parent traversal abbreviates to `/private/tmp`;
+the actual build root is `/private/tmp/ai-m2-build-20261021`. Its explicit
+mount mappings and all `/build` commands are correct. Neither immutable
+receipt is edited to conceal that correction.
+
+Review entry points relative to the primary receipt:
+
+- `acceptance/shadow.t`: all conditional model inputs/results and unknown descriptions.
+- `acceptance/synthetic/physical-plan.log`: 248 paired comparisons, nominal versus bounded family and unchanged execution authority.
+- `acceptance/compiler-review/staged-sm90a/gemm.t`: actual F32 compiler trace with four rejected/unknown MMA source rows.
+- `acceptance/compiler-review/staged-sm90a/reports/optimization.log`: complete owning-phase collection, including numerical incompatibility.
+- `acceptance/compiler-review/staged/gemm.before.T` and `gemm.after.T`: unchanged source/device SIMT materialization evidence.
+- `acceptance/parity/staged/baseline-current.after.diff`: empty MMA2 device-IR delta against authenticated M9.
+- `acceptance/parity/summary.log`: fifteen configurations, sixty identical images/dumps, unchanged old trace rows and CUDA bodies.
+
+Representative real trace (joint candidate ID 3 remains selected):
+
+```text
+AI_MMA_SHADOW 1 SOURCE 1 2 1 numerical_contract_required unknown 3 unknown 3 none 1
+AI_MMA_SHADOW 1 SOURCE 2 2 1 numerical_contract_required unknown 3 unknown 3 none 1
+AI_MMA_SHADOW 1 SOURCE 3 2 1 exact_target_required unknown 3 unknown 3 none 1
+```
+
+This closes the bounded MMA2 analytical/shadow coding milestone, not typed
+lowering, real timing availability, guarded native promotion or any native
+numerical/performance gate.
