@@ -17,6 +17,12 @@ The source-to-device umbrella remains
 [Open64 AI compilation and runtime architecture](OPEN64-AI-COMPILATION-AND-RUNTIME-ARCHITECTURE.md).
 Its driver, package, provider and service boundaries remain unchanged.
 
+Compute realization is another jointly refined view, not a replacement for
+the three abstractions: [MMA/SIMT proposal](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md).
+It binds contraction instruction/fragment mapping to work partition, RF/SMEM/
+TMEM lifetimes and typed compute-completion events. Existing scalar F32
+D/S1/T2 support does not imply MMA lowering. General implementation remains open.
+
 The initial analysis scope is one canonical region in an active PU. PREOPT
 provides canonical form; VHO owns PU-local semantic analysis and planning;
 canonical-loop dependence/locality work uses LNO services. WOPT owns its

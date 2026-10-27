@@ -52,6 +52,57 @@ Lifetime and Execution Events views of one complete candidate. P8 gains a
 planned access-lifetime/physical-storage-assignment contract; generic
 allocation and event lowering are not implemented by this documentation change.
 
+### MMA Compute Realization Queue
+
+2026-10-27 **proposal for review before coding**, governed by
+[MMA compute realization and SIMT fallback v0.1](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md).
+This queue extends P6/P7/P8/P9 with a compute dimension; it does not claim that
+current scalar F32 D/S1/T2 already uses Tensor Cores or that captured Python
+matmuls are native MMA. Keep bounded GEMM work separate from general R1-R7
+ingestion/reformulation work. No new options or target emissions in this
+documentation milestone; numerical FP8/FP4 coding stays deferred.
+
+| Gate | Implementation boundary and prerequisites | Required tests, artifacts and tool summary | Status |
+| --- | --- | --- | --- |
+| MMA0: design approval | Review exact target/type scope, same-contract SIMT fallback, record ownership, numerical permission, completion/lifetime and uncertainty policy. First recipes: dense F16/BF16 operands with FP32 accumulation; no automatic narrowing of current F32 inputs. | Review the detail pseudocode/equations and pending questions below. | Proposed; this document change is not implementation approval. |
+| MMA1: contracts/target inventory | Policy-free compute-realization analysis view using existing tile/representation/numerical/resource/event records; exact SM/PTX/toolkit recipes and required WHIRL carriers. Rates/latencies stay in hardware descriptions with provenance. | Structural, invalidation, unknown-field, exact-suffix, unsupported-variant and no-image-on-failure tests. Reports distinguish hardware capability from implemented lowering. Review binary compatibility before any new persistent carrier. | Not started. |
+| MMA2: analytical shadow model | Compatible complete tuples, useful/executed work, RF/SMEM/TMEM reservations, compute issue/dependence/completion plus movement, epilogue and invocation costs. Independent-CTA scope only. | Literal schedule oracle, shared-resource/queue limits, one/two/many steps, tail/underfill, overflow, unknown data and numerical rejection. `tile.log`/`physical-plan.log` show all candidates and nominal versus bounded ranking; shadow emits identical SIMT WHIRL. | Not started; no private Tensor Core timing constants. |
+| MMA3: typed baseline | Add F16/BF16 source and explicit FP32-accumulation fixtures, ingestion/numerical contracts and a lowerable same-contract SIMT fallback. Reuse current scalar machinery only where semantics match. | Exact-divisible, adversarial numerical and rejection cases; mapped `.B/.T`, scalar WHIRL-derived `.cu`, source/result-format and precision-preservation checks. Reports identify fallback dtype and any conversions. | Not started; current fallback is F32-only. |
+| MMA4-H: Hopper first lowering | After MMA1/MMA3, `sm_90a`, one consumer warpgroup/CTA, dense F16/BF16, FP32 register accumulator, descriptor-valid synchronous SMEM delivery, fully waited WGMMA. No TMA requirement or assumed overlap. | Actual WHIRL MMA/fence/commit/wait and fragment mapping; uniform participation, alignment/layout/shape/precision negatives, independent reader-completion checks, mapped reopen and manual `.cu`/PTX compile review when toolchain available. `COMPUTE_ACTION` must describe actual operations, not scalar stand-ins. | Not started; compiler-side review can proceed without GPU after approval. |
+| MMA5-H: Hopper pipeline/joint selection | After MMA2/MMA4-H, add compatible two-slot TMA and non-TMA choices, finite outstanding compute groups, async-read lifetime joins, launch guards and SIMT fallback. | Prove TMA-ready is not MMA-done; no premature slot overwrite or accumulator read/reset. Recompute complete resource/cost/selection independently; `fetch-pipeline.log` explains waits, reuse and exposure. Default stays SIMT during development. | Not started. |
+| MMA4-B: SM100 first lowering | Separate branch after shared contracts and typed fallback; `sm_100a`, `cta_group::1`, dense F16/BF16, FP32 TMEM accumulation. Explicit TMEM allocation/completion/read/deallocation/permit protocol. Do not adapt Hopper RF accounting by renaming it. | Native carrier/verifier/emitter tests, TMEM layout/quanta/limits, allocation/progress negatives, missing completion/teardown rejection, mapped reopen and manual CUDA/PTX review. `residency.log` includes TMEM and epilogue RF; no SM120 support inferred. | Not started; current Blackwell emission remains rejected. |
+| MMA5-B: SM100 pipeline/joint selection | After MMA2/MMA4-B, integrate supported operand pipelines and TMEM result/epilogue service with shared-engine costs. Single-CTA recipe only. | Independent complete-plan costs, RF/SMEM/TMEM contention and safe reuse, cost reconciliation, underfill, numerical/guard failure and SIMT fallback. | Not started. |
+| MMA6: guarded promotion and review closure | After implemented recipes and same-boundary model audit, review proposed `gemm_compute=simt|shadow|auto`, default `simt`. Existing joint/-O3/device-output controls remain gates; arithmetic permission is separate. | Automatic promotion only under reviewed complete uncertainty/benefit rule; missing/overlapping bounds preserve SIMT. Trace controls, invalid options, default/legacy parity, multiple-PU isolation, exact targets, real WHIRL action audit and historical parser compatibility. | Not started; option is not registered. |
+| MMA7: native certification/calibration | Exact target/toolkit and source/numerical acceptance, after compiler-side review. Calibrate rates from measured instructions and full kernels, not advertised peak ratios. | PTX/SASS identity, allocation/spills and occupancy, numerical error by contract, paired same-target baseline kernel/invocation timings, raw samples and immutable receipts. Reports separate predicted ranking from observed results. | Blocked on GPU availability only for this native gate, not design/compiler review. |
+| MMA8: later profiles | Explicitly authorized TF32, FP8 promotion, Blackwell FP4 packing/scales, SM120, sparse, split-K, clusters/CTA pairs, persistent/warp-specialized schedules and composed Attention/MoE. | Independent numerical, resource, ownership/progress and profitability recipes; all extra movement/scale/routing/launch costs. Retain original-source fallback. | Deferred; no implied support from MMA4/5. |
+
+Hopper and SM100 implementation branches share generic contracts but need not
+wait on one another after their prerequisites. A warp `mma.sync` intermediate
+may be added as a reviewed bounded recipe; it is another Tensor Core path,
+not the mandatory SIMT fallback. Tiny/tail shapes may legitimately remain
+SIMT. No fusion is required for this standalone GEMM queue.
+
+Review decisions pending before MMA1 coding:
+
+1. Approve initial F16/BF16 plus FP32 accumulation and exact-divisible recipes;
+   current F32 programs stay unchanged under default preserve semantics.
+2. Review concrete WHIRL carriers and target completion/fragment verifiers;
+   preserve mapped-image compatibility and single executable source of truth.
+3. Approve profile units/ranges and minimum-benefit policy. Unknown timing
+   supports structural/shadow exploration, not automatic native selection.
+4. Confirm manual `.cu` review and assembler-only checks as compiler milestones;
+   reserve native accuracy/performance claims for MMA7.
+
+All new records use compact option-controlled WOPT `.t` conventions, source
+line last, and a separately reviewed schema/model revision. Every phase log
+begins `# What it summarizes:`. `semantic.log` covers numerical eligibility;
+`tile.log` complete compute/tile alternatives and padding; `residency.log`
+RF/SMEM/TMEM and limiters; `fetch-pipeline.log` issue/completion/reuse;
+`physical-plan.log` full costs, selection/fallback and actual WHIRL actions.
+`optimization-summary.log` states selected compute/movement/precision/target,
+old/shadow/emitted winner, reason and remaining gates; `optimization.log`
+retains the phase collection. No analysis-only record closes a lowering gate.
+
 ### Building Block Research Queue
 
 This queue is separate from bounded GEMM production work and native GPU

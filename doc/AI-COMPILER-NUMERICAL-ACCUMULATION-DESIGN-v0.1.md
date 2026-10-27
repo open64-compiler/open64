@@ -7,6 +7,13 @@ Current D/S1/T2 device kernels remain scalar FP32. Open64
 
 ## 1. Purpose And Terms
 
+The [MMA/SIMT compute-realization proposal](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md)
+now places these numerical obligations inside complete compute/tile/movement
+selection. Its first native recipes target F16/BF16 operands and FP32
+accumulation with a verified same-contract SIMT fallback. It does not resume
+deferred FP8/FP4 coding or authorize implicit FP32-to-TF32 conversion. Numerical
+acceptance, including permitted accumulation order, precedes profitability.
+
 Model operand quantization and reduction accuracy separately. A declared
 FP32 result does not establish the precision of every internal addition.
 Hopper FP8 and Blackwell FP4 require distinct instruction-specific profiles;

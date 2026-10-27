@@ -8,6 +8,14 @@ Companion: `AI_compiler_optimization_design_v0.3.md` and
 `AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md`; rationale candidate:
 `AI-COMPILER-WHITE-PAPER-CANDIDATE-DELAYED-GEMM-PLAN-SELECTION.md`
 
+2026-10-27 proposed extension:
+[MMA compute realization and SIMT fallback](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md)
+adds exact instruction/fragment and RF-versus-TMEM allocation contracts,
+compute completion before slot reuse, separate issue/latency/service data,
+and same-boundary complete costs. It preserves SIMT and the resource-allocation
+then scheduling structure. This is design work only; no native MMA or new
+hardware-rate table is implemented.
+
 ## 1. Architecture and decision boundary
 
 2026-10-27 common-framework amendment:
