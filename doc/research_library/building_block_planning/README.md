@@ -237,7 +237,7 @@ its own focused tests in addition to hygiene, with no backend producer rerun.
 | Gate | Deliverable | Status |
 | --- | --- | --- |
 | R0 | Both-layer worked cases and reproducible declared-model comparisons. | Research demonstration complete; native/WHIRL claims excluded. |
-| R1 | Capture representative inputs, review native operator census; derive characterization instead of supplying ledgers. | Open. |
+| R1 | Capture representative inputs, review native operator census; derive characterization instead of supplying ledgers. | Six deterministic CPU PyTorch fixtures, scalar references and real FX census implemented; [ingestion plan](../../../osprey/torch2whirl/BUILDING-BLOCK-INGESTION-PLAN.md). Native canonical characterization remains open. |
 | R2 | Shared state/proof contracts, deterministic alternative generation, guards and strict-FP rejection. | Open. |
 | R3 | General lifetime conflict/packing and symbolic event scheduling, including alias/progress negatives. | Open. |
 | R4 | Integrate real target data, bounded profitability and selected-plan WHIRL; reopen/diff and emit reviewable CUDA. | Open; existing bounded GEMM does not imply other cases. |

@@ -8,6 +8,18 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 frontend-fixture increment: six isolated CPU FP32 Python programs
+now cover GEMM, row sum, stable Softmax, affine LayerNorm, causal Attention and
+routed MoE. Independent scalar FP64 references, real FX/shape/argument census,
+repeatability/no-mutation checks and explicit mock-ingestion boundary tests
+are implemented. See [fixture contracts and next gates](../osprey/torch2whirl/BUILDING-BLOCK-INGESTION-PLAN.md).
+This completes the fixture/capture portion of R1, not canonical WHIRL
+characterization, generic optimization, dynamic ragged MoE, or GPU certification.
+Sixteen focused tests, all 65 torch-enabled capture regressions and the driver
+smoke pass. The full 244-test Docker suite has one unchanged FHE authority-digest
+failure and 14 skips; the host also lacks torch/numpy. The ingestion plan links
+the checksum-verified source/capture receipt and documents these limitations.
+
 2026-10-27 architecture/research addition:
 [Common execution planning](AI-COMPILER-COMMON-EXECUTION-PLANNING.md) adopts
 the colleague's Work Partition, Resource Lifetime and Execution Events
