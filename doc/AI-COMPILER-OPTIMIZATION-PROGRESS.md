@@ -21,6 +21,9 @@ raw image byte differences are retained, not claimed equal. Sixteen old/new
 reader compatibility checks pass. This does not enable general FX ingestion, automatic typed dispatch in
 the old F32 planner or native MMA. GPU validation and timing remain unknown.
 Local commit only; no push or PR requested for this increment.
+Implementation checkpoint `558fcb8b` and its 1790-file immutable receipt pass
+isolated durable binary/reader/CUDA/host replay, including both typed formats.
+See [MMA3 durable acceptance](AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md#durable-acceptance-record).
 
 The MMA1/MMA2 checkpoint descriptions below are historical accepted evidence;
 their fallback inventory rows remain requirements until selected-plan hookup.

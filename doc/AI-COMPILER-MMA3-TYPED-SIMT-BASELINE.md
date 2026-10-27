@@ -141,3 +141,34 @@ Representative BF16 after-image evidence: guarded ownership (`IF`), two
 one `F4ADD`, one `F4ISTORE`, and explicit `RETURN`. The matching source has U2
 input pointers, F4 output and no hidden low-precision accumulation or runtime
 matrix kernel.
+
+## Durable Acceptance Record
+
+Local implementation commit: `558fcb8b73e9dbf587862e7a7ca4851ea735f5e8` on
+`codex/ai-mma3-typed-simt`, from develop `a1153671`. No push or PR.
+
+Primary immutable receipt (1790 authenticated files):
+
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/mma3/typed-simt/sha256-6830985cb5a1e8999730a5904c20ad9f840683d7eb1b9a85de5b2b8b98aaaaa2/`
+
+- [Acceptance summary](../artifacts/review/ai-optimization/mma3/typed-simt/sha256-6830985cb5a1e8999730a5904c20ad9f840683d7eb1b9a85de5b2b8b98aaaaa2/summary.log)
+- [BF16 guarded SIMT trace, with symbols and source](../artifacts/review/ai-optimization/mma3/typed-simt/sha256-6830985cb5a1e8999730a5904c20ad9f840683d7eb1b9a85de5b2b8b98aaaaa2/acceptance/typed/bf16-tails/typed.after.T)
+- [F16 same-source before/after diff](../artifacts/review/ai-optimization/mma3/typed-simt/sha256-6830985cb5a1e8999730a5904c20ad9f840683d7eb1b9a85de5b2b8b98aaaaa2/acceptance/typed/f16-tails/typed.before-after.diff)
+- [Typed source/precision/fetch/physical review](../artifacts/review/ai-optimization/mma3/typed-simt/sha256-6830985cb5a1e8999730a5904c20ad9f840683d7eb1b9a85de5b2b8b98aaaaa2/acceptance/typed/bf16-tails/reports/optimization.log)
+- [Authenticated MMA2/F32 compatibility and raw-byte differences](../artifacts/review/ai-optimization/mma3/typed-simt/sha256-6830985cb5a1e8999730a5904c20ad9f840683d7eb1b9a85de5b2b8b98aaaaa2/acceptance/parity/report.json)
+
+These relative links resolve from the primary checkout; implementation
+worktrees must use the absolute durable root above, not a temporary copy.
+
+Independent durable replay receipt:
+
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/mma3/reopen/sha256-e30cd38736eb53464a1c68ac768762046e9c2f233ab9e1542fd4b94a42be703d/`
+
+Replay authenticates all 1790 primary files, independently re-audits all 18
+source cases, reruns the copied native producer for both formats, reopens four
+fresh images with both `-st` and `-src`, and executes four freshly emitted CUDA
+host kernels. Native traces, mapped images and full reopened dumps match;
+no original build directory is mounted. Scratch launcher aliases restore the
+standard `whirl2c_be -> be`/shared-library topology from retained binaries;
+the replay receipt retains the exact setup script. Both receipts are indexed
+under the primary durable review root. Native GPU/timing remains unknown.
