@@ -177,6 +177,12 @@ compiler dependency or a synthetic ground truth.
 
 ## Historical Model-4 Compiler Results
 
+Current model-5 acceptance and immutable evidence are in
+[Hardware Description IR acceptance](AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md#acceptance-evidence).
+The built-in row preserves the initial default numerical result while
+removing private timing/rate defaults. Thirteen target/override/source-review
+configurations and 104 tests pass; none imply measured GPU performance.
+
 The compiler/source review exercises ten analytical/relative configurations
 including five shapes, latency 20/100/400, explicit/default model parity and
 TMA disabled. The following are actual compiler selections, not simulator

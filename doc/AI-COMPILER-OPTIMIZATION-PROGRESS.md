@@ -15,9 +15,14 @@ path startup, store, sync, issue, service and wave parameters come from named
 tables. The legacy latency option applies only when explicitly supplied.
 Blackwell rows exist for planning but unsupported CUDA emission fails closed.
 `tile.log` now shows architecture/table/revision/provenance before old
-diagnostic scores. Unit/oracle and initial compiler/source checks pass; final
-acceptance is in progress. These tables still carry uncalibrated estimates.
+diagnostic scores. 104 tests, 2340 varied-parameter oracles, thirteen compiler/
+source configurations, legacy controls, common/VHO contracts and symbol checks
+pass. These tables still carry uncalibrated estimates.
 See [target selection](AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md).
+
+Checkpoint `1f793c9e`: 1281 files checksum-verified after immutable promotion;
+durable WHIRL reopening and report replay match. Evidence:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m8/hardware-description/sha256-b1370aae64cc600d9cb9b2fc6b58dbc357a793be4efe4e9f38542cbc912bc859/`.
 
 Historical analytical readiness increment (2026-10-26): the compiler's opt-in joint path
 now defaults to a schedule-aware reference-cycle model instead of traffic-score

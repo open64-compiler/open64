@@ -171,3 +171,35 @@ Public naming references: [NVCC target options](https://docs.nvidia.com/cuda/cud
 and [NVIDIA compute capabilities](https://developer.nvidia.com/cuda/gpus).
 We independently implement the registry and its data; no proprietary
 compiler implementation or timing table is imported.
+
+## Acceptance Evidence
+
+Compiler checkpoint `1f793c9e`: 104 Python tests, 2340 varied-parameter literal
+schedule oracles, thirteen compiler/source configurations, explicit zero and
+override isolation, default/explicit SM90 parity, SM90a generic F32 review,
+unknown/suffix/planning-only rejection, legacy D/S1/T2 and baseline/trace
+controls, linked common/VHO adapter contracts and backend symbol checks pass.
+Historical model-4 raw trace was authenticated and audited with the new tool.
+
+The default common row preserves T2 #3 for 128x128x144 at 31336 reference
+cycles. This refactoring changes target-data ownership, not claimed physical
+performance or calibration. Generated CUDA host simulations report zero error.
+
+1281 checksum-verified files are preserved immutably at:
+
+```text
+/Users/shinmingliu/open64/artifacts/review/ai-optimization/m8/hardware-description/sha256-b1370aae64cc600d9cb9b2fc6b58dbc357a793be4efe4e9f38542cbc912bc859/
+```
+
+Review `acceptance/hardware/staged/reports/phases/tile.log`, `gemm.t`,
+`gemm.whirl.cu` and the before/after WHIRL in that case directory. After
+promotion, native `ir_b2a -st -src` reopening of the durable `.B` reproduced
+the retained `.T` byte-for-byte; independent report replay reproduced the
+summary exactly. No prior receipt was changed or removed.
+
+The impact selector's unknown-path full-FHE fallback was reviewed: this is
+an additive runtime-description API and AI timing/control change, not a
+generic materializer, persisted record or FHE semantic transformation change.
+Focused production builds, native adapter contracts, actual compiler/source
+cases and legacy compatibility checks cover the changed boundary. No unrelated
+full ResNet certification or native GPU certification is claimed.

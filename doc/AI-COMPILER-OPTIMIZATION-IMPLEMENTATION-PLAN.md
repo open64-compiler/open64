@@ -1679,7 +1679,7 @@ Initial tables remain estimated, not calibrated NVIDIA specifications.
 | HW0: common description contract | Implemented policy-free immutable architecture registry and standalone performance payload; no binary WHIRL change. |
 | HW1: timing/rate consumers | Evaluator and adapter consume table data; literal recurrence tests vary hardware parameters. |
 | HW2: controls and target gates | Exact sm_90/sm_90a selection; sm_100/sm_100a planning descriptions; unknown/suffix and unsupported emission rejection. |
-| HW3: trace/report evidence | Model 5 HW_DESC/HW_PERF records, independent audit and prominent tile.log table identity; final compiler/source acceptance in progress. |
+| HW3: trace/report evidence | Passed: model-5 records, independent audits, thirteen compiler/source configurations, 104 tests, native contracts and 1281-file immutable evidence. Durable WHIRL reopen and summary replay match; see target-selection Acceptance Evidence. |
 | HW4: actual characterization | Open: SKU/refinement, measured timing/clock domains, calibration and native GPU certification. |
 
 Priority update 2026-10-26: implement the lightweight
