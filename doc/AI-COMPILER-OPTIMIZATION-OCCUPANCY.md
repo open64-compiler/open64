@@ -1,7 +1,7 @@
 # FP32 GEMM Occupancy-Aware Analytical Planning
 
 Version: v0.1. Scope: O3 PU-local joint D/S1/T2 planning after PR #193.
-Status: design contract; implementation and acceptance recorded below.
+Status: bounded compiler-only implementation accepted; native gates remain open.
 
 ## Definitions And Ownership
 
@@ -119,10 +119,86 @@ grid-limited peak warps are explicitly distinguished in the summary.
 
 ## Acceptance And Remaining Work
 
-Before closure: independent rounding/limit tests, literal schedule oracles,
-overflow/no-output-mutation checks, fresh backend/native contracts, real
-tiny/tail/large-grid cases, D surviving staged rejection, option/target gates,
-baseline/trace-off and historical models, immutable trace/WHIRL/CUDA evidence.
+Compiler checkpoint `b19e22e0` on `codex/ai-gemm-occupancy`, based on merged
+develop `0ef7845d` (PR193). Design-first commit: `cb47643b`. No push or PR.
+
+Fresh acceptance: 109 Python tests (104 baseline plus five new), 2340 legacy
+T2 and 5535 new literal D/S1/T2 oracle cases, Linux builds of both standalone
+contracts, affected backend/IR-tool/lw_inline rebuilds, linked resource gates,
+fifteen compiler/source configurations, legacy D/S1/T2 and controls/baseline/
+trace-off checks, malformed traces, exact target/option rejection and backend
+symbol boundaries. All phase logs retain the summary-first header. The
+impact selector's unknown-path FHE escalation was reviewed: changes are
+runtime resource records and AI-local cost/trace consumers, not FHE semantic
+materializers, image transactions or persisted layouts. Focused tests replace
+an unrelated whole-model ResNet rerun; no FHE full-model pass is claimed.
+
+Historical model4/model5 raw traces are reused from authenticated M7/M8
+receipts, with fresh independent parsing/report audits. Current compiler
+artifacts are freshly produced, not inherited certification.
+
+### Actual Ranking Results
+
+All fourteen readiness configurations retain their legacy one-CTA/SM winner.
+The fifteenth configuration exercises unchanged relative model3. Do not imply
+a selection improvement or GPU speedup from this result.
+
+| Shape M x N x K | Old / new winner | Old / new cost (estimated reference cycles) |
+| --- | --- | --- |
+| 1 x 1 x 1 | D #2 / D #2 | 192 / 192 |
+| 1 x 1 x 17 | D #2 / D #2 | 1648 / 1648 |
+| 3 x 5 x 7 | D #2 / D #2 | 856 / 856 |
+| 65 x 67 x 17 | S1 #1 / S1 #1 | 8061 / 8061 |
+| 128 x 128 x 144 | T2 #3 / T2 #3 | 31336 / 31336 |
+| 512 x 512 x 32 | S1 #7 / S1 #7 | 168684 / 168684 |
+| 513 x 257 x 17 | S1 #7 / S1 #7 | 118929 / 118929 |
+
+Seven examined candidate costs change in each large-grid case. Examples for
+512x512x32: S1 #1 269664 -> 267618, D #2 2684992 -> 2671240,
+T2 #3 241312 -> 239312. They do not beat S1 #7. Small grids use at most one
+CTA/SM, so no extra residency credit appears. The selected large-grid S1 #7
+is SMEM-limited to R=1 (33792 rounded bytes/CTA in a 65536-byte envelope), so
+its cost also remains unchanged. For 513x257x17 its grid has three full
+rounds plus a three-CTA tail and one unused slot. Staged T2 #3 estimates R=3
+but its four-CTA grid has only four peak active warps per SM, not its
+twelve-warp residency capacity.
+
+### Durable Evidence
+
+1384 checksum-verified files, published by no-replace atomic promotion:
+
+```text
+/Users/shinmingliu/open64/artifacts/review/ai-optimization/m9/occupancy/sha256-663139e18ca2cdd6aba88ea9c8b056958c4b3aa46dd9f2866c897b8e15a154b9/
+```
+
+Reviewer entry points beneath that receipt:
+
+- `acceptance/rankings.json`: all changed/unchanged old/new winners and costs.
+- `acceptance/occupancy/staged/gemm.t`: raw positional model6 trace.
+- `acceptance/occupancy/staged/reports/optimization-summary.log`: concise selection.
+- `acceptance/occupancy/staged/reports/phases/tile.log`: resource rounding/limits and D issued-traffic diagnostics.
+- `acceptance/occupancy/staged/reports/phases/physical-plan.log`: complete costs, fallback and actual WHIRL actions.
+- `acceptance/occupancy/staged/gemm.whirl.cu`: selected T2 CUDA from WHIRL.
+- `acceptance/occupancy/large-tail/gemm.whirl.cu`: selected S1 CUDA.
+- `acceptance/occupancy/direct/gemm.whirl.cu`: selected D CUDA.
+- Each case retains `gemm.before.B/.T`, `gemm.after.B/.T` and `gemm.before-after.diff`.
+- `acceptance/commands.json`, `acceptance/logs/`, `acceptance/source/` and receipts/checksums retain reproduction inputs.
+
+Post-promotion: all 1384 checksums match. D, S1 and T2 before/after images
+were reopened from the final receipt in six separate `ir_b2a -st -src`
+processes; all text matches. Three raw-trace report replays reproduce the
+summary, aggregate, tile and physical-plan logs byte-for-byte. The immutable
+receipt was mounted read-only. Disposable post-check command evidence is at
+`artifacts/ai_optimization/m9-occupancy/durable-reopen-001/receipt.json` in
+the implementation checkout. Earlier `run-001`, `run-002`, `accepted-001`
+are development staging, not accepted receipts; only `accepted-002` was promoted.
+
+### Residual Scope
+
 Native register allocation, partition-aware occupancy, runtime carveout,
 cache/queue calibration, dynamic SMEM, launch integration and GPU performance
 certification remain open. No fusion, low-precision or new movement family.
+Next bounded compiler packages remain separately gated: optional actual vector/
+async-copy movement, selected D/T2 host-provider launch integration, and closure
+of the supported-subset review matrix. This resource milestone does not claim
+completion of every optional multilevel-tiling extension.

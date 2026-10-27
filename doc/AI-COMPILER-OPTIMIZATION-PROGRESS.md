@@ -15,8 +15,15 @@ only the affected sibling. Compact traces/report audits expose rounded
 demands, every capacity quotient, tied limiters, full/tail rounds, underfill
 and old/new winners. The 104 baseline tests plus five new tests pass, including
 5535 literal D/S1/T2 schedule oracles alongside the retained 2340 T2 cases.
-Final linked/compiler evidence is being collected; native occupancy/GPU
+Final acceptance passed: checkpoint `b19e22e0`, fifteen compiler/source
+configurations, linked contracts and dependency checks. All fourteen readiness
+winners remain unchanged; seven candidate costs change in each large-grid
+case. 1384 files were verified after immutable promotion; six durable mapped
+reopens and three complete report replays match. Native occupancy/GPU
 certification remains open. See [occupancy contract](AI-COMPILER-OPTIMIZATION-OCCUPANCY.md).
+
+Evidence:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m9/occupancy/sha256-663139e18ca2cdd6aba88ea9c8b056958c4b3aa46dd9f2866c897b8e15a154b9/`.
 
 Historical hardware-description increment (2026-10-26): exact `gpu_arch=sm_90/sm_90a`
 resolves into our own common Hardware Description IR. Model 5 removes private
