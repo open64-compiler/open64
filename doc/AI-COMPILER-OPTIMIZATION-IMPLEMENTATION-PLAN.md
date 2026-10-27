@@ -130,7 +130,7 @@ R1 sub-gates, kept independent of MMA1's contracts/target profiles:
 | R1-a: source fixtures/census | Implemented for all six blocks. | Preserve exact source/FX/shape/argument census and explicit native gaps. |
 | R1-b: source semantic derivation | Implemented for exact rank-2 FP32 row reduction, stable Softmax and affine LayerNorm, in that order. No model-name dispatch or graph mutation. | Report output/reduction domains, logical accesses, alias/effect facts, state/merge/finalize recipe, epsilon/denominator, ownership obligations, graph fingerprint and unresolved conditions. |
 | R1-c: numerical witnesses | Implemented strict/permitted CPU comparisons with independent FP64 oracles, adversarial cancellation/overflow and unsafe-formulation negatives. No compiler authorization from sample agreement. | Report permission rejection separately from numerical/domain rejection; retain thresholds/errors, source as well as alternative failures, exact inputs/results and remaining general-accuracy obligations. |
-| R1-d: native canonical characterization | Partial: exact Python row-sum ingestion now feeds the native static FP32 `[R,N] -> [R]` contract, runtime formal/result/return and WOPT/PREOPT preservation. General canonical characterization and executable lowering remain open. | Four Python-produced `.B/.T` cases plus a standalone-driver image, unchanged controlled `.t` and strict reports verify canonical axis, type and original source line; unsupported forms publish no image. Summary distinguishes ingestion/preservation from selection, profitability and executable transformation. |
+| R1-d: native canonical characterization | Partial: exact Python row-sum ingestion, canonical native form and WHIRL-derived row-sum state/access/numerical characterization implemented. Native Softmax/LayerNorm, general forms and executable lowering remain open. | Native API fixture and five authenticated Python/driver `.B/.T` inputs; FORM plus additive FACT traces, strict entry/exit audit and source lines. `semantic.log` reports state recipe, logical accesses, alias/owner obligations, numerical permissions and unknowns without physical traffic or executable-plan claims. |
 
 R1-b/c produce analysis-only `semantic-summary.log`, not compiler `.t` or a
 transformation report. No candidate is selected, no physical plan is costed,
@@ -142,8 +142,10 @@ R1-d next sequence, independent of MMA1:
    explicit-result builder, runtime formal/result/return and native driver;
    preserve source positions and numerical prohibitions. See the
    [ingestion detail and retained receipt](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27).
-2. Derive full R1 state/access facts from the canonical native node, then
-   extend reduction axes/types only through separately reviewed contracts.
+2. Completed for bounded row sum: derive state, access and numerical facts
+   from canonical native WHIRL. No FX/sample/debug fact is authoritative.
+   Generalize axes/types only through separately reviewed contracts; carry
+   strict permissions and explicit unknowns into later legality/selection.
 3. Publish native stable Softmax and normalization forms with explicit
    numerical permissions and broadcast/state obligations.
 4. Only then compare legal executable alternatives and lower the selected

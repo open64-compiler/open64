@@ -2111,3 +2111,11 @@ contract through runtime formals and the explicit-result builder; it changes
 no common record or native API. General reduction canonicalization and selected
 executable realizations remain separate gates, not implied by representation
 or ingestion support.
+
+The R1 native characterization snapshot now derives the bounded row-sum state,
+access and numerical obligations from canonical WHIRL/TYs and managed links.
+It is a transient read-only WOPT analysis view, not a mapped-image extension or
+an expression-equivalence key. PREOPT rederives it with or without trace output;
+physical planning and FP32 algorithm permissions are not inferred from the
+mathematical recipe. Scope/invalid-input queries leave IR and caller output
+unchanged. The detail contract defines the additive FACT trace and audit rules.

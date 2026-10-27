@@ -64,7 +64,7 @@ def run_review(build, output):
         partial = output / (label + ".O")
         if partial.exists():
             partial.rename(output / (label + ".incomplete-mapped-output"))
-    rows = write_reports(output / "trace/preopt-on.t", output / "reports")
+    rows = write_reports(output / "trace/preopt-on.t", output / "reports", True)
     if audit((output / "trace/default-trace.t").read_text()) != rows:
         raise RuntimeError("default trace differs from explicit trace-on")
     ascii_text = (output / "ascii/reduction.T").read_text()

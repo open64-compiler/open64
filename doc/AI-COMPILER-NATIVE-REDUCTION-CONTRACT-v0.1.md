@@ -1,6 +1,7 @@
 # Native reduction contract and PREOPT canonical form v0.1
 
-Status: bounded R1 native contract and exact Python row-sum ingestion implemented;
+Status: bounded R1 native contract, exact Python ingestion and canonical-WHIRL
+row-sum characterization implemented;
 executable reduction lowering is
 not implemented by this milestone. Independent of MMA1 and target compute
 realization selection.
@@ -253,7 +254,103 @@ Current receipt family:
     native-complete/driver/row_sum.B
 ```
 
-R1 remains partial: full state/access characterization from canonical WHIRL,
-native Softmax/LayerNorm forms, executable realization selection/lowering and
+R1 remains partial: general characterization beyond the bounded row-sum
+increment below, native Softmax/LayerNorm forms, executable realization selection/lowering and
 GPU certification remain open. MMA1 sources, profiles and compute plans are
 untouched by this ingestion increment.
+
+## Canonical-WHIRL Characterization (2026-10-27)
+
+The next R1 increment derives the bounded row-sum state, access and numerical
+facts from native WHIRL itself. `WOPT_DSL_characterize_reduction` accepts a
+member assignment in the active driver-selected whole PU. It verifies the PU,
+joins the direct operand/result with managed image identities, checks canonical
+types and derives a transient `WOPT_DSL_REDUCTION_CHARACTERIZATION` snapshot.
+It reads no FX graph, Python manifest, sample input or debug permission hint.
+
+| Concept | Derived fact and limit |
+| --- | --- |
+| Logical domain | Rows `r in [0,R)` and reduction positions `k in [0,N)` from canonical input TY; output TY is `[R]`. |
+| State family | One logical FP32 sum state `s[r]` per row. This is a semantic family, not a reservation of R simultaneously resident registers or buffers. |
+| Identity/update/finalize | Semantic zero identity; symbolic FP32-add update with `X[r,k]`; identity finalize to `Y[r]`. No executable accumulation order or hardware instruction is selected. |
+| Mathematical merge | Real-arithmetic addition describes the state recipe. FP32 partition/merge, reassociation and state reformulation are not authorized by this description. |
+| Input access | Logical read-only `X[r,k]`; `R*N` is the count of scalar operand participations in the recipe, not physical loads, HBM transactions, or modeled bytes. |
+| Result access/owner | Logical `Y[r]` definition and an obligation for one final owner per row; no thread/warp/CTA assignment or physical output placement. |
+| Alias/effects | The reduction does not write its operand. Disjointness from other values and physical result storage is not proved; no in-place permission follows from purity. |
+| Numerical contract | FP32 accumulation and explicit reassociation prohibition come from native v1. Original source order remains unresolved; no new reduction tree is invented. |
+| Numerical unknowns | Finite inputs, overflow freedom, exceptional-value/signed-zero behavior of a chosen realization, error tolerance and universal accuracy acceptance remain unproved. No guard or sample-based permission is fabricated. |
+| Physical planning | Storage assignment, actual traffic, event schedules, resource costs and executable lowering remain unplanned. |
+
+The service is read-only and leaves its output untouched on failure. It rejects
+foreign/nonmember assignments and smaller REGION/block scopes rather than
+restoring symbol tables or walking other PUs. Recompute the snapshot after any
+operand, descriptor, attribute, source-position or tree change; it is not an
+interned cache or persistent IR. Existing common/com types, shape rules, schema,
+managed identities and gatekeeper remain the substrate. WOPT owns derivation;
+neither common records nor the WOPT expression-equivalence key are extended.
+
+```text
+require scope == active driver-selected FUNC_ENTRY
+require assignment is a member of that scope
+verify canonical native PU, direct kids, attributes, types and managed links
+require assignment is common.reduce_sum.v1
+join input/result value identities; read input/output TY and source position
+derive R,N and the published symbolic sum-state recipe
+record read-only logical accesses and per-row owner obligation
+retain reassociation prohibition and all unproved numerical/alias/storage facts
+publish snapshot only after all checks pass
+```
+
+PREOPT derives these facts after entry/exit canonical verification even when
+tracing is disabled. The existing `AI_REDUCE 1 FORM` rows are unchanged. A
+separate additive `AI_REDUCE_FACT 1` header/row describes the native snapshot
+with source line last. Columns are declared once per invocation:
+
+```text
+phase pu node input result input_ty result_ty rows width state identity update finalize real_merge merge_permission order reassociate reformulate finite overflow accuracy input_access output_access input_effect alias output_owner storage source_line
+```
+
+The auditor requires complete, matching entry/exit characterization and checks
+it against the FORM identities/domain/source line. `semantic.log` explains the
+state, accesses, logical participation count, numerical prohibitions and unknowns;
+aggregate/summary logs retain the no-selection/no-transformation distinction.
+`--require-characterization` makes missing facts an error for this milestone.
+Historical FORM-only traces remain readable, but report
+`characterization=unavailable_legacy_trace`, never invented state facts. The
+previous auditor can still read new traces because the added tag is separate.
+
+Verification uses the native builder fixture plus five authenticated Python/API
+and driver images from the preceding immutable receipt. No PyTorch producer or
+numerical witness is rerun to derive these facts. The native query tests include
+read-only/no-image-mutation checks, numerical-hint poisoning, invalid scope,
+nonmember/null/corrupt input rejection with untouched output, and rederivation
+after WOPT emission. Six auditor tests cover drift, false noalias/finite/merge
+claims, incomplete evidence, historical compatibility and report conventions.
+Backend/ir-tools/WOPT/inline products are rebuilt in an isolated scratch build;
+the WOPT driver and semantic-info regressions and symbol-boundary checks remain
+required. No binary-image schema, source-ingestion route or MMA1 contract changes.
+
+The next R1 work is native stable Softmax and mean/variance-normalization forms
+and characterization using the same discipline. This bounded row-sum slice does
+not complete general R1 characterization, numerical equivalence, profitability,
+executable reduction lowering or GPU certification.
+
+Accepted evidence for this increment: 33 native contract/characterization
+assertions including cross-PU rejection, five authenticated retained images,
+six trace-audit tests, actual PREOPT entry/exit and trace-off behavior,
+old/new auditor compatibility, WOPT semantic-info and real-driver regressions,
+and rebuilt backend/inline symbol gates. The scratch build was isolated and
+its affected objects/generated dependencies refreshed after the shared build
+contained another branch's dependency. No PyTorch or full FHE producer was
+invalidated or rerun by this read-only backend analysis change.
+
+```text
+/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/r1-whirl-characterization/
+  sha256-14e463a54a2bac3d0564da34f63bbfdcce5751c69a6d69393acb0898b8c1423b/
+    cached/optimization-summary.log
+    cached/negative-axis/reports/semantic.log
+    cached/negative-axis/row_sum.B
+    cached/negative-axis/ascii/row_sum.T
+    cached/negative-axis/trace/on.t
+    native/logs/native-contract.stdout
+```

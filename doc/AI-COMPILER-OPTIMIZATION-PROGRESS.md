@@ -8,6 +8,22 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 R1 canonical-WHIRL characterization increment:
+bounded row-sum state/access/numerical facts now derive from verified native
+assignments, canonical TYs and managed operand/result identities. PREOPT
+rederives the snapshot at entry/exit; trace-off does not disable derivation.
+The report distinguishes logical read/definition domains and real-arithmetic
+merge from physical traffic, alias proofs and permitted FP32 algorithms.
+Reassociation remains forbidden; finite/overflow/accuracy/order/storage gaps
+remain explicit. Existing FORM rows are unchanged; additive FACT rows and
+strict historical-compatible audit retain the trace/artifact convention.
+See the [native characterization detail](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md#canonical-whirl-characterization-2026-10-27).
+MMA1, executable reduction lowering and GPU certification remain separate.
+Validation: 33 native assertions, five authenticated image replays, six audit
+tests, trace-off and old/new-reader compatibility, WOPT semantic/driver
+regressions and rebuilt symbol boundaries pass in an isolated build. The
+detail document links the retained WHIRL, native facts, trace and reports.
+
 2026-10-27 R1 Python-to-native row-sum increment:
 the exact three-node `torch.sum` matcher now emits a runtime formal, rank-1
 result and return using the existing native v1 contract and explicit-result

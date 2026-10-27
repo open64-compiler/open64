@@ -11,6 +11,48 @@
 
 class WN;
 
+/* Transient R1 facts derived only from canonical active-PU WHIRL. These are
+ * neither mapped-image records nor executable realization choices. The sum
+ * recipe has one FP32 state per row, zero identity, add update, identity
+ * finalize and a real-arithmetic add merge that is NOT authorized for FP32.
+ * Accesses are logical X[r,k] reads/Y[r] result definitions, not traffic or
+ * allocation facts. See AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md. */
+enum {
+  WOPT_DSL_REDUCTION_INPUT_READ_ONLY = 1U << 0,
+  WOPT_DSL_REDUCTION_REASSOC_FORBIDDEN = 1U << 1,
+  WOPT_DSL_REDUCTION_REFORMULATION_NOT_GRANTED = 1U << 2,
+  WOPT_DSL_REDUCTION_ORDER_UNRESOLVED = 1U << 3,
+  WOPT_DSL_REDUCTION_FINITE_UNPROVEN = 1U << 4,
+  WOPT_DSL_REDUCTION_OVERFLOW_UNPROVEN = 1U << 5,
+  WOPT_DSL_REDUCTION_ACCURACY_UNPROVEN = 1U << 6,
+  WOPT_DSL_REDUCTION_ALIAS_UNPROVEN = 1U << 7,
+  WOPT_DSL_REDUCTION_STORAGE_UNPLANNED = 1U << 8,
+  WOPT_DSL_REDUCTION_OUTPUT_OWNER_PER_ROW = 1U << 9,
+  WOPT_DSL_REDUCTION_SUM_F32_ROWS_V1 = 1
+};
+
+typedef struct {
+  UINT32 recipe;
+  UINT32 flags;
+  ST_IDX owner_pu;
+  UINT32 node_id;
+  UINT32 input_value_id;
+  UINT32 result_value_id;
+  TY_IDX input_ty;
+  TY_IDX result_ty;
+  UINT64 rows;
+  UINT64 width;
+  UINT32 source_line;
+} WOPT_DSL_REDUCTION_CHARACTERIZATION;
+
+/* Query a member assignment of the driver-selected active whole PU. Validate
+ * native meaning/ownership first; leave output and WHIRL unchanged on failure.
+ * Facts are recomputed on demand; no Python metadata, cached FX fact or sample
+ * value is consulted. REGION/cross-PU scopes remain unsupported. */
+extern BOOL WOPT_DSL_characterize_reduction
+    (WN *scope, WN *assignment, WOPT_DSL_REDUCTION_CHARACTERIZATION *output,
+     FILE *diagnostic);
+
 /* Verify the published reduction form within the active whole-PU PREOPT
  * scope, without rewriting or enlarging scope. Empty/non-reduction scopes
  * are no-ops; unsupported REGION reduction scope or malformed IR fails.

@@ -548,10 +548,100 @@ WOPT_DSL_emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
                               payload, kids, kid_count);
 }
 
+/* Derive the v1 recipe from a gatekeeper-verified assignment and managed joins.
+ * No reduction schedule, FP equivalence proof or physical access is inferred. */
+static BOOL
+WOPT_DSL_Derive_Reduction(WN *assignment,
+                          WOPT_DSL_REDUCTION_CHARACTERIZATION *output)
+{
+  if (assignment == NULL || output == NULL || Current_PU_Info == NULL ||
+      WN_operator(assignment) != OPR_STID)
+    return FALSE;
+  WN *expression = WN_kid0(assignment);
+  DSL_LOGICAL_OPCODE logical;
+  if (expression == NULL || WN_operator(expression) != OPR_DSL ||
+      !DSL_WN_Get_Logical_Opcode(expression, &logical, NULL) ||
+      logical.dsl_operator != OPR_DSLREDUCESUM ||
+      logical.effective_version != 1 || WN_kid_count(expression) != 1)
+    return FALSE;
+  WOPT_DSL_REDUCTION_CHARACTERIZATION fact;
+  memset(&fact, 0, sizeof(fact));
+  DSL_IR_VALUE_RECORD result, input;
+  DSL_IR_NODE_RECORD node;
+  const char *owner = ST_name(PU_Info_proc_sym(Current_PU_Info));
+  UINT64 dimensions[2];
+  UINT32 rank = 0;
+  fact.input_ty = WN_ty(WN_kid0(expression));
+  fact.result_ty = WN_ty(assignment);
+  if (!WOPT_DSL_Result_Value(WN_st_idx(assignment), owner, &result, &node) ||
+      !WOPT_DSL_Operand_Value(WN_kid0(expression), owner, &input) ||
+      !DSL_Shape_Reduce_Sum_Types_Valid
+          (fact.input_ty, fact.result_ty, "1", "false", "float32", "false") ||
+      !DSL_Shape_Parse_Static_Dimensions
+          (TY_tensor_attribute(fact.input_ty, TY_TENSOR_SCHEMA_SHAPE),
+           dimensions, 2, &rank) || rank != 2)
+    return FALSE;
+  fact.recipe = WOPT_DSL_REDUCTION_SUM_F32_ROWS_V1;
+  fact.flags = WOPT_DSL_REDUCTION_INPUT_READ_ONLY |
+      WOPT_DSL_REDUCTION_REASSOC_FORBIDDEN |
+      WOPT_DSL_REDUCTION_REFORMULATION_NOT_GRANTED |
+      WOPT_DSL_REDUCTION_ORDER_UNRESOLVED |
+      WOPT_DSL_REDUCTION_FINITE_UNPROVEN |
+      WOPT_DSL_REDUCTION_OVERFLOW_UNPROVEN |
+      WOPT_DSL_REDUCTION_ACCURACY_UNPROVEN |
+      WOPT_DSL_REDUCTION_ALIAS_UNPROVEN |
+      WOPT_DSL_REDUCTION_STORAGE_UNPLANNED |
+      WOPT_DSL_REDUCTION_OUTPUT_OWNER_PER_ROW;
+  fact.owner_pu = PU_Info_proc_sym(Current_PU_Info);
+  fact.node_id = node.id;
+  fact.input_value_id = input.id;
+  fact.result_value_id = result.id;
+  fact.rows = dimensions[0];
+  fact.width = dimensions[1];
+  SRCPOS position = WN_Get_Linenum(assignment);
+  fact.source_line = SRCPOS_linenum(position);
+  *output = fact;
+  return TRUE;
+}
+
+/* Prove membership without traversing another PU or switching symbol tables. */
+static BOOL
+WOPT_DSL_Contains_Node(WN *scope, WN *node)
+{
+  if (scope == NULL) return FALSE;
+  if (scope == node) return TRUE;
+  if (WN_operator(scope) == OPR_BLOCK) {
+    for (WN *statement = WN_first(scope); statement != NULL;
+         statement = WN_next(statement))
+      if (WOPT_DSL_Contains_Node(statement, node)) return TRUE;
+  } else {
+    for (INT32 i = 0; i < WN_kid_count(scope); ++i)
+      if (WOPT_DSL_Contains_Node(WN_kid(scope, i), node)) return TRUE;
+  }
+  return FALSE;
+}
+
+/* Public read-only characterization uses the same native verifier as PREOPT;
+ * no output is published until scope, membership and canonical meaning pass. */
+BOOL
+WOPT_DSL_characterize_reduction
+    (WN *scope, WN *assignment, WOPT_DSL_REDUCTION_CHARACTERIZATION *output,
+     FILE *diagnostic)
+{
+  DSL_GATEKEEPER_RESULT gate;
+  return output != NULL && Current_PU_Info != NULL && scope != NULL &&
+      WN_operator(scope) == OPR_FUNC_ENTRY &&
+      PU_Info_tree_ptr(Current_PU_Info) == scope && assignment != NULL &&
+      WOPT_DSL_Contains_Node(scope, assignment) &&
+      DSL_Gatekeeper_Verify_PU(Current_PU_Info, diagnostic, &gate) &&
+      WOPT_DSL_Derive_Reduction(assignment, output);
+}
+
 /* Walk only the driver-selected tree; never traverse PU_Info or change symbol
  * tables. Emission occurs only after the public entry verifies the whole PU. */
 static UINT32
-WOPT_DSL_Reduction_Forms(WN *tree, const char *phase, FILE *trace)
+WOPT_DSL_Reduction_Forms(WN *tree, const char *phase, FILE *trace,
+                          BOOL verified = FALSE)
 {
   if (tree == NULL)
     return 0;
@@ -568,35 +658,34 @@ WOPT_DSL_Reduction_Forms(WN *tree, const char *phase, FILE *trace)
     WN *expression = WN_kid0(tree);
     if (DSL_WN_Get_Logical_Opcode(expression, &logical, NULL) &&
         logical.dsl_operator == OPR_DSLREDUCESUM) {
-      if (trace != NULL) {
-        DSL_IR_VALUE_RECORD value;
-        DSL_IR_NODE_RECORD node;
-        const char *owner = ST_name(PU_Info_proc_sym(Current_PU_Info));
-        UINT64 dimensions[2];
-        UINT32 rank = 0;
-        TY_IDX input_ty = WN_ty(WN_kid0(expression));
-        FmtAssert(WOPT_DSL_Result_Value
-                      (WN_st_idx(tree), owner, &value, &node) &&
-                  DSL_Shape_Parse_Static_Dimensions
-                      (TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_SHAPE),
-                       dimensions, 2, &rank) && rank == 2,
+      if (verified) {
+        WOPT_DSL_REDUCTION_CHARACTERIZATION fact;
+        FmtAssert(WOPT_DSL_Derive_Reduction(tree, &fact),
                   ("verified reduction identity unavailable"));
-        SRCPOS position = WN_Get_Linenum(tree);
-        fprintf(trace, "AI_REDUCE 1 FORM %s %u %u %llu %llu 1 0 "
-                       "float32 0 verified %u\n", phase, node.id, value.id,
-                (unsigned long long)dimensions[0],
-                (unsigned long long)dimensions[1],
-                (UINT32)SRCPOS_linenum(position));
+        if (trace != NULL) {
+          fprintf(trace, "AI_REDUCE 1 FORM %s %u %u %llu %llu 1 0 "
+                         "float32 0 verified %u\n", phase, fact.node_id,
+                  fact.result_value_id, (unsigned long long)fact.rows,
+                  (unsigned long long)fact.width, fact.source_line);
+          fprintf(trace, "AI_REDUCE_FACT 1 FACT %s %u %u %u %u %u %u %llu %llu "
+                       "sum_f32_per_row 0 fp32_add identity real_add prohibited "
+                       "source_unresolved 0 not_granted unproved unproved unproved "
+                       "X[r,k] Y[r] read_only may_alias per_row unplanned %u\n",
+                  phase, (UINT32)fact.owner_pu, fact.node_id, fact.input_value_id,
+                  fact.result_value_id, (UINT32)fact.input_ty, (UINT32)fact.result_ty,
+                  (unsigned long long)fact.rows, (unsigned long long)fact.width,
+                  fact.source_line);
+        }
       }
     }
   }
   if (WN_operator(tree) == OPR_BLOCK) {
     for (WN *statement = WN_first(tree); statement != NULL;
          statement = WN_next(statement))
-      count += WOPT_DSL_Reduction_Forms(statement, phase, trace);
+      count += WOPT_DSL_Reduction_Forms(statement, phase, trace, verified);
   } else {
     for (INT32 i = 0; i < WN_kid_count(tree); ++i)
-      count += WOPT_DSL_Reduction_Forms(WN_kid(tree, i), phase, trace);
+      count += WOPT_DSL_Reduction_Forms(WN_kid(tree, i), phase, trace, verified);
   }
   return count;
 }
@@ -623,7 +712,12 @@ WOPT_DSL_verify_reduction_forms
   if (trace != NULL) {
     fprintf(trace, "AI_REDUCE 1 HEADER phase node value rows width axis "
                    "keepdim accum_dtype reassociate status source_line\n");
-    WOPT_DSL_Reduction_Forms(tree, phase, trace);
+    fprintf(trace, "AI_REDUCE_FACT 1 HEADER phase pu node input result input_ty "
+                   "result_ty rows width state identity update finalize real_merge "
+                   "merge_permission order reassociate reformulate finite overflow "
+                   "accuracy input_access output_access input_effect alias "
+                   "output_owner storage source_line\n");
   }
+  WOPT_DSL_Reduction_Forms(tree, phase, trace, TRUE);
   return TRUE;
 }

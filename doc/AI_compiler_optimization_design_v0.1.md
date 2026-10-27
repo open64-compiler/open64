@@ -4,6 +4,14 @@ Version v0.1 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-27 native characterization amendment:
+[Canonical-WHIRL row-sum characterization](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md#canonical-whirl-characterization-2026-10-27)
+now derives state, logical accesses and strict numerical obligations from
+verified native assignments and types, not FX/sample/debug facts. PREOPT
+rederives at entry/exit; additive FACT traces preserve existing FORM records.
+Unknown order/accuracy/alias/storage and forbidden FP32 merge remain explicit.
+This does not select an executable realization or modify MMA1.
+
 2026-10-27 source-to-native R1 amendment:
 the [bounded row-sum connection](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27)
 now consumes the native v1 contract from the exact Python matcher and standalone

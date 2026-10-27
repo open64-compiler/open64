@@ -170,11 +170,54 @@ int main(int argc, char **argv)
   DSL_GATEKEEPER_RESULT gate;
   if (!Check(DSL_Gatekeeper_Verify_PU(pu, stderr, &gate), "gatekeeper"))
     return 1;
+  WOPT_DSL_REDUCTION_CHARACTERIZATION fact;
+  memset(&fact, 0, sizeof(fact));
+  DSL_IR_Image_Get_Header(&before);
+  UINT32 types_before = TY_Table_Size();
+  if (!Check(WOPT_DSL_characterize_reduction
+      (PU_Info_tree_ptr(pu), sum, &fact, stderr), "native_characterization") ||
+      !Check(fact.recipe == WOPT_DSL_REDUCTION_SUM_F32_ROWS_V1 &&
+          fact.rows == 3 && fact.width == 17 && fact.input_ty == input_ty &&
+          fact.result_ty == result_ty && fact.input_value_id != fact.result_value_id &&
+          fact.flags == 0x3ff && fact.source_line == (UINT32)position.line,
+          "characterization_state_access_numerical")) return 1;
+  DSL_IR_Image_Get_Header(&after);
+  if (!Check(memcmp(&before, &after, sizeof(before)) == 0 &&
+             TY_Table_Size() == types_before,
+             "characterization_read_only")) return 1;
+  WOPT_DSL_REDUCTION_CHARACTERIZATION untouched, saved;
+  memset(&untouched, 0x5a, sizeof(untouched));
+  memcpy(&saved, &untouched, sizeof(saved));
+  if (!Check(!WOPT_DSL_characterize_reduction
+          (WN_func_body(PU_Info_tree_ptr(pu)), sum, &untouched, NULL) &&
+          memcmp(&untouched, &saved, sizeof(saved)) == 0,
+          "characterization_scope_rejected") ||
+      !Check(!WOPT_DSL_characterize_reduction
+          (PU_Info_tree_ptr(pu), WN_COPY_Tree(sum), &untouched, NULL) &&
+          memcmp(&untouched, &saved, sizeof(saved)) == 0,
+          "characterization_nonmember_rejected") ||
+      !Check(!WOPT_DSL_characterize_reduction
+          (PU_Info_tree_ptr(pu), sum, NULL, NULL),
+          "characterization_null_output_rejected")) return 1;
+  ST_tensor_bind_metadata(DSL_Builder_Get_Value_Result_Symbol(sum),
+                          "r1.test.non_authoritative_reassociate", "true");
+  ST_tensor_bind_metadata(DSL_Builder_Get_Value_Result_Symbol(sum),
+                          "r1.test.non_authoritative_finite", "true");
+  WOPT_DSL_REDUCTION_CHARACTERIZATION again;
+  memset(&again, 0, sizeof(again));
+  if (!Check(WOPT_DSL_characterize_reduction
+          (PU_Info_tree_ptr(pu), sum, &again, stderr) &&
+          memcmp(&fact, &again, sizeof(fact)) == 0,
+          "characterization_ignores_nonauthoritative_metadata")) return 1;
   WN *input_load = WN_kid0(WN_kid0(sum));
   WN_set_ty(input_load, wrong_ty);
   BOOL corruption_rejected = !DSL_Gatekeeper_Verify_PU(pu, NULL, &gate);
+  BOOL characterization_rejected = !WOPT_DSL_characterize_reduction
+      (PU_Info_tree_ptr(pu), sum, &untouched, NULL) &&
+      memcmp(&untouched, &saved, sizeof(saved)) == 0;
   WN_set_ty(input_load, input_ty);
   if (!Check(corruption_rejected, "gatekeeper_operand_type_corruption") ||
+      !Check(characterization_rejected, "characterization_corruption_rejected") ||
       !Check(!WOPT_DSL_verify_reduction_forms
           (WN_func_body(PU_Info_tree_ptr(pu)), "scope", NULL, NULL),
           "non_pu_scope_rejected")) return 1;
@@ -188,6 +231,10 @@ int main(int argc, char **argv)
        operand, 1, stderr);
   if (!Check(emitted != NULL, "wopt_emit")) return 1;
   WN_kid0(sum) = emitted;
+  if (!Check(WOPT_DSL_characterize_reduction
+          (PU_Info_tree_ptr(pu), sum, &again, stderr) &&
+          memcmp(&fact, &again, sizeof(fact)) == 0,
+          "characterization_after_wopt_emit")) return 1;
   if (!Check(DSL_Gatekeeper_Verify_PU(pu, stderr, &gate),
              "emitted_gatekeeper") ||
       !Check(WOPT_DSL_verify_reduction_forms
