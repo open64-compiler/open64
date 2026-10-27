@@ -199,3 +199,40 @@ PYTHONDONTWRITEBYTECODE=1 python3 osprey/common/com/tests/dsl_compute_realizatio
 The runner verifies every M9 file before reuse. It does not invoke a binary
 producer or edit accepted artifacts. Commands assume the parent output
 directory exists; runs never clean earlier accepted receipts.
+
+## Accepted Local Checkpoint
+
+Implementation commit `761bf24d` on `codex/ai-mma1-contracts`, based on merged
+PR194 develop `40b07e25`. Approved common/R0, six-fixture and MMA design
+commits were incorporated as `e11ffc68`, `e109116f`, `26fde777`; the occupancy
+commits were already merged and were not replayed. No push or PR.
+
+Primary immutable receipt (113 checksum-verified files):
+
+```text
+/Users/shinmingliu/open64/artifacts/review/ai-optimization/mma1/compute-contracts/sha256-08313f5fa1742136596852e542d9fc471348fb667ef05533b788aca6123a520b/
+```
+
+Entry points: `summary.log`, `acceptance/compute.log`,
+`acceptance/review-final/report.json`, `commands.json`, `evidence/`,
+`source/`, `binaries/` and `receipt.json`. The fresh linked scalar fixture
+retains `acceptance/accumulation/accumulation.before.B/.T`,
+`accumulation.after.B/.T`, the full `accumulation.before-after.diff` and
+WHIRL-derived CUDA under `before/` and `after/`. It exercises the established
+F32 segmentation adapter, not MMA or a new F16/BF16 transformation.
+`acceptance/review-final/cached-simt/` retains authenticated D/S1/T2 evidence
+with its M9 parent receipt reference; those are cached producer artifacts.
+
+Independent post-promotion receipt:
+
+```text
+/Users/shinmingliu/open64/artifacts/review/ai-optimization/mma1/reopen/sha256-75206d07f4b9629da92d6148ea563f37c32438bbce6a00dfd8abf3eab98d7b0d/
+```
+
+From the read-only durable receipt, the copied Linux contract binary replays
+byte-for-byte, two separate `ir_b2a -st -src` processes reopen the scalar
+before/after images with identical traces, and the independent reader's
+summary matches. The reader uses the retained MMA1 source plus unchanged,
+authenticated M9 helper sources. Source interleave uses the retained source
+mounted at `/open64`. Both receipts are indexed under the primary review
+root. The no-tab scan and `git diff --check` pass.

@@ -19,6 +19,14 @@ unknown timing and absent native certification. Current kernels stay scalar
 F32 under existing controls. MMA2 cost/selection, MMA3 typed fallback and
 native MMA lowering are not started. No option or mapped-image change.
 
+MMA1 accepted at local source checkpoint `761bf24d`: four Linux inventory
+profiles and 276 negatives, seven independent audit negatives, linked scalar
+before/after review, 109 host regressions, and fresh audit of 1384 M9 files /
+14 readiness traces. Durable binary/reader replay is identical; see the
+[checkpoint paths and limitations](AI-COMPILER-MMA1-TARGET-INVENTORY.md#accepted-local-checkpoint).
+Linux Python 3.8 retains one existing package-test API error; 108 other tests
+pass there. Typed SIMT fallback and GPU/native evidence remain open.
+
 2026-10-27 frontend-fixture increment: six isolated CPU FP32 Python programs
 now cover GEMM, row sum, stable Softmax, affine LayerNorm, causal Attention and
 routed MoE. Independent scalar FP64 references, real FX/shape/argument census,
