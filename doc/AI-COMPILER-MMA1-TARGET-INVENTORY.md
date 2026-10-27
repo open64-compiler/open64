@@ -2,7 +2,9 @@
 
 Date: 2026-10-27. Revision 1. Scope: caller-owned runtime analysis records.
 MMA0 is user-approved for MMA1. This increment implements inventory and
-structural verification; MMA2/MMA3 and all native lowering remain open.
+structural verification. MMA2 now has a separate
+[conditional shadow model](AI-COMPILER-MMA2-SHADOW-MODEL.md); MMA3 and all
+native lowering remain open. Historical MMA1 receipts retain their original scope.
 
 ## Evidence And Exact Recipes
 
@@ -164,7 +166,8 @@ its before/after binary images with `ir_b2a -st -src`. Authenticated M9 D/S1/T2
 artifacts are reused with a fresh reader audit; they are never relabeled MMA.
 Accepted evidence retains source snapshots, commands, raw logs, manual bytes,
 hashes and receipts. No host/structural test certifies GPU numerical behavior
-or performance. MMA2, MMA3, MMA4-H/B, MMA5-H/B, MMA6 and MMA7 remain open.
+or performance. MMA1 alone did not close MMA2, MMA3, MMA4-H/B, MMA5-H/B,
+MMA6 or MMA7. Subsequent MMA2 evidence has its own scope and receipt.
 
 Final focused acceptance: all four Linux C++ profiles, 276 malformed contract
 cases, seven independent malformed-stream audits, the linked Linux numerical

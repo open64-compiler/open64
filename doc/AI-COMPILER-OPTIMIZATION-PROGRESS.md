@@ -16,8 +16,18 @@ Structural joins reuse common plan/tile/evolution/numerical/resource records;
 compute completion and typed SIMT fallback remain explicit requirements.
 AI_COMPUTE 1 inspection distinguishes documented capability, missing lowering,
 unknown timing and absent native certification. Current kernels stay scalar
-F32 under existing controls. MMA2 cost/selection, MMA3 typed fallback and
-native MMA lowering are not started. No option or mapped-image change.
+F32 under existing controls. The [MMA2 analytical shadow model](AI-COMPILER-MMA2-SHADOW-MODEL.md)
+adds conditional synthetic costs, independent schedule replay and explicit
+unknown production timing, never executable selection. MMA3 typed fallback
+and native MMA lowering are not started. No option or mapped-image change.
+
+MMA2 local checkpoint `e0a50cbb` passes 496 synthetic schedules / 1488
+independent oracle corners, 248 paired comparisons, eight unknown profiles,
+113 host regressions and fifteen fresh SIMT compiler/source configurations.
+All sixty before/after images/dumps match authenticated M9; CUDA differs only
+in the translator date. Read-only durable binary/reader/report replay passes.
+See the [durable MMA2 receipt and remaining gates](AI-COMPILER-MMA2-SHADOW-MODEL.md#durable-acceptance-record).
+No PR or push; real timing remains unknown and execution stays SIMT.
 
 MMA1 accepted at local source checkpoint `761bf24d`: four Linux inventory
 profiles and 276 negatives, seven independent audit negatives, linked scalar

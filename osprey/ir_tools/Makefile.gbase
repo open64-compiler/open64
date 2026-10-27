@@ -190,6 +190,7 @@ LDIRT += dsl_physical_plan_opt.o
 LDIRT += dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o
 LDIRT += dsl_accumulation_contract_test dsl_accumulation_contract_test.o dsl_accumulation_opt.o
 LDIRT += dsl_compute_realization_contract_test dsl_compute_realization_contract_test.o dsl_compute_realization.o
+LDIRT += dsl_compute_model.o dsl_compute_shadow_opt.o dsl_compute_shadow_contract_test.o dsl_compute_shadow_contract_test
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
 LDIRT += dsl_opt_contract_test dsl_opt_contract_test.o
 LDIRT += dsl_shape_refine_contract_test dsl_shape_refine_contract_test.o
@@ -510,7 +511,19 @@ dsl_compute_realization_contract_test: dsl_compute_realization.o dsl_compute_rea
 dsl_compute_realization.o: $(COMMON_COM_DIR)/dsl_compute_realization.cxx $(COMMON_COM_DIR)/dsl_compute_realization.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-dsl_compute_realization_contract_test.o: $(COMMON_COM_DIR)/tests/dsl_compute_realization_contract_test.cxx $(COMMON_COM_DIR)/dsl_compute_realization.h
+dsl_compute_realization_contract_test.o: $(COMMON_COM_DIR)/tests/dsl_compute_realization_contract_test.cxx $(COMMON_COM_DIR)/dsl_compute_realization.h $(COMMON_COM_DIR)/tests/dsl_compute_test_fixture.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_compute_shadow_contract_test: dsl_compute_realization.o dsl_compute_model.o dsl_compute_shadow_opt.o dsl_compute_shadow_contract_test.o
+	$(link.c++f) -o $@ $^ $(LDFLAGS)
+
+dsl_compute_model.o: $(COMMON_COM_DIR)/dsl_compute_model.cxx $(COMMON_COM_DIR)/dsl_compute_model.h $(COMMON_COM_DIR)/dsl_compute_realization.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_compute_shadow_opt.o: $(BE_VHO_DIR)/dsl_compute_shadow_opt.cxx $(BE_VHO_DIR)/dsl_compute_shadow_opt.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h $(BE_VHO_DIR)/dsl_gemm_readiness.h $(COMMON_COM_DIR)/dsl_compute_model.h $(COMMON_COM_DIR)/dsl_compute_realization.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_compute_shadow_contract_test.o: $(BE_VHO_DIR)/tests/dsl_compute_shadow_contract_test.cxx $(COMMON_COM_DIR)/tests/dsl_compute_test_fixture.h $(BE_VHO_DIR)/dsl_compute_shadow_opt.h $(COMMON_COM_DIR)/dsl_compute_model.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_compute_realization.o dsl_compute_realization_contract_test.o: \
