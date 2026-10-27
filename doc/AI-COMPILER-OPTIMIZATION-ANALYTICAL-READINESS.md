@@ -192,3 +192,29 @@ large-K and malformed/overflow checks; independent trace ledger/cost/winner
 audits; actual before/after WHIRL reopen, CUDA schedule inspection, and
 host-only reference execution with zero reported error. GPU timing,
 native correctness, PTX/SASS fidelity and target calibration remain open.
+
+## Review Evidence
+
+Compiler checkpoint: `de7256b7`. The immutable review contains 1119
+checksum-verified files: acceptance commands/build and symbol logs, source
+snapshots, ten analytical/relative configurations, legacy D/S1/T2 and controls,
+linked AIO-10 malformed/resource contracts, raw traces, reports, before/after
+WHIRL and generated CUDA. Durable root:
+
+```text
+/Users/shinmingliu/open64/artifacts/review/ai-optimization/m7/analytical-readiness/sha256-9e4d7678b42ff5cfbb543b82d12ac55f39061935fdb371d39046cf09e934b5d0/
+```
+
+Start with `acceptance/analytical/staged/reports/optimization-summary.log`,
+then `reports/phases/physical-plan.log`, `gemm.t`, `gemm.whirl.cu`, and the
+`gemm.before/after.B/.T` and `gemm.before-after.diff` in the same case directory.
+After promotion, the durable staged `.B` was independently reopened with
+`ir_b2a -st -src` and matched the retained `.T` byte-for-byte. Fresh raw-trace
+report replay also reproduced the retained summary exactly.
+
+Impact review overrides the FHE selector's unknown-AI-path full-model fallback:
+the new production calculation is joint-only, with no FHE producer/generic
+materializer/IR-format change. Focused production builds, native contracts,
+old/new source-review runs and independent audits exercise the changed
+contracts. Unrelated full ResNet certification was not rerun. No existing
+durable receipt was overwritten, pruned or removed.

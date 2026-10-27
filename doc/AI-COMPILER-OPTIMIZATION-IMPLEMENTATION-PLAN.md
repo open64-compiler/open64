@@ -1676,7 +1676,7 @@ that the B2/B4 event-model gates below are complete.
 | AR0: contract and definitions | Defined assumed profile, units, D/S1/T2 formulas, ownership, uncertainty, trace obligations and exclusions. |
 | AR1: pure schedule evaluator | Implemented max-plus two-slot recurrence; literal schedule oracle, large-K, overflow and invalid-input coverage. |
 | AR2: joint selector integration | Compiler/source review passed for five shapes and ten configurations. Model 4 defaults in opt-in joint search; relative model 3 retained; winner reconstruction uses identical controls. |
-| AR3: trace/report verification | Independent profile/ledger/recurrence/winner audits and missing/duplicate/corrupt record rejection pass. Raw trace, WHIRL/CUDA and reports retained; durable receipt promotion follows acceptance. |
+| AR3: trace/report verification | Independent profile/ledger/recurrence/winner audits and missing/duplicate/corrupt record rejection pass. 1119 files promoted immutably; durable WHIRL reopen and summary replay match. See analytical design Review Evidence. |
 | AR4: calibration/refinement | Open: measured target profiles, exact tail classes, native occupancy, cache/queue effects, uncertainty-aware selection and GPU verification. |
 
 Initial analytical outcome: 128x128x144 changes actual selection from S1 #12

@@ -23,6 +23,12 @@ explicit calibration question, not evidence of simulator or GPU accuracy.
 No native GPU timing or calibrated ranking is claimed. See the
 [analytical design](AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md).
 
+Compiler checkpoint `de7256b7`: final backend/link checks, legacy D/S1/T2,
+controls/baseline parity and linked AIO-10 contracts pass. 1119 files were
+checksum-verified after immutable promotion; durable `.B` reopen and raw-trace
+summary replay match retained results. Evidence:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m7/analytical-readiness/sha256-9e4d7678b42ff5cfbb543b82d12ac55f39061935fdb371d39046cf09e934b5d0/`.
+
 Design-review increment (2026-10-26): a
 [bubble-prediction algorithm](AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md)
 and B0-B5 queue are proposed inside FP32 analytic refinement. First compare
