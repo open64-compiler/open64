@@ -1,9 +1,12 @@
 # Hopper CUDA Validation Bundle
 
-Joint model 4 now defaults to analytical readiness. See
+Joint model 5 now defaults to hardware-description-driven analytical readiness. See
 `doc/AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md` for assumed reference-cycle
 profile, limitations and schedule pseudocode. `gemm_cost_model=relative`
-preserves model 3; `gemm_memory_latency=N` changes assumed startup latency.
+preserves model 3. `gpu_arch=sm_90/sm_90a` selects exact common table rows;
+`gemm_memory_latency=N` is explicit-override only, including zero. See
+`doc/AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md`. Initial table
+timing remains estimated; Blackwell rows are planning-only, not new lowering.
 Run `run_readiness_review.py --build-dir <build> --output-dir <fresh-output>`
 for real compiler selection, malformed trace/option checks, retained before/
 after WHIRL and CUDA, and host-only execution. `test_readiness.py` compiles

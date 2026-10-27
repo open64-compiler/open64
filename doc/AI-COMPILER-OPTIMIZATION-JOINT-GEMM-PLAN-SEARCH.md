@@ -71,12 +71,15 @@ selection instead of committing a partial transformation.
 ## Complete Cost Model 1
 
 Historical model 1 is retained below; D/S1/T2 model 3 extends it with independent
-movement-resource legality. The default joint selector is now model 4,
+movement-resource legality. The default joint selector is now model 5,
 [analytical readiness](AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md), using
 explicit assumed delivery latency/service, consumer timing and executable
 two-slot schedule boundaries. `gemm_cost_model=relative` retains model 3.
 The new model uses reference cycles throughout a census, not a mixture with
 these historical relative scores. No simulator is required by compilation.
+The [hardware-description service](AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md)
+resolves exact `sm_*` names and supplies all timing/rate parameters; the
+evaluator has no private defaults. Initial common rows remain estimates.
 
 All amounts are low-confidence **relative units**, not nanoseconds, FLOP/s,
 or performance measurements. The old AIO-10 transaction score is not added to

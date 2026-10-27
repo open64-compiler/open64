@@ -7,11 +7,59 @@
  * residency and tiling planners. Profiles are immutable planning envelopes,
  * not runtime device discovery. Design:
  * doc/AI-COMPILER-OPTIMIZATION-AIO8-RESIDENCY.md.
+ * Public architecture names and quantitative runtime descriptions:
+ * doc/AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md.
  */
 
 #include <string.h>
 
 #include "dsl_memory_hierarchy.h"
+
+/* Independent table rows selected by exact sm_* names. These quantitative
+ * values preserve the initial synthetic envelope, NOT NVIDIA specifications.
+ * No SKU/clock/measurement is implied; replacing estimates changes revision.
+ * Path latency is startup only; byte service is charged by the consumer. */
+static const DSL_HARDWARE_DESCRIPTION_RECORD DSL_hardware_descriptions[] = {
+    { DSL_HARDWARE_ARCH_SM_90, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 1, 0,
+      "sm_90", "sm90_estimated_v1", "reference_cycles", "estimated",
+      { 4, 32, 32, 128, 4, 128, 16, 100, 100, 100, 100, 8, 8, 8, 1 } },
+    { DSL_HARDWARE_ARCH_SM_90A, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 1, 0,
+      "sm_90a", "sm90a_estimated_v1", "reference_cycles", "estimated",
+      { 4, 32, 32, 128, 4, 128, 16, 100, 100, 100, 100, 8, 8, 8, 1 } },
+    { DSL_HARDWARE_ARCH_SM_100, DSL_TARGET_PROFILE_NVIDIA_BLACKWELL, 1, 0,
+      "sm_100", "sm100_estimated_v1", "reference_cycles", "estimated",
+      { 4, 32, 32, 128, 4, 128, 16, 100, 100, 100, 100, 8, 8, 8, 1 } },
+    { DSL_HARDWARE_ARCH_SM_100A, DSL_TARGET_PROFILE_NVIDIA_BLACKWELL, 1, 0,
+      "sm_100a", "sm100a_estimated_v1", "reference_cycles", "estimated",
+      { 4, 32, 32, 128, 4, 128, 16, 100, 100, 100, 100, 8, 8, 8, 1 } }
+};
+
+/* Return a validated copy of one built-in description, preserving caller
+ * output on invalid ID; this common service makes no profitability decision. */
+BOOL DSL_hardware_description_get_arch(UINT32 arch_id,
+    DSL_HARDWARE_DESCRIPTION_RECORD *description)
+{
+    if (!description) return FALSE;
+    for (UINT32 i = 0; i < sizeof(DSL_hardware_descriptions) / sizeof(DSL_hardware_descriptions[0]); ++i)
+        if (DSL_hardware_descriptions[i].arch_id == arch_id &&
+            DSL_hardware_performance_valid(DSL_hardware_descriptions[i].performance)) {
+            *description = DSL_hardware_descriptions[i];
+            return TRUE;
+        }
+    return FALSE;
+}
+
+/* Match the complete option spelling, including architecture suffixes. Never
+ * infer support from a numeric prefix or alias a different ISA family. */
+BOOL DSL_hardware_description_find_arch(const char *architecture,
+    DSL_HARDWARE_DESCRIPTION_RECORD *description)
+{
+    if (!architecture || !description) return FALSE;
+    for (UINT32 i = 0; i < sizeof(DSL_hardware_descriptions) / sizeof(DSL_hardware_descriptions[0]); ++i)
+        if (strcmp(architecture, DSL_hardware_descriptions[i].architecture) == 0)
+            return DSL_hardware_description_get_arch(DSL_hardware_descriptions[i].arch_id, description);
+    return FALSE;
+}
 
 static const char *DSL_target_profile_name_table[] = {
     "unknown", "cpu_baseline", "nvidia_hopper", "nvidia_blackwell"

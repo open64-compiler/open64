@@ -11,6 +11,7 @@
  * doc/AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md.
  * Direct residency extension: doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md.
  * Analytical timing: doc/AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md.
+ * Table resolution: doc/AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md.
  */
 
 #include <algorithm>
@@ -73,6 +74,8 @@ DSL_Fetch_Pipeline_Active (const DSL_FETCH_PIPELINE_ANALYSIS *analysis)
                &Pu_Table[ST_pu(St_Table[analysis->owner_pu_st])];
 }
 
+/* Initialize legacy generation defaults and an exact hardware architecture
+ * key. Timing is resolved from the common table, never defaulted here. */
 void
 VHO_DSL_Fetch_Pipeline_Control_Init
         (VHO_DSL_FETCH_PIPELINE_CONTROL *control)
@@ -83,6 +86,7 @@ VHO_DSL_Fetch_Pipeline_Control_Init
     control->generate_candidates = 1;
     control->select_plans = 1;
     control->target_profile_id = DSL_TARGET_PROFILE_NVIDIA_HOPPER;
+    control->hardware_arch_id = DSL_HARDWARE_ARCH_SM_90;
     control->max_sites = 16;
     control->max_plans_per_site = 8;
     control->maximum_buffer_stages = 3;
@@ -98,6 +102,7 @@ static BOOL
 DSL_Fetch_Pipeline_Control_Valid
         (const VHO_DSL_FETCH_PIPELINE_CONTROL &control)
 {
+    DSL_HARDWARE_DESCRIPTION_RECORD hardware;
     return control.generate_candidates <= 1 &&
            control.select_plans <= 1 &&
            control.apply_transformation == 0 &&
@@ -110,6 +115,8 @@ DSL_Fetch_Pipeline_Control_Valid
            control.joint_cost <= 1 &&
            control.readiness_cost <= 1 && (!control.readiness_cost || control.joint_cost) &&
            control.memory_latency <= 1000000 &&
+           control.memory_latency_set <= 1 &&
+           (!control.readiness_cost || VHO_DSL_fetch_hardware_description(control, &hardware)) &&
            control.enable_direct <= 1 && (!control.enable_direct || control.joint_cost) &&
            control.reserved == 0 &&
            (!control.select_plans || control.generate_candidates);
@@ -554,16 +561,20 @@ DSL_fetch_joint_relative_cost
  * assumed. Tails use average traffic but full padded consumer work. */
 BOOL
 VHO_DSL_fetch_readiness_cost(const DSL_TILE_PLAN_RECORD &tile,
-    const DSL_FETCH_PLAN_RECORD &fetch, UINT32 latency,
+    const DSL_FETCH_PLAN_RECORD &fetch, const DSL_HARDWARE_DESCRIPTION_RECORD &hardware,
     DSL_GEMM_READINESS_INPUT *input, DSL_GEMM_READINESS_RESULT *result)
 {
+    if (!input || !result || tile.target_profile_id != hardware.target_profile_id ||
+        !DSL_hardware_performance_valid(hardware.performance)) return FALSE;
     DSL_GEMM_READINESS_INPUT in = {};
+    in.hardware = hardware.performance;
     const BOOL direct = (fetch.flags & DSL_FETCH_PLAN_FLAG_DIRECT) != 0;
     const BOOL tma = fetch.engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC;
     UINT64 pairs, traffic, operations, local, temporary;
     in.kind = direct ? 0 : tma ? 2 : 1;
-    in.latency = latency;
-    in.warps = DSL_Fetch_Ceil_Div(tile.threads_per_cta, 32);
+    in.latency = direct ? in.hardware.demand_latency :
+        tma ? in.hardware.tma_latency : in.hardware.staged_latency;
+    in.warps = DSL_Fetch_Ceil_Div(tile.threads_per_cta, in.hardware.warp_lanes);
     if (!tile.cta_m || !tile.cta_n || !tile.cta_k || !in.warps ||
         !DSL_readiness_mul(DSL_Fetch_Ceil_Div(tile.problem_m, tile.cta_m),
                           DSL_Fetch_Ceil_Div(tile.problem_n, tile.cta_n), &in.ctas)) return FALSE;
@@ -580,21 +591,42 @@ VHO_DSL_fetch_readiness_cost(const DSL_TILE_PLAN_RECORD &tile,
     in.output_bytes = DSL_Fetch_Ceil_Div(tile.gmem_c_sector_bytes, in.ctas);
     if (!DSL_Fetch_Mul_U64(tile.cta_m, tile.cta_n, &operations) ||
         !DSL_Fetch_Mul_U64(operations, direct ? 2 : (UINT64)2 * tile.cta_k, &operations)) return FALSE;
-    in.consumer = DSL_Fetch_Ceil_Div(operations, 128);
+    in.consumer = DSL_Fetch_Ceil_Div(operations, in.hardware.scalar_ops_per_cycle);
     if (!direct) {
         if (!DSL_Fetch_Add_U64(tile.smem_a_load_issue_work, tile.smem_b_load_issue_work, &local) ||
             !DSL_Fetch_Add_U64(local, tile.smem_bank_conflict_work, &local) ||
             !DSL_Fetch_Add_U64(local, tile.smem_address_work, &local) ||
-            !DSL_Fetch_Mul_U64(pairs, 4, &temporary) ||
+            !DSL_Fetch_Mul_U64(pairs, in.hardware.local_issues_per_cycle, &temporary) ||
             !DSL_readiness_add(in.consumer, DSL_Fetch_Ceil_Div(local, temporary), &in.consumer)) return FALSE;
         if (!tma) {
             if (!DSL_Fetch_Add_U64(tile.cta_m, tile.cta_n, &temporary) ||
                 !DSL_Fetch_Mul_U64(temporary, tile.cta_k, &temporary)) return FALSE;
-            in.copy = DSL_Fetch_Ceil_Div(temporary, 128);
+            in.copy = DSL_Fetch_Ceil_Div(temporary, in.hardware.copy_elements_per_cycle);
         }
     }
     if (!DSL_readiness_evaluate(in, result)) return FALSE;
     *input = in;
+    return TRUE;
+}
+
+/* Clone the exact architecture row for this planning scope, preserving the
+ * immutable common table and rejecting family/ID mismatches. Explicit legacy
+ * latency overrides affect all memory paths, with provenance in the trace. */
+BOOL VHO_DSL_fetch_hardware_description(const VHO_DSL_FETCH_PIPELINE_CONTROL &control,
+    DSL_HARDWARE_DESCRIPTION_RECORD *hardware)
+{
+    DSL_HARDWARE_DESCRIPTION_RECORD result;
+    if (!hardware || control.memory_latency_set > 1 ||
+        !DSL_hardware_description_get_arch(control.hardware_arch_id, &result) ||
+        result.target_profile_id != control.target_profile_id) return FALSE;
+    if (control.memory_latency_set) {
+        result.latency_override = 1;
+        result.performance.demand_latency = control.memory_latency;
+        result.performance.staged_latency = control.memory_latency;
+        result.performance.tma_latency = control.memory_latency;
+        result.performance.store_latency = control.memory_latency;
+    }
+    *hardware = result;
     return TRUE;
 }
 
@@ -608,7 +640,9 @@ DSL_fetch_joint_cost(const DSL_TILE_PLAN_RECORD &tile,
     if (!control.readiness_cost) return DSL_fetch_joint_relative_cost(tile, fetch, cost);
     DSL_GEMM_READINESS_INPUT input;
     DSL_GEMM_READINESS_RESULT result;
-    if (!VHO_DSL_fetch_readiness_cost(tile, fetch, control.memory_latency, &input, &result)) return FALSE;
+    DSL_HARDWARE_DESCRIPTION_RECORD hardware;
+    if (!VHO_DSL_fetch_hardware_description(control, &hardware) ||
+        !VHO_DSL_fetch_readiness_cost(tile, fetch, hardware, &input, &result)) return FALSE;
     for (UINT32 i = 0; i < DSL_OPT_COST_TERM_COUNT; ++i) {
         DSL_Fetch_Cost_Term(&cost->terms[i],
             i == DSL_OPT_COST_COMPUTE ? result.compute :

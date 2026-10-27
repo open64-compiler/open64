@@ -10,6 +10,14 @@ Companion: `AI_compiler_optimization_design_v0.3.md` and
 
 ## 1. Architecture and decision boundary
 
+Target selection update (2026-10-26):
+[Hardware Description IR And Target Selection](AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md)
+defines exact `sm_*` option lookup into our own common tables, per-path timing,
+units/provenance, explicit override isolation and compiler/auditor ownership.
+The analytical readiness model now consumes that resolved description instead
+of private delay/rate constants. Initial quantitative rows are estimates;
+Blackwell description lookup does not certify Blackwell code generation.
+
 ### 1.1 Notation
 
 | Term | Definition in this document |

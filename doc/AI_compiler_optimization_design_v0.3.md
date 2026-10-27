@@ -468,10 +468,18 @@ Update 2026-10-26: production joint selection now follows the separate
 It replaces traffic-score overlap credit with a bounded schedule recurrence
 for operand readiness, consumer work, slot release/refill, bandwidth service,
 startup and drain. Complete D/S1/T2 alternatives share one assumed-cycle
-profile before transformation. Joint model 4 defaults to readiness; explicit
+profile before transformation. Joint model 5 defaults to readiness; explicit
 `gemm_cost_model=relative` preserves model 3 for comparison. Baseline mode is
 unchanged. The source-warp simulator below remains a separate diagnostic;
 its proposed production integration/select controls are not implemented.
+
+Hardware descriptions are the single target-data authority. Familiar exact
+`sm_*` values resolve to our own versioned common tables; per-path latency,
+bandwidth, compute/local service and synchronization timing are not private
+constants in an optimizer. See
+[Hardware Description IR And Target Selection](AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md).
+Current quantitative rows are explicitly estimated, not measured NVIDIA
+timing. New `HW_DESC/HW_PERF` trace records identify the table and overrides.
 
 This initial analytical selector is assumption-driven, not confidence-certified
 or calibrated GPU performance. Native occupancy/cache/queue refinements remain

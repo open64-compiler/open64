@@ -1666,6 +1666,22 @@ acceptance gates. Host simulation and relative cost minima cannot close them.
 
 ## Bubble Model Experiment
 
+Hardware-description follow-on (2026-10-26):
+[target selection](AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md) is now
+implemented. Model 5 resolves exact `gpu_arch=sm_*` names through common
+Hardware Description IR and consumes its per-path startup, rates and
+synchronization parameters. No optimizer-owned timing default remains;
+the old latency option is explicit-override only. Model 4 below is historical.
+Initial tables remain estimated, not calibrated NVIDIA specifications.
+
+| HW step | Status and acceptance |
+| --- | --- |
+| HW0: common description contract | Implemented policy-free immutable architecture registry and standalone performance payload; no binary WHIRL change. |
+| HW1: timing/rate consumers | Evaluator and adapter consume table data; literal recurrence tests vary hardware parameters. |
+| HW2: controls and target gates | Exact sm_90/sm_90a selection; sm_100/sm_100a planning descriptions; unknown/suffix and unsupported emission rejection. |
+| HW3: trace/report evidence | Model 5 HW_DESC/HW_PERF records, independent audit and prominent tile.log table identity; final compiler/source acceptance in progress. |
+| HW4: actual characterization | Open: SKU/refinement, measured timing/clock domains, calibration and native GPU certification. |
+
 Priority update 2026-10-26: implement the lightweight
 [analytical readiness selector](AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md)
 before production simulator integration. This is a separate path, not a claim
@@ -1675,7 +1691,7 @@ that the B2/B4 event-model gates below are complete.
 | --- | --- |
 | AR0: contract and definitions | Defined assumed profile, units, D/S1/T2 formulas, ownership, uncertainty, trace obligations and exclusions. |
 | AR1: pure schedule evaluator | Implemented max-plus two-slot recurrence; literal schedule oracle, large-K, overflow and invalid-input coverage. |
-| AR2: joint selector integration | Compiler/source review passed for five shapes and ten configurations. Model 4 defaults in opt-in joint search; relative model 3 retained; winner reconstruction uses identical controls. |
+| AR2: joint selector integration | Historical model-4 compiler/source review passed for five shapes and ten configurations. Current model 5 uses resolved HW descriptions; relative model 3 retained; winner reconstruction uses identical controls. |
 | AR3: trace/report verification | Independent profile/ledger/recurrence/winner audits and missing/duplicate/corrupt record rejection pass. 1119 files promoted immutably; durable WHIRL reopen and summary replay match. See analytical design Review Evidence. |
 | AR4: calibration/refinement | Open: measured target profiles, exact tail classes, native occupancy, cache/queue effects, uncertainty-aware selection and GPU verification. |
 

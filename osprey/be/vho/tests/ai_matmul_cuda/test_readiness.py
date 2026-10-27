@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
-from readiness_report import readiness_cost
+from readiness_report import readiness_cost, legacy_performance
 from ai_opt_report import verify_joint
 import test_direct_staged_comparison
 
@@ -18,6 +18,7 @@ class ReadinessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="readiness-") as tmp:
             binary = str(Path(tmp) / "contract")
             subprocess.run([os.environ.get("CXX", "c++"), "-std=c++11", "-O2",
+                            "-I", str(HERE.parents[3] / "common/com"),
                             "-I", str(HERE.parents[1]), str(HERE / "readiness_contract.cxx"),
                             "-o", binary], check=True, capture_output=True, text=True)
             result = subprocess.run([binary], check=True, capture_output=True, text=True, timeout=10)
@@ -80,6 +81,30 @@ class ReadinessTest(unittest.TestCase):
                 args[6][1][mutation] += 1
             with self.assertRaises(ValueError, msg=mutation):
                 verify_joint(*args)
+
+    def test_hardware_payload_drives_independent_recomputation(self):
+        for name, value in (("memory_bytes_per_cycle", 7), ("scalar_ops_per_cycle", 16),
+                            ("local_issues_per_cycle", 1), ("copy_elements_per_cycle", 3),
+                            ("wait_cycles", 31), ("release_cycles", 17), ("store_latency", 19)):
+            args = list(self.audit_fixture())
+            args[0]["model"] = 5
+            hw = legacy_performance(100)
+            hw[name] = value
+            args[-1] = dict(name="sm90_estimated_v1", architecture="sm_90", target=2,
+                revision=1, unit="reference_cycles", provenance="estimated", override=0, performance=hw)
+            for row in args[1]:
+                record, terms = readiness_cost(args[3][-1], row["kind"], None,
+                    args[4].get(row["id"]), hw)
+                args[6][row["id"]] = record
+                row.update(zip(("compute", "memory", "communication", "sync", "launch", "runtime", "total"), terms))
+            args[2]["selected"] = min(args[1], key=lambda row: (row["total"], row["id"]))["id"]
+            self.assertEqual(verify_joint(*args)["profile"]["performance"][name], value)
+
+    def test_historical_model_cannot_impersonate_table_model(self):
+        args = list(self.audit_fixture())
+        args[0]["model"] = 5
+        with self.assertRaisesRegex(ValueError, "description"):
+            verify_joint(*args)
 
 
 if __name__ == "__main__":

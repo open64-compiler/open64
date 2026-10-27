@@ -8,6 +8,7 @@
  * Design: doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md.
  * Direct negatives: doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md.
  * Resource gates: doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md.
+ * Hardware lookup: doc/AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md.
  */
 
 #include <stdio.h>
@@ -551,7 +552,8 @@ DSL_test_movement_resource_gates
 
 /* Exercise direct-plan runtime records and malformed-copy rejection without
  * publishing an image. The active PU supplies all ownership/alias facts;
- * copied arrays isolate each negative and analysis destruction owns cleanup. */
+ * copied arrays isolate each negative and analysis destruction owns cleanup.
+ * Also prove the production adapter consumes per-path hardware timing. */
 static int
 DSL_test_direct_record_contracts ()
 {
@@ -579,6 +581,22 @@ DSL_test_direct_record_contracts ()
     if (!DSL_tile_plan_ir_get_plan(VHO_DSL_Tile_Get_IR(analysis.tile), 2, &geometry)) return 1;
     if ((geometry.flags & DSL_TILE_PLAN_FLAG_DEFERRED_RESOURCES) == 0) return 1;
     if (!DSL_test_movement_resource_gates(geometry, plans)) return 1;
+    // The real adapter must select the path's timing, not a private default.
+    DSL_HARDWARE_DESCRIPTION_RECORD hardware;
+    if (!DSL_hardware_description_find_arch("sm_90", &hardware)) return 1;
+    hardware.performance.demand_latency = 17;
+    hardware.performance.staged_latency = 31;
+    hardware.performance.tma_latency = 43;
+    hardware.performance.store_latency = 71;
+    hardware.performance.local_issues_per_cycle = 2;
+    for (UINT32 i = 0; i < plans.size(); ++i) {
+        DSL_GEMM_READINESS_INPUT input;
+        DSL_GEMM_READINESS_RESULT result;
+        if (!VHO_DSL_fetch_readiness_cost(geometry, plans[i], hardware, &input, &result) ||
+            input.latency != ((plans[i].flags & DSL_FETCH_PLAN_FLAG_DIRECT) ? 17 :
+                plans[i].engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC ? 43 : 31) ||
+            memcmp(&input.hardware, &hardware.performance, sizeof(input.hardware))) return 1;
+    }
     geometry.problem_m = geometry.cta_m = 8;
     geometry.problem_n = geometry.cta_n = 32;
     geometry.problem_k = geometry.cta_k = 8;
@@ -634,6 +652,46 @@ DSL_test_direct_record_contracts ()
     return 0;
 }
 
+/* Verify target lookup and explicit override isolation through the production
+ * common/VHO APIs; failure must not mutate source tables or caller outputs. */
+static int
+DSL_test_hardware_description()
+{
+    const char *names[] = { "sm_90", "sm_90a", "sm_100", "sm_100a" };
+    for (UINT32 i = 0; i < 4; ++i) {
+        DSL_HARDWARE_DESCRIPTION_RECORD original, copy;
+        if (!DSL_hardware_description_find_arch(names[i], &original) ||
+            strcmp(original.architecture, names[i]) ||
+            !DSL_hardware_performance_valid(original.performance)) return 1;
+        VHO_DSL_FETCH_PIPELINE_CONTROL control;
+        VHO_DSL_Fetch_Pipeline_Control_Init(&control);
+        control.target_profile_id = original.target_profile_id;
+        control.hardware_arch_id = original.arch_id;
+        if (!VHO_DSL_fetch_hardware_description(control, &copy) ||
+            memcmp(&copy.performance, &original.performance, sizeof(copy.performance))) return 1;
+        control.memory_latency_set = 1;
+        control.memory_latency = 17;
+        if (!VHO_DSL_fetch_hardware_description(control, &copy) ||
+            copy.performance.tma_latency != 17 || copy.performance.store_latency != 17 ||
+            !copy.latency_override) return 1;
+        control.memory_latency = 0;
+        if (!VHO_DSL_fetch_hardware_description(control, &copy) ||
+            copy.performance.tma_latency || copy.performance.store_latency ||
+            !copy.latency_override) return 1;
+        if (!DSL_hardware_description_find_arch(names[i], &copy) ||
+            memcmp(&copy.performance, &original.performance, sizeof(copy.performance)) ||
+            copy.latency_override) return 1;
+        control.target_profile_id = DSL_TARGET_PROFILE_CPU_BASELINE;
+        if (VHO_DSL_fetch_hardware_description(control, &copy)) return 1;
+        if (DSL_hardware_description_find_arch("sm_90typo", &copy) ||
+            DSL_hardware_description_find_arch("sm_120", &copy) ||
+            DSL_hardware_description_get_arch(0, &copy) ||
+            memcmp(&copy.performance, &original.performance, sizeof(copy.performance))) return 1;
+    }
+    printf("Hardware Description IR exact lookup, suffixes, overrides and family isolation passed\n");
+    return 0;
+}
+
 /* Dispatch one isolated contract mode; individual producers own all artifacts
  * and return failure before the shell harness may certify a receipt. */
 int
@@ -660,5 +718,7 @@ main(void)
         return Run_Control();
     if (strcmp(mode, "direct") == 0)
         return DSL_test_direct_record_contracts();
+    if (strcmp(mode, "hardware") == 0)
+        return DSL_test_hardware_description();
     return 1;
 }

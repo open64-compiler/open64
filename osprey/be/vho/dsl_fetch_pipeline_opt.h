@@ -44,6 +44,8 @@ typedef struct {
     UINT32 joint_cost;
     UINT32 readiness_cost;
     UINT32 memory_latency;
+    UINT32 memory_latency_set;
+    UINT32 hardware_arch_id;
     UINT32 enable_direct;
     DSL_TILE_PLAN_ID tile_plan_id;
     UINT32 reserved;
@@ -54,8 +56,14 @@ typedef struct {
  * outputs unused and prevents selection. */
 extern BOOL VHO_DSL_fetch_readiness_cost
     (const DSL_TILE_PLAN_RECORD &tile, const DSL_FETCH_PLAN_RECORD &fetch,
-     UINT32 latency, DSL_GEMM_READINESS_INPUT *input,
+     const DSL_HARDWARE_DESCRIPTION_RECORD &hardware, DSL_GEMM_READINESS_INPUT *input,
      DSL_GEMM_READINESS_RESULT *result);
+
+/* Resolve common table data into a caller-owned PU-local description and
+ * apply only explicit diagnostic overrides; never mutate built-in tables. */
+extern BOOL VHO_DSL_fetch_hardware_description
+    (const VHO_DSL_FETCH_PIPELINE_CONTROL &control,
+     DSL_HARDWARE_DESCRIPTION_RECORD *hardware);
 
 extern void VHO_DSL_Fetch_Pipeline_Control_Init
                                 (VHO_DSL_FETCH_PIPELINE_CONTROL *control);

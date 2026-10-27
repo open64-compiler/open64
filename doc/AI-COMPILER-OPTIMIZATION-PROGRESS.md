@@ -8,7 +8,18 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
-Analytical readiness increment (2026-10-26): the compiler's opt-in joint path
+Hardware-description increment (2026-10-26): exact `gpu_arch=sm_90/sm_90a`
+resolves into our own common Hardware Description IR. Model 5 removes private
+delay/rate constants from analytical evaluation and ledger adaptation; all
+path startup, store, sync, issue, service and wave parameters come from named
+tables. The legacy latency option applies only when explicitly supplied.
+Blackwell rows exist for planning but unsupported CUDA emission fails closed.
+`tile.log` now shows architecture/table/revision/provenance before old
+diagnostic scores. Unit/oracle and initial compiler/source checks pass; final
+acceptance is in progress. These tables still carry uncalibrated estimates.
+See [target selection](AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md).
+
+Historical analytical readiness increment (2026-10-26): the compiler's opt-in joint path
 now defaults to a schedule-aware reference-cycle model instead of traffic-score
 overlap credit. D/S1/T2 share an explicit assumed profile; T2 models preload,
 ready waits, consume/release/refill and drain in O(log K). Relative model 3

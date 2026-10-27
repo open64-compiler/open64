@@ -1,6 +1,6 @@
 # Analytical GEMM Readiness Model
 
-Version: v0.1, 2026-10-26. Owner: PU-local VHO P7/P8 joint selection at -O3.
+Version: v0.2, 2026-10-26. Owner: PU-local VHO P7/P8 joint selection at -O3.
 This is a DSC design proposal and initial implementation, not a published
 NVIDIA timing model. It replaces traffic-score overlap credit for joint
 search without changing candidate legality, WHIRL image format, or lowering.
@@ -30,7 +30,7 @@ GPU, new library dependency, or cross-PU traversal is required by compilation.
 | Ready time | Issue/engine-service completion plus fixed latency. |
 | Prefetch window | Adjacent consumer work plus release/wait boundaries available to cover a refill; diagnostic, not a second overlap discount. |
 | Exposed wait | Clock advancement at a required readiness edge beyond the consumer clock. Already included once in completion. |
-| Grid wave | Up to four CTAs, with one CTA per assumed SM; waves execute sequentially. |
+| Grid wave | Up to the Hardware Description IR's SM count in CTAs, with one CTA per SM in this initial model; waves execute sequentially. |
 | Reference cycle | Unit of the explicit assumed profile, not a measured GPU cycle prediction. |
 
 ## Controls And Profile
@@ -40,13 +40,25 @@ GPU, new library dependency, or cross-PU traversal is required by compilation.
 Baseline/non-joint compilation does not change. Existing -O3, executable
 preflight, target, host-provider and trace gates still apply.
 
-`-Wb,-DSL:gemm_memory_latency=N` supplies assumed startup reference cycles
-(0..1000000, default 100). Profile `assumed_v1` uses four SMs, one CTA/SM,
-32 delivered bytes/cycle shared across a wave, 128 scalar FP operations per
-SM/cycle, four local warp issues/cycle, eight cycles per barrier macro,
-and two cycles to issue an A/B TMA pair. These are **illustrative assumptions,
-not Hopper/Blackwell specifications or calibrated effective rates**. Only L
-is configurable in v0.1; a validated target-profile interface is follow-up.
+`-Wb,-DSL:gpu_arch=sm_90` selects the exact built-in Hardware Description IR.
+The default preserves `sm_90`; `sm_90a` is distinct. The common registry also
+provides Blackwell planning rows, but CUDA emission for those remains rejected.
+See [target selection](AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md).
+
+All quantitative values now come from that description: per-path startup,
+store completion, publication/wait/release/issue costs, SM/wave count, warp
+width and delivery/compute/local/copy rates. The evaluator and adapter have
+no private hardware delay/rate defaults. Initial common table values preserve
+the earlier synthetic envelope and are marked `estimated`; **centralization
+does not turn them into measured NVIDIA specifications**.
+
+`-Wb,-DSL:gemm_memory_latency=N` (0..1000000) is now an explicitly supplied
+diagnostic override of memory startup fields in a local description copy.
+There is no option-owned default delay. Explicit zero is distinguishable from
+omission and recorded in the trace. Built-in tables are never mutated.
+
+The historical model-4 `assumed_v1` profile and old results below remain
+readable for immutable receipt review; new production traces use model 5.
 
 ## Ledger Adapter
 
@@ -55,7 +67,8 @@ or replicated payload ledger (T2), including output sectors. Divide whole
 GEMM traffic by CTA/step count, rounding upward; tails therefore use average
 traffic, not an exact last-CTA timing prediction. Consumer arithmetic uses
 the full padded CTA tile. Local load issues, bank-conflict excess, and address
-work are divided by four assumed issue lanes. S1 also pays scalar copy work.
+work are divided by the description's local issue service. S1 also pays
+scalar copy work using the description's staging service rate.
 The initial local-work aggregate conservatively includes copy bank excess
 for T2; separate consumer/copy breakdown is a future precision improvement.
 
@@ -69,9 +82,9 @@ are not modeled. The one-CTA/SM envelope is explicit, not an occupancy proof.
 ```text
 for each legal or rejected complete candidate in stable enumeration order:
     derive CTA count, step count, consumer time, input/output bytes, copy work
-    cost full four-CTA waves and one possible partial wave
+    cost full hardware-description waves and one possible partial wave
     D/S1:
-        exposed_startup = ceil(L / min(warps_per_CTA, 16))
+        exposed_startup = ceil(L / min(warps_per_CTA, hardware_hiding_limit))
         step = C + input_service + exposed_startup + scalar_copy
         S1 additionally pays two barrier macros per step
     T2:
@@ -129,10 +142,12 @@ predicted differences must not be reported as measured gains.
 ## Trace And Tool Requirements
 
 Existing option-controlled `.t` records retain source lines and stable IDs.
-Joint model 4 uses `cycles low`; models 1..3 remain readable without change.
+Joint model 5 uses `cycles low` and records the resolved hardware description.
+Models 1..4 remain readable without changing historical evidence.
 
 ```text
-READINESS_PROFILE assumed_v1 L 4 32 128 4 8 2 one_cta_per_sm
+HW_DESC architecture table family revision unit provenance latency_override
+HW_PERF sms warp_lanes memory_bytes_per_cycle scalar_ops_per_cycle local_issues_per_cycle copy_elements_per_cycle latency_hiding_warps demand_latency staged_latency tma_latency store_latency publication_cycles wait_cycles release_cycles operand_issue_cycles
 JOINT_READINESS id CTAs steps C input_bytes output_bytes copy warps delivery window wait waves total source_line
 ```
 
@@ -160,7 +175,7 @@ instructions, cache and queue effects, and native launch costs. Use the
 diagnostic and GPU measurements as calibration/validation, not as a mandatory
 compiler dependency or a synthetic ground truth.
 
-## Initial Compiler Results
+## Historical Model-4 Compiler Results
 
 The compiler/source review exercises ten analytical/relative configurations
 including five shapes, latency 20/100/400, explicit/default model parity and
@@ -193,7 +208,7 @@ audits; actual before/after WHIRL reopen, CUDA schedule inspection, and
 host-only reference execution with zero reported error. GPU timing,
 native correctness, PTX/SASS fidelity and target calibration remain open.
 
-## Review Evidence
+## Historical Model-4 Review Evidence
 
 Compiler checkpoint: `de7256b7`. The immutable review contains 1119
 checksum-verified files: acceptance commands/build and symbol logs, source

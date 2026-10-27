@@ -1,17 +1,19 @@
 /* Copyright (C) 2026 Open64 Project */
 /* VHO-only analytical schedule arithmetic, not an instruction simulator or
- * persisted WHIRL contract. All times use the assumed profile in
- * doc/AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md. */
+ * persisted WHIRL contract. All hardware rates/times are caller-supplied from
+ * doc/AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md. */
 #ifndef dsl_gemm_readiness_INCLUDED
 #define dsl_gemm_readiness_INCLUDED
 
 #include <algorithm>
 #include <stdint.h>
 #include <string.h>
+#include "dsl_hardware_performance.h"
 
 struct DSL_GEMM_READINESS_INPUT {
     uint64_t ctas, steps, consumer, input_bytes, output_bytes, copy;
     uint64_t warps, latency;
+    DSL_HARDWARE_PERFORMANCE_RECORD hardware;
     unsigned kind; // 0 D, 1 S1, 2 T2
 };
 
@@ -88,36 +90,45 @@ static inline bool DSL_readiness_repeat(DSL_GEMM_READINESS_MATRIX matrix,
 }
 
 /* Evaluate one wave using the real T2 preload/refill/drain dependency pattern.
- * Service is serialized aggregate wave traffic; A/B issue is a two-cycle
- * macro, not claimed PTX timing. D/S1 use an explicit inter-warp latency
+ * Service is serialized aggregate wave traffic; A/B issue costs come from
+ * the hardware description. D/S1 use an explicit inter-warp latency
  * allowance; no arbitrary hidden-traffic discount is applied. */
 static inline bool DSL_readiness_wave(const DSL_GEMM_READINESS_INPUT &in,
     uint64_t active, DSL_GEMM_READINESS_RESULT *out)
 {
     DSL_GEMM_READINESS_RESULT r = {};
+    const DSL_HARDWARE_PERFORMANCE_RECORD &hw = in.hardware;
     uint64_t bytes, service, body, clock, output;
+    uint64_t barriers, pair_issue;
+    if (!DSL_readiness_add(hw.wait_cycles, hw.release_cycles, &barriers) ||
+        !DSL_readiness_mul(hw.operand_issue_cycles, 2, &pair_issue)) return false;
     if (!DSL_readiness_mul(in.input_bytes, active, &bytes)) return false;
-    service = DSL_readiness_ceil(bytes, 32);
+    service = DSL_readiness_ceil(bytes, hw.memory_bytes_per_cycle);
     if (!DSL_readiness_add(service, in.latency, &r.delivery) ||
         !DSL_readiness_mul(in.consumer, in.steps, &r.compute) ||
         !DSL_readiness_mul(in.output_bytes, active, &bytes) ||
-        !DSL_readiness_add(DSL_readiness_ceil(bytes, 32), in.latency, &output)) return false;
+        !DSL_readiness_add(DSL_readiness_ceil(bytes, hw.memory_bytes_per_cycle), hw.store_latency, &output)) return false;
     if (in.kind != 2) {
-        uint64_t exposed = DSL_readiness_ceil(in.latency, std::min(in.warps, UINT64_C(16)));
+        uint64_t exposed = DSL_readiness_ceil(in.latency, std::min(in.warps, hw.latency_hiding_warps));
         if (!DSL_readiness_add(service, exposed, &body) ||
             !DSL_readiness_add(body, in.copy, &body) ||
             !DSL_readiness_mul(body, in.steps, &r.memory) ||
             !DSL_readiness_mul(exposed, in.steps, &r.wait) ||
-            !DSL_readiness_mul(in.kind == 1 ? 16 : 0, in.steps, &r.sync)) return false;
+            !DSL_readiness_mul(in.kind == 1 ? barriers : 0, in.steps, &r.sync)) return false;
     } else {
         // The issuing warp is also a consumer: refill blocks its next consume.
         uint64_t count = std::min(in.steps, UINT64_C(2));
-        uint64_t state[4] = {count * 2 + 8, 0, 0, 0};
+        uint64_t state[4] = {0, 0, 0, 0};
+        if (!DSL_readiness_mul(count, pair_issue, &state[0]) ||
+            !DSL_readiness_add(state[0], hw.publication_cycles, &state[0])) return false;
         for (uint64_t j = 0; j < count; ++j) {
-            if (!DSL_readiness_add(std::max(state[3], (j + 1) * 2), service, &state[3]) ||
+            uint64_t issued;
+            if (!DSL_readiness_mul(j + 1, pair_issue, &issued) ||
+                !DSL_readiness_add(std::max(state[3], issued), service, &state[3]) ||
                 !DSL_readiness_add(state[3], in.latency, &state[j + 1])) return false;
         }
-        if (!DSL_readiness_add(in.consumer, 18, &body)) return false;
+        if (!DSL_readiness_add(in.consumer, barriers, &body) ||
+            !DSL_readiness_add(body, pair_issue, &body)) return false;
         if (in.steps > 2) {
             DSL_GEMM_READINESS_MATRIX matrix;
             memset(&matrix, 0xff, sizeof(matrix));
@@ -134,16 +145,16 @@ static inline bool DSL_readiness_wave(const DSL_GEMM_READINESS_INPUT &in,
         }
         for (uint64_t j = 0; j < count; ++j) {
             if (!DSL_readiness_add(std::max(state[0], state[j + 1]), in.consumer, &state[0]) ||
-                !DSL_readiness_add(state[0], 16, &state[0])) return false;
+                !DSL_readiness_add(state[0], barriers, &state[0])) return false;
         }
         clock = state[0];
-        if (!DSL_readiness_mul(in.steps, 16, &r.sync) ||
-            !DSL_readiness_add(r.sync, 8, &r.sync) ||
-            !DSL_readiness_mul(in.steps, 2, &r.issue) ||
+        if (!DSL_readiness_mul(in.steps, barriers, &r.sync) ||
+            !DSL_readiness_add(r.sync, hw.publication_cycles, &r.sync) ||
+            !DSL_readiness_mul(in.steps, pair_issue, &r.issue) ||
             !DSL_readiness_add(r.compute, r.sync, &body) ||
             !DSL_readiness_add(body, r.issue, &body) || clock < body) return false;
         r.memory = r.wait = clock - body;
-        r.window = in.steps > 1 ? in.consumer + 16 : 0;
+        if (in.steps > 1 && !DSL_readiness_add(in.consumer, barriers, &r.window)) return false;
     }
     if (!DSL_readiness_add(r.memory, output, &r.memory) ||
         !DSL_readiness_add(r.compute, r.memory, &r.total) ||
@@ -153,18 +164,18 @@ static inline bool DSL_readiness_wave(const DSL_GEMM_READINESS_INPUT &in,
     return true;
 }
 
-/* Cost sequential grid waves under an explicitly assumed four-SM profile,
+/* Cost sequential grid waves under the supplied hardware description,
  * one CTA/SM. Invalid/overflowing input leaves the caller's result untouched. */
 static inline bool DSL_readiness_evaluate(const DSL_GEMM_READINESS_INPUT &in,
     DSL_GEMM_READINESS_RESULT *out)
 {
     if (!out || !in.ctas || !in.steps || !in.consumer || !in.input_bytes ||
-        !in.output_bytes || !in.warps || in.warps > 32 || in.kind > 2 ||
-        in.latency > 1000000) return false;
+        !in.output_bytes || !in.warps || in.kind > 2 ||
+        !DSL_hardware_performance_valid(in.hardware)) return false;
     DSL_GEMM_READINESS_RESULT result = {};
     for (unsigned tail = 0; tail < 2; ++tail) {
-        uint64_t active = tail ? in.ctas % 4 : 4;
-        uint64_t waves = tail ? (active != 0) : in.ctas / 4;
+        uint64_t active = tail ? in.ctas % in.hardware.sms : in.hardware.sms;
+        uint64_t waves = tail ? (active != 0) : in.ctas / in.hardware.sms;
         if (!waves) continue;
         DSL_GEMM_READINESS_RESULT wave;
         if (!DSL_readiness_wave(in, active, &wave)) return false;

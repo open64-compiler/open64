@@ -7,6 +7,8 @@
  * adapters. These runtime planning profiles add no WHIRL image state.
  * Design: doc/AI_compiler_optimization_design_v0.1.md and
  * doc/AI-COMPILER-OPTIMIZATION-AIO8-RESIDENCY.md.
+ * Quantitative target lookup:
+ * doc/AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md.
  */
 
 #ifndef dsl_memory_hierarchy_INCLUDED
@@ -15,6 +17,7 @@
 #include <stdio.h>
 
 #include "defs.h"
+#include "dsl_hardware_performance.h"
 
 typedef UINT32 DSL_MEMORY_TIER_ID;
 typedef UINT32 DSL_MEMORY_MOVEMENT_CAPABILITY_ID;
@@ -28,6 +31,36 @@ typedef enum {
     DSL_TARGET_PROFILE_NVIDIA_HOPPER = 2,
     DSL_TARGET_PROFILE_NVIDIA_BLACKWELL = 3
 } DSL_TARGET_PROFILE_KIND;
+
+typedef enum {
+    DSL_HARDWARE_ARCH_UNKNOWN = 0,
+    DSL_HARDWARE_ARCH_SM_90 = 1,
+    DSL_HARDWARE_ARCH_SM_90A = 2,
+    DSL_HARDWARE_ARCH_SM_100 = 3,
+    DSL_HARDWARE_ARCH_SM_100A = 4
+} DSL_HARDWARE_ARCH_KIND;
+
+typedef struct {
+    UINT32 arch_id;
+    UINT32 target_profile_id;
+    UINT32 revision;
+    UINT32 latency_override;
+    const char *architecture;
+    const char *table_name;
+    const char *unit;
+    const char *provenance;
+    DSL_HARDWARE_PERFORMANCE_RECORD performance;
+} DSL_HARDWARE_DESCRIPTION_RECORD;
+
+/* Exact public-name lookup. Output is caller-owned runtime data, never a
+ * persisted WHIRL table; unknown names fail without changing the output. */
+extern BOOL DSL_hardware_description_find_arch
+    (const char *architecture, DSL_HARDWARE_DESCRIPTION_RECORD *description);
+
+/* Lookup immutable built-in data by ID; no nearest-architecture fallback,
+ * optimization policy, runtime probing or mutation of global tables. */
+extern BOOL DSL_hardware_description_get_arch
+    (UINT32 arch_id, DSL_HARDWARE_DESCRIPTION_RECORD *description);
 
 typedef enum {
     DSL_MEMORY_TIER_UNKNOWN = 0,
