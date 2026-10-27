@@ -25,6 +25,10 @@ winners. For 128x128x144, S1 remains best at latency 20, while T2 wins at
 100/400; at 100, modeled completion is 79512 versus 72630 reference cycles.
 The actual S1 compiler selection remains unchanged. See bubble design
 Sections 10-11 for source-expansion assumptions, limitations and full results.
+Checkpoint `f352ccbd`: 168 independent event/interval audits and 331-file
+durable checksum verification. Evidence:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m6/bubble-replay/sha256-767a1d13e8e7d1ea1b1aef1d22b218386015d938a22158a1c65ca68df7c55460/`.
+The tail event evidence was independently reopened after promotion.
 
 Movement-resource increment (2026-10-26, after merged PR 192): joint P7
 resource deferral and independent P8 D/S1/T2 resource ledgers are implemented.

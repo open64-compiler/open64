@@ -459,3 +459,13 @@ is not a relevant producer invalidation here. Focused oracle/negative tests
 and authenticated downstream replay cross the changed contract without a
 backend rebuild or unrelated whole-model certification. Native CUDA/GPU
 correctness, timing and calibration remain open.
+
+Replay checkpoint: `f352ccbd`. All 168 retained schedules pass independent
+interval audits; the promoted tail graphs were reopened from the durable
+receipt. The immutable review contains 331 verified files, including raw
+traces, unchanged before/after WHIRL/CUDA, profiles, replay source snapshots,
+compressed events/timelines, reports, commands and checksums:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m6/bubble-replay/sha256-767a1d13e8e7d1ea1b1aef1d22b218386015d938a22158a1c65ca68df7c55460/`.
+Full comparisons are in `replay/receipt.json`; case-level evidence is in
+`replay/<case>/reports/phases/bubble.log`. Original producer receipts were
+neither overwritten nor removed.

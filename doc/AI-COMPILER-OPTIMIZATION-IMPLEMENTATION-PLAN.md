@@ -1682,6 +1682,9 @@ synthetic profiles yield 11 changed/four unchanged hypothetical rankings.
 The 128x128x144 case prefers T2 only at the higher modeled memory latencies;
 the actual emitted S1 and all producer artifacts are preserved. Source-warp
 assumptions and uncertainty remain review items before production integration.
+Checkpoint `f352ccbd` retains all 168 independently audited schedules in a
+331-file immutable review receipt, indexed in bubble design Section 11.
+Production integration is not implied by completing this downstream replay.
 
 | Step | Deliverable and owner | Acceptance evidence |
 | --- | --- | --- |
