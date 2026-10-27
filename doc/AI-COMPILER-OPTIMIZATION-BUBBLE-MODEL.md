@@ -1,8 +1,8 @@
 # GEMM Bubble Prediction And Candidate-Selection Experiment
 
-Date: 2026-10-26. Status: design proposal for algorithm review; no simulator,
-new option, cycle-based selection or changed candidate winner is implemented
-by this document. Scope: one active PU, `-O3`, fixed-shape contiguous F32
+Date: 2026-10-26. Status: reviewed algorithm plus initial read-only replay
+implementation (Section 10). Production VHO options, cycle-based selection
+and native calibration are not implemented. Scope: one active PU, `-O3`, fixed-shape contiguous F32
 GEMM, existing lowerable D/S1/T2 plans. No fusion, new precision permission,
 runtime variants or binary WHIRL format change.
 
@@ -356,3 +356,106 @@ The event adapter, bounded shadow experiment, confidence-gated selection and
 compact audit contract above are DSC design proposals. Resource-constrained
 scheduling and delayed transformation have established compiler precedents;
 no novelty or superiority claim follows from adopting them.
+
+## 10. Implemented Source-Warp Replay Slice
+
+`osprey/be/vho/tests/ai_matmul_cuda/gemm_bubble.py` implements a bounded
+append-only dependency graph, deterministic oldest-ready scheduling, finite
+resource calendars and memory queues. Issue-order edges are distinct from
+result-ready edges, so independent instructions can overlap latency. The
+separate `audit_bubble.py` process reopens compressed graphs/timelines and
+checks dependencies, service capacity, completion and wait totals.
+
+This first implementation is a downstream experiment on authenticated raw
+model-3 `.t` evidence, NOT a new VHO pass or compiler option. It reuses
+`ai_opt_report.py` for input census, resource, legality and actual-selection
+audits. Compiler binaries, actual winner, S1 fallback and WHIRL/CUDA artifacts
+are unchanged. Multi-PU input is rejected rather than merging local IDs.
+The production controls in Section 6 remain unregistered.
+
+The recipe expands source-loop ownership, predicated D loads and arithmetic,
+cooperative S1 load/store rounds, padded/XOR SMEM bank addresses, accumulator
+recurrences, all-participant barriers and output stores. T2 preloads two slots,
+waits for A/B completion and modeled SMEM destination service, and refills a
+slot only after prior consumers and the CTA barrier. It does not invent a
+producer warp or grant unlimited async bandwidth. Final accumulator versions
+transitively cover earlier updates, reducing redundant barrier graph edges.
+
+The `source_warp_v1` hypothesis uses separate scalar multiply/add, fixed
+assumed address instructions per memory instruction, one CTA/SM, in-order
+warp issue, fixed scheduler assignment, no spills, one SMEM bank service port
+per SM and one finite global-request service path. There is no cache-hit
+inference or calibrated L1/L2/HBM split. Register allocation, instruction
+fetch, detailed control/predication/loop scheduling, native load/store issue
+pipelines and compiler hoisting/FMA contraction are not reconstructed from
+SASS. Compute issue idle is an interval-accounted cycle-equivalent INCLUDING
+startup/control/drain, not exact execution idle or a fully attributed silicon
+bubble. Actor wait causes are separate, not added to completion time.
+
+`bubble_profiles.json` declares three synthetic memory startup latencies
+(20, 100, 400 reference cycles), with other defaults retained in the output
+manifest: four SMs/four schedulers, 32 request bytes/cycle, 16 outstanding
+requests, four-cycle shared/arithmetic latency, eight-cycle barriers, two
+address operations per memory instruction and aligned bases. These values
+are experiment inputs, NOT measured NVIDIA specifications. Source/bank/
+arithmetic hypotheses can change ranking even when memory latency does not;
+do not attribute every reversal to prefetch alone.
+
+```sh
+python3 osprey/be/vho/tests/ai_matmul_cuda/run_bubble_experiment.py \
+  --producer <immutable-movement-resource-receipt> --output <fresh-directory>
+```
+
+The runner verifies input hashes, snapshots replay sources/profile, runs unit
+oracles, compares five retained compiler cases, independently reopens event
+evidence, retains raw traces plus before/after WHIRL/CUDA, and generates
+commands, checksums and a replay receipt. Rows state `modeled`, `rejected` or
+`unknown`; unknown coverage suppresses a global shadow winner. Existing `.t`
+is copied byte-for-byte. Positional `BUBBLE_COST`/`BUBBLE_COMPARE` lines are
+analyzer-generated report rows, NOT new compiler AI_OPT records. They end
+with the input line. `bubble.log` is included in aggregate/summary reports;
+existing phase reports reference it without replacing actual selection.
+Compressed JSON event evidence is an audit artifact, not redundant JSONL in
+the human trace. B2 production integration, B4 selection and B5 calibration
+remain open. No native performance claim follows from replay ranking.
+
+## 11. Initial Replay Results (2026-10-26)
+
+The fixed three-profile sweep changes the hypothetical ranking in 11 of 15
+case/scenario comparisons; four remain unchanged. IDs below are the original
+joint candidate ordinals, not new kernels. The actual compiler winner is
+unchanged in every case.
+
+| GEMM M x N x K | Emitted plan | Shadow at latency 20 | Shadow at latency 100 | Shadow at latency 400 |
+| --- | --- | --- | --- | --- |
+| 1 x 1 x 1 | D #2 | D #2 | D #2 | D #2 |
+| 1 x 1 x 17 | D #2 | D #5 | D #5 | D #5 |
+| 3 x 5 x 7 | D #2 | D #8 | D #8 | S1 #12 |
+| 65 x 67 x 17 | D #8 | S1 #12 | S1 #12 | S1 #12 |
+| 128 x 128 x 144 | S1 #12 | S1 #12 | T2 #3 | T2 #3 |
+
+For the middle synthetic profile, completion-cycle comparisons are 217 to
+217, 2012 to 2010, 9292 to 4747, 65730 to 17984, and 79512 to 72630 in table
+order. The long-K scalar reversal is just two modeled cycles and must not
+justify a selection change under current uncertainty. The larger GEMM keeps
+S1 at low latency but prefers T2 at higher latency; this is a complete-plan
+comparison, not an isolated measurement of prefetch benefit. TMA issue work,
+scalar-copy avoidance, layout and finite-resource overlap all differ.
+
+The result demonstrates model sensitivity and potentially useful candidate
+discrimination, NOT native ranking accuracy. No profile values were fitted
+to manufacture a reversal. Cold single-path request service, aligned bases,
+one CTA/SM, source-order scalar instructions and omitted native compiler/cache
+effects can materially change the answer. A winner which changes across
+profiles is not robust evidence to enable B4 selection. In particular, the
+1x1x1 control remains unchanged rather than forcing every case to improve.
+
+Validation covers 96 Python tests (19 new bubble-model tests) and independent
+event/interval replay. Only new downstream Python tools/profiles and docs are
+changed; existing compiler producers, mapped images and CUDA are reused with
+checksum verification. The FHE impact selector treats these new AI tool paths
+as unknown and conservatively suggests full FHE certification; that fallback
+is not a relevant producer invalidation here. Focused oracle/negative tests
+and authenticated downstream replay cross the changed contract without a
+backend rebuild or unrelated whole-model certification. Native CUDA/GPU
+correctness, timing and calibration remain open.

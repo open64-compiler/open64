@@ -38,8 +38,9 @@ experiment inside remaining FP32 order 2. The objective is minimum GEMM
 completion latency with auditable operand readiness and resource waits, not
 maximum tile size or occupancy. See the
 [algorithm proposal](AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md)
-and the Bubble Model Experiment queue below. No new option, simulator or
-changed ranking has been implemented or measured by this documentation update.
+and the Bubble Model Experiment queue below. The subsequent replay slice
+implements synthetic timing and diagnostic ranking only; production VHO
+options/selection and native performance evidence remain open.
 
 ## Adoption Decision
 
@@ -1663,14 +1664,24 @@ Native CUDA compilation, PTX/SASS inspection, measured resource/spill counts,
 GPU correctness, baseline timing and cache/overlap calibration remain separate
 acceptance gates. Host simulation and relative cost minima cannot close them.
 
-## Bubble Model Experiment (Design Review, Not Implemented)
+## Bubble Model Experiment
 
 Controlling design:
 [GEMM Bubble Prediction And Candidate-Selection Experiment](AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md),
 with selection/event/simulation pseudocode in Sections 4-5. This queue refines
 FP32 order 2; it does not reopen numerical work, add executable candidates or
-require a GPU to begin. Every item is pending. A predicted ranking change is
-not a measured performance improvement.
+require a GPU to begin. The initial B0/B1 and downstream B3 replay slice is
+implemented in `tests/ai_matmul_cuda/gemm_bubble.py`; see design Section 10.
+It consumes authenticated compiler traces and retains synthetic source-warp
+event evidence, with independent interval audits. B2's production VHO
+adapter/options, B4 selection and B5 native calibration remain pending.
+A predicted ranking change is not a measured performance improvement.
+
+Initial replay result: 96 tests pass; five compiler cases times three
+synthetic profiles yield 11 changed/four unchanged hypothetical rankings.
+The 128x128x144 case prefers T2 only at the higher modeled memory latencies;
+the actual emitted S1 and all producer artifacts are preserved. Source-warp
+assumptions and uncertainty remain review items before production integration.
 
 | Step | Deliverable and owner | Acceptance evidence |
 | --- | --- | --- |
@@ -1683,7 +1694,8 @@ not a measured performance improvement.
 
 Proposed `-Wb,-DSL:gemm_bubble_model=off|shadow|select` and
 `-Wb,-DSL:gemm_bubble_profile=<versioned-profile-path>` are NOT registered.
-Compatibility default is off. B2 implements shadow, not select; B4 requires
+Compatibility default is off. The analyzer CLI is separate from these
+proposed controls. B2 implements shadow, not select; B4 requires
 explicit review before selection changes. Existing WOPT trace controls remain
 the raw `.t` authority; introduce no separate ad hoc compiler log or new trace
 bit for this experiment.

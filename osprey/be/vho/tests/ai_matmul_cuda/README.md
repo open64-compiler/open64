@@ -16,6 +16,29 @@ retain optimization and code generation without invoking the legacy CPU
 assembler driver. Generated CUDA is still independently compiled and run by
 the host simulator; neither boundary claims native CUDA/GPU certification.
 
+## Read-Only Bubble Ranking Experiment
+
+`gemm_bubble.py` replays the audited model-3 census with a source-warp event
+graph and finite issue, memory, queue and SMEM service. `test_gemm_bubble.py`
+covers timing/dependency/resource oracles; `audit_bubble.py` independently
+reopens retained graphs and schedules. `bubble_profiles.json` supplies three
+explicitly synthetic scenarios, not calibrated Hopper/Blackwell timings.
+
+```sh
+python3 osprey/be/vho/tests/ai_matmul_cuda/run_bubble_experiment.py \
+  --producer <immutable-movement-resource-receipt> --output <fresh-directory>
+```
+
+The runner verifies producer checksums, preserves compiler input/output
+evidence, snapshots the model/profile, and reports old/shadow/emitted winners
+for five cases. Raw `.t` remains unchanged; analyzer-generated `bubble.log`
+is included in aggregate/summary reports. Actual selection never changes.
+The source schedule assumes one CTA/SM, no spills, separate mul/add, fixed
+address work and synthetic service/latency; no native scheduler, cache or
+instruction timing certification is claimed. Production bubble options are
+not registered. See the controlling design's implemented-replay section in
+`doc/AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md` for exact limitations.
+
 ## Joint Tile And Movement Search
 
 The current joint model is D/S1/T2 model 2. D lowers a guarded direct-global

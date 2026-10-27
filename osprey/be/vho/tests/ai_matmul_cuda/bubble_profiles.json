@@ -1,0 +1,5 @@
+[
+  {"name": "synthetic-memory-20", "memory_latency": 20},
+  {"name": "synthetic-memory-100", "memory_latency": 100},
+  {"name": "synthetic-memory-400", "memory_latency": 400}
+]

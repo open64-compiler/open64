@@ -13,9 +13,18 @@ Design-review increment (2026-10-26): a
 and B0-B5 queue are proposed inside FP32 analytic refinement. First compare
 the same legal D/S1/T2 census in shadow mode, reporting operand readiness,
 finite-resource waits and old/shadow/emitted winners without changing actual
-selection. Options, simulator, cycle ranking and `bubble.log` are not yet
-implemented. No ranking change or speedup is claimed. See the
-[implementation queue](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#bubble-model-experiment-design-review-not-implemented).
+selection. The initial read-only source-warp simulator, synthetic cycle
+ranking and analyzer-generated `bubble.log` are now implemented; see design
+Section 10. Production VHO integration/options, selection and calibration
+remain pending. No native speedup is claimed. See the
+[implementation queue](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#bubble-model-experiment).
+
+Initial bubble replay: 96 unit tests pass. Five authenticated cases across
+three synthetic profiles produce 11 changed and four unchanged hypothetical
+winners. For 128x128x144, S1 remains best at latency 20, while T2 wins at
+100/400; at 100, modeled completion is 79512 versus 72630 reference cycles.
+The actual S1 compiler selection remains unchanged. See bubble design
+Sections 10-11 for source-expansion assumptions, limitations and full results.
 
 Movement-resource increment (2026-10-26, after merged PR 192): joint P7
 resource deferral and independent P8 D/S1/T2 resource ledgers are implemented.

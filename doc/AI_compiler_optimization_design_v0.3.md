@@ -8,8 +8,9 @@ Status: v0.3 adds a phase-by-phase optimization reporting contract and identifie
 
 2026-10-26 design amendment: Section 7.2B introduces the proposed
 dependency/resource bubble model and a shadow candidate-ranking experiment.
-The current D/S1/T2 model-3 selector is implemented; cycle prediction and the
-new controls below are not. The implementation/progress ledgers govern
+The current D/S1/T2 model-3 selector and initial read-only source-warp replay
+are implemented; production cycle selection and the new controls below are
+not. The implementation/progress ledgers govern
 current maturity where the historical status paragraph above is older.
 
 # 1 Executive Summary And Design Goals
@@ -495,6 +496,11 @@ intent is to reduce dependence on broad empirical search, not to claim that
 analytical prediction eliminates native correctness checks or calibration.
 All added phase reports must summarize operand readiness, resource demand,
 remaining bubbles, ranking sensitivity and actual versus shadow decisions.
+
+The first source-warp replay implementation and its explicit synthetic timing
+and source-expansion assumptions are documented in the bubble design's
+Section 10. It operates downstream of authenticated compiler traces; it is
+not the production VHO adapter or a cycle-accurate NVIDIA model.
 
 ## 7.3 Profitability Decision Timing
 
