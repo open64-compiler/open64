@@ -8,6 +8,20 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 R1 Python-to-native row-sum increment:
+the exact three-node `torch.sum` matcher now emits a runtime formal, rank-1
+result and return using the existing native v1 contract and explicit-result
+builder. Negative/positive source axes normalize to 1; strict FP32/no-
+reassociation semantics and the actual Python call-site are preserved.
+Four native producer/PREOPT cases, a C++ driver-produced image, five new
+source tests, thirteen isolated native API tests, native artifact smoke and
+91 capture regressions plus driver smoke pass. Full source suite: 270 tests,
+14 skips, one unchanged FHE authority-digest failure; the known aggregate
+native DST reset issue is retained separately. See the
+[ingestion design and receipt](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27).
+General native characterization, Softmax/LayerNorm and executable reduction
+lowering remain open. No MMA1, GPU or profitability claim is added.
+
 2026-10-27 R1 native reduction increment:
 [Native reduction contract v0.1](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md)
 adds a typed, pure `common.reduce_sum.v1` for static positive FP32 `[R,N] -> [R]`,

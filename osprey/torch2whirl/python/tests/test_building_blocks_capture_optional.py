@@ -95,8 +95,11 @@ class BuildingBlockCaptureTests(unittest.TestCase):
         module = export_to_whirl(model, inputs, WhirlExportOptions(backend="mock"))
         self.assertEqual(module.graph_source, "torch.fx")
         self.assertEqual(module.operators, ["common.matmul"])
+        model, inputs = make_fixture("reduction")
+        module = export_to_whirl(model, inputs, WhirlExportOptions(backend="mock"))
+        self.assertEqual(module.operators, ["common.reduce_sum"])
         # Do not paper over these gaps with synthetic operators or mock .B files.
-        blockers = {"reduction": "sum", "softmax": "amax", "layernorm": "mean",
+        blockers = {"softmax": "amax", "layernorm": "mean",
                     "attention": "transpose", "moe": "getitem"}
         for name, blocker in blockers.items():
             with self.subTest(name=name):

@@ -1,6 +1,7 @@
 # Native reduction contract and PREOPT canonical form v0.1
 
-Status: bounded R1 contract implementation; executable reduction lowering is
+Status: bounded R1 native contract and exact Python row-sum ingestion implemented;
+executable reduction lowering is
 not implemented by this milestone. Independent of MMA1 and target compute
 realization selection.
 
@@ -52,7 +53,8 @@ effect identity and managed origin. Emission updates both direct kids and
 managed operand links. It must not apply scalar algebraic reassociation,
 constant folding or a reduction schedule to this contract. This first slice
 verifies/preserves a canonical form; it does not claim general reduction
-canonicalization, frontend ingestion or executable code generation.
+canonicalization or executable code generation. The subsequent Python
+connection is specified below; it does not broaden the native v1 contract.
 
 A reduction inside a separately supplied REGION is explicitly unsupported in
 this first slice. Verification never expands the optimization scope or switches
@@ -98,7 +100,7 @@ Use separate directories for ASCII `.T` and trace `.t` on case-insensitive hosts
 
 ## Remaining gates
 
-1. Connect exact Python row-sum ingestion to this contract.
+1. Completed: connect exact Python row-sum ingestion to this contract; see below.
 2. Generalize canonicalization only with separately specified shapes/axes and
    numerical permissions; do not silently broaden v1.
 3. Compare ordered SIMT and permitted parallel realizations with complete
@@ -157,5 +159,101 @@ comparison and checksums):
     native-final/reports/optimization-summary.log
 ```
 
-No source Python mapping, executable reduction, MMA target profile, GPU
-correctness or performance is certified by this receipt.
+This native-contract-only receipt does not certify source Python mapping,
+executable reduction, MMA target profiles, GPU correctness or performance.
+
+## Python Ingestion Increment (2026-10-27)
+
+`row_sum_ingestion.py` connects the existing exact row matcher to the published
+C++ explicit-result builder. Recognition is by callable identity and graph
+edges, not model name, a string `sum` match, or a numerical sample result.
+
+| Boundary | Implemented behavior |
+| --- | --- |
+| Source graph | Exactly one placeholder, direct `torch.sum`, and tensor output. Embedded sums, extra effects/operations, method-form sum and multiple outputs remain outside this slice. |
+| Input | Plain contiguous FP32 tensor with static positive rank-2 shape. Example data supplies shape/dtype, not a constant replacement for runtime input. Strided, empty, dynamic and other-dtype inputs remain unsupported. |
+| Source options | Positional or keyword last axis, `-1` or `1`, including singleton tuple/list spelling; keepdim false and no dtype override. Unsupported/duplicate attributes fail the shared matcher. |
+| Native options | Exactly `axis=1`, `keepdim=false`, `accum_dtype=float32`, `reassociate=false`. No numerical permission is inferred from test agreement or finite-looking inputs. |
+| Input/output ownership | Runtime tensor formal `[R,N]`, explicit result descriptor `[R]`, typed native reduction, declared PU result and return. No `model_input` operation or sample tensor constant in this path. |
+| Source provenance | The traced Python sum call-site is required and preserved on the native assignment. Generic class-level position binding must not overwrite an FX result's call-site. |
+| Common ownership | No new opcode, native builder API, physical/mapped layout or backend dependency. Python mirrors the already published schema; common/com verifies the actual image. |
+
+The ingestion sequence is deliberately bounded:
+
+```text
+capture FX once
+if graph is not the exact three-node sum family:
+    retain existing frontend handling (no general sum mapping)
+validate graph edges and static attributes with the shared R1 matcher
+validate positive contiguous rank-2 FP32 example descriptor
+run ShapeProp only on that already-validated pure graph
+derive strict R1 characterization and verify the result shape
+require the sum's inspectable source call-site
+declare runtime input formal and rank-1 result descriptor
+create common.reduce_sum.v1 through the explicit-result builder
+bind source position; append typed result and PU return
+run Python and native verification; atomically finalize .B
+```
+
+Shape propagation evaluates only this pure source graph. It neither executes
+compiled code nor proves accuracy, finiteness or reassociation permission.
+Python analysis remains a source-language service; PREOPT still consumes native
+WHIRL without a Python dependency and preserves the strict reduction boundary.
+The high-level verifier checks exact attributes and the recorded result type,
+so mock/manifest review cannot silently claim the input rank as the result rank.
+
+### Reproduction
+
+```sh
+"$BUILD/osprey/targdir/torch2whirl/torch2whirl" \
+  osprey/torch2whirl/python/tests/models/building_blocks.py \
+  --model-factory RowReduction --sample-input shape:3,17 \
+  --backend native -o /absolute/new/row_sum.B
+"$BUILD/osprey/targdir/ir_tools/ir_b2a" -st -src \
+  /absolute/new/row_sum.B /absolute/new/ascii/row_sum.T
+python3 osprey/torch2whirl/python/tests/row_sum_native_review.py \
+  --build-dir "$BUILD/osprey/targdir" --artifact-dir /absolute/new/review
+```
+
+Use the configured native Python package on `PYTHONPATH`. The artifact directory
+may alternatively be supplied by `OPEN64_DSL_TEST_ARTIFACT_DIR`; it must be fresh.
+The native review retains four separate-process Python producers (negative and
+positive source axis, unit dimensions, and a wider 7x65 case), `.B`, separate
+ASCII `.T`, raw `.t`, manifests, exact source lines, source-only FP64 witnesses,
+strict reports, and expected unsupported-lowering diagnostics. It also inspects
+a native image produced through the standalone C++ driver. FP64, wrong axis,
+keepdim and composed-graph negatives publish no image. Incomplete backend
+mapped outputs are labeled as such and are not certified images.
+
+`AI_REDUCE 1` and the existing trace control are unchanged. Per-case
+`semantic.log` describes canonical dimensions/attributes and PREOPT agreement;
+the root `optimization.log` collects successful semantic reports, and
+`optimization-summary.log` reports native ingestion, source-line agreement,
+trace/preopt off behavior, rejection and remaining gates. Every log begins with
+`# What it summarizes:`. No cost, selected plan or executable transformation is
+reported by this slice.
+
+Validation: five new source-ingestion tests with contract/result drift and
+unsupported-form subcases; 91 torch capture tests and driver smoke; thirteen
+existing native API tests in fresh processes and native artifact smoke. The
+full source-Python suite runs 270 tests with 14 native/optional skips and the
+unchanged FHE authority-document digest failure. The aggregate native API
+invocation also retains the known DST-reset assertion; fresh-process native
+tests avoid that lifecycle limitation, not a reduction-semantic failure.
+
+Current receipt family:
+
+```text
+/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/r1-python-row-sum/
+  sha256-37b7da81faffba9da8c8d6b82474df00259fe37a12178261514e6f928ba27e51/
+    native-complete/optimization-summary.log
+    native-complete/negative-axis/row_sum.B
+    native-complete/negative-axis/ascii/row_sum.T
+    native-complete/negative-axis/trace/default.t
+    native-complete/driver/row_sum.B
+```
+
+R1 remains partial: full state/access characterization from canonical WHIRL,
+native Softmax/LayerNorm forms, executable realization selection/lowering and
+GPU certification remain open. MMA1 sources, profiles and compute plans are
+untouched by this ingestion increment.

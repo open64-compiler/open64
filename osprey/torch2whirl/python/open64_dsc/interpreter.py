@@ -102,6 +102,16 @@ class WhirlExportInterpreter:
         if self._options.pu_mode == "multiple":
             return self._export_multiple_pu_program(model, inputs)
 
+        is_tiny_llama2_prefill = self._is_tiny_llama2_prefill_model(model)
+        is_tiny_llama2_decode = self._is_tiny_llama2_decode_model(model)
+        captured_graph = None
+        if not is_tiny_llama2_prefill and not is_tiny_llama2_decode:
+            captured_graph = self._capture_fx_graph(model)
+            from .row_sum_ingestion import try_export_row_sum
+            row_sum = try_export_row_sum(self, model, inputs, captured_graph)
+            if row_sum is not None:
+                return row_sum
+
         model_name = self._model_name(model)
         entry_name = self._model_class_name(model)
         entry_pu = self.builder().minimal_program_unit(entry_name)
@@ -113,9 +123,6 @@ class WhirlExportInterpreter:
         for value, handle in zip(values, handles):
             self.builder().append_program_unit_value(entry_pu, handle)
             body_markers.append(value.name)
-
-        is_tiny_llama2_prefill = self._is_tiny_llama2_prefill_model(model)
-        is_tiny_llama2_decode = self._is_tiny_llama2_decode_model(model)
 
         if is_tiny_llama2_decode:
             graph_source = "torch.fx+llama2_decode_semantic"
@@ -146,7 +153,6 @@ class WhirlExportInterpreter:
                 graph_operators,
             )
         else:
-            captured_graph = self._capture_fx_graph(model)
             graph_source = "torch.fx" if captured_graph is not None else "synthetic"
 
         if (
@@ -5508,7 +5514,11 @@ class WhirlExportInterpreter:
             return
         program_unit = ProgramUnitHandle(module.entry_function.handle)
         file_id = self.builder().register_source_file(program_unit, path)
-        handles = [value.handle for value in module.values]
+        # FX operator results already carry their precise call-site position.
+        # Do not replace that position with the containing class definition.
+        fx_results = {op.handle for op in module.graph_operators}
+        handles = [value.handle for value in module.values
+                   if module.graph_source != "torch.fx" or value.handle not in fx_results]
         if module.graph_source != "torch.fx":
             handles.extend(operator.handle for operator in module.graph_operators)
         for handle in handles:

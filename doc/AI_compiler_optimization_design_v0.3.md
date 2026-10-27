@@ -4,6 +4,14 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-27 source-to-native R1 amendment:
+the [bounded row-sum connection](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27)
+now consumes the native v1 contract from the exact Python matcher and standalone
+driver, using a runtime tensor formal and explicit rank-1 result/return.
+Canonical axis, strict numerical attributes and the Python call-site survive
+native inspection/PREOPT. Executable reduction lowering and general native
+characterization remain open. No MMA1 contracts or profiles change.
+
 2026-10-27 native R1 amendment:
 [Native reduction contract and PREOPT canonical form v0.1](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md)
 adds the bounded typed row-sum form and verifies it in actual PREOPT without

@@ -6,8 +6,9 @@ Subsequent native increment: the bounded static FP32 row-sum contract and
 PREOPT preservation checks are specified in
 [Native reduction contract v0.1](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md).
 The source-analysis evidence below remains distinct from that native evidence;
-the Python-to-native connection, full canonical-WHIRL characterization,
-Softmax/LayerNorm native forms and executable reduction lowering remain open.
+the exact row-sum Python-to-native connection is now implemented. Full
+canonical-WHIRL characterization, Softmax/LayerNorm native forms and executable
+reduction lowering remain open.
 
 ## 1. Scope And Ownership
 

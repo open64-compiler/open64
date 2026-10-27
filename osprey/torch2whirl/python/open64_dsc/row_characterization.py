@@ -175,6 +175,20 @@ def _fingerprint(nodes):
     return hashlib.sha256(json.dumps(structure, sort_keys=True).encode("ascii")).hexdigest()
 
 
+def match_row_sum_structure(graph_module):
+    """Validate the complete pure sum graph before any shape evaluation.
+
+    Shared by read-only R1 analysis and ingestion. This publishes no IR and
+    deliberately excludes embedded sums, extra operations and unused inputs.
+    """
+    matcher = _RowMatcher(graph_module)
+    if (len(matcher.inputs) != 1 or
+            matcher.reduce(matcher.output, matcher.torch.sum, False)
+            is not matcher.inputs[0] or matcher.used != set(matcher.nodes)):
+        raise CharacterizationError("one direct row sum and one input required")
+    return matcher.inputs[0], matcher.output
+
+
 def characterize_row_graph(graph_module, permissions=None):
     """Return analysis-only facts for a complete pure row graph, without mutation.
 

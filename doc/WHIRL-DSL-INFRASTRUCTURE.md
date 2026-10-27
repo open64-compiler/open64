@@ -2106,5 +2106,8 @@ FP32 input and four exact numerical/axis attributes. No physical opcode,
 mapped-image record, ELF section or TY-kind layout changes. PREOPT verifies and
 preserves the canonical form; WOPT treats it as opaque pure unary semantics.
 The ordinary VHO gate still rejects missing executable reduction lowering.
-General reduction canonicalization, Python ingestion and selected executable
-realizations are separate gates, not implied by native representation support.
+The subsequent exact Python row-sum connection consumes this published
+contract through runtime formals and the explicit-result builder; it changes
+no common record or native API. General reduction canonicalization and selected
+executable realizations remain separate gates, not implied by representation
+or ingestion support.

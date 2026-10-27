@@ -336,6 +336,9 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "common.model_input": (2, 0, ("attr.input_ordinal",)),
             "common.tensor_const": (1, 0, ("value_kind", "value")),
             "common.add": (1, 2, ("attr.broadcast_rule",)),
+            "common.reduce_sum": (
+                1, 1, ("attr.axis", "attr.keepdim", "attr.accum_dtype", "attr.reassociate"),
+            ),
             "common.matmul": (
                 1,
                 2,

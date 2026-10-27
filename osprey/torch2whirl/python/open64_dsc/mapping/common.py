@@ -4,6 +4,7 @@ ADD = "common.add"
 FLATTEN = "common.flatten"
 LINEAR = "common.linear"
 MATMUL = "common.matmul"
+REDUCE_SUM = "common.reduce_sum"
 MODEL_INPUT = "common.model_input"
 OUTPUT_LOGITS = "common.output_logits"
 RELU = "common.relu"
@@ -13,6 +14,7 @@ TENSOR_CONST = "common.tensor_const"
 TRANSPOSE = "common.transpose"
 
 UNARY_OPERATORS = {
+    REDUCE_SUM,
     FLATTEN,
     OUTPUT_LOGITS,
     RELU,

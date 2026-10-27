@@ -323,6 +323,12 @@ def _verify_graph_operators(
         result_type = _result_type(operator, operand_types)
         produced_types[operator.name] = result_type
         semantic_name = operator.metadata.get("semantic_name")
+        if operator.name == common.REDUCE_SUM:
+            declared = value_types.get(semantic_name)
+            if (declared is None or result_type is None or
+                    (declared.dtype, declared.rank, declared.logical_shape) !=
+                    (result_type.dtype, result_type.rank, result_type.logical_shape)):
+                raise WhirlVerificationError("common.reduce_sum result descriptor mismatch")
         if semantic_name:
             produced_types[semantic_name] = result_type
 
@@ -369,6 +375,17 @@ def _verify_operator_contract(
     operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
 ) -> None:
     _require_contract_attrs(operator)
+
+    if operator.name == common.REDUCE_SUM:
+        expected = {"attr.axis": "1", "attr.keepdim": "false",
+                    "attr.accum_dtype": "float32", "attr.reassociate": "false"}
+        value = operand_types[0]
+        if dict(operator.attrs) != expected or value is None:
+            raise WhirlVerificationError("common.reduce_sum requires exact canonical attributes")
+        shape = _parse_logical_shape(value.logical_shape, "row-sum input")
+        if value.dtype != "float32" or len(shape) != 2 or any(size <= 0 for size in shape):
+            raise WhirlVerificationError("common.reduce_sum requires static rank-2 FP32 input")
+        return
 
     if operator.name == common.ADD:
         if operator.attrs.get("attr.broadcast_rule") != "none":
@@ -977,6 +994,12 @@ def _result_type(
 ) -> Optional[WhirlTensorTypeRecord]:
     if not operand_types:
         return None
+    if operator.name == common.REDUCE_SUM:
+        value = operand_types[0]
+        if value is None:
+            return None
+        shape = _parse_logical_shape(value.logical_shape, "row-sum input")
+        return _synthetic_tensor_type(operator, value, (shape[0],))
     if operator.name == common.FLATTEN:
         return _flatten_result_type(operator, operand_types)
     if operator.name == common.LINEAR:

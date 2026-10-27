@@ -2,6 +2,9 @@
 
 Version: v0.1, 2026-10-27. Status: deterministic source fixtures, CPU reference
 validation and real FX census implemented; general native WHIRL ingestion open.
+Exact static FP32 row-sum native ingestion is now implemented and inspected
+through the public API and standalone driver; executable reduction lowering
+and native ingestion for the other new row blocks remain open.
 Controlling architecture: [common execution planning](../../doc/AI-COMPILER-COMMON-EXECUTION-PLANNING.md),
 [frontend workflow](../../doc/WHIRL-DSL-INFRASTRUCTURE.md) and
 [building-block research queue](../../doc/AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#building-block-research-queue).
@@ -131,10 +134,11 @@ The row milestone passes 21 new tests, 37 focused regressions, the 86-test
 capture lane and driver smoke; its detail design links numerical outcomes,
 retained source replay and the known full-suite baseline failure.
 
-1. R1 remainder: connect the bounded native row-sum contract
+1. Completed for exact row sum: connect the bounded native contract
    ([native detail](../../doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md))
    to exact source ingestion. This contract has real `.B/.T` and PREOPT
-   verification evidence, but no Python mapping or executable lowering yet.
+   verification evidence plus Python/runtime-formal ingestion and native
+   standalone-driver inspection. Executable lowering is still unsupported.
    Agree the remaining native expression/region contracts from this census;
    reuse existing common services, preserve semantic boundaries and define
    PREOPT canonical forms before optimizer matching. Certify mapped `.B`/`.T`
