@@ -1,5 +1,7 @@
 /*
  * Copyright (C) 2026 Open64 Project
+ * Contracts: doc/WHIRL-DSL-INFRASTRUCTURE.md;
+ * row sum: doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md.
  */
 
 #include <string.h>
@@ -151,7 +153,8 @@ static const char *DSL_operator_name[] = {
     "OPR_DSLCKKSRESCALE",
     "OPR_DSLCKKSMODSWITCH",
     "OPR_DSLCKKSRELIN",
-    "OPR_DSLCKKSBOOTSTRAP"
+    "OPR_DSLCKKSBOOTSTRAP",
+    "OPR_DSLREDUCESUM"
 };
 
 static const char *DSL_fusion_iteration_class_name_table[] = {
@@ -701,7 +704,12 @@ static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
         DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
         DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
         DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CKKS_BOOTSTRAP",
-        "attr.target_level;attr.reason;attr.key_id" }
+        "attr.target_level;attr.reason;attr.key_id" },
+    { OPR_DSLREDUCESUM, "common.reduce_sum", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_REDUCTION, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_REDUCE_SUM_V1",
+        "attr.axis;attr.keepdim;attr.accum_dtype;attr.reassociate" }
 };
 
 static const DSL_FUSIBILITY_INFO DSL_fusibility_info[] = {

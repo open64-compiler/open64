@@ -2,6 +2,13 @@
 
 Version v0.1 | 2026-10-27 | R1 frontend analysis slice implemented
 
+Subsequent native increment: the bounded static FP32 row-sum contract and
+PREOPT preservation checks are specified in
+[Native reduction contract v0.1](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md).
+The source-analysis evidence below remains distinct from that native evidence;
+the Python-to-native connection, full canonical-WHIRL characterization,
+Softmax/LayerNorm native forms and executable reduction lowering remain open.
+
 ## 1. Scope And Ownership
 
 Implement read-only characterization in this order: ordinary row reduction,

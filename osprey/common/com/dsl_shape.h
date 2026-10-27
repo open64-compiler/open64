@@ -100,6 +100,14 @@ typedef BOOL (*DSL_SHAPE_REFINEMENT_VISITOR)
     (const DSL_SHAPE_REFINEMENT *refinement, void *context);
 
 extern BOOL DSL_Shape_Tensor_Core_Complete(TY_IDX ty);
+/* Structural native row-sum contract only; no allocation, canonicalization,
+ * numerical reassociation or optimization policy. See
+ * doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md. Failure changes no tables. */
+extern BOOL DSL_Shape_Reduce_Sum_Types_Valid
+                                (TY_IDX operand_ty, TY_IDX result_ty,
+                                 const char *axis, const char *keepdim,
+                                 const char *accum_dtype,
+                                 const char *reassociate);
 extern BOOL DSL_Shape_Parse_Static_Dimensions
                                 (const char *shape,
                                  UINT64 *dimensions,

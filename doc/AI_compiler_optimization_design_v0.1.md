@@ -4,6 +4,14 @@ Version v0.1 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-27 native R1 amendment:
+[Native reduction contract and PREOPT canonical form v0.1](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md)
+adds the bounded typed row-sum form and verifies it in actual PREOPT without
+choosing an accumulation schedule. Native `.B/.T`, controlled `.t` and strict
+phase reports are separate from FX evidence. Source ingestion, full native
+characterization and executable reduction lowering remain open; MMA1 is
+independent.
+
 2026-10-27 R1 implementation amendment:
 [Row semantic characterization and numerical acceptance v0.1](AI-COMPILER-ROW-SEMANTIC-CHARACTERIZATION-v0.1.md)
 derives reduction, stable Softmax and affine LayerNorm domains/accesses/state

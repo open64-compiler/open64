@@ -11,6 +11,14 @@
 
 class WN;
 
+/* Verify the published reduction form within the active whole-PU PREOPT
+ * scope, without rewriting or enlarging scope. Empty/non-reduction scopes
+ * are no-ops; unsupported REGION reduction scope or malformed IR fails.
+ * Optional trace is supplied only under existing AI trace controls.
+ * See doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md. */
+extern BOOL WOPT_DSL_verify_reduction_forms
+    (WN *tree, const char *phase, FILE *diagnostic, FILE *trace);
+
 typedef UINT32 WOPT_DSL_SEMANTIC_INFO_ID;
 
 #define WOPT_DSL_SEMANTIC_INFO_INVALID_ID 0

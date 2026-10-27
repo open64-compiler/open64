@@ -1,5 +1,7 @@
 /*
  * Copyright (C) 2026 Open64 Project
+ * Contracts: doc/WHIRL-DSL-INFRASTRUCTURE.md;
+ * row sum: doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md.
  */
 
 #include <ctype.h>
@@ -1413,7 +1415,59 @@ DSL_Shape_Output_Logits_Result
                (node, operands[0], result_ty, version);
 }
 
+/* Validate the published static FP32 row-sum type/attribute contract without
+ * mutating descriptors. Builder, gatekeeper and PREOPT share this predicate;
+ * it does not choose a reduction order or authorize a native implementation. */
+BOOL
+DSL_Shape_Reduce_Sum_Types_Valid
+        (TY_IDX operand_ty, TY_IDX result_ty, const char *axis,
+         const char *keepdim, const char *accum_dtype,
+         const char *reassociate)
+{
+    UINT64 input[2], output[1];
+    UINT32 input_rank = 0, output_rank = 0;
+    return DSL_Shape_Tensor_Core_Complete(operand_ty) &&
+           DSL_Shape_Tensor_Core_Complete(result_ty) &&
+           axis != NULL && strcmp(axis, "1") == 0 &&
+           keepdim != NULL && strcmp(keepdim, "false") == 0 &&
+           accum_dtype != NULL && strcmp(accum_dtype, "float32") == 0 &&
+           reassociate != NULL && strcmp(reassociate, "false") == 0 &&
+           TY_tensor_rank(operand_ty) == 2 && TY_tensor_rank(result_ty) == 1 &&
+           strcmp(TY_tensor_attribute(operand_ty, TY_TENSOR_SCHEMA_DTYPE),
+                  "float32") == 0 &&
+           DSL_Shape_TY_Valid(TY_tensor_element_ty(operand_ty)) &&
+           TY_mtype(TY_tensor_element_ty(operand_ty)) == MTYPE_F4 &&
+           DSL_Shape_Tensor_Element_Representation_Compatible
+               (operand_ty, result_ty) &&
+           DSL_Shape_Parse_Static_Dimensions
+               (TY_tensor_attribute(operand_ty, TY_TENSOR_SCHEMA_SHAPE),
+                input, 2, &input_rank) && input_rank == 2 &&
+           DSL_Shape_Parse_Static_Dimensions
+               (TY_tensor_attribute(result_ty, TY_TENSOR_SCHEMA_SHAPE),
+                output, 1, &output_rank) && output_rank == 1 &&
+           input[0] > 0 && input[1] > 0 && output[0] == input[0];
+}
+
+/* Adapt existing image attributes to the shared policy-free row-sum check. */
+static BOOL
+DSL_Shape_Reduce_Sum_Result
+        (const DSL_IR_NODE_RECORD *node, const std::vector<TY_IDX> &operands,
+         TY_IDX result_ty, UINT16 version)
+{
+    const char *axis = NULL, *keepdim = NULL;
+    const char *accum = NULL, *reassociate = NULL;
+    return node != NULL && node->attribute_count == 4 &&
+           version == 1 && operands.size() == 1 &&
+           DSL_Shape_Node_Attribute(node, "attr.axis", &axis) &&
+           DSL_Shape_Node_Attribute(node, "attr.keepdim", &keepdim) &&
+           DSL_Shape_Node_Attribute(node, "attr.accum_dtype", &accum) &&
+           DSL_Shape_Node_Attribute(node, "attr.reassociate", &reassociate) &&
+           DSL_Shape_Reduce_Sum_Types_Valid
+               (operands[0], result_ty, axis, keepdim, accum, reassociate);
+}
+
 static const DSL_SHAPE_RULE_ENTRY DSL_shape_rules[] = {
+    { OPR_DSLREDUCESUM, 1, DSL_Shape_Reduce_Sum_Result },
     { OPR_DSLADD, 1, DSL_Shape_Broadcast_Result },
     { OPR_DSLMATMUL, 1, DSL_Shape_Matmul_Result },
     { OPR_DSLMATMUL, 2, DSL_Shape_Matmul_Result },
@@ -2638,6 +2692,8 @@ DSL_Shape_Infer_Pool
     return DSL_Shape_Set_Complete(output, result);
 }
 
+/* Infer only registered structural rules from caller-owned facts. This does
+ * not mutate TYs or infer floating-point transformation permission. */
 DSL_SHAPE_INFERENCE_RESULT
 DSL_Shape_Infer_Operator
         (const DSL_SHAPE_INFERENCE_INPUT *input,
@@ -2665,6 +2721,14 @@ DSL_Shape_Infer_Operator
 
     BOOL valid = FALSE;
     switch (input->dsl_operator) {
+    case OPR_DSLREDUCESUM: {
+        std::vector<TY_IDX> operands(input->operand_types,
+                                    input->operand_types + input->operand_count);
+        valid = DSL_Shape_Reduce_Sum_Result
+                    (input->node, operands, input->result_ty, input->version) &&
+                DSL_Shape_Fact_From_Type(input->result_ty, result);
+        break;
+    }
     case OPR_DSLADD:
     case OPR_DSLMUL:
     case OPR_DSLDIV:

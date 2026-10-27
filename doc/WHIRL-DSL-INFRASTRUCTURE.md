@@ -2096,3 +2096,15 @@ artifact; read it in a separate compiler process; inspect only logical operator
 names and DSL tables with `ir_b2a`; reject malformed or escaping tensor results
 in the gatekeeper; and lower the verified graph before canonical optimization,
 while existing non-DSL WHIRL behavior and old-image readability remain intact.
+
+### R1 Native Row Sum (2026-10-27)
+
+The additive [native reduction contract](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md)
+publishes `OPR_DSLREDUCESUM.v1` using the existing physical `OPR_DSL` expression
+and managed tables: one direct operand, explicit rank-1 result, static rank-2
+FP32 input and four exact numerical/axis attributes. No physical opcode,
+mapped-image record, ELF section or TY-kind layout changes. PREOPT verifies and
+preserves the canonical form; WOPT treats it as opaque pure unary semantics.
+The ordinary VHO gate still rejects missing executable reduction lowering.
+General reduction canonicalization, Python ingestion and selected executable
+realizations are separate gates, not implied by native representation support.

@@ -112,7 +112,7 @@ certification. Follow the
 | Gate | Deliverable and evidence | Status |
 | --- | --- | --- |
 | R0 | GEMM, reduction, stable Softmax and mean/variance normalization: two specified legal-under-contract realizations each, ownership/state characterization, storage/events and full declared-model costs. | Research demo passed: 21 tests, 32 synthetic candidate comparisons, 16 decisions, nine host numerical checks. No new production lowering. |
-| R1 | Representative frontend capture/operator census and canonical WHIRL characterization using existing services. | Six-fixture capture complete; source-derived row characterization and numerical witnesses now implemented for reduction, Softmax and LayerNorm ([R1 detail](AI-COMPILER-ROW-SEMANTIC-CHARACTERIZATION-v0.1.md)). Native canonical-WHIRL characterization remains open; no speculative opcode publication. |
+| R1 | Representative frontend capture/operator census and canonical WHIRL characterization using existing services. | Six-fixture capture and source-derived row characterization/numerical witnesses implemented. Bounded native static FP32 row-sum contract and actual PREOPT entry/exit verification implemented; general canonical-WHIRL characterization remains open. See the [native reduction contract](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md). |
 | R2 | Shared state/equivalence/numerical contracts and bounded algorithm-alternative generation. | Open; strict FP and unsupported-state failures required. |
 | R3 | General P8 access-lifetime, range-alias, storage-interference/packing and symbolic event/progress proof. | Open; fixed F32 slot protocol remains the implemented baseline. |
 | R4 | Real target costs, complete-plan choice, selected WHIRL transformation, before/after mapped reopen and emitted CUDA. | Open for general cases; preserve existing GEMM controls/fallbacks. |
@@ -130,11 +130,23 @@ R1 sub-gates, kept independent of MMA1's contracts/target profiles:
 | R1-a: source fixtures/census | Implemented for all six blocks. | Preserve exact source/FX/shape/argument census and explicit native gaps. |
 | R1-b: source semantic derivation | Implemented for exact rank-2 FP32 row reduction, stable Softmax and affine LayerNorm, in that order. No model-name dispatch or graph mutation. | Report output/reduction domains, logical accesses, alias/effect facts, state/merge/finalize recipe, epsilon/denominator, ownership obligations, graph fingerprint and unresolved conditions. |
 | R1-c: numerical witnesses | Implemented strict/permitted CPU comparisons with independent FP64 oracles, adversarial cancellation/overflow and unsafe-formulation negatives. No compiler authorization from sample agreement. | Report permission rejection separately from numerical/domain rejection; retain thresholds/errors, source as well as alternative failures, exact inputs/results and remaining general-accuracy obligations. |
-| R1-d: native canonical characterization | Open. Reuse/publish native reduction, elementwise/broadcast and normalization-region contracts; define PREOPT forms and use existing builder/verifier infrastructure. | Certify `.B/.T`, source/effect/numerical semantics and equivalent facts derived from canonical WHIRL. `semantic.log` must name native eligibility/gaps, not substitute FX evidence for native support. |
+| R1-d: native canonical characterization | Partial: native `common.reduce_sum.v1`, exact static `[R,N] -> [R]` FP32 contract, WOPT opaque-unary preservation and actual PREOPT entry/exit verification. General forms, frontend connection and executable lowering remain open. | Native `.B`, separate-process `.T`, option-controlled `.t`, strict audit and `semantic.log` identify shape/axis/accumulation/reassociation/source line and entry/exit agreement. Summary explicitly says no candidate selection, profitability or executable transformation. |
 
 R1-b/c produce analysis-only `semantic-summary.log`, not compiler `.t` or a
 transformation report. No candidate is selected, no physical plan is costed,
 and no native optimization gate is closed by this frontend milestone.
+
+R1-d next sequence, independent of MMA1:
+
+1. Connect the exact source row-sum matcher to the native explicit-result
+   builder; preserve source positions and numerical prohibitions.
+2. Derive full R1 state/access facts from the canonical native node, then
+   extend reduction axes/types only through separately reviewed contracts.
+3. Publish native stable Softmax and normalization forms with explicit
+   numerical permissions and broadcast/state obligations.
+4. Only then compare legal executable alternatives and lower the selected
+   plan into WHIRL. Verification-only trace events do not count as optimizer
+   actions. REGION support must be explicit, never inferred by whole-PU traversal.
 
 `locality.log` summarizes access-lifetime/alias obligations;
 `residency.log` physical assignment/reservation; `fetch-pipeline.log`

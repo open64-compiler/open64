@@ -1,5 +1,7 @@
 /*
  * Copyright (C) 2026 Open64 Project
+ * Contracts: doc/WHIRL-DSL-INFRASTRUCTURE.md;
+ * row sum: doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md.
  */
 
 #ifdef USE_PCH
@@ -1025,12 +1027,15 @@ DSL_Builder_Attributes_Match_Schema
     return required_count == attr_count;
 }
 
+/* These published native operators require exact typed attributes; rejecting
+ * extras prevents hidden numerical/layout policy from entering mapped IR. */
 static BOOL
 DSL_Builder_Requires_Exact_Attribute_Schema
         (DSL_OPERATOR dsl_operator,
          UINT16 version)
 {
-    return dsl_operator == OPR_DSLRESHAPE ||
+    return dsl_operator == OPR_DSLREDUCESUM ||
+           dsl_operator == OPR_DSLRESHAPE ||
            dsl_operator == OPR_DSLTRANSPOSE ||
            dsl_operator == OPR_DSLTOKENEMBEDDING ||
            dsl_operator == OPR_DSLRMSNORM ||
@@ -2766,6 +2771,8 @@ DSL_Builder_Try_Fold_Tensor_Binary
     return folded_value;
 }
 
+/* Construct an inferred-result or compatibility operator only where its
+ * schema permits it. Rank-changing row sum requires an explicit result TY. */
 DSL_BUILDER_OPERATOR
 DSL_Builder_Create_Operator
         (DSL_OPCODE_ID opcode_id,
@@ -2787,6 +2794,10 @@ DSL_Builder_Create_Operator
         return NULL;
 
     dsl_operator = DSL_Operator_Find(info.name, strlen(info.name), version);
+    /* Row reduction changes rank; require an explicit result descriptor and
+     * the no-allocation preflight in Create_Operator_With_Result. */
+    if (dsl_operator == OPR_DSLREDUCESUM)
+        return NULL;
     if (dsl_operator != OPR_DSLUNKNOWN &&
         (!DSL_Operator_Get_Info_Version
               (dsl_operator, version, &logical_info) ||
@@ -3008,6 +3019,9 @@ DSL_Builder_Create_Operator
     return wn;
 }
 
+/* Construct a result-typed native expression after caller-scope and contract
+ * preflight. Row-sum rejection precedes any symbol, WN or image allocation;
+ * executable reduction lowering remains outside this builder. */
 DSL_BUILDER_OPERATOR
 DSL_Builder_Create_Operator_With_Result
         (DSL_OPCODE_ID opcode_id,
@@ -3049,6 +3063,19 @@ DSL_Builder_Create_Operator_With_Result
          !DSL_Builder_Attributes_Match_Schema
               (&logical_info, attrs, attr_count)))
         return NULL;
+
+    if (dsl_operator == OPR_DSLREDUCESUM) {
+        DSL_BUILDER_VALUE_RECORD *source =
+            DSL_Builder_Find_Value_Record(kids[0]);
+        if (source == NULL || source->pu != DSL_Builder_Active_PU ||
+            !DSL_Shape_Reduce_Sum_Types_Valid
+                 (source->result_ty, result_ty,
+                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.axis"),
+                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.keepdim"),
+                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.accum_dtype"),
+                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.reassociate")))
+            return NULL;
+    }
 
     if (kid_count == 2 && kids != NULL) {
         canonical_kids[0] = kids[0];

@@ -2,6 +2,11 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/* PU-local WHIRL/CODEREP semantic bridge; common/com owns records, while
+ * PREOPT verifies canonical forms before import and after emission. Reduction
+ * contract: doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md. No builder or
+ * target-selection policy is linked into this backend component. */
+
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -16,6 +21,8 @@
 #include "strtab.h"
 #include "symtab.h"
 #include "wn.h"
+#include "dsl_gatekeeper.h"
+#include "dsl_shape.h"
 
 static UINT64
 WOPT_DSL_Hash_Combine(UINT64 hash, UINT64 value)
@@ -123,6 +130,9 @@ WOPT_DSL_TCON_Index(ST_IDX st, TCON_IDX *tcon_idx)
   return DSL_Tensor_TCON_Get(*tcon_idx, &record);
 }
 
+/* Import the managed identity for a direct native expression in this PU.
+ * Row sums are opaque pure reductions: no reassociation or scalar folding is
+ * enabled by admission. Invalid/incomplete identities do not enter CODEREP. */
 BOOL
 WOPT_DSL_import_semantic_info(const WN *wn, ST_IDX result_st,
                               const char *owner_pu,
@@ -159,7 +169,8 @@ WOPT_DSL_import_semantic_info(const WN *wn, ST_IDX result_st,
       logical.dsl_operator != OPR_DSLADD &&
       logical.dsl_operator != OPR_DSLMUL &&
       logical.dsl_operator != OPR_DSLDIV &&
-      logical.dsl_operator != OPR_DSLREM) {
+      logical.dsl_operator != OPR_DSLREM &&
+      logical.dsl_operator != OPR_DSLREDUCESUM) {
     if (diagnostic != NULL)
       fprintf(diagnostic, "WOPT DSL import: %s is outside M5 scope\n",
               DSL_OPERATOR_name(logical.dsl_operator));
@@ -398,6 +409,7 @@ WOPT_DSL_Binary_Payload(
   return payload;
 }
 
+/* Rebuild the typed expression and its managed operand links together. */
 WN *
 WOPT_DSL_emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
                  const WN *original, ST_IDX result_st,
@@ -489,9 +501,12 @@ WOPT_DSL_emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
   } else if (info->logical_operator == OPR_DSLADD ||
              info->logical_operator == OPR_DSLMUL ||
              info->logical_operator == OPR_DSLDIV ||
-             info->logical_operator == OPR_DSLREM) {
+             info->logical_operator == OPR_DSLREM ||
+             info->logical_operator == OPR_DSLREDUCESUM) {
     DSL_IR_VALUE_ID operand_ids[2];
-    if (kid_count != 2 ||
+    UINT32 expected_kids =
+        info->logical_operator == OPR_DSLREDUCESUM ? 1 : 2;
+    if (kid_count != expected_kids ||
         !WOPT_DSL_Copy_Node_Attributes(&node, &attributes))
       return NULL;
     for (UINT32 i = 0; i < kid_count; ++i) {
@@ -531,4 +546,84 @@ WOPT_DSL_emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
   }
   return DSL_WN_Create_Native(info->logical_operator, info->version,
                               payload, kids, kid_count);
+}
+
+/* Walk only the driver-selected tree; never traverse PU_Info or change symbol
+ * tables. Emission occurs only after the public entry verifies the whole PU. */
+static UINT32
+WOPT_DSL_Reduction_Forms(WN *tree, const char *phase, FILE *trace)
+{
+  if (tree == NULL)
+    return 0;
+  UINT32 count = 0;
+  if (WN_operator(tree) == OPR_DSL) {
+    DSL_LOGICAL_OPCODE logical;
+    if (DSL_WN_Get_Logical_Opcode(tree, &logical, NULL) &&
+        logical.dsl_operator == OPR_DSLREDUCESUM)
+      ++count;
+  }
+  if (WN_operator(tree) == OPR_STID && WN_kid0(tree) != NULL &&
+      WN_operator(WN_kid0(tree)) == OPR_DSL) {
+    DSL_LOGICAL_OPCODE logical;
+    WN *expression = WN_kid0(tree);
+    if (DSL_WN_Get_Logical_Opcode(expression, &logical, NULL) &&
+        logical.dsl_operator == OPR_DSLREDUCESUM) {
+      if (trace != NULL) {
+        DSL_IR_VALUE_RECORD value;
+        DSL_IR_NODE_RECORD node;
+        const char *owner = ST_name(PU_Info_proc_sym(Current_PU_Info));
+        UINT64 dimensions[2];
+        UINT32 rank = 0;
+        TY_IDX input_ty = WN_ty(WN_kid0(expression));
+        FmtAssert(WOPT_DSL_Result_Value
+                      (WN_st_idx(tree), owner, &value, &node) &&
+                  DSL_Shape_Parse_Static_Dimensions
+                      (TY_tensor_attribute(input_ty, TY_TENSOR_SCHEMA_SHAPE),
+                       dimensions, 2, &rank) && rank == 2,
+                  ("verified reduction identity unavailable"));
+        SRCPOS position = WN_Get_Linenum(tree);
+        fprintf(trace, "AI_REDUCE 1 FORM %s %u %u %llu %llu 1 0 "
+                       "float32 0 verified %u\n", phase, node.id, value.id,
+                (unsigned long long)dimensions[0],
+                (unsigned long long)dimensions[1],
+                (UINT32)SRCPOS_linenum(position));
+      }
+    }
+  }
+  if (WN_operator(tree) == OPR_BLOCK) {
+    for (WN *statement = WN_first(tree); statement != NULL;
+         statement = WN_next(statement))
+      count += WOPT_DSL_Reduction_Forms(statement, phase, trace);
+  } else {
+    for (INT32 i = 0; i < WN_kid_count(tree); ++i)
+      count += WOPT_DSL_Reduction_Forms(WN_kid(tree, i), phase, trace);
+  }
+  return count;
+}
+
+/* PREOPT owns this verification, including the LNO/IPA PREOPT variants. The
+ * initial reduction scope is a whole active PU; REGION support is not inferred.
+ * No mutation precedes validation, and validation failure leaves IR untouched. */
+BOOL
+WOPT_DSL_verify_reduction_forms
+    (WN *tree, const char *phase, FILE *diagnostic, FILE *trace)
+{
+  if (WOPT_DSL_Reduction_Forms(tree, phase, NULL) == 0)
+    return TRUE;
+  DSL_GATEKEEPER_RESULT result;
+  if (phase == NULL || Current_PU_Info == NULL ||
+      WN_operator(tree) != OPR_FUNC_ENTRY ||
+      PU_Info_tree_ptr(Current_PU_Info) != tree ||
+      !DSL_Gatekeeper_Verify_PU(Current_PU_Info, diagnostic, &result)) {
+    if (diagnostic != NULL)
+      fprintf(diagnostic, "PREOPT reduction: invalid canonical form or "
+                          "unsupported compilation scope\n");
+    return FALSE;
+  }
+  if (trace != NULL) {
+    fprintf(trace, "AI_REDUCE 1 HEADER phase node value rows width axis "
+                   "keepdim accum_dtype reassociate status source_line\n");
+    WOPT_DSL_Reduction_Forms(tree, phase, trace);
+  }
+  return TRUE;
 }

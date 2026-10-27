@@ -203,6 +203,7 @@ LDIRT += fhe_ckks2c_collect_image_test fhe_ckks2c_collect_image_test.o \
 	fhe_ckks2c_lower.o fhe_ckks2c_public_join.o fhe_ckks2c_publish.o \
 	fhe_ckks2c_checkpoint.o fhe_sha256.o
 LDIRT += dsl_wopt_bridge_test dsl_wopt_bridge_test.o
+LDIRT += dsl_reduce_sum_contract_test dsl_reduce_sum_contract_test.o
 LDIRT += opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 
 LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_FHE_DIR) \
@@ -760,6 +761,14 @@ fhe_sha256.o: $(BE_VHO_DIR)/fhe_sha256.cxx
 
 fhe_ckks2c_collect_image_test.o: \
 	$(BE_VHO_DIR)/tests/fhe_ckks2c_collect_image_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_reduce_sum_contract_test: $(OBJECTS) controls.o dsl_reduce_sum_contract_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_reduce_sum_contract_test.o opt_dsl_wopt_test.o \
+		opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_reduce_sum_contract_test.o: $(BE_OPT_DIR)/tests/dsl_reduce_sum_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_wopt_bridge_test: $(OBJECTS) controls.o dsl_wopt_bridge_test.o \

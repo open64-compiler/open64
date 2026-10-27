@@ -131,7 +131,11 @@ The row milestone passes 21 new tests, 37 focused regressions, the 86-test
 capture lane and driver smoke; its detail design links numerical outcomes,
 retained source replay and the known full-suite baseline failure.
 
-1. R1 remainder: agree native expression/region contracts from this census;
+1. R1 remainder: connect the bounded native row-sum contract
+   ([native detail](../../doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md))
+   to exact source ingestion. This contract has real `.B/.T` and PREOPT
+   verification evidence, but no Python mapping or executable lowering yet.
+   Agree the remaining native expression/region contracts from this census;
    reuse existing common services, preserve semantic boundaries and define
    PREOPT canonical forms before optimizer matching. Certify mapped `.B`/`.T`
    and derive characterization from canonical WHIRL rather than input ledgers.

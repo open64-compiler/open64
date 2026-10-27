@@ -345,6 +345,8 @@
 #include "opt_goto.h"
 #include "opt_rvi.h"
 #include "dsl_gatekeeper.h"
+#include "opt_dsl.h"
+#include "config_dsl.h"
 #include "opt_util.h"
 #include "opt_alias_mgr.h"
 #include "opt_alias_interface.h"	/* for Verify_alias() */
@@ -1469,6 +1471,13 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
 	  ("Pre_Optimizer, unknown WHIRL entry point"));
 
   WOPT_DSL_semantic_info_reset();
+  /* Preserve the typed reduction boundary; PREOPT validates, but does not
+   * choose a parallel reduction tree or lower it to target arithmetic. */
+  FILE *reduction_trace = VHO_DSL_AI_Opt_Trace &&
+      Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG) ? TFile : NULL;
+  FmtAssert(WOPT_DSL_verify_reduction_forms
+                (wn_tree, "preopt_enter", stderr, reduction_trace),
+            ("PREOPT reduction admission failed"));
 
   // sets Opt_current_pu_st static
   Opt_set_current_pu_name(wn_tree);
@@ -2463,6 +2472,10 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
 
   if (WN_opcode(opt_wn) == OPC_FUNC_ENTRY)
     Set_PU_Info_tree_ptr (Current_PU_Info, opt_wn);
+
+  FmtAssert(WOPT_DSL_verify_reduction_forms
+                (opt_wn, "preopt_exit", stderr, reduction_trace),
+            ("PREOPT changed a canonical reduction contract"));
 
   if (WOPT_DSL_semantic_info_count() != 0 &&
       Current_PU_Info != NULL) {

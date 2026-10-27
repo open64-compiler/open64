@@ -8,6 +8,23 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 R1 native reduction increment:
+[Native reduction contract v0.1](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md)
+adds a typed, pure `common.reduce_sum.v1` for static positive FP32 `[R,N] -> [R]`,
+axis 1, keepdim false, FP32 accumulation and no reassociation permission.
+Builder preflight, shape checks, gatekeeper and WOPT opaque-unary import/emission
+share that contract. Actual PREOPT verifies it on entry and exit without
+choosing a reduction tree. Compact option-controlled `.t` events and audited
+`semantic.log`/aggregate/summary preserve the existing review conventions.
+This is native representation/preservation, not source ingestion, executable
+reduction lowering, numerical GPU validation or completion of R1-d. MMA1
+compute contracts/profiles are untouched.
+Validation: 24 native contract assertions including cross-PU rejection;
+actual PREOPT/default/on/off traces, mapped reopen, strict report audit,
+focused common/WOPT/shape/lowering regressions and backend symbol gates pass.
+The detail document links the immutable receipt and records three legacy
+builder-harness limitations reproduced with pre-change common sources.
+
 2026-10-27 R1 frontend-analysis increment:
 [Row semantic characterization](AI-COMPILER-ROW-SEMANTIC-CHARACTERIZATION-v0.1.md)
 now recognizes exact reduction, stable Softmax and affine LayerNorm dataflows
