@@ -4,6 +4,15 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-27 compute-realization proposal:
+[MMA compute realization and SIMT fallback v0.1](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md)
+defines Hopper WGMMA and Blackwell SM100 `tcgen05` as separate complete-plan
+alternatives, with numerical/target/layout/event/resource legality before
+schedule-aware profitability. SIMT stays the fallback and initial default;
+native MMA, target rates and proposed controls are not implemented. This
+shared amendment governs P6-P9 in both living skeletons without renumbering
+their historical versions.
+
 2026-10-27 adopted amendment:
 [Common execution planning](AI-COMPILER-COMMON-EXECUTION-PLANNING.md) defines
 Work Partition, Resource Lifetime and Execution Events as jointly refined
@@ -245,7 +254,7 @@ AI-P7 receives logical layout, placement, ownership, and local residency constra
 | P7.8 Vectorized memory-access tile | Require alignment/layout conditions for wider GMEM or SMEM transactions. | Kernel 6 transposed As, LDS.128, LDG.E.128, STG.E.128, float4. | CommonAccessPatternIR vector_width; RuntimeGuardIR alignment_guard; CommonLayoutIR transposed_smem_layout. |
 | P7.9 Autotuned tile family | Keep BM, BN, BK, TM, TN and related tile parameters as candidate families rather than one fixed answer. | Kernel 9 autotuning. | OptimizationCandidateIR tile_family; CandidateCostIR confidence; RuntimeVariantIR candidate_id. |
 | P7.10 Warp tile | Add an explicit warp-level tile between CTA tile and thread tile. | Kernel 10 warptiling. | CommonTilePlanIR warp_tile_shape; warp_lane_map; warp_scheduler_model; bank_conflict_terms. |
-| P7.11 Instruction or tensor-core tile | Map the innermost tile to vector, FMA, WMMA, MMA, or WGMMA instruction fragments. | Discussed as the natural next mapping from warp tiling to tensor-core instructions. | CommonTilePlanIR instruction_tile_shape; fragment_descriptor; tensor_core_family. |
+| P7.11 Compute realization and instruction tile | Retain legal SIMT and MMA families with compatible instruction/CTA/warp covering, numerical contract, operand/accumulator storage and completion protocol; decide only after P8 complete-plan costing. | Contraction semantics do not imply hardware MMA; Hopper WGMMA and Blackwell tcgen05 have separate recipes. See the MMA detail proposal. | Proposed CommonComputeRealizationIR view; CommonTilePlanIR instruction_tile_shape; fragment_descriptor; numerical, resource and event references. |
 
 ## 6A.2 CommonTilePlanIR Fields Required By The CUDA MMM Mapping
 

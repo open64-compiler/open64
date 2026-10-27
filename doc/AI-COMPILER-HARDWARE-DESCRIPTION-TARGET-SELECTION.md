@@ -12,6 +12,13 @@ Revision1/model5 receipts below remain historical, not current producer output.
 
 ## Principle
 
+Proposed MMA extension: [compute-realization design](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md#6-proposed-hardware-description-extensions)
+specifies per-variant capability, service/initiation/latency, accumulator and
+RF/SMEM/TMEM resource payloads with provenance and unknown-state handling.
+These are not yet registry fields. Existing scalar rates cannot be reused as
+Tensor Core rates; Blackwell emission stays planning-only until independently
+implemented. Exact suffix lookup remains mandatory.
+
 Use familiar NVIDIA `sm_*` option values externally. Resolve each exact value
 to our own versioned Hardware Description IR and its table contents. Hardware
 latencies, throughput and resource parameters belong to that description,
