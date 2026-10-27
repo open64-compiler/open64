@@ -1624,6 +1624,14 @@ CUDA, raw traces, reports, commands and producer-source/binary fingerprints:
 
 ## Remaining FP32 Multilevel-Tiling Compiler Work
 
+Order 2 occupancy increment is controlled by
+[FP32 occupancy planning](AI-COMPILER-OPTIMIZATION-OCCUPANCY.md). Implement
+table-owned rounding/capacities, PU-local residency-round cost refinement,
+model6 positional trace/audits and old/new ranking evidence. Architectural
+maxima, configured envelope and estimated allocation/live-value assumptions
+must remain distinct. Shared throughput is never multiplied by resident CTAs.
+Native occupancy and GPU certification remain open regardless of this result.
+
 Order 1 compiler increment (2026-10-26): joint P7 now defers movement resource
 budgets, preserving semantically safe topologies for separate D/S1/T2 checks.
 P8 owns independent register-value, active SMEM (including TMA barriers), and
