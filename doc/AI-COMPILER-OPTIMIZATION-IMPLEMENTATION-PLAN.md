@@ -61,7 +61,7 @@ certification. Follow the
 | Gate | Deliverable and evidence | Status |
 | --- | --- | --- |
 | R0 | GEMM, reduction, stable Softmax and mean/variance normalization: two specified legal-under-contract realizations each, ownership/state characterization, storage/events and full declared-model costs. | Research demo passed: 21 tests, 32 synthetic candidate comparisons, 16 decisions, nine host numerical checks. No new production lowering. |
-| R1 | Representative frontend capture/operator census and canonical WHIRL characterization using existing services. | Open; no speculative opcode publication. |
+| R1 | Representative frontend capture/operator census and canonical WHIRL characterization using existing services. | Fixture/capture slice implemented for all six blocks; [source contracts, census and native gaps](../osprey/torch2whirl/BUILDING-BLOCK-INGESTION-PLAN.md). Canonical native WHIRL characterization remains open; no speculative opcode publication. |
 | R2 | Shared state/equivalence/numerical contracts and bounded algorithm-alternative generation. | Open; strict FP and unsupported-state failures required. |
 | R3 | General P8 access-lifetime, range-alias, storage-interference/packing and symbolic event/progress proof. | Open; fixed F32 slot protocol remains the implemented baseline. |
 | R4 | Real target costs, complete-plan choice, selected WHIRL transformation, before/after mapped reopen and emitted CUDA. | Open for general cases; preserve existing GEMM controls/fallbacks. |
