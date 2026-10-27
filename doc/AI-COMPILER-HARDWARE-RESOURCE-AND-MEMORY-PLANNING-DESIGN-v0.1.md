@@ -8,7 +8,28 @@ Companion: `AI_compiler_optimization_design_v0.3.md` and
 `AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md`; rationale candidate:
 `AI-COMPILER-WHITE-PAPER-CANDIDATE-DELAYED-GEMM-PLAN-SELECTION.md`
 
+2026-10-27 proposed extension:
+[MMA compute realization and SIMT fallback](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md)
+adds exact instruction/fragment and RF-versus-TMEM allocation contracts,
+compute completion before slot reuse, separate issue/latency/service data,
+and same-boundary complete costs. It preserves SIMT and the resource-allocation
+then scheduling structure. This is design work only; no native MMA or new
+hardware-rate table is implemented.
+
 ## 1. Architecture and decision boundary
+
+2026-10-27 common-framework amendment:
+[Common execution planning](AI-COMPILER-COMMON-EXECUTION-PLANNING.md) adopts
+Work Partition, Resource Lifetime and Execution Events jointly, with semantic
+characterization and verified algebraic alternatives upstream. Sections 4.1
+and 4.2 are provisional resource/schedule views of one complete candidate,
+not irreversible sequential decisions. P8's planned access-lifetime/packing
+enhancement covers both repeated slot and cross-purpose reuse; storage is
+reassigned only after a completion/visibility proof over all conflicting
+accesses, including aliases and asynchronous consumers. Recompute rounded
+reservation and residency after packing; logical release is not physical
+deallocation to another CTA. Preserve the current fixed GEMM implementation
+and its separate native-certification gates.
 
 Target selection update (2026-10-26):
 [Hardware Description IR And Target Selection](AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md)

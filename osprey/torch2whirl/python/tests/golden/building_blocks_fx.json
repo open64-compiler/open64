@@ -1,0 +1,777 @@
+{
+  "attention": {
+    "nodes": [
+      {
+        "arguments": "()",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "query",
+        "op": "placeholder",
+        "shape": [
+          1,
+          2,
+          4,
+          3
+        ],
+        "target": "query"
+      },
+      {
+        "arguments": "()",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "key",
+        "op": "placeholder",
+        "shape": [
+          1,
+          2,
+          4,
+          3
+        ],
+        "target": "key"
+      },
+      {
+        "arguments": "()",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "value",
+        "op": "placeholder",
+        "shape": [
+          1,
+          2,
+          4,
+          2
+        ],
+        "target": "value"
+      },
+      {
+        "arguments": "()",
+        "dtype": "torch.bool",
+        "keyword_arguments": "{}",
+        "name": "allowed",
+        "op": "placeholder",
+        "shape": [
+          4,
+          4
+        ],
+        "target": "allowed"
+      },
+      {
+        "arguments": "(key, -2, -1)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "transpose",
+        "op": "call_method",
+        "shape": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "target": "transpose"
+      },
+      {
+        "arguments": "(query, transpose)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "matmul",
+        "op": "call_function",
+        "shape": [
+          1,
+          2,
+          4,
+          4
+        ],
+        "target": "torch.matmul"
+      },
+      {
+        "arguments": "(matmul, 1.7320508075688772)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "truediv",
+        "op": "call_function",
+        "shape": [
+          1,
+          2,
+          4,
+          4
+        ],
+        "target": "_operator.truediv"
+      },
+      {
+        "arguments": "(allowed,)",
+        "dtype": "torch.bool",
+        "keyword_arguments": "{}",
+        "name": "invert",
+        "op": "call_function",
+        "shape": [
+          4,
+          4
+        ],
+        "target": "_operator.invert"
+      },
+      {
+        "arguments": "(truediv, invert, -inf)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "masked_fill",
+        "op": "call_method",
+        "shape": [
+          1,
+          2,
+          4,
+          4
+        ],
+        "target": "masked_fill"
+      },
+      {
+        "arguments": "(masked_fill,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{'dim': -1}",
+        "name": "softmax",
+        "op": "call_function",
+        "shape": [
+          1,
+          2,
+          4,
+          4
+        ],
+        "target": "torch.softmax"
+      },
+      {
+        "arguments": "(softmax, value)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "matmul_1",
+        "op": "call_function",
+        "shape": [
+          1,
+          2,
+          4,
+          2
+        ],
+        "target": "torch.matmul"
+      },
+      {
+        "arguments": "(matmul_1,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "output",
+        "op": "output",
+        "shape": [
+          1,
+          2,
+          4,
+          2
+        ],
+        "target": "output"
+      }
+    ],
+    "operators": {
+      "call_function:_operator.invert": 1,
+      "call_function:_operator.truediv": 1,
+      "call_function:torch.matmul": 2,
+      "call_function:torch.softmax": 1,
+      "call_method:masked_fill": 1,
+      "call_method:transpose": 1,
+      "output:output": 1,
+      "placeholder:allowed": 1,
+      "placeholder:key": 1,
+      "placeholder:query": 1,
+      "placeholder:value": 1
+    }
+  },
+  "gemm": {
+    "nodes": [
+      {
+        "arguments": "()",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "lhs",
+        "op": "placeholder",
+        "shape": [
+          5,
+          7
+        ],
+        "target": "lhs"
+      },
+      {
+        "arguments": "()",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "rhs",
+        "op": "placeholder",
+        "shape": [
+          7,
+          3
+        ],
+        "target": "rhs"
+      },
+      {
+        "arguments": "(lhs, rhs)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "matmul",
+        "op": "call_function",
+        "shape": [
+          5,
+          3
+        ],
+        "target": "torch.matmul"
+      },
+      {
+        "arguments": "(matmul,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "output",
+        "op": "output",
+        "shape": [
+          5,
+          3
+        ],
+        "target": "output"
+      }
+    ],
+    "operators": {
+      "call_function:torch.matmul": 1,
+      "output:output": 1,
+      "placeholder:lhs": 1,
+      "placeholder:rhs": 1
+    }
+  },
+  "layernorm": {
+    "nodes": [
+      {
+        "arguments": "()",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "value",
+        "op": "placeholder",
+        "shape": [
+          3,
+          17
+        ],
+        "target": "value"
+      },
+      {
+        "arguments": "()",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "gamma",
+        "op": "placeholder",
+        "shape": [
+          17
+        ],
+        "target": "gamma"
+      },
+      {
+        "arguments": "()",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "beta",
+        "op": "placeholder",
+        "shape": [
+          17
+        ],
+        "target": "beta"
+      },
+      {
+        "arguments": "(value,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{'dim': -1, 'keepdim': True}",
+        "name": "mean",
+        "op": "call_function",
+        "shape": [
+          3,
+          1
+        ],
+        "target": "torch.mean"
+      },
+      {
+        "arguments": "(value, mean)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "sub",
+        "op": "call_function",
+        "shape": [
+          3,
+          17
+        ],
+        "target": "_operator.sub"
+      },
+      {
+        "arguments": "(sub, sub)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "mul",
+        "op": "call_function",
+        "shape": [
+          3,
+          17
+        ],
+        "target": "_operator.mul"
+      },
+      {
+        "arguments": "(mul,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{'dim': -1, 'keepdim': True}",
+        "name": "mean_1",
+        "op": "call_function",
+        "shape": [
+          3,
+          1
+        ],
+        "target": "torch.mean"
+      },
+      {
+        "arguments": "(mean_1, 1e-05)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "add",
+        "op": "call_function",
+        "shape": [
+          3,
+          1
+        ],
+        "target": "_operator.add"
+      },
+      {
+        "arguments": "(add,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "rsqrt",
+        "op": "call_function",
+        "shape": [
+          3,
+          1
+        ],
+        "target": "torch.rsqrt"
+      },
+      {
+        "arguments": "(sub, rsqrt)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "mul_1",
+        "op": "call_function",
+        "shape": [
+          3,
+          17
+        ],
+        "target": "_operator.mul"
+      },
+      {
+        "arguments": "(mul_1, gamma)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "mul_2",
+        "op": "call_function",
+        "shape": [
+          3,
+          17
+        ],
+        "target": "_operator.mul"
+      },
+      {
+        "arguments": "(mul_2, beta)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "add_1",
+        "op": "call_function",
+        "shape": [
+          3,
+          17
+        ],
+        "target": "_operator.add"
+      },
+      {
+        "arguments": "(add_1,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "output",
+        "op": "output",
+        "shape": [
+          3,
+          17
+        ],
+        "target": "output"
+      }
+    ],
+    "operators": {
+      "call_function:_operator.add": 2,
+      "call_function:_operator.mul": 3,
+      "call_function:_operator.sub": 1,
+      "call_function:torch.mean": 2,
+      "call_function:torch.rsqrt": 1,
+      "output:output": 1,
+      "placeholder:beta": 1,
+      "placeholder:gamma": 1,
+      "placeholder:value": 1
+    }
+  },
+  "moe": {
+    "nodes": [
+      {
+        "arguments": "()",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "tokens",
+        "op": "placeholder",
+        "shape": [
+          5,
+          3
+        ],
+        "target": "tokens"
+      },
+      {
+        "arguments": "()",
+        "dtype": "torch.int64",
+        "keyword_arguments": "{}",
+        "name": "route_ids",
+        "op": "placeholder",
+        "shape": [
+          5,
+          2
+        ],
+        "target": "route_ids"
+      },
+      {
+        "arguments": "()",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "route_weights",
+        "op": "placeholder",
+        "shape": [
+          5,
+          2
+        ],
+        "target": "route_weights"
+      },
+      {
+        "arguments": "()",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "up",
+        "op": "placeholder",
+        "shape": [
+          3,
+          3,
+          4
+        ],
+        "target": "up"
+      },
+      {
+        "arguments": "()",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "down",
+        "op": "placeholder",
+        "shape": [
+          3,
+          4,
+          3
+        ],
+        "target": "down"
+      },
+      {
+        "arguments": "(tokens, (slice(None, None, None), None, None, slice(None, None, None)))",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "getitem",
+        "op": "call_function",
+        "shape": [
+          5,
+          1,
+          1,
+          3
+        ],
+        "target": "_operator.getitem"
+      },
+      {
+        "arguments": "(up, route_ids)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "getitem_1",
+        "op": "call_function",
+        "shape": [
+          5,
+          2,
+          3,
+          4
+        ],
+        "target": "_operator.getitem"
+      },
+      {
+        "arguments": "(getitem, getitem_1)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "matmul",
+        "op": "call_function",
+        "shape": [
+          5,
+          2,
+          1,
+          4
+        ],
+        "target": "torch.matmul"
+      },
+      {
+        "arguments": "(matmul,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "relu",
+        "op": "call_function",
+        "shape": [
+          5,
+          2,
+          1,
+          4
+        ],
+        "target": "torch.relu"
+      },
+      {
+        "arguments": "(down, route_ids)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "getitem_2",
+        "op": "call_function",
+        "shape": [
+          5,
+          2,
+          4,
+          3
+        ],
+        "target": "_operator.getitem"
+      },
+      {
+        "arguments": "(relu, getitem_2)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "matmul_1",
+        "op": "call_function",
+        "shape": [
+          5,
+          2,
+          1,
+          3
+        ],
+        "target": "torch.matmul"
+      },
+      {
+        "arguments": "(matmul_1, -2)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "squeeze",
+        "op": "call_method",
+        "shape": [
+          5,
+          2,
+          3
+        ],
+        "target": "squeeze"
+      },
+      {
+        "arguments": "(route_weights, (slice(None, None, None), slice(None, None, None), None))",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "getitem_3",
+        "op": "call_function",
+        "shape": [
+          5,
+          2,
+          1
+        ],
+        "target": "_operator.getitem"
+      },
+      {
+        "arguments": "(squeeze, getitem_3)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "mul",
+        "op": "call_function",
+        "shape": [
+          5,
+          2,
+          3
+        ],
+        "target": "_operator.mul"
+      },
+      {
+        "arguments": "(mul,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{'dim': 1}",
+        "name": "sum_1",
+        "op": "call_function",
+        "shape": [
+          5,
+          3
+        ],
+        "target": "torch.sum"
+      },
+      {
+        "arguments": "(sum_1,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "output",
+        "op": "output",
+        "shape": [
+          5,
+          3
+        ],
+        "target": "output"
+      }
+    ],
+    "operators": {
+      "call_function:_operator.getitem": 4,
+      "call_function:_operator.mul": 1,
+      "call_function:torch.matmul": 2,
+      "call_function:torch.relu": 1,
+      "call_function:torch.sum": 1,
+      "call_method:squeeze": 1,
+      "output:output": 1,
+      "placeholder:down": 1,
+      "placeholder:route_ids": 1,
+      "placeholder:route_weights": 1,
+      "placeholder:tokens": 1,
+      "placeholder:up": 1
+    }
+  },
+  "reduction": {
+    "nodes": [
+      {
+        "arguments": "()",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "value",
+        "op": "placeholder",
+        "shape": [
+          3,
+          17
+        ],
+        "target": "value"
+      },
+      {
+        "arguments": "(value,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{'dim': -1}",
+        "name": "sum_1",
+        "op": "call_function",
+        "shape": [
+          3
+        ],
+        "target": "torch.sum"
+      },
+      {
+        "arguments": "(sum_1,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "output",
+        "op": "output",
+        "shape": [
+          3
+        ],
+        "target": "output"
+      }
+    ],
+    "operators": {
+      "call_function:torch.sum": 1,
+      "output:output": 1,
+      "placeholder:value": 1
+    }
+  },
+  "softmax": {
+    "nodes": [
+      {
+        "arguments": "()",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "value",
+        "op": "placeholder",
+        "shape": [
+          3,
+          17
+        ],
+        "target": "value"
+      },
+      {
+        "arguments": "(value,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{'dim': -1, 'keepdim': True}",
+        "name": "amax",
+        "op": "call_function",
+        "shape": [
+          3,
+          1
+        ],
+        "target": "torch.amax"
+      },
+      {
+        "arguments": "(value, amax)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "sub",
+        "op": "call_function",
+        "shape": [
+          3,
+          17
+        ],
+        "target": "_operator.sub"
+      },
+      {
+        "arguments": "(sub,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "exp",
+        "op": "call_function",
+        "shape": [
+          3,
+          17
+        ],
+        "target": "torch.exp"
+      },
+      {
+        "arguments": "(exp,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{'dim': -1, 'keepdim': True}",
+        "name": "sum_1",
+        "op": "call_function",
+        "shape": [
+          3,
+          1
+        ],
+        "target": "torch.sum"
+      },
+      {
+        "arguments": "(exp, sum_1)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "truediv",
+        "op": "call_function",
+        "shape": [
+          3,
+          17
+        ],
+        "target": "_operator.truediv"
+      },
+      {
+        "arguments": "(truediv,)",
+        "dtype": "torch.float32",
+        "keyword_arguments": "{}",
+        "name": "output",
+        "op": "output",
+        "shape": [
+          3,
+          17
+        ],
+        "target": "output"
+      }
+    ],
+    "operators": {
+      "call_function:_operator.sub": 1,
+      "call_function:_operator.truediv": 1,
+      "call_function:torch.amax": 1,
+      "call_function:torch.exp": 1,
+      "call_function:torch.sum": 1,
+      "output:output": 1,
+      "placeholder:value": 1
+    }
+  }
+}

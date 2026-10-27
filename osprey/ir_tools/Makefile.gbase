@@ -189,6 +189,7 @@ LDIRT += dsl_telemetry_feedback_opt.o
 LDIRT += dsl_physical_plan_opt.o
 LDIRT += dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o
 LDIRT += dsl_accumulation_contract_test dsl_accumulation_contract_test.o dsl_accumulation_opt.o
+LDIRT += dsl_compute_realization_contract_test dsl_compute_realization_contract_test.o dsl_compute_realization.o
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
 LDIRT += dsl_opt_contract_test dsl_opt_contract_test.o
 LDIRT += dsl_shape_refine_contract_test dsl_shape_refine_contract_test.o
@@ -502,6 +503,21 @@ dsl_tile_candidate_contract_test: $(OBJECTS) controls.o \
 dsl_tile_candidate_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_tile_candidate_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_compute_realization_contract_test: dsl_compute_realization.o dsl_compute_realization_contract_test.o
+	$(link.c++f) -o $@ dsl_compute_realization_contract_test.o dsl_compute_realization.o $(LDFLAGS)
+
+dsl_compute_realization.o: $(COMMON_COM_DIR)/dsl_compute_realization.cxx $(COMMON_COM_DIR)/dsl_compute_realization.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_compute_realization_contract_test.o: $(COMMON_COM_DIR)/tests/dsl_compute_realization_contract_test.cxx $(COMMON_COM_DIR)/dsl_compute_realization.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_compute_realization.o dsl_compute_realization_contract_test.o: \
+    $(COMMON_COM_DIR)/dsl_accumulation.h $(COMMON_COM_DIR)/dsl_fetch_pipeline.h \
+    $(COMMON_COM_DIR)/dsl_tile_candidate.h $(COMMON_COM_DIR)/dsl_opt_plan.h \
+    $(COMMON_COM_DIR)/dsl_tensor_evolution.h $(COMMON_COM_DIR)/dsl_ir_image.h \
+    $(COMMON_COM_DIR)/dsl_memory_hierarchy.h $(COMMON_COM_DIR)/dsl_hardware_performance.h
 
 dsl_accumulation_contract_test: $(OBJECTS) controls.o dsl_accumulation_opt.o dsl_accumulation_contract_test.o
 	$(link.c++f) -o $@ dsl_accumulation_contract_test.o controls.o dsl_accumulation_opt.o $(OBJECTS) $(LDFLAGS)

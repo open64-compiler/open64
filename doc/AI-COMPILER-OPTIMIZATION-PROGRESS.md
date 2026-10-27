@@ -8,6 +8,50 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 MMA1 contract increment (MMA0 user-approved):
+[MMA compute realization and SIMT fallback v0.1](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md)
+now has a [policy-free runtime inventory](AI-COMPILER-MMA1-TARGET-INVENTORY.md)
+for four exact sm_90a WGMMA / sm_100a tcgen05 dense F16/BF16-to-FP32 recipes.
+Structural joins reuse common plan/tile/evolution/numerical/resource records;
+compute completion and typed SIMT fallback remain explicit requirements.
+AI_COMPUTE 1 inspection distinguishes documented capability, missing lowering,
+unknown timing and absent native certification. Current kernels stay scalar
+F32 under existing controls. MMA2 cost/selection, MMA3 typed fallback and
+native MMA lowering are not started. No option or mapped-image change.
+
+MMA1 accepted at local source checkpoint `761bf24d`: four Linux inventory
+profiles and 276 negatives, seven independent audit negatives, linked scalar
+before/after review, 109 host regressions, and fresh audit of 1384 M9 files /
+14 readiness traces. Durable binary/reader replay is identical; see the
+[checkpoint paths and limitations](AI-COMPILER-MMA1-TARGET-INVENTORY.md#accepted-local-checkpoint).
+Linux Python 3.8 retains one existing package-test API error; 108 other tests
+pass there. Typed SIMT fallback and GPU/native evidence remain open.
+
+2026-10-27 frontend-fixture increment: six isolated CPU FP32 Python programs
+now cover GEMM, row sum, stable Softmax, affine LayerNorm, causal Attention and
+routed MoE. Independent scalar FP64 references, real FX/shape/argument census,
+repeatability/no-mutation checks and explicit mock-ingestion boundary tests
+are implemented. See [fixture contracts and next gates](../osprey/torch2whirl/BUILDING-BLOCK-INGESTION-PLAN.md).
+This completes the fixture/capture portion of R1, not canonical WHIRL
+characterization, generic optimization, dynamic ragged MoE, or GPU certification.
+Sixteen focused tests, all 65 torch-enabled capture regressions and the driver
+smoke pass. The full 244-test Docker suite has one unchanged FHE authority-digest
+failure and 14 skips; the host also lacks torch/numpy. The ingestion plan links
+the checksum-verified source/capture receipt and documents these limitations.
+
+2026-10-27 architecture/research addition:
+[Common execution planning](AI-COMPILER-COMMON-EXECUTION-PLANNING.md) adopts
+the colleague's Work Partition, Resource Lifetime and Execution Events
+framework while retaining upstream computation characterization and verified
+algebraic alternatives. P8's access-lifetime/physical-packing enhancement is
+specified, not generically implemented. The
+[R0 four-case experiment](research_library/building_block_planning/README.md)
+passes 21 tests, 32 synthetic comparisons, 16 decisions and nine host numeric
+checks. Slow memory changes the preferred normalization algorithm; expensive
+launches change the preferred reduction partition. These are research-model
+preferences, not GPU speedups or new backend support. R1-R7 remain open in
+the implementation plan; existing bounded GEMM/native status below is unchanged.
+
 Occupancy increment (2026-10-26, after merged PR193): model6 implements
 table-owned capacity/rounding envelopes and PU-local D/S1/T2 residency-round
 costs. Compute and movement rates stay shared; zero-residency estimates reject
