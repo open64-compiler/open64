@@ -4,8 +4,10 @@ Version v0.1 | 2026-10-27 | MMA0 approved for bounded MMA1 implementation
 
 MMA1 now defines runtime-only compute contracts and four exact planning-only
 recipes. See the [implementation and pinned target inventory](AI-COMPILER-MMA1-TARGET-INVENTORY.md).
-MMA2 cost/selection, MMA3 typed fallback and all native lowering/certification
-remain open. This approval does not close those later gates.
+MMA2 now has a bounded [analytical shadow model](AI-COMPILER-MMA2-SHADOW-MODEL.md)
+with explicit unknown production timing and synthetic-only oracle scenarios.
+It cannot change SIMT execution. MMA3 typed fallback, guarded promotion and
+all native lowering/certification remain open.
 
 ## 1. Decision And Current Boundary
 

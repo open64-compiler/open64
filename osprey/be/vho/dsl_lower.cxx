@@ -46,6 +46,7 @@
 #include "dsl_tensor_evolution_opt.h"
 #include "dsl_tensor_locality_opt.h"
 #include "dsl_fetch_pipeline_opt.h"
+#include "dsl_compute_shadow_opt.h"
 #include "dsl_tile_candidate_opt.h"
 #include "errors.h"
 #include "wn.h"
@@ -3925,7 +3926,10 @@ VHO_DSL_cuda_get_hardware(DSL_HARDWARE_DESCRIPTION_RECORD *hardware)
  * Keep the cheapest proven synchronous pair as fallback; trace all examined
  * pairs and movement resources, including rejected staged siblings. P7
  * topology legality does not imply movement feasibility; rebuild only the
- * verified winner. See doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md. */
+ * verified winner. MMA2 records F32 incompatibility/unknown timing only and
+ * cannot change the selected SIMT pair. See
+ * doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md and
+ * doc/AI-COMPILER-MMA2-SHADOW-MODEL.md. */
 static BOOL
 VHO_DSL_cuda_select_joint_plan
         (PU_Info *pu, DSL_TENSOR_EVOLUTION_GRAPH *graph,
@@ -4094,9 +4098,12 @@ VHO_DSL_cuda_select_joint_plan
     if (chosen == 0 || fallback == 0)
         return FALSE;
     *candidate_count = count;
-    if (trace)
+    if (trace) {
         fprintf(TFile, "AI_OPT 7 JOINT_SELECT %u %u %u "
                 "selection_reason=lowest_complete_joint_cost\n", chosen, fallback, count);
+        VHO_DSL_compute_shadow_trace_source(TFile, hardware.arch_id,
+            DSL_ACC_FORMAT_F32, chosen, source_line);
+    }
     return TRUE;
 }
 
