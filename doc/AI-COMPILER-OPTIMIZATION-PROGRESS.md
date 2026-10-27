@@ -8,13 +8,16 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
-2026-10-27 design-only increment:
+2026-10-27 MMA1 contract increment (MMA0 user-approved):
 [MMA compute realization and SIMT fallback v0.1](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md)
-proposes exact Hopper WGMMA and Blackwell SM100 tcgen05 recipes, numerical and
-resource/event legality, schedule-aware costs, uncertainty-aware promotion,
-report obligations and a staged execution queue. Current kernels remain scalar
-F32; no native MMA, new hardware profile, option registration or speedup is
-claimed. SIMT remains the initial default and required same-contract fallback.
+now has a [policy-free runtime inventory](AI-COMPILER-MMA1-TARGET-INVENTORY.md)
+for four exact sm_90a WGMMA / sm_100a tcgen05 dense F16/BF16-to-FP32 recipes.
+Structural joins reuse common plan/tile/evolution/numerical/resource records;
+compute completion and typed SIMT fallback remain explicit requirements.
+AI_COMPUTE 1 inspection distinguishes documented capability, missing lowering,
+unknown timing and absent native certification. Current kernels stay scalar
+F32 under existing controls. MMA2 cost/selection, MMA3 typed fallback and
+native MMA lowering are not started. No option or mapped-image change.
 
 2026-10-27 frontend-fixture increment: six isolated CPU FP32 Python programs
 now cover GEMM, row sum, stable Softmax, affine LayerNorm, causal Attention and

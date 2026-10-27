@@ -5,6 +5,12 @@ scalar WHIRL adapter implemented; native FP8/FP4 support remains planned.
 Current D/S1/T2 device kernels remain scalar FP32. Open64
 `F4` means four-byte FP32, not four-bit FP4.
 
+MMA1 appends runtime numerical-format identities F16/BF16 (5/6), preserving
+existing IDs and layouts, for its [compute contract inventory](AI-COMPILER-MMA1-TARGET-INVENTORY.md).
+The existing segmented accumulation API and scalar materializer retain their
+supported subset. F16/BF16 inventory is not a typed baseline or lowering;
+MMA3 must implement that same-contract SIMT fallback separately.
+
 ## 1. Purpose And Terms
 
 The [MMA/SIMT compute-realization proposal](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md)

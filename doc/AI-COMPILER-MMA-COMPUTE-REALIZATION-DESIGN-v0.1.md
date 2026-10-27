@@ -1,6 +1,11 @@
 # MMA Compute Realization And SIMT Fallback
 
-Version v0.1 | 2026-10-27 | Design proposal for review before compiler coding
+Version v0.1 | 2026-10-27 | MMA0 approved for bounded MMA1 implementation
+
+MMA1 now defines runtime-only compute contracts and four exact planning-only
+recipes. See the [implementation and pinned target inventory](AI-COMPILER-MMA1-TARGET-INVENTORY.md).
+MMA2 cost/selection, MMA3 typed fallback and all native lowering/certification
+remain open. This approval does not close those later gates.
 
 ## 1. Decision And Current Boundary
 
@@ -9,9 +14,9 @@ contraction**, selected jointly with representation, tiling, placement,
 movement, storage, numerical policy and epilogue. Preserve a legal SIMT
 realization. TMA changes operand delivery; it does not implement MMA.
 
-This is a DSC design proposal, not NVIDIA's compiler algorithm or timing
-model. No option, target profile, native instruction, IR schema or compiler
-implementation is introduced by this document. Current F32 D/S1/T2 kernels
+This is a DSC design, not NVIDIA's compiler algorithm or timing model.
+MMA1's target inventory is a structural capability contract, with no new
+option, executable instruction or persistent schema. Current F32 D/S1/T2 kernels
 use scalar multiplication/addition; the numerical-contract prototype is not
 native Tensor Core lowering. Blackwell registry rows remain planning-only.
 
@@ -417,7 +422,8 @@ toolchain/profile identity, numerical results, baseline, timing samples,
 checksums and immutable receipts. Keep kernel-only and invocation timing
 separate; measured feedback cannot rewrite an old estimated receipt.
 
-Before implementation approval, review the legality/uncertainty policy,
+MMA0 is approved for MMA1's bounded inventory. Before implementation beyond
+that inventory, review the legality/uncertainty policy,
 first source dtypes, exact target recipes and resource/event carriers. Then:
 
 - Prove negative numerical/target/shape/layout/participation cases and atomic

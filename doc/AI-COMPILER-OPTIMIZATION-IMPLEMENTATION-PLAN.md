@@ -54,7 +54,7 @@ allocation and event lowering are not implemented by this documentation change.
 
 ### MMA Compute Realization Queue
 
-2026-10-27 **proposal for review before coding**, governed by
+2026-10-27 **MMA0 approved for MMA1**, governed by
 [MMA compute realization and SIMT fallback v0.1](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md).
 This queue extends P6/P7/P8/P9 with a compute dimension; it does not claim that
 current scalar F32 D/S1/T2 already uses Tensor Cores or that captured Python
@@ -64,8 +64,8 @@ documentation milestone; numerical FP8/FP4 coding stays deferred.
 
 | Gate | Implementation boundary and prerequisites | Required tests, artifacts and tool summary | Status |
 | --- | --- | --- | --- |
-| MMA0: design approval | Review exact target/type scope, same-contract SIMT fallback, record ownership, numerical permission, completion/lifetime and uncertainty policy. First recipes: dense F16/BF16 operands with FP32 accumulation; no automatic narrowing of current F32 inputs. | Review the detail pseudocode/equations and pending questions below. | Proposed; this document change is not implementation approval. |
-| MMA1: contracts/target inventory | Policy-free compute-realization analysis view using existing tile/representation/numerical/resource/event records; exact SM/PTX/toolkit recipes and required WHIRL carriers. Rates/latencies stay in hardware descriptions with provenance. | Structural, invalidation, unknown-field, exact-suffix, unsupported-variant and no-image-on-failure tests. Reports distinguish hardware capability from implemented lowering. Review binary compatibility before any new persistent carrier. | Not started. |
+| MMA0: design approval | Review exact target/type scope, same-contract SIMT fallback, record ownership, numerical permission, completion/lifetime and uncertainty policy. First recipes: dense F16/BF16 operands with FP32 accumulation; no automatic narrowing of current F32 inputs. | Review the detail pseudocode/equations and pending questions below. | User approved bounded MMA1; later numerical, profitability and lowering gates remain open. |
+| MMA1: contracts/target inventory | Policy-free compute-realization analysis view using existing tile/representation/numerical/resource records and explicit unresolved compute-event requirements; exact SM/PTX/toolkit recipes and required WHIRL carriers. | Structural, invalidation, malformed, exact-suffix and unsupported-variant tests; separate AI_COMPUTE 1 inspection. No image writer or production selector is added. | Implemented; [pinned inventory and acceptance scope](AI-COMPILER-MMA1-TARGET-INVENTORY.md). Four planning-only recipes; same-contract SIMT remains required, unimplemented. |
 | MMA2: analytical shadow model | Compatible complete tuples, useful/executed work, RF/SMEM/TMEM reservations, compute issue/dependence/completion plus movement, epilogue and invocation costs. Independent-CTA scope only. | Literal schedule oracle, shared-resource/queue limits, one/two/many steps, tail/underfill, overflow, unknown data and numerical rejection. `tile.log`/`physical-plan.log` show all candidates and nominal versus bounded ranking; shadow emits identical SIMT WHIRL. | Not started; no private Tensor Core timing constants. |
 | MMA3: typed baseline | Add F16/BF16 source and explicit FP32-accumulation fixtures, ingestion/numerical contracts and a lowerable same-contract SIMT fallback. Reuse current scalar machinery only where semantics match. | Exact-divisible, adversarial numerical and rejection cases; mapped `.B/.T`, scalar WHIRL-derived `.cu`, source/result-format and precision-preservation checks. Reports identify fallback dtype and any conversions. | Not started; current fallback is F32-only. |
 | MMA4-H: Hopper first lowering | After MMA1/MMA3, `sm_90a`, one consumer warpgroup/CTA, dense F16/BF16, FP32 register accumulator, descriptor-valid synchronous SMEM delivery, fully waited WGMMA. No TMA requirement or assumed overlap. | Actual WHIRL MMA/fence/commit/wait and fragment mapping; uniform participation, alignment/layout/shape/precision negatives, independent reader-completion checks, mapped reopen and manual `.cu`/PTX compile review when toolchain available. `COMPUTE_ACTION` must describe actual operations, not scalar stand-ins. | Not started; compiler-side review can proceed without GPU after approval. |
@@ -82,7 +82,7 @@ may be added as a reviewed bounded recipe; it is another Tensor Core path,
 not the mandatory SIMT fallback. Tiny/tail shapes may legitimately remain
 SIMT. No fusion is required for this standalone GEMM queue.
 
-Review decisions pending before MMA1 coding:
+Approval scope and review decisions retained for later gates:
 
 1. Approve initial F16/BF16 plus FP32 accumulation and exact-divisible recipes;
    current F32 programs stay unchanged under default preserve semantics.
