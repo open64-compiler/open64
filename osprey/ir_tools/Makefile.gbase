@@ -526,7 +526,8 @@ dsl_fetch_pipeline_contract_test: $(OBJECTS) controls.o \
 		$(OBJECTS) $(LDFLAGS)
 
 dsl_fetch_pipeline_contract_test.o: $(BE_VHO_DIR)/dsl_fetch_pipeline_opt.h \
-    $(BE_VHO_DIR)/dsl_gemm_readiness.h
+    $(BE_VHO_DIR)/dsl_gemm_readiness.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h \
+    $(COMMON_COM_DIR)/dsl_hardware_performance.h $(COMMON_COM_DIR)/dsl_memory_hierarchy.h
 
 dsl_fetch_pipeline_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_fetch_pipeline_contract_test.cxx
@@ -609,7 +610,8 @@ dsl_tile_candidate_opt.o: $(BE_VHO_DIR)/dsl_tile_candidate_opt.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_fetch_pipeline_opt.o: $(BE_VHO_DIR)/dsl_fetch_pipeline_opt.h \
-    $(BE_VHO_DIR)/dsl_gemm_readiness.h
+    $(BE_VHO_DIR)/dsl_gemm_readiness.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h \
+    $(COMMON_COM_DIR)/dsl_hardware_performance.h $(COMMON_COM_DIR)/dsl_memory_hierarchy.h
 
 dsl_fetch_pipeline_opt.o: $(BE_VHO_DIR)/dsl_fetch_pipeline_opt.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@

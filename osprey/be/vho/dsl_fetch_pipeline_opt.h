@@ -20,7 +20,7 @@
 #include "dsl_fetch_pipeline.h"
 #include "dsl_tensor_locality.h"
 #include "dsl_tile_candidate_opt.h"
-#include "dsl_gemm_readiness.h"
+#include "dsl_gemm_occupancy.h"
 
 struct pu_info;
 struct DSL_FETCH_PIPELINE_ANALYSIS;
@@ -58,6 +58,13 @@ extern BOOL VHO_DSL_fetch_readiness_cost
     (const DSL_TILE_PLAN_RECORD &tile, const DSL_FETCH_PLAN_RECORD &fetch,
      const DSL_HARDWARE_DESCRIPTION_RECORD &hardware, DSL_GEMM_READINESS_INPUT *input,
      DSL_GEMM_READINESS_RESULT *result);
+
+/* PU planner's resource eligibility gate, before dependent fetch records are
+ * built. Zero estimated residency rejects only this sibling. Invalid facts
+ * leave the caller's record untouched; no executable WHIRL mutation. */
+extern BOOL VHO_DSL_fetch_classify_occupancy
+    (const DSL_TILE_PLAN_RECORD &tile, const DSL_HARDWARE_DESCRIPTION_RECORD &hardware,
+     DSL_FETCH_PLAN_RECORD *fetch);
 
 /* Resolve common table data into a caller-owned PU-local description and
  * apply only explicit diagnostic overrides; never mutate built-in tables. */

@@ -6,7 +6,8 @@ import argparse
 import hashlib
 from functools import lru_cache
 from pathlib import Path
-from readiness_report import readiness_cost, HW_PERFORMANCE_COLUMNS
+from readiness_report import (readiness_cost, HW_PERFORMANCE_COLUMNS,
+                              HW_RESOURCE_COLUMNS, OCCUPANCY_COLUMNS, occupancy_record)
 
 
 PHASE_LOGS = (
@@ -31,12 +32,28 @@ PHASE_STATUSES = frozenset(("disabled_by_option", "disabled_by_policy",
 
 def readiness_profile_text(joint):
     profile = joint["profile"]
-    if joint["mode"].get("model") == 5:
-        return (f"# Hardware Description IR: arch={profile['architecture']} table={profile['name']} "
+    if joint["mode"].get("model") >= 5:
+        result = (f"# Hardware Description IR: arch={profile['architecture']} table={profile['name']} "
                 f"revision={profile['revision']} unit={profile['unit']} provenance={profile['provenance']} "
                 f"latency_override={profile['override']}; uncalibrated, not SKU-specific.\n"
                 "# HW_PERF columns: " + " ".join(HW_PERFORMANCE_COLUMNS) + "\n"
                 "HW_PERF " + " ".join(str(profile["performance"][key]) for key in HW_PERFORMANCE_COLUMNS) + "\n")
+        if joint["mode"]["model"] == 6:
+            result += "# HW_RESOURCE schema=1 provenance=mixed_estimated; logical demand, native occupancy unknown.\n"
+            result += "# HW_RESOURCE columns: " + " ".join(HW_RESOURCE_COLUMNS) + "\n"
+            result += "HW_RESOURCE " + " ".join(str(profile["resources"][key]) for key in HW_RESOURCE_COLUMNS) + "\n"
+            result += "# JOINT_OCCUPANCY columns: id " + " ".join(OCCUPANCY_COLUMNS) + "\n"
+            result += "# warps=resident-capacity warps; limiting bits: block=1 warp=2 thread=4 register=8 shared=16; zero resident rows are rejected diagnostics.\n"
+            result += "".join("JOINT_OCCUPANCY " + str(ident) + " " + " ".join(str(row[key]) for key in OCCUPANCY_COLUMNS) + "\n"
+                              for ident, row in joint["occupancy"].items())
+            old = joint["legacy_chosen"]
+            result += f"# Comparison: legacy_one_cta_per_sm={old['id']} legacy_cost={joint['occupancy'][old['id']]['legacy_total']} selected={joint['chosen']['id']} selected_cost={joint['chosen']['total']} unit=reference_cycles confidence=low calibration=none.\n"
+            result += "# D_ISSUED_ROOFLINE columns: id useful_flops issued_bytes compute_floor service_floor roofline_floor predicted_total source_line; intensity=flops/bytes, issued-sector envelope only, cache/HBM availability unknown.\n"
+            for candidate in joint["candidates"]:
+                direct = joint["derived"][candidate["id"]].get("direct_roofline")
+                if direct:
+                    result += "D_ISSUED_ROOFLINE " + str(candidate["id"]) + " " + " ".join(map(str, direct)) + "\n"
+        return result
     return f"# Historical readiness profile: {profile['name']} startup={profile['latency']}; uncalibrated.\n"
 
 
@@ -183,13 +200,17 @@ def direct_sector_bytes(m, n, k, bm, bn, bk, tm, tn, threads):
 
 
 def verify_joint(mode, rows, decision, candidates, direct_access=None, resources=None,
-                 readiness=None, profile=None):
+                 readiness=None, profile=None, occupancy=None):
     """Independently reproduce bounded whole-plan costs and deterministic choice."""
     by_tile = {row["tile"]: row for row in candidates}
     model = mode.get("model", 1) if mode else 1
     if ((model == 4 and profile and "architecture" in profile) or
-            (model == 5 and (not profile or "architecture" not in profile))):
+            (model >= 5 and (not profile or "architecture" not in profile))):
         raise ValueError("readiness model and hardware description disagree")
+    if model >= 5 and profile.get("revision") != (2 if model == 6 else 1):
+        raise ValueError("hardware revision and occupancy model disagree")
+    if model != 6 and profile and "resources" in profile:
+        raise ValueError("historical model cannot consume occupancy resources")
     if (mode is None or decision is None or mode["budget"] != (48 if model >= 2 else 32)
             or mode["tiles"] != len(candidates) or mode["tma"] not in (0, 1)
             or not rows or len(rows) > mode["budget"] or decision["count"] != len(rows)):
@@ -267,14 +288,35 @@ def verify_joint(mode, rows, decision, candidates, direct_access=None, resources
         if model >= 4:
             if profile is None:
                 raise ValueError("missing readiness profile")
-            if model == 5 and "performance" not in profile:
+            if model >= 5 and "performance" not in profile:
                 raise ValueError("missing hardware performance table")
+            occ = None
+            legacy_legal = legal
+            if model == 6:
+                if "resources" not in profile:
+                    raise ValueError("missing occupancy hardware table")
+                old_record, _ = readiness_cost(tile, row["kind"], profile.get("latency"),
+                    (direct_access or {}).get(row["id"]), profile["performance"])
+                occ = occupancy_record(profile["resources"], profile["performance"],
+                    expected_resource, ctas, old_record["total"])
+                if (occupancy or {}).get(row["id"]) != occ:
+                    raise ValueError("occupancy rounding or capacity mismatch")
+                if not occ["resident"]:
+                    legal = resource_legal = False
             record, terms = readiness_cost(tile, row["kind"], profile.get("latency"),
-                                            (direct_access or {}).get(row["id"]), profile.get("performance"))
+                                            (direct_access or {}).get(row["id"]), profile.get("performance"), occ if occ and occ["resident"] else None)
             if (readiness or {}).get(row["id"]) != record:
                 raise ValueError("readiness ledger or recurrence mismatch")
             compute, memory, _, sync, launch, _, total = terms
-            derived[row["id"]] = dict(delivery=record["delivery"], window=record["window"], wait=record["wait"])
+            derived[row["id"]] = dict(delivery=record["delivery"], window=record["window"], wait=record["wait"], legacy_legal=legacy_legal)
+            if model == 6 and direct:
+                hw = profile["performance"]
+                flops = 2 * m * n * k
+                issued = sum(direct_access[row["id"]])
+                compute_floor = (flops + hw["sms"] * hw["scalar_ops_per_cycle"] - 1) // (hw["sms"] * hw["scalar_ops_per_cycle"])
+                service_floor = (issued + hw["memory_bytes_per_cycle"] - 1) // hw["memory_bytes_per_cycle"]
+                derived[row["id"]]["direct_roofline"] = (flops, issued, compute_floor, service_floor,
+                    max(compute_floor, service_floor), total, row["source_line"])
         if (row["id"] != ordinal or row["tile_plan"] != tile["plan"]
                 or row["fetch_plan"] != expected_fetch[(row["tile"], row.get("kind", "T2" if tma else "S1"))]
                 or row["engine"] != ("tma_like" if row.get("kind") == "T2" else "demand") and model >= 2
@@ -294,6 +336,8 @@ def verify_joint(mode, rows, decision, candidates, direct_access=None, resources
         raise ValueError("movement resource coverage mismatch")
     if (model >= 4 and set(readiness or {}) != {row["id"] for row in rows}) or (model < 4 and (readiness or profile)):
         raise ValueError("readiness coverage mismatch")
+    if (model == 6 and set(occupancy or {}) != {row["id"] for row in rows}) or (model != 6 and occupancy):
+        raise ValueError("occupancy coverage mismatch")
     synchronous = [row for row in eligible if row["engine"] == "demand" and row.get("kind") != "D"]
     if (not synchronous or decision["selected"] != min(eligible, key=lambda row: (row["total"], row["id"]))["id"]
             or decision["fallback"] != min(synchronous, key=lambda row: (row["total"], row["id"]))["id"]):
@@ -301,7 +345,9 @@ def verify_joint(mode, rows, decision, candidates, direct_access=None, resources
     return dict(mode=mode, candidates=rows, selection=decision,
                 chosen=rows[decision["selected"] - 1], fallback=rows[decision["fallback"] - 1], derived=derived,
                 direct_access=direct_access or {}, resources=resources or {},
-                readiness=readiness or {}, profile=profile)
+                readiness=readiness or {}, profile=profile, occupancy=occupancy or {},
+                legacy_chosen=min((row for row in rows if derived[row["id"]]["legacy_legal"]),
+                    key=lambda row: ((occupancy or {})[row["id"]]["legacy_total"], row["id"])) if model == 6 else None)
 
 
 def parse(trace: str) -> tuple[list[dict], dict, dict]:
@@ -332,6 +378,7 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
     direct_access = {}
     joint_resources = {}
     joint_readiness = {}
+    joint_occupancy = {}
     readiness_profile = None
     trace_version: str | None = None
     for line in trace.splitlines():
@@ -345,10 +392,10 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         trace_version = fields[1]
         kind = fields[2]
         if kind == "JOINT_MODE" and trace_version == "7" and len(fields) in (10, 11):
-            if joint_mode is not None or fields[3] != "joint" or fields[8] != "low" or fields[9] not in ("model=1", "model=2", "model=3", "model=4", "model=5") or fields[7] != ("cycles" if fields[9] in ("model=4", "model=5") else "relative"):
+            if joint_mode is not None or fields[3] != "joint" or fields[8] != "low" or fields[9] not in ("model=1", "model=2", "model=3", "model=4", "model=5", "model=6") or fields[7] != ("cycles" if fields[9] in ("model=4", "model=5", "model=6") else "relative"):
                 raise ValueError("invalid joint mode")
             joint_mode = dict(budget=int(fields[4]), tiles=int(fields[5]), tma=int(fields[6]))
-            if fields[9] in ("model=2", "model=3", "model=4", "model=5"):
+            if fields[9] in ("model=2", "model=3", "model=4", "model=5", "model=6"):
                 if len(fields) != 11 or fields[10] not in ("direct=0", "direct=1"):
                     raise ValueError("invalid direct search policy")
                 joint_mode.update(model=int(fields[9][-1]), direct=int(fields[10][-1]))
@@ -361,12 +408,27 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
         elif kind == "HW_DESC" and trace_version == "7" and len(fields) == 10:
             families = {"sm_90": 2, "sm_90a": 2, "sm_100": 3, "sm_100a": 3}
             if (readiness_profile is not None or fields[3] not in families or
-                    fields[4] != fields[3].replace("_", "") + "_estimated_v1" or
-                    int(fields[5]) != families[fields[3]] or fields[6:9] != ["1", "reference_cycles", "estimated"] or
+                    fields[6] not in ("1", "2") or
+                    fields[4] != fields[3].replace("_", "") + "_estimated_v" + fields[6] or
+                    int(fields[5]) != families[fields[3]] or fields[7:9] != ["reference_cycles", "estimated"] or
                     fields[9] not in ("0", "1")):
                 raise ValueError("invalid hardware description identity")
             readiness_profile = dict(architecture=fields[3], name=fields[4], target=int(fields[5]),
-                revision=1, unit=fields[7], provenance=fields[8], override=int(fields[9]))
+                revision=int(fields[6]), unit=fields[7], provenance=fields[8], override=int(fields[9]))
+        elif kind == "HW_RESOURCE" and trace_version == "7" and len(fields) == 17:
+            if (readiness_profile is None or "resources" in readiness_profile or
+                    fields[3:5] != ["1", "mixed_estimated"]):
+                raise ValueError("invalid or duplicate occupancy hardware")
+            values = list(map(int, fields[5:]))
+            if min(values) < 0 or max(values) >= 2 ** 64 - 1 or min(values[:-1]) == 0:
+                raise ValueError("invalid occupancy hardware parameters")
+            readiness_profile["resources"] = dict(zip(HW_RESOURCE_COLUMNS, values))
+        elif kind == "JOINT_OCCUPANCY" and trace_version == "7" and len(fields) == 20:
+            ident = int(fields[3])
+            values = list(map(int, fields[4:]))
+            if ident in joint_occupancy or min(values) < 0 or max(values) >= 2 ** 64 - 1:
+                raise ValueError("invalid or duplicate occupancy record")
+            joint_occupancy[ident] = dict(zip(OCCUPANCY_COLUMNS, values))
         elif kind == "HW_PERF" and trace_version == "7" and len(fields) == 18:
             if (readiness_profile is None or "architecture" not in readiness_profile or
                     "performance" in readiness_profile):
@@ -826,14 +888,14 @@ def parse(trace: str) -> tuple[list[dict], dict, dict]:
                 expected, best_bound = row, row["roof_bound_ns"]
                 expected_reason = "roofline_near_cost"
     joint = None
-    if (direct_access or joint_resources or joint_readiness or readiness_profile) and joint_mode is None:
+    if (direct_access or joint_resources or joint_readiness or joint_occupancy or readiness_profile) and joint_mode is None:
         raise ValueError("direct access without joint search")
     if joint_mode is not None or joint_candidates or joint_selection is not None:
-        if joint_mode and joint_mode.get("model") == 5 and (
+        if joint_mode and joint_mode.get("model") >= 5 and (
                 readiness_profile is None or readiness_profile.get("target") != selection["target"]):
             raise ValueError("hardware description target disagrees with selected architecture")
         joint = verify_joint(joint_mode, joint_candidates, joint_selection, candidates,
-                             direct_access, joint_resources, joint_readiness, readiness_profile)
+                             direct_access, joint_resources, joint_readiness, readiness_profile, joint_occupancy)
         expected = by_plan[joint["chosen"]["tile_plan"]]
         expected_reason = "lowest_complete_joint_cost"
         selection["joint"] = joint
@@ -1197,11 +1259,20 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
             profile = joint["profile"]
             source = (f"architecture={profile['architecture']} revision={profile['revision']} "
                       f"provenance={profile['provenance']} override={profile['override']} "
-                      if joint["mode"].get("model") == 5 else "")
+                      if joint["mode"].get("model") >= 5 else "")
             summary.append(f"readiness profile={profile['name']} " + source +
                            f"delivery={record['delivery']} window={record['window']} "
                            f"wait={record['wait']} waves={record['waves']} unit=reference_cycles "
                            "confidence=low calibration=none selection_model=analytical_schedule")
+        if joint["occupancy"]:
+            chosen = joint["chosen"]["id"]
+            old = joint["legacy_chosen"]["id"]
+            row = joint["occupancy"][chosen]
+            hw = joint["profile"]["performance"]
+            ready = joint["readiness"][chosen]
+            peak_warps = min(row["resident"], (ready["ctas"] + hw["sms"] - 1) // hw["sms"]) * ready["warps"]
+            summary.append("occupancy model=lockstep_estimate " + " ".join(f"{key}={value}" for key, value in row.items()) +
+                f" peak_grid_warps_per_sm={peak_warps} legacy_selected={old} legacy_cost={joint['occupancy'][old]['legacy_total']} selected={chosen} changed={int(old != chosen)} unit=reference_cycles native_occupancy=unknown")
     (reports / "optimization.log").write_text(
         "# What it summarizes: Complete P0-P11 optimization process, including every phase decision and non-execution reason.\n"
         + "".join(phase_contents), encoding="utf-8")

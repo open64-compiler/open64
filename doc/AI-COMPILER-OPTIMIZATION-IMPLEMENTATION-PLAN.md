@@ -1624,6 +1624,23 @@ CUDA, raw traces, reports, commands and producer-source/binary fingerprints:
 
 ## Remaining FP32 Multilevel-Tiling Compiler Work
 
+Order 2 occupancy increment is controlled by
+[FP32 occupancy planning](AI-COMPILER-OPTIMIZATION-OCCUPANCY.md). Implement
+table-owned rounding/capacities, PU-local residency-round cost refinement,
+model6 positional trace/audits and old/new ranking evidence. Architectural
+maxima, configured envelope and estimated allocation/live-value assumptions
+must remain distinct. Shared throughput is never multiplied by resident CTAs.
+Native occupancy and GPU certification remain open regardless of this result.
+
+Order 2 bounded occupancy acceptance: checkpoint `b19e22e0`, 109 tests,
+7875 literal schedule oracles, fifteen fresh compiler/source configurations,
+linked contracts and backend dependency checks pass. Fourteen readiness
+configurations retain the old winner; seven nonwinning candidate costs change
+in each larger-grid case. Model6 traces expose the actual unchanged result,
+not an invented speedup. The 1384-file immutable M9 receipt and read-only
+durable reopen/replay proof are indexed in the occupancy design's Acceptance
+section. Native allocation/occupancy and timing calibration remain pending.
+
 Order 1 compiler increment (2026-10-26): joint P7 now defers movement resource
 budgets, preserving semantically safe topologies for separate D/S1/T2 checks.
 P8 owns independent register-value, active SMEM (including TMA barriers), and
@@ -1648,13 +1665,14 @@ implemented compiler transformations are absent.
 | Order | Remaining compiler work | Required review evidence |
 | --- | --- | --- |
 | 1 (implemented) | Movement-aware candidate/resource discovery: evaluate D, S1 and T2 resource legality before staged-only filtering can discard a useful D seed; refine register estimates independently of SMEM use. Keep enumeration bounded and deterministic. | Candidate census, per-plan rejection reasons, resource accounting, selected/fallback records and WHIRL-derived CUDA; tests in which staged resource rejection does not incorrectly reject D. |
-| 2 | Complete the analytic resource/profitability model: register and SMEM allocation granularity, resident blocks/warps, grid underfill and tail waves, and a D-specific traffic/Roofline diagnostic. Add the staged shadow bubble experiment below to compare complete event schedules on an unchanged D/S1/T2 census. Keep issued-sector demand distinct from unknown cache/HBM service. | Auditable cost components/resource bounds, operand-ready and compute-bubble evidence, analytic oracles and scenario sensitivity. Report old/shadow/emitted winners even when unchanged; unknown or incomplete models cannot authorize selection. |
+| 2 (bounded estimate implemented; native refinement open) | Table-owned allocation rounding, resident blocks/warps, grid underfill and full/tail rounds, shared-throughput readiness costs and D-specific issued-sector/Roofline diagnostics. Read-only bubble experiment remains separate; native register allocation, partitions, cache/HBM service and calibration are not certified. | M9 immutable receipt: old/new winners, complete costs/resource bounds, 109 tests, 7875 literal oracles and fifteen compiler/source configurations. No claimed native speedup; incomplete models fail closed. |
 | 3 | Expand executable movement choices as separately gated increments: actual aligned vector loads with scalar tails, non-TMA asynchronous copies, and additional legal stage/layout combinations. Dynamic SMEM beyond the current conservative static limit requires a matching launch-resource contract. | Plan-to-WHIRL address, alignment, capacity and acquire/issue/wait/release proofs; no vector/overlap credit for scalar or synchronous code. Preserve a legal synchronous fallback. |
 | 4 | Complete selected-plan launch integration: generated-host application currently supports S1 only; carry D/T2 requirements, tensor-map setup, selected-entry resolution and buffer/stream ordering through the generic provider ABI and target launch adapter. | Compiler-generated host/device review sources, ABI and mock-runtime tests; distinguish compiler completion from native launch certification. |
 | 5 | Close the compiler-only review matrix for the supported subset, including shapes/tails, multiple PUs, option controls and rejected plans. | Immutable raw `.t`, before/after WHIRL, `.cu`, `tile.log`, `fetch-pipeline.log`, `physical-plan.log`, `optimization.log` and `optimization-summary.log`, with costs, selection reasons and actual transformation actions. |
 
-Order 1 is implemented by the movement-resource increment above; the next
-package is order 2, analytic resource/profitability refinement. Further
+Orders 1 and the bounded compiler estimate in order 2 are implemented. Orders
+3-5 remain separate compiler packages; native refinement/calibration stays
+open. Further
 movement extensions should be selected by explicit legality and cost evidence,
 not enabled as unconditional rewrites. The list is a remaining-work roadmap,
 not a claim that each optional movement extension is necessary for the current

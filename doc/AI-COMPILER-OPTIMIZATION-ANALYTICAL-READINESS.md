@@ -1,9 +1,16 @@
 # Analytical GEMM Readiness Model
 
-Version: v0.2, 2026-10-26. Owner: PU-local VHO P7/P8 joint selection at -O3.
+Version: v0.3, 2026-10-26. Owner: PU-local VHO P7/P8 joint selection at -O3.
 This is a DSC design proposal and initial implementation, not a published
 NVIDIA timing model. It replaces traffic-score overlap credit for joint
 search without changing candidate legality, WHIRL image format, or lowering.
+
+Current model6 adds [occupancy-aware rounds](AI-COMPILER-OPTIMIZATION-OCCUPANCY.md)
+over the per-wave recurrence below. It scales shared per-SM service work,
+never throughput; the legacy one-CTA/SM evaluation remains a traced
+counterfactual. Resource-model zero residency rejects only that sibling.
+The formulas and results below describe the historical model4/5 baseline
+unless explicitly augmented by that controlling occupancy contract.
 
 ## Intent And Ownership
 
@@ -58,7 +65,7 @@ There is no option-owned default delay. Explicit zero is distinguishable from
 omission and recorded in the trace. Built-in tables are never mutated.
 
 The historical model-4 `assumed_v1` profile and old results below remain
-readable for immutable receipt review; new production traces use model 5.
+readable for immutable receipt review; new production traces use model6.
 
 ## Ledger Adapter
 
