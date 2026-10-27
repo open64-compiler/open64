@@ -1,0 +1,31 @@
+{
+  "name": "building_blocks_serial_v1",
+  "provenance": "synthetic_research_fixture_not_NVIDIA",
+  "unit": "research_ticks",
+  "sms": 4,
+  "ctas_per_sm": 4,
+  "threads_per_sm": 512,
+  "warp_lanes": 32,
+  "warps_per_sm": 16,
+  "registers_per_sm": 32768,
+  "register_quantum_per_cta": 256,
+  "registers_per_thread_limit": 128,
+  "shared_bytes_per_sm": 8192,
+  "shared_quantum": 128,
+  "global_bytes_per_tick": 64,
+  "global_bytes_per_sm_tick": 16,
+  "shared_bytes_per_sm_tick": 128,
+  "alu_ops_per_sm_tick": 256,
+  "exp_ops_per_sm_tick": 16,
+  "div_ops_per_sm_tick": 4,
+  "rsqrt_ops_per_sm_tick": 4,
+  "global_startup_ticks": 20,
+  "barrier_ticks": 3,
+  "launch_ticks": 40,
+  "scenarios": {
+    "base": {},
+    "memory_slow": {"global_bytes_per_tick": 8, "global_bytes_per_sm_tick": 2},
+    "division_slow": {"div_ops_per_sm_tick": 1},
+    "launch_heavy": {"launch_ticks": 4096}
+  }
+}

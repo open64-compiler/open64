@@ -2,6 +2,33 @@
 
 ## Purpose
 
+### P8 Enhancement Note 2026-10-27
+
+Adopt [Common execution planning](AI-COMPILER-COMMON-EXECUTION-PLANNING.md):
+computation characterization/verified algebraic alternatives feed a joint
+Work Partition, Resource Lifetime and Execution Events plan. Extend P8 with
+range/generation-aware access lifetimes and physical storage assignment.
+Readiness enables consumption; completion of all conflicting accesses enables
+reuse. Do not reclaim a range at consumer issue or from predicted timestamps.
+Record alias ranges, completion joins, scope/visibility, aligned offsets,
+barrier lifetimes, progress, added synchronization and lost overlap; recheck
+reservation/occupancy and complete cost at P9. Keep disjoint storage and
+synchronous fallbacks. Logical release does not shrink a static CTA reservation.
+
+This is a planned generalization, not a claim that existing AIO-10 records
+are a general event graph or allocator. The executable fixed F32 slot protocol
+below is the implemented case and remains unchanged. The
+[four-case research milestone](research_library/building_block_planning/README.md)
+supplies host/reference and synthetic analytical evidence only.
+
+Enhanced `fetch-pipeline.log` must summarize each range/generation, issue,
+ready, access-complete and reuse point, join participants, storage offsets,
+bytes saved, proof/rejection, added waits and fallback. Coordinate footprints
+with `residency.log` and selection/actions with `physical-plan.log`.
+Keep the existing first-line description, source cross-reference and
+option-controlled WOPT trace convention. New row schemas require explicit
+versioning before implementation.
+
 AIO-10 implements the first check-only AI-P8 vertical slice. It consumes the
 selected AIO-9 `CommonTilePlanIR` and constructs typed `CommonFetchPlanIR` and
 `CommonPipelineIR` alternatives for demand movement, vector movement,

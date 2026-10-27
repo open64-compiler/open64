@@ -4,6 +4,16 @@ Version v0.1 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-27 adopted amendment:
+[Common execution planning](AI-COMPILER-COMMON-EXECUTION-PLANNING.md) defines
+Work Partition, Resource Lifetime and Execution Events as jointly refined
+views of one complete plan. Computation characterization and verified
+algebraic alternatives remain upstream. The shared amendment governs both
+living skeletons without renumbering their historical versions. Its
+[four-case research milestone](research_library/building_block_planning/README.md)
+demonstrates GEMM, reduction, stable Softmax and mean/variance normalization;
+host examples and synthetic cost comparisons are not new compiler/GPU support.
+
 Status: v0.1 consolidates the latest phase-ordering discussion and the top three AI compiler research opportunity analysis. It distinguishes research-derived design inspiration from DSC design proposals so future revisions can add paper-specific details, measurements, and implementation decisions without blurring provenance.
 
 Architectural placement: this document owns optimization analysis, candidate
@@ -69,13 +79,13 @@ The phases below are ordered to preserve semantic information early, introduce p
 | --- | --- | --- |
 | AI-P0 | Semantic tensor analysis | Preserve Attention, GEMM, Conv, MoE, RMSNorm, residual, activation, model weight, activation, and KV-cache meaning. Attach shape, dtype, semantic role, producer-consumer relationships, dynamic dimensions, and reuse traits. |
 | AI-P1 | Lifetime reuse and locality analysis | Compute producer, consumers, last use, reuse distance, object size, working-set size, critical-path position, and likely residency benefit. |
-| AI-P2 | High-level fusion | Create semantic fusion candidates such as MatMul+Bias+Activation, Norm+Projection, attention subgraph fusion, residual fusion, and MoE dispatch-related fusion. Candidates remain provisional. |
+| AI-P2 | High-level fusion | Create semantic fusion, decomposition and verified algebraic/state alternatives. Preserve numerical permissions and equivalence obligations; retain the original realization. No fusion is implied for standalone GEMM. Candidates remain provisional. |
 | AI-P3 | Logical layout optimization | Choose logical tensor layouts such as row-major, channel-major, blocked, packed-head, sequence-major, KV-cache layout, and MoE expert-major layout without fully committing to local physical storage. |
 | AI-P4 | Distributed placement and sharding | Select data parallelism, tensor parallelism, pipeline parallelism, expert parallelism, sequence/context parallelism, replication, shard ownership, and remote-HBM placement alternatives. |
 | AI-P5 | Communication derivation | Derive AllReduce, ReduceScatter, AllGather, send/receive, peer copy, RDMA, and collective boundaries implied by sharding and fusion decisions. |
 | AI-P6 | Local physical layout and residency | Assign local HBM, L2, shared memory, registers, pinned host memory, CPU memory, or remote memory residency. Track capacity, lifetime, reuse, spill, and eviction. |
 | AI-P7 | Multi-level tiling | Build and cost hierarchical tile plans across output tile, reduction tile, CTA/threadblock tile, shared-memory tile, warp tile, thread tile, register fragment, vectorized access, and tensor-core/instruction tile. Connect each level to reuse, coalescing, arithmetic intensity, register pressure, shared-memory footprint, occupancy, synchronization, and autotuning parameters. |
-| AI-P8 | Fetch prefetch and async movement | Plan cp.async/TMA-like transfers, double/triple buffering, host-to-device prefetch, remote-HBM fetch, KV-cache paging, and overlap with compute. |
+| AI-P8 | Fetch prefetch and async movement | Jointly refine movement events, storage-access lifetimes, physical reuse and buffering for each work-partition candidate. Prove readiness and safe overwrite separately; cost waits, reservation and overlap before P9 selection. |
 | AI-P9 | Physical kernel fusion and scheduling | Select the physical kernel plan, final fusion boundaries, launch structure, stream assignment, synchronization points, and instruction-level schedule constraints. |
 | AI-P10 | Runtime variants and adaptation | Generate certified variants with runtime guards for batch size, sequence length, KV-cache pressure, prefix-cache hit rate, expert load, HBM availability, network contention, latency SLO, and guarded alias or disjoint-tile predicates. |
 | AI-P11 | Telemetry and profile feedback | Capture measured latency, achieved occupancy, memory traffic, communication time, overlap effectiveness, cache hit behavior, launch overhead, and runtime variant choices for future recompilation or policy tuning. |
@@ -686,6 +696,9 @@ The ownership boundary is the most important governance rule in this design. Com
 | CommonTilePlanIR | Common Compiler Substrate | Hierarchical tiling alternatives across problem, device, CTA/threadblock, warp/warpgroup, thread, register fragment, tensor-core instruction, and memory-pipeline stages. It records candidate tile shapes, split/reduction axes, buffering depth, swizzle/layout assumptions, resource usage, legality, and cost-model inputs before transformation is committed. |
 | CommonDistributedAliasIR | Common Compiler Substrate | Range-level alias, ownership, mod/ref/reduce, and visibility facts for tensor tiles across ranks, devices, sockets, boards, or nodes. It records owned, ghost, replicated, reduced, migrated, and unknown regions plus communication epochs and runtime guards. |
 | CommonPipelineIR | Common Compiler Substrate | Pipeline stages, buffering depth, async barriers, dependency edges, overlap opportunities. |
+| Work Partition view | Common Compiler Substrate; extensions of existing tile/parallelization records, not a newly published IR type | Logical contribution/output partition, partial/final ownership and provisional execution maps. |
+| Resource Lifetime view | Common Compiler Substrate; residency/pipeline extensions proposed | Value/access/reservation lifetimes, range conflicts, completion joins, aligned storage assignment and generations. |
+| Execution Events view | Common Compiler Substrate; fetch/pipeline extensions proposed | Issue, visibility, access/operation completion, scope, loop-carried dependencies and target realization; one candidate/plan identity. |
 | CommonParallelizationIR | Common Compiler Substrate | Partition axes, replication, work ownership, mapping to resources, parallel region boundaries. |
 | CommonCommunicationIntentIR | Common Compiler Substrate | Collective or peer communication intent before backend-specific communication lowering. |
 | OptimizationCandidateIR | Common Compiler Substrate | Candidate tree that records semantic, layout, placement, parallelization, tile, memory, and pipeline alternatives. |
@@ -725,15 +738,15 @@ The ownership boundary is the most important governance rule in this design. Com
 
 | Phase | Primary IR | Key information |
 | --- | --- | --- |
-| AI-P0 Semantic tensor | Tensor descriptor core, AI semantic descriptors, TensorEvolutionGraph root | Semantic roles, shape, dtype, dynamic dimensions |
-| AI-P1 Lifetime reuse | CommonAccessPatternIR, CommonMemoryResidencyIR, CandidateCostIR seed | Reuse distance, last use, working set |
-| AI-P2 High-level fusion | FusionCandidateIR, OptimizationCandidateIR | Candidate state unknown, semantic legality |
+| AI-P0 Semantic tensor | Tensor descriptor core, AI semantic descriptors, TensorEvolutionGraph root, computation characterization | Domains/accesses, payload, state algebra, effects, numerical semantics and source |
+| AI-P1 Lifetime reuse | CommonAccessPatternIR, CommonMemoryResidencyIR, CandidateCostIR seed, Resource Lifetime view | Value vs access vs reservation lifetime, ranges, completion obligations and reuse |
+| AI-P2 High-level fusion | FusionCandidateIR, OptimizationCandidateIR, verified algebraic alternatives | Equivalence/preconditions, numerical permission, extra work and unchanged fallback |
 | AI-P3 Logical layout | CommonLayoutIR, RepresentationDescriptor hierarchy | Logical layout alternatives |
 | AI-P4 Distributed placement | CommonPlacementIR, CommonParallelizationIR, CommonDistributedAliasIR, TensorEvolutionGraph | Sharding, replication, device ownership, tile-range ownership |
 | AI-P5 Communication derivation | CommonCommunicationIntentIR, CommonDistributedAliasIR, CandidateCostIR | Collectives, peer transfers, and visibility epochs implied by sharding |
 | AI-P6 Local layout residency | CommonMemoryResidencyIR, MemoryHierarchyDescriptorIR | HBM, L2, shared, registers, CPU, remote memory |
 | AI-P7 Multi-level tiling | CommonTilePlanIR, CommonAccessPatternIR, CommonLayoutIR, CommonMemoryResidencyIR, ComputeResourceIR, CandidateCostIR | Output/reduction/CTA/SMEM/warp/thread/register/vector tile families, coalescing, arithmetic intensity, occupancy, resource pressure |
-| AI-P8 Fetch prefetch async | CommonFetchPlanIR, CommonPipelineIR, CommonDistributedAliasIR | Async movement, buffering depth, overlap windows, safe early fetch windows |
+| AI-P8 Fetch prefetch async | CommonFetchPlanIR, CommonPipelineIR, CommonDistributedAliasIR, Resource Lifetime and Execution Events views | Generation-aware access completion, storage conflicts/offsets, visibility, safe reuse, progress and complete movement costs |
 | AI-P9 Kernel scheduling | OptimizationPlanIR, CommonPipelineIR, ComputeResourceIR | Final physical realization |
 | AI-P10 Runtime variants | RuntimeVariantIR, RuntimeGuardIR, RuntimeSelectionPolicyIR, CommonDistributedAliasIR | Certified variants, selection guards, guarded no-alias and disjoint-tile predicates |
 | AI-P11 Telemetry feedback | TelemetryProfileIR, CandidateCostIR updates | Measured traffic, stalls, overlap, selected variants |
@@ -1198,6 +1211,20 @@ The compiler should minimize compute bubbles by making data movement a first-cla
 - Represent layout conversion as an explicit evolution edge with cost and validity conditions.
 
 ## 8.2 Fetch Prefetch And Async Movement
+
+**P8 enhancement note, adopted 2026-10-27.** Movement planning must include
+storage-access lifetime analysis and physical storage assignment. A range is
+eligible for reuse only after every conflicting access completes and the
+required happens-before/visibility proof covers the next overwrite. Consumer
+issue is not access completion; empty dependence information is not a reuse
+proof. Include aliases, all consumers, barrier state and repeated generations.
+Compare repeated slot reuse and cross-purpose packing against disjoint-buffer
+fallbacks. Extra synchronization and lost overlap are costed alternatives,
+not free memory savings. Physical reservation, not logical death, determines
+occupancy. The complete normative amendment and phase-report obligations are
+in [Common execution planning, sections 5-6](AI-COMPILER-COMMON-EXECUTION-PLANNING.md).
+Current bounded F32 P8 slot reuse remains implemented; a general lifetime
+allocator/event scheduler and the other research cases remain unimplemented.
 
 - Attach fetch plans to producer-consumer timing rather than treating prefetch as a late annotation.
 

@@ -8,6 +8,19 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 architecture/research addition:
+[Common execution planning](AI-COMPILER-COMMON-EXECUTION-PLANNING.md) adopts
+the colleague's Work Partition, Resource Lifetime and Execution Events
+framework while retaining upstream computation characterization and verified
+algebraic alternatives. P8's access-lifetime/physical-packing enhancement is
+specified, not generically implemented. The
+[R0 four-case experiment](research_library/building_block_planning/README.md)
+passes 21 tests, 32 synthetic comparisons, 16 decisions and nine host numeric
+checks. Slow memory changes the preferred normalization algorithm; expensive
+launches change the preferred reduction partition. These are research-model
+preferences, not GPU speedups or new backend support. R1-R7 remain open in
+the implementation plan; existing bounded GEMM/native status below is unchanged.
+
 Occupancy increment (2026-10-26, after merged PR193): model6 implements
 table-owned capacity/rounding envelopes and PU-local D/S1/T2 residency-round
 costs. Compute and movement rates stay shared; zero-residency estimates reject

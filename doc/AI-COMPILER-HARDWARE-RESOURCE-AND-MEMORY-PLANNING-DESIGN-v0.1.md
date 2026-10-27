@@ -10,6 +10,19 @@ Companion: `AI_compiler_optimization_design_v0.3.md` and
 
 ## 1. Architecture and decision boundary
 
+2026-10-27 common-framework amendment:
+[Common execution planning](AI-COMPILER-COMMON-EXECUTION-PLANNING.md) adopts
+Work Partition, Resource Lifetime and Execution Events jointly, with semantic
+characterization and verified algebraic alternatives upstream. Sections 4.1
+and 4.2 are provisional resource/schedule views of one complete candidate,
+not irreversible sequential decisions. P8's planned access-lifetime/packing
+enhancement covers both repeated slot and cross-purpose reuse; storage is
+reassigned only after a completion/visibility proof over all conflicting
+accesses, including aliases and asynchronous consumers. Recompute rounded
+reservation and residency after packing; logical release is not physical
+deallocation to another CTA. Preserve the current fixed GEMM implementation
+and its separate native-certification gates.
+
 Target selection update (2026-10-26):
 [Hardware Description IR And Target Selection](AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md)
 defines exact `sm_*` option lookup into our own common tables, per-path timing,
