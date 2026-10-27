@@ -1,5 +1,58 @@
 # Hopper CUDA Validation Bundle
 
+Joint model 5 now defaults to hardware-description-driven analytical readiness. See
+`doc/AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md` for assumed reference-cycle
+profile, limitations and schedule pseudocode. `gemm_cost_model=relative`
+preserves model 3. `gpu_arch=sm_90/sm_90a` selects exact common table rows;
+`gemm_memory_latency=N` is explicit-override only, including zero. See
+`doc/AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md`. Initial table
+timing remains estimated; Blackwell rows are planning-only, not new lowering.
+Run `run_readiness_review.py --build-dir <build> --output-dir <fresh-output>`
+for real compiler selection, malformed trace/option checks, retained before/
+after WHIRL and CUDA, and host-only execution. `test_readiness.py` compiles
+the production pure evaluator and compares 2340 literal T2 schedule oracles.
+No instruction simulator or GPU is required by compilation. TMA host-provider
+limitations and all existing executable legality gates remain in effect.
+
+Joint model 3 adds movement-aware resource discovery; see
+`doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md`. P7 retains topology and
+safety evidence while P8 checks D/S1/T2 value-storage, active SMEM (including
+TMA barriers), and thread budgets independently. `JOINT_RESOURCE` is mandatory
+for every pair and ends with the input line. The report tool audits its
+formula/coverage and summarizes it in P7/P8/P9 and aggregate logs. These are
+provisional logical values, not native registers, spills or occupancy.
+`test_movement_resources.py` covers malformed trace ledgers; the linked AIO-10
+`direct` mode covers constrained staged rejection preserving D, zero SMEM,
+D's own register limit, barrier capacity, altered/missing proof and safety
+negatives. Existing baseline and model-1/model-2 trace compatibility remain.
+The executable-P8/joint/direct source-review harnesses use driver `-S` to
+retain optimization and code generation without invoking the legacy CPU
+assembler driver. Generated CUDA is still independently compiled and run by
+the host simulator; neither boundary claims native CUDA/GPU certification.
+
+## Read-Only Bubble Ranking Experiment
+
+`gemm_bubble.py` replays the audited model-3 census with a source-warp event
+graph and finite issue, memory, queue and SMEM service. `test_gemm_bubble.py`
+covers timing/dependency/resource oracles; `audit_bubble.py` independently
+reopens retained graphs and schedules. `bubble_profiles.json` supplies three
+explicitly synthetic scenarios, not calibrated Hopper/Blackwell timings.
+
+```sh
+python3 osprey/be/vho/tests/ai_matmul_cuda/run_bubble_experiment.py \
+  --producer <immutable-movement-resource-receipt> --output <fresh-directory>
+```
+
+The runner verifies producer checksums, preserves compiler input/output
+evidence, snapshots the model/profile, and reports old/shadow/emitted winners
+for five cases. Raw `.t` remains unchanged; analyzer-generated `bubble.log`
+is included in aggregate/summary reports. Actual selection never changes.
+The source schedule assumes one CTA/SM, no spills, separate mul/add, fixed
+address work and synthetic service/latency; no native scheduler, cache or
+instruction timing certification is claimed. Production bubble options are
+not registered. See the controlling design's implemented-replay section in
+`doc/AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md` for exact limitations.
+
 ## Joint Tile And Movement Search
 
 The current joint model is D/S1/T2 model 2. D lowers a guarded direct-global

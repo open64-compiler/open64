@@ -87,7 +87,7 @@ def compile_case(root, build, env, k, tma, extra_options=(), dimensions=(128, 12
     run([str(build / "osprey/targdir/ir_tools/ir_b2a"), "-st", "-src",
          "gemm.B", "gemm.input.T"], root, env, "input-dump.log")
     command = [str(build / "osprey/targdir/driver/opencc"),
-               f"-run-build={build}", "-O3", "-noinline", "-c", "-keep",
+               f"-run-build={build}", "-O3", "-noinline", "-S", "-keep",
                "-Wb,-DSL:cuda_legacy_emit=OFF",
                "-Wb,-DSL:cuda_whirl_output=gemm.device.B"]
     if tma:
@@ -177,7 +177,7 @@ def multi_case(root, build, env):
     run([sys.executable, str(HERE / "two_matmul_fixture.py"), "two.B"],
         root, env, "fixture.log")
     run([str(build / "osprey/targdir/driver/opencc"), f"-run-build={build}",
-         "-O0", "-INLINE:none", "-c", "-keep", "-Wb,-DSL:cuda_legacy_emit=OFF",
+         "-O0", "-INLINE:none", "-S", "-keep", "-Wb,-DSL:cuda_legacy_emit=OFF",
          "-Wb,-DSL:cuda_tma_prefetch=ON", "-Wb,-DSL:cuda_whirl_output=two.device.B",
          "two.B"], root, env, "compiler.log")
     run([str(build / "osprey/targdir/ir_tools/ir_b2a"), "-st", "-src",

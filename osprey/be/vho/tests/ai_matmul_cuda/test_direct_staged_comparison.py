@@ -77,10 +77,10 @@ def main():
                            ("staged", 128, 128, 144)):
         case = root / label
         result = compile_case(case, build, env, k, True,
-                              ("-Wb,-DSL:gemm_plan_search=joint",), (m, n))
+                              ("-Wb,-DSL:gemm_plan_search=joint", "-Wb,-DSL:gemm_cost_model=relative"), (m, n))
         candidates, selection, _ = parse((case / "gemm.t").read_text())
         joint = selection["joint"]
-        if joint["mode"].get("model") != 2 or not joint["direct_access"]:
+        if joint["mode"].get("model") != 3 or not joint["direct_access"] or not joint["resources"]:
             raise RuntimeError("D alternatives were not retained")
         if label == "direct" and (joint["chosen"]["kind"] != "D" or
                                    selection["pipeline_kernel"]["bytes"] != 0):
@@ -88,6 +88,20 @@ def main():
         if joint["fallback"]["kind"] != "S1":
             raise RuntimeError("lost staged synchronous fallback")
         trace = (case / "gemm.t").read_text()
+        resource_rows = [line for line in trace.splitlines() if line.startswith("AI_OPT 7 JOINT_RESOURCE ")]
+        resource = resource_rows[0].split()
+        resource[4] = str(int(resource[4]) + 1)
+        for broken in (
+            "\n".join(line for line in trace.splitlines() if not line.startswith("AI_OPT 7 JOINT_RESOURCE ")),
+            trace + resource_rows[0] + "\n",
+            trace.replace(resource_rows[0], " ".join(resource)),
+        ):
+            try:
+                parse(broken)
+            except ValueError:
+                pass
+            else:
+                raise RuntimeError("missing/duplicate/corrupt movement resource evidence accepted")
         bad = "\n".join(line for line in trace.splitlines() if not line.startswith("AI_OPT 7 DIRECT_ACCESS "))
         try:
             parse(bad)
@@ -126,7 +140,7 @@ def main():
     case.mkdir()
     run([sys.executable, str(HERE / "two_matmul_fixture.py"), "two.B", "--direct-first"], case, env, "fixture.log")
     run([str(build / "osprey/targdir/driver/opencc"), f"-run-build={build}", "-O3", "-noinline",
-         "-c", "-keep", "-Wb,-DSL:cuda_legacy_emit=OFF", "-Wb,-DSL:gemm_plan_search=joint",
+         "-S", "-keep", "-Wb,-DSL:cuda_legacy_emit=OFF", "-Wb,-DSL:gemm_plan_search=joint", "-Wb,-DSL:gemm_cost_model=relative",
          "-Wb,-DSL:cuda_tma_prefetch=ON", "-Wb,-DSL:cuda_whirl_output=two.device.B", "two.B"], case, env, "compiler.log")
     run([str(build / "osprey/targdir/ir_tools/ir_b2a"), "-st", "-src", "two.device.B", "two.device.T"], case, env, "device-dump.log")
     run([str(build / "osprey/targdir/whirl2c/whirl2c"), "-cuda", "-CLIST:dotc_file=two.whirl.cu",

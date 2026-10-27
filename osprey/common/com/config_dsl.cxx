@@ -51,8 +51,19 @@ char *VHO_DSL_PU_Specialization_Checkpoint_Output = NULL;
 char *VHO_DSL_CUDA_Tile_Output = NULL;
 char *VHO_DSL_CUDA_Whirl_Output = NULL;
 char *VHO_DSL_GEMM_Plan_Search = NULL;
+char *VHO_DSL_GEMM_Cost_Model = NULL;
+char *VHO_DSL_GPU_Arch = NULL;
+UINT32 VHO_DSL_GEMM_Memory_Latency = 0;
+BOOL VHO_DSL_GEMM_Memory_Latency_Set = FALSE;
 
 static OPTION_DESC Options_DSL[] = {
+  { OVK_NAME, OV_VISIBLE, FALSE, "gpu_arch", "gpu_arch",
+    0, 0, 0, &VHO_DSL_GPU_Arch, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "gemm_cost_model", "gemm_cost_model",
+    0, 0, 0, &VHO_DSL_GEMM_Cost_Model, NULL },
+  { OVK_UINT32, OV_VISIBLE, FALSE, "gemm_memory_latency", "gemm_memory_latency",
+    0, 0, 1000000, &VHO_DSL_GEMM_Memory_Latency,
+    &VHO_DSL_GEMM_Memory_Latency_Set },
   { OVK_NAME, OV_VISIBLE, FALSE, "gemm_plan_search", "gemm_plan_search",
     0, 0, 0, &VHO_DSL_GEMM_Plan_Search, NULL },
   { OVK_BOOL, OV_VISIBLE, TRUE, "cuda_smem_layout_search", "cuda_smem_layout_search",

@@ -7,6 +7,7 @@
  * barrier/resource legality, costing, selection, and semantic verification.
  * Scope and joint contract: doc/AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md.
  * Direct extension: doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md.
+ * Resources: doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md.
  */
 
 #ifndef dsl_fetch_pipeline_opt_INCLUDED
@@ -19,6 +20,7 @@
 #include "dsl_fetch_pipeline.h"
 #include "dsl_tensor_locality.h"
 #include "dsl_tile_candidate_opt.h"
+#include "dsl_gemm_readiness.h"
 
 struct pu_info;
 struct DSL_FETCH_PIPELINE_ANALYSIS;
@@ -40,10 +42,28 @@ typedef struct {
     UINT32 enable_multidimensional_async;
     /* Runtime-only controls: full-GEMM costing and deferred tile override. */
     UINT32 joint_cost;
+    UINT32 readiness_cost;
+    UINT32 memory_latency;
+    UINT32 memory_latency_set;
+    UINT32 hardware_arch_id;
     UINT32 enable_direct;
     DSL_TILE_PLAN_ID tile_plan_id;
     UINT32 reserved;
 } VHO_DSL_FETCH_PIPELINE_CONTROL;
+
+/* Adapt a complete PU-local tile/movement pair to the assumed analytical
+ * profile. Both output pointers are required. No IR mutation; FALSE leaves
+ * outputs unused and prevents selection. */
+extern BOOL VHO_DSL_fetch_readiness_cost
+    (const DSL_TILE_PLAN_RECORD &tile, const DSL_FETCH_PLAN_RECORD &fetch,
+     const DSL_HARDWARE_DESCRIPTION_RECORD &hardware, DSL_GEMM_READINESS_INPUT *input,
+     DSL_GEMM_READINESS_RESULT *result);
+
+/* Resolve common table data into a caller-owned PU-local description and
+ * apply only explicit diagnostic overrides; never mutate built-in tables. */
+extern BOOL VHO_DSL_fetch_hardware_description
+    (const VHO_DSL_FETCH_PIPELINE_CONTROL &control,
+     DSL_HARDWARE_DESCRIPTION_RECORD *hardware);
 
 extern void VHO_DSL_Fetch_Pipeline_Control_Init
                                 (VHO_DSL_FETCH_PIPELINE_CONTROL *control);
@@ -77,6 +97,14 @@ extern const DSL_OPT_PLAN_CONTEXT *VHO_DSL_Fetch_Pipeline_Get_Plan_Context
 extern BOOL VHO_DSL_fetch_pipeline_can_lower
                                 (const DSL_TILE_PLAN_RECORD &tile,
                                  const DSL_FETCH_PLAN_RECORD &fetch);
+
+/* Derive a per-movement value-storage/capacity ledger without changing the
+ * supplied tile/fetch. FALSE denotes malformed geometry or arithmetic;
+ * capacity excess is represented in the returned ledger, not hidden. */
+extern BOOL VHO_DSL_fetch_resource_requirements
+                                (const DSL_TILE_PLAN_RECORD &tile,
+                                 const DSL_FETCH_PLAN_RECORD &fetch,
+                                 DSL_FETCH_RESOURCE_RECORD *resources);
 
 /* Prove signed-I4 index and padded loop bounds before either plan selection
  * or source/device construction; do not mutate the supplied runtime record. */

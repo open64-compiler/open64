@@ -6,6 +6,13 @@ Scope: AI memory hierarchy optimization architecture, research opportunity mappi
 
 Status: v0.3 adds a phase-by-phase optimization reporting contract and identifies trace fields still needed for a trustworthy cross-phase report. The 2026-10-18 amendment fixes the matmul-first trace, report, and durable-artifact conventions in Section 9.7. The 2026-10-21 amendments add the predicted and measured Roofline contract in Section 7.2A, the high-level WHIRL/NVISA convergence contract in Section 6B, and the accepted `whirl2c -cuda` source-emission direction in Section 6B.5. The 2026-10-22 amendment makes SMEM cache-blocking a costed alternative within an opt-in delayed joint-plan search (Section 6A.3B), with rationale preserved in a separate white-paper candidate. The design retains the existing `.cu` emitter as a migration baseline and specifies a default-on control for it; neither implies that device WHIRL is complete. AIO-9 has a compact WOPT-style selection trace and a tile-phase report; full cross-phase coverage, Roofline reporting, joint-plan search, and WHIRL device-loop lowering remain proposals. Research-derived inspiration and DSC design proposals remain distinct.
 
+2026-10-26 design amendment: Section 7.2B introduces the proposed
+dependency/resource bubble model and a shadow candidate-ranking experiment.
+The current D/S1/T2 model-3 selector and initial read-only source-warp replay
+are implemented; production cycle selection and the new controls below are
+not. The implementation/progress ledgers govern
+current maturity where the historical status paragraph above is older.
+
 # 1 Executive Summary And Design Goals
 
 The design goal is to make AI compiler optimization compositional across semantic tensors, layouts, sharding, memory residency, tiling, asynchronous movement, scheduling, and runtime adaptation. The central architectural choice is to preserve tensor identity through a TensorEvolutionGraph while optimization candidates remain provisional until enough layout, placement, tiling, resource, and runtime-state information exists to make a profitability decision.
@@ -453,6 +460,71 @@ CommonTilePlanIR supplies W and logical movement by tile and stage. CommonFetchP
 The compiler can construct a predicted Roofline before GPU execution using modeled B_L and documented or calibrated ceilings. It must label the result `predicted`, carry cold/warm cache or other traffic scenarios when uncertain, and reject impossible predictions such as a modeled kernel time below T_roof under the same assumptions. The bound does not prove a candidate profitable: small GEMMs may be limited by launch latency, insufficient CTA waves, dependency stalls, or pipeline fill/drain, none of which the classical steady-state Roofline explains. Keep the scheduled latency model in Section 7.2 as the profitability estimate and use Roofline to check its consistency and explain headroom. The current AIO-9 relative score and `selection_reason=lowest_complete_relative_cost` must not be relabeled as Roofline-derived latency.
 
 To measure effectiveness, compile and run the baseline and alternatives as comparable GPU kernels on the same device, verify numerical results, and retain kernel time, actual instruction path, resource use, and observed traffic at each available memory level. Join those measurements to the compile-time plan and source identity. Plot observed intensity W / B_observed,L and achieved performance W / T_kernel against the matching measured or calibrated ceiling. Report Roofline efficiency P_achieved / P_roof, model error T_predicted versus T_kernel, and whether the selected plan actually outranks rejected candidates. A GPU Roofline must not use the current direct CPU fallback as its GPU baseline. Profiling changes execution conditions, so preserve unprofiled timing separately from counter collection. Where no native GPU evidence exists, report `measured=unavailable`, not an inferred speedup.
+
+## 7.2B Analytical Readiness Selection And Bubble Diagnostics
+
+Update 2026-10-26: production joint selection now follows the separate
+[analytical readiness design](AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md).
+It replaces traffic-score overlap credit with a bounded schedule recurrence
+for operand readiness, consumer work, slot release/refill, bandwidth service,
+startup and drain. Complete D/S1/T2 alternatives share one assumed-cycle
+profile before transformation. Joint model 5 defaults to readiness; explicit
+`gemm_cost_model=relative` preserves model 3 for comparison. Baseline mode is
+unchanged. The source-warp simulator below remains a separate diagnostic;
+its proposed production integration/select controls are not implemented.
+
+Hardware descriptions are the single target-data authority. Familiar exact
+`sm_*` values resolve to our own versioned common tables; per-path latency,
+bandwidth, compute/local service and synchronization timing are not private
+constants in an optimizer. See
+[Hardware Description IR And Target Selection](AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md).
+Current quantitative rows are explicitly estimated, not measured NVIDIA
+timing. New `HW_DESC/HW_PERF` trace records identify the table and overrides.
+
+This initial analytical selector is assumption-driven, not confidence-certified
+or calibrated GPU performance. Native occupancy/cache/queue refinements remain
+open. Its explicit profile, formulas, provenance, candidate costs and waits
+must be audited in `.t` and the phase/summary logs. Do not mix reference cycles,
+relative traffic scores, Roofline nanoseconds or simulator waits in one total.
+
+The objective is minimum GEMM completion latency, not maximum occupancy,
+allocated storage or bandwidth consumption independently. Tiling reduces
+operand demand through reuse; coalescing/banking improve delivery efficiency;
+prefetch and scheduling make operands ready before useful compute needs them.
+A waiting warp is not necessarily a compute-unit bubble if other legal work
+covers it. Summed actor stalls are not kernel elapsed cycles.
+
+Adopt the review proposal in
+[GEMM Bubble Prediction And Candidate-Selection Experiment](AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md).
+Its pseudocode builds a read-only event graph from the existing lowerable
+plan, models dependencies plus finite issue/memory/queue resources, and
+predicts completion, compute issue opportunities and attributed waits. P7
+provides tile/access/resource alternatives, P8 provides actual movement and
+slot-order contracts, and P9 compares complete schedules before mutation.
+Assembly/SASS may later refine dependencies and instruction work; instruction
+spacing alone does not establish cycles or memory-service latency.
+
+The first implementation milestone is shadow-only on the same bounded
+D/S1/T2 census, preserving the existing actual winner, S1 fallback and
+WHIRL-derived CUDA. Compare the old winner with the hypothetical cycle-model
+winner under identical versioned scenarios; report changed, unchanged or
+incomplete ranking with causes and confidence. Never mix cycle predictions
+with relative model-3 scores, add a second overlap discount, or add Roofline
+as another latency term. Unknown facts cannot be treated as zero. Cycle-based
+selection is a separately gated follow-on after completeness, consistency and
+uncertainty review; the documented controls are not registered yet.
+
+Hardware/software co-design should use this causal account to compare both
+fixed plans and reoptimized plans across explicit hardware revisions. The
+intent is to reduce dependence on broad empirical search, not to claim that
+analytical prediction eliminates native correctness checks or calibration.
+All added phase reports must summarize operand readiness, resource demand,
+remaining bubbles, ranking sensitivity and actual versus shadow decisions.
+
+The first source-warp replay implementation and its explicit synthetic timing
+and source-expansion assumptions are documented in the bubble design's
+Section 10. It operates downstream of authenticated compiler traces; it is
+not the production VHO adapter or a cycle-accurate NVIDIA model.
 
 ## 7.3 Profitability Decision Timing
 

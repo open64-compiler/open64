@@ -27,9 +27,13 @@ selected movement plan determines active physical allocation. A D record
 explicitly overrides allocation to zero. Reports show selected A/B storage
 as zero rather than displaying the unused staged ledger as actual storage.
 
-This increment does not resurrect P7 seeds already rejected for resources,
-generate new tile dimensions, or produce a runtime fallback dispatcher. The
-inherited P7 register estimate remains conservative and uncalibrated.
+At this model-2 checkpoint, P7 resource rejection still discarded seeds
+before movement enumeration. The subsequent
+[movement-resource increment](AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md)
+introduces model 3: joint P7 defers movement budgets, and P8 proves each
+sibling's resources independently, including a D-specific value-storage
+estimate. Neither increment adds tile dimensions or runtime fallback dispatch;
+native register allocation remains uncalibrated.
 
 ## Direct WHIRL Algorithm
 
@@ -156,5 +160,6 @@ device PU; they are not an in-place host-PU checkpoint.
 
 Native CUDA compilation, GPU correctness and calibration remain pending.
 `cp.async`, actual vector instructions, larger search spaces, independent
-D-specific register/resource discovery, runtime variants and TMA host launch
-integration are separate milestones. No GPU speedup is claimed here.
+D-specific occupancy/spill modeling, runtime variants and TMA host launch
+integration remain separate milestones. Movement-aware resource discovery is
+covered by the linked model-3 follow-on. No GPU speedup is claimed here.

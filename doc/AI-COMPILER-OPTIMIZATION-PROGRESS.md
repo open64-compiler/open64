@@ -8,6 +8,83 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+Hardware-description increment (2026-10-26): exact `gpu_arch=sm_90/sm_90a`
+resolves into our own common Hardware Description IR. Model 5 removes private
+delay/rate constants from analytical evaluation and ledger adaptation; all
+path startup, store, sync, issue, service and wave parameters come from named
+tables. The legacy latency option applies only when explicitly supplied.
+Blackwell rows exist for planning but unsupported CUDA emission fails closed.
+`tile.log` now shows architecture/table/revision/provenance before old
+diagnostic scores. 104 tests, 2340 varied-parameter oracles, thirteen compiler/
+source configurations, legacy controls, common/VHO contracts and symbol checks
+pass. These tables still carry uncalibrated estimates.
+See [target selection](AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md).
+
+Checkpoint `1f793c9e`: 1281 files checksum-verified after immutable promotion;
+durable WHIRL reopening and report replay match. Evidence:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m8/hardware-description/sha256-b1370aae64cc600d9cb9b2fc6b58dbc357a793be4efe4e9f38542cbc912bc859/`.
+
+Historical analytical readiness increment (2026-10-26): the compiler's opt-in joint path
+now defaults to a schedule-aware reference-cycle model instead of traffic-score
+overlap credit. D/S1/T2 share an explicit assumed profile; T2 models preload,
+ready waits, consume/release/refill and drain in O(log K). Relative model 3
+remains available. This is separate from the downstream simulator below.
+102 unit tests and 2340 literal recurrence oracles pass; ten compiler/source
+configurations pass independent trace/WHIRL/CUDA and host-only checks.
+128x128x144 now emits T2 #3 instead of relative S1 #12; its modeled total
+31336 compares with best synchronous S1 #1 at 43237 in the same assumed unit.
+65x67x17 emits S1 #1 instead of D #8; three tiny/tail shapes retain D #2.
+Low-latency selection differs from the shadow simulator and remains an
+explicit calibration question, not evidence of simulator or GPU accuracy.
+No native GPU timing or calibrated ranking is claimed. See the
+[analytical design](AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md).
+
+Compiler checkpoint `de7256b7`: final backend/link checks, legacy D/S1/T2,
+controls/baseline parity and linked AIO-10 contracts pass. 1119 files were
+checksum-verified after immutable promotion; durable `.B` reopen and raw-trace
+summary replay match retained results. Evidence:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m7/analytical-readiness/sha256-9e4d7678b42ff5cfbb543b82d12ac55f39061935fdb371d39046cf09e934b5d0/`.
+
+Design-review increment (2026-10-26): a
+[bubble-prediction algorithm](AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md)
+and B0-B5 queue are proposed inside FP32 analytic refinement. First compare
+the same legal D/S1/T2 census in shadow mode, reporting operand readiness,
+finite-resource waits and old/shadow/emitted winners without changing actual
+selection. The initial read-only source-warp simulator, synthetic cycle
+ranking and analyzer-generated `bubble.log` are now implemented; see design
+Section 10. Production VHO integration/options, selection and calibration
+remain pending. No native speedup is claimed. See the
+[implementation queue](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#bubble-model-experiment).
+
+Initial bubble replay: 96 unit tests pass. Five authenticated cases across
+three synthetic profiles produce 11 changed and four unchanged hypothetical
+winners. For 128x128x144, S1 remains best at latency 20, while T2 wins at
+100/400; at 100, modeled completion is 79512 versus 72630 reference cycles.
+The actual S1 compiler selection remains unchanged. See bubble design
+Sections 10-11 for source-expansion assumptions, limitations and full results.
+Checkpoint `f352ccbd`: 168 independent event/interval audits and 331-file
+durable checksum verification. Evidence:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m6/bubble-replay/sha256-767a1d13e8e7d1ea1b1aef1d22b218386015d938a22158a1c65ca68df7c55460/`.
+The tail event evidence was independently reopened after promotion.
+
+Movement-resource increment (2026-10-26, after merged PR 192): joint P7
+resource deferral and independent P8 D/S1/T2 resource ledgers are implemented.
+The shared lowering preflight recomputes the ledger; joint model 3 traces and
+the report tool audit all movement siblings and summarize selected resources.
+Constrained native tests prove that staged SMEM/register rejection does not
+reject a legal D sibling, including zero available SMEM. Native registers,
+spills, occupancy, grid waves and GPU calibration remain unknown. See the
+[movement-resource design](AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md).
+The next compiler package is analytic resource/profitability refinement, not
+FP8 support or unconditional movement rewriting.
+Validation: 77 unit tests, D/S1/T2 integration, joint controls/baseline parity,
+executable P8 and linked AIO-10 contracts pass; eleven malformed common
+records are rejected. Generated-source host simulations report zero error.
+Producer checkpoint `ef7cebce`; SHA256-verified immutable evidence:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/m5/movement-resources/sha256-792700b3a528cd2cf07ac04097e0b437f42d0ca6b27a1f78d4f458bd1de10872/`.
+Retained device-WHIRL reopen and trace-report replay reproduce the review
+outputs. No existing review receipt was modified or removed.
+
 Priority update (2026-10-25): further partial-sum promotion/numerical work is
 **deferred until explicit FP8 support begins**. Preserve the prototype below;
 production optimization remains fixed-shape F32 D/S1/T2. The next proposed

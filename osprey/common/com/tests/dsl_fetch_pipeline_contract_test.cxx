@@ -7,6 +7,8 @@
  * buffering, overlap cost, safety rejection, and unchanged binary WHIRL.
  * Design: doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md.
  * Direct negatives: doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md.
+ * Resource gates: doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md.
+ * Hardware lookup: doc/AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md.
  */
 
 #include <stdio.h>
@@ -225,12 +227,14 @@ Destroy_Analysis (AIO10_ANALYSIS *analysis)
     memset(analysis, 0, sizeof(*analysis));
 }
 
-/* Build PU-local check-only movement alternatives using a compact TMA-capable
- * P7 fixture; restore the caller option after candidate construction. */
+/* Build PU-local movement alternatives using a compact TMA-capable P7
+ * fixture; joint mode defers P7 resources and uses an explicit topology.
+ * Restore the caller option after construction; no executable tree changes. */
 static BOOL
 Build_Analysis (const AIO10_FIXTURE *fixture, UINT32 profile,
                 UINT32 prefetch_distance, BOOL select_plans,
-                FILE *trace, AIO10_ANALYSIS *analysis)
+                FILE *trace, AIO10_ANALYSIS *analysis,
+                BOOL movement_aware = FALSE)
 {
     VHO_DSL_TILE_CONTROL tile_control;
     VHO_DSL_FETCH_PIPELINE_CONTROL fetch_control;
@@ -259,6 +263,10 @@ Build_Analysis (const AIO10_FIXTURE *fixture, UINT32 profile,
     tile_control.target_profile_id = profile;
     tile_control.focus_value_id =
         DSL_Builder_Get_Value_Image_Id(fixture->values[2]);
+    if (movement_aware) {
+        tile_control.select_plans = 0;
+        tile_control.defer_movement_resources = 1;
+    }
     analysis->tile = VHO_DSL_Tile_Create
                          (fixture->pu, analysis->graph, analysis->tensor,
                           analysis->locality, NULL, &tile_control, stderr);
@@ -274,6 +282,12 @@ Build_Analysis (const AIO10_FIXTURE *fixture, UINT32 profile,
     fetch_control.focus_value_id = tile_control.focus_value_id;
     fetch_control.prefetch_distance_hint = prefetch_distance;
     fetch_control.select_plans = select_plans;
+    if (movement_aware) {
+        fetch_control.joint_cost = fetch_control.enable_direct = 1;
+        fetch_control.tile_plan_id = 2;
+        fetch_control.enable_vector = fetch_control.enable_async_copy = 0;
+        fetch_control.maximum_buffer_stages = 2;
+    }
     analysis->pipeline = VHO_DSL_Fetch_Pipeline_Create
                              (fixture->pu, analysis->graph,
                               analysis->locality, NULL, analysis->tile,
@@ -468,9 +482,78 @@ Run_Control(void)
     return 0;
 }
 
+/* Compose the production P7 classifier and P8 resource/lowering preflight on
+ * constrained copies of a real tile. No fixture-only target or option enters
+ * production policy; failed assertions leave executable WHIRL unchanged. */
+static BOOL
+DSL_test_movement_resource_gates
+        (const DSL_TILE_PLAN_RECORD &original,
+         const std::vector<DSL_FETCH_PLAN_RECORD> &plans)
+{
+    DSL_TENSOR_LOCALITY_FACT_RECORD locality;
+    memset(&locality, 0, sizeof(locality));
+    locality.lifetime_state = DSL_TENSOR_LIFETIME_EXACT_BLOCK;
+    locality.alias_state = DSL_TENSOR_ALIAS_PROVEN_UNIQUE;
+    DSL_TILE_PLAN_RECORD tile = original;
+    tile.flags |= DSL_TILE_PLAN_FLAG_DEFERRED_RESOURCES;
+    tile.shared_capacity_bytes = tile.shared_bytes_per_stage - 1;
+    tile.maximum_buffer_stages = 0;
+    VHO_DSL_tile_classify(locality, FALSE, &tile);
+    if (tile.legality != DSL_OPT_LEGALITY_REJECTED || tile.rejection_reason != DSL_OPT_REJECT_RESOURCE)
+        return FALSE;
+    VHO_DSL_tile_classify(locality, TRUE, &tile);
+    if (tile.legality != DSL_OPT_LEGALITY_PROVEN) return FALSE;
+    DSL_FETCH_PLAN_RECORD staged = plans[0], direct = plans[1], tma = plans[2];
+    if (!VHO_DSL_fetch_resource_requirements(tile, staged, &staged.resources) ||
+        !VHO_DSL_fetch_resource_requirements(tile, direct, &direct.resources) ||
+        staged.resources.shared_bytes <= staged.resources.shared_limit_bytes ||
+        direct.resources.shared_bytes != 0 ||
+        VHO_DSL_fetch_pipeline_can_lower(tile, staged) ||
+        !VHO_DSL_fetch_pipeline_can_lower(tile, direct)) return FALSE;
+    tile.shared_capacity_bytes = 0;
+    if (!VHO_DSL_fetch_resource_requirements(tile, direct, &direct.resources) ||
+        !VHO_DSL_fetch_pipeline_can_lower(tile, direct)) return FALSE;
+    tile.shared_capacity_bytes = original.shared_capacity_bytes;
+    tile.register_capacity_per_thread = direct.resources.register_bytes_per_thread;
+    if (!VHO_DSL_fetch_resource_requirements(tile, staged, &staged.resources) ||
+        !VHO_DSL_fetch_resource_requirements(tile, direct, &direct.resources) ||
+        staged.resources.register_bytes_per_thread <= tile.register_capacity_per_thread ||
+        VHO_DSL_fetch_pipeline_can_lower(tile, staged) ||
+        !VHO_DSL_fetch_pipeline_can_lower(tile, direct)) return FALSE;
+    --tile.register_capacity_per_thread;
+    if (!VHO_DSL_fetch_resource_requirements(tile, direct, &direct.resources) ||
+        VHO_DSL_fetch_pipeline_can_lower(tile, direct)) return FALSE;
+    tile = original;
+    tile.flags |= DSL_TILE_PLAN_FLAG_DEFERRED_RESOURCES;
+    tile.shared_capacity_bytes = tile.shared_bytes_per_stage * 2;
+    if (!VHO_DSL_fetch_resource_requirements(tile, tma, &tma.resources) ||
+        tma.resources.shared_bytes != tile.shared_bytes_per_stage * 2 + 16 ||
+        VHO_DSL_fetch_pipeline_can_lower(tile, tma)) return FALSE;
+    tile.shared_capacity_bytes += 16;
+    if (!VHO_DSL_fetch_resource_requirements(tile, tma, &tma.resources) ||
+        !VHO_DSL_fetch_pipeline_can_lower(tile, tma)) return FALSE;
+    --tma.resources.shared_bytes;
+    if (VHO_DSL_fetch_pipeline_can_lower(tile, tma)) return FALSE;
+    memset(&tma.resources, 0, sizeof(tma.resources));
+    if (VHO_DSL_fetch_pipeline_can_lower(tile, tma)) return FALSE;
+    for (UINT32 fault = 0; fault < 4; ++fault) {
+        DSL_TENSOR_LOCALITY_FACT_RECORD unsafe = locality;
+        tile = original;
+        if (fault == 0) unsafe.alias_state = DSL_TENSOR_ALIAS_UNKNOWN;
+        if (fault == 1) unsafe.lifetime_state = DSL_TENSOR_LIFETIME_EFFECT;
+        if (fault == 2) tile.threads_per_cta = 1025;
+        if (fault == 3) tile.thread_m = 0;
+        VHO_DSL_tile_classify(unsafe, TRUE, &tile);
+        if (tile.legality == DSL_OPT_LEGALITY_PROVEN) return FALSE;
+    }
+    printf("Movement resource gates passed: staged-only SMEM/register rejection preserves D; D register limit, TMA barrier storage, altered ledger and four safety negatives rejected\n");
+    return TRUE;
+}
+
 /* Exercise direct-plan runtime records and malformed-copy rejection without
  * publishing an image. The active PU supplies all ownership/alias facts;
- * copied arrays isolate each negative and analysis destruction owns cleanup. */
+ * copied arrays isolate each negative and analysis destruction owns cleanup.
+ * Also prove the production adapter consumes per-path hardware timing. */
 static int
 DSL_test_direct_record_contracts ()
 {
@@ -478,18 +561,8 @@ DSL_test_direct_record_contracts ()
     AIO10_ANALYSIS analysis;
     DSL_Opcode_Register_Common_Substrate();
     if (!Create_Fixture("aio10_direct", &fixture) ||
-        !Build_Analysis(&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 1, FALSE, NULL, &analysis))
+        !Build_Analysis(&fixture, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 1, FALSE, NULL, &analysis, TRUE))
         return 1;
-    VHO_DSL_Fetch_Pipeline_Destroy(analysis.pipeline);
-    VHO_DSL_FETCH_PIPELINE_CONTROL control;
-    VHO_DSL_Fetch_Pipeline_Control_Init(&control);
-    control.joint_cost = control.enable_direct = 1;
-    control.tile_plan_id = 2;
-    control.select_plans = control.enable_vector = control.enable_async_copy = 0;
-    control.maximum_buffer_stages = 2;
-    analysis.pipeline = VHO_DSL_Fetch_Pipeline_Create(fixture.pu, analysis.graph,
-        analysis.locality, NULL, analysis.tile, &control, stderr);
-    if (analysis.pipeline == NULL || !VHO_DSL_Fetch_Pipeline_Build(analysis.pipeline, stderr)) return 1;
     const DSL_FETCH_PIPELINE_IR *ir = VHO_DSL_Fetch_Pipeline_Get_IR(analysis.pipeline);
     DSL_FETCH_SITE_RECORD site;
     if (!DSL_fetch_pipeline_ir_get_site(ir, 1, &site) || site.pipeline_plan_count != 3) return 1;
@@ -506,6 +579,24 @@ DSL_test_direct_record_contracts ()
     DSL_TILE_PLAN_RECORD geometry;
     UINT64 sector_bytes[2];
     if (!DSL_tile_plan_ir_get_plan(VHO_DSL_Tile_Get_IR(analysis.tile), 2, &geometry)) return 1;
+    if ((geometry.flags & DSL_TILE_PLAN_FLAG_DEFERRED_RESOURCES) == 0) return 1;
+    if (!DSL_test_movement_resource_gates(geometry, plans)) return 1;
+    // The real adapter must select the path's timing, not a private default.
+    DSL_HARDWARE_DESCRIPTION_RECORD hardware;
+    if (!DSL_hardware_description_find_arch("sm_90", &hardware)) return 1;
+    hardware.performance.demand_latency = 17;
+    hardware.performance.staged_latency = 31;
+    hardware.performance.tma_latency = 43;
+    hardware.performance.store_latency = 71;
+    hardware.performance.local_issues_per_cycle = 2;
+    for (UINT32 i = 0; i < plans.size(); ++i) {
+        DSL_GEMM_READINESS_INPUT input;
+        DSL_GEMM_READINESS_RESULT result;
+        if (!VHO_DSL_fetch_readiness_cost(geometry, plans[i], hardware, &input, &result) ||
+            input.latency != ((plans[i].flags & DSL_FETCH_PLAN_FLAG_DIRECT) ? 17 :
+                plans[i].engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC ? 43 : 31) ||
+            memcmp(&input.hardware, &hardware.performance, sizeof(input.hardware))) return 1;
+    }
     geometry.problem_m = geometry.cta_m = 8;
     geometry.problem_n = geometry.cta_n = 32;
     geometry.problem_k = geometry.cta_k = 8;
@@ -527,7 +618,16 @@ DSL_test_direct_record_contracts ()
     info.plan_count = plans.size(); info.fetch_count = fetches.size(); info.stage_count = stages.size();
     FILE *quiet = tmpfile();
     if (quiet == NULL) return 1;
-    for (UINT32 fault = 0; fault < 6; ++fault) {
+    VHO_DSL_TILE_CONTROL tile_control;
+    VHO_DSL_Tile_Control_Init(&tile_control);
+    tile_control.defer_movement_resources = 1;
+    if (VHO_DSL_Tile_Create(fixture.pu, analysis.graph, analysis.tensor,
+            analysis.locality, NULL, &tile_control, quiet) != NULL) return 1;
+    tile_control.select_plans = 0;
+    tile_control.defer_movement_resources = 2;
+    if (VHO_DSL_Tile_Create(fixture.pu, analysis.graph, analysis.tensor,
+            analysis.locality, NULL, &tile_control, quiet) != NULL) return 1;
+    for (UINT32 fault = 0; fault < 11; ++fault) {
         std::vector<DSL_FETCH_PLAN_RECORD> bad_plans = plans;
         std::vector<DSL_FETCH_RECORD> bad_fetches = fetches;
         UINT32 f = plans[direct].first_fetch_id - 1;
@@ -537,13 +637,58 @@ DSL_test_direct_record_contracts ()
         if (fault == 3) bad_fetches[f].destination_tier_kind = DSL_MEMORY_TIER_SHARED;
         if (fault == 4) bad_fetches[f].flags = DSL_FETCH_RECORD_FLAG_STAGED;
         if (fault == 5) bad_fetches[f].evolution_edge_id = 1;
+        if (fault == 6) bad_plans[direct].resources.register_capacity_per_thread = 1;
+        if (fault == 7) bad_plans[direct].resources.shared_bytes = 4;
+        if (fault == 8) bad_plans[direct].resources.model = 2;
+        if (fault == 9) bad_plans[direct].resources.thread_limit = 1;
+        if (fault == 10) bad_plans[0].resources.shared_bytes = 0;
         info.plans = &bad_plans[0]; info.fetches = &bad_fetches[0]; info.stages = &stages[0];
         DSL_FETCH_PIPELINE_IR *bad = DSL_fetch_pipeline_ir_create(&info, quiet);
         if (bad != NULL) { DSL_fetch_pipeline_ir_destroy(bad); return 1; }
     }
     fclose(quiet);
     Destroy_Analysis(&analysis);
-    printf("D/S1/T2 direct record contract passed: six malformed contracts rejected\n");
+    printf("D/S1/T2 direct record contract passed: eleven malformed contracts rejected\n");
+    return 0;
+}
+
+/* Verify target lookup and explicit override isolation through the production
+ * common/VHO APIs; failure must not mutate source tables or caller outputs. */
+static int
+DSL_test_hardware_description()
+{
+    const char *names[] = { "sm_90", "sm_90a", "sm_100", "sm_100a" };
+    for (UINT32 i = 0; i < 4; ++i) {
+        DSL_HARDWARE_DESCRIPTION_RECORD original, copy;
+        if (!DSL_hardware_description_find_arch(names[i], &original) ||
+            strcmp(original.architecture, names[i]) ||
+            !DSL_hardware_performance_valid(original.performance)) return 1;
+        VHO_DSL_FETCH_PIPELINE_CONTROL control;
+        VHO_DSL_Fetch_Pipeline_Control_Init(&control);
+        control.target_profile_id = original.target_profile_id;
+        control.hardware_arch_id = original.arch_id;
+        if (!VHO_DSL_fetch_hardware_description(control, &copy) ||
+            memcmp(&copy.performance, &original.performance, sizeof(copy.performance))) return 1;
+        control.memory_latency_set = 1;
+        control.memory_latency = 17;
+        if (!VHO_DSL_fetch_hardware_description(control, &copy) ||
+            copy.performance.tma_latency != 17 || copy.performance.store_latency != 17 ||
+            !copy.latency_override) return 1;
+        control.memory_latency = 0;
+        if (!VHO_DSL_fetch_hardware_description(control, &copy) ||
+            copy.performance.tma_latency || copy.performance.store_latency ||
+            !copy.latency_override) return 1;
+        if (!DSL_hardware_description_find_arch(names[i], &copy) ||
+            memcmp(&copy.performance, &original.performance, sizeof(copy.performance)) ||
+            copy.latency_override) return 1;
+        control.target_profile_id = DSL_TARGET_PROFILE_CPU_BASELINE;
+        if (VHO_DSL_fetch_hardware_description(control, &copy)) return 1;
+        if (DSL_hardware_description_find_arch("sm_90typo", &copy) ||
+            DSL_hardware_description_find_arch("sm_120", &copy) ||
+            DSL_hardware_description_get_arch(0, &copy) ||
+            memcmp(&copy.performance, &original.performance, sizeof(copy.performance))) return 1;
+    }
+    printf("Hardware Description IR exact lookup, suffixes, overrides and family isolation passed\n");
     return 0;
 }
 
@@ -573,5 +718,7 @@ main(void)
         return Run_Control();
     if (strcmp(mode, "direct") == 0)
         return DSL_test_direct_record_contracts();
+    if (strcmp(mode, "hardware") == 0)
+        return DSL_test_hardware_description();
     return 1;
 }

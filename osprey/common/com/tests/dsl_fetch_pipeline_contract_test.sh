@@ -63,6 +63,7 @@ OPEN64_AIO10_MODE=unsafe OPEN64_AIO10_ANALYSIS="$unsafe" \
   "$producer" >> "$validation" 2>&1
 OPEN64_AIO10_MODE=control "$producer" >> "$validation" 2>&1
 OPEN64_AIO10_MODE=direct "$producer" >> "$validation" 2>&1
+OPEN64_AIO10_MODE=hardware "$producer" >> "$validation" 2>&1
 
 grep -q "CommonFetchPlanIR/CommonPipelineIR:.*sites=1.*plans=4.*fetches=8.*stages=7" "$stage_analysis"
 grep -q "VHOFetchPipelineDecision:.*target=nvidia_hopper.*stage=G12.*sites=1.*plans=4.*fetches=8.*stages=7.*apply=no" "$stage_analysis"

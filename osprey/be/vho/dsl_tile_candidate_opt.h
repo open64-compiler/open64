@@ -5,6 +5,7 @@
 /*
  * VHO ownership for AIO-9 shape capture, tile-family generation, legality,
  * costing, selection, and semantic verification.
+ * Deferred resources: doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md.
  */
 
 #ifndef dsl_tile_candidate_opt_INCLUDED
@@ -35,8 +36,17 @@ typedef struct {
     UINT32 enable_cuda_64;
     UINT32 enable_cuda_128;
     UINT32 enable_blackwell_wide;
+    UINT32 defer_movement_resources;
     UINT32 reserved;
 } VHO_DSL_TILE_CONTROL;
+
+/* Classify a topology from PU-local safety facts. Deferred mode preserves
+ * resource-infeasible staged comparators for a later per-movement gate;
+ * it never bypasses ownership, effects, locality or thread geometry. */
+extern void VHO_DSL_tile_classify
+                                (const DSL_TENSOR_LOCALITY_FACT_RECORD &locality,
+                                 BOOL defer_movement_resources,
+                                 DSL_TILE_PLAN_RECORD *tile);
 
 extern void VHO_DSL_Tile_Control_Init (VHO_DSL_TILE_CONTROL *control);
 extern DSL_TILE_ANALYSIS *VHO_DSL_Tile_Create

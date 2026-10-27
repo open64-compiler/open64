@@ -4,6 +4,15 @@ Date: 2026-10-25. Scope: compiler-side, PU-local, contiguous F32 GEMM.
 Owners: VHO candidate/selection policy; backend driver device-image publication;
 `whirl2c -cuda` emission. No binary WHIRL schema changes.
 
+2026-10-26 proposal: the
+[bubble-model experiment](AI-COMPILER-OPTIMIZATION-BUBBLE-MODEL.md)
+will compare the current model-3 winner against a dependency/resource cycle
+prediction on the same D/S1/T2 census. Shadow mode preserves actual selection
+and existing legality/launch restrictions. No bubble option or cycle selector
+is implemented. The model-1/S1-T2 description below is historical; current
+D/model-2 and movement-resource/model-3 amendments are in the companion
+comparison and movement-resource designs.
+
 ## Control And Supported Search Space
 
 `-Wb,-DSL:gemm_plan_search=baseline|joint` is registered. Omission means
@@ -60,6 +69,17 @@ Failure to find a legal, completely costed synchronous pair rejects joint
 selection instead of committing a partial transformation.
 
 ## Complete Cost Model 1
+
+Historical model 1 is retained below; D/S1/T2 model 3 extends it with independent
+movement-resource legality. The default joint selector is now model 5,
+[analytical readiness](AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md), using
+explicit assumed delivery latency/service, consumer timing and executable
+two-slot schedule boundaries. `gemm_cost_model=relative` retains model 3.
+The new model uses reference cycles throughout a census, not a mixture with
+these historical relative scores. No simulator is required by compilation.
+The [hardware-description service](AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md)
+resolves exact `sm_*` names and supplies all timing/rate parameters; the
+evaluator has no private defaults. Initial common rows remain estimates.
 
 All amounts are low-confidence **relative units**, not nanoseconds, FLOP/s,
 or performance measurements. The old AIO-10 transaction score is not added to

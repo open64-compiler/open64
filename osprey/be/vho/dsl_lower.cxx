@@ -15,6 +15,8 @@
  * doc/AI-COMPILER-OPTIMIZATION-AIO11-PHYSICAL-PLAN.md,
  * doc/AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md,
  * doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md,
+ * doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md,
+ * doc/AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md,
  * doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md, and
  * doc/AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.1.md.
  */
@@ -3900,14 +3902,35 @@ VHO_DSL_CUDA_Trace_Tensor_Facts
     return !ferror(TFile);
 }
 
+/* Resolve driver-selected hardware through the common architecture table and
+ * clone explicit timing overrides. No global table mutation or PU traversal.
+ * See doc/AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md. */
+static BOOL
+VHO_DSL_cuda_get_hardware(DSL_HARDWARE_DESCRIPTION_RECORD *hardware)
+{
+    DSL_HARDWARE_DESCRIPTION_RECORD selected;
+    if (!DSL_hardware_description_find_arch(VHO_DSL_GPU_Arch ? VHO_DSL_GPU_Arch : "sm_90", &selected))
+        return FALSE;
+    VHO_DSL_FETCH_PIPELINE_CONTROL control;
+    VHO_DSL_Fetch_Pipeline_Control_Init(&control);
+    control.target_profile_id = selected.target_profile_id;
+    control.hardware_arch_id = selected.arch_id;
+    control.memory_latency_set = VHO_DSL_GEMM_Memory_Latency_Set;
+    control.memory_latency = VHO_DSL_GEMM_Memory_Latency;
+    return VHO_DSL_fetch_hardware_description(control, hardware);
+}
+
 /* Enumerate bounded tile/schedule pairs without mutating executable WHIRL.
  * Keep the cheapest proven synchronous pair as fallback; trace all examined
- * pairs, including rejected TMA siblings. Caller rebuilds only the winner. */
+ * pairs and movement resources, including rejected staged siblings. P7
+ * topology legality does not imply movement feasibility; rebuild only the
+ * verified winner. See doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md. */
 static BOOL
 VHO_DSL_cuda_select_joint_plan
         (PU_Info *pu, DSL_TENSOR_EVOLUTION_GRAPH *graph,
          DSL_TENSOR_LOCALITY_ANALYSIS *locality, DSL_TILE_ANALYSIS *tiles,
-         const DSL_TILE_SITE_RECORD &site, DSL_TILE_PLAN_ID *winner,
+         const DSL_TILE_SITE_RECORD &site, const DSL_HARDWARE_DESCRIPTION_RECORD &hardware,
+         DSL_TILE_PLAN_ID *winner,
          UINT32 *candidate_count,
          FILE *diagnostic)
 {
@@ -3916,14 +3939,32 @@ VHO_DSL_cuda_select_joint_plan
     UINT32 count = 0, chosen = 0, fallback = 0;
     const BOOL trace = VHO_DSL_AI_Opt_Trace && Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG);
     const BOOL tma_allowed = VHO_DSL_CUDA_TMA_Prefetch && !VHO_DSL_CUDA_Tile_Apply;
+    const BOOL readiness = VHO_DSL_GEMM_Cost_Model == NULL ||
+        strcmp(VHO_DSL_GEMM_Cost_Model, "readiness") == 0;
     DSL_IR_VALUE_RECORD value;
     const UINT32 source_line = DSL_IR_Image_Get_Value(site.semantic_value_id, &value) &&
         value.st != ST_IDX_ZERO ? ST_Line(St_Table[value.st]) : 0;
     *winner = 0;
     *candidate_count = 0;
     if (trace)
-        fprintf(TFile, "AI_OPT 7 JOINT_MODE joint 48 %u %u relative low model=2 direct=%u\n",
-                site.tile_plan_count, tma_allowed, !VHO_DSL_CUDA_Tile_Apply);
+        fprintf(TFile, "AI_OPT 7 JOINT_MODE joint 48 %u %u %s low model=%u direct=%u\n",
+                site.tile_plan_count, tma_allowed, readiness ? "cycles" : "relative",
+                readiness ? 5 : 3, !VHO_DSL_CUDA_Tile_Apply);
+    if (trace && readiness) {
+        fprintf(TFile, "AI_OPT 7 HW_DESC %s %s %u %u %s %s %u\n", hardware.architecture,
+            hardware.table_name, hardware.target_profile_id, hardware.revision,
+            hardware.unit, hardware.provenance, hardware.latency_override);
+        const DSL_HARDWARE_PERFORMANCE_RECORD &p = hardware.performance;
+        fprintf(TFile, "AI_OPT 7 HW_PERF %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu\n",
+            (unsigned long long)p.sms, (unsigned long long)p.warp_lanes,
+            (unsigned long long)p.memory_bytes_per_cycle, (unsigned long long)p.scalar_ops_per_cycle,
+            (unsigned long long)p.local_issues_per_cycle, (unsigned long long)p.copy_elements_per_cycle,
+            (unsigned long long)p.latency_hiding_warps, (unsigned long long)p.demand_latency,
+            (unsigned long long)p.staged_latency, (unsigned long long)p.tma_latency,
+            (unsigned long long)p.store_latency, (unsigned long long)p.publication_cycles,
+            (unsigned long long)p.wait_cycles, (unsigned long long)p.release_cycles,
+            (unsigned long long)p.operand_issue_cycles);
+    }
     for (UINT32 i = 0; i < site.tile_plan_count; ++i) {
         DSL_TILE_PLAN_RECORD tile;
         if (!DSL_tile_plan_ir_get_plan(ir, site.first_tile_plan_id + i, &tile))
@@ -3934,6 +3975,11 @@ VHO_DSL_cuda_select_joint_plan
         VHO_DSL_Fetch_Pipeline_Control_Init(&control);
         control.select_plans = 0;
         control.joint_cost = 1;
+        control.readiness_cost = readiness;
+        control.hardware_arch_id = hardware.arch_id;
+        control.target_profile_id = hardware.target_profile_id;
+        control.memory_latency = VHO_DSL_GEMM_Memory_Latency;
+        control.memory_latency_set = VHO_DSL_GEMM_Memory_Latency_Set;
         control.enable_direct = !VHO_DSL_CUDA_Tile_Apply;
         control.tile_plan_id = tile.id;
         control.enable_vector = control.enable_async_copy = 0;
@@ -3973,6 +4019,29 @@ VHO_DSL_cuda_select_joint_plan
                     (unsigned long long)tile.shared_capacity_bytes,
                     (pipeline.flags & DSL_FETCH_PLAN_FLAG_DIRECT) != 0 ? "D" :
                         pipeline.engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC ? "T2" : "S1", source_line);
+            if (trace) {
+                const DSL_FETCH_RESOURCE_RECORD &resource = pipeline.resources;
+                fprintf(TFile, "AI_OPT 7 JOINT_RESOURCE %u %u %u %llu %llu %u %u %u\n",
+                    count, resource.register_bytes_per_thread, resource.register_capacity_per_thread,
+                    (unsigned long long)resource.shared_bytes,
+                    (unsigned long long)resource.shared_limit_bytes,
+                    resource.threads_per_cta, resource.thread_limit, source_line);
+            }
+            if (trace && readiness) {
+                DSL_GEMM_READINESS_INPUT input;
+                DSL_GEMM_READINESS_RESULT result;
+                if (!VHO_DSL_fetch_readiness_cost(tile, pipeline, hardware, &input, &result)) {
+                    valid = FALSE;
+                    break;
+                }
+                fprintf(TFile, "AI_OPT 7 JOINT_READINESS %u %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %u\n",
+                    count, (unsigned long long)input.ctas, (unsigned long long)input.steps,
+                    (unsigned long long)input.consumer, (unsigned long long)input.input_bytes,
+                    (unsigned long long)input.output_bytes, (unsigned long long)input.copy,
+                    (unsigned long long)input.warps, (unsigned long long)result.delivery,
+                    (unsigned long long)result.window, (unsigned long long)result.wait,
+                    (unsigned long long)result.waves, (unsigned long long)result.total, source_line);
+            }
             if (trace && (pipeline.flags & DSL_FETCH_PLAN_FLAG_DIRECT) != 0) {
                 UINT64 sectors[2];
                 if (!VHO_DSL_direct_gmem_sectors(tile, sectors)) { valid = FALSE; break; }
@@ -4037,10 +4106,12 @@ VHO_DSL_CUDA_Emit_Selected_Tile
     DSL_OPT_COST_RECORD cost;
     VHO_DSL_TILE_CONTROL control;
     VHO_DSL_FETCH_PIPELINE_CONTROL fetch_control;
+    DSL_HARDWARE_DESCRIPTION_RECORD hardware;
     BOOL valid = FALSE;
     const BOOL joint = VHO_DSL_GEMM_Plan_Search != NULL &&
                        strcmp(VHO_DSL_GEMM_Plan_Search, "joint") == 0;
     DSL_TILE_PLAN_ID joint_tile = 0;
+    if (!VHO_DSL_cuda_get_hardware(&hardware)) return FALSE;
     if (emitted_plan_id != NULL)
         *emitted_plan_id = DSL_OPT_PLAN_INVALID_ID;
     if (emitted_fetch_plan_id != NULL)
@@ -4074,8 +4145,11 @@ VHO_DSL_CUDA_Emit_Selected_Tile
         !VHO_DSL_Tensor_Locality_Build(locality, diagnostic))
         goto done;
     VHO_DSL_Tile_Control_Init(&control);
-    if (joint)
+    control.target_profile_id = hardware.target_profile_id;
+    if (joint) {
         control.select_plans = 0;
+        control.defer_movement_resources = 1;
+    }
     analysis = VHO_DSL_Tile_Create
                    (pu_info, graph, tensor, locality, NULL,
                     &control, diagnostic);
@@ -4097,7 +4171,7 @@ VHO_DSL_CUDA_Emit_Selected_Tile
     plans = VHO_DSL_Tile_Get_Plan_Context(analysis, site.id);
     if (joint) {
         if (!VHO_DSL_cuda_select_joint_plan(pu_info, graph, locality, analysis,
-                                           site, &joint_tile, joint_candidate_count, diagnostic) ||
+                                           site, hardware, &joint_tile, joint_candidate_count, diagnostic) ||
             !VHO_DSL_tile_finalize_joint_selection(analysis, site.id, joint_tile, diagnostic))
             goto done;
         ir = VHO_DSL_Tile_Get_IR(analysis);
@@ -4114,9 +4188,15 @@ VHO_DSL_CUDA_Emit_Selected_Tile
     }
     if (VHO_DSL_CUDA_TMA_Prefetch || VHO_DSL_CUDA_Whirl_Output != NULL) {
         VHO_DSL_Fetch_Pipeline_Control_Init(&fetch_control);
+        fetch_control.target_profile_id = hardware.target_profile_id;
+        fetch_control.hardware_arch_id = hardware.arch_id;
         fetch_control.focus_value_id = site.semantic_value_id;
         if (joint) {
             fetch_control.joint_cost = 1;
+            fetch_control.readiness_cost = VHO_DSL_GEMM_Cost_Model == NULL ||
+                strcmp(VHO_DSL_GEMM_Cost_Model, "readiness") == 0;
+            fetch_control.memory_latency = VHO_DSL_GEMM_Memory_Latency;
+            fetch_control.memory_latency_set = VHO_DSL_GEMM_Memory_Latency_Set;
             fetch_control.enable_direct = !VHO_DSL_CUDA_Tile_Apply;
             fetch_control.tile_plan_id = joint_tile;
             fetch_control.enable_vector = fetch_control.enable_async_copy = 0;
@@ -4378,6 +4458,16 @@ VHO_DSL_Lower_Driver
               ("gemm_plan_search requires baseline or joint"));
     const BOOL joint = VHO_DSL_GEMM_Plan_Search != NULL &&
                        strcmp(VHO_DSL_GEMM_Plan_Search, "joint") == 0;
+    DSL_HARDWARE_DESCRIPTION_RECORD hardware;
+    FmtAssert(VHO_DSL_cuda_get_hardware(&hardware),
+              ("gpu_arch requires a supported exact sm_* hardware description"));
+    FmtAssert((!VHO_DSL_CUDA_Whirl_Output && !VHO_DSL_CUDA_Tile_Output) ||
+              hardware.target_profile_id == DSL_TARGET_PROFILE_NVIDIA_HOPPER,
+              ("gpu_arch hardware description is planning-only for this CUDA lowering"));
+    FmtAssert(VHO_DSL_GEMM_Cost_Model == NULL ||
+              strcmp(VHO_DSL_GEMM_Cost_Model, "relative") == 0 ||
+              strcmp(VHO_DSL_GEMM_Cost_Model, "readiness") == 0,
+              ("gemm_cost_model requires relative or readiness"));
     FmtAssert(!joint || (Opt_Level >= 3 && VHO_DSL_CUDA_Whirl_Output != NULL),
               ("gemm_plan_search=joint requires -O3 and cuda_whirl_output"));
     FmtAssert(!joint || !VHO_DSL_CUDA_Legacy_Emit || VHO_DSL_CUDA_Tile_Output == NULL,
