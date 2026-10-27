@@ -484,7 +484,8 @@ Run_Control(void)
 
 /* Compose the production P7 classifier and P8 resource/lowering preflight on
  * constrained copies of a real tile. No fixture-only target or option enters
- * production policy; failed assertions leave executable WHIRL unchanged. */
+ * production policy; failed assertions leave executable WHIRL unchanged.
+ * Include logical occupancy rejection without losing the direct sibling. */
 static BOOL
 DSL_test_movement_resource_gates
         (const DSL_TILE_PLAN_RECORD &original,
@@ -534,6 +535,29 @@ DSL_test_movement_resource_gates
         !VHO_DSL_fetch_pipeline_can_lower(tile, tma)) return FALSE;
     --tma.resources.shared_bytes;
     if (VHO_DSL_fetch_pipeline_can_lower(tile, tma)) return FALSE;
+    DSL_HARDWARE_DESCRIPTION_RECORD hw;
+    if (!DSL_hardware_description_find_arch("sm_90", &hw)) return FALSE;
+    hw.resources.shared_budget = hw.resources.shared_reserved;
+    tile = original;
+    DSL_FETCH_RESOURCE_RECORD sr, dr;
+    DSL_GEMM_OCCUPANCY_RESULT so, d;
+    if (!VHO_DSL_fetch_resource_requirements(tile, plans[0], &sr) ||
+        !VHO_DSL_fetch_resource_requirements(tile, plans[1], &dr) ||
+        !DSL_gemm_occupancy(hw.resources, hw.performance.warp_lanes, hw.performance.sms,
+            sr.threads_per_cta, sr.register_bytes_per_thread, sr.shared_bytes, 100, &so) ||
+        !DSL_gemm_occupancy(hw.resources, hw.performance.warp_lanes, hw.performance.sms,
+            dr.threads_per_cta, dr.register_bytes_per_thread, dr.shared_bytes, 100, &d) ||
+        so.resident != 0 || d.resident == 0) return FALSE;
+    staged = plans[0]; direct = plans[1];
+    if (!VHO_DSL_fetch_classify_occupancy(tile, hw, &staged) ||
+        !VHO_DSL_fetch_classify_occupancy(tile, hw, &direct) ||
+        staged.legality != DSL_OPT_LEGALITY_REJECTED ||
+        staged.rejection_reason != DSL_OPT_REJECT_RESOURCE ||
+        direct.legality != DSL_OPT_LEGALITY_PROVEN) return FALSE;
+    DSL_FETCH_PLAN_RECORD saved = direct;
+    hw.resources.register_quantum = 0;
+    if (VHO_DSL_fetch_classify_occupancy(tile, hw, &direct) ||
+        memcmp(&saved, &direct, sizeof(saved))) return FALSE;
     memset(&tma.resources, 0, sizeof(tma.resources));
     if (VHO_DSL_fetch_pipeline_can_lower(tile, tma)) return FALSE;
     for (UINT32 fault = 0; fault < 4; ++fault) {
@@ -662,7 +686,8 @@ DSL_test_hardware_description()
         DSL_HARDWARE_DESCRIPTION_RECORD original, copy;
         if (!DSL_hardware_description_find_arch(names[i], &original) ||
             strcmp(original.architecture, names[i]) ||
-            !DSL_hardware_performance_valid(original.performance)) return 1;
+            !DSL_hardware_performance_valid(original.performance) ||
+            !DSL_hardware_resources_valid(original.resources) || original.revision != 2) return 1;
         VHO_DSL_FETCH_PIPELINE_CONTROL control;
         VHO_DSL_Fetch_Pipeline_Control_Init(&control);
         control.target_profile_id = original.target_profile_id;
@@ -680,6 +705,7 @@ DSL_test_hardware_description()
             !copy.latency_override) return 1;
         if (!DSL_hardware_description_find_arch(names[i], &copy) ||
             memcmp(&copy.performance, &original.performance, sizeof(copy.performance)) ||
+            memcmp(&copy.resources, &original.resources, sizeof(copy.resources)) ||
             copy.latency_override) return 1;
         control.target_profile_id = DSL_TARGET_PROFILE_CPU_BASELINE;
         if (VHO_DSL_fetch_hardware_description(control, &copy)) return 1;

@@ -1,6 +1,15 @@
 # Hopper CUDA Validation Bundle
 
-Joint model 5 now defaults to hardware-description-driven analytical readiness. See
+Joint model6 adds occupancy-aware residency rounds to hardware-driven readiness.
+See `doc/AI-COMPILER-OPTIMIZATION-OCCUPANCY.md` for rounded logical demand,
+five resource limits, shared-throughput cost rules, full/tail waves and native
+occupancy limitations. `HW_RESOURCE` and `JOINT_OCCUPANCY` are mandatory and
+independently audited; models3/4/5 remain historical parser inputs. The suite
+includes 109 tests, 5535 literal D/S1/T2 occupancy-round oracles and the 2340
+legacy T2 recurrence cases. Fifteen compiler/source configurations include
+larger exact/tail grids. Every old/new winner is reported, even when unchanged.
+
+The underlying analytical readiness model is described in
 `doc/AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md` for assumed reference-cycle
 profile, limitations and schedule pseudocode. `gemm_cost_model=relative`
 preserves model 3. `gpu_arch=sm_90/sm_90a` selects exact common table rows;

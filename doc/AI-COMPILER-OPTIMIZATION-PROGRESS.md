@@ -8,7 +8,17 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
-Hardware-description increment (2026-10-26): exact `gpu_arch=sm_90/sm_90a`
+Occupancy increment (2026-10-26, after merged PR193): model6 implements
+table-owned capacity/rounding envelopes and PU-local D/S1/T2 residency-round
+costs. Compute and movement rates stay shared; zero-residency estimates reject
+only the affected sibling. Compact traces/report audits expose rounded
+demands, every capacity quotient, tied limiters, full/tail rounds, underfill
+and old/new winners. The 104 baseline tests plus five new tests pass, including
+5535 literal D/S1/T2 schedule oracles alongside the retained 2340 T2 cases.
+Final linked/compiler evidence is being collected; native occupancy/GPU
+certification remains open. See [occupancy contract](AI-COMPILER-OPTIMIZATION-OCCUPANCY.md).
+
+Historical hardware-description increment (2026-10-26): exact `gpu_arch=sm_90/sm_90a`
 resolves into our own common Hardware Description IR. Model 5 removes private
 delay/rate constants from analytical evaluation and ledger adaptation; all
 path startup, store, sync, issue, service and wave parameters come from named

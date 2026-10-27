@@ -6,7 +6,8 @@ import subprocess
 import tempfile
 import unittest
 
-from readiness_report import readiness_cost, legacy_performance
+from readiness_report import (readiness_cost, legacy_performance, occupancy_record,
+                              HW_RESOURCE_COLUMNS)
 from ai_opt_report import verify_joint
 import test_direct_staged_comparison
 
@@ -29,6 +30,16 @@ class ReadinessTest(unittest.TestCase):
                     grid=dict(ctas=1, k_iterations=10, problem=(32, 32, 160), grid=(1, 1)),
                     gmem=dict(a=20480, b=20480, c=4096, a_issues=1280),
                     smem=dict(b_issues=1280, address=0), layout=dict(bank_work=0))
+
+    def test_occupancy_production_against_literal_oracles(self):
+        with tempfile.TemporaryDirectory(prefix="occupancy-") as tmp:
+            binary = str(Path(tmp) / "contract")
+            subprocess.run([os.environ.get("CXX", "c++"), "-std=c++11", "-O2",
+                            "-I", str(HERE.parents[3] / "common/com"),
+                            "-I", str(HERE.parents[1]), str(HERE / "occupancy_contract.cxx"),
+                            "-o", binary], check=True, capture_output=True, text=True)
+            result = subprocess.run([binary], check=True, capture_output=True, text=True, timeout=10)
+            self.assertIn("5535 literal D/S1/T2 oracles", result.stdout)
 
     def test_longer_delivery_exposes_wait(self):
         low, _ = readiness_cost(self.fixture(), "T2", 20)
@@ -105,6 +116,64 @@ class ReadinessTest(unittest.TestCase):
         args[0]["model"] = 5
         with self.assertRaisesRegex(ValueError, "description"):
             verify_joint(*args)
+
+    def occupancy_fixture(self):
+        args = list(self.audit_fixture())
+        args[0]["model"] = 6
+        hw = legacy_performance(100)
+        resource = dict(zip(HW_RESOURCE_COLUMNS,
+            (32, 64, 2048, 1024, 65536, 255, 256, 4, 233472, 65536, 128, 1024)))
+        args[-1] = dict(name="sm90_estimated_v2", architecture="sm_90", target=2,
+            revision=2, unit="reference_cycles", provenance="estimated", override=0,
+            performance=hw, resources=resource)
+        occupancy = {}
+        for row in args[1]:
+            ident = row["id"]
+            legacy, _ = readiness_cost(args[3][-1], row["kind"], None, args[4].get(ident), hw)
+            occ = occupancy_record(resource, hw, args[5][ident], legacy["ctas"], legacy["total"])
+            occupancy[ident] = occ
+            record, terms = readiness_cost(args[3][-1], row["kind"], None, args[4].get(ident), hw, occ)
+            args[6][ident] = record
+            row.update(zip(("compute", "memory", "communication", "sync", "launch", "runtime", "total"), terms))
+        args[2]["selected"] = min(args[1], key=lambda row: (row["total"], row["id"]))["id"]
+        args.append(occupancy)
+        return args
+
+    def test_independent_occupancy_audit(self):
+        result = verify_joint(*self.occupancy_fixture())
+        self.assertEqual(result["legacy_chosen"]["kind"], "D")
+        self.assertGreater(result["occupancy"][1]["resident"], 0)
+        self.assertIn("direct_roofline", result["derived"][2])
+
+    def test_readiness_arithmetic_overflow_rejected(self):
+        tile = self.fixture()
+        tile["grid"].update(ctas=2 ** 63, k_iterations=2 ** 63)
+        with self.assertRaisesRegex(ValueError, "overflow"):
+            readiness_cost(tile, "T2", 100)
+
+    def test_occupancy_fields_and_missing_rows_fail_closed(self):
+        for field in ("registers", "shared", "block_limit", "warp_limit", "thread_limit",
+                      "register_limit", "shared_limit", "resident", "warps", "limiting",
+                      "full", "tail", "unused", "tail_sms", "legacy_total", "source_line", "missing"):
+            args = self.occupancy_fixture()
+            if field == "missing":
+                args[-1].pop(1)
+            else:
+                args[-1][1][field] += 1
+            with self.assertRaises(ValueError, msg=field):
+                verify_joint(*args)
+
+    def test_occupancy_table_required_and_historical_contract_isolated(self):
+        for mutation in ("table", "revision", "historical"):
+            args = self.occupancy_fixture()
+            if mutation == "table":
+                args[-2].pop("resources")
+            elif mutation == "revision":
+                args[-2]["revision"] = 1
+            else:
+                args[0]["model"] = 5
+            with self.assertRaises(ValueError):
+                verify_joint(*args)
 
 
 if __name__ == "__main__":

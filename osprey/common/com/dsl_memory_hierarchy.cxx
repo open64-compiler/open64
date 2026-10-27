@@ -20,18 +20,22 @@
  * No SKU/clock/measurement is implied; replacing estimates changes revision.
  * Path latency is startup only; byte service is charged by the consumer. */
 static const DSL_HARDWARE_DESCRIPTION_RECORD DSL_hardware_descriptions[] = {
-    { DSL_HARDWARE_ARCH_SM_90, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 1, 0,
-      "sm_90", "sm90_estimated_v1", "reference_cycles", "estimated",
-      { 4, 32, 32, 128, 4, 128, 16, 100, 100, 100, 100, 8, 8, 8, 1 } },
-    { DSL_HARDWARE_ARCH_SM_90A, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 1, 0,
-      "sm_90a", "sm90a_estimated_v1", "reference_cycles", "estimated",
-      { 4, 32, 32, 128, 4, 128, 16, 100, 100, 100, 100, 8, 8, 8, 1 } },
-    { DSL_HARDWARE_ARCH_SM_100, DSL_TARGET_PROFILE_NVIDIA_BLACKWELL, 1, 0,
-      "sm_100", "sm100_estimated_v1", "reference_cycles", "estimated",
-      { 4, 32, 32, 128, 4, 128, 16, 100, 100, 100, 100, 8, 8, 8, 1 } },
-    { DSL_HARDWARE_ARCH_SM_100A, DSL_TARGET_PROFILE_NVIDIA_BLACKWELL, 1, 0,
-      "sm_100a", "sm100a_estimated_v1", "reference_cycles", "estimated",
-      { 4, 32, 32, 128, 4, 128, 16, 100, 100, 100, 100, 8, 8, 8, 1 } }
+    { DSL_HARDWARE_ARCH_SM_90, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 2, 0,
+      "sm_90", "sm90_estimated_v2", "reference_cycles", "estimated",
+      { 4, 32, 32, 128, 4, 128, 16, 100, 100, 100, 100, 8, 8, 8, 1 },
+      {32, 64, 2048, 1024, 65536, 255, 256, 4, 233472, 65536, 128, 1024} },
+    { DSL_HARDWARE_ARCH_SM_90A, DSL_TARGET_PROFILE_NVIDIA_HOPPER, 2, 0,
+      "sm_90a", "sm90a_estimated_v2", "reference_cycles", "estimated",
+      { 4, 32, 32, 128, 4, 128, 16, 100, 100, 100, 100, 8, 8, 8, 1 },
+      {32, 64, 2048, 1024, 65536, 255, 256, 4, 233472, 65536, 128, 1024} },
+    { DSL_HARDWARE_ARCH_SM_100, DSL_TARGET_PROFILE_NVIDIA_BLACKWELL, 2, 0,
+      "sm_100", "sm100_estimated_v2", "reference_cycles", "estimated",
+      { 4, 32, 32, 128, 4, 128, 16, 100, 100, 100, 100, 8, 8, 8, 1 },
+      {32, 64, 2048, 1024, 65536, 255, 256, 4, 233472, 65536, 128, 1024} },
+    { DSL_HARDWARE_ARCH_SM_100A, DSL_TARGET_PROFILE_NVIDIA_BLACKWELL, 2, 0,
+      "sm_100a", "sm100a_estimated_v2", "reference_cycles", "estimated",
+      { 4, 32, 32, 128, 4, 128, 16, 100, 100, 100, 100, 8, 8, 8, 1 },
+      {32, 64, 2048, 1024, 65536, 255, 256, 4, 233472, 65536, 128, 1024} }
 };
 
 /* Return a validated copy of one built-in description, preserving caller
@@ -42,7 +46,8 @@ BOOL DSL_hardware_description_get_arch(UINT32 arch_id,
     if (!description) return FALSE;
     for (UINT32 i = 0; i < sizeof(DSL_hardware_descriptions) / sizeof(DSL_hardware_descriptions[0]); ++i)
         if (DSL_hardware_descriptions[i].arch_id == arch_id &&
-            DSL_hardware_performance_valid(DSL_hardware_descriptions[i].performance)) {
+            DSL_hardware_performance_valid(DSL_hardware_descriptions[i].performance) &&
+            DSL_hardware_resources_valid(DSL_hardware_descriptions[i].resources)) {
             *description = DSL_hardware_descriptions[i];
             return TRUE;
         }

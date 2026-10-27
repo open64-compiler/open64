@@ -50,6 +50,7 @@ typedef struct {
     const char *unit;
     const char *provenance;
     DSL_HARDWARE_PERFORMANCE_RECORD performance;
+    DSL_HARDWARE_RESOURCE_RECORD resources;
 } DSL_HARDWARE_DESCRIPTION_RECORD;
 
 /* Exact public-name lookup. Output is caller-owned runtime data, never a

@@ -17,6 +17,7 @@
  * doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md,
  * doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md,
  * doc/AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md,
+ * doc/AI-COMPILER-OPTIMIZATION-OCCUPANCY.md,
  * doc/AI-COMPILER-OPTIMIZATION-AIO10-FETCH-PIPELINE.md, and
  * doc/AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.1.md.
  */
@@ -3949,7 +3950,7 @@ VHO_DSL_cuda_select_joint_plan
     if (trace)
         fprintf(TFile, "AI_OPT 7 JOINT_MODE joint 48 %u %u %s low model=%u direct=%u\n",
                 site.tile_plan_count, tma_allowed, readiness ? "cycles" : "relative",
-                readiness ? 5 : 3, !VHO_DSL_CUDA_Tile_Apply);
+                readiness ? 6 : 3, !VHO_DSL_CUDA_Tile_Apply);
     if (trace && readiness) {
         fprintf(TFile, "AI_OPT 7 HW_DESC %s %s %u %u %s %s %u\n", hardware.architecture,
             hardware.table_name, hardware.target_profile_id, hardware.revision,
@@ -3964,6 +3965,14 @@ VHO_DSL_cuda_select_joint_plan
             (unsigned long long)p.store_latency, (unsigned long long)p.publication_cycles,
             (unsigned long long)p.wait_cycles, (unsigned long long)p.release_cycles,
             (unsigned long long)p.operand_issue_cycles);
+        const DSL_HARDWARE_RESOURCE_RECORD &r = hardware.resources;
+        fprintf(TFile, "AI_OPT 7 HW_RESOURCE 1 mixed_estimated %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu\n",
+            (unsigned long long)r.max_blocks, (unsigned long long)r.max_warps,
+            (unsigned long long)r.max_threads, (unsigned long long)r.max_threads_per_cta,
+            (unsigned long long)r.registers_per_sm, (unsigned long long)r.max_registers_per_thread,
+            (unsigned long long)r.register_quantum, (unsigned long long)r.register_warp_quantum,
+            (unsigned long long)r.shared_capacity, (unsigned long long)r.shared_budget,
+            (unsigned long long)r.shared_quantum, (unsigned long long)r.shared_reserved);
     }
     for (UINT32 i = 0; i < site.tile_plan_count; ++i) {
         DSL_TILE_PLAN_RECORD tile;
@@ -4041,6 +4050,22 @@ VHO_DSL_cuda_select_joint_plan
                     (unsigned long long)input.warps, (unsigned long long)result.delivery,
                     (unsigned long long)result.window, (unsigned long long)result.wait,
                     (unsigned long long)result.waves, (unsigned long long)result.total, source_line);
+                DSL_GEMM_OCCUPANCY_RESULT occupancy;
+                DSL_GEMM_READINESS_RESULT legacy;
+                const DSL_FETCH_RESOURCE_RECORD &r = pipeline.resources;
+                if (!DSL_gemm_occupancy(hardware.resources, input.hardware.warp_lanes,
+                        input.hardware.sms, r.threads_per_cta, r.register_bytes_per_thread,
+                        r.shared_bytes, input.ctas, &occupancy) ||
+                    !DSL_readiness_evaluate(input, &legacy)) { valid = FALSE; break; }
+                fprintf(TFile, "AI_OPT 7 JOINT_OCCUPANCY %u %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %u\n",
+                    count, (unsigned long long)occupancy.registers, (unsigned long long)occupancy.shared,
+                    (unsigned long long)occupancy.limits[0], (unsigned long long)occupancy.limits[1],
+                    (unsigned long long)occupancy.limits[2], (unsigned long long)occupancy.limits[3],
+                    (unsigned long long)occupancy.limits[4], (unsigned long long)occupancy.resident,
+                    (unsigned long long)occupancy.warps, (unsigned long long)occupancy.limiting,
+                    (unsigned long long)occupancy.full, (unsigned long long)occupancy.tail,
+                    (unsigned long long)occupancy.unused, (unsigned long long)occupancy.tail_sms,
+                    (unsigned long long)legacy.total, source_line);
             }
             if (trace && (pipeline.flags & DSL_FETCH_PLAN_FLAG_DIRECT) != 0) {
                 UINT64 sectors[2];

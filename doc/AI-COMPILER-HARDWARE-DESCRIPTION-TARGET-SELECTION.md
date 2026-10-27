@@ -1,8 +1,14 @@
 # Hardware Description IR And Target Selection
 
-Version: v0.1, 2026-10-26. Status: initial implementation and review contract.
+Version: v0.2, 2026-10-26. Status: implementation and review contract.
 Scope: immutable runtime descriptions; PU-local VHO clients. No binary WHIRL
 layout change, proprietary NVIDIA compiler data, GPU probing or new library.
+
+Occupancy follow-on: [resource planning](AI-COMPILER-OPTIMIZATION-OCCUPANCY.md)
+adds runtime-only resource capacities and explicit estimated allocation
+granularities. Current registry revision2 preserves performance values while
+adding a mixed-provenance resource envelope; joint model6 consumes it.
+Revision1/model5 receipts below remain historical, not current producer output.
 
 ## Principle
 
@@ -46,10 +52,10 @@ No numeric-prefix parsing, suffix stripping or nearest-target fallback.
 
 | Exact option value | Family table | Quantitative table | Current CUDA WHIRL emission |
 | --- | --- | --- | --- |
-| `sm_90` | Hopper | `sm90_estimated_v1` | Existing generic F32 D/S1/T2 subset |
-| `sm_90a` | Hopper | `sm90a_estimated_v1` | Same generic subset; no newly implemented architecture-specific instructions |
-| `sm_100` | Blackwell | `sm100_estimated_v1` | Planning description only; emission rejected |
-| `sm_100a` | Blackwell | `sm100a_estimated_v1` | Planning description only; emission rejected |
+| `sm_90` | Hopper | `sm90_estimated_v2` | Existing generic F32 D/S1/T2 subset |
+| `sm_90a` | Hopper | `sm90a_estimated_v2` | Same generic subset; no newly implemented architecture-specific instructions |
+| `sm_100` | Blackwell | `sm100_estimated_v2` | Planning description only; emission rejected |
+| `sm_100a` | Blackwell | `sm100a_estimated_v2` | Planning description only; emission rejected |
 
 Each value has its own immutable row and identity. Initial estimated payloads
 deliberately preserve the former synthetic envelope; identical numbers do

@@ -463,6 +463,15 @@ To measure effectiveness, compile and run the baseline and alternatives as compa
 
 ## 7.2B Analytical Readiness Selection And Bubble Diagnostics
 
+Current bounded F32 joint selection is extended by the
+[occupancy-aware resource model](AI-COMPILER-OPTIMIZATION-OCCUPANCY.md).
+Model6 rounds logical demand using table-owned quanta, estimates resident
+CTAs/warps and grid underfill, and compares lockstep full/tail rounds while
+sharing per-SM throughput and device bandwidth. It records the legacy
+one-CTA/SM winner as a counterfactual, including unchanged outcomes.
+Native registers, spills, runtime carveout and certified occupancy remain
+unknown; neither capacity maxima nor logical live values certify performance.
+
 Update 2026-10-26: production joint selection now follows the separate
 [analytical readiness design](AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md).
 It replaces traffic-score overlap credit with a bounded schedule recurrence

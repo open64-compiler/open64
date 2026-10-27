@@ -12,6 +12,7 @@
  * Direct residency extension: doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md.
  * Analytical timing: doc/AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md.
  * Table resolution: doc/AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md.
+ * Residency rounds: doc/AI-COMPILER-OPTIMIZATION-OCCUPANCY.md.
  */
 
 #include <algorithm>
@@ -558,7 +559,9 @@ DSL_fetch_joint_relative_cost
 
 /* Derive conservative average-CTA traffic and padded scalar consumer work
  * from the same P7 ledger used by lowering. No Tensor Core throughput is
- * assumed. Tails use average traffic but full padded consumer work. */
+ * assumed. Tails use average traffic but full padded consumer work. Occupancy
+ * and shared-throughput rounds follow doc/AI-COMPILER-OPTIMIZATION-OCCUPANCY.md.
+ * Both outputs remain untouched if any estimate is invalid. */
 BOOL
 VHO_DSL_fetch_readiness_cost(const DSL_TILE_PLAN_RECORD &tile,
     const DSL_FETCH_PLAN_RECORD &fetch, const DSL_HARDWARE_DESCRIPTION_RECORD &hardware,
@@ -604,8 +607,41 @@ VHO_DSL_fetch_readiness_cost(const DSL_TILE_PLAN_RECORD &tile,
             in.copy = DSL_Fetch_Ceil_Div(temporary, in.hardware.copy_elements_per_cycle);
         }
     }
-    if (!DSL_readiness_evaluate(in, result)) return FALSE;
+    DSL_FETCH_RESOURCE_RECORD resources;
+    DSL_GEMM_OCCUPANCY_RESULT occupancy;
+    DSL_GEMM_READINESS_RESULT evaluated;
+    if (!VHO_DSL_fetch_resource_requirements(tile, fetch, &resources) ||
+        !DSL_gemm_occupancy(hardware.resources, in.hardware.warp_lanes, in.hardware.sms,
+            resources.threads_per_cta, resources.register_bytes_per_thread,
+            resources.shared_bytes, in.ctas, &occupancy) ||
+        !(occupancy.resident ? DSL_gemm_occupancy_cost(in, occupancy.resident, &evaluated) :
+          DSL_readiness_evaluate(in, &evaluated))) return FALSE;
     *input = in;
+    *result = evaluated;
+    return TRUE;
+}
+
+/* Apply the VHO logical-residency eligibility gate before constructing child
+ * records. Recompute demand, never promoting unrelated safety rejections; keep the
+ * caller's entire record on invalid inputs. This does not certify occupancy. */
+BOOL VHO_DSL_fetch_classify_occupancy(const DSL_TILE_PLAN_RECORD &tile,
+    const DSL_HARDWARE_DESCRIPTION_RECORD &hardware, DSL_FETCH_PLAN_RECORD *fetch)
+{
+    if (!fetch || !tile.cta_m || !tile.cta_n ||
+        tile.target_profile_id != hardware.target_profile_id) return FALSE;
+    DSL_FETCH_RESOURCE_RECORD resources;
+    DSL_GEMM_OCCUPANCY_RESULT occupancy;
+    UINT64 ctas;
+    if (!VHO_DSL_fetch_resource_requirements(tile, *fetch, &resources) ||
+        !DSL_Fetch_Mul_U64(DSL_Fetch_Ceil_Div(tile.problem_m, tile.cta_m),
+            DSL_Fetch_Ceil_Div(tile.problem_n, tile.cta_n), &ctas) ||
+        !DSL_gemm_occupancy(hardware.resources, hardware.performance.warp_lanes,
+            hardware.performance.sms, resources.threads_per_cta,
+            resources.register_bytes_per_thread, resources.shared_bytes, ctas, &occupancy)) return FALSE;
+    if (!occupancy.resident) {
+        fetch->legality = DSL_OPT_LEGALITY_REJECTED;
+        fetch->rejection_reason = DSL_OPT_REJECT_RESOURCE;
+    }
     return TRUE;
 }
 
@@ -656,7 +692,8 @@ DSL_fetch_joint_cost(const DSL_TILE_PLAN_RECORD &tile,
 }
 
 /* Adapt one PU-local fetch alternative to the shared candidate/plan service;
- * preserve its selected tile lineage and report rejected input before selection. */
+ * preserve its selected tile lineage and previously checked resource gates.
+ * No WHIRL mutation; malformed cost arithmetic fails analysis. */
 static BOOL
 DSL_Fetch_Add_Optimization_Plan
         (DSL_FETCH_PIPELINE_ANALYSIS *analysis, DSL_FETCH_SITE_RECORD *site,
@@ -762,7 +799,9 @@ DSL_Fetch_Add_Stages
 }
 
 /* Build one fetch alternative from the selected PU-local tile, accounting for
- * physical staging padding separately from transfer payload; no WHIRL is mutated. */
+ * physical staging padding separately from transfer payload. Resolve logical
+ * residency rejection before constructing dependent fetch/evolution records;
+ * invalid arithmetic fails analysis. No executable WHIRL is mutated. */
 static BOOL
 DSL_Fetch_Add_Plan
         (DSL_FETCH_PIPELINE_ANALYSIS *analysis, DSL_FETCH_SITE_RECORD *site,
@@ -913,6 +952,14 @@ DSL_Fetch_Add_Plan
             DSL_OPT_REJECT_RESOURCE : DSL_OPT_REJECT_TARGET_MISMATCH;
     }
 
+    // Classify before dependent fetch records/evolution nodes are constructed.
+    // A zero estimate rejects only this sibling, not the shared D seed.
+    if (analysis->control.readiness_cost) {
+        DSL_HARDWARE_DESCRIPTION_RECORD hardware;
+        if (!VHO_DSL_fetch_hardware_description(analysis->control, &hardware) ||
+            !VHO_DSL_fetch_classify_occupancy(tile, hardware, &pipeline))
+            return DSL_Fetch_Pipeline_Report(diagnostic, "invalid occupancy estimate", pipeline.id);
+    }
     for (UINT32 ordinal = 0; ordinal < 2; ++ordinal) {
         DSL_FETCH_RECORD fetch;
         memset(&fetch, 0, sizeof(fetch));

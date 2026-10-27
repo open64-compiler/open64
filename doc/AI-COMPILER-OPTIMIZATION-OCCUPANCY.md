@@ -39,6 +39,18 @@ groups and 128-byte SMEM rounding are explicit ESTIMATED planning assumptions;
 they are not claimed as verified Hopper/Blackwell allocation contracts. Native
 occupancy APIs/ptxas must replace/check them before certification. Unmodeled
 register partition constraints and launch carveout are additional uncertainty.
+
+| Resource payload fields | Initial value | Provenance / role |
+| --- | --- | --- |
+| max_blocks, max_warps, max_threads | 32, 64, 2048 | Documented architecture maxima; threads=warps*32. |
+| max_threads_per_cta | 1024 | Architectural block-thread limit. |
+| registers_per_sm, max_registers_per_thread | 65536 words, 255 words | Documented 32-bit-register maxima. |
+| register_quantum, register_warp_quantum | 256 words/warp, 4 warps | Estimated allocation assumptions, not verified native granularity. |
+| shared_capacity | 233472 bytes | Documented maximum; not configured availability. |
+| shared_budget | 65536 bytes | Conservative configured-envelope assumption; runtime carveout unverified. |
+| shared_quantum | 128 bytes | Estimated allocation rounding. |
+| shared_reserved | 1024 bytes/CTA | Documented CUDA reservation. |
+
 Existing four-SM performance envelope and reference-cycle rates remain synthetic,
 not a SKU, physical clock or NVIDIA performance specification. No new private
 delay/rate constants are allowed. Unknown/zero denominators reject evaluation.
@@ -56,8 +68,12 @@ shared_per_CTA = round_up(active_shared_bytes + reserved_shared_bytes,
 limits = [max_blocks, floor(max_warps/warps), floor(max_threads/threads),
           floor(registers_per_SM/registers_per_CTA),
           floor(configured_shared_bytes/shared_per_CTA)]
+set thread/register quotient to zero if the per-CTA/per-thread cap is exceeded
+if shared_per_CTA == 0, shared quotient is max_blocks (no SMEM constraint)
 R = min(limits); report ALL ties as limiting-resource bits
-reject model if R == 0 or arithmetic invalid; leave outputs untouched
+R == 0: reject this candidate, preserve sibling plans; legacy cost is
+    diagnostic only and cannot authorize selection
+arithmetic invalid: reject evaluation; leave outputs untouched
 capacity = S*R; full = grid/capacity; tail = grid%capacity
 for each nonempty full/tail class:
     q = ceil(active/S)
@@ -93,6 +109,13 @@ active tail SMs, legacy cost and final source line. JOINT_READINESS carries
 model6 round costs. Reports audit every field independently, full census,
 cost components, selected and fallback plans; emit old/new winners even if
 unchanged. All logs begin 'What it summarizes'.
+
+The report also derives D-specific issued-sector traffic/Roofline diagnostics
+from the audited DIRECT_ACCESS rows: useful FLOPs, total issued input/output
+bytes, ideal compute service, ideal byte service and their maximum. Intensity
+is FLOPs/issued bytes. These floors use the same shared model rates and do
+not add another cost or assert HBM availability/cache hits. Capacity warps and
+grid-limited peak warps are explicitly distinguished in the summary.
 
 ## Acceptance And Remaining Work
 
