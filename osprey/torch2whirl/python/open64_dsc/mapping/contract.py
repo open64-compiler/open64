@@ -22,6 +22,11 @@ class OperatorContract:
 
 
 _CONTRACTS = {
+    common.STABLE_SOFTMAX: OperatorContract(
+        common.STABLE_SOFTMAX, 1, 1,
+        ("attr.axis", "attr.accum_dtype", "attr.reassociate",
+         "attr.state_reformulation", "attr.exp_semantics"),
+    ),
     common.REDUCE_SUM: OperatorContract(
         common.REDUCE_SUM, 1, 1,
         ("attr.axis", "attr.keepdim", "attr.accum_dtype", "attr.reassociate"),

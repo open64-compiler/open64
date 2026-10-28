@@ -2132,5 +2132,8 @@ within the active whole PU. PREOPT verifies both boundaries and opaque WOPT
 emission preserves managed/direct operand joins. No online merge, exp
 approximation, reduction order, physical storage or accuracy proof is inferred.
 Distinct `AI_SOFTMAX`/`AI_SOFTMAX_FACT` records retain source line last and the
-existing AI trace controls. Native .B/.T inspection does not claim Python
-Softmax ingestion or executable VHO lowering; the latter still fails closed.
+existing AI trace controls. The subsequent exact Python ingestion connection
+now consumes this unchanged native contract, preserving the division call-site
+and runtime formal/result/return. Source matching is not native optimization;
+executable VHO lowering still fails closed. Five API/driver native/PREOPT cases
+and source/numerical witnesses are retained independently of MMA1.

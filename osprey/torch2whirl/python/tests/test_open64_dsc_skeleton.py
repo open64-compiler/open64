@@ -339,6 +339,10 @@ class Open64DscSkeletonTest(unittest.TestCase):
             "common.reduce_sum": (
                 1, 1, ("attr.axis", "attr.keepdim", "attr.accum_dtype", "attr.reassociate"),
             ),
+            "common.stable_softmax": (
+                1, 1, ("attr.axis", "attr.accum_dtype", "attr.reassociate",
+                       "attr.state_reformulation", "attr.exp_semantics"),
+            ),
             "common.matmul": (
                 1,
                 2,

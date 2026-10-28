@@ -130,7 +130,7 @@ R1 sub-gates, kept independent of MMA1's contracts/target profiles:
 | R1-a: source fixtures/census | Implemented for all six blocks. | Preserve exact source/FX/shape/argument census and explicit native gaps. |
 | R1-b: source semantic derivation | Implemented for exact rank-2 FP32 row reduction, stable Softmax and affine LayerNorm, in that order. No model-name dispatch or graph mutation. | Report output/reduction domains, logical accesses, alias/effect facts, state/merge/finalize recipe, epsilon/denominator, ownership obligations, graph fingerprint and unresolved conditions. |
 | R1-c: numerical witnesses | Implemented strict/permitted CPU comparisons with independent FP64 oracles, adversarial cancellation/overflow and unsafe-formulation negatives. No compiler authorization from sample agreement. | Report permission rejection separately from numerical/domain rejection; retain thresholds/errors, source as well as alternative failures, exact inputs/results and remaining general-accuracy obligations. |
-| R1-d: native canonical characterization | Partial: exact Python row-sum ingestion and native row-sum/stable-Softmax contracts with WHIRL-derived state/access/numerical characterization implemented. Python Softmax ingestion, native LayerNorm, general forms and executable lowering remain open. | Native row-sum/Softmax API fixtures and five authenticated Python row-sum/driver `.B/.T` inputs; separate FORM/FACT tags, strict entry/exit audit and source lines. `semantic.log` reports state recipe, logical accesses, alias/owner obligations, numerical permissions and unknowns without physical traffic or executable-plan claims. |
+| R1-d: native canonical characterization | Partial: exact Python row-sum and stable-Softmax ingestion and native contracts with WHIRL-derived state/access/numerical characterization implemented. Native LayerNorm, general forms and executable lowering remain open. | Native row-sum/Softmax API fixtures plus Python API/driver `.B/.T` cases; separate FORM/FACT tags, strict entry/exit audit and source lines. `semantic.log` reports state recipe, logical accesses, alias/owner obligations, numerical permissions and unknowns without physical traffic or executable-plan claims. |
 
 R1-b/c produce analysis-only `semantic-summary.log`, not compiler `.t` or a
 transformation report. No candidate is selected, no physical plan is costed,
@@ -150,8 +150,11 @@ R1-d next sequence, independent of MMA1:
    max/subtract/exp/sum/divide contract, active-PU PREOPT preservation and
    canonical-WHIRL characterization. See the
    [native Softmax contract](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md).
-   Connect the exact Python stable-Softmax matcher next; then publish native
-   normalization forms with explicit numerical and broadcast/state obligations.
+   Completed: connect the exact Python stable-Softmax matcher through the
+   explicit-result builder and standalone driver; retain division-site source
+   positions, five native/PREOPT cases and ten prepublication rejections.
+   Next publish native normalization forms with explicit numerical and
+   broadcast/state obligations. Numerical binding and executable Softmax remain open.
 4. Only then compare legal executable alternatives and lower the selected
    plan into WHIRL. Verification-only trace events do not count as optimizer
    actions. REGION support must be explicit, never inferred by whole-PU traversal.

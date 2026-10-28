@@ -323,12 +323,12 @@ def _verify_graph_operators(
         result_type = _result_type(operator, operand_types)
         produced_types[operator.name] = result_type
         semantic_name = operator.metadata.get("semantic_name")
-        if operator.name == common.REDUCE_SUM:
+        if operator.name in (common.REDUCE_SUM, common.STABLE_SOFTMAX):
             declared = value_types.get(semantic_name)
             if (declared is None or result_type is None or
                     (declared.dtype, declared.rank, declared.logical_shape) !=
                     (result_type.dtype, result_type.rank, result_type.logical_shape)):
-                raise WhirlVerificationError("common.reduce_sum result descriptor mismatch")
+                raise WhirlVerificationError(operator.name + " result descriptor mismatch")
         if semantic_name:
             produced_types[semantic_name] = result_type
 
@@ -375,6 +375,18 @@ def _verify_operator_contract(
     operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
 ) -> None:
     _require_contract_attrs(operator)
+
+    if operator.name == common.STABLE_SOFTMAX:
+        expected = {"attr.axis": "1", "attr.accum_dtype": "float32",
+                    "attr.reassociate": "false", "attr.state_reformulation": "false",
+                    "attr.exp_semantics": "source_unresolved"}
+        value = operand_types[0]
+        if dict(operator.attrs) != expected or value is None:
+            raise WhirlVerificationError("common.stable_softmax requires exact canonical attributes")
+        shape = _parse_logical_shape(value.logical_shape, "stable-Softmax input")
+        if value.dtype != "float32" or len(shape) != 2 or any(size <= 0 for size in shape):
+            raise WhirlVerificationError("common.stable_softmax requires static rank-2 FP32 input")
+        return
 
     if operator.name == common.REDUCE_SUM:
         expected = {"attr.axis": "1", "attr.keepdim": "false",
@@ -994,6 +1006,8 @@ def _result_type(
 ) -> Optional[WhirlTensorTypeRecord]:
     if not operand_types:
         return None
+    if operator.name == common.STABLE_SOFTMAX:
+        return operand_types[0]
     if operator.name == common.REDUCE_SUM:
         value = operand_types[0]
         if value is None:

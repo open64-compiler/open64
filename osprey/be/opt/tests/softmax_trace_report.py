@@ -102,7 +102,7 @@ def write_reports(trace, output):
         "P0/PREOPT contracts_verified=" + str(len(facts)) + " entry_exit=identical\n" +
         "state_access_numerical=canonical_whirl\n" +
         "candidate_selection=not_run profitability=not_run transformation=none\n" +
-        "python_softmax_ingestion=not_connected execution_lowering=unsupported native_gpu=not_run\n")
+        "frontend_provenance=not_in_trace execution_lowering=unsupported native_gpu=not_run\n")
     return facts
 
 

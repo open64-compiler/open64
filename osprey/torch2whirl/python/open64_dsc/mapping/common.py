@@ -5,6 +5,7 @@ FLATTEN = "common.flatten"
 LINEAR = "common.linear"
 MATMUL = "common.matmul"
 REDUCE_SUM = "common.reduce_sum"
+STABLE_SOFTMAX = "common.stable_softmax"
 MODEL_INPUT = "common.model_input"
 OUTPUT_LOGITS = "common.output_logits"
 RELU = "common.relu"
@@ -15,6 +16,7 @@ TRANSPOSE = "common.transpose"
 
 UNARY_OPERATORS = {
     REDUCE_SUM,
+    STABLE_SOFTMAX,
     FLATTEN,
     OUTPUT_LOGITS,
     RELU,

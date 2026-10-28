@@ -69,6 +69,7 @@ class SoftmaxTraceTests(unittest.TestCase):
             for name in ("semantic.log", "optimization.log", "optimization-summary.log"):
                 self.assertTrue((output / name).read_text().startswith("# What it summarizes:"))
             self.assertIn("transformation=none", (output / "optimization-summary.log").read_text())
+            self.assertIn("frontend_provenance=not_in_trace", (output / "optimization-summary.log").read_text())
             with self.assertRaises(FileExistsError):
                 write_reports(trace, output)
 

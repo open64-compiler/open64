@@ -4,11 +4,11 @@ Version: v0.1, 2026-10-27. Status: deterministic source fixtures, CPU reference
 validation and real FX census implemented; general native WHIRL ingestion open.
 Exact static FP32 row-sum native ingestion is now implemented and inspected
 through the public API and standalone driver; executable reduction lowering
-and native ingestion for the other new row blocks remain open.
+and native normalization ingestion remain open.
 The [native stable-Softmax contract](../../doc/AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md)
-and its canonical-WHIRL characterization are now implemented independently
-of source ingestion. The next frontend gate connects the exact decomposed
-stable-Softmax matcher, not an opaque framework Softmax, to that contract.
+and its canonical-WHIRL characterization are implemented. The exact decomposed
+Python stable-Softmax matcher now consumes it; opaque framework Softmax is not
+silently treated as equivalent. Native normalization is the next row contract.
 Controlling architecture: [common execution planning](../../doc/AI-COMPILER-COMMON-EXECUTION-PLANNING.md),
 [frontend workflow](../../doc/WHIRL-DSL-INFRASTRUCTURE.md) and
 [building-block research queue](../../doc/AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#building-block-research-queue).
@@ -49,15 +49,16 @@ Class names and per-case files preserve semantic boundaries despite decompositio
 | Case | Call census (excluding inputs/output) | First current generic FX ingestion blocker |
 | --- | --- | --- |
 | GEMM | matmul x1 | None in mock mapping (`common.matmul`); no native certification in this lane. |
-| Reduction | sum x1 | sum |
-| Softmax | amax, sub, exp, sum, truediv x1 each | amax |
+| Reduction | sum x1 | None for exact bounded row sum; general sum forms remain unsupported. |
+| Softmax | amax, sub, exp, sum, truediv x1 each | None for the exact whole bounded stable recipe; individual generic amax/exp graphs remain unsupported. |
 | LayerNorm | mean x2, sub x1, mul x3, add x2, rsqrt x1 | mean |
 | Attention | transpose, truediv, invert, masked_fill, softmax x1 each; matmul x2 | transpose |
 | MoE | getitem x4, matmul x2, relu, squeeze, mul, sum x1 each | getitem |
 
 The [boundary regression](python/tests/test_building_blocks_capture_optional.py)
 actually calls `export_to_whirl(..., backend="mock")`: it checks GEMM's
-`common.matmul` and explicit unsupported-node diagnostics for the other five.
+`common.matmul`, exact row sum and exact stable Softmax, plus explicit
+unsupported-node diagnostics for the other three.
 This is an ingestion drift detector, not `.B` certification. Existing specialized
 Llama2 semantic ingestion must not be confused with support for these generic
 isolated graph shapes. Additional blockers may appear after the first one is fixed.

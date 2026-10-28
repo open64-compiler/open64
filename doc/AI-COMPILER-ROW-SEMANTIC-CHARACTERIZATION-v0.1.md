@@ -202,7 +202,8 @@ not native execution or target performance.
 The [native stable-Softmax contract](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md)
 now preserves the bounded FP32 max/subtract/exp/sum/divide recipe and derives
 state/access/numerical facts from canonical WHIRL at PREOPT entry/exit. This is
-separate from the source graph matcher: its Python ingestion connection is
-still open. Native identity does not promote CPU sample agreement into a
+separate from source matching: the exact Python recipe now connects to it
+through shared structural preflight and native formal/result/return APIs.
+Native identity does not promote CPU sample agreement into a
 general accuracy proof or authorize online-state merge. Exact reduction order,
 exp approximation/exception behavior and executable lowering remain unbound.

@@ -109,8 +109,8 @@ Use separate directories for ASCII `.T` and trace `.t` on case-insensitive hosts
 4. Lower the selected executable plan into WHIRL; then emit device code from it.
 5. Native stable Softmax representation/characterization is now specified in
    [its separate contract](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md).
-   Python Softmax ingestion and native mean/variance normalization remain next
-   gates, independent of MMA1.
+   Its exact Python ingestion is now connected, reusing row formal/result/return
+   emission. Native mean/variance normalization remains next, independent of MMA1.
 
 ## Reproduction and validation
 

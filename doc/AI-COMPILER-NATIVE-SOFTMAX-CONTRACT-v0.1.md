@@ -1,8 +1,8 @@
 # Native stable Softmax contract and canonical WHIRL characterization v0.1
 
-Status: bounded R1 native contract and read-only PREOPT characterization.
-Independent of MMA1. No executable Softmax lowering or Python-to-native Softmax
-ingestion is claimed by this increment.
+Status: bounded R1 native contract, exact Python ingestion and read-only PREOPT
+characterization implemented. Independent of MMA1. Executable Softmax lowering
+and GPU validation remain open.
 
 ## Terms and architectural baseline
 
@@ -167,8 +167,8 @@ snapshots in a new immutable `r1-native-softmax` review receipt. ASCII and trace
 directories are separate. No executable transformation is performed, so this
 increment does not fabricate transformed before/after images.
 
-Next: connect the exact decomposed Python stable-Softmax matcher to this native
-contract, then specify native mean/variance normalization. Executable numerical
+The exact Python connection is described below. Next specify native
+mean/variance normalization. Executable numerical
 binding, legal alternatives, storage/events, profitability and WHIRL lowering
 remain separate gates. MMA1, CUDA profiles and GPU validation remain untouched.
 
@@ -204,3 +204,79 @@ receipt's observations, not fixed ABI values. Seven durable mapped-image and
 report replays cover Softmax, native row sum and five historical row-sum inputs.
 The receipt retains commands, product/source hashes, negative evidence and
 explicit remaining gates. No generated CUDA or selected executable image exists.
+
+## Python ingestion increment, 2026-10-27
+
+The frontend now consumes this existing v1 contract. No native opcode/schema,
+mapped layout, target profile or MMA1 implementation changes are needed.
+
+```text
+capture with source positions
+  -> exact whole-graph max/subtract/exp/sum/divide structural preflight
+  -> positive contiguous rank-2 FP32 input descriptor check
+  -> ShapeProp on the verified pure graph
+  -> shared R1 characterization and exact shape/edge verification
+  -> runtime input formal + explicit result/return + common.stable_softmax.v1
+  -> native .B -> independent ir_b2a .T -> actual PREOPT -> audited .t reports
+```
+
+The analysis and ingestion paths share the same structural Softmax matcher.
+The numerator must be the exact exponential value reduced by the denominator;
+a second exponential, raw-input sum, unshifted exp, epsilon-added denominator,
+extra effect/operation or unused input fails before ShapeProp. Only accepted
+pure graphs are evaluated for shape propagation. This does not purport to
+sandbox arbitrary Python execution during symbolic tracing itself.
+
+Both reductions accept canonicalizable single last-axis spellings `-1`, `1`,
+or a singleton tuple/list. Maximum and sum retain the reduced dimension.
+Opaque `torch.softmax`, method-call approximations, alternate reductions and
+embedded/compositional regions do not gain support by presumed equivalence.
+Dynamic/empty shapes, non-FP32, non-contiguous tensors and multi-PU ingestion
+remain outside this bounded connection. Model/class names do not select meaning.
+
+The shared frontend row emitter reuses the existing reduction's native
+formal/result/return construction, import/class census and source-position APIs.
+It supplies descriptor requests and fixed published attributes; C++ still owns
+WHIRL types/symbols/records. No sample tensor becomes a constant. The region's
+native assignment/result symbol use the actual final-division source line,
+not the Python class declaration. Source intermediate operations are subsumed
+only by the exact published recipe, not by an independent target implementation.
+
+No permission is inferred from ShapeProp or CPU sample agreement. Strict
+reassociation/state-reformulation prohibitions and unresolved exp/order/exception,
+finite/overflow/accuracy facts survive native PREOPT. Nonfinite sample inputs
+do not become finite-domain proofs or silently acquire repaired outputs.
+
+The native trace schema and bit are unchanged. A verification `.t` file alone
+does not prove frontend provenance; the per-phase auditor now reports
+`frontend_provenance=not_in_trace` instead of a hard-coded project-status claim.
+The producer/review receipt and aggregate `optimization-summary.log` separately
+verify Python ingestion. This report-only correction reuses raw traces;
+initial derived reports are retained as history, not presented as current status.
+
+Validation: eight focused source tests; five native image/PREOPT cases
+(`3x17` with negative/positive axes, `1x1`, `7x65`, and the standalone driver);
+ten native prepublication rejection cases; four FP32 source-versus-independent
+FP64/math.fsum witnesses under existing tolerance; default/on/off trace checks;
+thirteen isolated native API tests and mapped artifact smoke. Existing row-sum,
+semantic/numerical, building-block, skeleton and twelve trace-auditor regressions
+pass. Full source suite: 278 tests, fourteen skips, only the unchanged FHE
+authority DOCX digest failure. No full FHE producer or GPU run is claimed.
+
+Final immutable Python-ingestion receipt (primary `native/negative-axis/softmax.B`):
+
+```text
+/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/r1-python-softmax/sha256-03c7edf8146bd09e9791a831c4bf918f95e79f1f9088a37304ddaf3f3923c76d/
+```
+
+Start with `native/optimization-summary.log`,
+`native/negative-axis/reports/semantic.log`,
+`native/negative-axis/ascii/softmax.T` and
+`native/negative-axis/trace/default.t`. The representative trace preserves
+node 1, input/result values 1/3, shared TY 13570 and Python division line 44.
+Those IDs/line describe this receipt, not a fixed ABI. Five durable source-
+interleaved mapped reopens and strict report replays must match staged evidence.
+
+R1-d remains partial: native mean/variance normalization, generalized forms,
+executable numerical binding, legal/profitable alternatives and lowering are
+still separate work. Source ingestion is not an optimization or speedup claim.

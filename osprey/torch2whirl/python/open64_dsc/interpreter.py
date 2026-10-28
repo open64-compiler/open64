@@ -111,6 +111,10 @@ class WhirlExportInterpreter:
             row_sum = try_export_row_sum(self, model, inputs, captured_graph)
             if row_sum is not None:
                 return row_sum
+            from .softmax_ingestion import try_export_stable_softmax
+            softmax = try_export_stable_softmax(self, model, inputs, captured_graph)
+            if softmax is not None:
+                return softmax
 
         model_name = self._model_name(model)
         entry_name = self._model_class_name(model)

@@ -4,6 +4,14 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-27 Python stable-Softmax connection:
+the [exact source-to-native recipe](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27)
+now shares structural preflight with R1 analysis and emits the published native
+contract through runtime formals and an explicit result/return. Five API/driver
+images reach actual PREOPT with division-site source positions and strict
+numerical permissions/unknowns. No target algorithm, executable lowering or
+MMA1 change is implied; native normalization remains next.
+
 2026-10-27 native stable-Softmax amendment:
 [Native stable Softmax and canonical WHIRL characterization](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md)
 adds the bounded FP32 max/subtract/exp/sum/divide contract and derives native

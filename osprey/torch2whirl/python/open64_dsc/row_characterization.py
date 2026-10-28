@@ -88,6 +88,20 @@ class _RowMatcher:
             raise CharacterizationError("propagated shape disagrees with row dataflow")
         return shape
 
+    def stable_softmax(self):
+        """Check exact max/subtract/exp/sum/divide edges without evaluating them."""
+        t = self.torch
+        if len(self.inputs) != 1:
+            raise CharacterizationError("Softmax requires one row input without unused arguments")
+        x = self.inputs[0]
+        numerator, denominator = self.call(self.output, operator.truediv, 2)
+        shifted, = self.call(numerator, t.exp, 1)
+        value, maximum = self.call(shifted, operator.sub, 2)
+        if (value is not x or self.reduce(maximum, t.amax, True) is not x or
+                self.reduce(denominator, t.sum, True) is not numerator):
+            raise CharacterizationError("Softmax max/exp/sum must share the same row dataflow")
+        return maximum, denominator
+
     def match(self):
         """Derive kind, axes, sizes, epsilon and accesses from the actual graph."""
         t = self.torch
@@ -105,15 +119,7 @@ class _RowMatcher:
                 raise CharacterizationError("sum must directly reduce the row input")
             kind, result_shape = "reduction", (rows,)
         elif self.output.op == "call_function" and self.output.target is operator.truediv:
-            if len(self.inputs) != 1:
-                raise CharacterizationError("Softmax requires one row input without unused arguments")
-            numerator, denominator = self.call(self.output, operator.truediv, 2)
-            shifted, = self.call(numerator, t.exp, 1)
-            value, maximum = self.call(shifted, operator.sub, 2)
-            if (value is not x or self.reduce(maximum, t.amax, True) is not x or
-                    self.reduce(denominator, t.sum, True) is not numerator):
-                raise CharacterizationError("Softmax max/exp/sum must share the same row dataflow")
-            stats = [maximum, denominator]
+            stats = list(self.stable_softmax())
             kind, result_shape = "softmax", shape
         else:
             if len(self.inputs) != 3:
@@ -186,6 +192,15 @@ def match_row_sum_structure(graph_module):
             matcher.reduce(matcher.output, matcher.torch.sum, False)
             is not matcher.inputs[0] or matcher.used != set(matcher.nodes)):
         raise CharacterizationError("one direct row sum and one input required")
+    return matcher.inputs[0], matcher.output
+
+
+def match_stable_softmax_structure(graph_module):
+    """Preflight the complete pure source recipe before ShapeProp or allocation."""
+    matcher = _RowMatcher(graph_module)
+    matcher.stable_softmax()
+    if matcher.used != set(matcher.nodes):
+        raise CharacterizationError("extra Softmax operations, effects or unused inputs")
     return matcher.inputs[0], matcher.output
 
 

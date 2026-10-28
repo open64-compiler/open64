@@ -8,6 +8,23 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 R1 Python-to-native stable-Softmax increment:
+the exact whole-graph max/subtract/exp/sum/divide matcher now emits a runtime
+input formal, explicit same-shape result/return and native v1 operation.
+Structural/descriptor preflight precedes ShapeProp; the shared analysis matcher
+checks source edges, not model names. Existing row-sum emission is reused
+through common frontend plumbing. Strict numerical prohibitions and unknowns
+are unchanged. API/driver PREOPT traces preserve the actual Python division
+line; native trace provenance and producer-certified ingestion are kept distinct.
+Eight new source tests, five native/PREOPT cases, ten native rejection cases,
+four independent FP64 source witnesses, thirteen isolated native API tests,
+native smoke and focused row-sum/numerical/capture/auditor regressions pass.
+Full source suite: 278 tests, fourteen skips and the unchanged FHE authority
+DOCX digest failure. The [ingestion detail and immutable receipt](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27)
+retain images, source, raw traces, numerical witnesses and phase reports.
+Native normalization, executable selection/lowering and GPU validation remain
+open; MMA1 and native C++ contracts/profiles are untouched.
+
 2026-10-27 R1 native stable-Softmax increment:
 `common.stable_softmax.v1` now represents static FP32 `[R,N] -> [R,N]`
 max/subtract/exp/sum/divide as a native typed unary operation. Shared builder,
