@@ -200,6 +200,10 @@ are separate evidence lanes. None substitutes for GPU numerical certification.
 
 ## 8. Next Execution Slices
 
+Follow-up: the [R2-c2 staged binding](AI-COMPILER-REDUCTION-STAGED-BINDING-v0.1.md)
+now defines compiler-side scratch/copy/reuse/tail obligations. The runtime in
+this document remains direct-only; its guard ABI does not admit staged plans.
+
 1. Bind staged ordered reduction copy visibility, slot reuse, tails and budget;
    reuse this runtime boundary rather than introducing a second ownership model.
 2. Complete direct/staged costs and explicit profitability-gated plan selection.

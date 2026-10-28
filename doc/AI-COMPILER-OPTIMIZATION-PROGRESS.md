@@ -8,6 +8,26 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-28 R2-c2 staged ordered reduction binding:
+WOPT now binds a synchronous bit-copy realization using one disjoint padded
+CTA-shared slot per row-thread. Complete-copy visibility precedes ordered reads;
+last-read release precedes next-generation reuse. Column tails and partial CTA
+owners use exact counts/guards; one positive-zero FP32 accumulator persists
+across chunks. Source v1, unsupported visibility/async/cooperative copies,
+multiple slots, unsafe reuse and padded tails are refused.
+Eight native cases pass 539 assertions and audit 254 binding rows (12 conditional
+successes, 242 refusals) plus 181 exact slice plans. Forty-six host row witnesses
+match the independent integer binary32 oracle. All 42 trace/auditor tests pass,
+including five staged tests and 2,050 event-graph comparisons. Direct binding/
+runtime, numerical recipes, Softmax/normalization, WOPT/common/FHE focused and
+backend/inline link-boundary regressions pass.
+See [staged binding detail](AI-COMPILER-REDUCTION-STAGED-BINDING-v0.1.md).
+Target resource data remains the existing estimated planning envelope; staged
+mask 255 remains outstanding. No runtime ABI or MMA1/profile/schema change,
+selected WHIRL transformation, native copy execution or GPU claim. Next is
+complete legal direct/staged costs and explicit profitability-gated selection;
+staged runtime adaptation and selected lowering remain separate open gates.
+
 2026-10-27 R2-c1 direct ordered reduction runtime enforcement:
 fresh native binding export now feeds a separate runtime guard ABI. The runtime
 reuses the tensor descriptor and buffer-service import checks, requires trusted

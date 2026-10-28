@@ -224,6 +224,7 @@ BE_OPT_CXX_SRCS = \
   opt_fold.cxx		\
   opt_dsl.cxx		\
   opt_dsl_reduction.cxx \
+  opt_dsl_reduction_staged.cxx \
   opt_dsl_locality.cxx	\
   opt_dsl_semantic.cxx	\
   opt_htable.cxx	\

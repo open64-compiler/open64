@@ -4,6 +4,15 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-28 R2-c2 staged ordered reduction amendment:
+[staged binding](AI-COMPILER-REDUCTION-STAGED-BINDING-v0.1.md) now specifies
+synchronous bit-copy visibility, disjoint padded shared slots, last-read release
+before generation reuse, and exact column/CTA tails while retaining one ordered
+accumulator. WOPT reuses direct binding, recipe discovery and existing estimated
+resource envelopes. Mask 255 remains outstanding; direct-only runtime guards
+do not discharge staging. No async/cooperative/multi-slot admission, MMA1 change,
+source relaxation, selection or executable transformation is implied.
+
 2026-10-27 R2-c1 runtime-enforcement amendment:
 [direct reduction runtime guards](AI-COMPILER-REDUCTION-RUNTIME-GUARDS-v0.1.md)
 connect freshly revalidated native bindings to bounded live-root/descriptor/

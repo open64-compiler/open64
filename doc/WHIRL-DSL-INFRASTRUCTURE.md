@@ -2174,6 +2174,13 @@ numerical recipe.
 
 ### R2-c Direct Reduction Contract Binding (2026-10-27)
 
+Follow-up [R2-c2 staged binding](AI-COMPILER-REDUCTION-STAGED-BINDING-v0.1.md)
+adds a read-only WOPT-owned transient contract over the same source v2: one
+same-owner synchronous bit-copy slot, disjoint CTA-shared partitioning, explicit
+visibility/last-read-release/reuse and exact tails. Existing direct gate, recipe
+query and hardware lookup are reused. No mapped/native layout, source version,
+runtime ABI or MMA profile changes; selected WHIRL lowering remains separate.
+
 Follow-up [R2-c1 runtime guards](AI-COMPILER-REDUCTION-RUNTIME-GUARDS-v0.1.md):
 fresh WOPT revalidation exports a process-local numeric guard without changing
 native/mapped records. Separate runtime code enforces canonical backing-root

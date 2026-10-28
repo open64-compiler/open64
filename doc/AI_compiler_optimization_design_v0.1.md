@@ -4,6 +4,13 @@ Version v0.1 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-28 R2-c2 staged ordered reduction amendment:
+[staged binding](AI-COMPILER-REDUCTION-STAGED-BINDING-v0.1.md) adds synchronous
+same-owner bit-copy visibility, padded shared slots, last-read release before
+reuse, and exact column/CTA tails. One accumulator persists across chunks.
+Resource envelopes and mask 255 remain conditional; no staged runtime discharge,
+async/cooperative admission, cost selection, WHIRL transformation or MMA1 change.
+
 2026-10-27 R2-c1 runtime-enforcement amendment:
 [direct reduction runtime guards](AI-COMPILER-REDUCTION-RUNTIME-GUARDS-v0.1.md)
 connect freshly revalidated native bindings to live-root/descriptor/manifest
