@@ -8,6 +8,25 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 MMA4-H increment, from merged MMA3 PR197 (`c5aec7b1`):
+[First Hopper lowering](AI-COMPILER-MMA4-H-HOPPER-LOWERING.md) adds an explicit
+O3 active-PU `sm_90a` F16/BF16 shared/shared WGMMA API. Exact 64x64x16 atoms,
+uniform 128-thread participation, descriptor-valid packing, explicit
+proxy/register fences, commit, full wait and reuse joins are real executable
+assembly-carried WHIRL. Twenty before/after kernels compile to native CUDA
+PTX/cubin; ten typed cases pass forty final geometry/protocol host runs,
+380 preflight negatives, 160 body mutations, twenty stale-record checks and
+ninety independent source corruptions. All 123 host tests pass. Eighteen
+MMA3 cases/88 runs still pass; 66 full dumps across fifteen F32/eighteen typed
+SIMT configurations remain identical to authenticated MMA3. Four old-reader
+reopens pass. SIMT stays default; automatic promotion, generic frontend hookup,
+native GPU arithmetic and timing remain open. The conservative private F32
+fragment materializes between atoms (128-byte local stack), so no persistent
+RF residency or speedup is claimed. Commit locally only; no PR requested.
+Implementation checkpoint `4c85e0b2` and its 2177-file immutable receipt pass
+isolated durable producer/reader/offline-CUDA/host replay. See
+[MMA4-H durable acceptance](AI-COMPILER-MMA4-H-HOPPER-LOWERING.md#durable-acceptance-record).
+
 2026-10-27 MMA3 increment, from merged MMA2 PR196 (`a1153671`):
 [Typed SIMT baseline](AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md) adds a native
 active-PU F16/BF16 source/lowering API, exact U2-to-F32 widening and explicit

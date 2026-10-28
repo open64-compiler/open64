@@ -9,7 +9,12 @@ with explicit unknown production timing and synthetic-only oracle scenarios.
 It cannot change SIMT execution. The [MMA3 typed SIMT baseline](AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md)
 now provides a native active-PU F16/BF16 source/lowering API with explicit
 FP32 arithmetic. General frontend/selected-plan hookup, guarded promotion and
-all native MMA lowering/certification remain open; old F32 dispatch is unchanged.
+native MMA certification remain open; old F32 dispatch is unchanged.
+The [MMA4-H first Hopper lowering](AI-COMPILER-MMA4-H-HOPPER-LOWERING.md) now
+provides an explicit O3 active-PU shared/shared F16/BF16 WGMMA recipe, carried
+by standard volatile/memory-clobber assembly WNs and compiled with CUDA 12.8.1
+for `sm_90a`. SIMT remains default, no automatic promotion is enabled, and
+native GPU numerical/resource/timing certification is not inferred from compilation.
 
 ## 1. Decision And Current Boundary
 

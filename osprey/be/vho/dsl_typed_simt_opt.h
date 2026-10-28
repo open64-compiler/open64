@@ -23,6 +23,12 @@ typedef struct {
     SRCPOS source_position;
 } VHO_DSL_TYPED_SIMT_BINDING;
 
+/* Read-only active-PU/type/strict-math validation shared by typed lowerers.
+ * Rejection allocates no WN, symbol or type and changes no caller state. */
+extern BOOL VHO_DSL_typed_simt_binding_verify(const DSL_TYPED_SIMT_RECORD *record,
+    const DSL_NUMERICAL_CONTRACT_RECORD *numerical, const VHO_DSL_TYPED_SIMT_BINDING *binding,
+    UINT32 execution, FILE *diagnostic);
+
 /* Construct an owned detached serial reference or direct-SIMT body in the
  * current PU. U2 input pointers represent the accepted F16/BF16 source;
  * output is F4. Private product/accumulator symbols must be volatile F4.
