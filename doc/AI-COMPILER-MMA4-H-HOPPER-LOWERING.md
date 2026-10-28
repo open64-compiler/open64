@@ -117,3 +117,42 @@ the official checksummed CUDA redistribution archives. The reference diagram
 was visually checked against the emitted 4096-element fragment bijection.
 Only target assembly and host geometry/protocol are certified by these tests;
 native GPU arithmetic, runtime launch/resource behavior and timing remain open.
+
+## Durable Acceptance Record
+
+Local implementation checkpoint: `4c85e0b21822c268ce256ce4d3fcd98b830b8a58`
+on `codex/ai-mma4-h-wgmma`, from updated develop `c5aec7b1`. No push or PR.
+
+Immutable primary receipt (2177 authenticated files):
+
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/mma4-h/hopper-lowering/sha256-d38765a54c440687a17b56f8af5df968dce15ecae45c8ba61654e62fef050ac4/`
+
+- [Acceptance summary](../artifacts/review/ai-optimization/mma4-h/hopper-lowering/sha256-d38765a54c440687a17b56f8af5df968dce15ecae45c8ba61654e62fef050ac4/summary.log)
+- [F16 source-interleaved actual Hopper WHIRL](../artifacts/review/ai-optimization/mma4-h/hopper-lowering/sha256-d38765a54c440687a17b56f8af5df968dce15ecae45c8ba61654e62fef050ac4/acceptance/hopper/f16-atom/hopper.after.T)
+- [BF16 multiple-tile before/after diff](../artifacts/review/ai-optimization/mma4-h/hopper-lowering/sha256-d38765a54c440687a17b56f8af5df968dce15ecae45c8ba61654e62fef050ac4/acceptance/hopper/bf16-multi/hopper.before-after.diff)
+- [Actual native PTX](../artifacts/review/ai-optimization/mma4-h/hopper-lowering/sha256-d38765a54c440687a17b56f8af5df968dce15ecae45c8ba61654e62fef050ac4/acceptance/hopper/f16-atom/hopper.after.ptx)
+- [Native assembler resource report](../artifacts/review/ai-optimization/mma4-h/hopper-lowering/sha256-d38765a54c440687a17b56f8af5df968dce15ecae45c8ba61654e62fef050ac4/acceptance/hopper/f16-atom/hopper.after.native-compile.log)
+- [Five-phase review](../artifacts/review/ai-optimization/mma4-h/hopper-lowering/sha256-d38765a54c440687a17b56f8af5df968dce15ecae45c8ba61654e62fef050ac4/acceptance/hopper/bf16-multi/reports/optimization.log)
+- [Unchanged default SIMT compatibility](../artifacts/review/ai-optimization/mma4-h/hopper-lowering/sha256-d38765a54c440687a17b56f8af5df968dce15ecae45c8ba61654e62fef050ac4/acceptance/compatibility/report.json)
+
+Links resolve from the primary checkout. Implementation worktrees use the
+absolute durable root above, never their temporary staging directory.
+The actual trace shows volatile/memory-clobber `ASM_STMT`/three input kids,
+`wgmma.fence`, `mma_async.m64n64k16.f32`, `commit_group`, `wait_group 0`, and
+completed fragment stores before the CTA reuse join. These are executable
+instructions in the lowered image, not inferred counts or comment markers.
+
+Independent durable replay receipt:
+
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/mma4-h/reopen/sha256-4424a2d1b17da0e861c103c49d853cbc011cea9e69b5c5591eab0d8db2110241/`
+
+The replay authenticates all 2177 files, independently audits all ten Hopper
+cases, reruns copied producers for both formats, and reopens four fresh
+before/after images with identical full `-st -src` dumps and native traces.
+It reconstructs CUDA offline from the three retained NVIDIA-checksummed
+archives, recompiles four actual CUDA kernels to cubin, and executes four
+host geometry/protocol checks. No original build directory or network is
+needed. Reconstructed SDK/tool aliases are reproducible scratch state; the
+small replay receipt retains its exact script, fresh images, traces, cubins,
+diagnostics and numerical-model evidence. Both receipts are indexed under the
+primary durable root. Native GPU arithmetic and timing remain unverified.

@@ -23,6 +23,9 @@ reopens pass. SIMT stays default; automatic promotion, generic frontend hookup,
 native GPU arithmetic and timing remain open. The conservative private F32
 fragment materializes between atoms (128-byte local stack), so no persistent
 RF residency or speedup is claimed. Commit locally only; no PR requested.
+Implementation checkpoint `4c85e0b2` and its 2177-file immutable receipt pass
+isolated durable producer/reader/offline-CUDA/host replay. See
+[MMA4-H durable acceptance](AI-COMPILER-MMA4-H-HOPPER-LOWERING.md#durable-acceptance-record).
 
 2026-10-27 MMA3 increment, from merged MMA2 PR196 (`a1153671`):
 [Typed SIMT baseline](AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md) adds a native
