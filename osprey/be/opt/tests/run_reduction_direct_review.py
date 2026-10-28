@@ -48,7 +48,8 @@ def review(build, output):
         (case / "ascii").mkdir(parents=True)
         (case / "trace").mkdir()
         result = run(label + "-produce", [build / "ir_tools/dsl_reduction_direct_test",
-            case / "reduction.B", case / "trace/direct.t", arch, version, width, layout])
+            case / "reduction.B", case / "trace/direct.t", arch, version, width, layout,
+            case / "guard.bin"])
         assert "FAIL" not in result.stdout
         assertions = result.stdout.count(" PASS")
         rows = audit((case / "trace/direct.t").read_text())

@@ -9,6 +9,7 @@
 #define opt_dsl_reduction_INCLUDED
 
 #include "opt_dsl.h"
+#include "../../include/open64_reduction_runtime.h"
 
 enum WOPT_DSL_REDUCTION_INSTRUCTION {
   WOPT_DSL_REDUCE_INSTRUCTION_UNKNOWN,
@@ -116,5 +117,13 @@ typedef struct {
 extern BOOL WOPT_DSL_bind_reduction_direct
     (WN *scope, WN *assignment, const WOPT_DSL_REDUCTION_DIRECT_REQUEST *request,
      WOPT_DSL_REDUCTION_DIRECT_BINDING *output, FILE *diagnostic, FILE *trace);
+
+/* Revalidate the owned binding against current native WHIRL, then export an
+ * additive runtime guard. Failure leaves output untouched. Does not select a
+ * kernel or discharge runtime obligations. No runtime linkage in the compiler.
+ * Design: doc/AI-COMPILER-REDUCTION-RUNTIME-GUARDS-v0.1.md. */
+extern BOOL WOPT_DSL_export_reduction_direct_guard
+    (WN *scope, WN *assignment, const WOPT_DSL_REDUCTION_DIRECT_BINDING *binding,
+     OPEN64_REDUCTION_GUARD *output, FILE *diagnostic, FILE *trace);
 
 #endif

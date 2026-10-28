@@ -80,8 +80,8 @@ static BOOL reduction_test_check(BOOL condition, const char *name)
  * contracts; refusal tests never masquerade as executed runtime proofs. */
 int main(int argc, char **argv)
 {
-  if (argc != 7) {
-    fprintf(stderr, "usage: %s output.B direct.t arch version width layout\n", argv[0]);
+  if (argc != 7 && argc != 8) {
+    fprintf(stderr, "usage: %s output.B direct.t arch version width layout [guard.bin]\n", argv[0]);
     return 2;
   }
   UINT32 version = atoi(argv[4]);
@@ -173,6 +173,32 @@ int main(int argc, char **argv)
   if (!reduction_test_check(ok && plan.status == expected, "baseline_binding") ||
       !reduction_test_check(WOPT_DSL_bind_reduction_direct(scope, sum, &req, &again, stderr, NULL) &&
       memcmp(&plan, &again, sizeof(plan)) == 0, "trace_off_same_binding")) return 1;
+  OPEN64_REDUCTION_GUARD guard, guard_saved;
+  memset(&guard, 0x5a, sizeof(guard));
+  guard_saved = guard;
+  BOOL exported = WOPT_DSL_export_reduction_direct_guard(scope, sum, &plan, &guard, stderr, trace);
+  if (!reduction_test_check(exported == (expected == WOPT_DSL_REDUCE_DIRECT_BOUND),
+      "export_only_bound") || (!exported && !reduction_test_check(
+      memcmp(&guard, &guard_saved, sizeof(guard)) == 0, "refused_export_untouched"))) return 1;
+  if (exported) {
+    OPEN64_REDUCTION_GUARD marker = guard_saved;
+    for (unsigned test = 0; test < 6; ++test) {
+      WOPT_DSL_REDUCTION_DIRECT_BINDING bad = plan;
+      if (test == 0) ++bad.source.node_id;
+      if (test == 1) ++bad.input_bytes;
+      if (test == 2) bad.stages_bound = 0;
+      if (test == 3) bad.fp_options = 1;
+      if (test == 4) bad.before[0] = 0;
+      if (test == 5) bad.runtime_obligations = 0;
+      if (!reduction_test_check(!WOPT_DSL_export_reduction_direct_guard(scope, sum, &bad,
+          &guard_saved, NULL, NULL) && memcmp(&guard_saved, &marker, sizeof(marker)) == 0,
+          "stale_export_untouched")) return 1;
+    }
+    if (argc == 8) {
+      FILE *file = fopen(argv[7], "wb");
+      if (!file || fwrite(&guard, sizeof(guard), 1, file) != 1 || fclose(file)) return 1;
+    }
+  }
   if (expected == WOPT_DSL_REDUCE_DIRECT_BOUND) {
     if (!reduction_test_check(plan.stages_bound == 15 && plan.runtime_obligations == 15 &&
         plan.input_bytes == 12 * width && plan.output_bytes == 12 &&

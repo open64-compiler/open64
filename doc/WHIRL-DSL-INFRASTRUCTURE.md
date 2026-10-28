@@ -2174,6 +2174,13 @@ numerical recipe.
 
 ### R2-c Direct Reduction Contract Binding (2026-10-27)
 
+Follow-up [R2-c1 runtime guards](AI-COMPILER-REDUCTION-RUNTIME-GUARDS-v0.1.md):
+fresh WOPT revalidation exports a process-local numeric guard without changing
+native/mapped records. Separate runtime code enforces canonical backing-root
+admission, tensor-ABI guards, atomic leases and event/drain/release ordering.
+Host-mock tests do not prove selected-entry code conformance. Production CUDA
+adaptation and selected high-level WHIRL dispatch/lowering remain gated.
+
 [Direct target/storage/event binding](AI-COMPILER-REDUCTION-DIRECT-BINDING-v0.1.md)
 is a WOPT-owned transient query over canonical active-PU source WHIRL. It
 reuses common exact architecture lookup, preserves native v1/v2 meaning and

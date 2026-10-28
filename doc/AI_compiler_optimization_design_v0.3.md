@@ -4,6 +4,15 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-27 R2-c1 runtime-enforcement amendment:
+[direct reduction runtime guards](AI-COMPILER-REDUCTION-RUNTIME-GUARDS-v0.1.md)
+connect freshly revalidated native bindings to bounded live-root/descriptor/
+manifest admission, atomic range leases and enforced completion/consumer/release
+events in a separate runtime. Host-mock evidence is distinct from CUDA adapter,
+selected-WHIRL dispatch and emitted-instruction/GPU certification. Failed launch
+requires drain before cleanup, never automatic fallback or output publication.
+MMA1, existing ABI layouts, hardware tables and source semantics are unchanged.
+
 2026-10-27 R2-c direct-fallback binding amendment:
 the [direct ordered reduction contract](AI-COMPILER-REDUCTION-DIRECT-BINDING-v0.1.md)
 now binds scalar ISA policy, allocation-relative ranges/leases, row ownership

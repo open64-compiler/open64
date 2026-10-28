@@ -8,6 +8,27 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 R2-c1 direct ordered reduction runtime enforcement:
+fresh native binding export now feeds a separate runtime guard ABI. The runtime
+reuses the tensor descriptor and buffer-service import checks, requires trusted
+canonical backing-root resolution, acquires input/output range leases atomically,
+and enforces all readiness/launch/completion/consumer/release edges. Failed launch
+requires proven drain before abort; failed waits retain storage. No implicit
+fallback or result publication after ambiguous launch failure.
+Eight native cases pass 320 assertions; six exported v2 guards each pass 176
+host-runtime assertions with trace on/off, repeated under native ASan/UBSan.
+The six normal runtime traces contain 78 admitted/closed tickets, 222 rejected
+admissions and 30 injected backend failures; 37 trace/auditor tests pass.
+Prior reduction, Softmax, normalization, WOPT/common/FHE focused regressions,
+buffer-service V1 compatibility and backend/inline symbol boundaries pass.
+Linux/QEMU ASan register-inspection warning is retained as an unsuccessful lane;
+native macOS sanitizer runs pass instead. No GPU is available.
+See [runtime guard detail](AI-COMPILER-REDUCTION-RUNTIME-GUARDS-v0.1.md).
+This is host-mock runtime enforcement, not production CUDA adaptation or a
+selected executable reduction. Next: staged copy/reuse binding, complete costs,
+selected WHIRL loops/dispatch, then target adapter and native certification.
+MMA1, hardware profiles, existing ABI layouts and Python v1 semantics are untouched.
+
 2026-10-27 R2-c direct ordered fallback binding:
 WOPT now validates an explicit scalar ISA/compiler-policy contract using the
 existing exact Hopper/Blackwell architecture lookup, without MMA profile

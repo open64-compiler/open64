@@ -4,6 +4,11 @@ Version v0.1 | 2026-10-27 | Bounded R2-c compiler-contract implementation
 
 ## 1. Scope And Maturity
 
+Follow-up: [runtime guards and enforcement](AI-COMPILER-REDUCTION-RUNTIME-GUARDS-v0.1.md)
+now implements fresh export and separately linked host-mock lease/event admission.
+The original compiler-contract evidence below remains conditional; production
+CUDA adaptation, selected WHIRL lowering and native certification remain open.
+
 This document extends [reduction numerical binding](AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md)
 with the direct ordered fallback's scalar target contract, symbolic buffer
 binding, row ownership and host dependency protocol. It is independent of MMA1.

@@ -194,3 +194,79 @@ WOPT_DSL_bind_reduction_direct
   *output = binding;
   return TRUE;
 }
+
+/* Copy named fields, not WOPT padding or process-local compiler identities. */
+static void
+WOPT_DSL_reduction_export_range(const WOPT_DSL_REDUCTION_BUFFER_BINDING &source,
+                                OPEN64_REDUCTION_RANGE_V1 *target)
+{
+  target->role = source.allocation_id;
+  target->capacity = source.allocation_bytes;
+  target->offset = source.offset_bytes;
+  target->alignment = source.base_alignment;
+  target->lease = source.lease;
+  target->memory_space = source.memory_space;
+}
+
+/* Native source and fresh binder results authorize export, never a saved
+ * success flag alone. Output publication is the only mutation. */
+BOOL
+WOPT_DSL_export_reduction_direct_guard
+    (WN *scope, WN *assignment, const WOPT_DSL_REDUCTION_DIRECT_BINDING *binding,
+     OPEN64_REDUCTION_GUARD *output, FILE *diagnostic, FILE *trace)
+{
+  if (binding == NULL || output == NULL || binding->status != WOPT_DSL_REDUCE_DIRECT_BOUND ||
+      binding->stages_bound != 15 || binding->runtime_obligations != 15) return FALSE;
+  DSL_HARDWARE_DESCRIPTION_RECORD hardware;
+  if (!DSL_hardware_description_get_arch(binding->architecture_id, &hardware)) return FALSE;
+  WOPT_DSL_REDUCTION_DIRECT_REQUEST req;
+  memset(&req, 0, sizeof(req));
+  req.expected_source = binding->source;
+  req.architecture = hardware.architecture;
+  req.instruction = binding->instruction;
+  req.fp_options = binding->fp_options;
+  req.runtime_contract_id = binding->runtime_contract_id;
+  req.context_id = binding->context_id;
+  req.input = binding->input;
+  req.output = binding->output;
+  req.row_mapping = binding->row_mapping;
+  req.launched_threads = binding->launched_threads;
+  memcpy(req.before, binding->before, sizeof(req.before));
+  WOPT_DSL_REDUCTION_DIRECT_BINDING fresh;
+  if (!WOPT_DSL_bind_reduction_direct(scope, assignment, &req, &fresh, diagnostic, NULL) ||
+      fresh.status != WOPT_DSL_REDUCE_DIRECT_BOUND ||
+      fresh.input_bytes != binding->input_bytes || fresh.output_bytes != binding->output_bytes)
+    return FALSE;
+  OPEN64_REDUCTION_GUARD g;
+  memset(&g, 0, sizeof(g));
+  g.abi_version = OPEN64_REDUCTION_GUARD_V1;
+  g.size = sizeof(g);
+  g.source_version = 2;
+  g.node = fresh.source.node_id;
+  g.input_value = fresh.source.input_value_id;
+  g.result_value = fresh.source.result_value_id;
+  g.source_line = fresh.source.source_line;
+  g.architecture = fresh.architecture_id;
+  g.instruction = fresh.instruction;
+  g.fp_options = fresh.fp_options;
+  g.obligations = fresh.runtime_obligations;
+  g.row_mapping = fresh.row_mapping;
+  g.rows = fresh.source.rows;
+  g.width = fresh.source.width;
+  g.threads = fresh.launched_threads;
+  g.contract = fresh.runtime_contract_id;
+  g.context = fresh.context_id;
+  g.input_bytes = fresh.input_bytes;
+  g.output_bytes = fresh.output_bytes;
+  WOPT_DSL_reduction_export_range(fresh.input, &g.input);
+  WOPT_DSL_reduction_export_range(fresh.output, &g.output);
+  memcpy(g.before, fresh.before, sizeof(g.before));
+  if (trace != NULL) {
+    fprintf(trace, "AI_REDUCE_GUARD 1 HEADER node input result contract arch rows width obligations selected source_line\n");
+    fprintf(trace, "AI_REDUCE_GUARD 1 EXPORT %u %u %u %llu %u %llu %llu %u 0 %u\n",
+        g.node, g.input_value, g.result_value, (unsigned long long)g.contract, g.architecture,
+        (unsigned long long)g.rows, (unsigned long long)g.width, g.obligations, g.source_line);
+  }
+  *output = g;
+  return TRUE;
+}

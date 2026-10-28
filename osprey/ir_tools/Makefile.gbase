@@ -804,10 +804,12 @@ dsl_reduction_direct_test: $(OBJECTS) controls.o dsl_reduction_direct_test.o \
 	$(link.c++f) -o $@ dsl_reduction_direct_test.o opt_dsl_reduction_test.o \
 		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
 
-dsl_reduction_direct_test.o: $(BE_OPT_DIR)/tests/dsl_reduction_direct_test.cxx
+dsl_reduction_direct_test.o: $(BE_OPT_DIR)/tests/dsl_reduction_direct_test.cxx \
+                $(BE_OPT_DIR)/opt_dsl_reduction.h $(BE_OPT_DIR)/../../include/open64_reduction_runtime.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-opt_dsl_reduction_test.o: $(BE_OPT_DIR)/opt_dsl_reduction.cxx $(BE_OPT_DIR)/opt_dsl_reduction.h
+opt_dsl_reduction_test.o: $(BE_OPT_DIR)/opt_dsl_reduction.cxx $(BE_OPT_DIR)/opt_dsl_reduction.h \
+                $(BE_OPT_DIR)/../../include/open64_reduction_runtime.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_wopt_bridge_test: $(OBJECTS) controls.o dsl_wopt_bridge_test.o \
