@@ -8,6 +8,13 @@ now defines both means, sqrt-then-divide reciprocal square root and the FP32
 environment. This resolves the reference-design choice, not native v1's
 unknowns or the implementation/target gates.
 
+Native-contract amendment, 2026-10-28:
+[LN-REF-1 native contract v0.1](AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md)
+specifies exact version 2 under existing logical ID 39, a fifteen-attribute
+schema and explicit producer/native-admission boundaries. Current v1 remains
+unchanged; registration, producer implementation, PREOPT/image/trace evidence
+and all target/lowering gates remain open, independently of reduction coding.
+
 ## 1. Decision, Scope And Evidence
 
 Design LayerNorm now, concurrently with reduction profitability and executable
@@ -534,7 +541,7 @@ are implemented here; preserve existing AI_NORM FORM/FACT and trace-off checks.
 | Gate | Deliverable / acceptance boundary | Status |
 | --- | --- | --- |
 | LN0 | Review semantics, alternatives, lifetimes and costs in this document. | Proposed; native/source R1 evidence exists, not executable optimization. |
-| LN1 | LN-REF-1 ordered means, exact count/final division, sqrt-then-divide, RNE/gradual/class-only-NaN environment; separately authorized native contract, carriers and oracle required. Preserve v1. | Arithmetic design specified; native admission/target binding/oracle implementation open. See the LN1 sub-gates in the implementation plan. |
+| LN1 | LN-REF-1 ordered means, exact count/final division, sqrt-then-divide, RNE/gradual/class-only-NaN environment; explicit native v2, carriers and oracle, preserving v1. | Arithmetic and native-schema/admission design specified; registration/producer/verifier, target and oracle implementation open. See the LN1 sub-gates. |
 | LN2 | Read-only C0/C1/C2 plans, exact traffic/resources/events and refusal cases; reject C3 under v1 and LN-REF-1. | Open after LN1 native prerequisites; reuse common/reduction services. |
 | LN3 | Complete costs, independent event/model oracle, analytical winner/fallback and trace auditor. | Open; reuse reduction profitability. |
 | LN4 | Selected high-level WHIRL, guards, CUDA emission and mapped before/after evidence. | Open; reuse reduction lowering; initial non-TMA scope. |
@@ -578,9 +585,10 @@ receipts. No compiler artifact is fabricated for this design-only increment.
 
 ## 10. Open Review Decisions
 
-1. LN-REF-1 arithmetic is defined separately from v1. Review the exact new
-   native version/attributes and producer admission before implementation;
-   no numerical choice remains for the emitter to invent.
+1. LN-REF-1 arithmetic and native v2/schema/admission are specified separately
+   from v1. Implement and validate exact-version builder/gatekeeper/PREOPT
+   support before target/lowering; no numerical choice remains for the emitter
+   to invent. New Python mappings still need independent admission review.
 2. LN-REF-1 binds exceptional/signed-zero/subnormal observations without a
    finite-only restriction. Any later application-specific real-error policy
    or narrower specialization needs explicit acceptance/proof/guard/fallback

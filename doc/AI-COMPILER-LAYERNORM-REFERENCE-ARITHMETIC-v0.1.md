@@ -2,6 +2,12 @@
 
 Version v0.1 | 2026-10-28 | Reference semantics defined; native support not implemented
 
+Native-design follow-on, 2026-10-28:
+[LN-REF-1 native contract and admission](AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md)
+now specifies exact `common.mean_variance_norm.v2` semantics/schema and producer
+rules under the existing logical ID. It is not registered or implemented;
+this document's arithmetic and current v1 remain unchanged.
+
 ## 1. Decision And Compatibility Boundary
 
 Define **LN-REF-1**, an explicit FP32 centered LayerNorm reference. Both means
@@ -12,9 +18,10 @@ gradual underflow. This supplies a reproducible reference for comparing C0/C1/C2
 in the [LayerNorm execution design](AI-COMPILER-LAYERNORM-OPTIMIZATION-DESIGN-v0.1.md).
 
 LN-REF-1 is a reference-specification identifier, not a registered native
-operator/version, attribute set, compiler option, emitted trace schema or
-implementation claim. Native admission and persistence need a separate reviewed
-contract. This document changes no source, builder, mapped image or lowering.
+operator/version, compiler option, emitted trace schema or implementation claim.
+The separate native-contract design defines v2's attribute set, admission and
+persistence requirements; native registration and validation remain open.
+This document changes no source, builder, mapped image or lowering.
 
 Preserve `common.mean_variance_norm.v1` exactly, including its existing eight
 attributes, `rsqrt_semantics=source_unresolved`, unresolved mean order/scaling,
@@ -287,10 +294,12 @@ FP64 computation as its own reference. Intermediate oracle evaluation uses
 exact arithmetic with explicit binary32 rounding boundaries; that is distinct
 from forbidden hidden FP64 accumulation in a candidate.
 
-LN1 arithmetic design is now specified. The native-version/attribute/builder/
-canonical-WHIRL contract, target arithmetic carriers/emission, oracle regression
-suite, PREOPT preservation and before/after mapped execution evidence remain
-implementation work. Preserve v1 fixtures and exact attributes in every lane.
+LN1 arithmetic and the separate native version/schema/admission design are now
+specified. Native registration/builder/verifier/canonicalization, target
+arithmetic carriers/emission, oracle tests, PREOPT preservation and actual
+mapped evidence remain implementation work. Preserve v1 fixtures and exact
+attributes in every lane. A structural contract stage is not an executable
+transformation and must not fabricate before/after optimization evidence.
 LN2-LN4 remain blocked on those native prerequisites, not on GPU availability.
 LN6 separately requires native numerical/resource/performance certification.
 

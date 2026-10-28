@@ -142,7 +142,7 @@ policy from a normalization-specific path.
 | Gate | Deliverable and required summary | Status |
 | --- | --- | --- |
 | LN0 | Review centered recipe, C0/C1/C2 direct/retention candidates, explicitly unauthorized C3 Welford, aliases/events and complete costs. | Initial design proposed; no new executable support. |
-| LN1 | Define both means, scaling, rsqrt and FP environment; publish an authorized native contract and target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | LN-REF-1 arithmetic design specified; native admission, carriers, oracle and validation open. |
+| LN1 | Define both means, scaling, rsqrt and environment; specify native v2/admission and implement target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | Arithmetic and v2 schema/admission design specified; native implementation, carriers, oracle and validation open. |
 | LN2 | Construct legal plans through existing candidate/resource/event services. `alternatives.log`, `tile.log`, `residency.log` and `fetch-pipeline.log` expose ownership, traffic, capacity, banks/tails and reuse proofs/refusals. | Open after LN1 native prerequisites. |
 | LN3 | Complete comparable costs with target provenance/uncertainty and independent oracle. `physical-plan.log` explains selected/fallback reason without invented overlap or guaranteed cache hits. | Open; reuse reduction profitability. |
 | LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Open; reuse reduction lowering. |
@@ -170,7 +170,7 @@ option, trace schema, target support or executable transformation is registered.
 | LN1 slice | Deliverable / required evidence | Status |
 | --- | --- | --- |
 | LN1-a: reference definition | Ordered mu/variance, separately rounded square/add, exact count/final divisions, sqrt-then-divide and affine/environment/exception rules. | Defined in the reference specification; not native implementation. |
-| LN1-b: native admission | Separately reviewed native semantic version/attributes, producer authorization, structural checks and PREOPT identity; current v1 exact schema/source matching unchanged. | Open; next coding prerequisite after contract review. |
+| LN1-b: native admission | Exact `common.mean_variance_norm.v2`, fifteen-field LN-REF-1 schema, producer declaration versus native structural admission, canonical assignment and PREOPT identity; current v1 exact schema/source matching unchanged. | Contract/admission design specified in the native reference detail; registration, producer, verifier and preservation implementation open. |
 | LN1-c: target arithmetic | Reuse rounded add/mul and audit/extend exact sub/div/sqrt carriers plus host-built CUDA emission, non-FTZ/no-contraction controls and unsupported-path refusal. WHIRL owns all semantics. | Open; legacy NVISA names alone do not prove conformance. |
 | LN1-d: independent oracle | Exact multiply/divide/sqrt rounding oracle plus existing integer addition; count boundary, first signed-zero add, underflow/ties, overflow, t=6 two-rounding counterexample and NaN/affine cases. Report bit/class equivalence separately from FP64 accuracy. | Open; no native or GPU witness implied by this design. |
 | LN1-e: integrated evidence | Explicit-bound native fixtures, actual PREOPT, mapped reopen, strict trace-on/off audit and source/binding provenance; refuse unbound v1 without mutation. Preserve existing native v1 regression cases. | Open; closes native numerical binding only, not LN3/LN4/LN6. |
@@ -183,6 +183,33 @@ provenance. `physical-plan.log` costs two mean divisions plus sqrt and reciproca
 division, not one approximate-rsqrt operation. The summary states reference
 defined, native/target/oracle open, rewrite none until those gates actually run.
 All are required future summaries, not a claim that new trace rows exist.
+
+LN1 native-contract decision, 2026-10-28:
+[Native LN-REF-1 contract/admission v0.1](AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md)
+specifies v2 under existing logical ID 39 and the same typed ternary carrier.
+The exact schema binds both means, count conversion, scalar environment and
+sqrt/div semantics; v1 keeps its eight fields and unresolved facts. Explicit
+native source declarations are the first producer lane. The current Python
+matcher remains v1; model names, options, metadata and samples cannot promote
+it. A verified imported v2 image supplies native meaning without an invented
+trusted-producer label; provenance receipts separately support source claims.
+Nothing is registered or implemented by this design increment.
+
+| LN1-b slice | Required implementation / evidence | Status |
+| --- | --- | --- |
+| LN1-b-design | V2 identity, fifteen-field schema, exact-version and source/structural admission, preflight, canonicalization, image/trace and failure rules. | Specified; no native code. |
+| LN1-b-native | Append exact-version descriptor and structural checks; reuse explicit-result builder with real v2 validation, gatekeeper and version-specific read-only derivation. Reject public version overflow before UINT16 narrowing. | Open; independent of reduction cost/selector/lowering. |
+| LN1-b-producer | Explicit native LN-REF-1 fixture, runtime formals/result/return and real source position; no automatic Python/v1 conversion. | Open; no new source frontend API assumed. |
+| LN1-b-preservation | V1/v2 semantic identity, actual PREOPT and trace-on/off, mapped reopen/source inspection, mixed-schema/unknown-version/old-image and rollback negatives. Add version dispatch to current v1-only normalization walkers. | Open; zero executable rewrites at this structural stage. |
+
+Keep reduction code/tests/receipts untouched for this contract design. Native
+LN1-b work needs existing common builders and PREOPT, not completion of the
+other chat's reduction profitability milestone. Later arithmetic/lowering
+service reuse is a reviewed integration. `semantic.log` distinguishes verified
+v2 arithmetic from producer history and still-unbound target/storage/costs;
+the proposed additive `AI_NORM_REF` schema does not change v1 FORM/FACT rows.
+No producer audit report is relabeled as a native WOPT trace. All reports
+retain their summary first line and explicit maturity/no-rewrite status.
 
 R1 sub-gates, kept independent of MMA1's contracts/target profiles:
 

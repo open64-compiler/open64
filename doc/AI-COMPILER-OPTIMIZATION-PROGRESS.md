@@ -8,6 +8,15 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-28 LayerNorm native contract/admission design specified:
+[Native LN-REF-1 v0.1](AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md)
+defines proposed `common.mean_variance_norm.v2`, fifteen exact attributes,
+existing logical ID/carrier, explicit producer declaration and structural
+verification boundaries. Current v1/Python and reduction coding are untouched.
+LN1-b design is specified; registration/builder/gatekeeper/producer/PREOPT/
+image/trace implementation, target conformance and lowering remain open.
+No native v2 artifact, executable rewrite or GPU result is claimed.
+
 2026-10-28 LayerNorm reference arithmetic defined:
 [LN-REF-1](AI-COMPILER-LAYERNORM-REFERENCE-ARITHMETIC-v0.1.md) fixes positive-zero
 ascending FP32 means with exact N and one final division, plus separately

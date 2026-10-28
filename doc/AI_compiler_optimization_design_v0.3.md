@@ -4,6 +4,15 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-28 LayerNorm native-contract design:
+[LN-REF-1 native v2/admission](AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md)
+specifies an exact fifteen-field schema under existing logical ID 39, ordinary
+three-input assignment, producer versus structural trust boundaries and
+version-dispatched PREOPT/inspection. V1's eight-field schema, source matcher
+and unresolved meaning remain unchanged. Native registration/implementation
+is open; this design is independent of reduction profitability/lowering and
+adds no physical image layout, public API, compiler option or executable path.
+
 2026-10-28 LayerNorm reference-arithmetic decision:
 [LN-REF-1](AI-COMPILER-LAYERNORM-REFERENCE-ARITHMETIC-v0.1.md) defines ascending
 positive-zero FP32 folds with exact count and one final division per mean,

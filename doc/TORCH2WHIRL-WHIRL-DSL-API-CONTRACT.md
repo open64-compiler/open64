@@ -240,6 +240,18 @@ attributes, result type, result symbol, and gatekeeper-visible semantic
 contracts.  User-facing diagnostics and dumps must use logical names such as
 `common.linear` or `OPR_DSLLINEAR`, not the private physical `OPR_DSL` escape.
 
+LN-REF-1 design follow-on (not implemented): the
+[native normalization v2/admission contract](AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md)
+uses the existing explicit-result call surface with exact name/version and
+fifteen reviewed attributes. No convenience API, Python matcher or new source
+syntax is introduced here. The current centered Python matcher continues to
+request v1 explicitly; it must not use latest-version lookup or infer v2 from
+sample agreement, flags or metadata. Native schema checking is C++-owned;
+producer/source fidelity and its review evidence remain a separate obligation.
+Future bridge work must reject out-of-range public version values before
+narrowing, not let 65538 alias version 2. Backend analyses and target libraries
+must not become dependencies of the frontend bridge to perform admission.
+
 ### Program Units And Inter-PU Calls
 
 Python-facing:

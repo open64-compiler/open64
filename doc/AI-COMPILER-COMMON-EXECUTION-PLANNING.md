@@ -37,6 +37,12 @@ now fixes ordered mean finalization and the two-rounding sqrt/div reference.
 Native v1 remains unresolved; reference definition, authorized native binding,
 target conformance and candidate profitability remain separate gates.
 
+The [native v2/admission design](AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md)
+now specifies that reference's exact schema and typed ternary identity without
+changing v1. Native meaning and producer-provenance evidence are distinct;
+schema/record verification remains common/com-owned and policy-free. Native
+registration/implementation is still open, independent of reduction coding.
+
 The initial analysis scope is one canonical region in an active PU. PREOPT
 provides canonical form; VHO owns PU-local semantic analysis and planning;
 canonical-loop dependence/locality work uses LNO services. WOPT owns its
