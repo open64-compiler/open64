@@ -16,6 +16,14 @@ CNN domain meaning, including the proposed `cnn.bottleneck.v1` contract and
 its relationship to PyTorch source structure, is documented separately in
 `doc/DSL-WHIRL-CNN-REGION-CONTRACTS.md`.
 
+The [MMA3 typed SIMT baseline](AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md) is a
+native active-PU source/lowering service using existing U2 storage, integer
+operations, F4 TAS and explicit F4 arithmetic. It adds no DSL opcode, type kind,
+mapped-image section or `common.matmul` version/dtype extension. The accepted
+numerical/shape record is runtime-only; its ordinary inspection COMMENT is
+not an unconsumed DSL operation. General Python/FX ingestion and automatic
+typed dispatch are outside this baseline's scope.
+
 ## Design goals
 
 1. Keep existing WHIRL binary compatibility unless a feature explicitly needs a

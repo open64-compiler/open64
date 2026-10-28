@@ -8,6 +8,26 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 MMA3 increment, from merged MMA2 PR196 (`a1153671`):
+[Typed SIMT baseline](AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md) adds a native
+active-PU F16/BF16 source/lowering API, exact U2-to-F32 widening and explicit
+separately rounded FP32 product/accumulation/output in increasing K order.
+Eighteen same-PU serial/SIMT cases pass 88 actual WHIRL-derived CUDA-host and
+Open64 O0/O1/O2/O3 execution runs, exhaustive 65536 encodings per format,
+468 preflight rejections and 216 altered-body rejections. All 117 host tests
+pass. Fifteen fresh F32 configurations retain 30 identical full mapped-reader
+dumps, costs/selection/shadow rows and CUDA bodies (apart from translator date);
+raw image byte differences are retained, not claimed equal. Sixteen old/new
+reader compatibility checks pass. This does not enable general FX ingestion, automatic typed dispatch in
+the old F32 planner or native MMA. GPU validation and timing remain unknown.
+Local commit only; no push or PR requested for this increment.
+Implementation checkpoint `558fcb8b` and its 1790-file immutable receipt pass
+isolated durable binary/reader/CUDA/host replay, including both typed formats.
+See [MMA3 durable acceptance](AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md#durable-acceptance-record).
+
+The MMA1/MMA2 checkpoint descriptions below are historical accepted evidence;
+their fallback inventory rows remain requirements until selected-plan hookup.
+
 2026-10-27 MMA1 contract increment (MMA0 user-approved):
 [MMA compute realization and SIMT fallback v0.1](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md)
 now has a [policy-free runtime inventory](AI-COMPILER-MMA1-TARGET-INVENTORY.md)

@@ -6,8 +6,10 @@ MMA1 now defines runtime-only compute contracts and four exact planning-only
 recipes. See the [implementation and pinned target inventory](AI-COMPILER-MMA1-TARGET-INVENTORY.md).
 MMA2 now has a bounded [analytical shadow model](AI-COMPILER-MMA2-SHADOW-MODEL.md)
 with explicit unknown production timing and synthetic-only oracle scenarios.
-It cannot change SIMT execution. MMA3 typed fallback, guarded promotion and
-all native lowering/certification remain open.
+It cannot change SIMT execution. The [MMA3 typed SIMT baseline](AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md)
+now provides a native active-PU F16/BF16 source/lowering API with explicit
+FP32 arithmetic. General frontend/selected-plan hookup, guarded promotion and
+all native MMA lowering/certification remain open; old F32 dispatch is unchanged.
 
 ## 1. Decision And Current Boundary
 

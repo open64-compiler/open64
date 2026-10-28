@@ -160,6 +160,24 @@ DSL_Gatekeeper_Is_Projected_Input_Copy (const WN *load, const WN *store)
     return FALSE;
 }
 
+/* Only tensor or registered source/projected formals have DSL tensor-use
+ * restrictions. Canonical raw-buffer kernels must retain ordinary WHIRL
+ * pointer loads. Keep every managed/projection admission check intact.
+ * Design: doc/AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md. */
+static BOOL
+DSL_gatekeeper_managed_formal(WN *formal, UINT32 ordinal, DSL_GATEKEEPER_CONTEXT *context)
+{
+    if (TY_is_tensor_extension(ST_type(WN_st(formal))) || context->mode == DSL_GATEKEEPER_PROJECTED)
+        return TRUE;
+    DSL_PU_FORMAL_RECORD source;
+    DSL_RUNTIME_INPUT_BINDING_RECORD runtime;
+    return DSL_PU_Interface_Image_Find_Formal(context->owner_pu_st, ordinal, &source) ||
+        DSL_Program_Interface_Image_Find_Runtime_Binding(context->owner_pu_st, ordinal, &runtime);
+}
+
+/* Collect only DSL-owned result identities for escape checks. Standard
+ * pointer/scalar formals remain legal canonical WHIRL, including MMA3.
+ * Recursion borrows the tree and never changes symbol or interface tables. */
 static BOOL
 DSL_Gatekeeper_Collect_Results
         (WN *wn,
@@ -173,6 +191,7 @@ DSL_Gatekeeper_Collect_Results
         for (INT i = 0; i < WN_num_formals(wn); ++i) {
             WN *formal = WN_formal(wn, i);
             if (formal != NULL && WN_operator(formal) == OPR_IDNAME &&
+                DSL_gatekeeper_managed_formal(formal, i, context) &&
                 !DSL_Gatekeeper_Is_Result_Symbol
                      (context, WN_st_idx(formal)))
                 context->result_symbols.push_back(WN_st_idx(formal));
