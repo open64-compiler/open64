@@ -4,6 +4,16 @@ Version v0.1 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-27 R2-c direct-fallback binding amendment:
+the [direct ordered reduction contract](AI-COMPILER-REDUCTION-DIRECT-BINDING-v0.1.md)
+now binds scalar ISA policy, allocation-relative ranges/leases, row ownership
+and host event dependencies against native source facts. Success is conditional
+on explicit runtime allocation/lease/event/launch obligations, not an executed
+guard or GPU proof. Exact architecture lookup is reused without MMA capabilities.
+Selected cost/lowering remains gated; the existing NVISA strict-add route is
+recorded for reuse. No source relaxation, image-layout change or CUDA template
+is introduced.
+
 2026-10-27 R2 reduction numerical-binding amendment:
 the [explicit ordered contract and direct/staged recipes](AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md)
 now preserve source arithmetic before exploring executable alternatives.

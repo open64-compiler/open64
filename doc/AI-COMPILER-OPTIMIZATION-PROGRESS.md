@@ -8,6 +8,25 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 R2-c direct ordered fallback binding:
+WOPT now validates an explicit scalar ISA/compiler-policy contract using the
+existing exact Hopper/Blackwell architecture lookup, without MMA profile
+dependencies. Canonical buffer-object/subrange contracts, checked FP32 byte
+footprints, lease kinds, linear row ownership and six-role host event DAGs
+are validated read-only against freshly derived native source facts.
+Eight native fixtures execute 274 assertions and audit 212 direct-query rows;
+18 are conditionally bound contracts, while all refusals retain explicit
+reasons. Actual PREOPT preserves the source contract. The trace/auditor suite
+passes 34 tests, including eight new direct-binding tests and 2,048 independent
+event-graph comparisons. Prior reduction/Softmax/normalization and focused
+common/FHE/WOPT regressions and backend/inline symbol checks pass.
+See [direct target/storage/event binding](AI-COMPILER-REDUCTION-DIRECT-BINDING-v0.1.md).
+Runtime allocation/lease/event/launch obligations remain required; no adapter,
+guard discharge, selected lowering, PTX/SASS certification or GPU run is claimed.
+The existing NVISA strict-add intrinsic route is recorded for later reuse.
+Next: provider enforcement/guard wiring, staged binding and complete legal-plan
+cost comparison before selected WHIRL lowering. MMA1 is untouched.
+
 2026-10-27 R2 reduction numerical-binding increment:
 explicit native `common.reduce_sum.v2` now fixes positive-zero initialization,
 ascending-index FP32 left fold, RNE/gradual/no-trap environment and NaN-class

@@ -72,6 +72,12 @@ and not a relaxation of v1. A producer may use it only when its source semantics
 actually provide this contract. It currently has a native fixture producer;
 the Python framework-sum frontend is deliberately not upgraded.
 
+Subsequent direct-path increment: [target/storage/event binding](AI-COMPILER-REDUCTION-DIRECT-BINDING-v0.1.md)
+now validates a conditional scalar ISA, symbolic range/lease, owner and host-event
+contract against this v2 source. Runtime enforcement and selected executable
+lowering remain separate; the original recipe query below still reports its
+own target-unbound status rather than fabricating a later binding result.
+
 The WHIRL architecture baseline remains the existing high-level typed
 expression, direct-kid, active-PU and continuous-lowering model described in
 [WHIRL sections 1.3, 1.4, 1.15 and 1.18](https://www.mcs.anl.gov/OpenAD/open64A.pdf).
@@ -255,9 +261,10 @@ replay before index updates. Raw `.t` and ASCII `.T` stay in separate directorie
 1. Completed in this bounded increment: explicit native v2 arithmetic contract,
    shared admission, version-preserving PREOPT characterization, native legal
    recipe query, scratch-budget gate, strict traces and host oracle witnesses.
-2. Bind target arithmetic and storage/access/ownership/event constraints for
-   direct ordered reduction; keep v1 unresolved unless a source-preserving
-   provider or independently justified source binding is supplied.
+2. Direct compiler-contract binding implemented in the linked detail document.
+   Implement provider enforcement/guard wiring and bind staged storage/event
+   constraints next; keep v1 unresolved unless a source-preserving provider
+   or independently justified source binding is supplied.
 3. Build complete target costs and compare direct vs staged under those gates;
    introduce no selection before cost and legality are complete.
 4. Lower the selected plan into canonical high-level WHIRL loops, preserve

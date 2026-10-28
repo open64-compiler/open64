@@ -113,7 +113,7 @@ certification. Follow the
 | --- | --- | --- |
 | R0 | GEMM, reduction, stable Softmax and mean/variance normalization: two specified legal-under-contract realizations each, ownership/state characterization, storage/events and full declared-model costs. | Research demo passed: 21 tests, 32 synthetic candidate comparisons, 16 decisions, nine host numerical checks. No new production lowering. |
 | R1 | Representative frontend capture/operator census and canonical WHIRL characterization using existing services. | Six-fixture capture and source-derived row characterization/numerical witnesses implemented. Bounded native FP32 row-sum, stable-Softmax and centered population affine normalization contracts, exact Python ingestion and actual PREOPT characterization implemented; general forms remain open. See the native reduction/Softmax and [normalization contract](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md). |
-| R2 | Shared state/equivalence/numerical contracts and bounded algorithm-alternative generation. | Partial for reduction: explicit ordered native v2 numerical binding, direct/staged ordered-recipe discovery, scratch-budget rejection and forbidden-tree diagnostics implemented. Existing Python/v1 sums stay unbound. Target arithmetic, alias/storage/events, complete costs and selected lowering remain open. See [reduction numerical binding](AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md). |
+| R2 | Shared state/equivalence/numerical contracts and bounded algorithm-alternative generation. | Partial for reduction: ordered native v2, direct/staged recipe discovery and direct scalar ISA/symbolic storage/event contract binding implemented. Existing Python/v1 sums stay unbound. Runtime enforcement, staged binding, complete costs and selected lowering remain open. See [direct binding](AI-COMPILER-REDUCTION-DIRECT-BINDING-v0.1.md). |
 | R3 | General P8 access-lifetime, range-alias, storage-interference/packing and symbolic event/progress proof. | Open; fixed F32 slot protocol remains the implemented baseline. |
 | R4 | Real target costs, complete-plan choice, selected WHIRL transformation, before/after mapped reopen and emitted CUDA. | Open for general cases; preserve existing GEMM controls/fallbacks. |
 | R5 | Native numerical/resource/performance verification and calibration. | Open; GPU not allocated. |
@@ -179,7 +179,7 @@ R2 reduction execution queue, independent of MMA1:
 | --- | --- | --- |
 | R2-a: numerical binding | Bounded native v2 implemented: positive-zero ascending left fold, per-add FP32 RNE, gradual underflow, no traps/observable flags, NaN class policy. No silent v1/framework-sum upgrade. | `semantic.log`: source version/order/environment/NaN policy, exact source line and PREOPT preservation; unresolved target/real-sum accuracy. |
 | R2-b: legal recipes | Direct ordered and staged ordered numerical recipes implemented as a read-only native query; staged bytes `4*min(C,N)` checked against per-active-row budget. Partition tree forbidden. | `alternatives.log`: full set, chunk, scratch/budget, numerical/capacity rejection reason; target unbound, selected false. |
-| R2-c: arithmetic/storage/event binding | Next: prove the target instruction/control/environment contract and direct-path input/output/owner constraints; then staged copy visibility, last-use/reuse and tail safety. No MMA profile substitution for these proofs. | Target evidence, rejected instruction/settings, alias/access-lifetime proof, storage/event legality and fallback. |
+| R2-c: arithmetic/storage/event binding | Direct compiler contract implemented: exact existing architecture lookup, scalar non-FTZ `add.rn.f32` policy, checked canonical allocation subranges/leases, injective row mapping and acyclic host event dependencies. Runtime obligations remain explicit, not discharged. Next bind staged copy visibility/reuse/tails and implement provider enforcement/guard wiring. No MMA profile substitution. | `target-binding.log`: ISA/policy and refusal reasons, not native certification. `residency.log`: footprints/ranges/alignment/lease/alias/owner obligations. `fetch-pipeline.log`: readiness/completion/consumer/release dependencies and rejection; no barrier/async claim. |
 | R2-d: complete costs and selection | Open: compare all legally bound direct/staged plans, including dependent additions, delivery, added staging traffic, occupancy, sync/launch and overlap. Keep direct fallback. | Component costs/units/provenance, legality failures, selection reason and unhidden readiness; no selection if source or target is unbound. |
 | R2-e: selected WHIRL lowering | Open: produce high-level loops from the selected plan, retain before/after `.B`/`.T`/diff, emit from WHIRL and later certify on hardware. | Actual WHIRL actions distinct from query/verification events; emitted code and numerical/resource/performance evidence. |
 
@@ -191,6 +191,20 @@ Both paths retain positional headers/source-line-last and no-selection claims.
 Host numerical evidence uses an independent integer binary32 oracle, thirteen
 adversarial vectors, 104 direct/staged checks and 2,048 pair checks; samples
 do not grant numerical permission or certify generated GPU code.
+
+The [direct-fallback binding detail](AI-COMPILER-REDUCTION-DIRECT-BINDING-v0.1.md)
+specifies `WOPT_DSL_bind_reduction_direct`, eight native cases and a positional
+`AI_REDUCE_DIRECT` auditor. Successful stage mask 15 means source/ISA/storage/
+owner-event compiler contracts are consistent; outstanding runtime mask 15
+still requires canonical actual buffers, live leases, event enforcement and
+launch conformance. It is not a profitability decision, executed guard or
+runtime proof. No request/log may become a second executable source of truth.
+Selected instruction, address, owner and host-contract actions must first be
+materialized in WHIRL before code emission.
+For ordered-add lowering, inspect/reuse the existing NVISA
+`INTRN_F4ADD_ROUND -> TOP_add_rn_f32` route, explicitly addressing its
+`TARG_NVISA` availability and CUDA spelling in the host-built path. This
+increment changes neither intrinsic encoding nor emitter support.
 
 Open64 adopts the following design rules from the versioned design:
 

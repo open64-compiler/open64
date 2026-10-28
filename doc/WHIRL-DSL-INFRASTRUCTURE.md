@@ -2171,3 +2171,18 @@ the version and exact attributes; existing v1/framework sums remain unbound.
 v1 FORM/FACT traces. No target arithmetic, storage/event proof, profitability
 selection, executable transformation or MMA1 capability follows from a legal
 numerical recipe.
+
+### R2-c Direct Reduction Contract Binding (2026-10-27)
+
+[Direct target/storage/event binding](AI-COMPILER-REDUCTION-DIRECT-BINDING-v0.1.md)
+is a WOPT-owned transient query over canonical active-PU source WHIRL. It
+reuses common exact architecture lookup, preserves native v1/v2 meaning and
+adds no image record, source version, physical opcode or shared MMA profile.
+Scalar instruction policy, canonical allocation-relative intervals, declared
+lease kinds, row mapping and host dependency DAG are checked. Its success
+retains explicit runtime obligations and does not constitute target binary
+certification, noalias metadata, cost selection or executable lowering.
+`AI_REDUCE_DIRECT` and concise phase reports supplement prior trace schemas.
+The existing target-conditional NVISA `INTRN_F4ADD_ROUND` implementation is a
+reuse point for later selected-WHIRL lowering, not evidence that the host-built
+CUDA emitter already supports it.
