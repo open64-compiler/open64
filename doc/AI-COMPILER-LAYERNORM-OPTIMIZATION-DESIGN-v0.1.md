@@ -32,6 +32,17 @@ the auditor joins every state and preserves shared-affine identity. V1 refuses
 numerical binding and remains unchanged. Next is LN2 storage/event planning,
 not a claim that these host witnesses execute a lowered WHIRL kernel.
 
+Storage/event amendment, 2026-10-28:
+[LN2 bounded native planning](AI-COMPILER-LAYERNORM-STORAGE-EVENTS-v0.1.md)
+now checks C0/C1/C2 canonical ranges/leases, ownership/tails, common-target SMEM
+reservation/banks and ordered visibility/completion/generation constraints.
+V1 stays unbound. This is conditional read-only planning, not runtime enforcement,
+automatic selection, physical allocation or generated kernel synchronization.
+Next is the runtime guard bridge, with complete costs and executable WHIRL
+still separate. The generic fetch records' current vocabulary is insufficient
+for the full ordered-mean/X-to-d protocol; the owning WOPT phase retains those
+checks without changing common mapped state or depending on reduction coding.
+
 ## 1. Decision, Scope And Evidence
 
 Design LayerNorm now, concurrently with reduction profitability and executable
@@ -309,6 +320,12 @@ that preserves the specified reduction. Never divide by padded width.
 
 ### 5.4 Optional prefetch and TMA
 
+Current implementation boundary: LN2's new native API implements only the
+synchronous closed C0/C1/C2 contracts and conservative event chain described
+in the [storage/event detail](AI-COMPILER-LAYERNORM-STORAGE-EVENTS-v0.1.md).
+The following async/TMA proposals remain future work, not latent permissions
+enabled by a metadata tag.
+
 Start with demand/synchronous loading. Propose async chunk or next-row delivery
 only with independent consumer work, legal ranges and a lowerable completion
 protocol. A memory-bound label does not prove TMA profitable.
@@ -561,7 +578,7 @@ are implemented here; preserve existing AI_NORM FORM/FACT and trace-off checks.
 | --- | --- | --- |
 | LN0 | Review semantics, alternatives, lifetimes and costs in this document. | Proposed; native/source R1 evidence exists, not executable optimization. |
 | LN1 | LN-REF-1 ordered means, exact count/final division, sqrt-then-divide, RNE/gradual/class-only-NaN environment; explicit native v2, carriers and oracle, preserving v1. | Native v2/producer/PREOPT, conditional target binding/carriers, LN1-d oracle and bounded LN1-e integrated evidence implemented. WHIRL-derived primitive CUDA/offline review passes. Complete LayerNorm/GPU execution remains open. |
-| LN2 | Read-only C0/C1/C2 plans, exact traffic/resources/events and refusal cases; reject C3 under v1 and LN-REF-1. | Open after LN1 native prerequisites; reuse common/reduction services. |
+| LN2 | Read-only C0/C1/C2 storage/event plans; reject unsupported reformulations under v1 and LN-REF-1. | Bounded native conditional planning implemented; runtime guards/enforcement, complete resources/traffic and expanded mappings/delivery remain open. See storage/event detail. |
 | LN3 | Complete costs, independent event/model oracle, analytical winner/fallback and trace auditor. | Open; reuse reduction profitability. |
 | LN4 | Selected high-level WHIRL, guards, CUDA emission and mapped before/after evidence. | Open; reuse reduction lowering; initial non-TMA scope. |
 | LN5 | Separately authorized parallel statistics, RF retention, Welford or async/TMA refinements. | Deferred until base semantics/executable alternatives are reviewed. |

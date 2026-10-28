@@ -8,6 +8,39 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-28 LN2 bounded storage/event planning implemented:
+[Storage/event detail v0.1](AI-COMPILER-LAYERNORM-STORAGE-EVENTS-v0.1.md)
+defines the WOPT-owned read-only API for C0 direct, C1 retained d and C2 X-to-d
+row reuse. It rebinds current source/target, validates physical layout,
+canonical ranges/context/leases, read-only aliases versus disjoint output,
+one ordered owner per row, valid-element predicates, common-target arena/bank
+resources and acyclic completion/visibility/reuse constraints. V1 remains
+unbound and refused; no reduction planning/runtime code is used.
+
+Passed 32 native cases across eight variants and four exact targets: 324
+queries, 124 conditional bindings, 200 expected refusals and 64 paired full
+mapped dumps. Table/symbol/type immutability, quiet trace parity and actual
+PREOPT on/default/off controls pass. Count-limit N=2^24 keeps C0 storage
+eligible while C1/C2 refuse the current full-row budget. No allocation or
+automatic fallback selection occurs. Eleven new tests plus 85 prior tests
+pass; 32 isolated ASan/UBSan fixture/planner runs have matching images/traces
+with documented zero allocator fill and process-pool leak checking disabled.
+
+The rebuilt WOPT and backend driver preserve all 28 prior LN1-e source images,
+full dumps and PREOPT semantic identities. The authenticated numerical receipt
+is independently reaudited; no fresh GPU or arithmetic transformation is
+claimed. Native plan/range/event `.t` keeps source line last, and condensed
+alternatives/residency/fetch-pipeline reports preserve the first-line convention.
+
+Durable planning review root:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln2-storage/sha256-07b3fd14fd641f1193ba3ee62cdc8d301b541af5a8119ea00e8d6bd8e42ec513/`.
+It retains `native/reports/optimization-summary.log`, per-case reports and raw
+`plan.t`, original/preserved `.B`/`.T`, rebuilt tools/source, sanitizer and
+compatibility evidence, commands/checksums and final-path replay. Index only
+after replay. Next is LN2-d runtime guard export/enforcement, including actual
+launch/grid and lease/event checks. Register allocation, full cost/selection,
+executable WHIRL and GPU certification remain open; COST/DECISION/TRANSFORM none.
+
 2026-10-28 LN1-e integrated source/target/numerical binding implemented:
 [Integrated binding detail v0.1](AI-COMPILER-LAYERNORM-INTEGRATED-BINDING-v0.1.md)
 joins every admitted node's real PREOPT facts and native target/refusal queries

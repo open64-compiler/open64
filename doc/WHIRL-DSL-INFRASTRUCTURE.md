@@ -2207,6 +2207,20 @@ explicit target/storage unknowns. No physical or managed image layout changes.
 Target arithmetic, cost selection and executable lowering remain separate gates. This work is
 independent of the reduction profitability/lowering implementation stream.
 
+### LN2 Storage/Event Planning (2026-10-28)
+
+The [LN-REF-1 storage/event contract](AI-COMPILER-LAYERNORM-STORAGE-EVENTS-v0.1.md)
+adds a WOPT-owned read-only API, not mapped tables or a source transformation.
+It rebinds source/target and checks C0/C1/C2 canonical ranges/leases, explicit
+layout, ownership/tails, common memory/bank resources and completion/visibility
+reachability. C2's original-X and centered-d generations share one row arena
+only after reader-completion constraints. Conditional binding still requires
+real runtime enforcement, launch/grid/register checks and selected lowering.
+V1 and unsafe/stale requests refuse without promotion; no reduction API is
+used. New positional planning/range/event traces keep native source line last,
+separate from emitted WHIRL actions. Source checkpoints and full mapped dumps
+remain identical; WHIRL is still the sole future executable truth.
+
 ### LN1-e Integrated Binding (2026-10-28)
 
 The [LN-REF-1 integrated evidence](AI-COMPILER-LAYERNORM-INTEGRATED-BINDING-v0.1.md)

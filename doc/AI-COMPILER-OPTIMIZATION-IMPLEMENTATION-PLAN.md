@@ -135,15 +135,17 @@ Python/v1 sums stay unbound; no GPU or measured-performance claim is implied.
 This design chat owns
 [LayerNorm optimization detail v0.1](AI-COMPILER-LAYERNORM-OPTIMIZATION-DESIGN-v0.1.md)
 and the cross-building-block design. Review LayerNorm now rather than waiting
-for native reduction certification. Reuse the reduction services after their
-interfaces are established; do not duplicate a planner or mutate arithmetic
-policy from a normalization-specific path.
+for native reduction certification. Reuse common policy-free infrastructure
+now and equivalent reduction services after reviewed interfaces exist; do not
+clone a general scheduler or mutate arithmetic policy. LN2's ordered-mean and
+X/d-generation constraints live in the owning WOPT phase, independently of
+concurrent reduction coding.
 
 | Gate | Deliverable and required summary | Status |
 | --- | --- | --- |
 | LN0 | Review centered recipe, C0/C1/C2 direct/retention candidates, explicitly unauthorized C3 Welford, aliases/events and complete costs. | Initial design proposed; no new executable support. |
 | LN1 | Define both means, scaling, rsqrt and environment; specify native v2/admission and implement target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | Native v2/producer/PREOPT, LN1-c target binding/carriers, LN1-d oracle and bounded LN1-e integrated source/target/numerical evidence implemented. Complete LayerNorm execution and GPU conformance remain open. |
-| LN2 | Construct legal plans through existing candidate/resource/event services. `alternatives.log`, `tile.log`, `residency.log` and `fetch-pipeline.log` expose ownership, traffic, capacity, banks/tails and reuse proofs/refusals. | Open after LN1 native prerequisites. |
+| LN2 | Construct conditional legal storage/event plans from bound source. `alternatives.log`, `residency.log` and `fetch-pipeline.log` expose ranges/leases, capacity, banks/tails and generation/reuse constraints. | Bounded C0/C1/C2 native API implemented: 32 cases/324 queries, common target resources, acyclic completion/visibility DAG and source preservation. Runtime guards/enforcement, register/grid limits and expanded delivery remain open. |
 | LN3 | Complete comparable costs with target provenance/uncertainty and independent oracle. `physical-plan.log` explains selected/fallback reason without invented overlap or guaranteed cache hits. | Open; reuse reduction profitability. |
 | LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Open; reuse reduction lowering. |
 | LN5 | Separately authorized parallel statistics/Welford, RF retention and async/TMA refinements with numerical legality, lowerability and complete costs. | Deferred, not implied by LN0-LN4. |
@@ -219,7 +221,7 @@ schema separation and public version narrowing at Python and C boundaries.
 Four native v1 variants, six Python v1 cases/sixteen rejections and historical
 v1 reopen protect compatibility. The progress ledger points to durable receipts.
 
-Next: LN2 storage/events after bounded LN1-e integrated evidence and the
+Next: LN2-d runtime guard/export/enforcement after bounded native LN2 planning and the
 independent LN1-d oracle. LN1-c supplies conditional target binding and primitive carriers,
 not execution of LN-REF-1. Keep LN2/LN3
 cost/selection and LN4 executable WHIRL separate from PREOPT characterization.
@@ -277,8 +279,35 @@ cost/decision/transformation none, and storage/events/profitability/lowering/GPU
 open. Retain raw native/numerical `.t`, paired `.B`/`.T`, commands and receipts.
 Validation: 13 new join tests plus 72 prior oracle/trace tests; full UBSan replay,
 56 paired source dumps, four unchanged legacy target fixtures and four v1 dumps.
-Next implement legal bound-source LN2 storage/event plans independently of
+Bounded native LN2 storage/event plans are now implemented independently of
 concurrent reduction work; actual executable LayerNorm remains LN4.
+
+LN2 planning implementation, 2026-10-28:
+[Storage/event detail](AI-COMPILER-LAYERNORM-STORAGE-EVENTS-v0.1.md) defines the
+WOPT-owned read-only request/binding contract for C0 direct, C1 retained d and
+C2 X-to-d row reuse. It reuses source/target APIs and common memory/bank/resource
+tables, not reduction planning/runtime code. Version 1 and stale/unsafe source
+requests refuse before storage permissions. Exact physical layout, canonical
+context/ranges, live lease requirements, read-only aliasing versus disjoint
+output, one ordered owner per row, valid-element predicates and all-lane barrier
+participation are explicit. Both means keep their native LN-REF-1 arithmetic.
+
+| LN2 slice | Implementation / required tool summary | Status |
+| --- | --- | --- |
+| LN2-a ranges/ownership | Rebind whole active PU/target, exact contiguous FP32 ranges and leases, canonical allocation metadata/alias rules, unique row/element ownership and pre-access tails. `alternatives.log` gives each gate/refusal and remaining obligations. | Native API and read-only/trace parity tests implemented. No actual runtime lease enforcement. |
+| LN2-b row arena/resources | C0 zero SMEM; C1/C2 one padded row plus distinct mu/q slots, checked reservation rounding/current profile budget, scalar contiguous bank mapping. `residency.log` gives every range, requested/reserved bytes, budget/granularity and bank facts. | Implemented with common descriptors. RF allocation/spills, occupancy, GMEM sectors and larger opt-in budgets remain unbound. |
+| LN2-c events/generations | Acyclic reachability, mean-reader completion before C2 overwrite, d/q visibility and all readers complete before reuse. `fetch-pipeline.log` gives every successor mask, barrier/participant requirement and refusal. | Native conditional protocol implemented; all original checkpoints remain unchanged. Actual emitted/runtime events are not proven. |
+| LN2-d runtime bridge | Revalidate/export exact selected ranges/context/leases/events and physical launch/grid obligations into a runtime-checkable guard; enforce it before dispatch and preserve fallback/refusal. Tools must distinguish declarations, exported checks and observed enforcement. | Next; no guard/provider/runtime enforcement is introduced by the planning API. |
+
+Validation: 32 source/target cases, 324 queries (124 conditional bindings,
+200 refusals), 64 paired full mapped dumps, native immutable-table and quiet
+trace checks, all PREOPT controls, eleven new auditor tests plus 85 prior tests.
+The current count-limit case admits C0 storage while C1/C2 fail full-row budget;
+it neither allocates the huge row nor automatically selects the fallback.
+The summary must state runtime enforcement/grid/register allocation unproved,
+async unsupported, COST/DECISION/TRANSFORM none and GPU not run. Retain native
+`.t`, source checkpoints/dumps, rebuilt WOPT/driver, sources, commands and final
+replay. LN3 profitability and LN4 actual WHIRL actions remain separate gates.
 
 Keep reduction code/tests/receipts untouched for this contract design. Native
 LN1-b work needs existing common builders and PREOPT, not completion of the
