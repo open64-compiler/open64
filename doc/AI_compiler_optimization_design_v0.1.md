@@ -4,6 +4,17 @@ Version v0.1 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-27 R2 reduction numerical-binding amendment:
+the [explicit ordered contract and direct/staged recipes](AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md)
+now preserve source arithmetic before exploring executable alternatives.
+Native v2 binds positive-zero ascending FP32 additions and an exact environment;
+existing Python/v1 sums stay source-order-unbound. Read-only WOPT discovery
+reports recipe legality and per-active-row scratch capacity, rejecting trees
+under strict reassociation rules. Actual PREOPT preserves the source binding.
+Numerical legality is not target certification or profitability: target
+instructions, alias/storage/events, complete costs and selected high-level WHIRL
+lowering remain gates. MMA1 is unchanged.
+
 2026-10-27 Python centered affine normalization connection:
 the [exact source-to-native recipe](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27)
 now shares structural preflight with R1 analysis and emits three runtime

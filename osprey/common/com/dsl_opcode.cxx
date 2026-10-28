@@ -731,7 +731,14 @@ static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
         DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
         DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_MEAN_VAR_NORM_V1",
         "attr.axis;attr.accum_dtype;attr.variance_kind;attr.epsilon_bits;"
-        "attr.reassociate;attr.state_reformulation;attr.contract;attr.rsqrt_semantics" }
+        "attr.reassociate;attr.state_reformulation;attr.contract;attr.rsqrt_semantics" },
+    /* Ordered reduction is explicit source meaning, never a v1 upgrade. */
+    { OPR_DSLREDUCESUM, "common.reduce_sum", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_REDUCTION, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_REDUCE_SUM_V2",
+        "attr.axis;attr.keepdim;attr.accum_dtype;attr.reassociate;attr.order;"
+        "attr.identity_bits;attr.fp_environment;attr.nan_policy" }
 };
 
 static const DSL_FUSIBILITY_INFO DSL_fusibility_info[] = {

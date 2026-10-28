@@ -123,7 +123,7 @@ int main(int argc, char **argv)
       !Check(DSL_Builder_Create_Operator(opcode, 1, kids, 1, attrs, 4)
              == NULL, "explicit_result") ||
       !Check(DSL_Builder_Create_Operator_With_Result
-          (opcode, 2, kids, 1, attrs, 4, "bad_version", result_ty) == NULL,
+          (opcode, 3, kids, 1, attrs, 4, "bad_version", result_ty) == NULL,
           "unsupported_version") ||
       !Check(DSL_Builder_Create_Operator_With_Result
           (opcode, 1, kids, 1, attrs, 3, "missing", result_ty) == NULL,

@@ -109,6 +109,12 @@ extern BOOL DSL_Shape_Reduce_Sum_Types_Valid
                                  const char *accum_dtype,
                                  const char *reassociate);
 
+/* Exact v2 source numerical binding; no target capability or policy choice.
+ * Design: doc/AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md. */
+extern BOOL DSL_ordered_reduce_sum_binding_valid
+    (const char *order, const char *identity_bits,
+     const char *fp_environment, const char *nan_policy);
+
 /* Static FP32 subtract-row-max Softmax, not a generic framework Softmax.
  * Policy-free contract: AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md. */
 extern BOOL DSL_Shape_Stable_Softmax_Types_Valid

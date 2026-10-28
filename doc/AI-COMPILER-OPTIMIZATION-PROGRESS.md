@@ -8,6 +8,24 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 R2 reduction numerical-binding increment:
+explicit native `common.reduce_sum.v2` now fixes positive-zero initialization,
+ascending-index FP32 left fold, RNE/gradual/no-trap environment and NaN-class
+observations. Existing Python `torch.sum` still emits unbound v1; no silent
+conversion or sample-based numerical permission. Canonical native facts and
+version survive actual PREOPT import/emission.
+A read-only native query reports direct ordered and staged ordered recipes,
+per-active-row scratch requirements/capacity rejection and forbidden partition
+trees. Five native cases, 104 host recipe checks, 2,048 independent integer-oracle
+pair checks and seven new audit/numerical tests pass. Existing row contracts,
+cached Python reduction images and focused common/FHE/WOPT checks pass; backend
+and inline symbol boundaries remain closed.
+See [the detailed binding and realization design](AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md).
+This is bounded R2 progress, not production selection or executable lowering:
+target arithmetic, alias/storage/events, complete cost modeling and selected
+high-level WHIRL loops remain next. MMA1, its profiles and Python source
+semantics are unchanged. No GPU run or native reduction accuracy claim.
+
 2026-10-27 R1 Python centered affine normalization increment:
 the shared exact source matcher now connects to `common.mean_variance_norm.v1`.
 Three runtime formals, explicit result/return, binary32 epsilon and final-addition

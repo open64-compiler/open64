@@ -204,6 +204,7 @@ LDIRT += fhe_ckks2c_collect_image_test fhe_ckks2c_collect_image_test.o \
 	fhe_ckks2c_checkpoint.o fhe_sha256.o
 LDIRT += dsl_wopt_bridge_test dsl_wopt_bridge_test.o
 LDIRT += dsl_reduce_sum_contract_test dsl_reduce_sum_contract_test.o
+LDIRT += dsl_reduction_binding_test dsl_reduction_binding_test.o
 LDIRT += dsl_softmax_contract_test dsl_softmax_contract_test.o
 LDIRT += dsl_normalization_contract_test dsl_normalization_contract_test.o
 LDIRT += opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
@@ -787,6 +788,14 @@ dsl_reduce_sum_contract_test: $(OBJECTS) controls.o dsl_reduce_sum_contract_test
 		opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
 
 dsl_reduce_sum_contract_test.o: $(BE_OPT_DIR)/tests/dsl_reduce_sum_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_reduction_binding_test: $(OBJECTS) controls.o dsl_reduction_binding_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_reduction_binding_test.o opt_dsl_wopt_test.o \
+		opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_reduction_binding_test.o: $(BE_OPT_DIR)/tests/dsl_reduction_binding_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_wopt_bridge_test: $(OBJECTS) controls.o dsl_wopt_bridge_test.o \

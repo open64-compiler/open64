@@ -32,7 +32,8 @@ enum {
   WOPT_DSL_REDUCTION_ALIAS_UNPROVEN = 1U << 7,
   WOPT_DSL_REDUCTION_STORAGE_UNPLANNED = 1U << 8,
   WOPT_DSL_REDUCTION_OUTPUT_OWNER_PER_ROW = 1U << 9,
-  WOPT_DSL_REDUCTION_SUM_F32_ROWS_V1 = 1
+  WOPT_DSL_REDUCTION_SUM_F32_ROWS_V1 = 1,
+  WOPT_DSL_REDUCTION_SUM_F32_ORDERED_V2 = 2
 };
 
 typedef struct {
@@ -56,6 +57,33 @@ typedef struct {
 extern BOOL WOPT_DSL_characterize_reduction
     (WN *scope, WN *assignment, WOPT_DSL_REDUCTION_CHARACTERIZATION *output,
      FILE *diagnostic);
+
+/* R2 transient legal-recipe discovery, not cost selection or lowering.
+ * Source v1 stays unbound. V2 supplies an ordered FP32 recurrence; target
+ * arithmetic, alias/storage realization and events still require proof.
+ * Design: doc/AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md. */
+enum WOPT_DSL_REDUCTION_ALTERNATIVE_STATUS {
+  WOPT_DSL_REDUCE_SOURCE_UNBOUND,
+  WOPT_DSL_REDUCE_LEGAL_RECIPE,
+  WOPT_DSL_REDUCE_STAGING_BUDGET,
+  WOPT_DSL_REDUCE_REASSOC_FORBIDDEN
+};
+typedef struct {
+  WOPT_DSL_REDUCTION_CHARACTERIZATION fact;
+  UINT64 chunk_elements;
+  UINT64 scratch_bytes;
+  UINT64 scratch_budget_bytes;
+  WOPT_DSL_REDUCTION_ALTERNATIVE_STATUS direct_status;
+  WOPT_DSL_REDUCTION_ALTERNATIVE_STATUS staged_status;
+  WOPT_DSL_REDUCTION_ALTERNATIVE_STATUS tree_status;
+} WOPT_DSL_REDUCTION_ALTERNATIVES;
+
+/* Revalidate the active whole-PU member before deriving a fresh snapshot.
+ * Invalid requests leave output/IR untouched. Trace is caller-controlled;
+ * the production AI trace controls remain the authority. No target is bound. */
+extern BOOL WOPT_DSL_query_reduction_alternatives
+    (WN *scope, WN *assignment, UINT64 chunk_elements, UINT64 scratch_budget_bytes,
+     WOPT_DSL_REDUCTION_ALTERNATIVES *output, FILE *diagnostic, FILE *trace);
 
 /* Verify the published reduction form within the active whole-PU PREOPT
  * scope, without rewriting or enlarging scope. Empty/non-reduction scopes

@@ -2157,3 +2157,17 @@ structural/descriptor/epsilon rejects execute no sample operations and publish
 no image. Six API/driver images preserve the contract through actual PREOPT.
 General normalization ingestion and executable VHO lowering remain open;
 no native accuracy or performance proof is implied.
+
+### R2 Ordered Reduction Numerical Binding (2026-10-27)
+
+The [reduction numerical-binding contract](AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md)
+appends native `common.reduce_sum.v2` under logical ID 37, retaining its unary
+carrier and all physical/mapped layouts. Eight exact attributes explicitly bind
+positive-zero ascending FP32 accumulation, RNE/gradual/no-trap environment and
+NaN-class observations. Common owns structural admission, WOPT owns transient
+numerical characterization and direct/staged recipe legality. PREOPT preserves
+the version and exact attributes; existing v1/framework sums remain unbound.
+`AI_REDUCE_NUM` and query-only `AI_REDUCE_ALT` supplement, not replace, prior
+v1 FORM/FACT traces. No target arithmetic, storage/event proof, profitability
+selection, executable transformation or MMA1 capability follows from a legal
+numerical recipe.

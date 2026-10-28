@@ -1448,6 +1448,19 @@ DSL_Shape_Reduce_Sum_Types_Valid
            input[0] > 0 && input[1] > 0 && output[0] == input[0];
 }
 
+/* Validate explicit ordered source meaning, independently of target support.
+ * See AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md. */
+BOOL
+DSL_ordered_reduce_sum_binding_valid
+    (const char *order, const char *identity_bits,
+     const char *fp_environment, const char *nan_policy)
+{
+    return order != NULL && strcmp(order, "ascending_left_fold") == 0 &&
+           identity_bits != NULL && strcmp(identity_bits, "00000000") == 0 &&
+           fp_environment != NULL && strcmp(fp_environment, "rne_gradual_no_traps") == 0 &&
+           nan_policy != NULL && strcmp(nan_policy, "class_only") == 0;
+}
+
 /* Adapt existing image attributes to the shared policy-free row-sum check. */
 static BOOL
 DSL_Shape_Reduce_Sum_Result
@@ -1456,8 +1469,17 @@ DSL_Shape_Reduce_Sum_Result
 {
     const char *axis = NULL, *keepdim = NULL;
     const char *accum = NULL, *reassociate = NULL;
-    return node != NULL && node->attribute_count == 4 &&
-           version == 1 && operands.size() == 1 &&
+    if (node == NULL) return FALSE;
+    const char *order = NULL, *identity = NULL, *environment = NULL, *nan = NULL;
+    BOOL binding = version == 1 ||
+        (version == 2 &&
+         DSL_Shape_Node_Attribute(node, "attr.order", &order) &&
+         DSL_Shape_Node_Attribute(node, "attr.identity_bits", &identity) &&
+         DSL_Shape_Node_Attribute(node, "attr.fp_environment", &environment) &&
+         DSL_Shape_Node_Attribute(node, "attr.nan_policy", &nan) &&
+         DSL_ordered_reduce_sum_binding_valid(order, identity, environment, nan));
+    return node != NULL && binding &&
+           node->attribute_count == (version == 1 ? 4 : 8) && operands.size() == 1 &&
            DSL_Shape_Node_Attribute(node, "attr.axis", &axis) &&
            DSL_Shape_Node_Attribute(node, "attr.keepdim", &keepdim) &&
            DSL_Shape_Node_Attribute(node, "attr.accum_dtype", &accum) &&
@@ -1604,6 +1626,7 @@ static const DSL_SHAPE_RULE_ENTRY DSL_shape_rules[] = {
     { OPR_DSLMEANVARNORM, 1, DSL_mean_variance_norm_result },
     { OPR_DSLSTABLESOFTMAX, 1, DSL_Shape_Stable_Softmax_Result },
     { OPR_DSLREDUCESUM, 1, DSL_Shape_Reduce_Sum_Result },
+    { OPR_DSLREDUCESUM, 2, DSL_Shape_Reduce_Sum_Result },
     { OPR_DSLADD, 1, DSL_Shape_Broadcast_Result },
     { OPR_DSLMATMUL, 1, DSL_Shape_Matmul_Result },
     { OPR_DSLMATMUL, 2, DSL_Shape_Matmul_Result },

@@ -6,6 +6,12 @@ executable reduction lowering is
 not implemented by this milestone. Independent of MMA1 and target compute
 realization selection.
 
+Subsequent R2 increment: [numerical binding and legal alternatives](AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md)
+adds an explicitly ordered native v2 contract and read-only direct/staged
+recipe query. This v1 contract and its exact Python mapping are unchanged;
+unresolved source order is never silently replaced with a left fold or tree.
+Target binding, cost selection and executable lowering remain open.
+
 ## Architectural baseline
 
 The [WHIRL specification](https://www.mcs.anl.gov/OpenAD/open64A.pdf)
@@ -111,8 +117,8 @@ Use separate directories for ASCII `.T` and trace `.t` on case-insensitive hosts
    [its separate contract](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md).
    Its exact Python ingestion is now connected, reusing row formal/result/return
    emission. The [native normalization contract](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md)
-   and PREOPT characterization are now implemented; its Python connection is
-   next, independent of MMA1.
+   and PREOPT characterization and exact Python connection are now implemented,
+   independently of MMA1.
 
 ## Reproduction and validation
 

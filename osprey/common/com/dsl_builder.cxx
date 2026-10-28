@@ -3101,6 +3101,12 @@ DSL_Builder_Create_Operator_With_Result
             return NULL;
     }
     if (dsl_operator == OPR_DSLREDUCESUM) {
+        if (version == 2 && !DSL_ordered_reduce_sum_binding_valid
+                (DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.order"),
+                 DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.identity_bits"),
+                 DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.fp_environment"),
+                 DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.nan_policy")))
+            return NULL;
         DSL_BUILDER_VALUE_RECORD *source =
             DSL_Builder_Find_Value_Record(kids[0]);
         if (source == NULL || source->pu != DSL_Builder_Active_PU ||

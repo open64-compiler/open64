@@ -6,7 +6,8 @@
  * PREOPT verifies canonical forms before import and after emission. Reduction
  * contract: doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md; Softmax:
  * doc/AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md; normalization:
- * doc/AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md. No builder or
+ * doc/AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md; numerical binding:
+ * doc/AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md. No builder or
  * target-selection policy is linked into this backend component. */
 
 #include <string.h>
@@ -572,7 +573,8 @@ WOPT_DSL_Derive_Reduction(WN *assignment,
   if (expression == NULL || WN_operator(expression) != OPR_DSL ||
       !DSL_WN_Get_Logical_Opcode(expression, &logical, NULL) ||
       logical.dsl_operator != OPR_DSLREDUCESUM ||
-      logical.effective_version != 1 || WN_kid_count(expression) != 1)
+      (logical.effective_version != 1 && logical.effective_version != 2) ||
+      WN_kid_count(expression) != 1)
     return FALSE;
   WOPT_DSL_REDUCTION_CHARACTERIZATION fact;
   memset(&fact, 0, sizeof(fact));
@@ -591,7 +593,8 @@ WOPT_DSL_Derive_Reduction(WN *assignment,
           (TY_tensor_attribute(fact.input_ty, TY_TENSOR_SCHEMA_SHAPE),
            dimensions, 2, &rank) || rank != 2)
     return FALSE;
-  fact.recipe = WOPT_DSL_REDUCTION_SUM_F32_ROWS_V1;
+  fact.recipe = logical.effective_version == 1 ? WOPT_DSL_REDUCTION_SUM_F32_ROWS_V1 :
+                                               WOPT_DSL_REDUCTION_SUM_F32_ORDERED_V2;
   fact.flags = WOPT_DSL_REDUCTION_INPUT_READ_ONLY |
       WOPT_DSL_REDUCTION_REASSOC_FORBIDDEN |
       WOPT_DSL_REDUCTION_REFORMULATION_NOT_GRANTED |
@@ -602,6 +605,8 @@ WOPT_DSL_Derive_Reduction(WN *assignment,
       WOPT_DSL_REDUCTION_ALIAS_UNPROVEN |
       WOPT_DSL_REDUCTION_STORAGE_UNPLANNED |
       WOPT_DSL_REDUCTION_OUTPUT_OWNER_PER_ROW;
+  if (logical.effective_version == 2)
+    fact.flags &= ~WOPT_DSL_REDUCTION_ORDER_UNRESOLVED;
   fact.owner_pu = PU_Info_proc_sym(Current_PU_Info);
   fact.node_id = node.id;
   fact.input_value_id = input.id;
@@ -647,6 +652,79 @@ WOPT_DSL_characterize_reduction
       WOPT_DSL_Derive_Reduction(assignment, output);
 }
 
+/* Positional numerical schema is separate from legacy v1 FORM/FACT rows. */
+static void
+WOPT_DSL_reduction_numerical_header(FILE *trace)
+{
+  fprintf(trace, "AI_REDUCE_NUM 1 HEADER phase pu node input result version rows width "
+                 "order identity_bits environment nan_policy binding source_line\n");
+}
+
+/* Report only source-bound meaning; target arithmetic support is not inferred. */
+static void
+WOPT_DSL_trace_reduction_numerical
+    (const WOPT_DSL_REDUCTION_CHARACTERIZATION &fact, const char *phase, FILE *trace)
+{
+  BOOL bound = fact.recipe == WOPT_DSL_REDUCTION_SUM_F32_ORDERED_V2;
+  fprintf(trace, "AI_REDUCE_NUM 1 BIND %s %u %u %u %u %u %llu %llu %s %s %s %s %s %u\n",
+          phase, (UINT32)fact.owner_pu, fact.node_id, fact.input_value_id,
+          fact.result_value_id, bound ? 2 : 1, (unsigned long long)fact.rows,
+          (unsigned long long)fact.width, bound ? "ascending_left_fold" : "source_unresolved",
+          bound ? "00000000" : "semantic_zero",
+          bound ? "rne_gradual_no_traps" : "source_unresolved",
+          bound ? "class_only" : "source_unresolved", bound ? "explicit" : "missing",
+          fact.source_line);
+}
+
+/* R2 exposes alternative legality without selecting, rewriting or binding a
+ * target. Each row has one ordered accumulator; staging copies do no arithmetic.
+ * Recompute after any source/type/attribute/member change. Scope is active PU. */
+BOOL
+WOPT_DSL_query_reduction_alternatives
+    (WN *scope, WN *assignment, UINT64 chunk_elements, UINT64 scratch_budget_bytes,
+     WOPT_DSL_REDUCTION_ALTERNATIVES *output, FILE *diagnostic, FILE *trace)
+{
+  if (output == NULL || chunk_elements == 0) return FALSE;
+  WOPT_DSL_REDUCTION_ALTERNATIVES plans;
+  memset(&plans, 0, sizeof(plans));
+  if (!WOPT_DSL_characterize_reduction(scope, assignment, &plans.fact, diagnostic))
+    return FALSE;
+  plans.chunk_elements = chunk_elements < plans.fact.width ? chunk_elements : plans.fact.width;
+  if (plans.chunk_elements > (~(UINT64)0) / 4) return FALSE;
+  plans.scratch_bytes = plans.chunk_elements * 4;
+  plans.scratch_budget_bytes = scratch_budget_bytes;
+  BOOL bound = plans.fact.recipe == WOPT_DSL_REDUCTION_SUM_F32_ORDERED_V2;
+  plans.direct_status = bound ? WOPT_DSL_REDUCE_LEGAL_RECIPE : WOPT_DSL_REDUCE_SOURCE_UNBOUND;
+  plans.staged_status = !bound ? WOPT_DSL_REDUCE_SOURCE_UNBOUND :
+      (plans.scratch_bytes <= scratch_budget_bytes ? WOPT_DSL_REDUCE_LEGAL_RECIPE :
+                                                   WOPT_DSL_REDUCE_STAGING_BUDGET);
+  plans.tree_status = WOPT_DSL_REDUCE_REASSOC_FORBIDDEN;
+  if (trace != NULL) {
+    WOPT_DSL_reduction_numerical_header(trace);
+    WOPT_DSL_trace_reduction_numerical(plans.fact, "r2_query", trace);
+    fprintf(trace, "AI_REDUCE_ALT 1 HEADER phase node candidate chunk scratch_bytes "
+                   "budget_bytes numerical storage target selected reason source_line\n");
+    const char *names[3] = { "direct_ordered", "staged_ordered", "partition_tree" };
+    WOPT_DSL_REDUCTION_ALTERNATIVE_STATUS status[3] =
+        { plans.direct_status, plans.staged_status, plans.tree_status };
+    const char *reason[4] = { "source_binding_missing", "ordered_recipe_preserved",
+                             "scratch_budget_exceeded", "reassociation_forbidden" };
+    for (UINT32 i = 0; i < 3; ++i)
+      fprintf(trace, "AI_REDUCE_ALT 1 ALT r2_query %u %s %llu %llu %llu %s %s "
+                     "unbound 0 %s %u\n", plans.fact.node_id, names[i],
+              (unsigned long long)(i == 1 ? plans.chunk_elements : 0),
+              (unsigned long long)(i == 1 ? plans.scratch_bytes : 0),
+              (unsigned long long)scratch_budget_bytes,
+              i == 2 ? "forbidden" : (bound ? "legal_recipe" : "unbound"),
+              i == 2 ? "not_evaluated" :
+              (status[i] == WOPT_DSL_REDUCE_SOURCE_UNBOUND ? "not_evaluated" :
+               (status[i] == WOPT_DSL_REDUCE_STAGING_BUDGET ? "budget_rejected" : "budget_ok")),
+              reason[status[i]], plans.fact.source_line);
+  }
+  *output = plans;
+  return TRUE;
+}
+
 /* Walk only the driver-selected tree; never traverse PU_Info or change symbol
  * tables. Emission occurs only after the public entry verifies the whole PU. */
 static UINT32
@@ -672,7 +750,9 @@ WOPT_DSL_Reduction_Forms(WN *tree, const char *phase, FILE *trace,
         WOPT_DSL_REDUCTION_CHARACTERIZATION fact;
         FmtAssert(WOPT_DSL_Derive_Reduction(tree, &fact),
                   ("verified reduction identity unavailable"));
-        if (trace != NULL) {
+        if (trace != NULL)
+          WOPT_DSL_trace_reduction_numerical(fact, phase, trace);
+        if (trace != NULL && fact.recipe == WOPT_DSL_REDUCTION_SUM_F32_ROWS_V1) {
           fprintf(trace, "AI_REDUCE 1 FORM %s %u %u %llu %llu 1 0 "
                          "float32 0 verified %u\n", phase, fact.node_id,
                   fact.result_value_id, (unsigned long long)fact.rows,
@@ -720,6 +800,7 @@ WOPT_DSL_verify_reduction_forms
     return FALSE;
   }
   if (trace != NULL) {
+    WOPT_DSL_reduction_numerical_header(trace);
     fprintf(trace, "AI_REDUCE 1 HEADER phase node value rows width axis "
                    "keepdim accum_dtype reassociate status source_line\n");
     fprintf(trace, "AI_REDUCE_FACT 1 HEADER phase pu node input result input_ty "
