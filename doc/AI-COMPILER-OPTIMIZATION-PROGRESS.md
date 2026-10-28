@@ -8,6 +8,22 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 MMA5-H increment, from merged MMA4-H PR198 (`ab3afb7d`):
+[Bounded Hopper pipeline](AI-COMPILER-MMA5-H-HOPPER-PIPELINE.md) adds explicit
+O3 two-slot cooperative and bulk-TMA delivery with up to two committed WGMMA
+groups, distinct copy readiness, full compute completion and CTA reader-reuse
+joins. Odd final batches use one real group. Four complete same-result
+conditional candidates include the original typed GRID SIMT, one-slot MMA4,
+and both new delivery choices. Existing ranged model and occupancy services
+are reused; unknown timing and synthetic ranking never promote execution.
+Twenty delivery/type/shape cases compile 40 before/after kernels; 80 host runs,
+1100 preflight negatives, 2474 tree mutations, 210 source mutations and 660
+independent model corners pass. The native TMA wait carries explicit acquire
+and CTA scope. SIMT stays default. Cross-batch delivery/compute overlap,
+general frontend integration, GPU arithmetic and native timing remain open.
+Local commit only; no push or PR requested. See retained receipt
+`/private/tmp/open64-mma5-h-review-20261027/acceptance-verified/`.
+
 2026-10-27 MMA4-H increment, from merged MMA3 PR197 (`c5aec7b1`):
 [First Hopper lowering](AI-COMPILER-MMA4-H-HOPPER-LOWERING.md) adds an explicit
 O3 active-PU `sm_90a` F16/BF16 shared/shared WGMMA API. Exact 64x64x16 atoms,

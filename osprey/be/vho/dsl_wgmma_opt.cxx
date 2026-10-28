@@ -3,6 +3,8 @@
  * emission. No default selection, image layout or timing policy changes.
  * Design: doc/AI-COMPILER-MMA4-H-HOPPER-LOWERING.md. */
 #include "dsl_wgmma_opt.h"
+#include "dsl_wgmma_pipeline_opt.h"
+#include "dsl_gemm_occupancy.h"
 #include "config_opt.h"
 #include "pu_info.h"
 #include "symtab.h"
@@ -39,7 +41,7 @@ static BOOL VHO_DSL_wgmma_array(ST *symbol, TYPE_ID element, UINT64 count, BOOL 
  * required by WGMMA's ISA arithmetic contract. */
 static BOOL VHO_DSL_wgmma_preflight(const DSL_TYPED_SIMT_RECORD *record,
     const DSL_NUMERICAL_CONTRACT_RECORD *numerical, const VHO_DSL_WGMMA_CONTROL *control,
-    const VHO_DSL_WGMMA_BINDING *binding, FILE *diagnostic)
+    const VHO_DSL_WGMMA_BINDING *binding, FILE *diagnostic, UINT32 slots = 1)
 {
     DSL_COMPUTE_PROFILE_RECORD profile;
     if (!record || !numerical || !control || !binding || control->enable != 1 ||
@@ -48,7 +50,7 @@ static BOOL VHO_DSL_wgmma_preflight(const DSL_TYPED_SIMT_RECORD *record,
         record->owner_pu_st != PU_Info_proc_sym(Current_PU_Info) ||
         numerical->permissions != DSL_ACC_PERMISSION_REASSOCIATE ||
         record->problem_m % 64 || record->problem_n % 64 || record->problem_k % 16 ||
-        record->threads_per_cta != 128 || control->shared_limit_bytes < 4096 ||
+        record->threads_per_cta != 128 || control->shared_limit_bytes < 4096 * slots ||
         !DSL_compute_profile_get(control->profile_id, &profile) ||
         profile.family != DSL_COMPUTE_WGMMA || profile.arch_id != control->arch_id ||
         profile.instruction_m != 64 || profile.instruction_n != 64 || profile.instruction_k != 16 ||
@@ -57,8 +59,8 @@ static BOOL VHO_DSL_wgmma_preflight(const DSL_TYPED_SIMT_RECORD *record,
         profile.input_format != numerical->input_format || control->ptx < profile.minimum_ptx ||
         control->toolkit < profile.minimum_toolkit)
         return VHO_DSL_wgmma_error(diagnostic, "disabled, level, exact target, shape or numerical acceptance");
-    if (!VHO_DSL_wgmma_array(binding->shared_a, MTYPE_U2, 1024, TRUE) ||
-        !VHO_DSL_wgmma_array(binding->shared_b, MTYPE_U2, 1024, TRUE) ||
+    if (!VHO_DSL_wgmma_array(binding->shared_a, MTYPE_U2, 1024 * slots, TRUE) ||
+        !VHO_DSL_wgmma_array(binding->shared_b, MTYPE_U2, 1024 * slots, TRUE) ||
         !VHO_DSL_wgmma_array(binding->fragment, MTYPE_F4, 32, FALSE))
         return VHO_DSL_wgmma_error(diagnostic, "shared layout/alignment or fragment storage");
     ST *symbols[] = {binding->shared_a, binding->shared_b, binding->fragment,
@@ -388,5 +390,267 @@ BOOL VHO_DSL_wgmma_print(FILE *file, const DSL_TYPED_SIMT_RECORD *record,
     fprintf(file, "AI_WGMMA 1 CONTRACT %s\n", VHO_DSL_wgmma_identity(*record, *numerical, *control).c_str());
     fprintf(file, "AI_WGMMA 1 ACTION atom=m64n64k16 iterations=%u cta_tiles=%llu proxy=1 barriers=2 register_fence=1 mma=1 commit=1 wait_zero=1 fragment_loads=32 fragment_stores=32 default=SIMT timing=unknown\n",
         record->problem_k / 16, (unsigned long long)(record->problem_m / 64) * (record->problem_n / 64));
+    return !ferror(file);
+}
+
+/* Extend the verified MMA4 storage contract without relaxing its acceptance,
+ * ownership or scope rules. Extra TMA storage must be distinct and physical. */
+static BOOL VHO_DSL_pipeline_preflight(const DSL_TYPED_SIMT_RECORD *record,
+    const DSL_NUMERICAL_CONTRACT_RECORD *numerical, const VHO_DSL_WGMMA_PIPELINE_CONTROL *control,
+    const VHO_DSL_WGMMA_PIPELINE_BINDING *binding, FILE *diagnostic)
+{
+    if (!control || !binding || control->reserved || control->outstanding_groups != 2 ||
+        (control->delivery != VHO_DSL_WGMMA_COOPERATIVE && control->delivery != VHO_DSL_WGMMA_TMA_BULK) ||
+        !VHO_DSL_wgmma_preflight(record, numerical, &control->compute, &binding->compute, diagnostic, 2)) return FALSE;
+    if (control->delivery == VHO_DSL_WGMMA_COOPERATIVE)
+        return !binding->raw_a && !binding->raw_b && !binding->ready;
+    if (control->compute.ptx < 806 || control->compute.toolkit < 12080 ||
+        control->compute.shared_limit_bytes < 16400 ||
+        !VHO_DSL_wgmma_array(binding->raw_a, MTYPE_U2, 2048, TRUE) ||
+        !VHO_DSL_wgmma_array(binding->raw_b, MTYPE_U2, 2048, TRUE) ||
+        !VHO_DSL_wgmma_array(binding->ready, MTYPE_U8, 2, TRUE)) return FALSE;
+    ST *extra[] = {binding->raw_a, binding->raw_b, binding->ready};
+    ST *existing[] = {binding->compute.shared_a, binding->compute.shared_b, binding->compute.fragment};
+    for (UINT32 index = 0; index < 3; ++index) {
+        if (&St_Table[ST_st_idx(extra[index])] != extra[index]) return FALSE;
+        for (UINT32 other = 0; other < 3; ++other)
+            if (extra[index] == existing[other] || (other != index && extra[index] == extra[other])) return FALSE;
+    }
+    return TRUE;
+}
+
+/* Keep both dependent accumulator updates inside one effectful carrier.
+ * At most two committed groups exist; neither fragment nor operands escape
+ * until wait zero, including the one-atom final partial batch. */
+static std::string VHO_DSL_pipeline_atom(UINT32 format)
+{
+    std::string atom = VHO_DSL_wgmma_atom(format);
+    size_t issue = atom.find("wgmma.mma_async"), wait = atom.find("wgmma.wait_group");
+    std::string second = atom.substr(issue, wait - issue);
+    atom.insert(wait, "add.u64 desc_a, desc_a, 128;\nadd.u64 desc_b, desc_b, 128;\n" + second);
+    return atom;
+}
+
+/* One elected issuer initializes a fresh completed-phase barrier and issues
+ * aligned row copies. Raw row-major staging is separate from MMA packing;
+ * bulk TMA does not pretend to provide tensor-map transpose semantics. */
+static std::string VHO_DSL_pipeline_tma_issue(const DSL_TYPED_SIMT_RECORD &record)
+{
+    std::string text = "{\n.reg .b32 raw_a, raw_b, ready, dst;\n.reg .b64 src;\n";
+    text += "cvta.to.shared.u64 src, %0;\ncvt.u32.u64 raw_a, src;\n";
+    text += "cvta.to.shared.u64 src, %1;\ncvt.u32.u64 raw_b, src;\n";
+    text += "cvta.to.shared.u64 src, %4;\ncvt.u32.u64 ready, src;\n";
+    text += "mbarrier.init.shared::cta.b64 [ready], 1;\nfence.proxy.async.shared::cta;\n";
+    text += "mbarrier.arrive.expect_tx.shared::cta.b64 _, [ready], 4096;\n";
+    char line[256];
+    for (UINT32 row = 0; row < 64; ++row) {
+        snprintf(line, sizeof(line), "add.u32 dst, raw_a, %u;\nadd.u64 src, %%2, %llu;\ncp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes [dst], [src], 32, [ready];\n",
+            row * 32, (unsigned long long)row * record.problem_k * 2); text += line;
+    }
+    for (UINT32 row = 0; row < 16; ++row) {
+        snprintf(line, sizeof(line), "add.u32 dst, raw_b, %u;\nadd.u64 src, %%3, %llu;\ncp.async.bulk.shared::cta.global.mbarrier::complete_tx::bytes [dst], [src], 128, [ready];\n",
+            row * 128, (unsigned long long)row * record.problem_n * 2); text += line;
+    }
+    return text + "}";
+}
+
+/* Only the issuing thread polls phase zero and invalidates the now-complete
+ * barrier. The following CTA join publishes readiness, not MMA completion. */
+static const char *VHO_DSL_pipeline_tma_wait()
+{
+    return "{\n.reg .b64 address;\n.reg .b32 ready;\n.reg .pred complete;\n"
+        "cvta.to.shared.u64 address, %0;\ncvt.u32.u64 ready, address;\n"
+        "ready_loop:\nmbarrier.try_wait.parity.acquire.cta.shared::cta.b64 complete, [ready], 0;\n"
+        "@!complete bra ready_loop;\nmbarrier.inval.shared::cta.b64 [ready];\n}";
+}
+
+/* Reuse the existing assembly constructor and preserve each actual seed's
+ * symbol identity in scratch verification. A malformed seed yields a tree
+ * mismatch rather than allocating symbols or trusting an action annotation. */
+static WN *VHO_DSL_pipeline_assembly(const char *text, WN **arguments, UINT32 count,
+    std::vector<WN *> *seeds, UINT32 *cursor, SRCPOS source)
+{
+    WN *seed = seeds && *cursor < seeds->size() ? (*seeds)[*cursor] : NULL;
+    ++*cursor;
+    if (seeds && !seed) return WN_CreateBlock();
+    WN *statement = VHO_DSL_wgmma_assembly(text, arguments, count, seed, source);
+    return statement ? statement : WN_CreateBlock();
+}
+
+/* Give a slot its own generation within a batch. The uniform odd-tail test
+ * excludes nonexistent copies, barriers, descriptors and compute groups. */
+static WN *VHO_DSL_pipeline_slot(WN *statement, UINT32 slot, const DSL_TYPED_SIMT_RECORD &record,
+    const VHO_DSL_WGMMA_BINDING &binding)
+{
+    if (!slot) return statement;
+    WN *work = WN_CreateBlock(); WN_INSERT_BlockLast(work, statement);
+    return WN_CreateIf(WN_LT(MTYPE_I8, WN_Add(MTYPE_I8, VHO_DSL_wgmma_load(binding.base),
+        VHO_DSL_wgmma_int(16)), VHO_DSL_wgmma_int(record.problem_k)), work, WN_CreateBlock());
+}
+
+/* Construct the bounded batch pipeline in WHIRL, retaining MMA4 geometry and
+ * epilogue. Reuse before overwrite is joined only after actual MMA wait zero.
+ * Scratch mode uses borrowed ASM symbols and never interns table records. */
+static WN *VHO_DSL_pipeline_build(const DSL_TYPED_SIMT_RECORD &record,
+    const DSL_NUMERICAL_CONTRACT_RECORD &numerical, const VHO_DSL_WGMMA_PIPELINE_CONTROL &control,
+    const VHO_DSL_WGMMA_PIPELINE_BINDING &pipeline, std::vector<WN *> *seeds)
+{
+    const VHO_DSL_WGMMA_BINDING &binding = pipeline.compute;
+    WN *base_seeds[2] = {NULL, NULL};
+    if (seeds) for (UINT32 index = 0; index < seeds->size(); ++index) {
+        if (!strcmp(WN_asm_string((*seeds)[index]), "fence.proxy.async.shared::cta;")) base_seeds[0] = (*seeds)[index];
+        if (!strcmp(WN_asm_string((*seeds)[index]), VHO_DSL_wgmma_atom(numerical.input_format).c_str())) base_seeds[1] = (*seeds)[index];
+    }
+    if (seeds && (!base_seeds[0] || !base_seeds[1])) return NULL;
+    WN *body = VHO_DSL_wgmma_build(record, numerical, control.compute, binding, seeds ? base_seeds : NULL);
+    if (!seeds) {
+        WN *annotation = WN_first(body); WN_EXTRACT_FromBlock(body, annotation); WN_DELETE_Tree(annotation);
+    }
+    WN *guard = WN_first(body), *work = WN_then(guard);
+    ST *inputs[] = {binding.simt.input_a, binding.simt.input_b};
+    for (UINT32 index = 0; index < 2; ++index)
+        WN_if_test(guard) = WN_CAND(WN_if_test(guard), WN_EQ(Pointer_Mtype,
+            WN_Band(Pointer_Mtype, VHO_DSL_wgmma_load(inputs[index]), WN_Intconst(Pointer_Mtype, 15)), WN_Intconst(Pointer_Mtype, 0)));
+    WN *old_loop = WN_next(WN_next(WN_first(work)));
+    WN *step = WN_CreateBlock(); UINT32 cursor = 0;
+    const BOOL tma = control.delivery == VHO_DSL_WGMMA_TMA_BULK;
+    if (tma) {
+        WN *issuer = WN_CreateBlock();
+        for (UINT32 slot = 0; slot < 2; ++slot) {
+            WN *a_index = WN_Add(MTYPE_I8, WN_Mpy(MTYPE_I8, VHO_DSL_wgmma_dim(binding.simt.block_idx, 1),
+                VHO_DSL_wgmma_int((INT64)64 * record.problem_k)), WN_Add(MTYPE_I8, VHO_DSL_wgmma_load(binding.base), VHO_DSL_wgmma_int(slot * 16)));
+            WN *b_index = WN_Add(MTYPE_I8, WN_Mpy(MTYPE_I8,
+                WN_Add(MTYPE_I8, VHO_DSL_wgmma_load(binding.base), VHO_DSL_wgmma_int(slot * 16)), VHO_DSL_wgmma_int(record.problem_n)),
+                WN_Mpy(MTYPE_I8, VHO_DSL_wgmma_dim(binding.simt.block_idx, 0), VHO_DSL_wgmma_int(64)));
+            WN *arguments[] = {VHO_DSL_wgmma_address(pipeline.raw_a, VHO_DSL_wgmma_int(slot * 1024), 2),
+                VHO_DSL_wgmma_address(pipeline.raw_b, VHO_DSL_wgmma_int(slot * 1024), 2),
+                VHO_DSL_wgmma_address(inputs[0], a_index, 2), VHO_DSL_wgmma_address(inputs[1], b_index, 2),
+                VHO_DSL_wgmma_address(pipeline.ready, VHO_DSL_wgmma_int(slot), 8)};
+            WN_INSERT_BlockLast(issuer, VHO_DSL_pipeline_slot(VHO_DSL_pipeline_assembly(
+                VHO_DSL_pipeline_tma_issue(record).c_str(), arguments, 5, seeds, &cursor, binding.simt.source_position), slot, record, binding));
+        }
+        for (UINT32 slot = 0; slot < 2; ++slot) {
+            WN *arguments[] = {VHO_DSL_wgmma_address(pipeline.ready, VHO_DSL_wgmma_int(slot), 8)};
+            WN_INSERT_BlockLast(issuer, VHO_DSL_pipeline_slot(VHO_DSL_pipeline_assembly(VHO_DSL_pipeline_tma_wait(),
+                arguments, 1, seeds, &cursor, binding.simt.source_position), slot, record, binding));
+        }
+        WN_INSERT_BlockLast(step, WN_CreateIf(WN_EQ(MTYPE_I8, VHO_DSL_wgmma_load(binding.tid), VHO_DSL_wgmma_int(0)), issuer, WN_CreateBlock()));
+        WN_INSERT_BlockLast(step, WN_Call(MTYPE_V, MTYPE_V, 0, ST_st_idx(binding.barrier)));
+    }
+    for (UINT32 slot = 0; slot < 2; ++slot) {
+        WN *copy = WN_CreateBlock();
+        WN_INSERT_BlockLast(copy, VHO_DSL_wgmma_store(binding.row, WN_Div(MTYPE_I8, VHO_DSL_wgmma_load(binding.copy), VHO_DSL_wgmma_int(16))));
+        WN_INSERT_BlockLast(copy, VHO_DSL_wgmma_store(binding.column, WN_Binary(OPR_REM, MTYPE_I8, VHO_DSL_wgmma_load(binding.copy), VHO_DSL_wgmma_int(16))));
+        WN *a_index = WN_Add(MTYPE_I8, WN_Mpy(MTYPE_I8,
+            WN_Add(MTYPE_I8, WN_Mpy(MTYPE_I8, VHO_DSL_wgmma_dim(binding.simt.block_idx, 1), VHO_DSL_wgmma_int(64)),
+                VHO_DSL_wgmma_load(binding.row)), VHO_DSL_wgmma_int(record.problem_k)),
+            WN_Add(MTYPE_I8, VHO_DSL_wgmma_load(binding.base), WN_Add(MTYPE_I8, VHO_DSL_wgmma_load(binding.column), VHO_DSL_wgmma_int(slot * 16))));
+        WN *b_index = WN_Add(MTYPE_I8, WN_Mpy(MTYPE_I8,
+            WN_Add(MTYPE_I8, VHO_DSL_wgmma_load(binding.base), WN_Add(MTYPE_I8, VHO_DSL_wgmma_load(binding.column), VHO_DSL_wgmma_int(slot * 16))), VHO_DSL_wgmma_int(record.problem_n)),
+            WN_Add(MTYPE_I8, WN_Mpy(MTYPE_I8, VHO_DSL_wgmma_dim(binding.simt.block_idx, 0), VHO_DSL_wgmma_int(64)), VHO_DSL_wgmma_load(binding.row)));
+        WN *indices[] = {a_index, b_index}; ST *shared[] = {binding.shared_a, binding.shared_b}; ST *raw[] = {pipeline.raw_a, pipeline.raw_b};
+        for (UINT32 index = 0; index < 2; ++index) {
+            WN *source_index = indices[index];
+            if (tma) {
+                WN_DELETE_Tree(source_index);
+                source_index = index ? WN_Add(MTYPE_I8, WN_Mpy(MTYPE_I8, VHO_DSL_wgmma_load(binding.column), VHO_DSL_wgmma_int(64)), VHO_DSL_wgmma_load(binding.row)) : VHO_DSL_wgmma_load(binding.copy);
+                source_index = WN_Add(MTYPE_I8, source_index, VHO_DSL_wgmma_int(slot * 1024));
+            }
+            WN_INSERT_BlockLast(copy, WN_Istore(MTYPE_U2, 0, Make_Pointer_Type(MTYPE_To_TY(MTYPE_U2)),
+                VHO_DSL_wgmma_address(shared[index], WN_Add(MTYPE_I8, VHO_DSL_wgmma_pack(binding.row, binding.column), VHO_DSL_wgmma_int(slot * 1024)), 2),
+                WN_Iload(MTYPE_U2, 0, MTYPE_To_TY(MTYPE_U2), VHO_DSL_wgmma_address(tma ? raw[index] : inputs[index], source_index, 2))));
+        }
+        WN_INSERT_BlockLast(step, VHO_DSL_pipeline_slot(VHO_DSL_wgmma_loop(binding.copy,
+            VHO_DSL_wgmma_load(binding.tid), 1024, 128, copy), slot, record, binding));
+    }
+    WN_INSERT_BlockLast(step, VHO_DSL_pipeline_assembly("fence.proxy.async.shared::cta;", NULL, 0, seeds, &cursor, binding.simt.source_position));
+    WN_INSERT_BlockLast(step, WN_Call(MTYPE_V, MTYPE_V, 0, ST_st_idx(binding.barrier)));
+    WN *two = WN_CreateBlock(), *one = WN_CreateBlock();
+    for (UINT32 branch = 0; branch < 2; ++branch) {
+        WN *arguments[] = {WN_Lda(Pointer_Mtype, 0, binding.fragment, 0), WN_Lda(Pointer_Mtype, 0, binding.shared_a, 0), WN_Lda(Pointer_Mtype, 0, binding.shared_b, 0)};
+        WN_INSERT_BlockLast(branch ? one : two, VHO_DSL_pipeline_assembly((branch ? VHO_DSL_wgmma_atom(numerical.input_format) :
+            VHO_DSL_pipeline_atom(numerical.input_format)).c_str(), arguments, 3, seeds, &cursor, binding.simt.source_position));
+    }
+    WN_INSERT_BlockLast(step, WN_CreateIf(WN_LT(MTYPE_I8, WN_Add(MTYPE_I8, VHO_DSL_wgmma_load(binding.base),
+        VHO_DSL_wgmma_int(16)), VHO_DSL_wgmma_int(record.problem_k)), two, one));
+    WN_INSERT_BlockLast(step, WN_Call(MTYPE_V, MTYPE_V, 0, ST_st_idx(binding.barrier)));
+    WN_INSERT_BlockBefore(work, old_loop, VHO_DSL_wgmma_loop(binding.base, VHO_DSL_wgmma_int(0), record.problem_k, 32, step));
+    WN_EXTRACT_FromBlock(work, old_loop); WN_DELETE_Tree(old_loop);
+    VHO_DSL_wgmma_source(body, binding.simt.source_position);
+    return body;
+}
+
+/* Bind the independent pipeline recipe to its exact source/numerical identity;
+ * inspection is never used as a substitute for checking executable operations. */
+static std::string VHO_DSL_pipeline_identity(const DSL_TYPED_SIMT_RECORD &record,
+    const DSL_NUMERICAL_CONTRACT_RECORD &numerical, const VHO_DSL_WGMMA_PIPELINE_CONTROL &control, SRCPOS source)
+{
+    char suffix[128];
+    USRCPOS position; USRCPOS_srcpos(position) = source;
+    snprintf(suffix, sizeof(suffix), " delivery=%u slots=2 groups=2 shared=%u source_line=%u", control.delivery,
+        control.delivery == VHO_DSL_WGMMA_TMA_BULK ? 16400 : 8192, USRCPOS_linenum(position));
+    std::string identity = VHO_DSL_wgmma_identity(record, numerical, control.compute);
+    identity.replace(0, strlen("MMA4_H_V1"), "MMA5_H_V1");
+    identity.replace(identity.find("smem=4096"), strlen("smem=4096"),
+        control.delivery == VHO_DSL_WGMMA_TMA_BULK ? "smem=16400" : "smem=8192");
+    return identity + suffix;
+}
+
+/* Preflight all borrowed state, construct a detached tree, postcheck, then
+ * publish once. Rejections leave both the caller output and SIMT tree intact. */
+BOOL VHO_DSL_wgmma_pipeline_materialize(const DSL_TYPED_SIMT_RECORD *record,
+    const DSL_NUMERICAL_CONTRACT_RECORD *numerical, const VHO_DSL_WGMMA_PIPELINE_CONTROL *control,
+    const VHO_DSL_WGMMA_PIPELINE_BINDING *binding, WN *simt_body, WN **body, FILE *diagnostic)
+{
+    if (!body || !VHO_DSL_pipeline_preflight(record, numerical, control, binding, diagnostic) ||
+        !VHO_DSL_typed_simt_verify(record, numerical, &binding->compute.simt, VHO_DSL_TYPED_SIMT_GRID, simt_body, diagnostic)) return FALSE;
+    WN *candidate = VHO_DSL_pipeline_build(*record, *numerical, *control, *binding, NULL);
+    WN *annotation = WN_CreateComment(VHO_DSL_pipeline_identity(*record, *numerical, *control, binding->compute.simt.source_position).c_str());
+    Set_ST_Srcpos(*WN_st(annotation), binding->compute.simt.source_position);
+    WN_Set_Linenum(annotation, binding->compute.simt.source_position); WN_INSERT_BlockFirst(candidate, annotation);
+    if (!VHO_DSL_wgmma_pipeline_verify(record, numerical, control, binding, candidate, diagnostic)) { WN_DELETE_Tree(candidate); return FALSE; }
+    *body = candidate;
+    return TRUE;
+}
+
+/* Validate real ASM operands/effects before scratch construction, compare every
+ * tree edge, and reject shared children and stale source generations. */
+BOOL VHO_DSL_wgmma_pipeline_verify(const DSL_TYPED_SIMT_RECORD *record,
+    const DSL_NUMERICAL_CONTRACT_RECORD *numerical, const VHO_DSL_WGMMA_PIPELINE_CONTROL *control,
+    const VHO_DSL_WGMMA_PIPELINE_BINDING *binding, WN *body, FILE *diagnostic)
+{
+    if (!body || !VHO_DSL_pipeline_preflight(record, numerical, control, binding, diagnostic) ||
+        WN_operator(body) != OPR_BLOCK || !WN_first(body) || WN_operator(WN_first(body)) != OPR_COMMENT ||
+        strcmp(Index_To_Str(WN_GetComment(WN_first(body))), VHO_DSL_pipeline_identity(*record, *numerical, *control, binding->compute.simt.source_position).c_str())) return FALSE;
+    std::vector<WN *> assembly; std::set<WN *> visited;
+    if (!VHO_DSL_wgmma_collect(body, assembly, visited) || assembly.size() != (control->delivery == VHO_DSL_WGMMA_TMA_BULK ? 7 : 3)) return FALSE;
+    for (UINT32 index = 0; index < assembly.size(); ++index) {
+        WN *statement = assembly[index];
+        if (WN_asm_flag(statement) != (WN_ASM_VOLATILE | WN_ASM_CLOBBERS_MEM) || WN_kid_count(statement) < 2 ||
+            WN_operator(WN_kid0(statement)) != OPR_BLOCK || WN_operator(WN_kid1(statement)) != OPR_BLOCK ||
+            WN_first(WN_kid0(statement)) || WN_first(WN_kid1(statement))) return FALSE;
+        for (INT32 kid = 2; kid < WN_kid_count(statement); ++kid)
+            if (WN_operator(WN_kid(statement, kid)) != OPR_ASM_INPUT || strcmp(WN_asm_input_constraint(WN_kid(statement, kid)), "l")) return FALSE;
+    }
+    WN *expected = VHO_DSL_pipeline_build(*record, *numerical, *control, *binding, &assembly);
+    if (!expected) return FALSE;
+    WN_INSERT_BlockFirst(expected, WN_COPY_Tree(WN_first(body)));
+    std::set<WN *> seen; BOOL valid = VHO_DSL_wgmma_same(body, expected, seen);
+    WN_DELETE_Tree(expected); return valid;
+}
+
+/* Inspection names actual finite groups and separate ready/done/reuse joins;
+ * no elapsed time, GPU accuracy or automatic selection is inferred. */
+BOOL VHO_DSL_wgmma_pipeline_print(FILE *file, const DSL_TYPED_SIMT_RECORD *record,
+    const DSL_NUMERICAL_CONTRACT_RECORD *numerical, const VHO_DSL_WGMMA_PIPELINE_CONTROL *control,
+    const VHO_DSL_WGMMA_PIPELINE_BINDING *binding, WN *body)
+{
+    if (!file || !VHO_DSL_wgmma_pipeline_verify(record, numerical, control, binding, body, NULL)) return FALSE;
+    fprintf(file, "# What it summarizes: MMA5-H bounded two-slot batches; TMA ready is not MMA done; default SIMT and timing unknown.\n");
+    fprintf(file, "AI_WGMMA_PIPELINE 1 CONTRACT %s\n", VHO_DSL_pipeline_identity(*record, *numerical, *control, binding->compute.simt.source_position).c_str());
+    USRCPOS position; USRCPOS_srcpos(position) = binding->compute.simt.source_position;
+    fprintf(file, "AI_WGMMA_PIPELINE 1 ACTION batches=%u atoms=%u slots=2 max_groups=2 tail_groups=%u delivery=%u ready_join=%u mma_done=wait_zero reuse=CTA_after_MMA_done accumulator_read=after_wait default=SIMT timing=unknown source_line=%u\n",
+        (record->problem_k / 16 + 1) / 2, record->problem_k / 16, record->problem_k / 16 % 2 ? 1 : 2,
+        control->delivery, control->delivery == VHO_DSL_WGMMA_TMA_BULK, USRCPOS_linenum(position));
     return !ferror(file);
 }
