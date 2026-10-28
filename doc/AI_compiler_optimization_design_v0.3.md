@@ -4,6 +4,16 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-28 LayerNorm reference-arithmetic decision:
+[LN-REF-1](AI-COMPILER-LAYERNORM-REFERENCE-ARITHMETIC-v0.1.md) defines ascending
+positive-zero FP32 folds with exact count and one final division per mean,
+then separately rounded sqrt and reciprocal division. RNE/gradual/no-trap,
+exact non-NaN bits/signed zeros and NaN-class observations are explicit.
+This is a separate reference definition, never resolution of native v1's
+unknowns. The implementation plan splits LN1 into defined arithmetic and open
+native admission, target carriers, oracle and integrated evidence. No source,
+binary schema, option, emitter support or GPU claim changes in this amendment.
+
 2026-10-28 LayerNorm planning proposal:
 [LayerNorm common-execution detail v0.1](AI-COMPILER-LAYERNORM-OPTIMIZATION-DESIGN-v0.1.md)
 separates source-compatible storage/schedule alternatives from authorized

@@ -32,6 +32,11 @@ summaries. No new normalization executable support or generic P8 allocator is
 claimed. Reduction profitability/lowering proceeds independently in the coding
 chat; shared services must be reused rather than duplicated.
 
+Its separate [LN-REF-1 arithmetic definition](AI-COMPILER-LAYERNORM-REFERENCE-ARITHMETIC-v0.1.md)
+now fixes ordered mean finalization and the two-rounding sqrt/div reference.
+Native v1 remains unresolved; reference definition, authorized native binding,
+target conformance and candidate profitability remain separate gates.
+
 The initial analysis scope is one canonical region in an active PU. PREOPT
 provides canonical form; VHO owns PU-local semantic analysis and planning;
 canonical-loop dependence/locality work uses LNO services. WOPT owns its

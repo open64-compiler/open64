@@ -8,6 +8,14 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-28 LayerNorm reference arithmetic defined:
+[LN-REF-1](AI-COMPILER-LAYERNORM-REFERENCE-ARITHMETIC-v0.1.md) fixes positive-zero
+ascending FP32 means with exact N and one final division, plus separately
+rounded sqrt then reciprocal division; RNE/gradual/no-trap and exact non-NaN
+bits/NaN-class observations. LN1-a design is specified; native admission,
+carriers, oracle and integrated evidence remain open. V1/Python semantics stay
+unresolved and unchanged. No code, option, target profile or GPU evidence added.
+
 2026-10-28 concurrent work split: **Code AI optimizations** has been assigned
 reduction R2-d/R2-e complete costs, selection and executable WHIRL/CUDA on an
 isolated branch. Assignment is not gate completion. This design chat starts

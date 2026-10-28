@@ -2,6 +2,12 @@
 
 Version v0.1 | 2026-10-28 | Design proposal for review; no new executable support
 
+Arithmetic amendment, 2026-10-28: the separate
+[LN-REF-1 reference binding](AI-COMPILER-LAYERNORM-REFERENCE-ARITHMETIC-v0.1.md)
+now defines both means, sqrt-then-divide reciprocal square root and the FP32
+environment. This resolves the reference-design choice, not native v1's
+unknowns or the implementation/target gates.
+
 ## 1. Decision, Scope And Evidence
 
 Design LayerNorm now, concurrently with reduction profitability and executable
@@ -82,7 +88,9 @@ add is not contracted to FMA. Current attributes include `reassociate=false`,
 An ordered-sum service alone does not bind a mean: sum-then-divide and scaling
 each summand can round differently.
 
-Before executable selection, bind all of the following:
+Before executable selection, the native/target implementation must establish
+all of the following; LN-REF-1's numerical choices are now explicitly defined
+in the separate reference specification:
 
 1. Both mean identities, update/order or tree, FP32 count conversion,
    division/reciprocal and scaling placement, including very large N.
@@ -108,13 +116,32 @@ variance clamp, NaN repair or epsilon relocation is implicit. For N=1, do not
 replace the computation with beta without proving exceptional-value and
 signed-zero behavior under the selected binding.
 
-For LN1 review, prefer an explicitly bound centered reference recipe before
-authorizing algorithm changes: reuse ordered-sum arithmetic, define count
-conversion and one separately rounded mean-finalization division, and bind a
-specific rsqrt contract. This is a proposed opt-in reference, not asserted
-equivalence to current Python mean/rsqrt and not a new registered v2. If exact
-source-compatible primitive bindings are available instead, preserve their
-actual order/scaling/rsqrt policy rather than replacing them with this proposal.
+LN-REF-1 fixes the centered reference before algorithm changes:
+
+```text
+n32 = exact_binary32(N), 1 <= N <= 2^24
+mu = div32(ascending_add32_fold_from_positive_zero(X), n32)
+d[k] = sub32(X[k], mu)
+v = div32(ascending_add32_fold_from_positive_zero(mul32(d[k], d[k])), n32)
+t = add32(v, epsilon)
+h = sqrt32(t)
+q = div32(+1_f32, h)
+```
+
+All operations are separately rounded binary32 RNE with gradual underflow;
+traps/flags are unobservable, NaN comparison is class-only and all non-NaN
+results require exact bits, including signed zeros. Epsilon stays an exact
+positive finite binary32 value, including subnormals. Epilogue multiplies/add
+remain separate. All X/gamma/beta bit patterns are admitted; no finite-only
+repair is introduced. The width bound makes denominator conversion exact and
+does not restrict existing v1. q has two specified rounding points, not a
+single correctly rounded reciprocal sqrt or hardware approximate rsqrt.
+
+This explicit reference does not assert current Python mean/rsqrt equivalence
+and is not a registered native v2. A future producer needs an authorized native
+contract; the source matcher continues to emit unbound v1. Exact compatible
+source primitive bindings, if established separately, retain their own actual
+order/scaling/rsqrt rather than being silently replaced by LN-REF-1.
 
 ## 4. Alternatives And Delayed Transformation
 
@@ -308,6 +335,10 @@ Count subtraction/square/affine, additions, division/rsqrt, address/mask issue,
 exchanges and synchronization separately. Preserve dependent-add latency in
 bound statistics. Welford divisions/merge chains are not modeled by a GEMM FLOP
 count. Use scalar and special-function resources, not Tensor Core peak rates.
+
+For LN-REF-1 explicitly cost two mean-finalization divisions plus one square
+root and one reciprocal division per row, in addition to the folds and
+elementwise work. A single approximate-rsqrt latency does not model this path.
 
 Evaluate a deterministic resource-constrained schedule over typed events:
 
@@ -503,8 +534,8 @@ are implemented here; preserve existing AI_NORM FORM/FACT and trace-off checks.
 | Gate | Deliverable / acceptance boundary | Status |
 | --- | --- | --- |
 | LN0 | Review semantics, alternatives, lifetimes and costs in this document. | Proposed; native/source R1 evidence exists, not executable optimization. |
-| LN1 | Explicit mean/rsqrt/environment binding with source compatibility or separately authorized native contract; preserve v1. | Open; needs reduction interfaces, not GPU certification. |
-| LN2 | Read-only C0/C1/C2 plans, exact traffic/resources/events and refusal cases; reject C3 under v1. | Open after LN1; reuse common/reduction services. |
+| LN1 | LN-REF-1 ordered means, exact count/final division, sqrt-then-divide, RNE/gradual/class-only-NaN environment; separately authorized native contract, carriers and oracle required. Preserve v1. | Arithmetic design specified; native admission/target binding/oracle implementation open. See the LN1 sub-gates in the implementation plan. |
+| LN2 | Read-only C0/C1/C2 plans, exact traffic/resources/events and refusal cases; reject C3 under v1 and LN-REF-1. | Open after LN1 native prerequisites; reuse common/reduction services. |
 | LN3 | Complete costs, independent event/model oracle, analytical winner/fallback and trace auditor. | Open; reuse reduction profitability. |
 | LN4 | Selected high-level WHIRL, guards, CUDA emission and mapped before/after evidence. | Open; reuse reduction lowering; initial non-TMA scope. |
 | LN5 | Separately authorized parallel statistics, RF retention, Welford or async/TMA refinements. | Deferred until base semantics/executable alternatives are reviewed. |
@@ -547,11 +578,13 @@ receipts. No compiler artifact is fabricated for this design-only increment.
 
 ## 10. Open Review Decisions
 
-1. Bind source mean/rsqrt through a fixed compatible primitive contract, or an
-   explicitly authorized native binding? Decide before lowering, not in emitter.
-2. Which exceptional-value, zero, subnormal and observational policies are
-   normative initially? Finite-only specialization needs proof/guard, a same-
-   boundary fallback and the cost of any input scan.
+1. LN-REF-1 arithmetic is defined separately from v1. Review the exact new
+   native version/attributes and producer admission before implementation;
+   no numerical choice remains for the emitter to invent.
+2. LN-REF-1 binds exceptional/signed-zero/subnormal observations without a
+   finite-only restriction. Any later application-specific real-error policy
+   or narrower specialization needs explicit acceptance/proof/guard/fallback
+   and accounting for its runtime checks.
 3. First mapping: row-thread C0/C1 or CTA-row C0/C2? Compare coalescing, serial
    statistics and resources rather than choosing by bytes alone.
 4. Which scalar/div/rsqrt/issue/queue profile fields need extension, and which
