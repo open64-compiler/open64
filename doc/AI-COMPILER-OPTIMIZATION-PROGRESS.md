@@ -21,8 +21,13 @@ Twenty delivery/type/shape cases compile 40 before/after kernels; 80 host runs,
 independent model corners pass. The native TMA wait carries explicit acquire
 and CTA scope. SIMT stays default. Cross-batch delivery/compute overlap,
 general frontend integration, GPU arithmetic and native timing remain open.
-Local commit only; no push or PR requested. See retained receipt
-`/private/tmp/open64-mma5-h-review-20261027/acceptance-verified/`.
+Local commit only; no push or PR requested. Checkpoint `913eeb62` now has an
+immutable primary receipt and an isolated retained-source/binary/offline-CUDA
+replay. Forty-three fresh F32/typed-SIMT/MMA4 configurations retain 86 identical
+full source-interleaved dumps; four prior-reader reopens pass. Durable replay
+authenticates 3000 files, reaudits all twenty cases, reruns two producers,
+recompiles four CUDA kernels and passes four host protocol checks. See the
+[MMA5-H durable acceptance record](AI-COMPILER-MMA5-H-HOPPER-PIPELINE.md#durable-acceptance-record).
 
 2026-10-27 MMA4-H increment, from merged MMA3 PR197 (`c5aec7b1`):
 [First Hopper lowering](AI-COMPILER-MMA4-H-HOPPER-LOWERING.md) adds an explicit

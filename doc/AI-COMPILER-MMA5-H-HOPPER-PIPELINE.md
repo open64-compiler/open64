@@ -143,8 +143,9 @@ GPU or ISA arithmetic simulation. Python independently recomputes complete
 cost/occupancy/ranking corners. Event removal tests distinguish raw readiness,
 async readers, finite groups, result access and reuse.
 
-The final accepted local evidence is retained at
-`/private/tmp/open64-mma5-h-review-20261027/acceptance-verified/`. It covers 20
+The final producer staging run is retained at
+`/private/tmp/open64-mma5-h-review-20261027/acceptance-verified/`; the durable
+receipt below is the authoritative accepted copy. It covers 20
 F16/BF16 and cooperative/TMA shape-delivery cases, 40 before/after native
 CUDA kernels, 80 host geometry/protocol runs, 1100 preflight negatives, 2474
 tree mutations, 210 independent emitted-source corruptions and 660 independent
@@ -161,3 +162,48 @@ kernel/invocation timing remain **unverified/unknown**. No performance or
 absence-of-local-memory claim follows. Existing full-builder/FHE gaps are not
 repaired or waived. MMA4-B, generalized cross-batch overlap and MMA6 automatic
 promotion remain separate work. Local commit only; no push or PR requested.
+
+## Durable Acceptance Record
+
+Implementation checkpoint `913eeb6222033437a70cf89bcf3b3bef5890d8e1` is based on
+merged PR198, `ab3afb7d`. The primary immutable receipt is:
+
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/mma5-h/hopper-pipeline/sha256-918b858dd003233d329f71c90bc3b6fe1444826414d06dfd4579eb77ba727419/`
+
+It retains 3000 authenticated files: accepted pipeline artifacts, exact
+committed source snapshots, producer/reader/emitter/backend binaries,
+NVIDIA-checksummed CUDA 12.8.1 archives, commands, phase reports and logs.
+Fresh compatibility runs cover fifteen F32, eighteen typed SIMT and ten MMA4
+configurations. All 86 full `ir_b2a -st -src` dumps match the authenticated
+MMA4 receipt; CUDA bodies match except translator dates, and F32
+cost/selection/compute/shadow rows remain identical. Raw image byte differences
+are retained without normalization or byte-equality claims. The typed suite
+passes 88 execution runs; the original MMA4 suite passes forty host checks and
+twenty CUDA compiles. Backend dependencies remain the same five libraries;
+frontend-builder and JsonCpp symbols remain absent from shared consumers.
+
+- [Acceptance summary](/Users/shinmingliu/open64/artifacts/review/ai-optimization/mma5-h/hopper-pipeline/sha256-918b858dd003233d329f71c90bc3b6fe1444826414d06dfd4579eb77ba727419/summary.log)
+- [BF16 TMA odd-tail source-interleaved WHIRL](/Users/shinmingliu/open64/artifacts/review/ai-optimization/mma5-h/hopper-pipeline/sha256-918b858dd003233d329f71c90bc3b6fe1444826414d06dfd4579eb77ba727419/acceptance/pipeline/delivery-2-format-6-odd/hopper.after.T)
+- [Default and MMA4 compatibility report](/Users/shinmingliu/open64/artifacts/review/ai-optimization/mma5-h/hopper-pipeline/sha256-918b858dd003233d329f71c90bc3b6fe1444826414d06dfd4579eb77ba727419/acceptance/compatibility/report.json)
+
+The independently published replay receipt is:
+
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/mma5-h/reopen/sha256-3fdf625491fd85825dd51628683cf94f100c104023eb584d860dcc3ea7e849db/`
+
+It authenticates the primary files, reaudits all twenty pipeline cases and 660
+model corners, reruns copied producers for F16 cooperative and BF16 TMA
+odd-tail cases, and obtains four byte-identical full dumps through both current
+and prior readers. Four CUDA kernels recompile and four host geometry/protocol
+checks pass. Networking is disabled; the original build and working source
+tree are not mounted. The retained C++ fixture snapshot must be mounted at
+`/open64` to honor the DST source pathname. The replay command records that
+alias. A prior incomplete invocation and its missing-source diagnostic remain
+retained; no accepted dump omits source interleave. Final-path verification
+authenticates 3066 primary/replay files and reopens four images identically.
+
+[Independent replay verification](/Users/shinmingliu/open64/artifacts/review/ai-optimization/mma5-h/reopen/sha256-3fdf625491fd85825dd51628683cf94f100c104023eb584d860dcc3ea7e849db/verification.json)
+
+The primary checkout's local `artifacts/review/INDEX.md` and `index.json` index
+both accepted receipts and the retained earlier candidate. No generated
+artifact is added to Git. GPU arithmetic, runtime resources, native timing,
+automatic promotion and cross-batch overlap remain outside this acceptance.
