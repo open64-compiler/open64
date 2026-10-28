@@ -196,3 +196,13 @@ Keep this receipt separate from the earlier six-fixture capture receipt and
 R0 synthetic planning demonstration. Replaying retained source checks the
 semantic/numerical report and exact per-case graph/input/result evidence,
 not native execution or target performance.
+
+## 8. Native Stable Softmax Follow-On
+
+The [native stable-Softmax contract](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md)
+now preserves the bounded FP32 max/subtract/exp/sum/divide recipe and derives
+state/access/numerical facts from canonical WHIRL at PREOPT entry/exit. This is
+separate from the source graph matcher: its Python ingestion connection is
+still open. Native identity does not promote CPU sample agreement into a
+general accuracy proof or authorize online-state merge. Exact reduction order,
+exp approximation/exception behavior and executable lowering remain unbound.

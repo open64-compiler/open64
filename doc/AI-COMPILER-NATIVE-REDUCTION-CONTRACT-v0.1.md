@@ -107,7 +107,10 @@ Use separate directories for ASCII `.T` and trace `.t` on case-insensitive hosts
 3. Compare ordered SIMT and permitted parallel realizations with complete
    storage/event constraints, numerical tests and profitability evidence.
 4. Lower the selected executable plan into WHIRL; then emit device code from it.
-5. Extend stable Softmax and mean/variance normalization independently of MMA1.
+5. Native stable Softmax representation/characterization is now specified in
+   [its separate contract](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md).
+   Python Softmax ingestion and native mean/variance normalization remain next
+   gates, independent of MMA1.
 
 ## Reproduction and validation
 

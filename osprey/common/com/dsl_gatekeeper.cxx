@@ -669,6 +669,7 @@ DSL_Gatekeeper_Required_Attributes
     DSL_OPERATOR dsl_operator =
         (DSL_OPERATOR)descriptor->logical_operator;
     BOOL exact_schema = dsl_operator == OPR_DSLREDUCESUM ||
+                        dsl_operator == OPR_DSLSTABLESOFTMAX ||
                         dsl_operator == OPR_DSLRESHAPE ||
                         dsl_operator == OPR_DSLTRANSPOSE ||
                         dsl_operator == OPR_DSLTOKENEMBEDDING ||
@@ -978,6 +979,14 @@ DSL_Gatekeeper_Verify_Native_Node
         }
     }
 
+    if (dsl_operator == OPR_DSLSTABLESOFTMAX &&
+        (!shape_ready || !image_valid || first_operand_ty == TY_IDX_ZERO ||
+         !DSL_Gatekeeper_Shape_Valid
+              (dsl_operator, logical_opcode.effective_version,
+               &image_node, operand_types, result_ty)))
+        valid = DSL_Gatekeeper_Report
+                    (context, "OPR_DSLSTABLESOFTMAX.v1 requires a canonical "
+                     "static FP32 subtract-row-max contract");
     if (dsl_operator == OPR_DSLREDUCESUM &&
         (!shape_ready || !image_valid || first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid

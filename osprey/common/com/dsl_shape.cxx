@@ -1466,7 +1466,63 @@ DSL_Shape_Reduce_Sum_Result
                (operands[0], result_ty, axis, keepdim, accum, reassociate);
 }
 
+/* Check only static descriptors and the exact source-recipe permissions.
+ * No exp implementation, exceptional-value policy or FP merge is inferred. */
+BOOL
+DSL_Shape_Stable_Softmax_Types_Valid
+    (TY_IDX operand_ty, TY_IDX result_ty, const char *axis,
+     const char *accum_dtype, const char *reassociate,
+     const char *state_reformulation, const char *exp_semantics)
+{
+    UINT64 input[2], output[2];
+    UINT32 input_rank = 0, output_rank = 0;
+    return DSL_Shape_Tensor_Core_Complete(operand_ty) &&
+           DSL_Shape_Tensor_Core_Complete(result_ty) &&
+           axis != NULL && strcmp(axis, "1") == 0 &&
+           accum_dtype != NULL && strcmp(accum_dtype, "float32") == 0 &&
+           reassociate != NULL && strcmp(reassociate, "false") == 0 &&
+           state_reformulation != NULL &&
+           strcmp(state_reformulation, "false") == 0 &&
+           exp_semantics != NULL &&
+           strcmp(exp_semantics, "source_unresolved") == 0 &&
+           TY_tensor_rank(operand_ty) == 2 && TY_tensor_rank(result_ty) == 2 &&
+           strcmp(TY_tensor_attribute(operand_ty, TY_TENSOR_SCHEMA_DTYPE),
+                  "float32") == 0 &&
+           DSL_Shape_TY_Valid(TY_tensor_element_ty(operand_ty)) &&
+           TY_mtype(TY_tensor_element_ty(operand_ty)) == MTYPE_F4 &&
+           DSL_Shape_Tensor_Element_Representation_Compatible
+               (operand_ty, result_ty) &&
+           DSL_Shape_Parse_Static_Dimensions
+               (TY_tensor_attribute(operand_ty, TY_TENSOR_SCHEMA_SHAPE),
+                input, 2, &input_rank) && input_rank == 2 &&
+           DSL_Shape_Parse_Static_Dimensions
+               (TY_tensor_attribute(result_ty, TY_TENSOR_SCHEMA_SHAPE),
+                output, 2, &output_rank) && output_rank == 2 &&
+           input[0] > 0 && input[1] > 0 &&
+           output[0] == input[0] && output[1] == input[1];
+}
+
+/* Adapt managed attributes to the same verifier used before builder allocation. */
+static BOOL
+DSL_Shape_Stable_Softmax_Result
+    (const DSL_IR_NODE_RECORD *node, const std::vector<TY_IDX> &operands,
+     TY_IDX result_ty, UINT16 version)
+{
+    const char *axis = NULL, *accum = NULL, *reassociate = NULL;
+    const char *reformulation = NULL, *exp = NULL;
+    return node != NULL && node->attribute_count == 5 && version == 1 &&
+           operands.size() == 1 &&
+           DSL_Shape_Node_Attribute(node, "attr.axis", &axis) &&
+           DSL_Shape_Node_Attribute(node, "attr.accum_dtype", &accum) &&
+           DSL_Shape_Node_Attribute(node, "attr.reassociate", &reassociate) &&
+           DSL_Shape_Node_Attribute(node, "attr.state_reformulation", &reformulation) &&
+           DSL_Shape_Node_Attribute(node, "attr.exp_semantics", &exp) &&
+           DSL_Shape_Stable_Softmax_Types_Valid
+               (operands[0], result_ty, axis, accum, reassociate, reformulation, exp);
+}
+
 static const DSL_SHAPE_RULE_ENTRY DSL_shape_rules[] = {
+    { OPR_DSLSTABLESOFTMAX, 1, DSL_Shape_Stable_Softmax_Result },
     { OPR_DSLREDUCESUM, 1, DSL_Shape_Reduce_Sum_Result },
     { OPR_DSLADD, 1, DSL_Shape_Broadcast_Result },
     { OPR_DSLMATMUL, 1, DSL_Shape_Matmul_Result },
@@ -2721,6 +2777,14 @@ DSL_Shape_Infer_Operator
 
     BOOL valid = FALSE;
     switch (input->dsl_operator) {
+    case OPR_DSLSTABLESOFTMAX: {
+        std::vector<TY_IDX> operands(input->operand_types,
+                                    input->operand_types + input->operand_count);
+        valid = DSL_Shape_Stable_Softmax_Result
+                    (input->node, operands, input->result_ty, input->version) &&
+                DSL_Shape_Fact_From_Type(input->result_ty, result);
+        break;
+    }
     case OPR_DSLREDUCESUM: {
         std::vector<TY_IDX> operands(input->operand_types,
                                     input->operand_types + input->operand_count);

@@ -108,6 +108,13 @@ extern BOOL DSL_Shape_Reduce_Sum_Types_Valid
                                  const char *axis, const char *keepdim,
                                  const char *accum_dtype,
                                  const char *reassociate);
+
+/* Static FP32 subtract-row-max Softmax, not a generic framework Softmax.
+ * Policy-free contract: AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md. */
+extern BOOL DSL_Shape_Stable_Softmax_Types_Valid
+    (TY_IDX operand_ty, TY_IDX result_ty, const char *axis,
+     const char *accum_dtype, const char *reassociate,
+     const char *state_reformulation, const char *exp_semantics);
 extern BOOL DSL_Shape_Parse_Static_Dimensions
                                 (const char *shape,
                                  UINT64 *dimensions,

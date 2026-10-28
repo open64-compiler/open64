@@ -2,6 +2,10 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/* PU-local semantic bridge and transient canonical-WHIRL characterization.
+ * Contracts: doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md and
+ * doc/AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md. No persisted fact layout. */
+
 #ifndef opt_dsl_INCLUDED
 #define opt_dsl_INCLUDED
 
@@ -59,6 +63,49 @@ extern BOOL WOPT_DSL_characterize_reduction
  * Optional trace is supplied only under existing AI trace controls.
  * See doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md. */
 extern BOOL WOPT_DSL_verify_reduction_forms
+    (WN *tree, const char *phase, FILE *diagnostic, FILE *trace);
+
+/* Transient PU-local stable-Softmax facts; no storage or algorithm choice.
+ * The v1 recipe is max/subtract/exp/sum/divide, not an online (m,l) merge.
+ * See doc/AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md. */
+enum {
+  WOPT_DSL_SOFTMAX_INPUT_READ_ONLY = 1U << 0,
+  WOPT_DSL_SOFTMAX_REASSOC_FORBIDDEN = 1U << 1,
+  WOPT_DSL_SOFTMAX_REFORMULATION_FORBIDDEN = 1U << 2,
+  WOPT_DSL_SOFTMAX_ORDER_UNRESOLVED = 1U << 3,
+  WOPT_DSL_SOFTMAX_FINITE_UNPROVEN = 1U << 4,
+  WOPT_DSL_SOFTMAX_OVERFLOW_UNPROVEN = 1U << 5,
+  WOPT_DSL_SOFTMAX_ACCURACY_UNPROVEN = 1U << 6,
+  WOPT_DSL_SOFTMAX_ALIAS_UNPROVEN = 1U << 7,
+  WOPT_DSL_SOFTMAX_STORAGE_UNPLANNED = 1U << 8,
+  WOPT_DSL_SOFTMAX_OUTPUT_OWNER_PER_ROW = 1U << 9,
+  WOPT_DSL_SOFTMAX_EXP_UNRESOLVED = 1U << 10,
+  WOPT_DSL_SOFTMAX_EXCEPTION_UNRESOLVED = 1U << 11,
+  WOPT_DSL_SOFTMAX_STABLE_F32_ROWS_V1 = 1
+};
+
+typedef struct {
+  UINT32 recipe;
+  UINT32 flags;
+  ST_IDX owner_pu;
+  UINT32 node_id;
+  UINT32 input_value_id;
+  UINT32 result_value_id;
+  TY_IDX input_ty;
+  TY_IDX result_ty;
+  UINT64 rows;
+  UINT64 width;
+  UINT32 source_line;
+} WOPT_DSL_SOFTMAX_CHARACTERIZATION;
+
+/* Validate active whole-PU membership and native joins; never publish partial
+ * facts or consult Python/debug metadata. REGION/cross-PU queries fail. */
+extern BOOL WOPT_DSL_characterize_softmax
+    (WN *scope, WN *assignment, WOPT_DSL_SOFTMAX_CHARACTERIZATION *output,
+     FILE *diagnostic);
+
+/* PREOPT verifies before import and after emission even with tracing off. */
+extern BOOL WOPT_DSL_verify_softmax_forms
     (WN *tree, const char *phase, FILE *diagnostic, FILE *trace);
 
 typedef UINT32 WOPT_DSL_SEMANTIC_INFO_ID;

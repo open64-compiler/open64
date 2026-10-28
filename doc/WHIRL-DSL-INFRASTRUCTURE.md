@@ -2119,3 +2119,18 @@ an expression-equivalence key. PREOPT rederives it with or without trace output;
 physical planning and FP32 algorithm permissions are not inferred from the
 mathematical recipe. Scope/invalid-input queries leave IR and caller output
 unchanged. The detail contract defines the additive FACT trace and audit rules.
+
+### R1 Native Stable Softmax (2026-10-27)
+
+The [native stable-Softmax contract](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md)
+appends logical ID 38 without changing physical WN or mapped-image layout.
+It preserves the explicit FP32 subtract-row-max source recipe, not the meaning
+of the preexisting generic `common.softmax` marker. The native unary typed
+assignment has one direct operand and five exact attributes. Common owns
+structural verification; WOPT derives transient state/access/numerical facts
+within the active whole PU. PREOPT verifies both boundaries and opaque WOPT
+emission preserves managed/direct operand joins. No online merge, exp
+approximation, reduction order, physical storage or accuracy proof is inferred.
+Distinct `AI_SOFTMAX`/`AI_SOFTMAX_FACT` records retain source line last and the
+existing AI trace controls. Native .B/.T inspection does not claim Python
+Softmax ingestion or executable VHO lowering; the latter still fails closed.

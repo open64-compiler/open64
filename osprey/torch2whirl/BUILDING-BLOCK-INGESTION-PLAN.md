@@ -5,6 +5,10 @@ validation and real FX census implemented; general native WHIRL ingestion open.
 Exact static FP32 row-sum native ingestion is now implemented and inspected
 through the public API and standalone driver; executable reduction lowering
 and native ingestion for the other new row blocks remain open.
+The [native stable-Softmax contract](../../doc/AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md)
+and its canonical-WHIRL characterization are now implemented independently
+of source ingestion. The next frontend gate connects the exact decomposed
+stable-Softmax matcher, not an opaque framework Softmax, to that contract.
 Controlling architecture: [common execution planning](../../doc/AI-COMPILER-COMMON-EXECUTION-PLANNING.md),
 [frontend workflow](../../doc/WHIRL-DSL-INFRASTRUCTURE.md) and
 [building-block research queue](../../doc/AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#building-block-research-queue).

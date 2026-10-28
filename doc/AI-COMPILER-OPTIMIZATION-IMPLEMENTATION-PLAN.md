@@ -112,7 +112,7 @@ certification. Follow the
 | Gate | Deliverable and evidence | Status |
 | --- | --- | --- |
 | R0 | GEMM, reduction, stable Softmax and mean/variance normalization: two specified legal-under-contract realizations each, ownership/state characterization, storage/events and full declared-model costs. | Research demo passed: 21 tests, 32 synthetic candidate comparisons, 16 decisions, nine host numerical checks. No new production lowering. |
-| R1 | Representative frontend capture/operator census and canonical WHIRL characterization using existing services. | Six-fixture capture and source-derived row characterization/numerical witnesses implemented. Bounded native static FP32 row-sum contract and actual PREOPT entry/exit verification implemented; general canonical-WHIRL characterization remains open. See the [native reduction contract](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md). |
+| R1 | Representative frontend capture/operator census and canonical WHIRL characterization using existing services. | Six-fixture capture and source-derived row characterization/numerical witnesses implemented. Bounded native static FP32 row-sum and stable-Softmax contracts and actual PREOPT characterization implemented; general forms remain open. See the [native reduction](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md) and [native Softmax](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md) contracts. |
 | R2 | Shared state/equivalence/numerical contracts and bounded algorithm-alternative generation. | Open; strict FP and unsupported-state failures required. |
 | R3 | General P8 access-lifetime, range-alias, storage-interference/packing and symbolic event/progress proof. | Open; fixed F32 slot protocol remains the implemented baseline. |
 | R4 | Real target costs, complete-plan choice, selected WHIRL transformation, before/after mapped reopen and emitted CUDA. | Open for general cases; preserve existing GEMM controls/fallbacks. |
@@ -130,7 +130,7 @@ R1 sub-gates, kept independent of MMA1's contracts/target profiles:
 | R1-a: source fixtures/census | Implemented for all six blocks. | Preserve exact source/FX/shape/argument census and explicit native gaps. |
 | R1-b: source semantic derivation | Implemented for exact rank-2 FP32 row reduction, stable Softmax and affine LayerNorm, in that order. No model-name dispatch or graph mutation. | Report output/reduction domains, logical accesses, alias/effect facts, state/merge/finalize recipe, epsilon/denominator, ownership obligations, graph fingerprint and unresolved conditions. |
 | R1-c: numerical witnesses | Implemented strict/permitted CPU comparisons with independent FP64 oracles, adversarial cancellation/overflow and unsafe-formulation negatives. No compiler authorization from sample agreement. | Report permission rejection separately from numerical/domain rejection; retain thresholds/errors, source as well as alternative failures, exact inputs/results and remaining general-accuracy obligations. |
-| R1-d: native canonical characterization | Partial: exact Python row-sum ingestion, canonical native form and WHIRL-derived row-sum state/access/numerical characterization implemented. Native Softmax/LayerNorm, general forms and executable lowering remain open. | Native API fixture and five authenticated Python/driver `.B/.T` inputs; FORM plus additive FACT traces, strict entry/exit audit and source lines. `semantic.log` reports state recipe, logical accesses, alias/owner obligations, numerical permissions and unknowns without physical traffic or executable-plan claims. |
+| R1-d: native canonical characterization | Partial: exact Python row-sum ingestion and native row-sum/stable-Softmax contracts with WHIRL-derived state/access/numerical characterization implemented. Python Softmax ingestion, native LayerNorm, general forms and executable lowering remain open. | Native row-sum/Softmax API fixtures and five authenticated Python row-sum/driver `.B/.T` inputs; separate FORM/FACT tags, strict entry/exit audit and source lines. `semantic.log` reports state recipe, logical accesses, alias/owner obligations, numerical permissions and unknowns without physical traffic or executable-plan claims. |
 
 R1-b/c produce analysis-only `semantic-summary.log`, not compiler `.t` or a
 transformation report. No candidate is selected, no physical plan is costed,
@@ -146,8 +146,12 @@ R1-d next sequence, independent of MMA1:
    from canonical native WHIRL. No FX/sample/debug fact is authoritative.
    Generalize axes/types only through separately reviewed contracts; carry
    strict permissions and explicit unknowns into later legality/selection.
-3. Publish native stable Softmax and normalization forms with explicit
-   numerical permissions and broadcast/state obligations.
+3. Completed for bounded native stable Softmax: explicit FP32
+   max/subtract/exp/sum/divide contract, active-PU PREOPT preservation and
+   canonical-WHIRL characterization. See the
+   [native Softmax contract](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md).
+   Connect the exact Python stable-Softmax matcher next; then publish native
+   normalization forms with explicit numerical and broadcast/state obligations.
 4. Only then compare legal executable alternatives and lower the selected
    plan into WHIRL. Verification-only trace events do not count as optimizer
    actions. REGION support must be explicit, never inferred by whole-PU traversal.

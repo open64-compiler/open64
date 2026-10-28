@@ -4,6 +4,15 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-27 native stable-Softmax amendment:
+[Native stable Softmax and canonical WHIRL characterization](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md)
+adds the bounded FP32 max/subtract/exp/sum/divide contract and derives native
+state/access/numerical facts at PREOPT entry/exit. No online-state or relaxed-FP
+permission is inferred; exp/order/exception/accuracy/storage obligations remain
+explicit. Controlled compact traces and audited phase reports preserve R1's
+conventions. Python Softmax ingestion and executable lowering remain open;
+MMA1 is unchanged.
+
 2026-10-27 native characterization amendment:
 [Canonical-WHIRL row-sum characterization](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md#canonical-whirl-characterization-2026-10-27)
 now derives state, logical accesses and strict numerical obligations from

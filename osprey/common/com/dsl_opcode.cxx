@@ -154,7 +154,8 @@ static const char *DSL_operator_name[] = {
     "OPR_DSLCKKSMODSWITCH",
     "OPR_DSLCKKSRELIN",
     "OPR_DSLCKKSBOOTSTRAP",
-    "OPR_DSLREDUCESUM"
+    "OPR_DSLREDUCESUM",
+    "OPR_DSLSTABLESOFTMAX"
 };
 
 static const char *DSL_fusion_iteration_class_name_table[] = {
@@ -487,7 +488,11 @@ static const DSL_COMMON_OPCODE_SEED DSL_common_opcode_seed[] = {
     { "common.rem", DSL_OPCODE_CATEGORY_EXECUTABLE,
         DSL_OPCODE_LEVEL_2_NUMERIC, 2,
         DSL_SHAPE_RULE_BROADCAST, DSL_EFFECT_MODEL_PURE,
-        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_REM" }
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_REM" },
+    { "common.stable_softmax", DSL_OPCODE_CATEGORY_EXECUTABLE,
+        DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_STABLE_SOFTMAX" }
 };
 
 static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
@@ -709,7 +714,13 @@ static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
         DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
         DSL_SHAPE_RULE_REDUCTION, DSL_EFFECT_MODEL_PURE,
         DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_REDUCE_SUM_V1",
-        "attr.axis;attr.keepdim;attr.accum_dtype;attr.reassociate" }
+        "attr.axis;attr.keepdim;attr.accum_dtype;attr.reassociate" },
+    { OPR_DSLSTABLESOFTMAX, "common.stable_softmax", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_STABLE_SOFTMAX_V1",
+        "attr.axis;attr.accum_dtype;attr.reassociate;"
+        "attr.state_reformulation;attr.exp_semantics" }
 };
 
 static const DSL_FUSIBILITY_INFO DSL_fusibility_info[] = {

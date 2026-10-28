@@ -8,6 +8,24 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 R1 native stable-Softmax increment:
+`common.stable_softmax.v1` now represents static FP32 `[R,N] -> [R,N]`
+max/subtract/exp/sum/divide as a native typed unary operation. Shared builder,
+shape and gatekeeper checks reject schema/type/ownership violations before
+allocation. PREOPT preserves it and derives logical row statistics/accesses
+from canonical WHIRL; no Python/debug metadata supplies the facts.
+Strict sum/state-reformulation prohibitions and unresolved exp/order/exception,
+finite/overflow/accuracy/alias/storage remain explicit. Compact option-controlled
+FORM/FACT events and audited semantic/aggregate/summary logs preserve existing
+reduction schemas. The [detail design](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md)
+defines the contract, tests, review evidence and remaining gates.
+Python Softmax ingestion, native normalization, executable lowering and GPU
+validation remain open. MMA1 profiles and implementation are untouched.
+Validation passes: 41 native assertions, twelve trace-auditor tests, 21 CPU
+semantic/numerical tests, five historical row-sum image replays and focused
+WOPT/common/FHE compatibility and link checks. The detail design identifies the
+immutable receipt and its seven durable mapped/report replays.
+
 2026-10-27 R1 canonical-WHIRL characterization increment:
 bounded row-sum state/access/numerical facts now derive from verified native
 assignments, canonical TYs and managed operand/result identities. PREOPT

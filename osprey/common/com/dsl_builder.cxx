@@ -1035,6 +1035,7 @@ DSL_Builder_Requires_Exact_Attribute_Schema
          UINT16 version)
 {
     return dsl_operator == OPR_DSLREDUCESUM ||
+           dsl_operator == OPR_DSLSTABLESOFTMAX ||
            dsl_operator == OPR_DSLRESHAPE ||
            dsl_operator == OPR_DSLTRANSPOSE ||
            dsl_operator == OPR_DSLTOKENEMBEDDING ||
@@ -2794,9 +2795,9 @@ DSL_Builder_Create_Operator
         return NULL;
 
     dsl_operator = DSL_Operator_Find(info.name, strlen(info.name), version);
-    /* Row reduction changes rank; require an explicit result descriptor and
+    /* Row contracts require an explicit result descriptor and
      * the no-allocation preflight in Create_Operator_With_Result. */
-    if (dsl_operator == OPR_DSLREDUCESUM)
+    if (dsl_operator == OPR_DSLREDUCESUM || dsl_operator == OPR_DSLSTABLESOFTMAX)
         return NULL;
     if (dsl_operator != OPR_DSLUNKNOWN &&
         (!DSL_Operator_Get_Info_Version
@@ -3020,8 +3021,9 @@ DSL_Builder_Create_Operator
 }
 
 /* Construct a result-typed native expression after caller-scope and contract
- * preflight. Row-sum rejection precedes any symbol, WN or image allocation;
- * executable reduction lowering remains outside this builder. */
+ * preflight. Row-sum/Softmax rejection precedes symbol, WN or image allocation;
+ * executable row-operation lowering remains outside this builder. See
+ * doc/AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md. */
 DSL_BUILDER_OPERATOR
 DSL_Builder_Create_Operator_With_Result
         (DSL_OPCODE_ID opcode_id,
@@ -3064,6 +3066,19 @@ DSL_Builder_Create_Operator_With_Result
               (&logical_info, attrs, attr_count)))
         return NULL;
 
+    if (dsl_operator == OPR_DSLSTABLESOFTMAX) {
+        DSL_BUILDER_VALUE_RECORD *source =
+            DSL_Builder_Find_Value_Record(kids[0]);
+        if (source == NULL || source->pu != DSL_Builder_Active_PU ||
+            !DSL_Shape_Stable_Softmax_Types_Valid
+                 (source->result_ty, result_ty,
+                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.axis"),
+                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.accum_dtype"),
+                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.reassociate"),
+                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.state_reformulation"),
+                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.exp_semantics")))
+            return NULL;
+    }
     if (dsl_operator == OPR_DSLREDUCESUM) {
         DSL_BUILDER_VALUE_RECORD *source =
             DSL_Builder_Find_Value_Record(kids[0]);
