@@ -145,7 +145,7 @@ does not restrict existing v1. q has two specified rounding points, not a
 single correctly rounded reciprocal sqrt or hardware approximate rsqrt.
 
 This explicit reference does not assert current Python mean/rsqrt equivalence
-and is not a registered native v2. A future producer needs an authorized native
+and is now registered as explicit native v2. The native producer declares that
 contract; the source matcher continues to emit unbound v1. Exact compatible
 source primitive bindings, if established separately, retain their own actual
 order/scaling/rsqrt rather than being silently replaced by LN-REF-1.
@@ -541,7 +541,7 @@ are implemented here; preserve existing AI_NORM FORM/FACT and trace-off checks.
 | Gate | Deliverable / acceptance boundary | Status |
 | --- | --- | --- |
 | LN0 | Review semantics, alternatives, lifetimes and costs in this document. | Proposed; native/source R1 evidence exists, not executable optimization. |
-| LN1 | LN-REF-1 ordered means, exact count/final division, sqrt-then-divide, RNE/gradual/class-only-NaN environment; explicit native v2, carriers and oracle, preserving v1. | Arithmetic and native-schema/admission design specified; registration/producer/verifier, target and oracle implementation open. See the LN1 sub-gates. |
+| LN1 | LN-REF-1 ordered means, exact count/final division, sqrt-then-divide, RNE/gradual/class-only-NaN environment; explicit native v2, carriers and oracle, preserving v1. | Native v2, producer, verifier, PREOPT and mapped/trace structural review implemented. Target carriers and independent arithmetic oracle remain open. See the LN1 sub-gates. |
 | LN2 | Read-only C0/C1/C2 plans, exact traffic/resources/events and refusal cases; reject C3 under v1 and LN-REF-1. | Open after LN1 native prerequisites; reuse common/reduction services. |
 | LN3 | Complete costs, independent event/model oracle, analytical winner/fallback and trace auditor. | Open; reuse reduction profitability. |
 | LN4 | Selected high-level WHIRL, guards, CUDA emission and mapped before/after evidence. | Open; reuse reduction lowering; initial non-TMA scope. |
@@ -586,8 +586,8 @@ receipts. No compiler artifact is fabricated for this design-only increment.
 ## 10. Open Review Decisions
 
 1. LN-REF-1 arithmetic and native v2/schema/admission are specified separately
-   from v1. Implement and validate exact-version builder/gatekeeper/PREOPT
-   support before target/lowering; no numerical choice remains for the emitter
+   from v1. Exact-version builder/gatekeeper/PREOPT support is implemented;
+   next bind target arithmetic and oracle before lowering. No numerical choice remains for the emitter
    to invent. New Python mappings still need independent admission review.
 2. LN-REF-1 binds exceptional/signed-zero/subnormal observations without a
    finite-only restriction. Any later application-specific real-error policy

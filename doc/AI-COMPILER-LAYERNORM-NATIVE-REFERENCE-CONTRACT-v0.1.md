@@ -1,6 +1,6 @@
 # Native LN-REF-1 Contract And Producer Admission
 
-Version v0.1 | 2026-10-28 | Native contract design specified; not registered or implemented
+Version v0.1 | 2026-10-28 | Native v2 admission/explicit producer/PREOPT implemented; execution open
 
 ## 1. Decision And Scope
 
@@ -10,10 +10,11 @@ Specify `common.mean_variance_norm.v2` as the explicit native meaning of
 result and managed WHIRL representation. Do not allocate another logical ID,
 physical opcode, node field, type kind, image row or ELF section.
 
-This document defines the proposed native schema and producer-admission rules.
-It does not register v2, change code, publish a new C++ API, implement lowering
-or certify a target. V2 remains unsupported by current binaries until the
-implementation gates below are met. Naming v2 here is not registration.
+This document defines the native schema and producer-admission rules. The
+LN1-b implementation registers exact v2 and reuses the explicit-result builder,
+policy-free structural predicates and read-only PREOPT characterization. It
+adds an explicit native producer and strict trace auditor. No new physical IR,
+source matcher, executable lowering or target certification is introduced.
 
 The source meaning is independent of ongoing reduction profitability/lowering
 work. Native construction and verification need no reduction optimizer, selected
@@ -113,8 +114,8 @@ Reference identity and explicit fields are intentionally cross-checked. A row
 with `reference_binding=ln_ref_1` and an approximate rsqrt or changed mean order
 is malformed; the identifier must not make the remaining fields decorative.
 Unknown versions and future policies fail closed rather than selecting v2 by
-nearest match. This schema is a design specification, not a claim that today's
-builder accepts these tokens.
+nearest match. Native builders now admit this exact schema; they do not infer
+source equivalence or a target execution capability from its presence.
 
 ## 4. Frozen V1 And Version Dispatch
 
@@ -124,7 +125,7 @@ unchanged, including `rsqrt_semantics=source_unresolved`. Its positive-width
 domain is not narrowed to the v2 count bound. Its unresolved flags are not
 cleared by knowledge that a newer native version exists.
 
-Required dispatch behavior after registration:
+Implemented dispatch behavior:
 
 | Request or image | Required outcome |
 | --- | --- |
@@ -251,11 +252,10 @@ it must not decide a source node's meaning. Schema-sensitive consumers use the
 node's explicit version with existing exact-version accessors. Audit all such
 consumers, not only the normalization-specific builder predicate.
 
-Audit enum-only consumers. Current normalization derivation admits version 1
-only, while its form walker counts this logical operator without version
-dispatch. The future implementation must add explicit v2 derivation/trace
-handling; it must not assert that every encountered normalization is v1 or
-replace v1's unknown flags with v2's known arithmetic. PREOPT-disabled paths
+Audit enum-only consumers. Normalization derivation and trace emission now
+dispatch exact versions 1/2; the form walker counts the logical operator and
+separately identifies v2 headers. It does not assume every normalization is v1
+or replace v1's unknown flags with v2's known arithmetic. PREOPT-disabled paths
 still require structural/semantic verification at their normal boundaries.
 
 Structural admission is required at every optimization level. Read-only
@@ -280,8 +280,8 @@ execution events, profitability and executable lowering as unproved/unplanned.
 All FP32 input patterns remain admitted; no source finiteness/overflow proof
 is invented. Mathematical binding is not target-instruction certification.
 
-Proposed additive native inspection record, requiring implementation/auditor
-review before use:
+Implemented additive native inspection record, with exact positional header
+and strict replay auditor:
 
 ```text
 AI_NORM_REF 1 BIND phase pu node x gamma beta result version rows width epsilon_bits count_bits reference mean_order mean_identity_bits mean_finalize count_conversion environment nan_policy rsqrt verified source_line
@@ -313,20 +313,21 @@ noalias, finiteness, cost-selection or transformation claims.
 Every generated log starts `# What it summarizes:`. `optimization.log` collects
 phase detail, including rejection reasons, without treating verification events
 as rewrites. Report default/on/off controls and zero rewrite count where no
-executable transformation happened. No new trace file is fabricated here.
+executable transformation happened. Native review retains actual compiler
+`.t` output; synthetic auditor tests are explicitly separate evidence.
 
 ## 9. Implementation And Validation Queue
 
 | Slice | Required work | Status |
 | --- | --- | --- |
-| LN1-b-design | Exact v2 identity/schema, source admission, preflight, canonical form, version/reader behavior and evidence ownership. | Specified here; no registration or code. |
-| LN1-b-native | Common exact-version descriptor/schema/shape checks, explicit-result builder/gatekeeper and version-dispatched read-only derivation. | Open, independent of reduction profitability/lowering. |
-| LN1-b-producer | Explicit native LN-REF-1 fixture and real formal/result/return/DST paths; source-preserving v1 negative lane. | Open; no general Python or v1 refinement added. |
-| LN1-b-preservation | Actual PREOPT v1/v2 coexistence, semantic identity, mapped image/ASCII, controlled trace and strict audit. | Open; no numerical execution implied. |
+| LN1-b-design | Exact v2 identity/schema, source admission, preflight, canonical form, version/reader behavior and evidence ownership. | Specified and implemented in the following bounded slices. |
+| LN1-b-native | Common exact-version descriptor/schema/shape checks, explicit-result builder/gatekeeper and version-dispatched read-only derivation. | Implemented, independent of reduction profitability/lowering. |
+| LN1-b-producer | Explicit native LN-REF-1 fixture and real formal/result/return/DST paths; source-preserving v1 negative lane. | Implemented; no general Python or v1 refinement added. |
+| LN1-b-preservation | Actual PREOPT v1/v2 coexistence, semantic identity, mapped image/ASCII, controlled trace and strict audit. | Implemented and compiler-validated; no numerical execution implied. |
 | LN1-c / LN1-d | Target scalar carriers/environment plus independent arithmetic oracle. | Open as separately planned; not delivered by native admission. |
 | LN1-e | Integrated explicitly bound evidence and version/source provenance. | Open; requires preceding native/target/oracle gates. |
 
-Required future tests and retained evidence:
+Validation obligations (structural coverage implemented below; arithmetic remains future):
 
 - Exact v1/v2 coexistence, same operands with different versions unequal,
   changed epsilon/binding unequal, registration-order and old-image replay.
@@ -361,5 +362,33 @@ No v1 migration, Python matcher change, approximate math, precision narrowing,
 tree/Welford permission, kernel selection, TMA schedule, host PU, new runtime
 provider or GPU performance claim. No source file from the separate reduction
 coding effort is modified or required to define this contract. Native v2
-implementation can be developed separately; shared emitter/lowering reuse is a
+implementation is developed separately; shared emitter/lowering reuse is a
 later reviewed integration, not a second implementation hidden in this design.
+
+## 11. Native Implementation And Review Entry Points
+
+- `common/com/dsl_opcode.cxx` appends v2 without renumbering existing entries.
+  `dsl_shape` checks exact fields, descriptor relations, N and byte overflow;
+  bounded count bits are derived with integer operations, independent of host FP.
+- `dsl_builder` validates before product allocation; `dsl_gatekeeper` dispatches
+  exact versions on independently mapped images. V1's domain/fields are frozen.
+- `be/opt/opt_dsl` derives source-bound recipe/flags from verified canonical
+  WHIRL. V2 field order is canonicalized for semantic hashing; the existing
+  64-byte key and v1 hash order are unchanged. No reduction service is linked.
+- `tests/dsl_normalization_ref_test.cxx` is the explicit source producer, not a
+  Python mean/rsqrt equivalence claim. `run_normalization_ref_review.py --suite`
+  produces eight variants and ten v2 PREOPT contracts plus one coexisting v1.
+  It retains real source, `.B`, `.T`, raw `.t`, command/product receipts and logs.
+- `normalization_ref_trace_report.py` audits exact `AI_NORM_REF 1 BIND`
+  entry/exit pairs, count bits, all numerical tokens and source-line-last. It
+  reuses the unchanged v1 auditor for mixed images. Every log has its summary
+  first line; phase coverage, no selected plan/no rewrite and target unknowns
+  are explicit. An expected VHO refusal is not an executable output image.
+- Both C and Python bridge boundaries reject public versions outside
+  `[1,65535]` before narrowing. Python additionally rejects masking/coercion
+  inputs. Explicit native API tests are not a new source matcher.
+
+The accepted receipt is indexed in the progress ledger. LN1-c/d and complete
+LN1-e numerical evidence remain open. No native scalar computation, executable
+LayerNorm, accuracy guarantee, GPU result or profitability result follows from
+these structural checks.

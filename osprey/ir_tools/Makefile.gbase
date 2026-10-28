@@ -215,6 +215,7 @@ LDIRT += dsl_reduction_direct_test dsl_reduction_direct_test.o opt_dsl_reduction
 LDIRT += dsl_reduction_staged_test dsl_reduction_staged_test.o opt_dsl_reduction_staged_test.o
 LDIRT += dsl_softmax_contract_test dsl_softmax_contract_test.o
 LDIRT += dsl_normalization_contract_test dsl_normalization_contract_test.o
+LDIRT += dsl_normalization_ref_test dsl_normalization_ref_test.o
 LDIRT += opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 
 LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_FHE_DIR) \
@@ -843,6 +844,14 @@ dsl_normalization_contract_test: $(OBJECTS) controls.o dsl_normalization_contrac
 		opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
 
 dsl_normalization_contract_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_normalization_ref_test: $(OBJECTS) controls.o dsl_normalization_ref_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_normalization_ref_test.o opt_dsl_wopt_test.o \
+		opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_normalization_ref_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_ref_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_softmax_contract_test: $(OBJECTS) controls.o dsl_softmax_contract_test.o \

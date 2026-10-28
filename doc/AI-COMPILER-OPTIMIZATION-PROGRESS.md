@@ -8,6 +8,34 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-28 LN1-b native LN-REF-1 implemented:
+exact `common.mean_variance_norm.v2` reuses logical ID 39, typed ternary WHIRL,
+explicit-result builder and unchanged mapped-image/64-byte semantic-key layouts.
+Fifteen required fields bind source arithmetic; N/count bits/byte overflow,
+descriptors and managed ownership are checked before publication. C and Python
+boundaries reject version overflow before narrowing. Native read-only facts
+and real PREOPT preserve binding while v1 stays unresolved; v2 field order is
+canonicalized for hashing without changing v1 identity behavior.
+
+The explicit C++ producer, strict `AI_NORM_REF 1 BIND` auditor and fresh review
+runner cover eight variants/ten v2 contracts plus a coexisting v1, six trace/
+PREOPT/O-level controls, invalid fields/domains/ownership and rollback checks.
+Four native v1 variants, six Python/driver v1 cases with sixteen rejections,
+thirteen existing native API tests and historical v1 reopen protect compatibility.
+Three new API boundary tests and 51 trace-auditor tests pass. Source matching and
+reduction coding are untouched. Exact target arithmetic, independent oracle,
+profitability, executable WHIRL lowering and GPU verification remain open.
+The monolithic builder's DST-reinitialization failure and production-native
+builder's mapped-gatekeeper refusal reproduce with the unchanged baseline;
+their diagnostics are retained separately from passing focused tests.
+
+Durable native review root:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln-ref1-native/sha256-9e62addc89ae907f1c2300cae44985867009934127dbf08f4224c83dffeccca6/`.
+Primary native evidence is `native-v2-final/`; `.B`, source-interleaved `.T`, raw
+`.t`, per-phase reports, command/product receipts and checksums are retained.
+Next is LN1-c exact target arithmetic/environment binding, then LN1-d oracle
+and integrated numerical evidence, not automatic v1 migration or a kernel claim.
+
 2026-10-28 LayerNorm native contract/admission design specified:
 [Native LN-REF-1 v0.1](AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md)
 defines proposed `common.mean_variance_norm.v2`, fifteen exact attributes,

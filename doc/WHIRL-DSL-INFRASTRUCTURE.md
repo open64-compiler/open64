@@ -2192,16 +2192,19 @@ specifies `common.mean_variance_norm.v2` under existing logical ID 39 and the
 same typed three-kid assignment. Fifteen exact attributes bind ordered means,
 count/final division, sqrt-then-divide, environment and NaN observations.
 V1 remains its exact eight-field unresolved source recipe; existing Python
-ingestion does not change. This is a defined design, not registered code.
+ingestion does not change. Exact native v2 is now registered and validated.
 
-Future native implementation must add exact-version checks without changing
-physical WN, managed-row or ELF layout; reuse the explicit-result builder;
-check public version range before narrowing; preserve canonical direct/managed
-operand and result links; dispatch PREOPT derivation/traces by version; and
-prove v1/v2 coexistence plus old-image readability. Producer declaration of
+The native implementation adds exact-version checks without changing
+physical WN, managed-row or ELF layout; reuses the explicit-result builder;
+checks public version range before narrowing; preserves canonical direct/managed
+operand and result links; dispatches PREOPT derivation/traces by version; and
+tests v1/v2 coexistence plus old-image readability. Producer declaration of
 source meaning is not a gatekeeper proof of arbitrary source equivalence.
-The proposed additive v2 trace leaves v1 FORM/FACT unchanged. Target arithmetic,
-cost selection and executable lowering remain separate gates. This work is
+The additive `AI_NORM_REF 1 BIND` trace leaves v1 FORM/FACT unchanged. The native
+producer and `run_normalization_ref_review.py --suite` retain separate-process
+mapped `.B`/`.T`, raw controlled `.t`, count bits, exact bound arithmetic and
+explicit target/storage unknowns. No physical or managed image layout changes.
+Target arithmetic, cost selection and executable lowering remain separate gates. This work is
 independent of the reduction profitability/lowering implementation stream.
 
 ### R2 Ordered Reduction Numerical Binding (2026-10-27)

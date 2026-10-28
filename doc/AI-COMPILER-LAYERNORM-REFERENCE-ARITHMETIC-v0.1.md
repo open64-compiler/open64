@@ -1,12 +1,14 @@
 # Centered LayerNorm Reference Arithmetic Binding
 
-Version v0.1 | 2026-10-28 | Reference semantics defined; native support not implemented
+Version v0.1 | 2026-10-28 | Reference semantics and native structural binding implemented; execution open
 
 Native-design follow-on, 2026-10-28:
 [LN-REF-1 native contract and admission](AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md)
 now specifies exact `common.mean_variance_norm.v2` semantics/schema and producer
-rules under the existing logical ID. It is not registered or implemented;
-this document's arithmetic and current v1 remain unchanged.
+rules under the existing logical ID. Native v2 registration, explicit producer,
+structural validation and PREOPT preservation are implemented; this document's
+arithmetic and current v1 remain unchanged. Target arithmetic and oracle
+execution remain separate open gates.
 
 ## 1. Decision And Compatibility Boundary
 
@@ -295,15 +297,16 @@ exact arithmetic with explicit binary32 rounding boundaries; that is distinct
 from forbidden hidden FP64 accumulation in a candidate.
 
 LN1 arithmetic and the separate native version/schema/admission design are now
-specified. Native registration/builder/verifier/canonicalization, target
-arithmetic carriers/emission, oracle tests, PREOPT preservation and actual
-mapped evidence remain implementation work. Preserve v1 fixtures and exact
+specified. Native registration/builder/verifier/canonicalization, explicit
+producer, PREOPT preservation and mapped evidence are now implemented. Target
+arithmetic carriers/emission and oracle tests remain implementation work.
+Preserve v1 fixtures and exact
 attributes in every lane. A structural contract stage is not an executable
 transformation and must not fabricate before/after optimization evidence.
 LN2-LN4 remain blocked on those native prerequisites, not on GPU availability.
 LN6 separately requires native numerical/resource/performance certification.
 
-This increment is documentation-only. No operator/version, option, ABI, source
-matcher, target profile, generated CUDA or native report format is changed.
-Defined reference arithmetic is not implemented native binding, target
-certification, a universal accuracy proof or a performance result.
+The original arithmetic-definition increment was documentation-only. LN1-b now
+adds exact v2/native binding and its additive trace, not an option, binary ABI,
+source matcher, target profile or generated CUDA change. Structural binding is
+not target certification, a universal accuracy proof or a performance result.

@@ -1005,8 +1005,9 @@ DSL_Gatekeeper_Verify_Native_Node
               (dsl_operator, logical_opcode.effective_version,
                &image_node, operand_types, result_ty)))
         valid = DSL_Gatekeeper_Report
-                    (context, "OPR_DSLMEANVARNORM.v1 requires a canonical "
-                     "static FP32 centered population normalization contract");
+                    (context, "OPR_DSLMEANVARNORM.v%u requires a canonical "
+                     "static FP32 centered population normalization contract",
+                     logical_opcode.effective_version);
     if (dsl_operator == OPR_DSLSTABLESOFTMAX &&
         (!shape_ready || !image_valid || first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid

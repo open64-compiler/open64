@@ -2,6 +2,10 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/* Policy-free tensor schema/shape checks. LN-REF-1 admission is specified in
+ * doc/AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md; no target or
+ * optimization choice belongs in these predicates. */
+
 #ifndef dsl_shape_INCLUDED
 #define dsl_shape_INCLUDED
 
@@ -135,6 +139,28 @@ extern BOOL DSL_mean_variance_norm_types_valid
      const char *epsilon_bits, const char *reassociate,
      const char *state_reformulation, const char *contract,
      const char *rsqrt_semantics);
+
+/* Validate explicit LN-REF-1 arithmetic tokens, without upgrading v1 or
+ * granting target/accuracy permission. Every argument must be canonical. */
+extern BOOL DSL_mean_variance_norm_ref_binding_valid
+    (const char *rsqrt_semantics, const char *mean_order,
+     const char *mean_identity_bits, const char *mean_finalize,
+     const char *count_conversion, const char *fp_environment,
+     const char *nan_policy, const char *reference_binding);
+
+/* Validate the v2 descriptor/centered-recipe subset and exact count domain.
+ * Callers must also validate the complete v2 attribute/binding schema. */
+extern BOOL DSL_mean_variance_norm_ref_types_valid
+    (TY_IDX input_ty, TY_IDX gamma_ty, TY_IDX beta_ty, TY_IDX result_ty,
+     const char *axis, const char *accum_dtype, const char *variance_kind,
+     const char *epsilon_bits, const char *reassociate,
+     const char *state_reformulation, const char *contract,
+     const char *rsqrt_semantics);
+
+/* Derive exact count bits using integer arithmetic for 1 <= N <= 2^24.
+ * Failure leaves caller output unchanged; this is not a cost/target check. */
+extern BOOL DSL_mean_variance_norm_ref_count_bits(UINT64 count, UINT32 *bits);
+
 extern BOOL DSL_Shape_Parse_Static_Dimensions
                                 (const char *shape,
                                  UINT64 *dimensions,
