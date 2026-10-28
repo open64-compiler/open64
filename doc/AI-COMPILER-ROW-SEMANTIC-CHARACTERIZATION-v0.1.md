@@ -6,9 +6,9 @@ Subsequent native increment: the bounded static FP32 row-sum contract and
 PREOPT preservation checks are specified in
 [Native reduction contract v0.1](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md).
 The source-analysis evidence below remains distinct from that native evidence;
-the exact row-sum Python-to-native connection is now implemented. Full
-canonical-WHIRL characterization, Softmax/LayerNorm native forms and executable
-reduction lowering remain open.
+the exact row-sum, stable-Softmax and centered affine normalization Python-to-native
+connections and bounded canonical-WHIRL characterizations are now implemented.
+General forms and executable row-operation lowering remain open.
 
 ## 1. Scope And Ownership
 
@@ -24,8 +24,8 @@ The [characterizer](../osprey/torch2whirl/python/open64_dsc/row_characterization
 is an experimental frontend analysis service, not a production P0/P2 pass or
 an alternate executable IR. It calls no WHIRL builder and performs no graph
 rewrite. The report describes source semantics and requirements for native
-contracts. Canonical-WHIRL characterization remains open until ingestion and
-PREOPT contracts are published and verified through mapped `.B`/`.T`.
+contracts. Separate native services now characterize the bounded contracts
+through actual PREOPT and mapped `.B`/`.T`; this source analyzer still emits no IR.
 
 ## 2. Defined Terms And Recognition Boundary
 
@@ -214,6 +214,10 @@ The [native normalization contract](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0
 now preserves the centered affine population FP32 recipe with three operands,
 canonical epsilon bits and strict reassociation/reformulation/contraction
 prohibitions. WOPT derives row state, affine accesses/broadcasts, denominator
-and numerical unknowns from canonical WHIRL at PREOPT entry/exit. Python
-normalization ingestion, executable binding and selected lowering remain open.
+and numerical unknowns from canonical WHIRL at PREOPT entry/exit. The exact
+Python matcher now shares structural preflight with this analysis and emits
+three runtime formals plus explicit result/return; epsilon is encoded as
+binary32 and source position identifies the final addition. Six API/driver
+images retain the native contract through PREOPT; sixteen rejects publish no
+image. General normalization ingestion, executable binding and selected lowering remain open.
 Existing CPU witnesses are not upgraded into native numerical proof.

@@ -323,7 +323,7 @@ def _verify_graph_operators(
         result_type = _result_type(operator, operand_types)
         produced_types[operator.name] = result_type
         semantic_name = operator.metadata.get("semantic_name")
-        if operator.name in (common.REDUCE_SUM, common.STABLE_SOFTMAX):
+        if operator.name in (common.REDUCE_SUM, common.STABLE_SOFTMAX, common.MEAN_VARIANCE_NORM):
             declared = value_types.get(semantic_name)
             if (declared is None or result_type is None or
                     (declared.dtype, declared.rank, declared.logical_shape) !=
@@ -375,6 +375,25 @@ def _verify_operator_contract(
     operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
 ) -> None:
     _require_contract_attrs(operator)
+
+    if operator.name == common.MEAN_VARIANCE_NORM:
+        expected = {"attr.axis": "1", "attr.accum_dtype": "float32",
+                    "attr.variance_kind": "population_centered",
+                    "attr.epsilon_bits": operator.attrs.get("attr.epsilon_bits"),
+                    "attr.reassociate": "false", "attr.state_reformulation": "false",
+                    "attr.contract": "false", "attr.rsqrt_semantics": "source_unresolved"}
+        bits = expected["attr.epsilon_bits"]
+        if (dict(operator.attrs) != expected or not isinstance(bits, str) or len(bits) != 8 or
+                any(char not in "0123456789abcdef" for char in bits) or
+                not 0 < int(bits, 16) < 0x7f800000):
+            raise WhirlVerificationError("common.mean_variance_norm requires exact canonical attributes")
+        if any(value is None or value.dtype != "float32" for value in operand_types):
+            raise WhirlVerificationError("common.mean_variance_norm requires FP32 operands")
+        shapes = [_parse_logical_shape(value.logical_shape, "normalization input") for value in operand_types]
+        if (len(shapes[0]) != 2 or any(size <= 0 for size in shapes[0]) or
+                shapes[1] != (shapes[0][1],) or shapes[2] != shapes[1]):
+            raise WhirlVerificationError("common.mean_variance_norm requires X[R,N], gamma[N], beta[N]")
+        return
 
     if operator.name == common.STABLE_SOFTMAX:
         expected = {"attr.axis": "1", "attr.accum_dtype": "float32",
@@ -1006,7 +1025,7 @@ def _result_type(
 ) -> Optional[WhirlTensorTypeRecord]:
     if not operand_types:
         return None
-    if operator.name == common.STABLE_SOFTMAX:
+    if operator.name in (common.STABLE_SOFTMAX, common.MEAN_VARIANCE_NORM):
         return operand_types[0]
     if operator.name == common.REDUCE_SUM:
         value = operand_types[0]

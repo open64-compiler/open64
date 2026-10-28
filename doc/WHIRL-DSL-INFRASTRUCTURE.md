@@ -2150,5 +2150,10 @@ native carrier and the extended three-kid DSL emitter bridge. Physical opcode,
 mapped-image, TY-kind and 64-byte semantic-key layouts are unchanged.
 `AI_NORM`/`AI_NORM_FACT` are additive controlled positional traces, source line
 last. Their auditor reports epsilon/denominator, affine broadcasts, numerical
-unknowns and remaining gates. Python normalization ingestion and executable
-VHO lowering remain open; no native accuracy or performance proof is implied.
+unknowns and remaining gates. The exact Python centered affine matcher now
+connects through three runtime formals, explicit result/return and final-addition
+source location. Epsilon converts to canonical binary32 before ShapeProp;
+structural/descriptor/epsilon rejects execute no sample operations and publish
+no image. Six API/driver images preserve the contract through actual PREOPT.
+General normalization ingestion and executable VHO lowering remain open;
+no native accuracy or performance proof is implied.

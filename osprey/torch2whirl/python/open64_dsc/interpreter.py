@@ -115,6 +115,10 @@ class WhirlExportInterpreter:
             softmax = try_export_stable_softmax(self, model, inputs, captured_graph)
             if softmax is not None:
                 return softmax
+            from .normalization_ingestion import try_export_centered_affine_normalization
+            normalization = try_export_centered_affine_normalization(self, model, inputs, captured_graph)
+            if normalization is not None:
+                return normalization
 
         model_name = self._model_name(model)
         entry_name = self._model_class_name(model)

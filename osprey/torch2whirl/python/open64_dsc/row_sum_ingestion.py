@@ -45,5 +45,5 @@ def try_export_row_sum(interpreter, model, inputs, captured_graph):
 
     attrs = {"attr.axis": "1", "attr.keepdim": "false",
              "attr.accum_dtype": "float32", "attr.reassociate": "false"}
-    return export_native_row(interpreter, model, input_node, sum_node,
+    return export_native_row(interpreter, model, (input_node,), sum_node,
                              common.REDUCE_SUM, "row_sum", attrs)

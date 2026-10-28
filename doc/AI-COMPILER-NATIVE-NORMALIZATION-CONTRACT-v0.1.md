@@ -1,7 +1,7 @@
 # Native mean/variance normalization contract v0.1
 
-Status: bounded R1 native representation and canonical-WHIRL characterization implemented.
-Independent of MMA1. Python normalization ingestion, executable lowering,
+Status: bounded R1 native representation, exact Python ingestion and canonical-WHIRL characterization implemented.
+Independent of MMA1. General normalization ingestion, executable lowering,
 physical optimization and GPU certification remain separate gates.
 
 ## Terms and architectural baseline
@@ -200,8 +200,8 @@ immutable `r1-native-normalization` review receipt. ASCII and trace directories
 stay separate on case-insensitive filesystems. No transformed before/after
 images are fabricated because this increment performs no executable transformation.
 
-Next: connect the exact centered affine Python matcher to this published
-contract. General normalization forms, executable numerical binding,
+The exact centered affine Python matcher now connects to this published
+contract (see the source-ingestion increment below). General normalization forms, executable numerical binding,
 storage/event alternatives, complete profitability comparison and selected
 WHIRL lowering remain separate gates. No MMA1, CUDA, PTX/SASS or GPU claim.
 
@@ -250,3 +250,91 @@ node 1, input/gamma/beta/result values 1/2/3/5, `[3,17]`, epsilon `3727c5ac`
 and fixture line 206. These are receipt observations, not ABI constants.
 Four durable source-interleaved mapped reopens and strict report replays must
 match the staged artifacts. No executable transformation or GPU run is claimed.
+
+## Python Ingestion Increment, 2026-10-27
+
+The shared structural matcher now recognizes the complete exact centered
+affine recipe before ShapeProp, native allocation or publication. Both source
+analysis and ingestion use the same edge checks, not model/class names. It
+requires all three placeholders, the same centered node on both sides of the
+square, last-axis means with `keepdim=True`, epsilon inside rsqrt, then
+normalization, scale, bias in that order. Extra effects, unused operations/
+arguments, sample variance, raw moments, duplicate centering and changed affine
+order fail closed. Opaque framework `layer_norm` is not declared equivalent.
+
+Source inputs must be contiguous FP32 `X[R,N]`, `gamma[N]`, `beta[N]`, with
+static positive extents. Descriptor and recipe rejection precede evaluation,
+so a rejected mutation is never applied to the caller's tensors. Source axis
+spellings `-1`, `1`, `(-1,)` and `[1]` normalize to native axis `1`.
+`struct.pack`/`unpack` encodes the scalar epsilon as binary32 bits, rejecting
+conversion to zero or infinity before evaluation; positive subnormals remain
+representable without granting target FTZ/DAZ permission.
+
+The existing row emitter now accepts ordered input nodes: three runtime
+formals, explicit result, direct typed operands and PU return use opaque C++
+builder APIs. No sample tensor is embedded as a constant; no new physical
+layout/opcode or C++ API is introduced. Unary row-sum/Softmax names and emission
+remain compatible. The region source location is the actual final addition,
+not the class/forward header. Python mirrors the exact eight-attribute schema
+and `[R,N],[N],[N] -> [R,N]` descriptor checks; native common/com remains the
+authority. WOPT still derives every FACT from canonical WHIRL, never FX reports.
+
+The review producer exercises five fresh-process API cases (`3x17` with negative
+and positive axes, `1x1`, `7x65`, and epsilon `3a83126f`) plus the real
+`torch2whirl --model-factory AffineLayerNorm` driver. All six images are reopened
+with `ir_b2a -st -src` and reach actual PREOPT. Default/on/off AI trace and
+PREOPT-off controls are checked. Sixteen unsupported cases publish no `.B`.
+Five CPU source witnesses compare to an independent scalar FP64 centered
+population oracle with binary32-rounded epsilon at the existing `rtol=2e-5`,
+`atol=2e-6`; these do not execute the native node or prove general accuracy.
+
+The required summary distinguishes ingestion/native verification from
+`candidate_selection=not_run profitability=not_run executable_transformation=none`.
+`semantic.log` retains epsilon, denominator, affine input identities/accesses,
+strict numerical permissions/unknowns and alias/ownership/storage obligations.
+Raw `AI_NORM`/`AI_NORM_FACT` traces and trace controls are unchanged. The auditor
+does not infer Python provenance from them; source witnesses and producer
+receipts independently establish that bridge.
+
+Reproduction (use a fresh output directory and the native-extension package):
+
+```sh
+make -C "$BUILD/osprey/targdir/torch2whirl" -j6 python_native_extension all
+python3 osprey/torch2whirl/python/tests/normalization_native_review.py \
+  --build-dir "$BUILD/osprey/targdir" --artifact-dir /absolute/new/python-normalization
+python3 -m unittest discover -s osprey/torch2whirl/python/tests \
+  -p 'test_normalization_capture_optional.py' -v
+```
+
+Ten focused source tests cover structural rejection before evaluation, source
+locations, numerical restrictions, binary32 epsilon conversion, affine shapes
+and verifier drift. Regression coverage includes both prior row emitters,
+source numerical witnesses, unchanged FX census, isolated native API lifecycles,
+mapped inspection and strict trace auditors. Native backend products must match
+the authenticated native-normalization receipt; no MMA1/compute profile changes.
+General axes/types/regions, numerical binding, executable alternatives, complete
+profitability, selected lowering and GPU certification remain open.
+
+Accepted source-connection validation: all ten focused normalization tests,
+prior row-sum/Softmax native review producers, 13 isolated native API tests,
+native mapped-image smoke, 19 trace-auditor tests, 21 source numerical tests,
+fixture census and skeleton checks pass. The full source suite runs 288 tests,
+with 14 skips and one unchanged FHE authority DOCX digest failure (actual
+`84D74059...`, expected `0018769C...`). Neither that document nor its assertion
+is modified; the suite is not reported as wholly passing.
+
+Immutable source-connection review root (primary
+`native/negative-axis/normalization.B`):
+
+```text
+/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/r1-python-normalization/sha256-cdd091976cb45ed1390f8dfaf4e0c9de32e595edeb77533be8ef318d8f53ac0e/
+```
+
+Start with `native/optimization-summary.log`,
+`native/negative-axis/reports/semantic.log`,
+`native/negative-axis/ascii/normalization.T` and
+`native/negative-axis/trace/default.t`. The trace retains values `1/2/3/5`,
+`[3,17]`, epsilon `3727c5ac`, denominator `17` and source final-add line `56`.
+Those identities/line numbers are receipt observations, not contract constants.
+Six separate final-path source-interleaved mapped reopens and strict report
+replays must match before updating the durable review index.

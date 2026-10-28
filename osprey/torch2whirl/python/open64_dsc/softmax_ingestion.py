@@ -45,5 +45,5 @@ def try_export_stable_softmax(interpreter, model, inputs, captured_graph):
     attrs = {"attr.axis": "1", "attr.accum_dtype": "float32",
              "attr.reassociate": "false", "attr.state_reformulation": "false",
              "attr.exp_semantics": "source_unresolved"}
-    return export_native_row(interpreter, model, input_node, result_node,
+    return export_native_row(interpreter, model, (input_node,), result_node,
                              common.STABLE_SOFTMAX, "stable_softmax", attrs)

@@ -8,6 +8,27 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 R1 Python centered affine normalization increment:
+the shared exact source matcher now connects to `common.mean_variance_norm.v1`.
+Three runtime formals, explicit result/return, binary32 epsilon and final-addition
+source location are preserved through mapped reopen and actual PREOPT. Source
+preflight rejects changed recipes, effects, affine broadcasts and invalid
+epsilon conversion before evaluation. No model-name equivalence is assumed.
+Six native API/driver cases and sixteen prepublication rejects pass; ten focused
+source tests cover strict numerical/structural/descriptor boundaries. Five
+independent FP64 comparisons are CPU source witnesses, not native-node execution.
+Existing `.t`, positional FORM/FACT, report headers and immutable artifact
+conventions are retained. See the
+[connection and reproduction](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27).
+R1 remains bounded/partial: general forms, numerical binding, executable
+alternatives, profitability and selected lowering remain open. No MMA1, native
+backend, hardware-profile or GPU change is claimed.
+Regression evidence: 13 isolated native API tests, both prior native row
+producers, native mapped smoke and 19 trace-auditor tests pass. Full source
+suite: 288 tests, 14 skips, one unchanged FHE authority DOCX digest failure;
+no unrelated FHE document/assertion is changed. The detail document links the
+fresh immutable `r1-python-normalization` receipt and reviewable `.t`/`.T`.
+
 2026-10-27 R1 native mean/variance normalization increment:
 `common.mean_variance_norm.v1` now carries the centered population affine
 FP32 recipe with three direct X/gamma/beta operands, exact epsilon bits and

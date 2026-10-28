@@ -1,7 +1,7 @@
 """Shared frontend emission for already-validated native row contracts.
 
-Design: doc/AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md and the native
-reduction contract. C++ owns native records/types; this supplies descriptor
+Design: doc/AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md and the native
+reduction/Softmax contracts. C++ owns native records/types; this supplies descriptor
 requests, formals, results and returns, never numerical or target decisions.
 """
 import inspect
@@ -12,7 +12,7 @@ from .python_classes import collect_python_model_classes
 from .python_imports import collect_python_import_census, resolve_reachable_imported_callables
 
 
-def export_native_row(interpreter, model, input_node, result_node, opcode, stem, attrs):
+def export_native_row(interpreter, model, input_nodes, result_node, opcode, stem, attrs):
     """Emit a pure whole-PU row recipe after structural/descriptor preflight.
 
     Callers supply the published exact attributes and matched source nodes.
@@ -28,7 +28,9 @@ def export_native_row(interpreter, model, input_node, result_node, opcode, stem,
     file_id = builder.register_source_file(pu, path)
     types = []
     handles = []
-    for name, node in (("input0_type", input_node), (stem + "_type", result_node)):
+    named_nodes = [("input%d_type" % index, node) for index, node in enumerate(input_nodes)]
+    named_nodes.append((stem + "_type", result_node))
+    for name, node in named_nodes:
         shape = tuple(node.meta["tensor_meta"].shape)
         logical = "[" + ",".join(str(size) for size in shape) + "]"
         descriptor = dict(kind="tensor", dtype="float32", rank=len(shape),
@@ -37,11 +39,12 @@ def export_native_row(interpreter, model, input_node, result_node, opcode, stem,
         handles.append(handle)
         types.append(WhirlTensorTypeRecord(name, handle.value, "float32",
                                           len(shape), logical, descriptor))
-    source = builder.declare_pu_formal(pu, "input0", 0, handles[0], file_id, line)
-    builder.declare_pu_result(pu, stem + "_output", 0, handles[1],
+    sources = [builder.declare_pu_formal(pu, "input%d" % index, index, handles[index], file_id, line)
+               for index in range(len(input_nodes))]
+    builder.declare_pu_result(pu, stem + "_output", 0, handles[-1],
                               file_id=file_id, line=line)
-    result = builder.operator(opcode, 1, [source], attrs,
-                              result_name=stem + "_value", result_type=handles[1])
+    result = builder.operator(opcode, 1, sources, attrs,
+                              result_name=stem + "_value", result_type=handles[-1])
     builder.set_value_source_position(result, file_id, line)
     builder.append_program_unit_value(pu, result)
     builder.return_pu_values(pu, [result])
@@ -51,15 +54,16 @@ def export_native_row(interpreter, model, input_node, result_node, opcode, stem,
     imports = census.callables if census else ()
     return WhirlModule(
         options=interpreter._options, model_name=interpreter._model_name(model),
-        input_count=1, entry_function=WhirlProgramUnitRecord(
+        input_count=len(input_nodes), entry_function=WhirlProgramUnitRecord(
             entry_name, pu.value, [opcode]), graph_source="torch.fx",
         operators=[opcode], tensor_types=types,
-        values=[WhirlValueRecord("input0", source.value, types[0].name, "formal",
-                                 builder.value_result_symbol(source).value),
-                WhirlValueRecord(stem + "_value", result.value, types[1].name,
+        values=[WhirlValueRecord("input%d" % index, source.value, types[index].name, "formal",
+                                 builder.value_result_symbol(source).value)
+                for index, source in enumerate(sources)] +
+               [WhirlValueRecord(stem + "_value", result.value, types[-1].name,
                                  "operator_result", builder.value_result_symbol(result).value)],
         graph_operators=[WhirlOperatorRecord(opcode, result.value,
-            ["input0"], attrs, {"semantic_name": stem + "_value",
+            ["input%d" % index for index in range(len(input_nodes))], attrs, {"semantic_name": stem + "_value",
                                 "source_file": path, "source_line": str(line),
                                 "lowering_hint": "r1:native_contract_only"})],
         python_class_definitions=definitions, python_class_instances=instances,

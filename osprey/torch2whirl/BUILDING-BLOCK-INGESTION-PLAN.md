@@ -4,15 +4,19 @@ Version: v0.1, 2026-10-27. Status: deterministic source fixtures, CPU reference
 validation and real FX census implemented; general native WHIRL ingestion open.
 Exact static FP32 row-sum native ingestion is now implemented and inspected
 through the public API and standalone driver; executable reduction lowering
-and native normalization ingestion remain open.
+remains open.
 The [native stable-Softmax contract](../../doc/AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md)
 and its canonical-WHIRL characterization are implemented. The exact decomposed
 Python stable-Softmax matcher now consumes it; opaque framework Softmax is not
-silently treated as equivalent. Normalization's exact source connection remains open.
+silently treated as equivalent.
 The [native centered population normalization contract](../../doc/AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md)
-and canonical-WHIRL characterization are now implemented. Connecting the exact
-centered affine Python matcher is the next ingestion gate; native representation
-does not imply an opaque `layer_norm` or arbitrary normalization matcher.
+and canonical-WHIRL characterization are now implemented. The exact centered
+affine Python matcher connects through three runtime formals and explicit
+result/return, canonical binary32 epsilon and final-addition source position.
+Six API/driver images reach PREOPT; sixteen unsupported cases publish no image.
+Structural/descriptor/epsilon preflight precedes ShapeProp. General normalization
+and executable lowering remain open; native representation does not imply an
+opaque `layer_norm` or arbitrary normalization matcher.
 Controlling architecture: [common execution planning](../../doc/AI-COMPILER-COMMON-EXECUTION-PLANNING.md),
 [frontend workflow](../../doc/WHIRL-DSL-INFRASTRUCTURE.md) and
 [building-block research queue](../../doc/AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#building-block-research-queue).

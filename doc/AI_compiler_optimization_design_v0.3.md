@@ -4,7 +4,17 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
-2026-10-27 native normalization amendment:
+2026-10-27 Python centered affine normalization connection:
+the [exact source-to-native recipe](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27)
+now shares structural preflight with R1 analysis and emits three runtime
+formals, an explicit result/return and the actual final-addition source location.
+Binary32 epsilon conversion, affine vector shapes and strict operation order
+are validated before sample evaluation. Six API/driver images reach actual
+PREOPT with controlled compact traces; numerical witnesses remain source-only.
+General forms, executable binding/selection/lowering and GPU validation remain
+open. MMA1 and native backend contracts are unchanged.
+
+2026-10-27 native normalization amendment (prior increment):
 [Native centered population normalization](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md)
 now preserves the three-input affine FP32 recipe and derives state/access/
 numerical facts through actual PREOPT. Epsilon stays inside rsqrt with exact

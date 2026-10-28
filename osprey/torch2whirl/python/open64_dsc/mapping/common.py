@@ -6,6 +6,7 @@ LINEAR = "common.linear"
 MATMUL = "common.matmul"
 REDUCE_SUM = "common.reduce_sum"
 STABLE_SOFTMAX = "common.stable_softmax"
+MEAN_VARIANCE_NORM = "common.mean_variance_norm"
 MODEL_INPUT = "common.model_input"
 OUTPUT_LOGITS = "common.output_logits"
 RELU = "common.relu"
@@ -23,6 +24,7 @@ UNARY_OPERATORS = {
 }
 
 TERNARY_OPERATORS = {
+    MEAN_VARIANCE_NORM,
     LINEAR,
 }
 

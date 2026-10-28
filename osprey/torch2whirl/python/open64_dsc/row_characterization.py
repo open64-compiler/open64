@@ -102,6 +102,32 @@ class _RowMatcher:
             raise CharacterizationError("Softmax max/exp/sum must share the same row dataflow")
         return maximum, denominator
 
+    def centered_affine_normalization(self):
+        """Check exact population-centered affine edges without evaluation."""
+        t = self.torch
+        if len(self.inputs) != 3:
+            raise CharacterizationError("normalization requires X, gamma and beta inputs")
+        x, gamma, beta = self.inputs
+        scaled, actual_beta = self.call(self.output, operator.add, 2)
+        normalized, actual_gamma = self.call(scaled, operator.mul, 2)
+        centered, inverse = self.call(normalized, operator.mul, 2)
+        variance_plus_eps, = self.call(inverse, t.rsqrt, 1)
+        variance, epsilon = self.call(variance_plus_eps, operator.add, 2)
+        square = self.reduce(variance, t.mean, True)
+        lhs, rhs = self.call(square, operator.mul, 2)
+        value, mean = self.call(centered, operator.sub, 2)
+        if (actual_beta is not beta or actual_gamma is not gamma or value is not x or
+                lhs is not centered or rhs is not centered or
+                self.reduce(mean, t.mean, True) is not x):
+            raise CharacterizationError("LayerNorm requires centered population variance and affine inputs")
+        try:
+            valid = type(epsilon) in (float, int) and math.isfinite(epsilon) and epsilon > 0
+        except OverflowError:
+            valid = False
+        if not valid:
+            raise CharacterizationError("positive finite scalar epsilon required")
+        return [mean, variance, variance_plus_eps, inverse], epsilon
+
     def match(self):
         """Derive kind, axes, sizes, epsilon and accesses from the actual graph."""
         t = self.torch
@@ -122,26 +148,7 @@ class _RowMatcher:
             stats = list(self.stable_softmax())
             kind, result_shape = "softmax", shape
         else:
-            if len(self.inputs) != 3:
-                raise CharacterizationError("unsupported row region")
-            gamma, beta = self.inputs[1:]
-            scaled, actual_beta = self.call(self.output, operator.add, 2)
-            normalized, actual_gamma = self.call(scaled, operator.mul, 2)
-            centered, inverse = self.call(normalized, operator.mul, 2)
-            variance_plus_eps, = self.call(inverse, t.rsqrt, 1)
-            variance, epsilon = self.call(variance_plus_eps, operator.add, 2)
-            square = self.reduce(variance, t.mean, True)
-            lhs, rhs = self.call(square, operator.mul, 2)
-            value, mean = self.call(centered, operator.sub, 2)
-            if (actual_beta is not beta or actual_gamma is not gamma or value is not x or
-                    lhs is not centered or rhs is not centered or
-                    self.reduce(mean, t.mean, True) is not x):
-                raise CharacterizationError("LayerNorm requires centered population variance and affine inputs")
-            if type(epsilon) not in (float, int) or not math.isfinite(epsilon) or epsilon <= 0:
-                raise CharacterizationError("positive finite scalar epsilon required")
-            self.shape(gamma, (width,))
-            self.shape(beta, (width,))
-            stats = [mean, variance, variance_plus_eps, inverse]
+            stats, epsilon = self.centered_affine_normalization()
             kind, result_shape = "layernorm", shape
         if self.used != set(self.nodes):
             raise CharacterizationError("extra operations, effects, attributes or unused inputs are unsupported")
@@ -202,6 +209,15 @@ def match_stable_softmax_structure(graph_module):
     if matcher.used != set(matcher.nodes):
         raise CharacterizationError("extra Softmax operations, effects or unused inputs")
     return matcher.inputs[0], matcher.output
+
+
+def match_centered_affine_normalization_structure(graph_module):
+    """Preflight the complete pure affine recipe before ShapeProp/allocation."""
+    matcher = _RowMatcher(graph_module)
+    _, epsilon = matcher.centered_affine_normalization()
+    if matcher.used != set(matcher.nodes):
+        raise CharacterizationError("extra normalization operations, effects or unused inputs")
+    return tuple(matcher.inputs), matcher.output, epsilon
 
 
 def characterize_row_graph(graph_module, permissions=None):

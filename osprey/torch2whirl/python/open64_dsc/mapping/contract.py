@@ -22,6 +22,11 @@ class OperatorContract:
 
 
 _CONTRACTS = {
+    common.MEAN_VARIANCE_NORM: OperatorContract(
+        common.MEAN_VARIANCE_NORM, 1, 3,
+        ("attr.axis", "attr.accum_dtype", "attr.variance_kind", "attr.epsilon_bits",
+         "attr.reassociate", "attr.state_reformulation", "attr.contract", "attr.rsqrt_semantics"),
+    ),
     common.STABLE_SOFTMAX: OperatorContract(
         common.STABLE_SOFTMAX, 1, 1,
         ("attr.axis", "attr.accum_dtype", "attr.reassociate",
