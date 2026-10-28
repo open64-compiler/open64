@@ -155,7 +155,8 @@ static const char *DSL_operator_name[] = {
     "OPR_DSLCKKSRELIN",
     "OPR_DSLCKKSBOOTSTRAP",
     "OPR_DSLREDUCESUM",
-    "OPR_DSLSTABLESOFTMAX"
+    "OPR_DSLSTABLESOFTMAX",
+    "OPR_DSLMEANVARNORM"
 };
 
 static const char *DSL_fusion_iteration_class_name_table[] = {
@@ -492,7 +493,11 @@ static const DSL_COMMON_OPCODE_SEED DSL_common_opcode_seed[] = {
     { "common.stable_softmax", DSL_OPCODE_CATEGORY_EXECUTABLE,
         DSL_OPCODE_LEVEL_2_NUMERIC, 1,
         DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
-        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_STABLE_SOFTMAX" }
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_STABLE_SOFTMAX" },
+    { "common.mean_variance_norm", DSL_OPCODE_CATEGORY_EXECUTABLE,
+        DSL_OPCODE_LEVEL_2_NUMERIC, 3,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_MEAN_VAR_NORM" }
 };
 
 static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
@@ -720,7 +725,13 @@ static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
         DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
         DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_STABLE_SOFTMAX_V1",
         "attr.axis;attr.accum_dtype;attr.reassociate;"
-        "attr.state_reformulation;attr.exp_semantics" }
+        "attr.state_reformulation;attr.exp_semantics" },
+    { OPR_DSLMEANVARNORM, "common.mean_variance_norm", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 3,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_MEAN_VAR_NORM_V1",
+        "attr.axis;attr.accum_dtype;attr.variance_kind;attr.epsilon_bits;"
+        "attr.reassociate;attr.state_reformulation;attr.contract;attr.rsqrt_semantics" }
 };
 
 static const DSL_FUSIBILITY_INFO DSL_fusibility_info[] = {

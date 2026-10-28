@@ -280,3 +280,8 @@ interleaved mapped reopens and strict report replays must match staged evidence.
 R1-d remains partial: native mean/variance normalization, generalized forms,
 executable numerical binding, legal/profitable alternatives and lowering are
 still separate work. Source ingestion is not an optimization or speedup claim.
+
+The subsequent [native normalization contract](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md)
+now implements bounded centered affine population semantics and PREOPT
+characterization. Its Python connection and executable realization are still
+open; no Softmax numerical permission or native contract is broadened.

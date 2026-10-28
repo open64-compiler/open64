@@ -1481,6 +1481,9 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
   FmtAssert(WOPT_DSL_verify_softmax_forms
                 (wn_tree, "preopt_enter", stderr, reduction_trace),
             ("PREOPT stable Softmax admission failed"));
+  FmtAssert(WOPT_DSL_verify_normalization_forms
+                (wn_tree, "preopt_enter", stderr, reduction_trace),
+            ("PREOPT normalization admission failed"));
 
   // sets Opt_current_pu_st static
   Opt_set_current_pu_name(wn_tree);
@@ -2482,6 +2485,9 @@ Pre_Optimizer(OPT_PHASE phase, WN *wn_tree, DU_MANAGER *du_mgr,
   FmtAssert(WOPT_DSL_verify_softmax_forms
                 (opt_wn, "preopt_exit", stderr, reduction_trace),
             ("PREOPT changed a canonical stable Softmax contract"));
+  FmtAssert(WOPT_DSL_verify_normalization_forms
+                (opt_wn, "preopt_exit", stderr, reduction_trace),
+            ("PREOPT changed a canonical normalization contract"));
 
   if (WOPT_DSL_semantic_info_count() != 0 &&
       Current_PU_Info != NULL) {

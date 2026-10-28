@@ -8,6 +8,22 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-27 R1 native mean/variance normalization increment:
+`common.mean_variance_norm.v1` now carries the centered population affine
+FP32 recipe with three direct X/gamma/beta operands, exact epsilon bits and
+strict reassociation/state-reformulation/contraction prohibitions. PREOPT
+derives state, affine accesses/broadcasts, denominator/epsilon and numerical
+unknowns from canonical WHIRL. Actual PREOPT exposed and now covers the old
+two-kid DSL emitter limit; the existing bridge preserves ternary identity.
+Four native variants pass 54 checks each, including foreign operands,
+rollback, read-only/unchanged-output queries and ternary round trips.
+Nineteen trace-auditor and 21 source numerical tests, focused common/FHE/WOPT
+compatibility, five historical row-sum replays and symbol-boundary checks pass.
+The [normalization detail](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md)
+identifies source-interleaved WHIRL, controlled compact .t, phase/suite reports
+and the immutable receipt. No Python normalization ingestion, executable
+normalization, MMA1/profile change or GPU certification is claimed.
+
 2026-10-27 R1 Python-to-native stable-Softmax increment:
 the exact whole-graph max/subtract/exp/sum/divide matcher now emits a runtime
 input formal, explicit same-shape result/return and native v1 operation.

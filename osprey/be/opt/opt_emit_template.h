@@ -93,6 +93,10 @@
 
 extern BOOL OPT_Enable_WHIRL_SSA;
 
+/* Emit ordinary WHIRL expressions through the existing emitter protocol.
+ * Logical DSL expressions retain typed managed identity through the dedicated
+ * bridge; no target or numerical realization is selected during emission.
+ * Normalization contract: doc/AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md. */
 template < class EMITTER >WN*
 Gen_exp_wn(STMTREP* stmt, CODEREP *exp, EMITTER *emitter)
 {
@@ -107,13 +111,13 @@ Gen_exp_wn(STMTREP* stmt, CODEREP *exp, EMITTER *emitter)
   case CK_OP:
     if (exp->Is_dsl_op()) {
       WOPT_DSL_SEMANTIC_INFO info;
-      WN *dsl_kids[2];
+      WN *dsl_kids[3];
       WN *original = NULL;
       WN *statement_wn = stmt == NULL ? NULL : stmt->Wn();
       ST_IDX result_st = ST_IDX_ZERO;
       CODEREP *projectable = NULL;
 
-      FmtAssert(exp->Kid_count() <= 2 &&
+      FmtAssert(exp->Kid_count() <= 3 &&
                 WOPT_DSL_semantic_info_get
                     (exp->Dsl_semantic_info_id(), &info),
                 ("Gen_exp_wn: invalid logical DSL CODEREP"));

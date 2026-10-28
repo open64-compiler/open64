@@ -2137,3 +2137,18 @@ now consumes this unchanged native contract, preserving the division call-site
 and runtime formal/result/return. Source matching is not native optimization;
 executable VHO lowering still fails closed. Five API/driver native/PREOPT cases
 and source/numerical witnesses are retained independently of MMA1.
+
+### R1 Native Centered Population Normalization (2026-10-27)
+
+The [native normalization contract](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md)
+appends logical ID 39 for FP32 `[R,N],[N],[N] -> [R,N]` with eight exact
+attributes, including canonical epsilon bits, population centered variance
+and strict reassociation/reformulation/contraction prohibitions. Common owns
+structural validation; WOPT derives transient PU-local facts. PREOPT verifies
+and preserves all three operand links through the existing ternary-capable
+native carrier and the extended three-kid DSL emitter bridge. Physical opcode,
+mapped-image, TY-kind and 64-byte semantic-key layouts are unchanged.
+`AI_NORM`/`AI_NORM_FACT` are additive controlled positional traces, source line
+last. Their auditor reports epsilon/denominator, affine broadcasts, numerical
+unknowns and remaining gates. Python normalization ingestion and executable
+VHO lowering remain open; no native accuracy or performance proof is implied.

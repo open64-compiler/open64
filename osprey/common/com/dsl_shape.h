@@ -115,6 +115,20 @@ extern BOOL DSL_Shape_Stable_Softmax_Types_Valid
     (TY_IDX operand_ty, TY_IDX result_ty, const char *axis,
      const char *accum_dtype, const char *reassociate,
      const char *state_reformulation, const char *exp_semantics);
+
+/* Canonical eight-lowercase-hex positive finite IEEE binary32 epsilon bits.
+ * No host floating-point parsing/rounding or target FTZ policy; output unchanged
+ * on failure. Contract: AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md. */
+extern BOOL DSL_positive_f32_bits_valid(const char *text, UINT32 *bits);
+
+/* Policy-free FP32 [R,N], [N], [N] -> [R,N] centered population contract.
+ * Checks exact permissions and epsilon spelling without allocation or lowering. */
+extern BOOL DSL_mean_variance_norm_types_valid
+    (TY_IDX input_ty, TY_IDX gamma_ty, TY_IDX beta_ty, TY_IDX result_ty,
+     const char *axis, const char *accum_dtype, const char *variance_kind,
+     const char *epsilon_bits, const char *reassociate,
+     const char *state_reformulation, const char *contract,
+     const char *rsqrt_semantics);
 extern BOOL DSL_Shape_Parse_Static_Dimensions
                                 (const char *shape,
                                  UINT64 *dimensions,

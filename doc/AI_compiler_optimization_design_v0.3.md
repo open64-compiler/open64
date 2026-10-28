@@ -4,6 +4,15 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-27 native normalization amendment:
+[Native centered population normalization](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md)
+now preserves the three-input affine FP32 recipe and derives state/access/
+numerical facts through actual PREOPT. Epsilon stays inside rsqrt with exact
+binary32 bits; affine broadcast and population denominator are explicit.
+Reassociation, state reformulation and FMA contraction remain prohibited.
+The existing DSL emitter bridge now carries three kids. Python normalization
+ingestion and executable realization remain open, independently of MMA1.
+
 2026-10-27 Python stable-Softmax connection:
 the [exact source-to-native recipe](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27)
 now shares structural preflight with R1 analysis and emits the published native

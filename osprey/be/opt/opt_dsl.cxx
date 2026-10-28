@@ -5,7 +5,8 @@
 /* PU-local WHIRL/CODEREP semantic bridge; common/com owns records, while
  * PREOPT verifies canonical forms before import and after emission. Reduction
  * contract: doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md; Softmax:
- * doc/AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md. No builder or
+ * doc/AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md; normalization:
+ * doc/AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md. No builder or
  * target-selection policy is linked into this backend component. */
 
 #include <string.h>
@@ -132,7 +133,7 @@ WOPT_DSL_TCON_Index(ST_IDX st, TCON_IDX *tcon_idx)
 }
 
 /* Import the managed identity for a direct native expression in this PU.
- * Row sums are opaque pure reductions: no reassociation or scalar folding is
+ * Row recipes are opaque pure operations: no reassociation or scalar folding is
  * enabled by admission. Invalid/incomplete identities do not enter CODEREP. */
 BOOL
 WOPT_DSL_import_semantic_info(const WN *wn, ST_IDX result_st,
@@ -172,7 +173,8 @@ WOPT_DSL_import_semantic_info(const WN *wn, ST_IDX result_st,
       logical.dsl_operator != OPR_DSLDIV &&
       logical.dsl_operator != OPR_DSLREM &&
       logical.dsl_operator != OPR_DSLREDUCESUM &&
-      logical.dsl_operator != OPR_DSLSTABLESOFTMAX) {
+      logical.dsl_operator != OPR_DSLSTABLESOFTMAX &&
+      logical.dsl_operator != OPR_DSLMEANVARNORM) {
     if (diagnostic != NULL)
       fprintf(diagnostic, "WOPT DSL import: %s is outside M5 scope\n",
               DSL_OPERATOR_name(logical.dsl_operator));
@@ -411,7 +413,9 @@ WOPT_DSL_Binary_Payload(
   return payload;
 }
 
-/* Rebuild the typed expression and its managed operand links together. */
+/* Rebuild the typed expression and managed links together, including all three
+ * normalization operands. Existing common rewrite services own the mutation;
+ * this bridge preserves semantics, never selecting a numerical algorithm. */
 WN *
 WOPT_DSL_emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
                  const WN *original, ST_IDX result_st,
@@ -505,11 +509,13 @@ WOPT_DSL_emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
              info->logical_operator == OPR_DSLDIV ||
              info->logical_operator == OPR_DSLREM ||
              info->logical_operator == OPR_DSLREDUCESUM ||
-             info->logical_operator == OPR_DSLSTABLESOFTMAX) {
-    DSL_IR_VALUE_ID operand_ids[2];
+             info->logical_operator == OPR_DSLSTABLESOFTMAX ||
+             info->logical_operator == OPR_DSLMEANVARNORM) {
+    DSL_IR_VALUE_ID operand_ids[3];
     UINT32 expected_kids =
         (info->logical_operator == OPR_DSLREDUCESUM ||
-         info->logical_operator == OPR_DSLSTABLESOFTMAX) ? 1 : 2;
+         info->logical_operator == OPR_DSLSTABLESOFTMAX) ? 1 :
+        (info->logical_operator == OPR_DSLMEANVARNORM ? 3 : 2);
     if (kid_count != expected_kids ||
         !WOPT_DSL_Copy_Node_Attributes(&node, &attributes))
       return NULL;
@@ -873,5 +879,158 @@ WOPT_DSL_verify_softmax_forms
                    "output_owner storage source_line\n");
   }
   WOPT_DSL_Softmax_Forms(tree, phase, trace, TRUE);
+  return TRUE;
+}
+
+/* Derive the fixed centered population recipe only from verified canonical
+ * assignments, affine operand joins, TYs and the exact epsilon attribute. */
+static BOOL
+WOPT_DSL_derive_normalization
+    (WN *assignment, WOPT_DSL_NORMALIZATION_CHARACTERIZATION *output)
+{
+  if (assignment == NULL || output == NULL || Current_PU_Info == NULL ||
+      WN_operator(assignment) != OPR_STID) return FALSE;
+  WN *expression = WN_kid0(assignment);
+  DSL_LOGICAL_OPCODE logical;
+  if (expression == NULL || WN_operator(expression) != OPR_DSL ||
+      !DSL_WN_Get_Logical_Opcode(expression, &logical, NULL) ||
+      logical.dsl_operator != OPR_DSLMEANVARNORM ||
+      logical.effective_version != 1 || WN_kid_count(expression) != 3)
+    return FALSE;
+  WOPT_DSL_NORMALIZATION_CHARACTERIZATION fact;
+  memset(&fact, 0, sizeof(fact));
+  DSL_IR_VALUE_RECORD result;
+  DSL_IR_NODE_RECORD node;
+  const char *owner = ST_name(PU_Info_proc_sym(Current_PU_Info));
+  if (!WOPT_DSL_Result_Value(WN_st_idx(assignment), owner, &result, &node)) return FALSE;
+  for (UINT32 i = 0; i < 3; ++i) {
+    DSL_IR_VALUE_RECORD operand;
+    if (!WOPT_DSL_Operand_Value(WN_kid(expression, i), owner, &operand)) return FALSE;
+    fact.operand_types[i] = WN_ty(WN_kid(expression, i));
+    fact.operand_value_ids[i] = operand.id;
+  }
+  const char *epsilon = NULL;
+  for (UINT32 i = 0; i < node.attribute_count; ++i) {
+    DSL_IR_ATTRIBUTE_RECORD attribute;
+    if (!DSL_IR_Image_Get_Attribute(node.first_attribute_id + i, &attribute)) return FALSE;
+    if (strcmp(Index_To_Str(attribute.name), "attr.epsilon_bits") == 0)
+      epsilon = Index_To_Str(attribute.value);
+  }
+  UINT64 dimensions[2];
+  UINT32 rank = 0;
+  fact.result_ty = WN_ty(assignment);
+  if (!DSL_mean_variance_norm_types_valid
+          (fact.operand_types[0], fact.operand_types[1], fact.operand_types[2],
+           fact.result_ty, "1", "float32", "population_centered", epsilon,
+           "false", "false", "false", "source_unresolved") ||
+      !DSL_positive_f32_bits_valid(epsilon, &fact.epsilon_bits) ||
+      !DSL_Shape_Parse_Static_Dimensions
+          (TY_tensor_attribute(fact.operand_types[0], TY_TENSOR_SCHEMA_SHAPE),
+           dimensions, 2, &rank) || rank != 2)
+    return FALSE;
+  fact.recipe = WOPT_DSL_NORM_CENTERED_POPULATION_F32_ROWS_V1;
+  fact.flags = WOPT_DSL_NORM_INPUTS_READ_ONLY | WOPT_DSL_NORM_REASSOC_FORBIDDEN |
+      WOPT_DSL_NORM_REFORMULATION_FORBIDDEN | WOPT_DSL_NORM_ORDER_UNRESOLVED |
+      WOPT_DSL_NORM_FINITE_UNPROVEN | WOPT_DSL_NORM_OVERFLOW_UNPROVEN |
+      WOPT_DSL_NORM_ACCURACY_UNPROVEN | WOPT_DSL_NORM_ALIAS_UNPROVEN |
+      WOPT_DSL_NORM_STORAGE_UNPLANNED | WOPT_DSL_NORM_OUTPUT_OWNER_PER_ROW |
+      WOPT_DSL_NORM_RSQRT_UNRESOLVED | WOPT_DSL_NORM_EXCEPTION_UNRESOLVED |
+      WOPT_DSL_NORM_CONTRACTION_FORBIDDEN;
+  fact.owner_pu = PU_Info_proc_sym(Current_PU_Info);
+  fact.node_id = node.id;
+  fact.result_value_id = result.id;
+  fact.rows = dimensions[0];
+  fact.width = dimensions[1];
+  SRCPOS position = WN_Get_Linenum(assignment);
+  fact.source_line = SRCPOS_linenum(position);
+  *output = fact;
+  return TRUE;
+}
+
+/* Public PU-local read-only query; reject foreign/nonmember/REGION scopes and
+ * malformed native contracts without publishing a partial snapshot. */
+BOOL
+WOPT_DSL_characterize_normalization
+    (WN *scope, WN *assignment, WOPT_DSL_NORMALIZATION_CHARACTERIZATION *output,
+     FILE *diagnostic)
+{
+  DSL_GATEKEEPER_RESULT gate;
+  return output != NULL && Current_PU_Info != NULL && scope != NULL &&
+      WN_operator(scope) == OPR_FUNC_ENTRY &&
+      PU_Info_tree_ptr(Current_PU_Info) == scope && assignment != NULL &&
+      WOPT_DSL_Contains_Node(scope, assignment) &&
+      DSL_Gatekeeper_Verify_PU(Current_PU_Info, diagnostic, &gate) &&
+      WOPT_DSL_derive_normalization(assignment, output);
+}
+
+/* Count selected-tree operators; derive and optionally trace only after the
+ * whole active PU passed gatekeeping. No allocation or schedule is chosen. */
+static UINT32
+WOPT_DSL_normalization_forms(WN *tree, const char *phase, FILE *trace,
+                             BOOL verified = FALSE)
+{
+  if (tree == NULL) return 0;
+  UINT32 count = 0;
+  DSL_LOGICAL_OPCODE logical;
+  if (WN_operator(tree) == OPR_DSL &&
+      DSL_WN_Get_Logical_Opcode(tree, &logical, NULL) &&
+      logical.dsl_operator == OPR_DSLMEANVARNORM) ++count;
+  if (verified && WN_operator(tree) == OPR_STID && WN_kid0(tree) != NULL &&
+      WN_operator(WN_kid0(tree)) == OPR_DSL &&
+      DSL_WN_Get_Logical_Opcode(WN_kid0(tree), &logical, NULL) &&
+      logical.dsl_operator == OPR_DSLMEANVARNORM) {
+    WOPT_DSL_NORMALIZATION_CHARACTERIZATION f;
+    FmtAssert(WOPT_DSL_derive_normalization(tree, &f),
+              ("verified normalization identity unavailable"));
+    if (trace != NULL) {
+      fprintf(trace, "AI_NORM 1 FORM %s %u %u %llu %llu 1 population_centered "
+                     "%08x float32 0 0 0 source_unresolved verified %u\n", phase,
+              f.node_id, f.result_value_id, (unsigned long long)f.rows,
+              (unsigned long long)f.width, f.epsilon_bits, f.source_line);
+      fprintf(trace, "AI_NORM_FACT 1 FACT %s %u %u %u %u %u %u %u %u %u %u "
+                     "%llu %llu %08x centered_population mean_f32,variance_f32 "
+                     "%llu inside_rsqrt normalize_then_scale_then_bias "
+                     "source_unresolved source_unresolved 0 0 0 unproved "
+                     "unproved unproved source_unresolved X[r,k] gamma[k] beta[k] "
+                     "Y[r,k] read_only may_alias per_row unplanned %u\n", phase,
+              (UINT32)f.owner_pu, f.node_id, f.operand_value_ids[0],
+              f.operand_value_ids[1], f.operand_value_ids[2], f.result_value_id,
+              (UINT32)f.operand_types[0], (UINT32)f.operand_types[1],
+              (UINT32)f.operand_types[2], (UINT32)f.result_ty,
+              (unsigned long long)f.rows, (unsigned long long)f.width,
+              f.epsilon_bits, (unsigned long long)f.width, f.source_line);
+    }
+  }
+  if (WN_operator(tree) == OPR_BLOCK) {
+    for (WN *statement = WN_first(tree); statement != NULL; statement = WN_next(statement))
+      count += WOPT_DSL_normalization_forms(statement, phase, trace, verified);
+  } else {
+    for (INT32 i = 0; i < WN_kid_count(tree); ++i)
+      count += WOPT_DSL_normalization_forms(WN_kid(tree, i), phase, trace, verified);
+  }
+  return count;
+}
+
+/* Preserve canonical normalization at both PREOPT boundaries. Tracing never
+ * gates legality, and a REGION cannot expand itself into a whole-PU analysis. */
+BOOL
+WOPT_DSL_verify_normalization_forms
+    (WN *tree, const char *phase, FILE *diagnostic, FILE *trace)
+{
+  if (WOPT_DSL_normalization_forms(tree, phase, NULL) == 0) return TRUE;
+  DSL_GATEKEEPER_RESULT result;
+  if (phase == NULL || Current_PU_Info == NULL || WN_operator(tree) != OPR_FUNC_ENTRY ||
+      PU_Info_tree_ptr(Current_PU_Info) != tree ||
+      !DSL_Gatekeeper_Verify_PU(Current_PU_Info, diagnostic, &result)) return FALSE;
+  if (trace != NULL) {
+    fprintf(trace, "AI_NORM 1 HEADER phase node value rows width axis variance epsilon_bits "
+                   "accum_dtype reassociate reformulate contract rsqrt status source_line\n");
+    fprintf(trace, "AI_NORM_FACT 1 HEADER phase pu node input gamma beta result input_ty "
+                   "gamma_ty beta_ty result_ty rows width epsilon_bits recipe state denominator "
+                   "epsilon_position affine_order order rsqrt reassociate reformulate contract "
+                   "finite overflow accuracy exception input_access gamma_access beta_access "
+                   "output_access input_effect alias output_owner storage source_line\n");
+  }
+  WOPT_DSL_normalization_forms(tree, phase, trace, TRUE);
   return TRUE;
 }

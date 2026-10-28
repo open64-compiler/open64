@@ -207,3 +207,13 @@ through shared structural preflight and native formal/result/return APIs.
 Native identity does not promote CPU sample agreement into a
 general accuracy proof or authorize online-state merge. Exact reduction order,
 exp approximation/exception behavior and executable lowering remain unbound.
+
+## 9. Native Mean/Variance Normalization Follow-On
+
+The [native normalization contract](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md)
+now preserves the centered affine population FP32 recipe with three operands,
+canonical epsilon bits and strict reassociation/reformulation/contraction
+prohibitions. WOPT derives row state, affine accesses/broadcasts, denominator
+and numerical unknowns from canonical WHIRL at PREOPT entry/exit. Python
+normalization ingestion, executable binding and selected lowering remain open.
+Existing CPU witnesses are not upgraded into native numerical proof.

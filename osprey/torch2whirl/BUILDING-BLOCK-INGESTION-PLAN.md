@@ -8,7 +8,11 @@ and native normalization ingestion remain open.
 The [native stable-Softmax contract](../../doc/AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md)
 and its canonical-WHIRL characterization are implemented. The exact decomposed
 Python stable-Softmax matcher now consumes it; opaque framework Softmax is not
-silently treated as equivalent. Native normalization is the next row contract.
+silently treated as equivalent. Normalization's exact source connection remains open.
+The [native centered population normalization contract](../../doc/AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md)
+and canonical-WHIRL characterization are now implemented. Connecting the exact
+centered affine Python matcher is the next ingestion gate; native representation
+does not imply an opaque `layer_norm` or arbitrary normalization matcher.
 Controlling architecture: [common execution planning](../../doc/AI-COMPILER-COMMON-EXECUTION-PLANNING.md),
 [frontend workflow](../../doc/WHIRL-DSL-INFRASTRUCTURE.md) and
 [building-block research queue](../../doc/AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#building-block-research-queue).

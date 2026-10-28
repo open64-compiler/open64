@@ -1521,7 +1521,87 @@ DSL_Shape_Stable_Softmax_Result
                (operands[0], result_ty, axis, accum, reassociate, reformulation, exp);
 }
 
+/* Decode canonical IEEE bits without host strtod, endianness or rounding.
+ * Positive subnormals are representable; target preservation is not inferred. */
+BOOL
+DSL_positive_f32_bits_valid(const char *text, UINT32 *bits)
+{
+    if (text == NULL || strlen(text) != 8 || bits == NULL) return FALSE;
+    UINT32 value = 0;
+    for (UINT32 i = 0; i < 8; ++i) {
+        char c = text[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return FALSE;
+        value = (value << 4) | (c <= '9' ? c - '0' : c - 'a' + 10);
+    }
+    if (value == 0 || value >= 0x7f800000U) return FALSE;
+    *bits = value;
+    return TRUE;
+}
+
+/* Validate the source recipe, exact affine broadcasts and epsilon before any
+ * construction. This neither picks a mean reduction nor proves accuracy. */
+BOOL
+DSL_mean_variance_norm_types_valid
+    (TY_IDX input_ty, TY_IDX gamma_ty, TY_IDX beta_ty, TY_IDX result_ty,
+     const char *axis, const char *accum_dtype, const char *variance_kind,
+     const char *epsilon_bits, const char *reassociate,
+     const char *state_reformulation, const char *contract,
+     const char *rsqrt_semantics)
+{
+    UINT32 bits;
+    if (axis == NULL || strcmp(axis, "1") != 0 ||
+        accum_dtype == NULL || strcmp(accum_dtype, "float32") != 0 ||
+        variance_kind == NULL || strcmp(variance_kind, "population_centered") != 0 ||
+        !DSL_positive_f32_bits_valid(epsilon_bits, &bits) ||
+        reassociate == NULL || strcmp(reassociate, "false") != 0 ||
+        state_reformulation == NULL || strcmp(state_reformulation, "false") != 0 ||
+        contract == NULL || strcmp(contract, "false") != 0 ||
+        rsqrt_semantics == NULL || strcmp(rsqrt_semantics, "source_unresolved") != 0)
+        return FALSE;
+    TY_IDX types[4] = { input_ty, gamma_ty, beta_ty, result_ty };
+    UINT32 ranks[4] = { 2, 1, 1, 2 };
+    UINT64 dimensions[4][2];
+    for (UINT32 i = 0; i < 4; ++i) {
+        UINT32 rank = 0;
+        if (!DSL_Shape_Tensor_Core_Complete(types[i]) ||
+            TY_tensor_rank(types[i]) != ranks[i] ||
+            strcmp(TY_tensor_attribute(types[i], TY_TENSOR_SCHEMA_DTYPE), "float32") != 0 ||
+            !DSL_Shape_TY_Valid(TY_tensor_element_ty(types[i])) ||
+            TY_mtype(TY_tensor_element_ty(types[i])) != MTYPE_F4 ||
+            !DSL_Shape_Tensor_Element_Representation_Compatible(input_ty, types[i]) ||
+            !DSL_Shape_Parse_Static_Dimensions
+                (TY_tensor_attribute(types[i], TY_TENSOR_SCHEMA_SHAPE),
+                 dimensions[i], 2, &rank) || rank != ranks[i])
+            return FALSE;
+    }
+    return dimensions[0][0] > 0 && dimensions[0][1] > 0 &&
+           dimensions[1][0] == dimensions[0][1] &&
+           dimensions[2][0] == dimensions[0][1] &&
+           dimensions[3][0] == dimensions[0][0] &&
+           dimensions[3][1] == dimensions[0][1];
+}
+
+/* Adapt managed attributes to the shared structural contract without mutation. */
+static BOOL
+DSL_mean_variance_norm_result
+    (const DSL_IR_NODE_RECORD *node, const std::vector<TY_IDX> &operands,
+     TY_IDX result_ty, UINT16 version)
+{
+    const char *a[8];
+    const char *names[8] = { "attr.axis", "attr.accum_dtype", "attr.variance_kind",
+        "attr.epsilon_bits", "attr.reassociate", "attr.state_reformulation",
+        "attr.contract", "attr.rsqrt_semantics" };
+    if (node == NULL || node->attribute_count != 8 || operands.size() != 3 || version != 1)
+        return FALSE;
+    for (UINT32 i = 0; i < 8; ++i)
+        if (!DSL_Shape_Node_Attribute(node, names[i], &a[i])) return FALSE;
+    return DSL_mean_variance_norm_types_valid
+        (operands[0], operands[1], operands[2], result_ty,
+         a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
+}
+
 static const DSL_SHAPE_RULE_ENTRY DSL_shape_rules[] = {
+    { OPR_DSLMEANVARNORM, 1, DSL_mean_variance_norm_result },
     { OPR_DSLSTABLESOFTMAX, 1, DSL_Shape_Stable_Softmax_Result },
     { OPR_DSLREDUCESUM, 1, DSL_Shape_Reduce_Sum_Result },
     { OPR_DSLADD, 1, DSL_Shape_Broadcast_Result },
@@ -2777,6 +2857,14 @@ DSL_Shape_Infer_Operator
 
     BOOL valid = FALSE;
     switch (input->dsl_operator) {
+    case OPR_DSLMEANVARNORM: {
+        std::vector<TY_IDX> operands(input->operand_types,
+                                    input->operand_types + input->operand_count);
+        valid = DSL_mean_variance_norm_result
+                    (input->node, operands, input->result_ty, input->version) &&
+                DSL_Shape_Fact_From_Type(input->result_ty, result);
+        break;
+    }
     case OPR_DSLSTABLESOFTMAX: {
         std::vector<TY_IDX> operands(input->operand_types,
                                     input->operand_types + input->operand_count);
