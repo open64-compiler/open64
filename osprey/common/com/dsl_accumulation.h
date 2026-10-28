@@ -15,7 +15,11 @@ typedef enum {
     DSL_ACC_FORMAT_F32 = 1,
     DSL_ACC_FORMAT_F8_E4M3 = 2,
     DSL_ACC_FORMAT_F8_E5M2 = 3,
-    DSL_ACC_FORMAT_F4_E2M1 = 4
+    DSL_ACC_FORMAT_F4_E2M1 = 4,
+    /* MMA1 runtime compute inventory only; no typed scalar/MMA lowering.
+     * doc/AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md. */
+    DSL_ACC_FORMAT_F16 = 5,
+    DSL_ACC_FORMAT_BF16 = 6
 } DSL_ACCUMULATION_FORMAT;
 
 typedef enum {
@@ -73,7 +77,9 @@ typedef struct {
 } DSL_ACCUMULATION_SEGMENT_RECORD;
 
 /* Check exact coverage, permitted reassociation/narrowing, scale boundaries,
- * instruction alignment and evidence identity without selecting a target. */
+ * instruction alignment and evidence identity without selecting a target.
+ * F16/BF16 are currently inventory-only and remain rejected by this segmented
+ * accumulation API; their compute-view validation is a separate contract. */
 extern BOOL DSL_accumulation_verify
     (const DSL_NUMERICAL_CONTRACT_RECORD *contract,
      const DSL_ACCUMULATION_PLAN_RECORD *plan,

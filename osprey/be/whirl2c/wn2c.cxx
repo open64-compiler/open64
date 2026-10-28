@@ -3559,10 +3559,23 @@ WN2C_unsupported(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 } /* WN2C_unsupported */
 
 
+/* Translate existing binary expressions. CUDA U4 shifts use the same masked
+ * count semantics as whirl2c.h without requiring a host-only helper header.
+ * No expression simplification or target-selection policy is performed. */
 static STATUS
 WN2C_binaryop(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 {
    STATUS status;
+
+   if (W2C_Cuda_Mode && (WN_opcode(wn) == OPC_U4SHL || WN_opcode(wn) == OPC_U4LSHR))
+   {
+      Append_Token_String(tokens, "((_UINT32)(");
+      status = WN2C_translate(tokens, WN_kid0(wn), context);
+      Append_Token_String(tokens, WN_operator(wn) == OPR_SHL ? ") << ((" : ") >> ((");
+      WN2C_translate(tokens, WN_kid1(wn), context);
+      Append_Token_String(tokens, ") & 31U))");
+      return status;
+   }
    
    Is_True(WN_kid_count(wn) == 2, 
      ("Expected 2 kids in WN2C_binaryop for op %s",WN_opc_name(wn)));
@@ -3588,9 +3601,13 @@ WN2C_binaryop(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 } /* WN2C_binaryop */
 
 
+/* Reuse the established unsigned extraction handler for canonical CUDA U4
+ * nodes; all other unary operations retain their normal translation path. */
 static STATUS
 WN2C_unaryop(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 {
+   if (W2C_Cuda_Mode && WN_opcode(wn) == OPC_U4EXTRACT_BITS)
+      return WN2C_extract_bits(tokens, wn, context);
    Is_True(WN_kid_count(wn) == 1, ("Expected 1 kid in WN2C_unaryop()"));
 
    if (WN2C_IS_INFIX_OP(WN_opcode(wn)))
@@ -4985,9 +5002,47 @@ WN2C_call(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 } /* WN2C_call */
 
 #ifdef KEY
+/* Preserve the standard extended-assembly input/effect protocol for CUDA.
+ * MMA4-H uses no copyout pregs; reject unsupported outputs/clobbers instead
+ * of silently dropping them as the historical basic-asm path does.
+ * Design: doc/AI-COMPILER-MMA4-H-HOPPER-LOWERING.md. */
 static STATUS 
 WN2C_asm_stmt(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 {
+   if (W2C_Cuda_Mode)
+   {
+      FmtAssert(WN_kid_count(wn) >= 2 && WN_operator(WN_asm_clobbers(wn)) == OPR_BLOCK &&
+                !WN_first(WN_asm_clobbers(wn)) && WN_operator(WN_asm_constraints(wn)) == OPR_BLOCK &&
+                !WN_first(WN_asm_constraints(wn)) &&
+                !(WN_asm_flag(wn) & ~(WN_ASM_VOLATILE | WN_ASM_CLOBBERS_MEM)),
+                ("CUDA extended asm requires supported input-only constraints/clobbers"));
+      Append_Token_String(tokens, WN_Asm_Volatile(wn) ? "__asm__ volatile (\"" : "__asm__ (\"");
+      for (const char *character = WN_asm_string(wn); *character; ++character)
+      {
+         if (*character == '\n') Append_Token_String(tokens, "\\n");
+         else if (*character == '\t') Append_Token_String(tokens, "\\t");
+         else
+         {
+            if (*character == '\\' || *character == '\"') Append_Token_Special(tokens, '\\');
+            Append_Token_Special(tokens, *character);
+         }
+      }
+      Append_Token_String(tokens, "\" : : ");
+      for (INT32 index = 2; index < WN_kid_count(wn); ++index)
+      {
+         const WN *input = WN_kid(wn, index);
+         FmtAssert(WN_operator(input) == OPR_ASM_INPUT && WN_kid_count(input) == 1 &&
+                   WN_asm_opnd_num(input) == index - 2 && strcmp(WN_asm_input_constraint(input), "l") == 0 &&
+                   MTYPE_is_integral(WN_rtype(WN_kid0(input))) && MTYPE_byte_size(WN_rtype(WN_kid0(input))) == 8,
+                   ("CUDA extended asm requires ordered 64-bit pointer input constraints"));
+         if (index != 2) Append_Token_String(tokens, ", ");
+         Append_Token_String(tokens, "\"l\"(");
+         WN2C_translate(tokens, WN_kid0(input), context);
+         Append_Token_Special(tokens, ')');
+      }
+      Append_Token_String(tokens, WN_Asm_Clobbers_Mem(wn) ? " : \"memory\")" : " : )");
+      return EMPTY_STATUS;
+   }
    TOKEN_BUFFER asm_tokens;
 
    /* A buffer to hold the tokens representing the asm */
@@ -5673,7 +5728,11 @@ WN2C_intrinsic_op(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 } /* WN2C_intrinsic_op */
 
 
-static STATUS 
+/* Preserve WHIRL TAS bit interpretation, not numeric conversion. CUDA's
+ * unsigned-32-to-float builtin is the target spelling required by MMA3;
+ * all other casts retain their existing emission path. No selection policy.
+ * Design: doc/AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md. */
+static STATUS
 WN2C_tas(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 {
    STATUS status;
@@ -5684,6 +5743,15 @@ WN2C_tas(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 
    TY_IDX from = WN_Tree_Type(WN_kid0(wn));
    TY_IDX to = WN_ty(wn);
+
+   if (W2C_Cuda_Mode && TY_mtype(from) == MTYPE_U4 && TY_mtype(to) == MTYPE_F4)
+   {
+      Append_Token_String(tokens, "__uint_as_float");
+      Append_Token_Special(tokens, '(');
+      status = WN2C_translate(tokens, WN_kid0(wn), context);
+      Append_Token_Special(tokens, ')');
+      return status;
+   }
 
    if (WN2C_compatible_qualified_types(to, from) &&
        !TY_is_logical(to))
@@ -6619,10 +6687,18 @@ WN2C_dealloca(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
   return status ;
 }
 
-static STATUS 
+/* Emit the existing unsigned extraction representation with its actual field
+ * bounds. MMA3's normal simplifier produces this node; no helper runtime is
+ * needed. Avoid host-int overflow when constructing full-width masks.
+ * Design: doc/AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md. */
+static STATUS
 WN2C_extract_bits(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 {
-   // emit ((x >> bitofst) & bitsize)
+   const UINT width = MTYPE_bit_size(WN_rtype(wn));
+   const UINT size = WN_bit_size(wn);
+   FmtAssert(size && size <= width && WN_bit_offset(wn) <= width - size,
+             ("invalid WHIRL extract-bits bounds"));
+   const UINT64 mask = size == 64 ? ~(UINT64)0 : (((UINT64)1 << size) - 1);
    TOKEN_BUFFER opnd_tokens;
    WN *wn0 = WN_kid0(wn);
    TY_IDX wn0_ty = WN_Tree_Type(wn0);
@@ -6636,7 +6712,7 @@ WN2C_extract_bits(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
    Append_Token_Special(tokens,')');
    Append_Token_Special(tokens,'&');
    Append_Token_String(tokens, 
-     Number_as_String((UINT64) ((1 << WN_bit_size(wn)) - 1), "%#llx"));
+     Number_as_String(mask, "%#llx"));
    Append_Token_Special(tokens,')');
    return EMPTY_STATUS;
 }

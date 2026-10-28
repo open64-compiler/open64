@@ -325,6 +325,10 @@ BE_VHO_CXX_SRCS = \
   dsl_tile_candidate_opt.cxx \
   dsl_fetch_pipeline_opt.cxx \
   dsl_accumulation_opt.cxx \
+  dsl_typed_simt_opt.cxx \
+  dsl_wgmma_opt.cxx \
+  dsl_wgmma_pipeline_model_opt.cxx \
+  dsl_compute_shadow_opt.cxx \
   dsl_physical_plan_opt.cxx \
   dsl_runtime_variant_opt.cxx \
   dsl_telemetry_feedback_opt.cxx \
@@ -397,6 +401,9 @@ COMMON_COM_CXX_SRCS = \
   dsl_tile_candidate.cxx \
   dsl_fetch_pipeline.cxx \
   dsl_accumulation.cxx \
+  dsl_typed_simt.cxx \
+  dsl_compute_realization.cxx \
+  dsl_compute_model.cxx \
   dsl_physical_plan.cxx \
   dsl_runtime_variant.cxx \
   dsl_telemetry_profile.cxx \

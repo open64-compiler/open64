@@ -6,6 +6,7 @@ import argparse
 import hashlib
 from functools import lru_cache
 from pathlib import Path
+from compute_shadow_report import source_summary
 from readiness_report import (readiness_cost, HW_PERFORMANCE_COLUMNS,
                               HW_RESOURCE_COLUMNS, OCCUPANCY_COLUMNS, occupancy_record)
 
@@ -1098,6 +1099,8 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
     target = selection.get("roofline_target", {}).get("name", "unavailable")
     version = selection["version"]
     phase_contents = []
+    mma_shadow = source_summary(trace.read_text(encoding="utf-8"),
+                                selection.get("joint", {}).get("chosen", {}).get("id", 0))
     summary = [
         "# What it summarizes: Cross-phase coverage, selected plans, applied rewrites, measurements, and remaining blockers.",
         f"trace_sha256={digest} schema={version} scope={context['scope']} pu={context['pu']} target={target}",
@@ -1190,6 +1193,8 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
                                        for ident, record in joint["readiness"].items())
         else:
             details = "detail=not_recorded\n" if row["status"] == "analyzed_no_rewrite" else ""
+        if number in (0, 6, 7, 8, 9):
+            details += mma_shadow
         content = f"# What it summarizes: {description}\n{metadata}{details}"
         (reports / "phases" / filename).write_text(content, encoding="utf-8")
         phase_contents.append(f"## P{number} {filename}\n{content}")
@@ -1273,6 +1278,8 @@ def render_coverage(trace: Path, reports: Path, selection: dict,
             peak_warps = min(row["resident"], (ready["ctas"] + hw["sms"] - 1) // hw["sms"]) * ready["warps"]
             summary.append("occupancy model=lockstep_estimate " + " ".join(f"{key}={value}" for key, value in row.items()) +
                 f" peak_grid_warps_per_sm={peak_warps} legacy_selected={old} legacy_cost={joint['occupancy'][old]['legacy_total']} selected={chosen} changed={int(old != chosen)} unit=reference_cycles native_occupancy=unknown")
+    if mma_shadow:
+        summary.append("mma2 source=F32 timing=unknown shadow_winner=unknown emitted=SIMT action=none native=unverified")
     (reports / "optimization.log").write_text(
         "# What it summarizes: Complete P0-P11 optimization process, including every phase decision and non-execution reason.\n"
         + "".join(phase_contents), encoding="utf-8")

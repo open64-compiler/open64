@@ -1,6 +1,20 @@
 # MMA Compute Realization And SIMT Fallback
 
-Version v0.1 | 2026-10-27 | Design proposal for review before compiler coding
+Version v0.1 | 2026-10-27 | MMA0 approved for bounded MMA1 implementation
+
+MMA1 now defines runtime-only compute contracts and four exact planning-only
+recipes. See the [implementation and pinned target inventory](AI-COMPILER-MMA1-TARGET-INVENTORY.md).
+MMA2 now has a bounded [analytical shadow model](AI-COMPILER-MMA2-SHADOW-MODEL.md)
+with explicit unknown production timing and synthetic-only oracle scenarios.
+It cannot change SIMT execution. The [MMA3 typed SIMT baseline](AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md)
+now provides a native active-PU F16/BF16 source/lowering API with explicit
+FP32 arithmetic. General frontend/selected-plan hookup, guarded promotion and
+native MMA certification remain open; old F32 dispatch is unchanged.
+The [MMA4-H first Hopper lowering](AI-COMPILER-MMA4-H-HOPPER-LOWERING.md) now
+provides an explicit O3 active-PU shared/shared F16/BF16 WGMMA recipe, carried
+by standard volatile/memory-clobber assembly WNs and compiled with CUDA 12.8.1
+for `sm_90a`. SIMT remains default, no automatic promotion is enabled, and
+native GPU numerical/resource/timing certification is not inferred from compilation.
 
 ## 1. Decision And Current Boundary
 
@@ -9,9 +23,9 @@ contraction**, selected jointly with representation, tiling, placement,
 movement, storage, numerical policy and epilogue. Preserve a legal SIMT
 realization. TMA changes operand delivery; it does not implement MMA.
 
-This is a DSC design proposal, not NVIDIA's compiler algorithm or timing
-model. No option, target profile, native instruction, IR schema or compiler
-implementation is introduced by this document. Current F32 D/S1/T2 kernels
+This is a DSC design, not NVIDIA's compiler algorithm or timing model.
+MMA1's target inventory is a structural capability contract, with no new
+option, executable instruction or persistent schema. Current F32 D/S1/T2 kernels
 use scalar multiplication/addition; the numerical-contract prototype is not
 native Tensor Core lowering. Blackwell registry rows remain planning-only.
 
@@ -401,6 +415,14 @@ from symbolic dynamic execution counts. A rejected/shadow candidate has no
 transformation action. Profile records must expose required rates/ranges and
 provenance for independent recomputation; unknown is printed as unknown.
 
+The [MMA5-H bounded batch recipe](AI-COMPILER-MMA5-H-HOPPER-PIPELINE.md)
+implements two-slot cooperative and bulk-TMA delivery with at most two
+committed compute groups. It separates copy-ready from compute-done and
+reader-reuse joins in real WHIRL. Complete conditional candidate costs reuse
+MMA2 ranges and the existing occupancy service; native timing remains unknown,
+SIMT remains default, and neither cross-batch overlap nor automatic promotion
+is inferred from this increment.
+
 | Report | What the tool must summarize |
 | --- | --- |
 | `semantic.log` | Contraction boundaries, source dtype/order/contraction permissions and ineligible regions. |
@@ -417,7 +439,8 @@ toolchain/profile identity, numerical results, baseline, timing samples,
 checksums and immutable receipts. Keep kernel-only and invocation timing
 separate; measured feedback cannot rewrite an old estimated receipt.
 
-Before implementation approval, review the legality/uncertainty policy,
+MMA0 is approved for MMA1's bounded inventory. Before implementation beyond
+that inventory, review the legality/uncertainty policy,
 first source dtypes, exact target recipes and resource/event carriers. Then:
 
 - Prove negative numerical/target/shape/layout/participation cases and atomic

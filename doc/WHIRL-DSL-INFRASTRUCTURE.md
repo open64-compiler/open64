@@ -16,6 +16,33 @@ CNN domain meaning, including the proposed `cnn.bottleneck.v1` contract and
 its relationship to PyTorch source structure, is documented separately in
 `doc/DSL-WHIRL-CNN-REGION-CONTRACTS.md`.
 
+The [MMA3 typed SIMT baseline](AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md) is a
+native active-PU source/lowering service using existing U2 storage, integer
+operations, F4 TAS and explicit F4 arithmetic. It adds no DSL opcode, type kind,
+mapped-image section or `common.matmul` version/dtype extension. The accepted
+numerical/shape record is runtime-only; its ordinary inspection COMMENT is
+not an unconsumed DSL operation. General Python/FX ingestion and automatic
+typed dispatch are outside this baseline's scope.
+
+The [MMA4-H Hopper target lowering](AI-COMPILER-MMA4-H-HOPPER-LOWERING.md)
+consumes that already-verified native source at O3 only when explicitly
+requested with exact target and ISA numerical acceptance. It uses existing
+`ASM_STMT`/`ASM_INPUT`, volatile/memory effects, ordinary typed memory and
+control flow, plus the existing CTA barrier builtin. A compound atom exposes
+literal fence/MMA/commit/wait instructions and contains all incomplete
+register accesses until completion. It is target-lowered executable WHIRL,
+not a new semantic DSL opcode, image schema or pending comment marker.
+The CUDA printer validates and spells the input-only assembly contract;
+selection/scheduling remain VHO-owned and default SIMT is unchanged.
+
+The [MMA5-H bounded Hopper pipeline](AI-COMPILER-MMA5-H-HOPPER-PIPELINE.md)
+reuses those carriers for two-slot cooperative or bulk-TMA delivery, separate
+copy-ready barriers, at most two committed compute groups and
+wait-before-result/readers-before-reuse joins. Extra raw/packed storage is
+ordinary aligned shared U2/U8 arrays. Request/model records are runtime-only;
+binary WHIRL and CUDA emission policy do not change. SIMT remains default;
+native timing stays unknown.
+
 ## Design goals
 
 1. Keep existing WHIRL binary compatibility unless a feature explicitly needs a

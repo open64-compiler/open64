@@ -189,6 +189,12 @@ LDIRT += dsl_telemetry_feedback_opt.o
 LDIRT += dsl_physical_plan_opt.o
 LDIRT += dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o
 LDIRT += dsl_accumulation_contract_test dsl_accumulation_contract_test.o dsl_accumulation_opt.o
+LDIRT += dsl_compute_realization_contract_test dsl_compute_realization_contract_test.o dsl_compute_realization.o
+LDIRT += dsl_compute_model.o dsl_compute_shadow_opt.o dsl_compute_shadow_contract_test.o dsl_compute_shadow_contract_test
+LDIRT += dsl_typed_simt.o dsl_typed_simt_opt.o dsl_typed_simt_contract_test.o dsl_typed_simt_contract_test
+LDIRT += dsl_wgmma_opt.o dsl_wgmma_contract_test.o dsl_wgmma_contract_test
+LDIRT += dsl_wgmma_pipeline_model_opt.o dsl_wgmma_pipeline_contract_test.o dsl_wgmma_pipeline_contract_test
+LDIRT += dsl_wgmma_pipeline_model_test.o dsl_wgmma_pipeline_model_test
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
 LDIRT += dsl_opt_contract_test dsl_opt_contract_test.o
 LDIRT += dsl_shape_refine_contract_test dsl_shape_refine_contract_test.o
@@ -509,6 +515,33 @@ dsl_tile_candidate_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_tile_candidate_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
+dsl_compute_realization_contract_test: dsl_compute_realization.o dsl_compute_realization_contract_test.o
+	$(link.c++f) -o $@ dsl_compute_realization_contract_test.o dsl_compute_realization.o $(LDFLAGS)
+
+dsl_compute_realization.o: $(COMMON_COM_DIR)/dsl_compute_realization.cxx $(COMMON_COM_DIR)/dsl_compute_realization.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_compute_realization_contract_test.o: $(COMMON_COM_DIR)/tests/dsl_compute_realization_contract_test.cxx $(COMMON_COM_DIR)/dsl_compute_realization.h $(COMMON_COM_DIR)/tests/dsl_compute_test_fixture.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_compute_shadow_contract_test: dsl_compute_realization.o dsl_compute_model.o dsl_compute_shadow_opt.o dsl_compute_shadow_contract_test.o
+	$(link.c++f) -o $@ $^ $(LDFLAGS)
+
+dsl_compute_model.o: $(COMMON_COM_DIR)/dsl_compute_model.cxx $(COMMON_COM_DIR)/dsl_compute_model.h $(COMMON_COM_DIR)/dsl_compute_realization.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_compute_shadow_opt.o: $(BE_VHO_DIR)/dsl_compute_shadow_opt.cxx $(BE_VHO_DIR)/dsl_compute_shadow_opt.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h $(BE_VHO_DIR)/dsl_gemm_readiness.h $(COMMON_COM_DIR)/dsl_compute_model.h $(COMMON_COM_DIR)/dsl_compute_realization.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_compute_shadow_contract_test.o: $(BE_VHO_DIR)/tests/dsl_compute_shadow_contract_test.cxx $(COMMON_COM_DIR)/tests/dsl_compute_test_fixture.h $(BE_VHO_DIR)/dsl_compute_shadow_opt.h $(COMMON_COM_DIR)/dsl_compute_model.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_compute_realization.o dsl_compute_realization_contract_test.o: \
+    $(COMMON_COM_DIR)/dsl_accumulation.h $(COMMON_COM_DIR)/dsl_fetch_pipeline.h \
+    $(COMMON_COM_DIR)/dsl_tile_candidate.h $(COMMON_COM_DIR)/dsl_opt_plan.h \
+    $(COMMON_COM_DIR)/dsl_tensor_evolution.h $(COMMON_COM_DIR)/dsl_ir_image.h \
+    $(COMMON_COM_DIR)/dsl_memory_hierarchy.h $(COMMON_COM_DIR)/dsl_hardware_performance.h
+
 dsl_accumulation_contract_test: $(OBJECTS) controls.o dsl_accumulation_opt.o dsl_accumulation_contract_test.o
 	$(link.c++f) -o $@ dsl_accumulation_contract_test.o controls.o dsl_accumulation_opt.o $(OBJECTS) $(LDFLAGS)
 
@@ -516,6 +549,42 @@ dsl_accumulation_contract_test.o: $(BE_VHO_DIR)/tests/dsl_accumulation_contract_
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_accumulation_opt.o: $(BE_VHO_DIR)/dsl_accumulation_opt.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_typed_simt_contract_test: $(OBJECTS) controls.o dsl_typed_simt.o dsl_typed_simt_opt.o dsl_typed_simt_contract_test.o
+	$(link.c++f) -o $@ dsl_typed_simt_contract_test.o controls.o dsl_typed_simt.o dsl_typed_simt_opt.o $(OBJECTS) $(LDFLAGS)
+
+dsl_wgmma_contract_test: $(OBJECTS) controls.o dsl_compute_realization.o dsl_typed_simt.o dsl_typed_simt_opt.o dsl_wgmma_opt.o dsl_wgmma_contract_test.o
+	$(link.c++f) -o $@ dsl_wgmma_contract_test.o controls.o dsl_compute_realization.o dsl_typed_simt.o dsl_typed_simt_opt.o dsl_wgmma_opt.o $(OBJECTS) $(LDFLAGS)
+
+dsl_wgmma_opt.o: $(BE_VHO_DIR)/dsl_wgmma_opt.cxx $(BE_VHO_DIR)/dsl_wgmma_opt.h $(BE_VHO_DIR)/dsl_wgmma_pipeline_opt.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_wgmma_contract_test.o: $(BE_VHO_DIR)/tests/dsl_wgmma_contract_test.cxx $(BE_VHO_DIR)/dsl_wgmma_opt.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_wgmma_pipeline_contract_test: $(OBJECTS) controls.o dsl_compute_realization.o dsl_compute_model.o dsl_typed_simt.o dsl_typed_simt_opt.o dsl_wgmma_opt.o dsl_wgmma_pipeline_model_opt.o dsl_wgmma_pipeline_contract_test.o
+	$(link.c++f) -o $@ dsl_wgmma_pipeline_contract_test.o controls.o dsl_compute_realization.o dsl_compute_model.o dsl_typed_simt.o dsl_typed_simt_opt.o dsl_wgmma_opt.o dsl_wgmma_pipeline_model_opt.o $(OBJECTS) $(LDFLAGS)
+
+dsl_wgmma_pipeline_model_opt.o: $(BE_VHO_DIR)/dsl_wgmma_pipeline_model_opt.cxx $(BE_VHO_DIR)/dsl_wgmma_pipeline_opt.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_wgmma_pipeline_contract_test.o: $(BE_VHO_DIR)/tests/dsl_wgmma_pipeline_contract_test.cxx $(BE_VHO_DIR)/tests/dsl_wgmma_contract_test.cxx $(BE_VHO_DIR)/dsl_wgmma_pipeline_opt.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_wgmma_pipeline_model_test: dsl_compute_realization.o dsl_compute_model.o dsl_typed_simt.o dsl_wgmma_pipeline_model_opt.o dsl_wgmma_pipeline_model_test.o
+	$(link.c++f) -o $@ $^ $(LDFLAGS)
+
+dsl_wgmma_pipeline_model_test.o: $(BE_VHO_DIR)/tests/dsl_wgmma_pipeline_model_test.cxx $(BE_VHO_DIR)/dsl_wgmma_pipeline_opt.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_typed_simt.o: $(COMMON_COM_DIR)/dsl_typed_simt.cxx $(COMMON_COM_DIR)/dsl_typed_simt.h $(COMMON_COM_DIR)/dsl_accumulation.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_typed_simt_opt.o: $(BE_VHO_DIR)/dsl_typed_simt_opt.cxx $(BE_VHO_DIR)/dsl_typed_simt_opt.h $(COMMON_COM_DIR)/dsl_typed_simt.h $(COMMON_COM_DIR)/dsl_accumulation.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_typed_simt_contract_test.o: $(BE_VHO_DIR)/tests/dsl_typed_simt_contract_test.cxx $(BE_VHO_DIR)/dsl_typed_simt_opt.h $(COMMON_COM_DIR)/dsl_typed_simt.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_fetch_pipeline_contract_test: $(OBJECTS) controls.o \

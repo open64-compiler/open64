@@ -2,7 +2,8 @@
 
 /* Linked contract and before/after WHIRL producer for explicit accumulation.
  * Scalar host execution proves structure/semantics, not Hopper FP8 accuracy.
- * Design: doc/AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md. */
+ * Design: doc/AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md.
+ * MMA1 typed inventory boundary: doc/AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -228,6 +229,13 @@ main(int argc, char **argv)
     request.total_k = 257;
     request.staging_k = 64;
     request.requested_span = 128;
+    // Inventory formats must never enable the F32-buffer materializer.
+    for (UINT32 format = DSL_ACC_FORMAT_F16; format <= DSL_ACC_FORMAT_BF16; ++format) {
+        DSL_NUMERICAL_CONTRACT_RECORD typed = contract;
+        typed.source_format = typed.input_format = format;
+        if (VHO_DSL_accumulation_create(typed, request, NULL) != NULL)
+            return 26;
+    }
     VHO_DSL_ACCUMULATION *analysis = VHO_DSL_accumulation_create(contract, request, stderr);
     for (UINT32 level = 0; level != 3; ++level) {
         Opt_Level = level;

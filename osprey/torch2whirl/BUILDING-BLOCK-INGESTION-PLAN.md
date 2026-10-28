@@ -59,22 +59,24 @@ Class names and per-case files preserve semantic boundaries despite decompositio
 | GEMM | matmul x1 | None in mock mapping (`common.matmul`); no native certification in this lane. |
 | Reduction | sum x1 | None for exact bounded row sum; general sum forms remain unsupported. |
 | Softmax | amax, sub, exp, sum, truediv x1 each | None for the exact whole bounded stable recipe; individual generic amax/exp graphs remain unsupported. |
-| LayerNorm | mean x2, sub x1, mul x3, add x2, rsqrt x1 | mean |
+| LayerNorm | mean x2, sub x1, mul x3, add x2, rsqrt x1 | None for the exact centered population affine recipe; arbitrary/opaque normalization remains unsupported. |
 | Attention | transpose, truediv, invert, masked_fill, softmax x1 each; matmul x2 | transpose |
 | MoE | getitem x4, matmul x2, relu, squeeze, mul, sum x1 each | getitem |
 
 The [boundary regression](python/tests/test_building_blocks_capture_optional.py)
 actually calls `export_to_whirl(..., backend="mock")`: it checks GEMM's
-`common.matmul`, exact row sum and exact stable Softmax, plus explicit
-unsupported-node diagnostics for the other three.
+`common.matmul`, exact row sum, exact stable Softmax and centered affine
+normalization, plus explicit unsupported-node diagnostics for Attention/MoE.
 This is an ingestion drift detector, not `.B` certification. Existing specialized
 Llama2 semantic ingestion must not be confused with support for these generic
 isolated graph shapes. Additional blockers may appear after the first one is fixed.
 
 ### Requirement Classification
 
-The following classifies semantic requirements, **not allocated native opcodes**.
-No new native contracts or production mapping are added by this milestone.
+The following preserves the original fixture census requirements, not a claim
+that generic individual operations are all supported. Subsequent bounded native
+row contracts and exact whole-recipe ingestion are recorded above; general
+expressions and composed Attention/MoE remain separate gates.
 
 | Captured object | Classification | Ownership and missing contract |
 | --- | --- | --- |

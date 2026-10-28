@@ -1,12 +1,30 @@
 # AI Compiler Optimization Progress
 
-Snapshot: 2026-10-21, reviewed against base commit `e17a2c23`
+Snapshot: 2026-10-28, integrated against `develop` at `f36629fb`
 Scope: Open64 AI optimization, with standalone rank-2 F32 GEMM as the first
 generated-kernel case. This is a running status ledger, not a replacement for
 the [implementation plan](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md) or
 the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
+
+PR integration checkpoint (2026-10-28): the building-block/R1/R2 branch is
+reconciled with `develop` at `f36629fb` (merged MMA5-H PR #200). The independent
+MMA implementation/status is preserved; this PR adds native row characterization,
+exact ingestion and reduction contracts/host-mock guards, not another MMA
+implementation. Reduction profitability, selected executable WHIRL lowering,
+production CUDA adapters and GPU verification remain open.
+
+Fresh combined-tree validation passes: all native row producers and actual
+PREOPT/image reviews, exact Python row-sum/Softmax/normalization API and driver
+ingestion, 13 isolated native API tests, direct runtime trace-on/off and native
+ASan/UBSan, staged binding, 42 trace-auditor tests, 128 host-only GEMM/MMA
+regressions, focused WOPT/common/FHE compatibility and backend/inline symbol
+boundaries. The full source-only frontend suite runs 288 tests with the same
+unrelated FHE authority-DOCX digest failure and 14 native-optional skips; its
+document/test are unchanged relative to `develop`. No clean full-suite or GPU
+result is claimed. Final PR evidence is retained under
+`artifacts/review/ai-optimization/research/building-block-reduction-pr/`.
 
 2026-10-28 R2-c2 staged ordered reduction binding:
 WOPT now binds a synchronous bit-copy realization using one disjoint padded
@@ -226,6 +244,101 @@ resource/event legality, schedule-aware costs, uncertainty-aware promotion,
 report obligations and a staged execution queue. Current kernels remain scalar
 F32; no native MMA, new hardware profile, option registration or speedup is
 claimed. SIMT remains the initial default and required same-contract fallback.
+
+## Merged GEMM And MMA Track
+
+These entries preserve the independent MMA acceptance history. PRs #194-#198
+and #200 are merged; statements about local-only status below describe their
+original acceptance checkpoints, not current PR status.
+
+2026-10-27 MMA5-H increment, from merged MMA4-H PR198 (`ab3afb7d`):
+[Bounded Hopper pipeline](AI-COMPILER-MMA5-H-HOPPER-PIPELINE.md) adds explicit
+O3 two-slot cooperative and bulk-TMA delivery with up to two committed WGMMA
+groups, distinct copy readiness, full compute completion and CTA reader-reuse
+joins. Odd final batches use one real group. Four complete same-result
+conditional candidates include the original typed GRID SIMT, one-slot MMA4,
+and both new delivery choices. Existing ranged model and occupancy services
+are reused; unknown timing and synthetic ranking never promote execution.
+Twenty delivery/type/shape cases compile 40 before/after kernels; 80 host runs,
+1100 preflight negatives, 2474 tree mutations, 210 source mutations and 660
+independent model corners pass. The native TMA wait carries explicit acquire
+and CTA scope. SIMT stays default. Cross-batch delivery/compute overlap,
+general frontend integration, GPU arithmetic and native timing remain open.
+Local commit only; no push or PR requested. Checkpoint `913eeb62` now has an
+immutable primary receipt and an isolated retained-source/binary/offline-CUDA
+replay. Forty-three fresh F32/typed-SIMT/MMA4 configurations retain 86 identical
+full source-interleaved dumps; four prior-reader reopens pass. Durable replay
+authenticates 3000 files, reaudits all twenty cases, reruns two producers,
+recompiles four CUDA kernels and passes four host protocol checks. See the
+[MMA5-H durable acceptance record](AI-COMPILER-MMA5-H-HOPPER-PIPELINE.md#durable-acceptance-record).
+
+2026-10-27 MMA4-H increment, from merged MMA3 PR197 (`c5aec7b1`):
+[First Hopper lowering](AI-COMPILER-MMA4-H-HOPPER-LOWERING.md) adds an explicit
+O3 active-PU `sm_90a` F16/BF16 shared/shared WGMMA API. Exact 64x64x16 atoms,
+uniform 128-thread participation, descriptor-valid packing, explicit
+proxy/register fences, commit, full wait and reuse joins are real executable
+assembly-carried WHIRL. Twenty before/after kernels compile to native CUDA
+PTX/cubin; ten typed cases pass forty final geometry/protocol host runs,
+380 preflight negatives, 160 body mutations, twenty stale-record checks and
+ninety independent source corruptions. All 123 host tests pass. Eighteen
+MMA3 cases/88 runs still pass; 66 full dumps across fifteen F32/eighteen typed
+SIMT configurations remain identical to authenticated MMA3. Four old-reader
+reopens pass. SIMT stays default; automatic promotion, generic frontend hookup,
+native GPU arithmetic and timing remain open. The conservative private F32
+fragment materializes between atoms (128-byte local stack), so no persistent
+RF residency or speedup is claimed. Commit locally only; no PR requested.
+Implementation checkpoint `4c85e0b2` and its 2177-file immutable receipt pass
+isolated durable producer/reader/offline-CUDA/host replay. See
+[MMA4-H durable acceptance](AI-COMPILER-MMA4-H-HOPPER-LOWERING.md#durable-acceptance-record).
+
+2026-10-27 MMA3 increment, from merged MMA2 PR196 (`a1153671`):
+[Typed SIMT baseline](AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md) adds a native
+active-PU F16/BF16 source/lowering API, exact U2-to-F32 widening and explicit
+separately rounded FP32 product/accumulation/output in increasing K order.
+Eighteen same-PU serial/SIMT cases pass 88 actual WHIRL-derived CUDA-host and
+Open64 O0/O1/O2/O3 execution runs, exhaustive 65536 encodings per format,
+468 preflight rejections and 216 altered-body rejections. All 117 host tests
+pass. Fifteen fresh F32 configurations retain 30 identical full mapped-reader
+dumps, costs/selection/shadow rows and CUDA bodies (apart from translator date);
+raw image byte differences are retained, not claimed equal. Sixteen old/new
+reader compatibility checks pass. This does not enable general FX ingestion, automatic typed dispatch in
+the old F32 planner or native MMA. GPU validation and timing remain unknown.
+Local commit only; no push or PR requested for this increment.
+Implementation checkpoint `558fcb8b` and its 1790-file immutable receipt pass
+isolated durable binary/reader/CUDA/host replay, including both typed formats.
+See [MMA3 durable acceptance](AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md#durable-acceptance-record).
+
+The MMA1/MMA2 checkpoint descriptions below are historical accepted evidence;
+their fallback inventory rows remain requirements until selected-plan hookup.
+
+2026-10-27 MMA1 contract increment (MMA0 user-approved):
+[MMA compute realization and SIMT fallback v0.1](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md)
+now has a [policy-free runtime inventory](AI-COMPILER-MMA1-TARGET-INVENTORY.md)
+for four exact sm_90a WGMMA / sm_100a tcgen05 dense F16/BF16-to-FP32 recipes.
+Structural joins reuse common plan/tile/evolution/numerical/resource records;
+compute completion and typed SIMT fallback remain explicit requirements.
+AI_COMPUTE 1 inspection distinguishes documented capability, missing lowering,
+unknown timing and absent native certification. Current kernels stay scalar
+F32 under existing controls. The [MMA2 analytical shadow model](AI-COMPILER-MMA2-SHADOW-MODEL.md)
+adds conditional synthetic costs, independent schedule replay and explicit
+unknown production timing, never executable selection. MMA3 typed fallback
+and native MMA lowering are not started. No option or mapped-image change.
+
+MMA2 local checkpoint `e0a50cbb` passes 496 synthetic schedules / 1488
+independent oracle corners, 248 paired comparisons, eight unknown profiles,
+113 host regressions and fifteen fresh SIMT compiler/source configurations.
+All sixty before/after images/dumps match authenticated M9; CUDA differs only
+in the translator date. Read-only durable binary/reader/report replay passes.
+See the [durable MMA2 receipt and remaining gates](AI-COMPILER-MMA2-SHADOW-MODEL.md#durable-acceptance-record).
+No PR or push; real timing remains unknown and execution stays SIMT.
+
+MMA1 accepted at local source checkpoint `761bf24d`: four Linux inventory
+profiles and 276 negatives, seven independent audit negatives, linked scalar
+before/after review, 109 host regressions, and fresh audit of 1384 M9 files /
+14 readiness traces. Durable binary/reader replay is identical; see the
+[checkpoint paths and limitations](AI-COMPILER-MMA1-TARGET-INVENTORY.md#accepted-local-checkpoint).
+Linux Python 3.8 retains one existing package-test API error; 108 other tests
+pass there. Typed SIMT fallback and GPU/native evidence remain open.
 
 2026-10-27 frontend-fixture increment: six isolated CPU FP32 Python programs
 now cover GEMM, row sum, stable Softmax, affine LayerNorm, causal Attention and
