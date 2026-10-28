@@ -333,9 +333,20 @@ class Open64DscSkeletonTest(unittest.TestCase):
     def test_published_resnet_operator_contracts_do_not_drift(self) -> None:
         contracts = all_operator_contracts()
         expected = {
+            "common.mean_variance_norm": (
+                1, 3, ("attr.axis", "attr.accum_dtype", "attr.variance_kind", "attr.epsilon_bits",
+                       "attr.reassociate", "attr.state_reformulation", "attr.contract", "attr.rsqrt_semantics"),
+            ),
             "common.model_input": (2, 0, ("attr.input_ordinal",)),
             "common.tensor_const": (1, 0, ("value_kind", "value")),
             "common.add": (1, 2, ("attr.broadcast_rule",)),
+            "common.reduce_sum": (
+                1, 1, ("attr.axis", "attr.keepdim", "attr.accum_dtype", "attr.reassociate"),
+            ),
+            "common.stable_softmax": (
+                1, 1, ("attr.axis", "attr.accum_dtype", "attr.reassociate",
+                       "attr.state_reformulation", "attr.exp_semantics"),
+            ),
             "common.matmul": (
                 1,
                 2,

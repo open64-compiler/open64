@@ -2,6 +2,21 @@
 
 Version: v0.1, 2026-10-27. Status: deterministic source fixtures, CPU reference
 validation and real FX census implemented; general native WHIRL ingestion open.
+Exact static FP32 row-sum native ingestion is now implemented and inspected
+through the public API and standalone driver; executable reduction lowering
+remains open.
+The [native stable-Softmax contract](../../doc/AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md)
+and its canonical-WHIRL characterization are implemented. The exact decomposed
+Python stable-Softmax matcher now consumes it; opaque framework Softmax is not
+silently treated as equivalent.
+The [native centered population normalization contract](../../doc/AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md)
+and canonical-WHIRL characterization are now implemented. The exact centered
+affine Python matcher connects through three runtime formals and explicit
+result/return, canonical binary32 epsilon and final-addition source position.
+Six API/driver images reach PREOPT; sixteen unsupported cases publish no image.
+Structural/descriptor/epsilon preflight precedes ShapeProp. General normalization
+and executable lowering remain open; native representation does not imply an
+opaque `layer_norm` or arbitrary normalization matcher.
 Controlling architecture: [common execution planning](../../doc/AI-COMPILER-COMMON-EXECUTION-PLANNING.md),
 [frontend workflow](../../doc/WHIRL-DSL-INFRASTRUCTURE.md) and
 [building-block research queue](../../doc/AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#building-block-research-queue).
@@ -42,23 +57,26 @@ Class names and per-case files preserve semantic boundaries despite decompositio
 | Case | Call census (excluding inputs/output) | First current generic FX ingestion blocker |
 | --- | --- | --- |
 | GEMM | matmul x1 | None in mock mapping (`common.matmul`); no native certification in this lane. |
-| Reduction | sum x1 | sum |
-| Softmax | amax, sub, exp, sum, truediv x1 each | amax |
-| LayerNorm | mean x2, sub x1, mul x3, add x2, rsqrt x1 | mean |
+| Reduction | sum x1 | None for exact bounded row sum; general sum forms remain unsupported. |
+| Softmax | amax, sub, exp, sum, truediv x1 each | None for the exact whole bounded stable recipe; individual generic amax/exp graphs remain unsupported. |
+| LayerNorm | mean x2, sub x1, mul x3, add x2, rsqrt x1 | None for the exact centered population affine recipe; arbitrary/opaque normalization remains unsupported. |
 | Attention | transpose, truediv, invert, masked_fill, softmax x1 each; matmul x2 | transpose |
 | MoE | getitem x4, matmul x2, relu, squeeze, mul, sum x1 each | getitem |
 
 The [boundary regression](python/tests/test_building_blocks_capture_optional.py)
 actually calls `export_to_whirl(..., backend="mock")`: it checks GEMM's
-`common.matmul` and explicit unsupported-node diagnostics for the other five.
+`common.matmul`, exact row sum, exact stable Softmax and centered affine
+normalization, plus explicit unsupported-node diagnostics for Attention/MoE.
 This is an ingestion drift detector, not `.B` certification. Existing specialized
 Llama2 semantic ingestion must not be confused with support for these generic
 isolated graph shapes. Additional blockers may appear after the first one is fixed.
 
 ### Requirement Classification
 
-The following classifies semantic requirements, **not allocated native opcodes**.
-No new native contracts or production mapping are added by this milestone.
+The following preserves the original fixture census requirements, not a claim
+that generic individual operations are all supported. Subsequent bounded native
+row contracts and exact whole-recipe ingestion are recorded above; general
+expressions and composed Attention/MoE remain separate gates.
 
 | Captured object | Classification | Ownership and missing contract |
 | --- | --- | --- |
@@ -116,7 +134,27 @@ Accepted source/capture receipt (primary artifact `report.json`):
 
 ## Next Gates
 
-1. R1 remainder: agree native expression/region contracts from this census;
+R1 frontend analysis now also implements
+[source-derived row characterization and numerical acceptance](../../doc/AI-COMPILER-ROW-SEMANTIC-CHARACTERIZATION-v0.1.md).
+`open64_dsc/row_characterization.py` recognizes exact rank-2 FP32 reduction,
+stable Softmax and affine LayerNorm dataflows without changing export APIs or
+native mappings. It reports domains, accesses, states/merge/finalize,
+permissions, graph/descriptor invalidation fingerprint and native requirements.
+`python/tests/row_semantic_report.py` retains strict/permitted CPU witnesses,
+including rejected samples; the optional row suite runs in the torch Docker
+lane. No common/com, backend, MMA1 profile or mapped-image contract changes.
+The original six-case validation receipt above remains immutable historical
+evidence; new row-analysis evidence is a distinct milestone.
+The row milestone passes 21 new tests, 37 focused regressions, the 86-test
+capture lane and driver smoke; its detail design links numerical outcomes,
+retained source replay and the known full-suite baseline failure.
+
+1. Completed for exact row sum: connect the bounded native contract
+   ([native detail](../../doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md))
+   to exact source ingestion. This contract has real `.B/.T` and PREOPT
+   verification evidence plus Python/runtime-formal ingestion and native
+   standalone-driver inspection. Executable lowering is still unsupported.
+   Agree the remaining native expression/region contracts from this census;
    reuse existing common services, preserve semantic boundaries and define
    PREOPT canonical forms before optimizer matching. Certify mapped `.B`/`.T`
    and derive characterization from canonical WHIRL rather than input ledgers.

@@ -1,12 +1,255 @@
 # AI Compiler Optimization Progress
 
-Snapshot: 2026-10-21, reviewed against base commit `e17a2c23`
+Snapshot: 2026-10-28, integrated against `develop` at `f36629fb`
 Scope: Open64 AI optimization, with standalone rank-2 F32 GEMM as the first
 generated-kernel case. This is a running status ledger, not a replacement for
 the [implementation plan](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md) or
 the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
+
+PR integration checkpoint (2026-10-28): the building-block/R1/R2 branch is
+reconciled with `develop` at `f36629fb` (merged MMA5-H PR #200). The independent
+MMA implementation/status is preserved; this PR adds native row characterization,
+exact ingestion and reduction contracts/host-mock guards, not another MMA
+implementation. Reduction profitability, selected executable WHIRL lowering,
+production CUDA adapters and GPU verification remain open.
+
+Fresh combined-tree validation passes: all native row producers and actual
+PREOPT/image reviews, exact Python row-sum/Softmax/normalization API and driver
+ingestion, 13 isolated native API tests, direct runtime trace-on/off and native
+ASan/UBSan, staged binding, 42 trace-auditor tests, 128 host-only GEMM/MMA
+regressions, focused WOPT/common/FHE compatibility and backend/inline symbol
+boundaries. The full source-only frontend suite runs 288 tests with the same
+unrelated FHE authority-DOCX digest failure and 14 native-optional skips; its
+document/test are unchanged relative to `develop`. No clean full-suite or GPU
+result is claimed. Final PR evidence is retained under
+`artifacts/review/ai-optimization/research/building-block-reduction-pr/`.
+
+2026-10-28 R2-c2 staged ordered reduction binding:
+WOPT now binds a synchronous bit-copy realization using one disjoint padded
+CTA-shared slot per row-thread. Complete-copy visibility precedes ordered reads;
+last-read release precedes next-generation reuse. Column tails and partial CTA
+owners use exact counts/guards; one positive-zero FP32 accumulator persists
+across chunks. Source v1, unsupported visibility/async/cooperative copies,
+multiple slots, unsafe reuse and padded tails are refused.
+Eight native cases pass 539 assertions and audit 254 binding rows (12 conditional
+successes, 242 refusals) plus 181 exact slice plans. Forty-six host row witnesses
+match the independent integer binary32 oracle. All 42 trace/auditor tests pass,
+including five staged tests and 2,050 event-graph comparisons. Direct binding/
+runtime, numerical recipes, Softmax/normalization, WOPT/common/FHE focused and
+backend/inline link-boundary regressions pass.
+See [staged binding detail](AI-COMPILER-REDUCTION-STAGED-BINDING-v0.1.md).
+Target resource data remains the existing estimated planning envelope; staged
+mask 255 remains outstanding. No runtime ABI or MMA1/profile/schema change,
+selected WHIRL transformation, native copy execution or GPU claim. Next is
+complete legal direct/staged costs and explicit profitability-gated selection;
+staged runtime adaptation and selected lowering remain separate open gates.
+
+2026-10-27 R2-c1 direct ordered reduction runtime enforcement:
+fresh native binding export now feeds a separate runtime guard ABI. The runtime
+reuses the tensor descriptor and buffer-service import checks, requires trusted
+canonical backing-root resolution, acquires input/output range leases atomically,
+and enforces all readiness/launch/completion/consumer/release edges. Failed launch
+requires proven drain before abort; failed waits retain storage. No implicit
+fallback or result publication after ambiguous launch failure.
+Eight native cases pass 320 assertions; six exported v2 guards each pass 176
+host-runtime assertions with trace on/off, repeated under native ASan/UBSan.
+The six normal runtime traces contain 78 admitted/closed tickets, 222 rejected
+admissions and 30 injected backend failures; 37 trace/auditor tests pass.
+Prior reduction, Softmax, normalization, WOPT/common/FHE focused regressions,
+buffer-service V1 compatibility and backend/inline symbol boundaries pass.
+Linux/QEMU ASan register-inspection warning is retained as an unsuccessful lane;
+native macOS sanitizer runs pass instead. No GPU is available.
+See [runtime guard detail](AI-COMPILER-REDUCTION-RUNTIME-GUARDS-v0.1.md).
+This is host-mock runtime enforcement, not production CUDA adaptation or a
+selected executable reduction. Next: staged copy/reuse binding, complete costs,
+selected WHIRL loops/dispatch, then target adapter and native certification.
+MMA1, hardware profiles, existing ABI layouts and Python v1 semantics are untouched.
+
+2026-10-27 R2-c direct ordered fallback binding:
+WOPT now validates an explicit scalar ISA/compiler-policy contract using the
+existing exact Hopper/Blackwell architecture lookup, without MMA profile
+dependencies. Canonical buffer-object/subrange contracts, checked FP32 byte
+footprints, lease kinds, linear row ownership and six-role host event DAGs
+are validated read-only against freshly derived native source facts.
+Eight native fixtures execute 274 assertions and audit 212 direct-query rows;
+18 are conditionally bound contracts, while all refusals retain explicit
+reasons. Actual PREOPT preserves the source contract. The trace/auditor suite
+passes 34 tests, including eight new direct-binding tests and 2,048 independent
+event-graph comparisons. Prior reduction/Softmax/normalization and focused
+common/FHE/WOPT regressions and backend/inline symbol checks pass.
+See [direct target/storage/event binding](AI-COMPILER-REDUCTION-DIRECT-BINDING-v0.1.md).
+Runtime allocation/lease/event/launch obligations remain required; no adapter,
+guard discharge, selected lowering, PTX/SASS certification or GPU run is claimed.
+The existing NVISA strict-add intrinsic route is recorded for later reuse.
+Next: provider enforcement/guard wiring, staged binding and complete legal-plan
+cost comparison before selected WHIRL lowering. MMA1 is untouched.
+
+2026-10-27 R2 reduction numerical-binding increment:
+explicit native `common.reduce_sum.v2` now fixes positive-zero initialization,
+ascending-index FP32 left fold, RNE/gradual/no-trap environment and NaN-class
+observations. Existing Python `torch.sum` still emits unbound v1; no silent
+conversion or sample-based numerical permission. Canonical native facts and
+version survive actual PREOPT import/emission.
+A read-only native query reports direct ordered and staged ordered recipes,
+per-active-row scratch requirements/capacity rejection and forbidden partition
+trees. Five native cases, 104 host recipe checks, 2,048 independent integer-oracle
+pair checks and seven new audit/numerical tests pass. Existing row contracts,
+cached Python reduction images and focused common/FHE/WOPT checks pass; backend
+and inline symbol boundaries remain closed.
+See [the detailed binding and realization design](AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md).
+This is bounded R2 progress, not production selection or executable lowering:
+target arithmetic, alias/storage/events, complete cost modeling and selected
+high-level WHIRL loops remain next. MMA1, its profiles and Python source
+semantics are unchanged. No GPU run or native reduction accuracy claim.
+
+2026-10-27 R1 Python centered affine normalization increment:
+the shared exact source matcher now connects to `common.mean_variance_norm.v1`.
+Three runtime formals, explicit result/return, binary32 epsilon and final-addition
+source location are preserved through mapped reopen and actual PREOPT. Source
+preflight rejects changed recipes, effects, affine broadcasts and invalid
+epsilon conversion before evaluation. No model-name equivalence is assumed.
+Six native API/driver cases and sixteen prepublication rejects pass; ten focused
+source tests cover strict numerical/structural/descriptor boundaries. Five
+independent FP64 comparisons are CPU source witnesses, not native-node execution.
+Existing `.t`, positional FORM/FACT, report headers and immutable artifact
+conventions are retained. See the
+[connection and reproduction](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27).
+R1 remains bounded/partial: general forms, numerical binding, executable
+alternatives, profitability and selected lowering remain open. No MMA1, native
+backend, hardware-profile or GPU change is claimed.
+Regression evidence: 13 isolated native API tests, both prior native row
+producers, native mapped smoke and 19 trace-auditor tests pass. Full source
+suite: 288 tests, 14 skips, one unchanged FHE authority DOCX digest failure;
+no unrelated FHE document/assertion is changed. The detail document links the
+fresh immutable `r1-python-normalization` receipt and reviewable `.t`/`.T`.
+
+2026-10-27 R1 native mean/variance normalization increment:
+`common.mean_variance_norm.v1` now carries the centered population affine
+FP32 recipe with three direct X/gamma/beta operands, exact epsilon bits and
+strict reassociation/state-reformulation/contraction prohibitions. PREOPT
+derives state, affine accesses/broadcasts, denominator/epsilon and numerical
+unknowns from canonical WHIRL. Actual PREOPT exposed and now covers the old
+two-kid DSL emitter limit; the existing bridge preserves ternary identity.
+Four native variants pass 54 checks each, including foreign operands,
+rollback, read-only/unchanged-output queries and ternary round trips.
+Nineteen trace-auditor and 21 source numerical tests, focused common/FHE/WOPT
+compatibility, five historical row-sum replays and symbol-boundary checks pass.
+The [normalization detail](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md)
+identifies source-interleaved WHIRL, controlled compact .t, phase/suite reports
+and the immutable receipt. No Python normalization ingestion, executable
+normalization, MMA1/profile change or GPU certification is claimed.
+
+2026-10-27 R1 Python-to-native stable-Softmax increment:
+the exact whole-graph max/subtract/exp/sum/divide matcher now emits a runtime
+input formal, explicit same-shape result/return and native v1 operation.
+Structural/descriptor preflight precedes ShapeProp; the shared analysis matcher
+checks source edges, not model names. Existing row-sum emission is reused
+through common frontend plumbing. Strict numerical prohibitions and unknowns
+are unchanged. API/driver PREOPT traces preserve the actual Python division
+line; native trace provenance and producer-certified ingestion are kept distinct.
+Eight new source tests, five native/PREOPT cases, ten native rejection cases,
+four independent FP64 source witnesses, thirteen isolated native API tests,
+native smoke and focused row-sum/numerical/capture/auditor regressions pass.
+Full source suite: 278 tests, fourteen skips and the unchanged FHE authority
+DOCX digest failure. The [ingestion detail and immutable receipt](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27)
+retain images, source, raw traces, numerical witnesses and phase reports.
+Native normalization, executable selection/lowering and GPU validation remain
+open; MMA1 and native C++ contracts/profiles are untouched.
+
+2026-10-27 R1 native stable-Softmax increment:
+`common.stable_softmax.v1` now represents static FP32 `[R,N] -> [R,N]`
+max/subtract/exp/sum/divide as a native typed unary operation. Shared builder,
+shape and gatekeeper checks reject schema/type/ownership violations before
+allocation. PREOPT preserves it and derives logical row statistics/accesses
+from canonical WHIRL; no Python/debug metadata supplies the facts.
+Strict sum/state-reformulation prohibitions and unresolved exp/order/exception,
+finite/overflow/accuracy/alias/storage remain explicit. Compact option-controlled
+FORM/FACT events and audited semantic/aggregate/summary logs preserve existing
+reduction schemas. The [detail design](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md)
+defines the contract, tests, review evidence and remaining gates.
+Python Softmax ingestion, native normalization, executable lowering and GPU
+validation remain open. MMA1 profiles and implementation are untouched.
+Validation passes: 41 native assertions, twelve trace-auditor tests, 21 CPU
+semantic/numerical tests, five historical row-sum image replays and focused
+WOPT/common/FHE compatibility and link checks. The detail design identifies the
+immutable receipt and its seven durable mapped/report replays.
+
+2026-10-27 R1 canonical-WHIRL characterization increment:
+bounded row-sum state/access/numerical facts now derive from verified native
+assignments, canonical TYs and managed operand/result identities. PREOPT
+rederives the snapshot at entry/exit; trace-off does not disable derivation.
+The report distinguishes logical read/definition domains and real-arithmetic
+merge from physical traffic, alias proofs and permitted FP32 algorithms.
+Reassociation remains forbidden; finite/overflow/accuracy/order/storage gaps
+remain explicit. Existing FORM rows are unchanged; additive FACT rows and
+strict historical-compatible audit retain the trace/artifact convention.
+See the [native characterization detail](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md#canonical-whirl-characterization-2026-10-27).
+MMA1, executable reduction lowering and GPU certification remain separate.
+Validation: 33 native assertions, five authenticated image replays, six audit
+tests, trace-off and old/new-reader compatibility, WOPT semantic/driver
+regressions and rebuilt symbol boundaries pass in an isolated build. The
+detail document links the retained WHIRL, native facts, trace and reports.
+
+2026-10-27 R1 Python-to-native row-sum increment:
+the exact three-node `torch.sum` matcher now emits a runtime formal, rank-1
+result and return using the existing native v1 contract and explicit-result
+builder. Negative/positive source axes normalize to 1; strict FP32/no-
+reassociation semantics and the actual Python call-site are preserved.
+Four native producer/PREOPT cases, a C++ driver-produced image, five new
+source tests, thirteen isolated native API tests, native artifact smoke and
+91 capture regressions plus driver smoke pass. Full source suite: 270 tests,
+14 skips, one unchanged FHE authority-digest failure; the known aggregate
+native DST reset issue is retained separately. See the
+[ingestion design and receipt](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27).
+General native characterization, Softmax/LayerNorm and executable reduction
+lowering remain open. No MMA1, GPU or profitability claim is added.
+
+2026-10-27 R1 native reduction increment:
+[Native reduction contract v0.1](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md)
+adds a typed, pure `common.reduce_sum.v1` for static positive FP32 `[R,N] -> [R]`,
+axis 1, keepdim false, FP32 accumulation and no reassociation permission.
+Builder preflight, shape checks, gatekeeper and WOPT opaque-unary import/emission
+share that contract. Actual PREOPT verifies it on entry and exit without
+choosing a reduction tree. Compact option-controlled `.t` events and audited
+`semantic.log`/aggregate/summary preserve the existing review conventions.
+This is native representation/preservation, not source ingestion, executable
+reduction lowering, numerical GPU validation or completion of R1-d. MMA1
+compute contracts/profiles are untouched.
+Validation: 24 native contract assertions including cross-PU rejection;
+actual PREOPT/default/on/off traces, mapped reopen, strict report audit,
+focused common/WOPT/shape/lowering regressions and backend symbol gates pass.
+The detail document links the immutable receipt and records three legacy
+builder-harness limitations reproduced with pre-change common sources.
+
+2026-10-27 R1 frontend-analysis increment:
+[Row semantic characterization](AI-COMPILER-ROW-SEMANTIC-CHARACTERIZATION-v0.1.md)
+now recognizes exact reduction, stable Softmax and affine LayerNorm dataflows
+and derives domains, accesses, numerical/state obligations and conditional
+realizations. CPU FP32 witnesses compare with independent FP64 references;
+permission, domain and numerical failures are retained separately. This is
+source analysis only: no native WHIRL ingestion/transformation, cost selection,
+MMA profile or GPU claim. R1-d canonical-WHIRL characterization remains open.
+Validation: 21 new tests, 37 focused tests and 86 torch-enabled capture tests
+plus driver smoke pass. The 12-case report retains 30 accepted samples,
+11 permission rejections, 9 numerical rejections and 2 domain rejections.
+Full Docker suite: 265 tests, 14 skips, one unchanged FHE authority-digest
+failure. The detail design links the immutable source-analysis receipt.
+
+2026-10-27 design-only increment:
+[MMA compute realization and SIMT fallback v0.1](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md)
+proposes exact Hopper WGMMA and Blackwell SM100 tcgen05 recipes, numerical and
+resource/event legality, schedule-aware costs, uncertainty-aware promotion,
+report obligations and a staged execution queue. Current kernels remain scalar
+F32; no native MMA, new hardware profile, option registration or speedup is
+claimed. SIMT remains the initial default and required same-contract fallback.
+
+## Merged GEMM And MMA Track
+
+These entries preserve the independent MMA acceptance history. PRs #194-#198
+and #200 are merged; statements about local-only status below describe their
+original acceptance checkpoints, not current PR status.
 
 2026-10-27 MMA5-H increment, from merged MMA4-H PR198 (`ab3afb7d`):
 [Bounded Hopper pipeline](AI-COMPILER-MMA5-H-HOPPER-PIPELINE.md) adds explicit

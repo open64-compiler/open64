@@ -323,6 +323,12 @@ def _verify_graph_operators(
         result_type = _result_type(operator, operand_types)
         produced_types[operator.name] = result_type
         semantic_name = operator.metadata.get("semantic_name")
+        if operator.name in (common.REDUCE_SUM, common.STABLE_SOFTMAX, common.MEAN_VARIANCE_NORM):
+            declared = value_types.get(semantic_name)
+            if (declared is None or result_type is None or
+                    (declared.dtype, declared.rank, declared.logical_shape) !=
+                    (result_type.dtype, result_type.rank, result_type.logical_shape)):
+                raise WhirlVerificationError(operator.name + " result descriptor mismatch")
         if semantic_name:
             produced_types[semantic_name] = result_type
 
@@ -369,6 +375,48 @@ def _verify_operator_contract(
     operand_types: Sequence[Optional[WhirlTensorTypeRecord]],
 ) -> None:
     _require_contract_attrs(operator)
+
+    if operator.name == common.MEAN_VARIANCE_NORM:
+        expected = {"attr.axis": "1", "attr.accum_dtype": "float32",
+                    "attr.variance_kind": "population_centered",
+                    "attr.epsilon_bits": operator.attrs.get("attr.epsilon_bits"),
+                    "attr.reassociate": "false", "attr.state_reformulation": "false",
+                    "attr.contract": "false", "attr.rsqrt_semantics": "source_unresolved"}
+        bits = expected["attr.epsilon_bits"]
+        if (dict(operator.attrs) != expected or not isinstance(bits, str) or len(bits) != 8 or
+                any(char not in "0123456789abcdef" for char in bits) or
+                not 0 < int(bits, 16) < 0x7f800000):
+            raise WhirlVerificationError("common.mean_variance_norm requires exact canonical attributes")
+        if any(value is None or value.dtype != "float32" for value in operand_types):
+            raise WhirlVerificationError("common.mean_variance_norm requires FP32 operands")
+        shapes = [_parse_logical_shape(value.logical_shape, "normalization input") for value in operand_types]
+        if (len(shapes[0]) != 2 or any(size <= 0 for size in shapes[0]) or
+                shapes[1] != (shapes[0][1],) or shapes[2] != shapes[1]):
+            raise WhirlVerificationError("common.mean_variance_norm requires X[R,N], gamma[N], beta[N]")
+        return
+
+    if operator.name == common.STABLE_SOFTMAX:
+        expected = {"attr.axis": "1", "attr.accum_dtype": "float32",
+                    "attr.reassociate": "false", "attr.state_reformulation": "false",
+                    "attr.exp_semantics": "source_unresolved"}
+        value = operand_types[0]
+        if dict(operator.attrs) != expected or value is None:
+            raise WhirlVerificationError("common.stable_softmax requires exact canonical attributes")
+        shape = _parse_logical_shape(value.logical_shape, "stable-Softmax input")
+        if value.dtype != "float32" or len(shape) != 2 or any(size <= 0 for size in shape):
+            raise WhirlVerificationError("common.stable_softmax requires static rank-2 FP32 input")
+        return
+
+    if operator.name == common.REDUCE_SUM:
+        expected = {"attr.axis": "1", "attr.keepdim": "false",
+                    "attr.accum_dtype": "float32", "attr.reassociate": "false"}
+        value = operand_types[0]
+        if dict(operator.attrs) != expected or value is None:
+            raise WhirlVerificationError("common.reduce_sum requires exact canonical attributes")
+        shape = _parse_logical_shape(value.logical_shape, "row-sum input")
+        if value.dtype != "float32" or len(shape) != 2 or any(size <= 0 for size in shape):
+            raise WhirlVerificationError("common.reduce_sum requires static rank-2 FP32 input")
+        return
 
     if operator.name == common.ADD:
         if operator.attrs.get("attr.broadcast_rule") != "none":
@@ -977,6 +1025,14 @@ def _result_type(
 ) -> Optional[WhirlTensorTypeRecord]:
     if not operand_types:
         return None
+    if operator.name in (common.STABLE_SOFTMAX, common.MEAN_VARIANCE_NORM):
+        return operand_types[0]
+    if operator.name == common.REDUCE_SUM:
+        value = operand_types[0]
+        if value is None:
+            return None
+        shape = _parse_logical_shape(value.logical_shape, "row-sum input")
+        return _synthetic_tensor_type(operator, value, (shape[0],))
     if operator.name == common.FLATTEN:
         return _flatten_result_type(operator, operand_types)
     if operator.name == common.LINEAR:

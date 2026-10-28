@@ -112,8 +112,8 @@ certification. Follow the
 | Gate | Deliverable and evidence | Status |
 | --- | --- | --- |
 | R0 | GEMM, reduction, stable Softmax and mean/variance normalization: two specified legal-under-contract realizations each, ownership/state characterization, storage/events and full declared-model costs. | Research demo passed: 21 tests, 32 synthetic candidate comparisons, 16 decisions, nine host numerical checks. No new production lowering. |
-| R1 | Representative frontend capture/operator census and canonical WHIRL characterization using existing services. | Fixture/capture slice implemented for all six blocks; [source contracts, census and native gaps](../osprey/torch2whirl/BUILDING-BLOCK-INGESTION-PLAN.md). Canonical native WHIRL characterization remains open; no speculative opcode publication. |
-| R2 | Shared state/equivalence/numerical contracts and bounded algorithm-alternative generation. | Open; strict FP and unsupported-state failures required. |
+| R1 | Representative frontend capture/operator census and canonical WHIRL characterization using existing services. | Six-fixture capture and source-derived row characterization/numerical witnesses implemented. Bounded native FP32 row-sum, stable-Softmax and centered population affine normalization contracts, exact Python ingestion and actual PREOPT characterization implemented; general forms remain open. See the native reduction/Softmax and [normalization contract](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md). |
+| R2 | Shared state/equivalence/numerical contracts and bounded algorithm-alternative generation. | Partial for reduction: ordered native v2, direct/staged recipes, direct scalar/storage/event binding, host-mock direct runtime guards and synchronous staged visibility/reuse/tail binding implemented. Existing Python/v1 sums stay unbound. Complete profitability, selected WHIRL lowering, production adapters and GPU certification remain open. See the R2 execution queue below. |
 | R3 | General P8 access-lifetime, range-alias, storage-interference/packing and symbolic event/progress proof. | Open; fixed F32 slot protocol remains the implemented baseline. |
 | R4 | Real target costs, complete-plan choice, selected WHIRL transformation, before/after mapped reopen and emitted CUDA. | Open for general cases; preserve existing GEMM controls/fallbacks. |
 | R5 | Native numerical/resource/performance verification and calibration. | Open; GPU not allocated. |
@@ -122,11 +122,98 @@ certification. Follow the
 
 Every gate must retain semantic and numerical conditions, complete cost
 components/units/provenance, rejection/fallback and actual maturity.
+
+R1 sub-gates, kept independent of MMA1's contracts/target profiles:
+
+| Slice | Current status | Next evidence / required tool summary |
+| --- | --- | --- |
+| R1-a: source fixtures/census | Implemented for all six blocks. | Preserve exact source/FX/shape/argument census and explicit native gaps. |
+| R1-b: source semantic derivation | Implemented for exact rank-2 FP32 row reduction, stable Softmax and affine LayerNorm, in that order. No model-name dispatch or graph mutation. | Report output/reduction domains, logical accesses, alias/effect facts, state/merge/finalize recipe, epsilon/denominator, ownership obligations, graph fingerprint and unresolved conditions. |
+| R1-c: numerical witnesses | Implemented strict/permitted CPU comparisons with independent FP64 oracles, adversarial cancellation/overflow and unsafe-formulation negatives. No compiler authorization from sample agreement. | Report permission rejection separately from numerical/domain rejection; retain thresholds/errors, source as well as alternative failures, exact inputs/results and remaining general-accuracy obligations. |
+| R1-d: native canonical characterization | Partial: native row-sum, stable-Softmax and centered affine population normalization contracts with WHIRL-derived characterization and exact Python ingestion implemented. General forms and executable lowering remain open. | Six Python normalization API/driver images and four native fixtures, plus prior row-operation cases; separate FORM/FACT tags, strict entry/exit audit and source lines. `semantic.log` reports state, affine broadcasts, denominator/epsilon, numerical permissions/unknowns and alias/owner/storage obligations without executable-plan claims. |
+
+R1-b/c produce analysis-only `semantic-summary.log`, not compiler `.t` or a
+transformation report. No candidate is selected, no physical plan is costed,
+and no native optimization gate is closed by this frontend milestone.
+
+R1-d next sequence, independent of MMA1:
+
+1. Completed: connect the exact source row-sum matcher to the native
+   explicit-result builder, runtime formal/result/return and native driver;
+   preserve source positions and numerical prohibitions. See the
+   [ingestion detail and retained receipt](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27).
+2. Completed for bounded row sum: derive state, access and numerical facts
+   from canonical native WHIRL. No FX/sample/debug fact is authoritative.
+   Generalize axes/types only through separately reviewed contracts; carry
+   strict permissions and explicit unknowns into later legality/selection.
+3. Completed for bounded native stable Softmax: explicit FP32
+   max/subtract/exp/sum/divide contract, active-PU PREOPT preservation and
+   canonical-WHIRL characterization. See the
+   [native Softmax contract](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md).
+   Completed: connect the exact Python stable-Softmax matcher through the
+   explicit-result builder and standalone driver; retain division-site source
+   positions, five native/PREOPT cases and ten prepublication rejections.
+   Completed for bounded normalization: publish the native centered population
+   affine FP32 contract and derive numerical/broadcast/state/epsilon facts in
+   actual PREOPT, including ternary emitter integration. See the
+   [normalization contract and evidence](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md).
+   Completed: connect its shared exact Python matcher with three runtime
+   formals, binary32 epsilon preflight and final-addition source location;
+   six API/driver PREOPT cases and sixteen prepublication rejects. Preserve
+   raw `.t`, source-interleaved `.T`, numerical witnesses and immutable receipt.
+   Numerical binding and executable
+   row-operation selection/lowering remain open.
+4. Only then compare legal executable alternatives and lower the selected
+   plan into WHIRL. Verification-only trace events do not count as optimizer
+   actions. REGION support must be explicit, never inferred by whole-PU traversal.
+
 `locality.log` summarizes access-lifetime/alias obligations;
 `residency.log` physical assignment/reservation; `fetch-pipeline.log`
 generation/completion/reuse and added waits; `physical-plan.log` complete
 selection and WHIRL actions. R0's standalone `comparison.log` is research
 output, not a WOPT `.t` trace or a compiler transformation report.
+
+R2 reduction execution queue, independent of MMA1:
+
+| Slice | Status / required action | Required tool summary |
+| --- | --- | --- |
+| R2-a: numerical binding | Bounded native v2 implemented: positive-zero ascending left fold, per-add FP32 RNE, gradual underflow, no traps/observable flags, NaN class policy. No silent v1/framework-sum upgrade. | `semantic.log`: source version/order/environment/NaN policy, exact source line and PREOPT preservation; unresolved target/real-sum accuracy. |
+| R2-b: legal recipes | Direct ordered and staged ordered numerical recipes implemented as a read-only native query; staged bytes `4*min(C,N)` checked against per-active-row budget. Partition tree forbidden. | `alternatives.log`: full set, chunk, scratch/budget, numerical/capacity rejection reason; target unbound, selected false. |
+| R2-c: arithmetic/storage/event binding | Direct compiler contract implemented: exact existing architecture lookup, scalar non-FTZ `add.rn.f32` policy, checked canonical allocation subranges/leases, injective row mapping and acyclic host event dependencies. Runtime obligations remain explicit, not discharged by the binder. Staged copy/reuse/tails are extended in R2-c2 below. No MMA profile substitution. | `target-binding.log`: ISA/policy and refusal reasons, not native certification. `residency.log`: footprints/ranges/alignment/lease/alias/owner obligations. `fetch-pipeline.log`: readiness/completion/consumer/release dependencies and rejection; no barrier/async claim. |
+| R2-c1: direct runtime guard wiring | Implemented bounded host-mock enforcement: fresh native guard export, existing tensor-ABI validation, canonical backing-root resolver/registry, atomic range leases, exact manifest admission, six-event state machine, conservative failure/drain/abort. Separate runtime, no backend linkage or MMA1 dependency. Production CUDA adapter, selected host/device WHIRL wiring and instruction conformance remain open; no executable reduction selection is claimed. | `runtime-guard.log`: source/guard joins, admitted/refused tickets, aliases/conflicts, completion/consumer/release, failure recovery. `optimization-summary.log`: host-mock proof and explicit open execution/certification gates. Preserve native/PREOPT and runtime `.t`, `.B`/`.T`, guard snapshot and checksums. |
+| R2-c2: staged copy/storage/tail binding | Bounded synchronous same-owner staging implemented: reuse direct gate/recipe query; one disjoint shared slot per row-thread, checked padded per-CTA reservation, full-copy visibility before ascending reads, last-read release before next generation, exact column/CTA tails. Target resource figures remain planning envelopes and mask 255 remains outstanding. Async/cooperative/multi-slot copies are refused. No MMA1 or existing runtime ABI change. | `alternatives.log`: all bindings/refusals. `residency.log`: slot partition/extent/padding/reservation and resource provenance. `fetch-pipeline.log`: visibility/carry/tail/active-row rules and planned slices, not executed copies. `numerical.log`: host slice/oracle witnesses. Summary explicitly retains staged runtime, complete costs, selected WHIRL and GPU gates. |
+| R2-d: complete costs and selection | Open: compare all legally bound direct/staged plans, including dependent additions, delivery, added staging traffic, occupancy, sync/launch and overlap. Keep direct fallback. | Component costs/units/provenance, legality failures, selection reason and unhidden readiness; no selection if source or target is unbound. |
+| R2-e: selected WHIRL lowering | Open: produce high-level loops from the selected plan, retain before/after `.B`/`.T`/diff, emit from WHIRL and later certify on hardware. | Actual WHIRL actions distinct from query/verification events; emitted code and numerical/resource/performance evidence. |
+
+The native query is not yet an automatically enabled production optimizer.
+The [runtime guard detail](AI-COMPILER-REDUCTION-RUNTIME-GUARDS-v0.1.md)
+specifies the implemented R2-c1 boundary, trusted adapter obligations, exact
+failure behavior and independent trace auditor. This does not remove R2-d/e.
+The [staged binding detail](AI-COMPILER-REDUCTION-STAGED-BINDING-v0.1.md)
+specifies R2-c2 and why the direct-only runtime guard cannot stand in for staged
+scratch/copy/lifetime enforcement. Next is R2-d complete costs and comparison,
+not automatic selection based on successful binding or presumed overlap.
+Actual PREOPT uses the existing AI trace controls for additive
+`AI_REDUCE_NUM` binding rows; the focused planner emits `AI_REDUCE_ALT` under
+its caller-supplied optional trace stream and verifies identical trace-off facts.
+Both paths retain positional headers/source-line-last and no-selection claims.
+Host numerical evidence uses an independent integer binary32 oracle, thirteen
+adversarial vectors, 104 direct/staged checks and 2,048 pair checks; samples
+do not grant numerical permission or certify generated GPU code.
+
+The [direct-fallback binding detail](AI-COMPILER-REDUCTION-DIRECT-BINDING-v0.1.md)
+specifies `WOPT_DSL_bind_reduction_direct`, eight native cases and a positional
+`AI_REDUCE_DIRECT` auditor. Successful stage mask 15 means source/ISA/storage/
+owner-event compiler contracts are consistent; outstanding runtime mask 15
+still requires canonical actual buffers, live leases, event enforcement and
+launch conformance. It is not a profitability decision, executed guard or
+runtime proof. No request/log may become a second executable source of truth.
+Selected instruction, address, owner and host-contract actions must first be
+materialized in WHIRL before code emission.
+For ordered-add lowering, inspect/reuse the existing NVISA
+`INTRN_F4ADD_ROUND -> TOP_add_rn_f32` route, explicitly addressing its
+`TARG_NVISA` availability and CUDA spelling in the host-built path. This
+increment changes neither intrinsic encoding nor emitter support.
 
 Open64 adopts the following design rules from the versioned design:
 

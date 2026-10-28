@@ -118,7 +118,10 @@ require_text "$on_trace" "Driver dump after DSL_WOPT"
 require_text "$on_trace" "OPR_DSLTENSORCONST"
 require_text "$on_trace" "name=wopt_add"
 require_text "$on_trace" "value=1"
-if grep -Fq "OPR_DSLADD" "$on_trace"; then
+# The trace may contain input/shape-refinement dumps before PREOPT. Only the
+# post-DSL_WOPT section is evidence of the emitted optimization result.
+if sed -n '/Driver dump after DSL_WOPT/,$p' "$on_trace" | \
+   grep -F "OPR_DSLADD" >/dev/null; then
   echo "enabled DSL WOPT did not fold common.add" >&2
   exit 1
 fi

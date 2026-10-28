@@ -1,5 +1,7 @@
 /*
  * Copyright (C) 2026 Open64 Project
+ * Contracts: doc/WHIRL-DSL-INFRASTRUCTURE.md;
+ * row sum: doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md.
  */
 
 #include <ctype.h>
@@ -1413,7 +1415,218 @@ DSL_Shape_Output_Logits_Result
                (node, operands[0], result_ty, version);
 }
 
+/* Validate the published static FP32 row-sum type/attribute contract without
+ * mutating descriptors. Builder, gatekeeper and PREOPT share this predicate;
+ * it does not choose a reduction order or authorize a native implementation. */
+BOOL
+DSL_Shape_Reduce_Sum_Types_Valid
+        (TY_IDX operand_ty, TY_IDX result_ty, const char *axis,
+         const char *keepdim, const char *accum_dtype,
+         const char *reassociate)
+{
+    UINT64 input[2], output[1];
+    UINT32 input_rank = 0, output_rank = 0;
+    return DSL_Shape_Tensor_Core_Complete(operand_ty) &&
+           DSL_Shape_Tensor_Core_Complete(result_ty) &&
+           axis != NULL && strcmp(axis, "1") == 0 &&
+           keepdim != NULL && strcmp(keepdim, "false") == 0 &&
+           accum_dtype != NULL && strcmp(accum_dtype, "float32") == 0 &&
+           reassociate != NULL && strcmp(reassociate, "false") == 0 &&
+           TY_tensor_rank(operand_ty) == 2 && TY_tensor_rank(result_ty) == 1 &&
+           strcmp(TY_tensor_attribute(operand_ty, TY_TENSOR_SCHEMA_DTYPE),
+                  "float32") == 0 &&
+           DSL_Shape_TY_Valid(TY_tensor_element_ty(operand_ty)) &&
+           TY_mtype(TY_tensor_element_ty(operand_ty)) == MTYPE_F4 &&
+           DSL_Shape_Tensor_Element_Representation_Compatible
+               (operand_ty, result_ty) &&
+           DSL_Shape_Parse_Static_Dimensions
+               (TY_tensor_attribute(operand_ty, TY_TENSOR_SCHEMA_SHAPE),
+                input, 2, &input_rank) && input_rank == 2 &&
+           DSL_Shape_Parse_Static_Dimensions
+               (TY_tensor_attribute(result_ty, TY_TENSOR_SCHEMA_SHAPE),
+                output, 1, &output_rank) && output_rank == 1 &&
+           input[0] > 0 && input[1] > 0 && output[0] == input[0];
+}
+
+/* Validate explicit ordered source meaning, independently of target support.
+ * See AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md. */
+BOOL
+DSL_ordered_reduce_sum_binding_valid
+    (const char *order, const char *identity_bits,
+     const char *fp_environment, const char *nan_policy)
+{
+    return order != NULL && strcmp(order, "ascending_left_fold") == 0 &&
+           identity_bits != NULL && strcmp(identity_bits, "00000000") == 0 &&
+           fp_environment != NULL && strcmp(fp_environment, "rne_gradual_no_traps") == 0 &&
+           nan_policy != NULL && strcmp(nan_policy, "class_only") == 0;
+}
+
+/* Adapt existing image attributes to the shared policy-free row-sum check. */
+static BOOL
+DSL_Shape_Reduce_Sum_Result
+        (const DSL_IR_NODE_RECORD *node, const std::vector<TY_IDX> &operands,
+         TY_IDX result_ty, UINT16 version)
+{
+    const char *axis = NULL, *keepdim = NULL;
+    const char *accum = NULL, *reassociate = NULL;
+    if (node == NULL) return FALSE;
+    const char *order = NULL, *identity = NULL, *environment = NULL, *nan = NULL;
+    BOOL binding = version == 1 ||
+        (version == 2 &&
+         DSL_Shape_Node_Attribute(node, "attr.order", &order) &&
+         DSL_Shape_Node_Attribute(node, "attr.identity_bits", &identity) &&
+         DSL_Shape_Node_Attribute(node, "attr.fp_environment", &environment) &&
+         DSL_Shape_Node_Attribute(node, "attr.nan_policy", &nan) &&
+         DSL_ordered_reduce_sum_binding_valid(order, identity, environment, nan));
+    return node != NULL && binding &&
+           node->attribute_count == (version == 1 ? 4 : 8) && operands.size() == 1 &&
+           DSL_Shape_Node_Attribute(node, "attr.axis", &axis) &&
+           DSL_Shape_Node_Attribute(node, "attr.keepdim", &keepdim) &&
+           DSL_Shape_Node_Attribute(node, "attr.accum_dtype", &accum) &&
+           DSL_Shape_Node_Attribute(node, "attr.reassociate", &reassociate) &&
+           DSL_Shape_Reduce_Sum_Types_Valid
+               (operands[0], result_ty, axis, keepdim, accum, reassociate);
+}
+
+/* Check only static descriptors and the exact source-recipe permissions.
+ * No exp implementation, exceptional-value policy or FP merge is inferred. */
+BOOL
+DSL_Shape_Stable_Softmax_Types_Valid
+    (TY_IDX operand_ty, TY_IDX result_ty, const char *axis,
+     const char *accum_dtype, const char *reassociate,
+     const char *state_reformulation, const char *exp_semantics)
+{
+    UINT64 input[2], output[2];
+    UINT32 input_rank = 0, output_rank = 0;
+    return DSL_Shape_Tensor_Core_Complete(operand_ty) &&
+           DSL_Shape_Tensor_Core_Complete(result_ty) &&
+           axis != NULL && strcmp(axis, "1") == 0 &&
+           accum_dtype != NULL && strcmp(accum_dtype, "float32") == 0 &&
+           reassociate != NULL && strcmp(reassociate, "false") == 0 &&
+           state_reformulation != NULL &&
+           strcmp(state_reformulation, "false") == 0 &&
+           exp_semantics != NULL &&
+           strcmp(exp_semantics, "source_unresolved") == 0 &&
+           TY_tensor_rank(operand_ty) == 2 && TY_tensor_rank(result_ty) == 2 &&
+           strcmp(TY_tensor_attribute(operand_ty, TY_TENSOR_SCHEMA_DTYPE),
+                  "float32") == 0 &&
+           DSL_Shape_TY_Valid(TY_tensor_element_ty(operand_ty)) &&
+           TY_mtype(TY_tensor_element_ty(operand_ty)) == MTYPE_F4 &&
+           DSL_Shape_Tensor_Element_Representation_Compatible
+               (operand_ty, result_ty) &&
+           DSL_Shape_Parse_Static_Dimensions
+               (TY_tensor_attribute(operand_ty, TY_TENSOR_SCHEMA_SHAPE),
+                input, 2, &input_rank) && input_rank == 2 &&
+           DSL_Shape_Parse_Static_Dimensions
+               (TY_tensor_attribute(result_ty, TY_TENSOR_SCHEMA_SHAPE),
+                output, 2, &output_rank) && output_rank == 2 &&
+           input[0] > 0 && input[1] > 0 &&
+           output[0] == input[0] && output[1] == input[1];
+}
+
+/* Adapt managed attributes to the same verifier used before builder allocation. */
+static BOOL
+DSL_Shape_Stable_Softmax_Result
+    (const DSL_IR_NODE_RECORD *node, const std::vector<TY_IDX> &operands,
+     TY_IDX result_ty, UINT16 version)
+{
+    const char *axis = NULL, *accum = NULL, *reassociate = NULL;
+    const char *reformulation = NULL, *exp = NULL;
+    return node != NULL && node->attribute_count == 5 && version == 1 &&
+           operands.size() == 1 &&
+           DSL_Shape_Node_Attribute(node, "attr.axis", &axis) &&
+           DSL_Shape_Node_Attribute(node, "attr.accum_dtype", &accum) &&
+           DSL_Shape_Node_Attribute(node, "attr.reassociate", &reassociate) &&
+           DSL_Shape_Node_Attribute(node, "attr.state_reformulation", &reformulation) &&
+           DSL_Shape_Node_Attribute(node, "attr.exp_semantics", &exp) &&
+           DSL_Shape_Stable_Softmax_Types_Valid
+               (operands[0], result_ty, axis, accum, reassociate, reformulation, exp);
+}
+
+/* Decode canonical IEEE bits without host strtod, endianness or rounding.
+ * Positive subnormals are representable; target preservation is not inferred. */
+BOOL
+DSL_positive_f32_bits_valid(const char *text, UINT32 *bits)
+{
+    if (text == NULL || strlen(text) != 8 || bits == NULL) return FALSE;
+    UINT32 value = 0;
+    for (UINT32 i = 0; i < 8; ++i) {
+        char c = text[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return FALSE;
+        value = (value << 4) | (c <= '9' ? c - '0' : c - 'a' + 10);
+    }
+    if (value == 0 || value >= 0x7f800000U) return FALSE;
+    *bits = value;
+    return TRUE;
+}
+
+/* Validate the source recipe, exact affine broadcasts and epsilon before any
+ * construction. This neither picks a mean reduction nor proves accuracy. */
+BOOL
+DSL_mean_variance_norm_types_valid
+    (TY_IDX input_ty, TY_IDX gamma_ty, TY_IDX beta_ty, TY_IDX result_ty,
+     const char *axis, const char *accum_dtype, const char *variance_kind,
+     const char *epsilon_bits, const char *reassociate,
+     const char *state_reformulation, const char *contract,
+     const char *rsqrt_semantics)
+{
+    UINT32 bits;
+    if (axis == NULL || strcmp(axis, "1") != 0 ||
+        accum_dtype == NULL || strcmp(accum_dtype, "float32") != 0 ||
+        variance_kind == NULL || strcmp(variance_kind, "population_centered") != 0 ||
+        !DSL_positive_f32_bits_valid(epsilon_bits, &bits) ||
+        reassociate == NULL || strcmp(reassociate, "false") != 0 ||
+        state_reformulation == NULL || strcmp(state_reformulation, "false") != 0 ||
+        contract == NULL || strcmp(contract, "false") != 0 ||
+        rsqrt_semantics == NULL || strcmp(rsqrt_semantics, "source_unresolved") != 0)
+        return FALSE;
+    TY_IDX types[4] = { input_ty, gamma_ty, beta_ty, result_ty };
+    UINT32 ranks[4] = { 2, 1, 1, 2 };
+    UINT64 dimensions[4][2];
+    for (UINT32 i = 0; i < 4; ++i) {
+        UINT32 rank = 0;
+        if (!DSL_Shape_Tensor_Core_Complete(types[i]) ||
+            TY_tensor_rank(types[i]) != ranks[i] ||
+            strcmp(TY_tensor_attribute(types[i], TY_TENSOR_SCHEMA_DTYPE), "float32") != 0 ||
+            !DSL_Shape_TY_Valid(TY_tensor_element_ty(types[i])) ||
+            TY_mtype(TY_tensor_element_ty(types[i])) != MTYPE_F4 ||
+            !DSL_Shape_Tensor_Element_Representation_Compatible(input_ty, types[i]) ||
+            !DSL_Shape_Parse_Static_Dimensions
+                (TY_tensor_attribute(types[i], TY_TENSOR_SCHEMA_SHAPE),
+                 dimensions[i], 2, &rank) || rank != ranks[i])
+            return FALSE;
+    }
+    return dimensions[0][0] > 0 && dimensions[0][1] > 0 &&
+           dimensions[1][0] == dimensions[0][1] &&
+           dimensions[2][0] == dimensions[0][1] &&
+           dimensions[3][0] == dimensions[0][0] &&
+           dimensions[3][1] == dimensions[0][1];
+}
+
+/* Adapt managed attributes to the shared structural contract without mutation. */
+static BOOL
+DSL_mean_variance_norm_result
+    (const DSL_IR_NODE_RECORD *node, const std::vector<TY_IDX> &operands,
+     TY_IDX result_ty, UINT16 version)
+{
+    const char *a[8];
+    const char *names[8] = { "attr.axis", "attr.accum_dtype", "attr.variance_kind",
+        "attr.epsilon_bits", "attr.reassociate", "attr.state_reformulation",
+        "attr.contract", "attr.rsqrt_semantics" };
+    if (node == NULL || node->attribute_count != 8 || operands.size() != 3 || version != 1)
+        return FALSE;
+    for (UINT32 i = 0; i < 8; ++i)
+        if (!DSL_Shape_Node_Attribute(node, names[i], &a[i])) return FALSE;
+    return DSL_mean_variance_norm_types_valid
+        (operands[0], operands[1], operands[2], result_ty,
+         a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
+}
+
 static const DSL_SHAPE_RULE_ENTRY DSL_shape_rules[] = {
+    { OPR_DSLMEANVARNORM, 1, DSL_mean_variance_norm_result },
+    { OPR_DSLSTABLESOFTMAX, 1, DSL_Shape_Stable_Softmax_Result },
+    { OPR_DSLREDUCESUM, 1, DSL_Shape_Reduce_Sum_Result },
+    { OPR_DSLREDUCESUM, 2, DSL_Shape_Reduce_Sum_Result },
     { OPR_DSLADD, 1, DSL_Shape_Broadcast_Result },
     { OPR_DSLMATMUL, 1, DSL_Shape_Matmul_Result },
     { OPR_DSLMATMUL, 2, DSL_Shape_Matmul_Result },
@@ -2638,6 +2851,8 @@ DSL_Shape_Infer_Pool
     return DSL_Shape_Set_Complete(output, result);
 }
 
+/* Infer only registered structural rules from caller-owned facts. This does
+ * not mutate TYs or infer floating-point transformation permission. */
 DSL_SHAPE_INFERENCE_RESULT
 DSL_Shape_Infer_Operator
         (const DSL_SHAPE_INFERENCE_INPUT *input,
@@ -2665,6 +2880,30 @@ DSL_Shape_Infer_Operator
 
     BOOL valid = FALSE;
     switch (input->dsl_operator) {
+    case OPR_DSLMEANVARNORM: {
+        std::vector<TY_IDX> operands(input->operand_types,
+                                    input->operand_types + input->operand_count);
+        valid = DSL_mean_variance_norm_result
+                    (input->node, operands, input->result_ty, input->version) &&
+                DSL_Shape_Fact_From_Type(input->result_ty, result);
+        break;
+    }
+    case OPR_DSLSTABLESOFTMAX: {
+        std::vector<TY_IDX> operands(input->operand_types,
+                                    input->operand_types + input->operand_count);
+        valid = DSL_Shape_Stable_Softmax_Result
+                    (input->node, operands, input->result_ty, input->version) &&
+                DSL_Shape_Fact_From_Type(input->result_ty, result);
+        break;
+    }
+    case OPR_DSLREDUCESUM: {
+        std::vector<TY_IDX> operands(input->operand_types,
+                                    input->operand_types + input->operand_count);
+        valid = DSL_Shape_Reduce_Sum_Result
+                    (input->node, operands, input->result_ty, input->version) &&
+                DSL_Shape_Fact_From_Type(input->result_ty, result);
+        break;
+    }
     case OPR_DSLADD:
     case OPR_DSLMUL:
     case OPR_DSLDIV:

@@ -4,6 +4,110 @@ Version v0.1 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-28 R2-c2 staged ordered reduction amendment:
+[staged binding](AI-COMPILER-REDUCTION-STAGED-BINDING-v0.1.md) adds synchronous
+same-owner bit-copy visibility, padded shared slots, last-read release before
+reuse, and exact column/CTA tails. One accumulator persists across chunks.
+Resource envelopes and mask 255 remain conditional; no staged runtime discharge,
+async/cooperative admission, cost selection, WHIRL transformation or MMA1 change.
+
+2026-10-27 R2-c1 runtime-enforcement amendment:
+[direct reduction runtime guards](AI-COMPILER-REDUCTION-RUNTIME-GUARDS-v0.1.md)
+connect freshly revalidated native bindings to live-root/descriptor/manifest
+admission, atomic range leases and a separately linked event state machine.
+Evidence is host-mock enforcement, not selected WHIRL lowering, CUDA adaptation
+or GPU certification. Failed launches require drain before cleanup; no output
+publication or automatic fallback. MMA1 and existing ABI layouts are unchanged.
+
+2026-10-27 R2-c direct-fallback binding amendment:
+the [direct ordered reduction contract](AI-COMPILER-REDUCTION-DIRECT-BINDING-v0.1.md)
+now binds scalar ISA policy, allocation-relative ranges/leases, row ownership
+and host event dependencies against native source facts. Success is conditional
+on explicit runtime allocation/lease/event/launch obligations, not an executed
+guard or GPU proof. Exact architecture lookup is reused without MMA capabilities.
+Selected cost/lowering remains gated; the existing NVISA strict-add route is
+recorded for reuse. No source relaxation, image-layout change or CUDA template
+is introduced.
+
+2026-10-27 R2 reduction numerical-binding amendment:
+the [explicit ordered contract and direct/staged recipes](AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md)
+now preserve source arithmetic before exploring executable alternatives.
+Native v2 binds positive-zero ascending FP32 additions and an exact environment;
+existing Python/v1 sums stay source-order-unbound. Read-only WOPT discovery
+reports recipe legality and per-active-row scratch capacity, rejecting trees
+under strict reassociation rules. Actual PREOPT preserves the source binding.
+Numerical legality is not target certification or profitability: target
+instructions, alias/storage/events, complete costs and selected high-level WHIRL
+lowering remain gates. MMA1 is unchanged.
+
+2026-10-27 Python centered affine normalization connection:
+the [exact source-to-native recipe](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27)
+now shares structural preflight with R1 analysis and emits three runtime
+formals, an explicit result/return and the actual final-addition source location.
+Binary32 epsilon conversion, affine vector shapes and strict operation order
+are validated before sample evaluation. Six API/driver images reach actual
+PREOPT with controlled compact traces; numerical witnesses remain source-only.
+General forms, executable binding/selection/lowering and GPU validation remain
+open. MMA1 and native backend contracts are unchanged.
+
+2026-10-27 native normalization amendment (prior increment):
+[Native centered population normalization](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md)
+now preserves the three-input affine FP32 recipe and derives state/access/
+numerical facts through actual PREOPT. Epsilon stays inside rsqrt with exact
+binary32 bits; affine broadcast and population denominator are explicit.
+Reassociation, state reformulation and FMA contraction remain prohibited.
+The existing DSL emitter bridge now carries three kids. Python normalization
+ingestion and executable realization remain open, independently of MMA1.
+
+2026-10-27 Python stable-Softmax connection:
+the [exact source-to-native recipe](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27)
+now shares structural preflight with R1 analysis and emits the published native
+contract through runtime formals and an explicit result/return. Five API/driver
+images reach actual PREOPT with division-site source positions and strict
+numerical permissions/unknowns. No target algorithm, executable lowering or
+MMA1 change is implied; native normalization remains next.
+
+2026-10-27 native stable-Softmax amendment:
+[Native stable Softmax and canonical WHIRL characterization](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md)
+adds the bounded FP32 max/subtract/exp/sum/divide contract and derives native
+state/access/numerical facts at PREOPT entry/exit. No online-state or relaxed-FP
+permission is inferred; exp/order/exception/accuracy/storage obligations remain
+explicit. Controlled compact traces and audited phase reports preserve R1's
+conventions. Python Softmax ingestion and executable lowering remain open;
+MMA1 is unchanged.
+
+2026-10-27 native characterization amendment:
+[Canonical-WHIRL row-sum characterization](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md#canonical-whirl-characterization-2026-10-27)
+now derives state, logical accesses and strict numerical obligations from
+verified native assignments and types, not FX/sample/debug facts. PREOPT
+rederives at entry/exit; additive FACT traces preserve existing FORM records.
+Unknown order/accuracy/alias/storage and forbidden FP32 merge remain explicit.
+This does not select an executable realization or modify MMA1.
+
+2026-10-27 source-to-native R1 amendment:
+the [bounded row-sum connection](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md#python-ingestion-increment-2026-10-27)
+now consumes the native v1 contract from the exact Python matcher and standalone
+driver, using a runtime tensor formal and explicit rank-1 result/return.
+Canonical axis, strict numerical attributes and the Python call-site survive
+native inspection/PREOPT. Executable reduction lowering and general native
+characterization remain open. No MMA1 contracts or profiles change.
+
+2026-10-27 native R1 amendment:
+[Native reduction contract and PREOPT canonical form v0.1](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md)
+adds the bounded typed row-sum form and verifies it in actual PREOPT without
+choosing an accumulation schedule. Native `.B/.T`, controlled `.t` and strict
+phase reports are separate from FX evidence. Source ingestion, full native
+characterization and executable reduction lowering remain open; MMA1 is
+independent.
+
+2026-10-27 R1 implementation amendment:
+[Row semantic characterization and numerical acceptance v0.1](AI-COMPILER-ROW-SEMANTIC-CHARACTERIZATION-v0.1.md)
+derives reduction, stable Softmax and affine LayerNorm domains/accesses/state
+from actual FX dataflows. Numerical permissions and CPU acceptance witnesses
+remain separate gates; native canonical-WHIRL characterization, optimization
+and physical scheduling remain open. This frontend-only slice is independent
+of MMA1 and changes no compute profile or native IR contract.
+
 2026-10-27 compute-realization proposal:
 [MMA compute realization and SIMT fallback v0.1](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md)
 defines Hopper WGMMA and Blackwell SM100 `tcgen05` as separate complete-plan

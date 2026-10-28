@@ -1,5 +1,7 @@
 /*
  * Copyright (C) 2026 Open64 Project
+ * Contracts: doc/WHIRL-DSL-INFRASTRUCTURE.md;
+ * row sum: doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md.
  */
 
 #include <string.h>
@@ -151,7 +153,10 @@ static const char *DSL_operator_name[] = {
     "OPR_DSLCKKSRESCALE",
     "OPR_DSLCKKSMODSWITCH",
     "OPR_DSLCKKSRELIN",
-    "OPR_DSLCKKSBOOTSTRAP"
+    "OPR_DSLCKKSBOOTSTRAP",
+    "OPR_DSLREDUCESUM",
+    "OPR_DSLSTABLESOFTMAX",
+    "OPR_DSLMEANVARNORM"
 };
 
 static const char *DSL_fusion_iteration_class_name_table[] = {
@@ -484,7 +489,15 @@ static const DSL_COMMON_OPCODE_SEED DSL_common_opcode_seed[] = {
     { "common.rem", DSL_OPCODE_CATEGORY_EXECUTABLE,
         DSL_OPCODE_LEVEL_2_NUMERIC, 2,
         DSL_SHAPE_RULE_BROADCAST, DSL_EFFECT_MODEL_PURE,
-        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_REM" }
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_REM" },
+    { "common.stable_softmax", DSL_OPCODE_CATEGORY_EXECUTABLE,
+        DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_STABLE_SOFTMAX" },
+    { "common.mean_variance_norm", DSL_OPCODE_CATEGORY_EXECUTABLE,
+        DSL_OPCODE_LEVEL_2_NUMERIC, 3,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_MEAN_VAR_NORM" }
 };
 
 static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
@@ -701,7 +714,31 @@ static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
         DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
         DSL_SHAPE_RULE_OPAQUE, DSL_EFFECT_MODEL_PURE,
         DSL_LOWERING_MODEL_RUNTIME_CALL, "DOPC_CKKS_BOOTSTRAP",
-        "attr.target_level;attr.reason;attr.key_id" }
+        "attr.target_level;attr.reason;attr.key_id" },
+    { OPR_DSLREDUCESUM, "common.reduce_sum", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_REDUCTION, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_REDUCE_SUM_V1",
+        "attr.axis;attr.keepdim;attr.accum_dtype;attr.reassociate" },
+    { OPR_DSLSTABLESOFTMAX, "common.stable_softmax", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_STABLE_SOFTMAX_V1",
+        "attr.axis;attr.accum_dtype;attr.reassociate;"
+        "attr.state_reformulation;attr.exp_semantics" },
+    { OPR_DSLMEANVARNORM, "common.mean_variance_norm", 1,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 3,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_MEAN_VAR_NORM_V1",
+        "attr.axis;attr.accum_dtype;attr.variance_kind;attr.epsilon_bits;"
+        "attr.reassociate;attr.state_reformulation;attr.contract;attr.rsqrt_semantics" },
+    /* Ordered reduction is explicit source meaning, never a v1 upgrade. */
+    { OPR_DSLREDUCESUM, "common.reduce_sum", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 1,
+        DSL_SHAPE_RULE_REDUCTION, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_REDUCE_SUM_V2",
+        "attr.axis;attr.keepdim;attr.accum_dtype;attr.reassociate;attr.order;"
+        "attr.identity_bits;attr.fp_environment;attr.nan_policy" }
 };
 
 static const DSL_FUSIBILITY_INFO DSL_fusibility_info[] = {

@@ -2123,3 +2123,107 @@ artifact; read it in a separate compiler process; inspect only logical operator
 names and DSL tables with `ir_b2a`; reject malformed or escaping tensor results
 in the gatekeeper; and lower the verified graph before canonical optimization,
 while existing non-DSL WHIRL behavior and old-image readability remain intact.
+
+### R1 Native Row Sum (2026-10-27)
+
+The additive [native reduction contract](AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md)
+publishes `OPR_DSLREDUCESUM.v1` using the existing physical `OPR_DSL` expression
+and managed tables: one direct operand, explicit rank-1 result, static rank-2
+FP32 input and four exact numerical/axis attributes. No physical opcode,
+mapped-image record, ELF section or TY-kind layout changes. PREOPT verifies and
+preserves the canonical form; WOPT treats it as opaque pure unary semantics.
+The ordinary VHO gate still rejects missing executable reduction lowering.
+The subsequent exact Python row-sum connection consumes this published
+contract through runtime formals and the explicit-result builder; it changes
+no common record or native API. General reduction canonicalization and selected
+executable realizations remain separate gates, not implied by representation
+or ingestion support.
+
+The R1 native characterization snapshot now derives the bounded row-sum state,
+access and numerical obligations from canonical WHIRL/TYs and managed links.
+It is a transient read-only WOPT analysis view, not a mapped-image extension or
+an expression-equivalence key. PREOPT rederives it with or without trace output;
+physical planning and FP32 algorithm permissions are not inferred from the
+mathematical recipe. Scope/invalid-input queries leave IR and caller output
+unchanged. The detail contract defines the additive FACT trace and audit rules.
+
+### R1 Native Stable Softmax (2026-10-27)
+
+The [native stable-Softmax contract](AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md)
+appends logical ID 38 without changing physical WN or mapped-image layout.
+It preserves the explicit FP32 subtract-row-max source recipe, not the meaning
+of the preexisting generic `common.softmax` marker. The native unary typed
+assignment has one direct operand and five exact attributes. Common owns
+structural verification; WOPT derives transient state/access/numerical facts
+within the active whole PU. PREOPT verifies both boundaries and opaque WOPT
+emission preserves managed/direct operand joins. No online merge, exp
+approximation, reduction order, physical storage or accuracy proof is inferred.
+Distinct `AI_SOFTMAX`/`AI_SOFTMAX_FACT` records retain source line last and the
+existing AI trace controls. The subsequent exact Python ingestion connection
+now consumes this unchanged native contract, preserving the division call-site
+and runtime formal/result/return. Source matching is not native optimization;
+executable VHO lowering still fails closed. Five API/driver native/PREOPT cases
+and source/numerical witnesses are retained independently of MMA1.
+
+### R1 Native Centered Population Normalization (2026-10-27)
+
+The [native normalization contract](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md)
+appends logical ID 39 for FP32 `[R,N],[N],[N] -> [R,N]` with eight exact
+attributes, including canonical epsilon bits, population centered variance
+and strict reassociation/reformulation/contraction prohibitions. Common owns
+structural validation; WOPT derives transient PU-local facts. PREOPT verifies
+and preserves all three operand links through the existing ternary-capable
+native carrier and the extended three-kid DSL emitter bridge. Physical opcode,
+mapped-image, TY-kind and 64-byte semantic-key layouts are unchanged.
+`AI_NORM`/`AI_NORM_FACT` are additive controlled positional traces, source line
+last. Their auditor reports epsilon/denominator, affine broadcasts, numerical
+unknowns and remaining gates. The exact Python centered affine matcher now
+connects through three runtime formals, explicit result/return and final-addition
+source location. Epsilon converts to canonical binary32 before ShapeProp;
+structural/descriptor/epsilon rejects execute no sample operations and publish
+no image. Six API/driver images preserve the contract through actual PREOPT.
+General normalization ingestion and executable VHO lowering remain open;
+no native accuracy or performance proof is implied.
+
+### R2 Ordered Reduction Numerical Binding (2026-10-27)
+
+The [reduction numerical-binding contract](AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md)
+appends native `common.reduce_sum.v2` under logical ID 37, retaining its unary
+carrier and all physical/mapped layouts. Eight exact attributes explicitly bind
+positive-zero ascending FP32 accumulation, RNE/gradual/no-trap environment and
+NaN-class observations. Common owns structural admission, WOPT owns transient
+numerical characterization and direct/staged recipe legality. PREOPT preserves
+the version and exact attributes; existing v1/framework sums remain unbound.
+`AI_REDUCE_NUM` and query-only `AI_REDUCE_ALT` supplement, not replace, prior
+v1 FORM/FACT traces. No target arithmetic, storage/event proof, profitability
+selection, executable transformation or MMA1 capability follows from a legal
+numerical recipe.
+
+### R2-c Direct Reduction Contract Binding (2026-10-27)
+
+Follow-up [R2-c2 staged binding](AI-COMPILER-REDUCTION-STAGED-BINDING-v0.1.md)
+adds a read-only WOPT-owned transient contract over the same source v2: one
+same-owner synchronous bit-copy slot, disjoint CTA-shared partitioning, explicit
+visibility/last-read-release/reuse and exact tails. Existing direct gate, recipe
+query and hardware lookup are reused. No mapped/native layout, source version,
+runtime ABI or MMA profile changes; selected WHIRL lowering remains separate.
+
+Follow-up [R2-c1 runtime guards](AI-COMPILER-REDUCTION-RUNTIME-GUARDS-v0.1.md):
+fresh WOPT revalidation exports a process-local numeric guard without changing
+native/mapped records. Separate runtime code enforces canonical backing-root
+admission, tensor-ABI guards, atomic leases and event/drain/release ordering.
+Host-mock tests do not prove selected-entry code conformance. Production CUDA
+adaptation and selected high-level WHIRL dispatch/lowering remain gated.
+
+[Direct target/storage/event binding](AI-COMPILER-REDUCTION-DIRECT-BINDING-v0.1.md)
+is a WOPT-owned transient query over canonical active-PU source WHIRL. It
+reuses common exact architecture lookup, preserves native v1/v2 meaning and
+adds no image record, source version, physical opcode or shared MMA profile.
+Scalar instruction policy, canonical allocation-relative intervals, declared
+lease kinds, row mapping and host dependency DAG are checked. Its success
+retains explicit runtime obligations and does not constitute target binary
+certification, noalias metadata, cost selection or executable lowering.
+`AI_REDUCE_DIRECT` and concise phase reports supplement prior trace schemas.
+The existing target-conditional NVISA `INTRN_F4ADD_ROUND` implementation is a
+reuse point for later selected-WHIRL lowering, not evidence that the host-built
+CUDA emitter already supports it.

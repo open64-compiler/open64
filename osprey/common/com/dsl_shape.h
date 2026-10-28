@@ -100,6 +100,41 @@ typedef BOOL (*DSL_SHAPE_REFINEMENT_VISITOR)
     (const DSL_SHAPE_REFINEMENT *refinement, void *context);
 
 extern BOOL DSL_Shape_Tensor_Core_Complete(TY_IDX ty);
+/* Structural native row-sum contract only; no allocation, canonicalization,
+ * numerical reassociation or optimization policy. See
+ * doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md. Failure changes no tables. */
+extern BOOL DSL_Shape_Reduce_Sum_Types_Valid
+                                (TY_IDX operand_ty, TY_IDX result_ty,
+                                 const char *axis, const char *keepdim,
+                                 const char *accum_dtype,
+                                 const char *reassociate);
+
+/* Exact v2 source numerical binding; no target capability or policy choice.
+ * Design: doc/AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md. */
+extern BOOL DSL_ordered_reduce_sum_binding_valid
+    (const char *order, const char *identity_bits,
+     const char *fp_environment, const char *nan_policy);
+
+/* Static FP32 subtract-row-max Softmax, not a generic framework Softmax.
+ * Policy-free contract: AI-COMPILER-NATIVE-SOFTMAX-CONTRACT-v0.1.md. */
+extern BOOL DSL_Shape_Stable_Softmax_Types_Valid
+    (TY_IDX operand_ty, TY_IDX result_ty, const char *axis,
+     const char *accum_dtype, const char *reassociate,
+     const char *state_reformulation, const char *exp_semantics);
+
+/* Canonical eight-lowercase-hex positive finite IEEE binary32 epsilon bits.
+ * No host floating-point parsing/rounding or target FTZ policy; output unchanged
+ * on failure. Contract: AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md. */
+extern BOOL DSL_positive_f32_bits_valid(const char *text, UINT32 *bits);
+
+/* Policy-free FP32 [R,N], [N], [N] -> [R,N] centered population contract.
+ * Checks exact permissions and epsilon spelling without allocation or lowering. */
+extern BOOL DSL_mean_variance_norm_types_valid
+    (TY_IDX input_ty, TY_IDX gamma_ty, TY_IDX beta_ty, TY_IDX result_ty,
+     const char *axis, const char *accum_dtype, const char *variance_kind,
+     const char *epsilon_bits, const char *reassociate,
+     const char *state_reformulation, const char *contract,
+     const char *rsqrt_semantics);
 extern BOOL DSL_Shape_Parse_Static_Dimensions
                                 (const char *shape,
                                  UINT64 *dimensions,

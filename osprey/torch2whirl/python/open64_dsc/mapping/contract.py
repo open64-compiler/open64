@@ -1,7 +1,8 @@
-"""Published ResNet operator contract consumed by torch2whirl.
+"""Published operator contracts consumed by torch2whirl.
 
 The physical WHIRL representation is owned by common/com.  Python mirrors only
 stable logical names, versions, arities, and attribute spellings.
+The row-sum mirror follows AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md.
 """
 
 from __future__ import annotations
@@ -21,6 +22,20 @@ class OperatorContract:
 
 
 _CONTRACTS = {
+    common.MEAN_VARIANCE_NORM: OperatorContract(
+        common.MEAN_VARIANCE_NORM, 1, 3,
+        ("attr.axis", "attr.accum_dtype", "attr.variance_kind", "attr.epsilon_bits",
+         "attr.reassociate", "attr.state_reformulation", "attr.contract", "attr.rsqrt_semantics"),
+    ),
+    common.STABLE_SOFTMAX: OperatorContract(
+        common.STABLE_SOFTMAX, 1, 1,
+        ("attr.axis", "attr.accum_dtype", "attr.reassociate",
+         "attr.state_reformulation", "attr.exp_semantics"),
+    ),
+    common.REDUCE_SUM: OperatorContract(
+        common.REDUCE_SUM, 1, 1,
+        ("attr.axis", "attr.keepdim", "attr.accum_dtype", "attr.reassociate"),
+    ),
     common.MODEL_INPUT: OperatorContract(
         common.MODEL_INPUT,
         2,

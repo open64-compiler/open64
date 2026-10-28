@@ -209,6 +209,12 @@ LDIRT += fhe_ckks2c_collect_image_test fhe_ckks2c_collect_image_test.o \
 	fhe_ckks2c_lower.o fhe_ckks2c_public_join.o fhe_ckks2c_publish.o \
 	fhe_ckks2c_checkpoint.o fhe_sha256.o
 LDIRT += dsl_wopt_bridge_test dsl_wopt_bridge_test.o
+LDIRT += dsl_reduce_sum_contract_test dsl_reduce_sum_contract_test.o
+LDIRT += dsl_reduction_binding_test dsl_reduction_binding_test.o
+LDIRT += dsl_reduction_direct_test dsl_reduction_direct_test.o opt_dsl_reduction_test.o
+LDIRT += dsl_reduction_staged_test dsl_reduction_staged_test.o opt_dsl_reduction_staged_test.o
+LDIRT += dsl_softmax_contract_test dsl_softmax_contract_test.o
+LDIRT += dsl_normalization_contract_test dsl_normalization_contract_test.o
 LDIRT += opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 
 LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_FHE_DIR) \
@@ -829,6 +835,62 @@ fhe_sha256.o: $(BE_VHO_DIR)/fhe_sha256.cxx
 
 fhe_ckks2c_collect_image_test.o: \
 	$(BE_VHO_DIR)/tests/fhe_ckks2c_collect_image_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_normalization_contract_test: $(OBJECTS) controls.o dsl_normalization_contract_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_normalization_contract_test.o opt_dsl_wopt_test.o \
+		opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_normalization_contract_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_softmax_contract_test: $(OBJECTS) controls.o dsl_softmax_contract_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_softmax_contract_test.o opt_dsl_wopt_test.o \
+		opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_softmax_contract_test.o: $(BE_OPT_DIR)/tests/dsl_softmax_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_reduce_sum_contract_test: $(OBJECTS) controls.o dsl_reduce_sum_contract_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_reduce_sum_contract_test.o opt_dsl_wopt_test.o \
+		opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_reduce_sum_contract_test.o: $(BE_OPT_DIR)/tests/dsl_reduce_sum_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_reduction_binding_test: $(OBJECTS) controls.o dsl_reduction_binding_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_reduction_binding_test.o opt_dsl_wopt_test.o \
+		opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_reduction_binding_test.o: $(BE_OPT_DIR)/tests/dsl_reduction_binding_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_reduction_direct_test: $(OBJECTS) controls.o dsl_reduction_direct_test.o \
+		opt_dsl_reduction_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_reduction_direct_test.o opt_dsl_reduction_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_reduction_direct_test.o: $(BE_OPT_DIR)/tests/dsl_reduction_direct_test.cxx \
+                $(BE_OPT_DIR)/opt_dsl_reduction.h $(BE_OPT_DIR)/../../include/open64_reduction_runtime.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+opt_dsl_reduction_test.o: $(BE_OPT_DIR)/opt_dsl_reduction.cxx $(BE_OPT_DIR)/opt_dsl_reduction.h \
+                $(BE_OPT_DIR)/../../include/open64_reduction_runtime.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_reduction_staged_test: $(OBJECTS) controls.o dsl_reduction_staged_test.o \
+                opt_dsl_reduction_staged_test.o opt_dsl_reduction_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_reduction_staged_test.o opt_dsl_reduction_staged_test.o \
+		opt_dsl_reduction_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_reduction_staged_test.o: $(BE_OPT_DIR)/tests/dsl_reduction_staged_test.cxx $(BE_OPT_DIR)/opt_dsl_reduction_staged.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+opt_dsl_reduction_staged_test.o: $(BE_OPT_DIR)/opt_dsl_reduction_staged.cxx $(BE_OPT_DIR)/opt_dsl_reduction_staged.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_wopt_bridge_test: $(OBJECTS) controls.o dsl_wopt_bridge_test.o \
