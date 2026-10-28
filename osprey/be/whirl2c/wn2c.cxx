@@ -5002,9 +5002,47 @@ WN2C_call(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 } /* WN2C_call */
 
 #ifdef KEY
+/* Preserve the standard extended-assembly input/effect protocol for CUDA.
+ * MMA4-H uses no copyout pregs; reject unsupported outputs/clobbers instead
+ * of silently dropping them as the historical basic-asm path does.
+ * Design: doc/AI-COMPILER-MMA4-H-HOPPER-LOWERING.md. */
 static STATUS 
 WN2C_asm_stmt(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 {
+   if (W2C_Cuda_Mode)
+   {
+      FmtAssert(WN_kid_count(wn) >= 2 && WN_operator(WN_asm_clobbers(wn)) == OPR_BLOCK &&
+                !WN_first(WN_asm_clobbers(wn)) && WN_operator(WN_asm_constraints(wn)) == OPR_BLOCK &&
+                !WN_first(WN_asm_constraints(wn)) &&
+                !(WN_asm_flag(wn) & ~(WN_ASM_VOLATILE | WN_ASM_CLOBBERS_MEM)),
+                ("CUDA extended asm requires supported input-only constraints/clobbers"));
+      Append_Token_String(tokens, WN_Asm_Volatile(wn) ? "__asm__ volatile (\"" : "__asm__ (\"");
+      for (const char *character = WN_asm_string(wn); *character; ++character)
+      {
+         if (*character == '\n') Append_Token_String(tokens, "\\n");
+         else if (*character == '\t') Append_Token_String(tokens, "\\t");
+         else
+         {
+            if (*character == '\\' || *character == '\"') Append_Token_Special(tokens, '\\');
+            Append_Token_Special(tokens, *character);
+         }
+      }
+      Append_Token_String(tokens, "\" : : ");
+      for (INT32 index = 2; index < WN_kid_count(wn); ++index)
+      {
+         const WN *input = WN_kid(wn, index);
+         FmtAssert(WN_operator(input) == OPR_ASM_INPUT && WN_kid_count(input) == 1 &&
+                   WN_asm_opnd_num(input) == index - 2 && strcmp(WN_asm_input_constraint(input), "l") == 0 &&
+                   MTYPE_is_integral(WN_rtype(WN_kid0(input))) && MTYPE_byte_size(WN_rtype(WN_kid0(input))) == 8,
+                   ("CUDA extended asm requires ordered 64-bit pointer input constraints"));
+         if (index != 2) Append_Token_String(tokens, ", ");
+         Append_Token_String(tokens, "\"l\"(");
+         WN2C_translate(tokens, WN_kid0(input), context);
+         Append_Token_Special(tokens, ')');
+      }
+      Append_Token_String(tokens, WN_Asm_Clobbers_Mem(wn) ? " : \"memory\")" : " : )");
+      return EMPTY_STATUS;
+   }
    TOKEN_BUFFER asm_tokens;
 
    /* A buffer to hold the tokens representing the asm */

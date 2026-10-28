@@ -326,6 +326,7 @@ BE_VHO_CXX_SRCS = \
   dsl_fetch_pipeline_opt.cxx \
   dsl_accumulation_opt.cxx \
   dsl_typed_simt_opt.cxx \
+  dsl_wgmma_opt.cxx \
   dsl_compute_shadow_opt.cxx \
   dsl_physical_plan_opt.cxx \
   dsl_runtime_variant_opt.cxx \

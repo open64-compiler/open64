@@ -41,7 +41,7 @@ static BOOL VHO_DSL_typed_coordinate(ST *symbol, const char *name)
 
 /* Preflight active-PU ownership, strict arithmetic controls and exact storage.
  * No allocation or mutation occurs on rejection, including aliased scratch. */
-static BOOL VHO_DSL_typed_binding(const DSL_TYPED_SIMT_RECORD *record,
+BOOL VHO_DSL_typed_simt_binding_verify(const DSL_TYPED_SIMT_RECORD *record,
     const DSL_NUMERICAL_CONTRACT_RECORD *numerical, const VHO_DSL_TYPED_SIMT_BINDING *binding,
     UINT32 execution, FILE *diagnostic)
 {
@@ -318,7 +318,7 @@ BOOL VHO_DSL_typed_simt_verify(const DSL_TYPED_SIMT_RECORD *record,
     const DSL_NUMERICAL_CONTRACT_RECORD *numerical, const VHO_DSL_TYPED_SIMT_BINDING *binding,
     UINT32 execution, WN *block, FILE *diagnostic)
 {
-    if (!block || !VHO_DSL_typed_binding(record, numerical, binding, execution, diagnostic)) return FALSE;
+    if (!block || !VHO_DSL_typed_simt_binding_verify(record, numerical, binding, execution, diagnostic)) return FALSE;
     if (WN_operator(block) != OPR_BLOCK || !WN_first(block) || WN_operator(WN_first(block)) != OPR_COMMENT)
         return VHO_DSL_typed_error(diagnostic, "missing source contract identity");
     WN *annotation = WN_first(block);
@@ -343,7 +343,7 @@ BOOL VHO_DSL_typed_simt_materialize(const DSL_TYPED_SIMT_RECORD *record,
     const DSL_NUMERICAL_CONTRACT_RECORD *numerical, const VHO_DSL_TYPED_SIMT_BINDING *binding,
     UINT32 execution, WN **block, FILE *diagnostic)
 {
-    if (!block || !VHO_DSL_typed_binding(record, numerical, binding, execution, diagnostic)) return FALSE;
+    if (!block || !VHO_DSL_typed_simt_binding_verify(record, numerical, binding, execution, diagnostic)) return FALSE;
     WN *body = VHO_DSL_typed_build(*record, *numerical, *binding, execution, TRUE);
     WN_Set_Linenum(body, binding->source_position);
     if (!VHO_DSL_typed_simt_verify(record, numerical, binding, execution, body, diagnostic)) {

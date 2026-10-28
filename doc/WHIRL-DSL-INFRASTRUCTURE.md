@@ -24,6 +24,17 @@ numerical/shape record is runtime-only; its ordinary inspection COMMENT is
 not an unconsumed DSL operation. General Python/FX ingestion and automatic
 typed dispatch are outside this baseline's scope.
 
+The [MMA4-H Hopper target lowering](AI-COMPILER-MMA4-H-HOPPER-LOWERING.md)
+consumes that already-verified native source at O3 only when explicitly
+requested with exact target and ISA numerical acceptance. It uses existing
+`ASM_STMT`/`ASM_INPUT`, volatile/memory effects, ordinary typed memory and
+control flow, plus the existing CTA barrier builtin. A compound atom exposes
+literal fence/MMA/commit/wait instructions and contains all incomplete
+register accesses until completion. It is target-lowered executable WHIRL,
+not a new semantic DSL opcode, image schema or pending comment marker.
+The CUDA printer validates and spells the input-only assembly contract;
+selection/scheduling remain VHO-owned and default SIMT is unchanged.
+
 ## Design goals
 
 1. Keep existing WHIRL binary compatibility unless a feature explicitly needs a
