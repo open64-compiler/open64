@@ -8,6 +8,33 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-28 LN1-c target arithmetic/environment binding implemented:
+[Target detail v0.1](AI-COMPILER-LAYERNORM-TARGET-ARITHMETIC-v0.1.md) defines
+read-only source-snapshot admission, exact common `sm_90/sm_90a/sm_100/sm_100a`
+lookup, declared toolkit/PTX floors and strict control/environment refusals.
+V1/source flags stay unchanged; no reduction implementation dependency or
+automatic target/compiler option is added. The five explicit rounded F32
+primitives reuse standard WHIRL assembly and current CUDA emission, not new
+intrinsic ordinals or source templates. Their pointer/memory-clobber route is
+conservative conformance infrastructure, not a cost-free register realization.
+
+Four targets pass 156 actual queries: 8 conditional bindings and 148 expected
+refusals. Real PREOPT/trace controls preserve mixed v1/v2 source. Twenty scalar
+operations survive mapped before/after inspection, CUDA emission, explicit
+rn/no-FTZ PTX audit and four offline cubin assemblies with CUDA 12.8.93.
+The review runner preserves emitter `.t` separately before printing `.T` on
+case-insensitive filesystems. Target-query and malformed-carrier tests check
+read-only/trace-off parity and refusal before product allocation. The auditor
+suite now has 58 tests. Independent arithmetic oracle, full LayerNorm lowering,
+storage/events, complete profitability and GPU correctness/timing remain open.
+
+Durable target review root:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln1c-target/sha256-8df614d41709e30c3c151d1108836bd7402b85d82f301a04586f2ca075a05225/`.
+It retains source binding and target `.t`, mapped source/scalar `.B`/`.T`, raw
+scalar before/after diffs, WHIRL-derived `.cu`, PTX/cubins, commands/tool hashes
+and summary logs. Next is LN1-d's exact multiply/divide/sqrt oracle, followed by
+LN1-e integrated numerical evidence, not v1 promotion or automatic selection.
+
 2026-10-28 LN1-b native LN-REF-1 implemented:
 exact `common.mean_variance_norm.v2` reuses logical ID 39, typed ternary WHIRL,
 explicit-result builder and unchanged mapped-image/64-byte semantic-key layouts.

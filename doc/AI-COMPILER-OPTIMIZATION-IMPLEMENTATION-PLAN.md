@@ -142,7 +142,7 @@ policy from a normalization-specific path.
 | Gate | Deliverable and required summary | Status |
 | --- | --- | --- |
 | LN0 | Review centered recipe, C0/C1/C2 direct/retention candidates, explicitly unauthorized C3 Welford, aliases/events and complete costs. | Initial design proposed; no new executable support. |
-| LN1 | Define both means, scaling, rsqrt and environment; specify native v2/admission and implement target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | Native v2, explicit producer, structural derivation, PREOPT and mapped/trace review implemented. Target carriers, independent arithmetic oracle and integrated numerical execution remain open. |
+| LN1 | Define both means, scaling, rsqrt and environment; specify native v2/admission and implement target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | Native v2/producer/PREOPT and LN1-c conditional target/environment binding with explicit primitive carriers implemented. Independent arithmetic oracle, integrated LayerNorm execution and GPU conformance remain open. |
 | LN2 | Construct legal plans through existing candidate/resource/event services. `alternatives.log`, `tile.log`, `residency.log` and `fetch-pipeline.log` expose ownership, traffic, capacity, banks/tails and reuse proofs/refusals. | Open after LN1 native prerequisites. |
 | LN3 | Complete comparable costs with target provenance/uncertainty and independent oracle. `physical-plan.log` explains selected/fallback reason without invented overlap or guaranteed cache hits. | Open; reuse reduction profitability. |
 | LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Open; reuse reduction lowering. |
@@ -172,7 +172,7 @@ trace, without an option, target capability or executable transformation.
 | --- | --- | --- |
 | LN1-a: reference definition | Ordered mu/variance, separately rounded square/add, exact count/final divisions, sqrt-then-divide and affine/environment/exception rules. | Defined in the reference specification; not native implementation. |
 | LN1-b: native admission | Exact `common.mean_variance_norm.v2`, fifteen-field LN-REF-1 schema, producer declaration versus native structural admission, canonical assignment and PREOPT identity; current v1 exact schema/source matching unchanged. | Implemented and compiler-validated; see bounded slices and retained evidence below. |
-| LN1-c: target arithmetic | Reuse rounded add/mul and audit/extend exact sub/div/sqrt carriers plus host-built CUDA emission, non-FTZ/no-contraction controls and unsupported-path refusal. WHIRL owns all semantics. | Open; legacy NVISA names alone do not prove conformance. |
+| LN1-c: target arithmetic | Reuse rounded add/mul and audit/extend exact sub/div/sqrt carriers plus host-built CUDA emission, non-FTZ/no-contraction controls and unsupported-path refusal. WHIRL owns all semantics. | Compiler-side implemented: exact common Hopper/Blackwell lookup, source-snapshot and unsafe-environment gates, five explicit standard-ASM carriers, postchecking, WHIRL-derived CUDA and offline PTX/cubin review. No full LayerNorm lowering, independent oracle or GPU proof. See target detail. |
 | LN1-d: independent oracle | Exact multiply/divide/sqrt rounding oracle plus existing integer addition; count boundary, first signed-zero add, underflow/ties, overflow, t=6 two-rounding counterexample and NaN/affine cases. Report bit/class equivalence separately from FP64 accuracy. | Open; no native or GPU witness implied by this design. |
 | LN1-e: integrated evidence | Explicit-bound native fixtures, actual PREOPT, mapped reopen, strict trace-on/off audit and source/binding provenance; refuse unbound v1 without mutation. Preserve existing native v1 regression cases. | Open; closes native numerical binding only, not LN3/LN4/LN6. |
 
@@ -217,10 +217,27 @@ schema separation and public version narrowing at Python and C boundaries.
 Four native v1 variants, six Python v1 cases/sixteen rejections and historical
 v1 reopen protect compatibility. The progress ledger points to durable receipts.
 
-Next: LN1-c exact target sub/div/sqrt and environment binding, then LN1-d's
-independent arithmetic oracle and LN1-e's integrated numerical evidence. The
-structural stage does not execute LN-REF-1 or close those gates. Keep LN2/LN3
+Next: LN1-d's independent arithmetic oracle and LN1-e's integrated numerical
+evidence. LN1-c now supplies conditional target binding and primitive carriers,
+not execution of LN-REF-1. Keep LN2/LN3
 cost/selection and LN4 executable WHIRL separate from PREOPT characterization.
+
+LN1-c implementation, 2026-10-28:
+[Target arithmetic/environment detail](AI-COMPILER-LAYERNORM-TARGET-ARITHMETIC-v0.1.md)
+defines the driver-owned request, read-only active-PU source snapshot check,
+exact four-target/toolkit/PTX envelopes, all unsafe/unknown FP-option refusals,
+and unchanged v1 semantics. `opt_dsl_normalization_target` uses no reduction
+planning/runtime API. Its standard `ASM_STMT`/ordered `ASM_INPUT` primitives
+reuse the current CUDA emitter, not target-gated legacy intrinsic ordinals.
+The initial pointer-scalar route deliberately uses a memory clobber and must
+charge loads/stores/effects in any later complete profitability model.
+
+Review passed: 39 actual queries per target, strict/source/version/refusal
+audits joined to PREOPT, trace-off parity, before/after scalar mapped images
+and diffs, generated `.cu`, explicit rn/no-FTZ PTX and offline cubin assembly.
+The summaries distinguish conditional ISA/carrier binding from actual compiler
+acceptance, oracle results and GPU proof. No automatic LayerNorm selection,
+new option, v1 promotion or production register-output route is introduced.
 
 Keep reduction code/tests/receipts untouched for this contract design. Native
 LN1-b work needs existing common builders and PREOPT, not completion of the

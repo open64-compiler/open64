@@ -2207,6 +2207,18 @@ explicit target/storage unknowns. No physical or managed image layout changes.
 Target arithmetic, cost selection and executable lowering remain separate gates. This work is
 independent of the reduction profitability/lowering implementation stream.
 
+### LN1-c Target Arithmetic (2026-10-28)
+
+LN1-c follow-on: [normalization target arithmetic](AI-COMPILER-LAYERNORM-TARGET-ARITHMETIC-v0.1.md)
+adds separate transient PU-local eligibility and exact scalar carriers using
+standard `ASM_STMT`/ordered `ASM_INPUT` pointer operands. Native v1/v2 source
+meaning, managed rows, physical layouts and intrinsic ordinals are unchanged.
+The scalar statements contain actual `add/sub/mul/div/sqrt.rn.f32` operations,
+source positions and explicit volatile/memory effects. Current `whirl2c -cuda`
+only prints these operations; no arithmetic is selected from diagnostic tags.
+Standalone primitive mapped/CUDA/PTX/cubin evidence is not full LayerNorm
+lowering or GPU arithmetic certification. No reduction service is modified.
+
 ### R2 Ordered Reduction Numerical Binding (2026-10-27)
 
 The [reduction numerical-binding contract](AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md)

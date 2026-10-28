@@ -324,7 +324,8 @@ executable transformation happened. Native review retains actual compiler
 | LN1-b-native | Common exact-version descriptor/schema/shape checks, explicit-result builder/gatekeeper and version-dispatched read-only derivation. | Implemented, independent of reduction profitability/lowering. |
 | LN1-b-producer | Explicit native LN-REF-1 fixture and real formal/result/return/DST paths; source-preserving v1 negative lane. | Implemented; no general Python or v1 refinement added. |
 | LN1-b-preservation | Actual PREOPT v1/v2 coexistence, semantic identity, mapped image/ASCII, controlled trace and strict audit. | Implemented and compiler-validated; no numerical execution implied. |
-| LN1-c / LN1-d | Target scalar carriers/environment plus independent arithmetic oracle. | Open as separately planned; not delivered by native admission. |
+| LN1-c | Conditional target scalar/environment binding, actual primitive carriers and offline CUDA/assembler review. | Compiler-side implemented separately in the [target detail](AI-COMPILER-LAYERNORM-TARGET-ARITHMETIC-v0.1.md); no full LayerNorm or GPU execution. |
+| LN1-d | Independent multiply/divide/sqrt rounding oracle and complete reference comparisons. | Open; neither native admission nor offline assembly closes this gate. |
 | LN1-e | Integrated explicitly bound evidence and version/source provenance. | Open; requires preceding native/target/oracle gates. |
 
 Validation obligations (structural coverage implemented below; arithmetic remains future):
@@ -388,7 +389,8 @@ later reviewed integration, not a second implementation hidden in this design.
   `[1,65535]` before narrowing. Python additionally rejects masking/coercion
   inputs. Explicit native API tests are not a new source matcher.
 
-The accepted receipt is indexed in the progress ledger. LN1-c/d and complete
-LN1-e numerical evidence remain open. No native scalar computation, executable
+The accepted receipt is indexed in the progress ledger. LN1-c now adds separate
+conditional target binding and offline-assembled primitive carriers. LN1-d and
+complete LN1-e numerical evidence remain open. No native scalar execution, executable
 LayerNorm, accuracy guarantee, GPU result or profitability result follows from
 these structural checks.

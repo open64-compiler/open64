@@ -12,8 +12,10 @@ Native-contract amendment, 2026-10-28:
 [LN-REF-1 native contract v0.1](AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md)
 specifies exact version 2 under existing logical ID 39, a fifteen-attribute
 schema and explicit producer/native-admission boundaries. Current v1 remains
-unchanged; registration, producer implementation, PREOPT/image/trace evidence
-and all target/lowering gates remain open, independently of reduction coding.
+unchanged. Native registration/producer/PREOPT/image/trace evidence is
+implemented. The [target arithmetic detail](AI-COMPILER-LAYERNORM-TARGET-ARITHMETIC-v0.1.md)
+adds conditional binding and offline-assembled primitive carriers; full
+LayerNorm execution and GPU certification remain open, independently of reduction coding.
 
 ## 1. Decision, Scope And Evidence
 
@@ -40,8 +42,10 @@ Opaque framework `layer_norm`, multiple normalized axes, arbitrary strides,
 in-place output, backward/training, mixed precision, distributed normalization
 and cross-PU optimization require separate extensions.
 
-This design-only increment allocates no opcode, mapped-image field, API, trace
-bit or command-line option. It changes neither v1 numerical permissions nor
+The original design-only increment allocated no opcode, mapped-image field,
+API, trace bit or command-line option. Subsequent LN1-b/c implementation adds
+versioned source admission and separate target/primitive APIs without changing
+physical/mapped layouts, trace bits or options. It changes neither v1 numerical permissions nor
 binary WHIRL compatibility. Pseudocode, plan labels and additional trace fields
 below are proposals, not evidence of generated code.
 
@@ -541,7 +545,7 @@ are implemented here; preserve existing AI_NORM FORM/FACT and trace-off checks.
 | Gate | Deliverable / acceptance boundary | Status |
 | --- | --- | --- |
 | LN0 | Review semantics, alternatives, lifetimes and costs in this document. | Proposed; native/source R1 evidence exists, not executable optimization. |
-| LN1 | LN-REF-1 ordered means, exact count/final division, sqrt-then-divide, RNE/gradual/class-only-NaN environment; explicit native v2, carriers and oracle, preserving v1. | Native v2, producer, verifier, PREOPT and mapped/trace structural review implemented. Target carriers and independent arithmetic oracle remain open. See the LN1 sub-gates. |
+| LN1 | LN-REF-1 ordered means, exact count/final division, sqrt-then-divide, RNE/gradual/class-only-NaN environment; explicit native v2, carriers and oracle, preserving v1. | Native v2/producer/PREOPT and conditional target/environment binding with five explicit primitive carriers implemented. WHIRL-derived CUDA/offline PTX/cubin review passes. Independent arithmetic oracle and complete LayerNorm/GPU execution remain open. See the LN1 sub-gates and target detail. |
 | LN2 | Read-only C0/C1/C2 plans, exact traffic/resources/events and refusal cases; reject C3 under v1 and LN-REF-1. | Open after LN1 native prerequisites; reuse common/reduction services. |
 | LN3 | Complete costs, independent event/model oracle, analytical winner/fallback and trace auditor. | Open; reuse reduction profitability. |
 | LN4 | Selected high-level WHIRL, guards, CUDA emission and mapped before/after evidence. | Open; reuse reduction lowering; initial non-TMA scope. |

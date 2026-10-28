@@ -7,8 +7,9 @@ Native-design follow-on, 2026-10-28:
 now specifies exact `common.mean_variance_norm.v2` semantics/schema and producer
 rules under the existing logical ID. Native v2 registration, explicit producer,
 structural validation and PREOPT preservation are implemented; this document's
-arithmetic and current v1 remain unchanged. Target arithmetic and oracle
-execution remain separate open gates.
+arithmetic and current v1 remain unchanged. LN1-c now adds
+[conditional target/environment binding and primitive carriers](AI-COMPILER-LAYERNORM-TARGET-ARITHMETIC-v0.1.md).
+Independent oracle and GPU arithmetic conformance remain open.
 
 ## 1. Decision And Compatibility Boundary
 
@@ -19,11 +20,11 @@ rounded division of one. Every scalar arithmetic result is binary32 RNE with
 gradual underflow. This supplies a reproducible reference for comparing C0/C1/C2
 in the [LayerNorm execution design](AI-COMPILER-LAYERNORM-OPTIMIZATION-DESIGN-v0.1.md).
 
-LN-REF-1 is a reference-specification identifier, not a registered native
-operator/version, compiler option, emitted trace schema or implementation claim.
-The separate native-contract design defines v2's attribute set, admission and
-persistence requirements; native registration and validation remain open.
-This document changes no source, builder, mapped image or lowering.
+LN-REF-1 identifies the arithmetic specification; its separately registered
+native representation is `common.mean_variance_norm.v2`. The native detail
+defines exact attributes, admission and persistence. The target detail now
+binds conditional scalar eligibility and actual carriers. Neither document
+claims a full executable LayerNorm or GPU certification from those bindings.
 
 Preserve `common.mean_variance_norm.v1` exactly, including its existing eight
 attributes, `rsqrt_semantics=source_unresolved`, unresolved mean order/scaling,
@@ -31,7 +32,7 @@ and false reassociation/state-reformulation/contraction permissions. Existing
 Python capture continues to emit v1. Neither a target option, optimization
 level, profile, successful sample nor this document binds that node implicitly.
 
-A future explicit producer may request a separately registered LN-REF-1 native
+A conforming explicit producer may request the separately registered LN-REF-1 native
 contract only when its source/DSL semantics authorize this reference. A future
 source-compatible refinement requires independent proof and reviewed admission;
 there is no such automatic v1 refinement in the present implementation.
@@ -193,8 +194,8 @@ and must not be relabeled as bound equivalence or target certification.
 
 ## 6. Target Realization And WHIRL Obligations
 
-The reference is target-neutral. NVIDIA realization candidates, not current
-support declarations, are:
+The reference is target-neutral. CUDA explicit-rounding spelling candidates
+and their required PTX meanings are:
 
 | Required operation | CUDA spelling candidate | PTX meaning required |
 | --- | --- | --- |
@@ -298,8 +299,10 @@ from forbidden hidden FP64 accumulation in a candidate.
 
 LN1 arithmetic and the separate native version/schema/admission design are now
 specified. Native registration/builder/verifier/canonicalization, explicit
-producer, PREOPT preservation and mapped evidence are now implemented. Target
-arithmetic carriers/emission and oracle tests remain implementation work.
+producer, PREOPT preservation and mapped evidence are now implemented. LN1-c
+now implements conditional binding, standard-ASM primitive carriers and
+WHIRL-derived CUDA/offline assembly. Independent oracle tests and complete
+LayerNorm execution remain implementation work.
 Preserve v1 fixtures and exact
 attributes in every lane. A structural contract stage is not an executable
 transformation and must not fabricate before/after optimization evidence.
