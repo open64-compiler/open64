@@ -186,3 +186,12 @@ instruction behavior, accuracy or timing. LN1-e integrated numerical evidence,
 LN2 storage/events, LN3 complete profitability and LN4 selected WHIRL lowering
 remain open. The progress ledger indexes immutable receipts and final-path
 mapped/trace replay; reduction receipts and coding are independent.
+
+LN1-d amendment, 2026-10-28: the separate
+[independent oracle](AI-COMPILER-LAYERNORM-ARITHMETIC-ORACLE-v0.1.md)
+now checks exact scalar and row-state bits against MPFR intervals and controlled
+native host witnesses. All four target fixtures and actual PREOPT have been
+replayed with sixteen full mapped dumps, including unchanged v1. This does not
+execute the target carrier images or prove GPU arithmetic. LN1-e must still
+join numerical fixtures to explicit native source/target/environment binding;
+full LayerNorm lowering and certification remain separate gates.

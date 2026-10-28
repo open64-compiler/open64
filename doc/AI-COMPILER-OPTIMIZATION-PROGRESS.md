@@ -8,6 +8,37 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-28 LN1-d independent arithmetic oracle implemented:
+[Oracle detail v0.1](AI-COMPILER-LAYERNORM-ARITHMETIC-ORACLE-v0.1.md) defines
+test-only exact integer/rational binary32 evaluation, midpoint-squared sqrt,
+independent MPFR directed intervals and controlled native host C0/C1/C2
+witnesses. No reduction coding, production lowering, v1 schema or option is
+changed. WHIRL remains the sole executable truth.
+
+Passed 12,666 scalar cases against both native and MPFR engines, 13,474
+intermediate-state comparisons across 28 rows/four engines plus six count
+descriptors, ten fresh-process admission refusals, 14 new unit tests and all
+58 existing trace tests. The full numerical suite also passes UBSan. An exact
+halfway-product/min-subnormal case requires 256-bit interval refinement.
+Counterexamples distinguish square/add contraction, first signed-zero add,
+reordered/scaled means, reciprocal multiplication and t=6 one-round rsqrt.
+Only NaN class may differ; all other result bits must match.
+
+Native context replay authenticated all 442 parent files, reopened sixteen
+full mapped dumps unchanged, reproduced four target images/traces byte-for-byte
+and reran real PREOPT with the expected executable-lowering refusal. All four
+native v1 variants retain their original dump/trace behavior. Numerical rows
+are separate specification/host witnesses, not executions of these images.
+
+Durable oracle review root:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln1d-oracle/sha256-b9d75d45866680fd22cf2cb4bf43ddb9d3043da3302ebc106d1b0680c9496c20/`.
+Retained `numerical/arithmetic.t`, `numerical/numerical.log`, conventional
+summaries, exact requests/manifest, tools/sources, UBSan review and native
+mapped/trace replay preserve the review trail. Final-path replay is required
+before indexing. Next is LN1-e's explicit source/target/numerical join, followed
+by storage/events, complete profitability and executable WHIRL lowering; GPU
+accuracy and timing remain unverified. No selection/transformation is claimed.
+
 2026-10-28 LN1-c target arithmetic/environment binding implemented:
 [Target detail v0.1](AI-COMPILER-LAYERNORM-TARGET-ARITHMETIC-v0.1.md) defines
 read-only source-snapshot admission, exact common `sm_90/sm_90a/sm_100/sm_100a`

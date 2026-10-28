@@ -9,7 +9,9 @@ rules under the existing logical ID. Native v2 registration, explicit producer,
 structural validation and PREOPT preservation are implemented; this document's
 arithmetic and current v1 remain unchanged. LN1-c now adds
 [conditional target/environment binding and primitive carriers](AI-COMPILER-LAYERNORM-TARGET-ARITHMETIC-v0.1.md).
-Independent oracle and GPU arithmetic conformance remain open.
+The [LN1-d independent oracle](AI-COMPILER-LAYERNORM-ARITHMETIC-ORACLE-v0.1.md)
+is now implemented separately; integrated native numerical evidence and GPU
+arithmetic conformance remain open.
 
 ## 1. Decision And Compatibility Boundary
 
@@ -273,7 +275,8 @@ semantics and produces the same decisions.
 
 ## 8. Validation Cases And Remaining Implementation Gates
 
-These are required future native/oracle tests, not newly executed kernels:
+These are required native/oracle observations, implemented as separate LN1-d
+specification/host witnesses below, not newly executed compiler kernels:
 
 | Case | Required observation |
 | --- | --- |
@@ -289,10 +292,10 @@ These are required future native/oracle tests, not newly executed kernels:
 | Exceptional inputs and zero affine factors | NaN class, infinity signs, signed zeros and IEEE invalid products propagate as specified; do not skip operations because gamma is zero. |
 | C0/C1/C2 witnesses | Identical non-NaN bits/NaN classes at mu/v/t/h/q/Y with legal chunk/tail and storage variants; retained and recomputed d agree under the binding. |
 
-Extend/reuse the independent integer binary32 addition oracle in
-`osprey/be/opt/tests/reduction_binding_numerics.py` with separately verified
-multiply/divide/sqrt oracle services, or adopt an appropriate proven oracle
-library. Do not use the emitted kernel, the candidate helper, or an unchecked
+LN1-d implements a separate exact integer/rational oracle and MPFR interval
+checker, avoiding a dependency on concurrent reduction coding. See the
+[oracle detail](AI-COMPILER-LAYERNORM-ARITHMETIC-ORACLE-v0.1.md).
+Do not use the emitted kernel, the candidate helper, or an unchecked
 FP64 computation as its own reference. Intermediate oracle evaluation uses
 exact arithmetic with explicit binary32 rounding boundaries; that is distinct
 from forbidden hidden FP64 accumulation in a candidate.
@@ -301,7 +304,8 @@ LN1 arithmetic and the separate native version/schema/admission design are now
 specified. Native registration/builder/verifier/canonicalization, explicit
 producer, PREOPT preservation and mapped evidence are now implemented. LN1-c
 now implements conditional binding, standard-ASM primitive carriers and
-WHIRL-derived CUDA/offline assembly. Independent oracle tests and complete
+WHIRL-derived CUDA/offline assembly. LN1-d now completes independent oracle and
+standalone host state tests. LN1-e integrated evidence and complete compiled
 LayerNorm execution remain implementation work.
 Preserve v1 fixtures and exact
 attributes in every lane. A structural contract stage is not an executable

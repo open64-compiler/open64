@@ -2207,6 +2207,18 @@ explicit target/storage unknowns. No physical or managed image layout changes.
 Target arithmetic, cost selection and executable lowering remain separate gates. This work is
 independent of the reduction profitability/lowering implementation stream.
 
+### LN1-d Independent Arithmetic Oracle (2026-10-28)
+
+The [LN-REF-1 oracle](AI-COMPILER-LAYERNORM-ARITHMETIC-ORACLE-v0.1.md) adds
+test-only exact integer/rational binary32 evaluation, MPFR interval checks and
+standalone host storage witnesses. No WHIRL operation/layout, producer, v1
+schema, option or emitter is changed. Actual native `.t` retains its source
+positions and controls; additive numerical `.t` rows identify the host test
+producer. Four-target native fixture/PREOPT replay plus sixteen full mapped
+dumps establish preservation, not numerical execution of those images.
+Integrated source/target/numerical binding and executable lowering remain open;
+WHIRL remains the sole executable truth, independent of reduction coding.
+
 ### LN1-c Target Arithmetic (2026-10-28)
 
 LN1-c follow-on: [normalization target arithmetic](AI-COMPILER-LAYERNORM-TARGET-ARITHMETIC-v0.1.md)
