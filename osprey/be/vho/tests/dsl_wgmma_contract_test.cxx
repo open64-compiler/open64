@@ -202,6 +202,9 @@ int main(int argc, char **argv)
     ST *formals[] = {binding.simt.input_a, binding.simt.input_b, binding.simt.output};
     for (UINT32 index = 0; index < 3; ++index) WN_kid(entry, index) = WN_CreateIdname(0, formals[index]);
     Set_PU_Info_tree_ptr(pu, entry);
+#ifdef VHO_DSL_WGMMA_PIPELINE_FIXTURE
+    return VHO_DSL_pipeline_fixture(pu, entry, record, numerical, control, binding, before, argv);
+#endif
     if (!VHO_DSL_wgmma_test_negatives(record, numerical, control, binding, before) || !DSL_Gatekeeper_Verify_PU(pu, stderr, NULL)) return 5;
     if (!VHO_DSL_test_image(pu, argv[1])) return 6;
     WN *after = NULL;

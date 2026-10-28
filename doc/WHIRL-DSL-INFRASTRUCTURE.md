@@ -35,6 +35,14 @@ not a new semantic DSL opcode, image schema or pending comment marker.
 The CUDA printer validates and spells the input-only assembly contract;
 selection/scheduling remain VHO-owned and default SIMT is unchanged.
 
+The [MMA5-H bounded Hopper pipeline](AI-COMPILER-MMA5-H-HOPPER-PIPELINE.md)
+reuses those carriers for two-slot cooperative or bulk-TMA delivery, separate
+copy-ready barriers, at most two committed compute groups and
+wait-before-result/readers-before-reuse joins. Extra raw/packed storage is
+ordinary aligned shared U2/U8 arrays. Request/model records are runtime-only;
+binary WHIRL and CUDA emission policy do not change. SIMT remains default;
+native timing stays unknown.
+
 ## Design goals
 
 1. Keep existing WHIRL binary compatibility unless a feature explicitly needs a

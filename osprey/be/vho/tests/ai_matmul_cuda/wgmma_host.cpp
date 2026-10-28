@@ -46,6 +46,9 @@ void VHO_DSL_wgmma_host_proxy()
  * Every participant follows the same two distinct protocol phases. */
 void VHO_DSL_wgmma_host_barrier()
 {
+#ifdef VHO_DSL_PIPELINE_HOST
+    if (VHO_DSL_wgmma_phase == 0) VHO_DSL_wgmma_phase = 3;
+#endif
     if (VHO_DSL_wgmma_phase != 1 && VHO_DSL_wgmma_phase != 3) throw std::runtime_error("wrong CTA barrier phase");
     VHO_DSL_wgmma_phase = VHO_DSL_wgmma_phase == 1 ? 2 : 0;
     std::unique_lock<std::mutex> lock(VHO_DSL_wgmma_mutex);
@@ -130,7 +133,11 @@ int main(int argc, char **argv)
     }
     if (!simt) {
         unsigned expected = 4 * (rows / 64) * (columns / 64) * (reduction / 16) * 128;
-        if (VHO_DSL_wgmma_atoms != expected || VHO_DSL_wgmma_proxies != expected) return 6;
+        unsigned expected_proxies = expected;
+#ifdef VHO_DSL_PIPELINE_HOST
+        expected_proxies = 4 * (rows / 64) * (columns / 64) * ((reduction / 16 + 1) / 2) * 128;
+#endif
+        if (VHO_DSL_wgmma_atoms != expected || VHO_DSL_wgmma_proxies != expected_proxies) return 6;
         std::fill(output.begin(), output.end(), 123456.0f);
         const dim3 invalid[] = {{64, 1, 1}, {256, 1, 1}, {128, 2, 1}, {128, 1, 2}};
         blockIdx = {0, 0, 0};
@@ -139,7 +146,12 @@ int main(int argc, char **argv)
         VHO_DSL_wgmma_launch(input_a.data(), input_b.data(), output.data() + 8, false);
         gridDim.z = 1; blockIdx = {0xffffffffu, 0xffffffffu, 0};
         VHO_DSL_wgmma_launch(input_a.data(), input_b.data(), output.data() + 8, false);
-        if (VHO_DSL_wgmma_atoms != expected || VHO_DSL_wgmma_proxies != expected ||
+#ifdef VHO_DSL_PIPELINE_HOST
+        blockIdx = {0, 0, 0};
+        VHO_DSL_wgmma_launch(input_a.data() + 1, input_b.data(), output.data() + 8, false);
+        VHO_DSL_wgmma_launch(input_a.data(), input_b.data() + 1, output.data() + 8, false);
+#endif
+        if (VHO_DSL_wgmma_atoms != expected || VHO_DSL_wgmma_proxies != expected_proxies ||
             std::count(output.begin(), output.end(), 123456.0f) != output.size()) return 7;
     }
     std::printf("MMA4-H host geometry/protocol passed: M=%u N=%u K=%u format=%u mode=%s patterns=4 native_gpu=unknown timing=unknown\n",

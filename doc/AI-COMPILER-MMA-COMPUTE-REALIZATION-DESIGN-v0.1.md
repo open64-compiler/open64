@@ -415,6 +415,14 @@ from symbolic dynamic execution counts. A rejected/shadow candidate has no
 transformation action. Profile records must expose required rates/ranges and
 provenance for independent recomputation; unknown is printed as unknown.
 
+The [MMA5-H bounded batch recipe](AI-COMPILER-MMA5-H-HOPPER-PIPELINE.md)
+implements two-slot cooperative and bulk-TMA delivery with at most two
+committed compute groups. It separates copy-ready from compute-done and
+reader-reuse joins in real WHIRL. Complete conditional candidate costs reuse
+MMA2 ranges and the existing occupancy service; native timing remains unknown,
+SIMT remains default, and neither cross-batch overlap nor automatic promotion
+is inferred from this increment.
+
 | Report | What the tool must summarize |
 | --- | --- |
 | `semantic.log` | Contraction boundaries, source dtype/order/contraction permissions and ineligible regions. |

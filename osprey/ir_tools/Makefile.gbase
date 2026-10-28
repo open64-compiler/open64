@@ -193,6 +193,8 @@ LDIRT += dsl_compute_realization_contract_test dsl_compute_realization_contract_
 LDIRT += dsl_compute_model.o dsl_compute_shadow_opt.o dsl_compute_shadow_contract_test.o dsl_compute_shadow_contract_test
 LDIRT += dsl_typed_simt.o dsl_typed_simt_opt.o dsl_typed_simt_contract_test.o dsl_typed_simt_contract_test
 LDIRT += dsl_wgmma_opt.o dsl_wgmma_contract_test.o dsl_wgmma_contract_test
+LDIRT += dsl_wgmma_pipeline_model_opt.o dsl_wgmma_pipeline_contract_test.o dsl_wgmma_pipeline_contract_test
+LDIRT += dsl_wgmma_pipeline_model_test.o dsl_wgmma_pipeline_model_test
 LDIRT += dsl_lower_contract_test dsl_lower_contract_test.o
 LDIRT += dsl_opt_contract_test dsl_opt_contract_test.o
 LDIRT += dsl_shape_refine_contract_test dsl_shape_refine_contract_test.o
@@ -549,10 +551,25 @@ dsl_typed_simt_contract_test: $(OBJECTS) controls.o dsl_typed_simt.o dsl_typed_s
 dsl_wgmma_contract_test: $(OBJECTS) controls.o dsl_compute_realization.o dsl_typed_simt.o dsl_typed_simt_opt.o dsl_wgmma_opt.o dsl_wgmma_contract_test.o
 	$(link.c++f) -o $@ dsl_wgmma_contract_test.o controls.o dsl_compute_realization.o dsl_typed_simt.o dsl_typed_simt_opt.o dsl_wgmma_opt.o $(OBJECTS) $(LDFLAGS)
 
-dsl_wgmma_opt.o: $(BE_VHO_DIR)/dsl_wgmma_opt.cxx $(BE_VHO_DIR)/dsl_wgmma_opt.h
+dsl_wgmma_opt.o: $(BE_VHO_DIR)/dsl_wgmma_opt.cxx $(BE_VHO_DIR)/dsl_wgmma_opt.h $(BE_VHO_DIR)/dsl_wgmma_pipeline_opt.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_wgmma_contract_test.o: $(BE_VHO_DIR)/tests/dsl_wgmma_contract_test.cxx $(BE_VHO_DIR)/dsl_wgmma_opt.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_wgmma_pipeline_contract_test: $(OBJECTS) controls.o dsl_compute_realization.o dsl_compute_model.o dsl_typed_simt.o dsl_typed_simt_opt.o dsl_wgmma_opt.o dsl_wgmma_pipeline_model_opt.o dsl_wgmma_pipeline_contract_test.o
+	$(link.c++f) -o $@ dsl_wgmma_pipeline_contract_test.o controls.o dsl_compute_realization.o dsl_compute_model.o dsl_typed_simt.o dsl_typed_simt_opt.o dsl_wgmma_opt.o dsl_wgmma_pipeline_model_opt.o $(OBJECTS) $(LDFLAGS)
+
+dsl_wgmma_pipeline_model_opt.o: $(BE_VHO_DIR)/dsl_wgmma_pipeline_model_opt.cxx $(BE_VHO_DIR)/dsl_wgmma_pipeline_opt.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_wgmma_pipeline_contract_test.o: $(BE_VHO_DIR)/tests/dsl_wgmma_pipeline_contract_test.cxx $(BE_VHO_DIR)/tests/dsl_wgmma_contract_test.cxx $(BE_VHO_DIR)/dsl_wgmma_pipeline_opt.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_wgmma_pipeline_model_test: dsl_compute_realization.o dsl_compute_model.o dsl_typed_simt.o dsl_wgmma_pipeline_model_opt.o dsl_wgmma_pipeline_model_test.o
+	$(link.c++f) -o $@ $^ $(LDFLAGS)
+
+dsl_wgmma_pipeline_model_test.o: $(BE_VHO_DIR)/tests/dsl_wgmma_pipeline_model_test.cxx $(BE_VHO_DIR)/dsl_wgmma_pipeline_opt.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_typed_simt.o: $(COMMON_COM_DIR)/dsl_typed_simt.cxx $(COMMON_COM_DIR)/dsl_typed_simt.h $(COMMON_COM_DIR)/dsl_accumulation.h
