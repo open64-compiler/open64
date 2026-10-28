@@ -123,6 +123,39 @@ certification. Follow the
 Every gate must retain semantic and numerical conditions, complete cost
 components/units/provenance, rejection/fallback and actual maturity.
 
+### LayerNorm Design And Concurrent Reduction Coding
+
+2026-10-28: the user authorized **Code AI optimizations** to implement bounded
+ordered-reduction R2-d/R2-e (complete direct/staged costs, cost-gated selection,
+selected executable WHIRL and `whirl2c -cuda`, trace/artifact verification).
+The coding chat must verify PR #201's integration base and work in an isolated
+branch/worktree. This is an assignment, not a completed implementation gate.
+Python/v1 sums stay unbound; no GPU or measured-performance claim is implied.
+
+This design chat owns
+[LayerNorm optimization detail v0.1](AI-COMPILER-LAYERNORM-OPTIMIZATION-DESIGN-v0.1.md)
+and the cross-building-block design. Review LayerNorm now rather than waiting
+for native reduction certification. Reuse the reduction services after their
+interfaces are established; do not duplicate a planner or mutate arithmetic
+policy from a normalization-specific path.
+
+| Gate | Deliverable and required summary | Status |
+| --- | --- | --- |
+| LN0 | Review centered recipe, C0/C1/C2 direct/retention candidates, explicitly unauthorized C3 Welford, aliases/events and complete costs. | Initial design proposed; no new executable support. |
+| LN1 | Bind both means, scaling, rsqrt and FP environment by source-compatible evidence or separately authorized native contract; preserve current v1. `semantic.log` names unresolved/rejected obligations. | Open; next design decision. |
+| LN2 | Construct legal plans through existing candidate/resource/event services. `alternatives.log`, `tile.log`, `residency.log` and `fetch-pipeline.log` expose ownership, traffic, capacity, banks/tails and reuse proofs/refusals. | Open after LN1. |
+| LN3 | Complete comparable costs with target provenance/uncertainty and independent oracle. `physical-plan.log` explains selected/fallback reason without invented overlap or guaranteed cache hits. | Open; reuse reduction profitability. |
+| LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Open; reuse reduction lowering. |
+| LN5 | Separately authorized parallel statistics/Welford, RF retention and async/TMA refinements with numerical legality, lowerability and complete costs. | Deferred, not implied by LN0-LN4. |
+| LN6 | Native numerical/instruction/resource/paired-performance verification and calibration. | GPU gate open; not a blocker to design/compiler work. |
+
+All logs retain their `# What it summarizes:` first line; compact versioned
+`.t` records preserve source-line-last, phase coverage and trace-off parity.
+The summary distinguishes design, conditional binding, analytical choice,
+actual WHIRL rewrite, assembler checks and GPU certification. No new compiler
+option or binary schema is registered by this queue. Attention and MoE semantic
+design may proceed here independently of the reduction implementation.
+
 R1 sub-gates, kept independent of MMA1's contracts/target profiles:
 
 | Slice | Current status | Next evidence / required tool summary |

@@ -4,6 +4,17 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-28 LayerNorm planning proposal:
+[LayerNorm common-execution detail v0.1](AI-COMPILER-LAYERNORM-OPTIMIZATION-DESIGN-v0.1.md)
+separates source-compatible storage/schedule alternatives from authorized
+statistics reformulations. Direct, centered-retained and full-row-retained
+plans remain provisional through numerical binding, lane/transaction/bank
+analysis, lifetime/events and complete costs. Welford stays permission-rejected
+under current v1; unresolved mean/rsqrt semantics cannot become an invented
+fallback. The LN0-LN6 queue and phase summaries are proposed, not implemented.
+Reduction profitability and selected WHIRL lowering proceed in the independent
+coding chat; this amendment changes no contract, option or emitter.
+
 2026-10-28 R2-c2 staged ordered reduction amendment:
 [staged binding](AI-COMPILER-REDUCTION-STAGED-BINDING-v0.1.md) now specifies
 synchronous bit-copy visibility, disjoint padded shared slots, last-read release

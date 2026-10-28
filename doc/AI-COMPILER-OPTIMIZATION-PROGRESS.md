@@ -8,6 +8,14 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-28 concurrent work split: **Code AI optimizations** has been assigned
+reduction R2-d/R2-e complete costs, selection and executable WHIRL/CUDA on an
+isolated branch. Assignment is not gate completion. This design chat starts
+[LayerNorm optimization detail v0.1](AI-COMPILER-LAYERNORM-OPTIMIZATION-DESIGN-v0.1.md):
+C0/C1/C2 centered storage alternatives, permission-rejected Welford under v1,
+binding/events/resources/costs and LN0-LN6 review gates. Mean/rsqrt execution
+remains unbound; no new option, native transformation or GPU evidence follows.
+
 PR integration checkpoint (2026-10-28): the building-block/R1/R2 branch is
 reconciled with `develop` at `f36629fb` (merged MMA5-H PR #200). The independent
 MMA implementation/status is preserved; this PR adds native row characterization,
