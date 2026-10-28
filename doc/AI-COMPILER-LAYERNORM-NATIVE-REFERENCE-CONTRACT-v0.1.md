@@ -326,7 +326,7 @@ executable transformation happened. Native review retains actual compiler
 | LN1-b-preservation | Actual PREOPT v1/v2 coexistence, semantic identity, mapped image/ASCII, controlled trace and strict audit. | Implemented and compiler-validated; no numerical execution implied. |
 | LN1-c | Conditional target scalar/environment binding, actual primitive carriers and offline CUDA/assembler review. | Compiler-side implemented separately in the [target detail](AI-COMPILER-LAYERNORM-TARGET-ARITHMETIC-v0.1.md); no full LayerNorm or GPU execution. |
 | LN1-d | Independent exact scalar oracle and complete reference comparisons. | Implemented in the separate [oracle detail](AI-COMPILER-LAYERNORM-ARITHMETIC-ORACLE-v0.1.md); host/specification evidence, not compiled LayerNorm or GPU execution. |
-| LN1-e | Integrated explicitly bound evidence and version/source provenance. | Open; requires preceding native/target/oracle gates. |
+| LN1-e | Integrated explicitly bound evidence and version/source provenance. | Bounded evidence implemented in the [integrated binding detail](AI-COMPILER-LAYERNORM-INTEGRATED-BINDING-v0.1.md): actual source/target/PREOPT joins and exact full-tensor host witnesses; no executable LayerNorm or GPU claim. |
 
 Validation obligations (structural coverage implemented below; arithmetic remains future):
 
@@ -391,7 +391,8 @@ later reviewed integration, not a second implementation hidden in this design.
 
 The accepted receipt is indexed in the progress ledger. LN1-c now adds separate
 conditional target binding and offline-assembled primitive carriers. LN1-d now
-adds independent exact/MPFR and standalone host witnesses. Complete LN1-e
-integrated numerical evidence remains open. No native-image scalar execution, executable
+adds independent exact/MPFR and standalone host witnesses. LN1-e now joins
+bounded native source/target meaning to complete tensor numerical fixtures.
+No native-image scalar execution, executable
 LayerNorm, accuracy guarantee, GPU result or profitability result follows from
 these structural checks.

@@ -2207,6 +2207,19 @@ explicit target/storage unknowns. No physical or managed image layout changes.
 Target arithmetic, cost selection and executable lowering remain separate gates. This work is
 independent of the reduction profitability/lowering implementation stream.
 
+### LN1-e Integrated Binding (2026-10-28)
+
+The [LN-REF-1 integrated evidence](AI-COMPILER-LAYERNORM-INTEGRATED-BINDING-v0.1.md)
+joins actual PREOPT facts, every native node's conditional target/refusal query
+and full tensor/row numerical witnesses. Native source identity/domain/epsilon,
+shared-affine value identity, request transcript, checker identity and retained
+product hashes are independently audited. V1 remains unresolved/refused. Paired
+source images/dumps prove query preservation; no mapped layout, production
+operation, option, executable lowering or reduction code changes. Native WOPT
+traces and test-only numerical traces retain distinct schemas/source positions.
+WHIRL remains the sole executable truth; LN2 storage/events and LN4 selected
+lowering are still required before claiming an executable normalization kernel.
+
 ### LN1-d Independent Arithmetic Oracle (2026-10-28)
 
 The [LN-REF-1 oracle](AI-COMPILER-LAYERNORM-ARITHMETIC-ORACLE-v0.1.md) adds

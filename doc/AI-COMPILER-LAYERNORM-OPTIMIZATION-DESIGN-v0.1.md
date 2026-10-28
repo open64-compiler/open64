@@ -22,8 +22,15 @@ Oracle amendment, 2026-10-28:
 is implemented: exact binary32 scalar/state reference, MPFR intervals, native
 host C0/C1/C2 witnesses, strict traces and separate native/mapped replay. It
 preserves v1 and imports no reduction coding. Sample agreement is not a cost
-decision, GPU/storage proof or execution of a lowered LayerNorm PU. LN1-e
-integrated source/target/numerical provenance is next.
+decision, GPU/storage proof or execution of a lowered LayerNorm PU.
+
+Integrated-binding amendment, 2026-10-28:
+[LN1-e source/target/numerical binding](AI-COMPILER-LAYERNORM-INTEGRATED-BINDING-v0.1.md)
+is implemented for explicit bounded native fixtures: full tensor inputs bind
+native operand IDs, rows/width, epsilon and conditional target/environment;
+the auditor joins every state and preserves shared-affine identity. V1 refuses
+numerical binding and remains unchanged. Next is LN2 storage/event planning,
+not a claim that these host witnesses execute a lowered WHIRL kernel.
 
 ## 1. Decision, Scope And Evidence
 
@@ -553,7 +560,7 @@ are implemented here; preserve existing AI_NORM FORM/FACT and trace-off checks.
 | Gate | Deliverable / acceptance boundary | Status |
 | --- | --- | --- |
 | LN0 | Review semantics, alternatives, lifetimes and costs in this document. | Proposed; native/source R1 evidence exists, not executable optimization. |
-| LN1 | LN-REF-1 ordered means, exact count/final division, sqrt-then-divide, RNE/gradual/class-only-NaN environment; explicit native v2, carriers and oracle, preserving v1. | Native v2/producer/PREOPT, conditional target binding/carriers and LN1-d exact/MPFR/host oracle implemented. WHIRL-derived CUDA/offline PTX/cubin review passes. LN1-e integrated numerical evidence and complete LayerNorm/GPU execution remain open. |
+| LN1 | LN-REF-1 ordered means, exact count/final division, sqrt-then-divide, RNE/gradual/class-only-NaN environment; explicit native v2, carriers and oracle, preserving v1. | Native v2/producer/PREOPT, conditional target binding/carriers, LN1-d oracle and bounded LN1-e integrated evidence implemented. WHIRL-derived primitive CUDA/offline review passes. Complete LayerNorm/GPU execution remains open. |
 | LN2 | Read-only C0/C1/C2 plans, exact traffic/resources/events and refusal cases; reject C3 under v1 and LN-REF-1. | Open after LN1 native prerequisites; reuse common/reduction services. |
 | LN3 | Complete costs, independent event/model oracle, analytical winner/fallback and trace auditor. | Open; reuse reduction profitability. |
 | LN4 | Selected high-level WHIRL, guards, CUDA emission and mapped before/after evidence. | Open; reuse reduction lowering; initial non-TMA scope. |
@@ -599,8 +606,9 @@ receipts. No compiler artifact is fabricated for this design-only increment.
 
 1. LN-REF-1 arithmetic and native v2/schema/admission are specified separately
    from v1. Exact-version builder/gatekeeper/PREOPT support is implemented;
-   conditional target binding and independent oracle are implemented; next join
-   their numerical provenance before lowering. No numerical choice remains for the emitter
+   conditional target binding and independent oracle are implemented;
+   their numerical provenance is joined for bounded LN1-e fixtures; next develop
+   storage/events before lowering. No numerical choice remains for the emitter
    to invent. New Python mappings still need independent admission review.
 2. LN-REF-1 binds exceptional/signed-zero/subnormal observations without a
    finite-only restriction. Any later application-specific real-error policy

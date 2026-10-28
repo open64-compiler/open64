@@ -142,7 +142,7 @@ policy from a normalization-specific path.
 | Gate | Deliverable and required summary | Status |
 | --- | --- | --- |
 | LN0 | Review centered recipe, C0/C1/C2 direct/retention candidates, explicitly unauthorized C3 Welford, aliases/events and complete costs. | Initial design proposed; no new executable support. |
-| LN1 | Define both means, scaling, rsqrt and environment; specify native v2/admission and implement target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | Native v2/producer/PREOPT, LN1-c target binding/carriers and LN1-d independent exact/MPFR/host oracle implemented. LN1-e integrated numerical evidence, complete LayerNorm execution and GPU conformance remain open. |
+| LN1 | Define both means, scaling, rsqrt and environment; specify native v2/admission and implement target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | Native v2/producer/PREOPT, LN1-c target binding/carriers, LN1-d oracle and bounded LN1-e integrated source/target/numerical evidence implemented. Complete LayerNorm execution and GPU conformance remain open. |
 | LN2 | Construct legal plans through existing candidate/resource/event services. `alternatives.log`, `tile.log`, `residency.log` and `fetch-pipeline.log` expose ownership, traffic, capacity, banks/tails and reuse proofs/refusals. | Open after LN1 native prerequisites. |
 | LN3 | Complete comparable costs with target provenance/uncertainty and independent oracle. `physical-plan.log` explains selected/fallback reason without invented overlap or guaranteed cache hits. | Open; reuse reduction profitability. |
 | LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Open; reuse reduction lowering. |
@@ -174,7 +174,7 @@ trace, without an option, target capability or executable transformation.
 | LN1-b: native admission | Exact `common.mean_variance_norm.v2`, fifteen-field LN-REF-1 schema, producer declaration versus native structural admission, canonical assignment and PREOPT identity; current v1 exact schema/source matching unchanged. | Implemented and compiler-validated; see bounded slices and retained evidence below. |
 | LN1-c: target arithmetic | Reuse rounded add/mul and audit/extend exact sub/div/sqrt carriers plus host-built CUDA emission, non-FTZ/no-contraction controls and unsupported-path refusal. WHIRL owns all semantics. | Compiler-side implemented: exact common Hopper/Blackwell lookup, source-snapshot and unsafe-environment gates, five explicit standard-ASM carriers, postchecking, WHIRL-derived CUDA and offline PTX/cubin review. No full LayerNorm lowering, independent oracle or GPU proof. See target detail. |
 | LN1-d: independent oracle | Independent exact integer/rational add/sub/mul/div and midpoint-squared sqrt; full ordered row states, count/zero/underflow/tie/overflow and illegal-recipe witnesses, plus MPFR intervals. | Implemented and host-validated: 12,666 scalar cases, 28 rows, 13,474 state comparisons, six count descriptors and ten refusals; no compiled LayerNorm or GPU claim. |
-| LN1-e: integrated evidence | Explicit-bound native fixtures, actual PREOPT, mapped reopen, strict trace-on/off audit and source/binding provenance; refuse unbound v1 without mutation. Preserve existing native v1 regression cases. | Open; closes native numerical binding only, not LN3/LN4/LN6. |
+| LN1-e: integrated evidence | Explicit-bound native fixtures, actual PREOPT, mapped reopen, strict trace-on/off audit and exact source/target/input/numerical provenance; refuse unbound v1 without mutation. | Bounded evidence implemented: 28 cases/four architectures, 36 v2 contracts/four v1 refusals, 112 target queries, 144 full-tensor invocations/464 rows/375,360 state comparisons. Not executable LayerNorm or GPU proof. |
 
 `semantic.log` must distinguish v1 unresolved facts from LN-REF-1 admission,
 count bits, both mean identities/order/finalization, epsilon and t/h/q sequence.
@@ -183,8 +183,9 @@ count bits, both mean identities/order/finalization, epsilon and t/h/q sequence.
 provenance. `physical-plan.log` costs two mean divisions plus sqrt and reciprocal
 division, not one approximate-rsqrt operation. The summary states reference/native
 structural/conditional target binding and independent oracle implemented,
-integrated evidence open and rewrite none. Numerical reports now exist for
-standalone LN1-d witnesses; physical-plan reports remain future obligations.
+bounded integrated evidence implemented and rewrite none. Numerical reports
+exist for standalone LN1-d and source-bound LN1-e witnesses; physical-plan
+reports remain future obligations.
 Semantic/target-gate/coverage logs and native trace rows retain their own scope.
 
 LN1 native-contract decision, 2026-10-28:
@@ -218,8 +219,8 @@ schema separation and public version narrowing at Python and C boundaries.
 Four native v1 variants, six Python v1 cases/sixteen rejections and historical
 v1 reopen protect compatibility. The progress ledger points to durable receipts.
 
-Next: LN1-e's integrated numerical evidence after the completed independent
-LN1-d oracle. LN1-c supplies conditional target binding and primitive carriers,
+Next: LN2 storage/events after bounded LN1-e integrated evidence and the
+independent LN1-d oracle. LN1-c supplies conditional target binding and primitive carriers,
 not execution of LN-REF-1. Keep LN2/LN3
 cost/selection and LN4 executable WHIRL separate from PREOPT characterization.
 
@@ -256,6 +257,28 @@ LN1-e open. Native semantic/target logs retain their own source and maturity.
 Validation: 14 new oracle/schema tests, 58 existing trace tests, full optimized
 and UBSan host reviews. Next integrate explicit source/target/numerical binding
 without upgrading v1, then proceed to complete storage/events/costs/lowering.
+
+LN1-e implementation, 2026-10-28:
+[Integrated binding detail](AI-COMPILER-LAYERNORM-INTEGRATED-BINDING-v0.1.md)
+joins actual native source/target queries and PREOPT facts to exact full-tensor
+input payloads and independent numerical states. Seven source variants cross
+all four targets; shape/epsilon/alias coverage is checked from actual WHIRL
+facts, never inferred from names. Every v2 has baseline/stale-source/FTZ gates;
+every v1 has a refusal and no numerical witness. Shared affine value IDs bind
+one payload. The auditor verifies exact requests, checker identity, retained
+product hashes and complete case/state census; canonical request order survives
+JSON reload. No Python source matcher, option, production IR or reduction code changes.
+
+`binding.log` summarizes each row's native identity/target and source line last;
+`numerical.log` summarizes same-contract invocations/states/policy and witness
+provenance. `optimization.log` collects successful semantic, target and joined
+numerical reports; the summary states bounded LN1-e complete, v1 preserved,
+cost/decision/transformation none, and storage/events/profitability/lowering/GPU
+open. Retain raw native/numerical `.t`, paired `.B`/`.T`, commands and receipts.
+Validation: 13 new join tests plus 72 prior oracle/trace tests; full UBSan replay,
+56 paired source dumps, four unchanged legacy target fixtures and four v1 dumps.
+Next implement legal bound-source LN2 storage/event plans independently of
+concurrent reduction work; actual executable LayerNorm remains LN4.
 
 Keep reduction code/tests/receipts untouched for this contract design. Native
 LN1-b work needs existing common builders and PREOPT, not completion of the

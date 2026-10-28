@@ -176,10 +176,11 @@ tests. The full numerical review also passes an independently built UBSan
 witness. Native/mapped verification authenticates all 442 parent files before
 replay; source hashes authorize cached tools, not a fabricated compiler rebuild.
 
-Next LN1-e: explicitly associate native-bound source and target/environment
-contracts with the numerical fixtures and preserve refusal/trace/mapped
-provenance. The arbitrary-width numerical cases here are specification
-witnesses, not executions of the retained fixed-width native source image.
+LN1-e follow-on: [integrated binding](AI-COMPILER-LAYERNORM-INTEGRATED-BINDING-v0.1.md)
+now explicitly associates native source/target/environment contracts with
+complete tensor numerical fixtures and refusal/trace/mapped provenance. The
+original arbitrary-width numerical cases here remain separate specification
+witnesses, not executions of a retained fixed-width native source image.
 LN2 storage/event legality, LN3 complete profitability, LN4 selected executable
 WHIRL lowering and LN6 GPU accuracy/resource/performance certification remain
 separate work. No GPU is needed to continue compiler-side development.

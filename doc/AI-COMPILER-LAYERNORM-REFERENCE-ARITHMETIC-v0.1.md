@@ -10,8 +10,9 @@ structural validation and PREOPT preservation are implemented; this document's
 arithmetic and current v1 remain unchanged. LN1-c now adds
 [conditional target/environment binding and primitive carriers](AI-COMPILER-LAYERNORM-TARGET-ARITHMETIC-v0.1.md).
 The [LN1-d independent oracle](AI-COMPILER-LAYERNORM-ARITHMETIC-ORACLE-v0.1.md)
-is now implemented separately; integrated native numerical evidence and GPU
-arithmetic conformance remain open.
+is now implemented separately. Bounded [LN1-e integrated evidence](AI-COMPILER-LAYERNORM-INTEGRATED-BINDING-v0.1.md)
+joins actual native source/target contracts to exact tensor/row witnesses;
+compiled LayerNorm execution and GPU arithmetic conformance remain open.
 
 ## 1. Decision And Compatibility Boundary
 
@@ -305,8 +306,8 @@ specified. Native registration/builder/verifier/canonicalization, explicit
 producer, PREOPT preservation and mapped evidence are now implemented. LN1-c
 now implements conditional binding, standard-ASM primitive carriers and
 WHIRL-derived CUDA/offline assembly. LN1-d now completes independent oracle and
-standalone host state tests. LN1-e integrated evidence and complete compiled
-LayerNorm execution remain implementation work.
+standalone host state tests. LN1-e now adds bounded source/target/full-tensor
+numerical joins. Complete compiled LayerNorm execution remains implementation work.
 Preserve v1 fixtures and exact
 attributes in every lane. A structural contract stage is not an executable
 transformation and must not fabricate before/after optimization evidence.

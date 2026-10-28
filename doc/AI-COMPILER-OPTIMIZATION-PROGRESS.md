@@ -8,6 +8,35 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-28 LN1-e integrated source/target/numerical binding implemented:
+[Integrated binding detail v0.1](AI-COMPILER-LAYERNORM-INTEGRATED-BINDING-v0.1.md)
+joins every admitted node's real PREOPT facts and native target/refusal queries
+to complete tensor payloads, exact row states, source coordinates and checker
+identity. V1 is explicitly refused, not inferred from successful numerical
+samples. Shared gamma/beta IDs map to one payload; exact shape/epsilon and
+canonical input transcripts survive JSON reload. No production IR, source
+matcher, option, executable lowering or reduction code is changed.
+
+Passed 28 source/target cases: 36 v2 contracts, four v1 refusals, 112 native
+target queries, 144 full-tensor invocations, 464 rows and 375,360 state
+comparisons. All 56 source checkpoints have equal paired full dumps. Native
+PREOPT on/default/off controls and expected unsupported-lowering refusal are
+retained. Thirteen join tests plus 14 oracle/58 trace tests pass; all 28
+numerical cases replay identically under UBSan. Four rebuilt legacy target
+fixtures reproduce prior images/dumps/traces; four historical v1 dumps reopen
+unchanged. Backend/WOPT/reader hashes match prior authenticated tools; only
+test producers are rebuilt.
+
+Durable integrated review root:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln1e-binding/sha256-85e65ec6af33d743585d92d48859b1302efd842b4f73fdf5fb755064c0a2177a/`.
+It retains joined `native/reports/optimization-summary.log`, per-case
+`binding.log`/`numerical.log`, raw native/numerical `.t`, source/checkpoint
+`.B`/`.T`, exact invocations/requests, tools/sources and validation receipts.
+Final-path replay must pass before indexing. These are source-bound host
+witnesses, not executions of the WHIRL image or GPU kernels. Next is LN2's
+ownership/alias/storage/events/tails/runtime guards, then complete LN3 costs
+and LN4 selected executable WHIRL. COST/DECISION/TRANSFORM remain none.
+
 2026-10-28 LN1-d independent arithmetic oracle implemented:
 [Oracle detail v0.1](AI-COMPILER-LAYERNORM-ARITHMETIC-ORACLE-v0.1.md) defines
 test-only exact integer/rational binary32 evaluation, midpoint-squared sqrt,

@@ -233,8 +233,10 @@ static int LN1c_Scalar(int argc, char **argv)
 }
 
 /* Select separate fresh-process source binding or scalar-carrier evidence. */
+#ifndef DSL_NORMALIZATION_TARGET_NO_MAIN
 int main(int argc, char **argv)
 {
   if (argc != 4 && argc != 5) return 2;
   return argc == 5 && strcmp(argv[4], "scalar") == 0 ? LN1c_Scalar(argc, argv) : LN1c_Binding(argc, argv);
 }
+#endif

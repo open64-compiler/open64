@@ -195,3 +195,9 @@ replayed with sixteen full mapped dumps, including unchanged v1. This does not
 execute the target carrier images or prove GPU arithmetic. LN1-e must still
 join numerical fixtures to explicit native source/target/environment binding;
 full LayerNorm lowering and certification remain separate gates.
+
+LN1-e amendment, 2026-10-28: [integrated binding](AI-COMPILER-LAYERNORM-INTEGRATED-BINDING-v0.1.md)
+now implements that bounded join with actual PREOPT and native queries for
+every source node. It preserves v1 refusals, shared-affine identity, exact
+shape/epsilon and checker/input provenance. Target eligibility remains
+conditional; no target-image execution or GPU conformance is inferred.
