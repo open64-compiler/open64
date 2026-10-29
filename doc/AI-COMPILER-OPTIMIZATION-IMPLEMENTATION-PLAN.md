@@ -123,6 +123,219 @@ certification. Follow the
 Every gate must retain semantic and numerical conditions, complete cost
 components/units/provenance, rejection/fallback and actual maturity.
 
+### LayerNorm Design And Concurrent Reduction Coding
+
+2026-10-28: the user authorized **Code AI optimizations** to implement bounded
+ordered-reduction R2-d/R2-e (complete direct/staged costs, cost-gated selection,
+selected executable WHIRL and `whirl2c -cuda`, trace/artifact verification).
+The coding chat must verify PR #201's integration base and work in an isolated
+branch/worktree. This is an assignment, not a completed implementation gate.
+Python/v1 sums stay unbound; no GPU or measured-performance claim is implied.
+
+This design chat owns
+[LayerNorm optimization detail v0.1](AI-COMPILER-LAYERNORM-OPTIMIZATION-DESIGN-v0.1.md)
+and the cross-building-block design. Review LayerNorm now rather than waiting
+for native reduction certification. Reuse common policy-free infrastructure
+now and equivalent reduction services after reviewed interfaces exist; do not
+clone a general scheduler or mutate arithmetic policy. LN2's ordered-mean and
+X/d-generation constraints live in the owning WOPT phase, independently of
+concurrent reduction coding.
+
+| Gate | Deliverable and required summary | Status |
+| --- | --- | --- |
+| LN0 | Review centered recipe, C0/C1/C2 direct/retention candidates, explicitly unauthorized C3 Welford, aliases/events and complete costs. | Initial design proposed; no new executable support. |
+| LN1 | Define both means, scaling, rsqrt and environment; specify native v2/admission and implement target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | Native v2/producer/PREOPT, LN1-c target binding/carriers, LN1-d oracle and bounded LN1-e integrated source/target/numerical evidence implemented. Complete LayerNorm execution and GPU conformance remain open. |
+| LN2 | Construct conditional legal storage/event plans from bound source. `alternatives.log`, `residency.log` and `fetch-pipeline.log` expose ranges/leases, capacity, banks/tails and generation/reuse constraints. | Bounded C0/C1/C2 native API implemented: 32 cases/324 queries, common target resources, acyclic completion/visibility DAG and source preservation. Runtime guards/enforcement, register/grid limits and expanded delivery remain open. |
+| LN3 | Complete comparable costs with target provenance/uncertainty and independent oracle. `physical-plan.log` explains selected/fallback reason without invented overlap or guaranteed cache hits. | Open; reuse reduction profitability. |
+| LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Open; reuse reduction lowering. |
+| LN5 | Separately authorized parallel statistics/Welford, RF retention and async/TMA refinements with numerical legality, lowerability and complete costs. | Deferred, not implied by LN0-LN4. |
+| LN6 | Native numerical/instruction/resource/paired-performance verification and calibration. | GPU gate open; not a blocker to design/compiler work. |
+
+All logs retain their `# What it summarizes:` first line; compact versioned
+`.t` records preserve source-line-last, phase coverage and trace-off parity.
+The summary distinguishes design, conditional binding, analytical choice,
+actual WHIRL rewrite, assembler checks and GPU certification. No new compiler
+option or binary schema is registered by this queue. Attention and MoE semantic
+design may proceed here independently of the reduction implementation.
+
+LN1 arithmetic decision, 2026-10-28:
+[Centered LayerNorm reference arithmetic v0.1](AI-COMPILER-LAYERNORM-REFERENCE-ARITHMETIC-v0.1.md)
+defines LN-REF-1 as positive-zero ascending binary32 folds followed by one
+division per mean, exact count conversion for `1 <= N <= 2^24`, then
+`t=add32(v,epsilon)`, `h=sqrt32(t)`, `q=div32(+1,h)` with both rounding points.
+Every scalar operation is RNE/gradual, no traps or observable flags, exact
+non-NaN bits/signed zeros and NaN-class-only equivalence. X/gamma/beta admit
+all FP32 values; epsilon stays exact positive finite, including subnormals.
+Current v1 and Python capture remain unchanged/unbound. The arithmetic design
+itself registered nothing; LN1-b now adds explicit native v2 and its additive
+trace, without an option, target capability or executable transformation.
+
+| LN1 slice | Deliverable / required evidence | Status |
+| --- | --- | --- |
+| LN1-a: reference definition | Ordered mu/variance, separately rounded square/add, exact count/final divisions, sqrt-then-divide and affine/environment/exception rules. | Defined in the reference specification; not native implementation. |
+| LN1-b: native admission | Exact `common.mean_variance_norm.v2`, fifteen-field LN-REF-1 schema, producer declaration versus native structural admission, canonical assignment and PREOPT identity; current v1 exact schema/source matching unchanged. | Implemented and compiler-validated; see bounded slices and retained evidence below. |
+| LN1-c: target arithmetic | Reuse rounded add/mul and audit/extend exact sub/div/sqrt carriers plus host-built CUDA emission, non-FTZ/no-contraction controls and unsupported-path refusal. WHIRL owns all semantics. | Compiler-side implemented: exact common Hopper/Blackwell lookup, source-snapshot and unsafe-environment gates, five explicit standard-ASM carriers, postchecking, WHIRL-derived CUDA and offline PTX/cubin review. No full LayerNorm lowering, independent oracle or GPU proof. See target detail. |
+| LN1-d: independent oracle | Independent exact integer/rational add/sub/mul/div and midpoint-squared sqrt; full ordered row states, count/zero/underflow/tie/overflow and illegal-recipe witnesses, plus MPFR intervals. | Implemented and host-validated: 12,666 scalar cases, 28 rows, 13,474 state comparisons, six count descriptors and ten refusals; no compiled LayerNorm or GPU claim. |
+| LN1-e: integrated evidence | Explicit-bound native fixtures, actual PREOPT, mapped reopen, strict trace-on/off audit and exact source/target/input/numerical provenance; refuse unbound v1 without mutation. | Bounded evidence implemented: 28 cases/four architectures, 36 v2 contracts/four v1 refusals, 112 target queries, 144 full-tensor invocations/464 rows/375,360 state comparisons. Not executable LayerNorm or GPU proof. |
+
+`semantic.log` must distinguish v1 unresolved facts from LN-REF-1 admission,
+count bits, both mean identities/order/finalization, epsilon and t/h/q sequence.
+`target-binding.log` records carrier/toolchain/environment evidence and refusal.
+`numerical.log` gives exact intermediate bits/NaN class and independent oracle
+provenance. `physical-plan.log` costs two mean divisions plus sqrt and reciprocal
+division, not one approximate-rsqrt operation. The summary states reference/native
+structural/conditional target binding and independent oracle implemented,
+bounded integrated evidence implemented and rewrite none. Numerical reports
+exist for standalone LN1-d and source-bound LN1-e witnesses; physical-plan
+reports remain future obligations.
+Semantic/target-gate/coverage logs and native trace rows retain their own scope.
+
+LN1 native-contract decision, 2026-10-28:
+[Native LN-REF-1 contract/admission v0.1](AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md)
+specifies v2 under existing logical ID 39 and the same typed ternary carrier.
+The exact schema binds both means, count conversion, scalar environment and
+sqrt/div semantics; v1 keeps its eight fields and unresolved facts. Explicit
+native source declarations are the first producer lane. The current Python
+matcher remains v1; model names, options, metadata and samples cannot promote
+it. A verified imported v2 image supplies native meaning without an invented
+trusted-producer label; provenance receipts separately support source claims.
+The original design-only increment registered nothing; LN1-b now implements
+the bounded native contract and preservation slices below.
+
+| LN1-b slice | Required implementation / evidence | Status |
+| --- | --- | --- |
+| LN1-b-design | V2 identity, fifteen-field schema, exact-version and source/structural admission, preflight, canonicalization, image/trace and failure rules. | Specified and implemented in the bounded slices below. |
+| LN1-b-native | Append exact-version descriptor and structural checks; reuse explicit-result builder with real v2 validation, gatekeeper and version-specific read-only derivation. Reject public version overflow before UINT16 narrowing. | Implemented; policy-free count bits/footprint predicates, exact C/Python version guards, no reduction cost/selector/lowering dependency. |
+| LN1-b-producer | Explicit native LN-REF-1 fixture, runtime formals/result/return and real source position; no automatic Python/v1 conversion. | Implemented as `dsl_normalization_ref_test`; eight variants including mixed/shared-affine/subnormal/count boundary. |
+| LN1-b-preservation | V1/v2 semantic identity, actual PREOPT and trace-on/off, mapped reopen/source inspection, mixed-schema/unknown-version/old-image and rollback negatives. Add version dispatch to current v1-only normalization walkers. | Compiler-validated with real PREOPT and separate reader; additive strict auditor/phase logs, v1 replay, no executable rewrite. |
+
+LN1-b implementation evidence: `run_normalization_ref_review.py --suite`
+retains eight native variants (ten v2 contracts and one coexisting v1), six
+controls per variant, exact count bits, source snapshots, mapped `.B`/`.T`, raw
+`.t`, commands/product hashes and strict audited logs. The C++ negative producer
+checks every field mutation/omission/duplicate, mixed schemas, malformed/static
+domain, footprint overflow, foreign operands, read-only facts and failed
+preflight preservation. V2 attribute permutations hash identically; versions
+and changed epsilon remain distinct. Three explicit native API tests cover
+schema separation and public version narrowing at Python and C boundaries.
+Four native v1 variants, six Python v1 cases/sixteen rejections and historical
+v1 reopen protect compatibility. The progress ledger points to durable receipts.
+
+Next: LN3 complete C0/C1/C2 profitability after the bounded LN2-d runtime bridge and the
+independent LN1-d oracle. LN1-c supplies conditional target binding and primitive carriers,
+not execution of LN-REF-1. Keep LN2/LN3
+cost/selection and LN4 executable WHIRL separate from PREOPT characterization.
+
+LN1-c implementation, 2026-10-28:
+[Target arithmetic/environment detail](AI-COMPILER-LAYERNORM-TARGET-ARITHMETIC-v0.1.md)
+defines the driver-owned request, read-only active-PU source snapshot check,
+exact four-target/toolkit/PTX envelopes, all unsafe/unknown FP-option refusals,
+and unchanged v1 semantics. `opt_dsl_normalization_target` uses no reduction
+planning/runtime API. Its standard `ASM_STMT`/ordered `ASM_INPUT` primitives
+reuse the current CUDA emitter, not target-gated legacy intrinsic ordinals.
+The initial pointer-scalar route deliberately uses a memory clobber and must
+charge loads/stores/effects in any later complete profitability model.
+
+Review passed: 39 actual queries per target, strict/source/version/refusal
+audits joined to PREOPT, trace-off parity, before/after scalar mapped images
+and diffs, generated `.cu`, explicit rn/no-FTZ PTX and offline cubin assembly.
+The summaries distinguish conditional ISA/carrier binding from actual compiler
+acceptance, oracle results and GPU proof. No automatic LayerNorm selection,
+new option, v1 promotion or production register-output route is introduced.
+
+LN1-d implementation, 2026-10-28:
+[Independent arithmetic oracle detail](AI-COMPILER-LAYERNORM-ARITHMETIC-ORACLE-v0.1.md)
+defines exact binary32 quantization and midpoint-squared sqrt, an independently
+implemented MPFR directed-interval checker, and controlled native C0/C1/C2
+witnesses. Tests compare every ordered state, permit only NaN-class equivalence,
+reject malformed traces and preserve v1. No reduction code/service is imported.
+Four-target native fixture/PREOPT replay and sixteen full mapped-image dumps
+are verified separately; these images are not executed as normalization kernels.
+
+`numerical.log` must summarize exact policy, primitive/row/state/count census,
+illegal-recipe disagreements and rejection/provenance evidence. The summary
+must state `COST none`, `DECISION none`, `TRANSFORM none`, GPU unverified and
+LN1-e open. Native semantic/target logs retain their own source and maturity.
+Validation: 14 new oracle/schema tests, 58 existing trace tests, full optimized
+and UBSan host reviews. Next integrate explicit source/target/numerical binding
+without upgrading v1, then proceed to complete storage/events/costs/lowering.
+
+LN1-e implementation, 2026-10-28:
+[Integrated binding detail](AI-COMPILER-LAYERNORM-INTEGRATED-BINDING-v0.1.md)
+joins actual native source/target queries and PREOPT facts to exact full-tensor
+input payloads and independent numerical states. Seven source variants cross
+all four targets; shape/epsilon/alias coverage is checked from actual WHIRL
+facts, never inferred from names. Every v2 has baseline/stale-source/FTZ gates;
+every v1 has a refusal and no numerical witness. Shared affine value IDs bind
+one payload. The auditor verifies exact requests, checker identity, retained
+product hashes and complete case/state census; canonical request order survives
+JSON reload. No Python source matcher, option, production IR or reduction code changes.
+
+`binding.log` summarizes each row's native identity/target and source line last;
+`numerical.log` summarizes same-contract invocations/states/policy and witness
+provenance. `optimization.log` collects successful semantic, target and joined
+numerical reports; the summary states bounded LN1-e complete, v1 preserved,
+cost/decision/transformation none, and storage/events/profitability/lowering/GPU
+open. Retain raw native/numerical `.t`, paired `.B`/`.T`, commands and receipts.
+Validation: 13 new join tests plus 72 prior oracle/trace tests; full UBSan replay,
+56 paired source dumps, four unchanged legacy target fixtures and four v1 dumps.
+Bounded native LN2 storage/event plans are now implemented independently of
+concurrent reduction work; actual executable LayerNorm remains LN4.
+
+LN2 planning implementation, 2026-10-28:
+[Storage/event detail](AI-COMPILER-LAYERNORM-STORAGE-EVENTS-v0.1.md) defines the
+WOPT-owned read-only request/binding contract for C0 direct, C1 retained d and
+C2 X-to-d row reuse. It reuses source/target APIs and common memory/bank/resource
+tables, not reduction planning/runtime code. Version 1 and stale/unsafe source
+requests refuse before storage permissions. Exact physical layout, canonical
+context/ranges, live lease requirements, read-only aliasing versus disjoint
+output, one ordered owner per row, valid-element predicates and all-lane barrier
+participation are explicit. Both means keep their native LN-REF-1 arithmetic.
+
+| LN2 slice | Implementation / required tool summary | Status |
+| --- | --- | --- |
+| LN2-a ranges/ownership | Rebind whole active PU/target, exact contiguous FP32 ranges and leases, canonical allocation metadata/alias rules, unique row/element ownership and pre-access tails. `alternatives.log` gives each gate/refusal and remaining obligations. | Native API and read-only/trace parity tests implemented. No actual runtime lease enforcement. |
+| LN2-b row arena/resources | C0 zero SMEM; C1/C2 one padded row plus distinct mu/q slots, checked reservation rounding/current profile budget, scalar contiguous bank mapping. `residency.log` gives every range, requested/reserved bytes, budget/granularity and bank facts. | Implemented with common descriptors. RF allocation/spills, occupancy, GMEM sectors and larger opt-in budgets remain unbound. |
+| LN2-c events/generations | Acyclic reachability, mean-reader completion before C2 overwrite, d/q visibility and all readers complete before reuse. `fetch-pipeline.log` gives every successor mask, barrier/participant requirement and refusal. | Native conditional protocol implemented; all original checkpoints remain unchanged. Actual emitted/runtime events are not proven. |
+| LN2-d runtime bridge | Fresh source/target/plan rebinding and pointer-free guard export; canonical root/device/context/entry/limit validation, atomic X/gamma/beta/Y leases, gated host launch/drain/consumer/release and failure-safe cleanup. `guard-binding.log` gives exact export joins/refusals; `runtime-guards.log` gives observed host checks/refusals, not invented internal GPU completion. | Implemented as an independent runtime-only bridge; actual native guards and host mocks validated. V1 unchanged. No production CUDA normalization provider, profitability selection or executable WHIRL lowering. |
+
+Validation: 32 source/target cases, 324 queries (124 conditional bindings,
+200 refusals), 64 paired full mapped dumps, native immutable-table and quiet
+trace checks, all PREOPT controls, eleven new auditor tests plus 85 prior tests.
+The current count-limit case admits C0 storage while C1/C2 fail full-row budget;
+it neither allocates the huge row nor automatically selects the fallback.
+The summary must state runtime enforcement/grid/register allocation unproved,
+async unsupported, COST/DECISION/TRANSFORM none and GPU not run. Retain native
+`.t`, source checkpoints/dumps, rebuilt WOPT/driver, sources, commands and final
+replay. LN3 profitability and LN4 actual WHIRL actions remain separate gates.
+
+LN2-d implementation, 2026-10-28:
+[Runtime guard detail](AI-COMPILER-LAYERNORM-RUNTIME-GUARDS-v0.1.md) defines the
+83-word host-native guard ABI, fresh export and exact manifest matching, separate
+runtime-only library, canonical backing/lease registry and failure-safe host
+protocol. Tests consume native-exported guards, mutate every field and check
+live roots, device/context, grid/thread/shared limits, shared immutable inputs,
+exclusive outputs, reentrant/concurrent work, ambiguous launch/drain and consumer
+failures. Host-test entries refuse production admission. Internal nodes 2..10
+cannot be host-observed through this API; they remain a selected-kernel provider
+obligation until executable WHIRL lowering proves their implementation.
+The full native suite retains PREOPT trace controls, v1 refusals, all original
+mapped source checkpoints and exact source lines. Every condensed report begins
+with its summary description. No new compiler option/trace bit or binary image
+layout, no implicit fallback, and no dependency on reduction coding.
+Next LN3: complete legal C0/C1/C2 costs and cost-gated selection; next LN4:
+selected WHIRL/entry/launch/internal-event conformance. Real CUDA provider and
+GPU certification stay explicitly open, not prerequisites for compiler-side work.
+
+Keep reduction code/tests/receipts untouched for this contract design. Native
+LN1-b work needs existing common builders and PREOPT, not completion of the
+other chat's reduction profitability milestone. Later arithmetic/lowering
+service reuse is a reviewed integration. `semantic.log` distinguishes verified
+v2 arithmetic from producer history and still-unbound target/storage/costs;
+the additive `AI_NORM_REF` schema does not change v1 FORM/FACT rows.
+No producer audit report is relabeled as a native WOPT trace. All reports
+retain their summary first line and explicit maturity/no-rewrite status.
+
 R1 sub-gates, kept independent of MMA1's contracts/target profiles:
 
 | Slice | Current status | Next evidence / required tool summary |

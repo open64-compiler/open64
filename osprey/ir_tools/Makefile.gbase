@@ -213,8 +213,13 @@ LDIRT += dsl_reduce_sum_contract_test dsl_reduce_sum_contract_test.o
 LDIRT += dsl_reduction_binding_test dsl_reduction_binding_test.o
 LDIRT += dsl_reduction_direct_test dsl_reduction_direct_test.o opt_dsl_reduction_test.o
 LDIRT += dsl_reduction_staged_test dsl_reduction_staged_test.o opt_dsl_reduction_staged_test.o
+LDIRT += dsl_normalization_target_test dsl_normalization_target_test.o opt_dsl_normalization_target_test.o
+LDIRT += dsl_normalization_evidence_test dsl_normalization_evidence_test.o
+LDIRT += dsl_normalization_plan_test dsl_normalization_plan_test.o opt_dsl_normalization_plan_test.o
+LDIRT += dsl_normalization_guard_test dsl_normalization_guard_test.o
 LDIRT += dsl_softmax_contract_test dsl_softmax_contract_test.o
 LDIRT += dsl_normalization_contract_test dsl_normalization_contract_test.o
+LDIRT += dsl_normalization_ref_test dsl_normalization_ref_test.o
 LDIRT += opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 
 LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_FHE_DIR) \
@@ -843,6 +848,61 @@ dsl_normalization_contract_test: $(OBJECTS) controls.o dsl_normalization_contrac
 		opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
 
 dsl_normalization_contract_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_normalization_ref_test: $(OBJECTS) controls.o dsl_normalization_ref_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_normalization_ref_test.o opt_dsl_wopt_test.o \
+		opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_normalization_ref_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_ref_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_normalization_target_test: $(OBJECTS) controls.o dsl_normalization_target_test.o \
+		opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_normalization_target_test.o opt_dsl_normalization_target_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_normalization_target_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_target_test.cxx \
+                $(BE_OPT_DIR)/tests/dsl_normalization_ref_test.cxx $(BE_OPT_DIR)/opt_dsl_normalization_target.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_normalization_evidence_test: $(OBJECTS) controls.o dsl_normalization_evidence_test.o \
+		opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_normalization_evidence_test.o opt_dsl_normalization_target_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_normalization_evidence_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_evidence_test.cxx \
+                $(BE_OPT_DIR)/tests/dsl_normalization_target_test.cxx $(BE_OPT_DIR)/tests/dsl_normalization_ref_test.cxx \
+                $(BE_OPT_DIR)/opt_dsl_normalization_target.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+opt_dsl_normalization_target_test.o: $(BE_OPT_DIR)/opt_dsl_normalization_target.cxx $(BE_OPT_DIR)/opt_dsl_normalization_target.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_normalization_plan_test: $(OBJECTS) controls.o dsl_normalization_plan_test.o \
+		opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_normalization_plan_test.o opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_normalization_plan_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_plan_test.cxx \
+                $(BE_OPT_DIR)/tests/dsl_normalization_target_test.cxx $(BE_OPT_DIR)/tests/dsl_normalization_ref_test.cxx \
+                $(BE_OPT_DIR)/opt_dsl_normalization_plan.h $(BE_OPT_DIR)/opt_dsl_normalization_target.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+opt_dsl_normalization_plan_test.o: $(BE_OPT_DIR)/opt_dsl_normalization_plan.cxx $(BE_OPT_DIR)/opt_dsl_normalization_plan.h \
+                $(BE_OPT_DIR)/../../include/open64_normalization_runtime.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_normalization_guard_test: $(OBJECTS) controls.o dsl_normalization_guard_test.o \
+		opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_normalization_guard_test.o opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_normalization_guard_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_guard_test.cxx \
+                $(BE_OPT_DIR)/tests/dsl_normalization_plan_test.cxx $(BE_OPT_DIR)/tests/dsl_normalization_target_test.cxx \
+                $(BE_OPT_DIR)/tests/dsl_normalization_ref_test.cxx $(BE_OPT_DIR)/opt_dsl_normalization_plan.h \
+                $(BE_OPT_DIR)/../../include/open64_normalization_runtime.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_softmax_contract_test: $(OBJECTS) controls.o dsl_softmax_contract_test.o \

@@ -2185,6 +2185,87 @@ no image. Six API/driver images preserve the contract through actual PREOPT.
 General normalization ingestion and executable VHO lowering remain open;
 no native accuracy or performance proof is implied.
 
+### LN1 Native Reference Normalization Design (2026-10-28)
+
+The [LN-REF-1 native contract/admission design](AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md)
+specifies `common.mean_variance_norm.v2` under existing logical ID 39 and the
+same typed three-kid assignment. Fifteen exact attributes bind ordered means,
+count/final division, sqrt-then-divide, environment and NaN observations.
+V1 remains its exact eight-field unresolved source recipe; existing Python
+ingestion does not change. Exact native v2 is now registered and validated.
+
+The native implementation adds exact-version checks without changing
+physical WN, managed-row or ELF layout; reuses the explicit-result builder;
+checks public version range before narrowing; preserves canonical direct/managed
+operand and result links; dispatches PREOPT derivation/traces by version; and
+tests v1/v2 coexistence plus old-image readability. Producer declaration of
+source meaning is not a gatekeeper proof of arbitrary source equivalence.
+The additive `AI_NORM_REF 1 BIND` trace leaves v1 FORM/FACT unchanged. The native
+producer and `run_normalization_ref_review.py --suite` retain separate-process
+mapped `.B`/`.T`, raw controlled `.t`, count bits, exact bound arithmetic and
+explicit target/storage unknowns. No physical or managed image layout changes.
+Target arithmetic, cost selection and executable lowering remain separate gates. This work is
+independent of the reduction profitability/lowering implementation stream.
+
+### LN2 Storage/Event Planning (2026-10-28)
+
+The subsequent [LN2-d runtime bridge](AI-COMPILER-LAYERNORM-RUNTIME-GUARDS-v0.1.md)
+adds fresh read-only guard export and an independent runtime-only library.
+Canonical live roots/entry/device limits and atomic input/output leases gate
+host launch/drain/consumer/release. Actual native guards are exercised by host
+mocks; internal CTA events remain provider-declared, not host-observed. No
+new mapped record, v1 promotion, source rewrite, automatic plan selection,
+executable normalization or reduction-code dependency is introduced.
+
+The [LN-REF-1 storage/event contract](AI-COMPILER-LAYERNORM-STORAGE-EVENTS-v0.1.md)
+adds a WOPT-owned read-only API, not mapped tables or a source transformation.
+It rebinds source/target and checks C0/C1/C2 canonical ranges/leases, explicit
+layout, ownership/tails, common memory/bank resources and completion/visibility
+reachability. C2's original-X and centered-d generations share one row arena
+only after reader-completion constraints. Conditional binding still requires
+real runtime enforcement, launch/grid/register checks and selected lowering.
+V1 and unsafe/stale requests refuse without promotion; no reduction API is
+used. New positional planning/range/event traces keep native source line last,
+separate from emitted WHIRL actions. Source checkpoints and full mapped dumps
+remain identical; WHIRL is still the sole future executable truth.
+
+### LN1-e Integrated Binding (2026-10-28)
+
+The [LN-REF-1 integrated evidence](AI-COMPILER-LAYERNORM-INTEGRATED-BINDING-v0.1.md)
+joins actual PREOPT facts, every native node's conditional target/refusal query
+and full tensor/row numerical witnesses. Native source identity/domain/epsilon,
+shared-affine value identity, request transcript, checker identity and retained
+product hashes are independently audited. V1 remains unresolved/refused. Paired
+source images/dumps prove query preservation; no mapped layout, production
+operation, option, executable lowering or reduction code changes. Native WOPT
+traces and test-only numerical traces retain distinct schemas/source positions.
+WHIRL remains the sole executable truth; LN2 storage/events and LN4 selected
+lowering are still required before claiming an executable normalization kernel.
+
+### LN1-d Independent Arithmetic Oracle (2026-10-28)
+
+The [LN-REF-1 oracle](AI-COMPILER-LAYERNORM-ARITHMETIC-ORACLE-v0.1.md) adds
+test-only exact integer/rational binary32 evaluation, MPFR interval checks and
+standalone host storage witnesses. No WHIRL operation/layout, producer, v1
+schema, option or emitter is changed. Actual native `.t` retains its source
+positions and controls; additive numerical `.t` rows identify the host test
+producer. Four-target native fixture/PREOPT replay plus sixteen full mapped
+dumps establish preservation, not numerical execution of those images.
+Integrated source/target/numerical binding and executable lowering remain open;
+WHIRL remains the sole executable truth, independent of reduction coding.
+
+### LN1-c Target Arithmetic (2026-10-28)
+
+LN1-c follow-on: [normalization target arithmetic](AI-COMPILER-LAYERNORM-TARGET-ARITHMETIC-v0.1.md)
+adds separate transient PU-local eligibility and exact scalar carriers using
+standard `ASM_STMT`/ordered `ASM_INPUT` pointer operands. Native v1/v2 source
+meaning, managed rows, physical layouts and intrinsic ordinals are unchanged.
+The scalar statements contain actual `add/sub/mul/div/sqrt.rn.f32` operations,
+source positions and explicit volatile/memory effects. Current `whirl2c -cuda`
+only prints these operations; no arithmetic is selected from diagnostic tags.
+Standalone primitive mapped/CUDA/PTX/cubin evidence is not full LayerNorm
+lowering or GPU arithmetic certification. No reduction service is modified.
+
 ### R2 Ordered Reduction Numerical Binding (2026-10-27)
 
 The [reduction numerical-binding contract](AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md)

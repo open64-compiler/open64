@@ -738,7 +738,17 @@ static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
         DSL_SHAPE_RULE_REDUCTION, DSL_EFFECT_MODEL_PURE,
         DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_REDUCE_SUM_V2",
         "attr.axis;attr.keepdim;attr.accum_dtype;attr.reassociate;attr.order;"
-        "attr.identity_bits;attr.fp_environment;attr.nan_policy" }
+        "attr.identity_bits;attr.fp_environment;attr.nan_policy" },
+    /* LN-REF-1 is explicit source meaning, never a normalization v1 upgrade.
+     * Design: doc/AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md. */
+    { OPR_DSLMEANVARNORM, "common.mean_variance_norm", 2,
+        DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_2_NUMERIC, 3,
+        DSL_SHAPE_RULE_IDENTITY, DSL_EFFECT_MODEL_PURE,
+        DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_MEAN_VAR_NORM_V2",
+        "attr.axis;attr.accum_dtype;attr.variance_kind;attr.epsilon_bits;"
+        "attr.reassociate;attr.state_reformulation;attr.contract;attr.rsqrt_semantics;"
+        "attr.mean_order;attr.mean_identity_bits;attr.mean_finalize;"
+        "attr.count_conversion;attr.fp_environment;attr.nan_policy;attr.reference_binding" }
 };
 
 static const DSL_FUSIBILITY_INFO DSL_fusibility_info[] = {
