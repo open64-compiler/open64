@@ -737,6 +737,15 @@ transient definitions, WN/PU forward declarations, or reverse owner includes.
 The former `common/com/dsl_ir_image.cxx` is removed, not kept as a forwarding
 translation unit. Other common/com infrastructure is outside this pair's scope.
 
+The directory-wide **DSL-only** follow-up is classified in
+[common/com DSL persistence and ownership audit](COMMON-COM-DSL-PERSISTENCE-OWNERSHIP-AUDIT.md).
+It distinguishes actual stored rows from transient registries, views and AIO
+planning records, including DSL fragments in shared files. This is an inventory
+and relocation proposal, not another completed source move. The explicit
+construction boundary remains: `dsl_builder.{h,cxx}` stays in `common/com` as
+the interface for persistent-data construction. Its transient input/private
+state objects are not classified as separately persisted rows.
+
 #### Reviewed owning-logic boundaries
 
 | Owner | Types, state and related logic |
