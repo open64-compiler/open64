@@ -2209,6 +2209,14 @@ independent of the reduction profitability/lowering implementation stream.
 
 ### LN2 Storage/Event Planning (2026-10-28)
 
+The subsequent [LN2-d runtime bridge](AI-COMPILER-LAYERNORM-RUNTIME-GUARDS-v0.1.md)
+adds fresh read-only guard export and an independent runtime-only library.
+Canonical live roots/entry/device limits and atomic input/output leases gate
+host launch/drain/consumer/release. Actual native guards are exercised by host
+mocks; internal CTA events remain provider-declared, not host-observed. No
+new mapped record, v1 promotion, source rewrite, automatic plan selection,
+executable normalization or reduction-code dependency is introduced.
+
 The [LN-REF-1 storage/event contract](AI-COMPILER-LAYERNORM-STORAGE-EVENTS-v0.1.md)
 adds a WOPT-owned read-only API, not mapped tables or a source transformation.
 It rebinds source/target and checks C0/C1/C2 canonical ranges/leases, explicit

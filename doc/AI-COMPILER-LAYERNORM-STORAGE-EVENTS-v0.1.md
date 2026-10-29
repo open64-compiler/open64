@@ -194,7 +194,12 @@ Durable receipts must retain the rebuilt WOPT/backend driver, native fixtures,
 sources, raw `.t`, source `.B`/`.T`, commands, hashes and independent final-path
 replay before indexing.
 
-Next LN2-d: export and enforce runtime-checkable ranges, leases, events,
+LN2-d is now implemented as the separate
+[runtime guard/export/enforcement bridge](AI-COMPILER-LAYERNORM-RUNTIME-GUARDS-v0.1.md).
+It exports freshly rebound facts, enforces canonical leases and host event
+ordering, and distinguishes provider-declared internal events from actual
+host observations. Production CUDA provider and selected WHIRL remain open.
+The original next-gate requirement was: export and enforce runtime-checkable ranges, leases, events,
 actual device/grid limits and selected launch contracts. Then LN3 compares
 complete lowerable plans with explicit costs, uncertainty and fallbacks.
 LN4 materializes the chosen storage/access/synchronization in WHIRL and verifies

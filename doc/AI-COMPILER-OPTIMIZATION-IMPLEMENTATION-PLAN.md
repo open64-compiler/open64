@@ -221,7 +221,7 @@ schema separation and public version narrowing at Python and C boundaries.
 Four native v1 variants, six Python v1 cases/sixteen rejections and historical
 v1 reopen protect compatibility. The progress ledger points to durable receipts.
 
-Next: LN2-d runtime guard/export/enforcement after bounded native LN2 planning and the
+Next: LN3 complete C0/C1/C2 profitability after the bounded LN2-d runtime bridge and the
 independent LN1-d oracle. LN1-c supplies conditional target binding and primitive carriers,
 not execution of LN-REF-1. Keep LN2/LN3
 cost/selection and LN4 executable WHIRL separate from PREOPT characterization.
@@ -297,7 +297,7 @@ participation are explicit. Both means keep their native LN-REF-1 arithmetic.
 | LN2-a ranges/ownership | Rebind whole active PU/target, exact contiguous FP32 ranges and leases, canonical allocation metadata/alias rules, unique row/element ownership and pre-access tails. `alternatives.log` gives each gate/refusal and remaining obligations. | Native API and read-only/trace parity tests implemented. No actual runtime lease enforcement. |
 | LN2-b row arena/resources | C0 zero SMEM; C1/C2 one padded row plus distinct mu/q slots, checked reservation rounding/current profile budget, scalar contiguous bank mapping. `residency.log` gives every range, requested/reserved bytes, budget/granularity and bank facts. | Implemented with common descriptors. RF allocation/spills, occupancy, GMEM sectors and larger opt-in budgets remain unbound. |
 | LN2-c events/generations | Acyclic reachability, mean-reader completion before C2 overwrite, d/q visibility and all readers complete before reuse. `fetch-pipeline.log` gives every successor mask, barrier/participant requirement and refusal. | Native conditional protocol implemented; all original checkpoints remain unchanged. Actual emitted/runtime events are not proven. |
-| LN2-d runtime bridge | Revalidate/export exact selected ranges/context/leases/events and physical launch/grid obligations into a runtime-checkable guard; enforce it before dispatch and preserve fallback/refusal. Tools must distinguish declarations, exported checks and observed enforcement. | Next; no guard/provider/runtime enforcement is introduced by the planning API. |
+| LN2-d runtime bridge | Fresh source/target/plan rebinding and pointer-free guard export; canonical root/device/context/entry/limit validation, atomic X/gamma/beta/Y leases, gated host launch/drain/consumer/release and failure-safe cleanup. `guard-binding.log` gives exact export joins/refusals; `runtime-guards.log` gives observed host checks/refusals, not invented internal GPU completion. | Implemented as an independent runtime-only bridge; actual native guards and host mocks validated. V1 unchanged. No production CUDA normalization provider, profitability selection or executable WHIRL lowering. |
 
 Validation: 32 source/target cases, 324 queries (124 conditional bindings,
 200 refusals), 64 paired full mapped dumps, native immutable-table and quiet
@@ -308,6 +308,24 @@ The summary must state runtime enforcement/grid/register allocation unproved,
 async unsupported, COST/DECISION/TRANSFORM none and GPU not run. Retain native
 `.t`, source checkpoints/dumps, rebuilt WOPT/driver, sources, commands and final
 replay. LN3 profitability and LN4 actual WHIRL actions remain separate gates.
+
+LN2-d implementation, 2026-10-28:
+[Runtime guard detail](AI-COMPILER-LAYERNORM-RUNTIME-GUARDS-v0.1.md) defines the
+83-word host-native guard ABI, fresh export and exact manifest matching, separate
+runtime-only library, canonical backing/lease registry and failure-safe host
+protocol. Tests consume native-exported guards, mutate every field and check
+live roots, device/context, grid/thread/shared limits, shared immutable inputs,
+exclusive outputs, reentrant/concurrent work, ambiguous launch/drain and consumer
+failures. Host-test entries refuse production admission. Internal nodes 2..10
+cannot be host-observed through this API; they remain a selected-kernel provider
+obligation until executable WHIRL lowering proves their implementation.
+The full native suite retains PREOPT trace controls, v1 refusals, all original
+mapped source checkpoints and exact source lines. Every condensed report begins
+with its summary description. No new compiler option/trace bit or binary image
+layout, no implicit fallback, and no dependency on reduction coding.
+Next LN3: complete legal C0/C1/C2 costs and cost-gated selection; next LN4:
+selected WHIRL/entry/launch/internal-event conformance. Real CUDA provider and
+GPU certification stay explicitly open, not prerequisites for compiler-side work.
 
 Keep reduction code/tests/receipts untouched for this contract design. Native
 LN1-b work needs existing common builders and PREOPT, not completion of the

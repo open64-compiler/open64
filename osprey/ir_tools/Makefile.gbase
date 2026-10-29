@@ -216,6 +216,7 @@ LDIRT += dsl_reduction_staged_test dsl_reduction_staged_test.o opt_dsl_reduction
 LDIRT += dsl_normalization_target_test dsl_normalization_target_test.o opt_dsl_normalization_target_test.o
 LDIRT += dsl_normalization_evidence_test dsl_normalization_evidence_test.o
 LDIRT += dsl_normalization_plan_test dsl_normalization_plan_test.o opt_dsl_normalization_plan_test.o
+LDIRT += dsl_normalization_guard_test dsl_normalization_guard_test.o
 LDIRT += dsl_softmax_contract_test dsl_softmax_contract_test.o
 LDIRT += dsl_normalization_contract_test dsl_normalization_contract_test.o
 LDIRT += dsl_normalization_ref_test dsl_normalization_ref_test.o
@@ -889,7 +890,19 @@ dsl_normalization_plan_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_plan_test.c
                 $(BE_OPT_DIR)/opt_dsl_normalization_plan.h $(BE_OPT_DIR)/opt_dsl_normalization_target.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-opt_dsl_normalization_plan_test.o: $(BE_OPT_DIR)/opt_dsl_normalization_plan.cxx $(BE_OPT_DIR)/opt_dsl_normalization_plan.h
+opt_dsl_normalization_plan_test.o: $(BE_OPT_DIR)/opt_dsl_normalization_plan.cxx $(BE_OPT_DIR)/opt_dsl_normalization_plan.h \
+                $(BE_OPT_DIR)/../../include/open64_normalization_runtime.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_normalization_guard_test: $(OBJECTS) controls.o dsl_normalization_guard_test.o \
+		opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_normalization_guard_test.o opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_normalization_guard_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_guard_test.cxx \
+                $(BE_OPT_DIR)/tests/dsl_normalization_plan_test.cxx $(BE_OPT_DIR)/tests/dsl_normalization_target_test.cxx \
+                $(BE_OPT_DIR)/tests/dsl_normalization_ref_test.cxx $(BE_OPT_DIR)/opt_dsl_normalization_plan.h \
+                $(BE_OPT_DIR)/../../include/open64_normalization_runtime.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_softmax_contract_test: $(OBJECTS) controls.o dsl_softmax_contract_test.o \

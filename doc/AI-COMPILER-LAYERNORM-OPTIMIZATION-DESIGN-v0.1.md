@@ -45,6 +45,15 @@ checks without changing common mapped state or depending on reduction coding.
 
 ## 1. Decision, Scope And Evidence
 
+Runtime-bridge amendment, 2026-10-28:
+[LN2-d guard export/enforcement](AI-COMPILER-LAYERNORM-RUNTIME-GUARDS-v0.1.md)
+freshly rebinds the exact native plan and exports a pointer-free runtime guard.
+The independent runtime bridge validates canonical buffers/entry/device limits,
+atomically leases X/gamma/beta/Y and gates host launch/drain/consumer/release.
+Host-mock evidence is distinct from declared internal CTA barriers/generations.
+No source-v1 promotion, reduction dependency, profitability decision or selected
+executable LayerNorm WHIRL is introduced. LN3 and LN4 remain separate gates.
+
 Design LayerNorm now, concurrently with reduction profitability and executable
 WHIRL lowering. Reuse reduction services rather than cloning their arithmetic
 contracts, target lookup, planning, event checks or trace infrastructure.

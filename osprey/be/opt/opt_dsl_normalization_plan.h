@@ -6,6 +6,7 @@
 #ifndef opt_dsl_normalization_plan_INCLUDED
 #define opt_dsl_normalization_plan_INCLUDED
 #include "opt_dsl_normalization_target.h"
+#include "../../include/open64_normalization_runtime.h"
 
 enum WOPT_DSL_NORMALIZATION_PLAN_KIND { WOPT_DSL_NORM_C0 = 1, WOPT_DSL_NORM_C1, WOPT_DSL_NORM_C2 };
 enum WOPT_DSL_NORMALIZATION_PLAN_STATUS {
@@ -77,5 +78,13 @@ typedef struct {
 extern BOOL WOPT_DSL_bind_normalization_plan(WN *scope, WN *assignment,
     const WOPT_DSL_NORMALIZATION_PLAN_REQUEST *request,
     WOPT_DSL_NORMALIZATION_PLAN_BINDING *output, FILE *diagnostic, FILE *trace);
+
+/* Fresh source/target/plan rebinding; export only a conditional bound v2 plan.
+ * Failure leaves output unchanged. Invalid API/scope emits no trace; valid
+ * refused plans emit REFUSE only under caller trace control. No selection,
+ * runtime authority, IR mutation, or executable kernel is created. */
+extern BOOL WOPT_DSL_export_normalization_guard(WN *scope, WN *assignment,
+    const WOPT_DSL_NORMALIZATION_PLAN_REQUEST *request,
+    OPEN64_NORMALIZATION_GUARD *output, FILE *diagnostic, FILE *trace);
 
 #endif

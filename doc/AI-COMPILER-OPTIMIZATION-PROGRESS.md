@@ -8,6 +8,45 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-28 LN2-d runtime guard export/enforcement bridge implemented:
+[Runtime guard detail v0.1](AI-COMPILER-LAYERNORM-RUNTIME-GUARDS-v0.1.md)
+defines fresh active-PU source/target/plan rebinding, pointer-free exact export
+and an independent runtime-only canonical root/lease/host-event bridge. Runtime
+admission validates entry manifest, context/device/architecture, capacities and
+actual provider grid/thread/shared limits. X/gamma/beta read leases and the Y
+exclusive lease are atomic; early work/release, stale roots, alias conflicts
+and host-mock/production mixing refuse. Failed launch pins storage until drain;
+consumer failures and concurrent/reentrant callbacks retain safe lifetimes.
+
+Passed 32 native cases: 112 exported guards, 20 source-v1/storage refusals,
+324 earlier plan/export legality queries, actual PREOPT controls and 128 full
+mapped dumps across the plan and export checkpoint pairs. All images/dumps and
+PREOPT traces preserve the previous LN2 receipt. Runtime tests consume native
+guard bytes: 35,284 host checks and 24,388 runtime event rows, plus explicit
+admitted guard/root/provider-limit bindings. Five new auditor
+tests plus 96 prior trace/oracle/join tests pass. All 64 native planner/exporter
+and 112 runtime guard runs pass scoped ASan/UBSan validation. This instruments
+the new/modified components and fixtures, not the whole compiler; mapped fixture
+comparisons use documented zero allocator fill and process-pool leak checking off.
+Raw PREOPT refusal stack traces differ only in the known retained-binary
+directory spelling; source semantic rows and all other trace bytes match.
+
+The guard exports all 15 event requirements; only host events are observed.
+Internal CTA nodes 2..10 cannot be advanced or fabricated by the host API;
+their barriers/generations remain provider-declared until executable WHIRL
+proves implementation. No reduction files/services are changed or imported.
+No source-v1 promotion, implicit fallback, new compiler option/trace bit,
+profitability choice, executable normalization or GPU claim. Reports retain
+the first-line description and native source line conventions.
+
+Retained review family:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln2d-runtime/`.
+The immutable receipt retains native/export `.B`/`.T` and `.t`, guard bytes,
+runtime logs/library, sources/tools, sanitizer/compatibility evidence and
+commands/checksums. Index only after final-path native/host replay. Next LN3:
+complete C0/C1/C2 profitability and cost-gated selection; LN4 executable WHIRL,
+real CUDA provider and GPU certification remain open. COST/DECISION/TRANSFORM none.
+
 2026-10-28 LN2 bounded storage/event planning implemented:
 [Storage/event detail v0.1](AI-COMPILER-LAYERNORM-STORAGE-EVENTS-v0.1.md)
 defines the WOPT-owned read-only API for C0 direct, C1 retained d and C2 X-to-d

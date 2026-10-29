@@ -48,11 +48,15 @@ static BOOL LN2_Query(WN *scope, WN *value, const WOPT_DSL_NORMALIZATION_PLAN_RE
   UINT32 symbols = ST_Table_Size(CURRENT_SYMTAB), types = TY_Table_Size();
   WOPT_DSL_NORMALIZATION_TARGET_BINDING target;
   WOPT_DSL_NORMALIZATION_PLAN_BINDING b, quiet;
+  OPEN64_NORMALIZATION_GUARD guard, saved;
+  memset(&guard,0x5a,sizeof(guard));saved=guard;
   if (!WOPT_DSL_bind_normalization_target(scope,value,&r.target,&target,stderr,trace) ||
       !WOPT_DSL_bind_normalization_plan(scope,value,&r,&b,stderr,trace) ||
       !WOPT_DSL_bind_normalization_plan(scope,value,&r,&quiet,NULL,NULL)) return FALSE;
+  BOOL exported=WOPT_DSL_export_normalization_guard(scope,value,&r,&guard,NULL,NULL);
   DSL_IR_Image_Get_Header(&after);
-  return Check(b.status == expected && !memcmp(&b,&quiet,sizeof(b)) &&
+  return Check(b.status == expected && exported==(expected==WOPT_DSL_NORM_PLAN_BOUND) &&
+      (exported || !memcmp(&guard,&saved,sizeof(guard))) && !memcmp(&b,&quiet,sizeof(b)) &&
       !memcmp(&before,&after,sizeof(before)) && symbols == ST_Table_Size(CURRENT_SYMTAB) && types == TY_Table_Size(),
       "plan_status_read_only_trace_parity");
 }
@@ -121,6 +125,7 @@ static BOOL LN2_Negatives(WN *scope, WN *value, const char *arch, FILE *trace)
 
 /* Publish native plans and before/after source checkpoints, not executable IR.
  * Every variant is a fresh process; count-limit refuses retention capacity. */
+#ifndef DSL_NORMALIZATION_PLAN_NO_MAIN
 int main(int argc, char **argv)
 {
   if (argc != 5) return 2;
@@ -164,3 +169,4 @@ int main(int argc, char **argv)
   DSL_BUILDER_MAPPED_IMAGE_REQUEST checkpoint = {}; checkpoint.path = path;
   return LN1c_Source_Checkpoint(&checkpoint) ? 0 : 1;
 }
+#endif

@@ -159,3 +159,49 @@ BOOL WOPT_DSL_bind_normalization_plan(WN *scope, WN *assignment,
   if (trace) LN2_Trace(*request, b, trace);
   return TRUE;
 }
+
+/* Export freshly checked facts, never trust a caller-supplied prior binding.
+ * Homogeneous uint64 fields permit a compact fixed-column review trace. */
+BOOL WOPT_DSL_export_normalization_guard(WN *scope, WN *assignment,
+    const WOPT_DSL_NORMALIZATION_PLAN_REQUEST *r, OPEN64_NORMALIZATION_GUARD *out,
+    FILE *diagnostic, FILE *trace)
+{
+  WOPT_DSL_NORMALIZATION_PLAN_BINDING b;
+  if (!out || !WOPT_DSL_bind_normalization_plan(scope,assignment,r,&b,diagnostic,NULL)) return FALSE;
+  if (b.status != WOPT_DSL_NORM_PLAN_BOUND) {
+    if (trace) fprintf(trace,"AI_NORM_GUARD 1 REFUSE %u %u\n",b.status,b.target.source.source_line);
+    return FALSE;
+  }
+  const WOPT_DSL_NORMALIZATION_CHARACTERIZATION &s = b.target.source;
+  OPEN64_NORMALIZATION_GUARD g;
+  memset(&g,0,sizeof(g));
+  g.abi_version=1; g.size=sizeof(g); g.source_version=s.recipe; g.source_flags=s.flags;
+  g.pu=s.owner_pu; g.node=s.node_id; g.result=s.result_value_id; g.result_type=s.result_ty;
+  for (UINT32 i=0;i<3;++i) { g.operands[i]=s.operand_value_ids[i]; g.operand_types[i]=s.operand_types[i]; }
+  g.rows=s.rows; g.width=s.width; g.epsilon_bits=s.epsilon_bits; g.source_line=s.source_line;
+  g.architecture=b.target.architecture_id; g.route=r->target.route; g.toolkit=r->target.toolkit;
+  g.ptx=r->target.ptx; g.environment=r->target.environment; g.fp_options=r->target.fp_options;
+  g.kind=r->kind; g.layout=r->layout; g.contract=r->runtime_contract_id; g.context=r->context_id;
+  g.ownership=r->ownership; g.threads=r->threads_per_cta; g.ctas=r->launched_ctas; g.tail=r->tail_policy;
+  g.stride=r->row_stride_bytes; g.shared=r->shared_bytes; g.reserved_shared=b.reserved_shared;
+  g.shared_limit=b.shared_limit; g.shared_quantum=b.shared_quantum; g.participants=r->barrier_participants;
+  g.barriers=r->cta_barriers; g.banks=b.bank_count; g.bank_word=b.bank_word_bytes; g.warp=b.warp_lanes;
+  g.bank_conflict=b.bank_conflict_max; g.obligations=b.runtime_obligations;
+  for (UINT32 i=0;i<4;++i) {
+    g.ranges[i].role=r->ranges[i].allocation_id; g.ranges[i].capacity=r->ranges[i].allocation_bytes;
+    g.ranges[i].offset=r->ranges[i].offset_bytes; g.ranges[i].alignment=r->ranges[i].base_alignment;
+    g.ranges[i].lease=r->ranges[i].lease; g.ranges[i].bytes=b.bytes[i];
+  }
+  for (UINT32 i=0;i<WOPT_DSL_NORM_EVENT_COUNT;++i) g.before[i]=r->before[i];
+  *out=g;
+  if (trace) {
+    fprintf(trace,"AI_NORM_GUARD 1 EXPORT %u",(UINT32)(sizeof(g)/sizeof(UINT64)));
+    /* memcpy avoids type-punning unrelated uint64 typedefs. Source line last. */
+    for (UINT32 i=0;i<sizeof(g)/sizeof(UINT64);++i) {
+      UINT64 word; memcpy(&word,(const char *)&g+i*sizeof(word),sizeof(word));
+      fprintf(trace," %llu",(unsigned long long)word);
+    }
+    fprintf(trace," %u\n",s.source_line);
+  }
+  return TRUE;
+}
