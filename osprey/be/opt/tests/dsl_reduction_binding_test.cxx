@@ -3,6 +3,7 @@
  * This checks representation and preservation, not reduction execution.
  */
 #include <stdio.h>
+#include "../../../common/ir_image/dsl_image_service.h"
 #include <string.h>
 #include <stdlib.h>
 #include "defs.h"

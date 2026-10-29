@@ -230,7 +230,14 @@ extern TY_IDX DSL_Builder_Get_Value_Type (DSL_BUILDER_VALUE value);
 extern ST_IDX DSL_Builder_Get_Value_Result_Symbol (DSL_BUILDER_VALUE value);
 extern DSL_IR_VALUE_ID DSL_Builder_Get_Value_Image_Id
                                 (DSL_BUILDER_VALUE value);
+/* Start an independent program in an initialized compiler context. Discard
+ * prior builder handles and source-file indices and reset the DST producer;
+ * multiple PUs created before the next reset share one compile unit.
+ */
 extern BOOL DSL_Builder_Begin_Program (void);
+/* Abandon the current program and its handles/source indices, including DST
+ * producer state. A subsequent begin or legacy PU creation starts cleanly.
+ */
 extern void DSL_Builder_Abort_Program (void);
 extern DSL_BUILDER_PROGRAM_UNIT DSL_Builder_Create_Minimal_PU
                                 (const char *name);

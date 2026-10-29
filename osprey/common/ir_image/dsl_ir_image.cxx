@@ -2,29 +2,60 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * common/ir_image owns managed DSL rows using the existing SEGMENTED_ARRAY
+ * and WHIRL mapped-image services. Associations and transaction support are
+ * separate from persisted scalar/table identities. Callers establish image and
+ * active-PU lifetimes; process-visible rows do not authorize cross-PU mutation.
+ * Append helpers perform limited construction checks, while explicit validators
+ * and owning phases establish complete structural/domain contracts. This file
+ * does not select optimization policy or define a parallel IR file format.
+ * Design: doc/WHIRL-DSL-INFRASTRUCTURE.md, fixed-row mapped-image contracts.
+ */
+
 #include <string.h>
+#include "dsl_lowered_relation.h"
+#include "dsl_image_service.h"
 #include <string>
 #include <vector>
 
 #include "dsl_ir_image.h"
 #include "dsl_pu_specialize_internal.h"
-#include "dsl_ckks_expand_internal.h"
+#include "dsl_image_checkpoint_internal.h"
 #include "dsl_ckks_event.h"
 #include "dsl_opcode.h"
 #include "dsl_shape.h"
-#include "dsl_program_interface_internal.h"
+#include "../../be/com/dsl_program_interface_internal.h"
 #include "segmented_array.h"
 #include "strtab.h"
 
+/* Structural predicate implemented in dsl_ir_rewrite.cxx: check source value
+ * ownership/ST/TY agreement, local-level nonzero source/handle ST indices and
+ * pointer handle TY, using valid shared core/type/string state. Read-only; no
+ * local-ST residency, physical handle or full projection-row/role proof. */
 extern BOOL DSL_Runtime_Interface_Value_Record_Contract_Valid
                                 (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *);
+/* External shared predicate: require a nonzero in-range TY whose kind is
+ * POINTER; it does not validate the pointee or a physical handle symbol. */
 extern BOOL DSL_Program_Interface_Pointer_TY_Contract_Valid (TY_IDX);
+/* External runtime-input profile check using valid source/type/TCON/string
+ * tables. External tensors also consult local reference facts if their owner
+ * is already Current_pu; caller supplies that matching local context. No PU
+ * activation or mutation; row IDs/roles/flags/reserved checks remain separate. */
 extern BOOL DSL_Program_Interface_Runtime_Input_Contract_Valid
                                 (const DSL_RUNTIME_INPUT_RECORD *);
+/* Retire rewrite-owned external-source snapshots and advance their nonzero
+ * handle generation during whole-image reset. Does not reset persistent rows,
+ * free external files or restore an earlier handle generation; no PU switch. */
 extern void DSL_IR_External_Tensor_Source_Reset (void);
 
 typedef struct wn_map_tab WN_MAP_TAB;
 extern WN_MAP_TAB *Current_Map_Tab;
+/* Existing WN-map service used by call finalization: require live maptab/WN
+ * and an allocated INT32 map of the correct kind. Read the node's mapped word,
+ * returning zero for an unassigned/out-of-capacity node ID, not for invalid
+ * map arguments. No map allocation or image mutation; caller interprets zero
+ * as a missing output offset. */
 extern "C" INT32 IPA_WN_MAP32_Get (WN_MAP_TAB *maptab, WN_MAP wn_map,
                                     const WN *wn);
 
@@ -85,7 +116,9 @@ typedef struct {
 static std::vector<DSL_CALLSITE_RUNTIME_ASSOCIATION>
     DSL_callsite_runtime_associations;
 
+/* Test presence/offset bounds in the current string buffer, not string content. */
 static BOOL DSL_IR_Image_String_Id_Valid (STR_IDX id, BOOL required);
+/* Optionally write a caller-stream error and return FALSE without table changes. */
 static BOOL DSL_IR_Image_Report (FILE *diagnostic,
                                  const char *message,
                                  UINT32 id);
@@ -164,6 +197,7 @@ typedef char DSL_Runtime_Input_Call_Size_Check
     [sizeof(DSL_RUNTIME_INPUT_CALL_RECORD) ==
         DSL_RUNTIME_INPUT_CALL_RECORD_SIZE ? 1 : -1];
 
+/* Zero caller-owned POD storage if present, without allocating a table row. */
 template <typename RECORD>
 static void
 DSL_IR_Record_Init (RECORD *record)
@@ -172,6 +206,10 @@ DSL_IR_Record_Init (RECORD *record)
         memset (record, 0, sizeof(RECORD));
 }
 
+/*
+ * Check a one-based ID before optional row copying. NULL output is a bounds
+ * probe; invalid IDs write nothing. Referenced identities are not validated.
+ */
 template <typename TABLE, typename RECORD>
 static BOOL
 DSL_IR_Table_Get (TABLE &table, UINT32 id, RECORD *record)
@@ -184,6 +222,11 @@ DSL_IR_Table_Get (TABLE &table, UINT32 id, RECORD *record)
     return TRUE;
 }
 
+/*
+ * Retire external-source handles, truncate core/state/effect rows and delegate
+ * dependent image resets. This is a whole-image lifetime service, not rollback
+ * for one PU; shared strings, ST/TY tables and opcode/domain registries survive.
+ */
 void
 DSL_IR_Image_Reset (void)
 {
@@ -203,6 +246,8 @@ DSL_IR_Image_Reset (void)
     DSL_CKKS_Event_Image_Reset();
 }
 
+/* Report one call-image error if a stream is supplied, then return FALSE.
+ * Does not mutate image state or propagate fprintf status. */
 static BOOL
 DSL_Call_Image_Report (FILE *diagnostic, const char *message, UINT32 id)
 {
@@ -211,6 +256,8 @@ DSL_Call_Image_Report (FILE *diagnostic, const char *message, UINT32 id)
     return FALSE;
 }
 
+/* Clear the caller's header and fill magic/version and current row counts.
+ * NULL is a no-op; counts are not validated and tables are unchanged. */
 void
 DSL_Call_Image_Get_Header (DSL_CALL_IMAGE_HEADER *header)
 {
@@ -223,6 +270,9 @@ DSL_Call_Image_Get_Header (DSL_CALL_IMAGE_HEADER *header)
     header->callsite_count = DSL_callsite_metadata_table.Size();
 }
 
+/* Drop persisted call rows and borrowed associations without freeing WNs.
+ * IDs may be reused; dependent ABI/interface/core rows are not cleared here,
+ * so callers must coordinate their invalidation or broader image reset. */
 void
 DSL_Call_Image_Reset (void)
 {
@@ -231,6 +281,7 @@ DSL_Call_Image_Reset (void)
     DSL_callsite_runtime_associations.clear();
 }
 
+/* Test either persisted call table for rows, not association occupancy. */
 BOOL
 DSL_Call_Image_Has_Records (void)
 {
@@ -238,6 +289,8 @@ DSL_Call_Image_Has_Records (void)
            DSL_callsite_metadata_table.Size() != 0;
 }
 
+/* Find any nonnull borrowed call with this ID. This presence test does not
+ * check owner, row bounds, WN opcode or tree lifetime. No state is changed. */
 static BOOL
 DSL_Call_Image_Call_Has_Association (UINT32 id)
 {
@@ -249,6 +302,9 @@ DSL_Call_Image_Call_Has_Association (UINT32 id)
     return FALSE;
 }
 
+/* For the first association with record.id, require a nonzero matching owner
+ * and nonnull call. With none, accept a nonzero stored offset. This is only a
+ * metadata consistency check, not offset bounds, CALL/callee or PU legality. */
 static BOOL
 DSL_Call_Image_Association_Valid
         (const DSL_CALLSITE_METADATA_RECORD &record)
@@ -265,6 +321,12 @@ DSL_Call_Image_Association_Valid
     return record.wn_offset != 0;
 }
 
+/* Scan identity and callsite rows using current shared strings: enforce row
+ * IDs, required strings/nonzero symbol indices, source line/reserved rules,
+ * unique identity owners and association-or-offset consistency. The first
+ * error returns FALSE with optional diagnostics; tables are unchanged.
+ * Do not infer symbol liveness, flags/source-ordinal legality, native CALL
+ * identity or offset bounds, or require every callee to have an identity row. */
 BOOL
 DSL_Call_Image_Validate (FILE *diagnostic)
 {
@@ -304,6 +366,10 @@ DSL_Call_Image_Validate (FILE *diagnostic)
     return TRUE;
 }
 
+/* Preflight required fields, copy the row and assign its one-based table ID.
+ * Validate the whole call image, truncating only this append on FALSE; return
+ * INVALID_ID on rejection. Duplicate owners are rejected, not interned. Input
+ * and shared strings are unchanged; allocation exceptions have no rollback. */
 DSL_PU_SOURCE_IDENTITY_ID
 DSL_Call_Image_Add_PU_Identity
         (const DSL_PU_SOURCE_IDENTITY_RECORD *record)
@@ -322,6 +388,11 @@ DSL_Call_Image_Add_PU_Identity
     return index + 1;
 }
 
+/* Require matching nonzero owner and nonnull inputs, append a copied row with
+ * fresh ID, then borrow call in the association vector. On whole-call-image
+ * validation failure, pop/truncate the append and return INVALID_ID. Input
+ * stays unchanged; exceptions during allocation need not undo earlier writes.
+ * Caller owns physical CALL/callee proof and the borrowed WN/tree lifetime. */
 DSL_CALLSITE_METADATA_ID
 DSL_Call_Image_Add_Callsite
         (ST_IDX owner_pu_st, WN *call,
@@ -347,6 +418,8 @@ DSL_Call_Image_Add_Callsite
     return index + 1;
 }
 
+/* Scan for the first exact owner; copy its row or use NULL as a presence
+ * probe. FALSE leaves output unchanged. Shared string IDs are not deep copies. */
 BOOL
 DSL_Call_Image_Find_PU_Identity
         (ST_IDX owner_pu_st, DSL_PU_SOURCE_IDENTITY_RECORD *record)
@@ -359,6 +432,9 @@ DSL_Call_Image_Find_PU_Identity
     return FALSE;
 }
 
+/* Resolve the first pointer-equal borrowed association to its table row, with
+ * NULL output allowed as a probe. Failure leaves output unchanged. Stored
+ * offsets alone are not searched; mapped rows need Load_PU associations. */
 BOOL
 DSL_Call_Image_Find_Callsite
         (const WN *call, DSL_CALLSITE_METADATA_RECORD *record)
@@ -373,6 +449,8 @@ DSL_Call_Image_Find_Callsite
     return FALSE;
 }
 
+/* Return the first borrowed association pointer for id, or NULL if absent.
+ * No row-bound or WN validity check; the caller retains tree lifetime control. */
 const WN *
 DSL_Call_Image_Get_Call_WN (DSL_CALLSITE_METADATA_ID id)
 {
@@ -383,6 +461,10 @@ DSL_Call_Image_Get_Call_WN (DSL_CALLSITE_METADATA_ID id)
     return NULL;
 }
 
+/* Commit-only compare/replace of the first association matching id/expected.
+ * Require nonzero ID and nonnull pointers; FALSE changes nothing. This neither
+ * replaces a physical tree node nor updates/validates callsite metadata.
+ * The owning transaction supplies legal, live WNs and broader atomicity. */
 BOOL
 DSL_Call_Image_Replace_Call_WN
         (DSL_CALLSITE_METADATA_ID id, const WN *expected, WN *replacement)
@@ -401,8 +483,13 @@ DSL_Call_Image_Replace_Call_WN
     return FALSE;
 }
 
-/* The physical replacement and the table change belong to one terminal
- * program transaction; this helper is intentionally private to that path. */
+/* Terminal-transaction helper: preflight the new callee's identity and matching
+ * runtime-input call owners, compare/replace the borrowed WN, then retarget
+ * callsite and selected runtime-input metadata. If call-image validation fails,
+ * restore those metadata fields and the association before returning FALSE.
+ * Does not perform or undo physical WN replacement or prove symbol/type/PU
+ * legality; the owning program transaction supplies those and broader rollback.
+ * Scratch allocation precedes mutation; no exception rollback is promised. */
 BOOL
 DSL_Call_Image_Retarget_Call_WN
         (DSL_CALLSITE_METADATA_ID callsite_id, const WN *expected,
@@ -448,20 +535,28 @@ DSL_Call_Image_Retarget_Call_WN
     return TRUE;
 }
 
+/* Return persisted identity table size without validation or mutation. */
 UINT32 DSL_Call_Image_PU_Identity_Count (void)
 { return DSL_pu_source_identity_table.Size(); }
 
+/* Return persisted callsite size, independently of runtime associations. */
 UINT32 DSL_Call_Image_Callsite_Count (void)
 { return DSL_callsite_metadata_table.Size(); }
 
+/* Copy a one-based identity row, or probe with NULL. Invalid IDs leave output
+ * unchanged; copied STR_IDX fields still refer to shared string storage. */
 BOOL DSL_Call_Image_Get_PU_Identity
         (DSL_PU_SOURCE_IDENTITY_ID id, DSL_PU_SOURCE_IDENTITY_RECORD *record)
 { return DSL_IR_Table_Get(DSL_pu_source_identity_table, id, record); }
 
+/* Copy a one-based callsite row, or probe with NULL; invalid IDs leave output
+ * unchanged. Does not turn the persisted offset into a runtime WN pointer. */
 BOOL DSL_Call_Image_Get_Callsite
         (DSL_CALLSITE_METADATA_ID id, DSL_CALLSITE_METADATA_RECORD *record)
 { return DSL_IR_Table_Get(DSL_callsite_metadata_table, id, record); }
 
+/* Reject zero symbol index, then test stored callsite owner equality. No tree
+ * walk, association validation or activation of the named PU is performed. */
 BOOL
 DSL_Call_Image_PU_Has_Calls (ST_IDX owner_pu_st)
 {
@@ -474,6 +569,12 @@ DSL_Call_Image_PU_Has_Calls (ST_IDX owner_pu_st)
     return FALSE;
 }
 
+/* With writer-established Current_Map_Tab/INT32 offset map and live, valid
+ * associations, publish each selected owner's WN offset, then validate all
+ * call rows. No call rows means TRUE without inspecting off_map. A missing
+ * map, zero mapped offset or final validation failure returns FALSE; earlier
+ * writes remain. This does not establish PU context or prove all owner rows
+ * have freshly mapped associations. */
 BOOL
 DSL_Call_Image_Finalize_PU (ST_IDX owner_pu_st, WN_MAP off_map)
 {
@@ -495,6 +596,11 @@ DSL_Call_Image_Finalize_PU (ST_IDX owner_pu_st, WN_MAP off_map)
     return DSL_Call_Image_Validate(NULL);
 }
 
+/* Check nonzero owner index/base/size, then append borrowed associations for
+ * that owner's offsets in (0, tree_size). The reader must separately prove
+ * WN boundaries, full extents and CALL/callee legality, and retain the tree.
+ * Never clears/deduplicates associations or switches PUs. A later bad offset
+ * or allocation failure leaves earlier appends; no transactional rollback. */
 BOOL
 DSL_Call_Image_Load_PU
         (ST_IDX owner_pu_st, const void *tree_base, UINT64 tree_size)
@@ -518,6 +624,14 @@ DSL_Call_Image_Load_PU
     return TRUE;
 }
 
+/* From an aligned, readable buffer independent of live tables, verify exact
+ * header/size before mutation. Then reset call rows/associations, copy rows and
+ * validate using loaded shared strings. With associations cleared, every call
+ * needs a nonzero persisted offset; tree/offset bounds remain reader-owned.
+ * Invalid rows leave call tables empty; old rows/associations are not restored.
+ * Success retains no section pointers and needs Load_PU for WN lookups. Other
+ * image families are untouched. NULL is invalid (reader handles absence), NULL
+ * diagnostic is silent, and allocation failures have no rollback guarantee. */
 BOOL
 DSL_Call_Image_Load_Mapped
         (const void *section_base, UINT64 section_size, FILE *diagnostic)
@@ -556,6 +670,8 @@ DSL_Call_Image_Load_Mapped
     return TRUE;
 }
 
+/* Optionally print one ABI-image error and return FALSE without table writes.
+ * A NULL diagnostic is silent; stream errors are not propagated. */
 static BOOL
 DSL_Call_ABI_Image_Report (FILE *diagnostic, const char *message, UINT32 id)
 {
@@ -565,6 +681,8 @@ DSL_Call_ABI_Image_Report (FILE *diagnostic, const char *message, UINT32 id)
     return FALSE;
 }
 
+/* Clear the supplied header and fill magic/version and argument count.
+ * NULL is a no-op; no table validation or mutation occurs. */
 void
 DSL_Call_ABI_Image_Get_Header (DSL_CALL_ABI_IMAGE_HEADER *header)
 {
@@ -576,18 +694,26 @@ DSL_Call_ABI_Image_Get_Header (DSL_CALL_ABI_IMAGE_HEADER *header)
     header->argument_count = DSL_call_argument_table.Size();
 }
 
+/* Discard only ABI argument rows, not call/core tables or physical WN trees. */
 void
 DSL_Call_ABI_Image_Reset (void)
 {
     DSL_call_argument_table.Delete_down_to(0);
 }
 
+/* Test argument table occupancy without validation or mutation. */
 BOOL
 DSL_Call_ABI_Image_Has_Records (void)
 {
     return DSL_call_argument_table.Size() != 0;
 }
 
+/* Check sequential IDs, call/value links, non-sentinel ordinals, zero flags and
+ * role string IDs in current call/core/string context. Pairwise scans reject
+ * duplicate callsite/actual slots and compare role string contents for equal
+ * callee/formal identities. FALSE reports the first mismatch; NULL is silent.
+ * Tables are unchanged. This does not validate native slot bounds, ST/TY or
+ * owner compatibility, passing mode, contiguous slots or whole call images. */
 BOOL
 DSL_Call_ABI_Image_Validate (FILE *diagnostic)
 {
@@ -629,6 +755,10 @@ DSL_Call_ABI_Image_Validate (FILE *diagnostic)
     return TRUE;
 }
 
+/* Resolve call's borrowed association and require matching record.callsite_id.
+ * Copy the row with a fresh ID, then validate the whole ABI table; on FALSE,
+ * truncate this append and return INVALID_ID. Input/shared strings and physical
+ * actuals are untouched; allocation exceptions have no rollback guarantee. */
 DSL_CALL_ARGUMENT_ID
 DSL_Call_ABI_Image_Add_Argument
         (const WN *call, const DSL_CALL_ARGUMENT_RECORD *record)
@@ -649,12 +779,15 @@ DSL_Call_ABI_Image_Add_Argument
     return index + 1;
 }
 
+/* Return all argument rows, without validation or mutation. */
 UINT32
 DSL_Call_ABI_Image_Argument_Count (void)
 {
     return DSL_call_argument_table.Size();
 }
 
+/* Copy the one-based argument row or probe with NULL output; invalid IDs leave
+ * output unchanged. The copied role remains a shared STR_IDX, not owned text. */
 BOOL
 DSL_Call_ABI_Image_Get_Argument
         (DSL_CALL_ARGUMENT_ID id, DSL_CALL_ARGUMENT_RECORD *record)
@@ -662,6 +795,8 @@ DSL_Call_ABI_Image_Get_Argument
     return DSL_IR_Table_Get(DSL_call_argument_table, id, record);
 }
 
+/* Scan for the first exact callsite/actual key without validating key bounds.
+ * Copy its row or probe with NULL; FALSE leaves output unchanged. */
 BOOL
 DSL_Call_ABI_Image_Find_Argument_By_Id
         (DSL_CALLSITE_METADATA_ID callsite_id, UINT32 actual_ordinal,
@@ -675,6 +810,12 @@ DSL_Call_ABI_Image_Find_Argument_By_Id
     return FALSE;
 }
 
+/* Commit-only metadata shift: require a valid callsite/nonzero count, matching
+ * actual/formal ordinals and the implemented overflow preflight, then increase
+ * both ordinals at/above first_ordinal and validate the whole ABI table. FALSE
+ * before the shift leaves state alone, but final validation has no rollback
+ * (including a shift landing on INVALID_ORDINAL). No physical actual/formal
+ * edits occur; the owning transaction must provide broader atomicity. */
 BOOL
 DSL_Call_ABI_Image_Shift_Arguments
         (DSL_CALLSITE_METADATA_ID callsite_id,
@@ -708,6 +849,9 @@ DSL_Call_ABI_Image_Shift_Arguments
     return DSL_Call_ABI_Image_Validate(NULL);
 }
 
+/* Resolve the borrowed call pointer, then search its numeric actual slot.
+ * NULL output probes presence; FALSE leaves output unchanged. This does not
+ * inspect physical actuals or validate their bounds. */
 BOOL
 DSL_Call_ABI_Image_Find_Argument
         (const WN *call, UINT32 actual_ordinal,
@@ -719,6 +863,11 @@ DSL_Call_ABI_Image_Find_Argument
                (callsite.id, actual_ordinal, record);
 }
 
+/* Commit-only value-ID compare/replace for an associated call/actual. Require
+ * an in-range nonzero replacement ID; a matched row with unexpected old value
+ * returns FALSE unchanged. No matching argument is a successful no-op. Does
+ * not rewrite physical actuals, validate replacement type/owner/liveness or run
+ * image validators; the owning transaction supplies those obligations. */
 BOOL
 DSL_Call_ABI_Image_Update_Argument_Value
         (const WN *call, UINT32 actual_ordinal,
@@ -743,6 +892,9 @@ DSL_Call_ABI_Image_Update_Argument_Value
     return TRUE;
 }
 
+/* Count argument rows whose resolved callsite names this callee/formal pair,
+ * skipping missing callsites. This is a global metadata census only, not
+ * permission to inspect/transform the opposite PU or switch its context. */
 UINT32
 DSL_Call_ABI_Image_Callee_Formal_Count
         (ST_IDX callee_pu_st, UINT32 callee_formal_ordinal)
@@ -760,6 +912,9 @@ DSL_Call_ABI_Image_Callee_Formal_Count
     return count;
 }
 
+/* Select index as a zero-based ordinal among matching callee/formal rows in
+ * table order, skipping missing callsites. Copy the row or probe with NULL;
+ * FALSE leaves output unchanged. No physical formals or PU contexts are used. */
 BOOL
 DSL_Call_ABI_Image_Get_Callee_Formal_Argument
         (ST_IDX callee_pu_st, UINT32 callee_formal_ordinal, UINT32 index,
@@ -780,6 +935,12 @@ DSL_Call_ABI_Image_Get_Callee_Formal_Argument
     return FALSE;
 }
 
+/* Require an aligned, readable section independent of live tables and loaded
+ * call/core/string context. Check exact header/size before replacing argument
+ * rows, then validate copied rows; rejection after replacement clears the ABI
+ * table rather than restoring old data. Other tables are unchanged, success
+ * retains no input pointers, and allocation failures have no rollback promise.
+ * NULL is invalid, not an absent-section protocol; NULL diagnostic is silent. */
 BOOL
 DSL_Call_ABI_Image_Load_Mapped
         (const void *section_base, UINT64 section_size, FILE *diagnostic)
@@ -810,6 +971,8 @@ DSL_Call_ABI_Image_Load_Mapped
     return TRUE;
 }
 
+/* Optionally print one PU-interface image error, then return FALSE without
+ * changing tables. NULL is silent; fprintf status is not propagated. */
 static BOOL
 DSL_PU_Interface_Image_Report
         (FILE *diagnostic, const char *message, UINT32 id)
@@ -820,6 +983,8 @@ DSL_PU_Interface_Image_Report
     return FALSE;
 }
 
+/* Clear the caller's header, then fill magic/version and formal table size.
+ * NULL is a no-op; this does not validate rows or change image state. */
 void
 DSL_PU_Interface_Image_Get_Header
         (DSL_PU_INTERFACE_IMAGE_HEADER *header)
@@ -832,18 +997,28 @@ DSL_PU_Interface_Image_Get_Header
     header->formal_count = DSL_pu_formal_table.Size();
 }
 
+/* Drop only persisted formal rows; IDs may be reused. No physical formals or
+ * source values are deleted, and dependent runtime/program interface rows are
+ * not reset. Caller coordinates their invalidation or a whole-image reset. */
 void
 DSL_PU_Interface_Image_Reset (void)
 {
     DSL_pu_formal_table.Delete_down_to(0);
 }
 
+/* Test table occupancy, not whether a selected PU has live physical formals.
+ * Retired/projected source rows still count; no filtering or mutation. */
 BOOL
 DSL_PU_Interface_Image_Has_Records (void)
 {
     return DSL_pu_formal_table.Size() != 0;
 }
 
+/* Reject NULL, copy the row with its fresh one-based ID, then use the external
+ * structural validator on the complete formal table. FALSE truncates only this
+ * append and returns INVALID_ID; duplicate relations are rejected, not interned.
+ * Input is unchanged; no physical entry edits, active-PU proof or allocation
+ * exception rollback. Global ST/PU and source-value context are caller-owned. */
 DSL_PU_FORMAL_ID
 DSL_PU_Interface_Image_Add_Formal (const DSL_PU_FORMAL_RECORD *record)
 {
@@ -859,12 +1034,17 @@ DSL_PU_Interface_Image_Add_Formal (const DSL_PU_FORMAL_RECORD *record)
     return index + 1;
 }
 
+/* Return table size, including retired/projected source rows; no physical
+ * formal census, validation or mutation. */
 UINT32
 DSL_PU_Interface_Image_Formal_Count (void)
 {
     return DSL_pu_formal_table.Size();
 }
 
+/* Use the shared one-based bounds check for an optional scalar-row copy.
+ * NULL output probes presence; invalid IDs leave output unchanged. Does not
+ * resolve ST/TY/value references or inspect the owning PU. */
 BOOL
 DSL_PU_Interface_Image_Get_Formal
         (DSL_PU_FORMAL_ID id, DSL_PU_FORMAL_RECORD *record)
@@ -872,6 +1052,9 @@ DSL_PU_Interface_Image_Get_Formal
     return DSL_IR_Table_Get(DSL_pu_formal_table, id, record);
 }
 
+/* Scan for the first exact owner/source-ordinal pair without revalidating
+ * either key. Copy its row or probe with NULL; FALSE leaves output unchanged.
+ * Does not activate the named PU or translate to a current physical position. */
 BOOL
 DSL_PU_Interface_Image_Find_Formal
         (ST_IDX owner_pu_st, UINT32 formal_ordinal,
@@ -886,8 +1069,13 @@ DSL_PU_Interface_Image_Find_Formal
     return FALSE;
 }
 
-/* Commit-only ordinal shift. The physical entry is rebuilt by the owning
- * transaction before a PU-level verifier observes these rows again. */
+/* Commit-only source-ordinal shift. Preflight nonzero count/owner, a valid
+ * nonsentinel first ordinal, the owner's call-image identity and the overflow
+ * bound before shifting matching rows. Then run the whole formal-table
+ * structural validator; FALSE there does not undo shifts, including a shift
+ * landing on INVALID_ORDINAL. No physical entry or related ABI/projection rows
+ * are changed. The owning transaction supplies broader rollback and rebuilds
+ * the physical interface before active-PU verification observes these rows. */
 BOOL
 DSL_PU_Interface_Image_Shift_Formals
         (ST_IDX owner_pu_st, UINT32 first_ordinal, UINT32 count)
@@ -915,6 +1103,13 @@ DSL_PU_Interface_Image_Shift_Formals
     return DSL_PU_Interface_Image_Validate(NULL);
 }
 
+/* From an aligned/readable section independent of live formal storage, verify
+ * exact header/size before mutation. Reset the formal table, copy rows, then
+ * structurally validate against loaded global ST/PU and core-value context.
+ * Row failure clears replacements, not restores old rows; allocation failure
+ * has no rollback guarantee. Other tables/trees are untouched and no section
+ * pointers retained. NULL is invalid (reader handles absence by reset); NULL
+ * diagnostic is silent. Physical order/identity still needs active-PU checks. */
 BOOL
 DSL_PU_Interface_Image_Load_Mapped
         (const void *section_base, UINT64 section_size, FILE *diagnostic)
@@ -948,6 +1143,8 @@ DSL_PU_Interface_Image_Load_Mapped
     return TRUE;
 }
 
+/* Optionally print one runtime-image error and return FALSE without mutation.
+ * NULL is silent; stream errors are not propagated. */
 static BOOL
 DSL_Runtime_Interface_Report
         (FILE *diagnostic, const char *message, UINT32 id)
@@ -958,6 +1155,9 @@ DSL_Runtime_Interface_Report
     return FALSE;
 }
 
+/* Scan a readable count-sized borrowed array for the first owner/value pair.
+ * Return a borrowed element or NULL, without filtering retirement or validating
+ * keys/uniqueness. The caller keeps array storage stable while using the result. */
 static const DSL_RUNTIME_VALUE_PROJECTION_RECORD *
 DSL_Runtime_Interface_Find_Value_In_View
         (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *values,
@@ -972,6 +1172,15 @@ DSL_Runtime_Interface_Find_Value_In_View
     return NULL;
 }
 
+/* Validate readable count-sized borrowed projection arrays in valid shared
+ * core/ST/TY/string/call/ABI/formal context. Formal retirement comes from the
+ * supplied array when use_retired_view is TRUE, otherwise live program rows;
+ * source retirement/redirect evidence always comes from the current core image.
+ * Check row identity, source ownership/handle types, formal provenance, retired
+ * view targets, uniqueness, call direction/type agreement and complete coverage.
+ * No live mutation or PU activation; first error returns FALSE with optional
+ * diagnostic. This does not prove physical WNs/local ST residency or validate
+ * the complete program image. Referenced core/type/string state is prevalidated. */
 static BOOL
 DSL_Runtime_Interface_View_Validate
         (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *values,
@@ -1077,6 +1286,8 @@ DSL_Runtime_Interface_View_Validate
         }
     }
 
+    /* Relate each proposed call to both source and callee-formal projections;
+     * input roles additionally retain their original call-ABI value identity. */
     for (UINT32 i = 0; i < call_count; ++i) {
         const DSL_RUNTIME_CALL_PROJECTION_RECORD &record = calls[i];
         DSL_CALLSITE_METADATA_RECORD callsite;
@@ -1140,6 +1351,8 @@ DSL_Runtime_Interface_View_Validate
         }
     }
 
+    /* Coverage uses all stored call/formal metadata, not an active PU tree.
+     * Zero input relations denotes a result; more than one is ambiguous. */
     for (UINT32 call_id = 1;
          call_id <= DSL_Call_Image_Callsite_Count(); ++call_id) {
         DSL_CALLSITE_METADATA_RECORD callsite;
@@ -1217,12 +1430,18 @@ DSL_Runtime_Interface_View_Validate
     return TRUE;
 }
 
+/* Cross-check a proposed readable runtime view against snapshots of the five
+ * live program tables, before runtime-image replacement. Requires valid shared
+ * source/type/string/call/formal context; no live writes or PU activation.
+ * FALSE reports the first mismatch; scratch allocation exceptions propagate. */
 static BOOL DSL_Program_Interface_Validate_Runtime_View
         (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *values,
          UINT32 value_count,
          const DSL_RUNTIME_CALL_PROJECTION_RECORD *calls,
          UINT32 call_count, FILE *diagnostic);
 
+/* Zero the caller's header and fill magic/version plus both current counts.
+ * NULL is a no-op; tables are neither validated nor changed. */
 void
 DSL_Runtime_Interface_Image_Get_Header
         (DSL_RUNTIME_INTERFACE_IMAGE_HEADER *header)
@@ -1238,6 +1457,9 @@ DSL_Runtime_Interface_Image_Get_Header
         DSL_runtime_call_projection_table.Size();
 }
 
+/* Discard only projection rows, not source/ABI/formal/program data or WNs.
+ * IDs may be reused; dependent invalidation and physical reconstruction belong
+ * to the caller or a broader image reset. */
 void
 DSL_Runtime_Interface_Image_Reset (void)
 {
@@ -1245,6 +1467,8 @@ DSL_Runtime_Interface_Image_Reset (void)
     DSL_runtime_call_projection_table.Delete_down_to(0);
 }
 
+/* Test either table's occupancy, including retired values. Does not walk WNs
+ * or establish that an empty image satisfies current call/formal coverage. */
 BOOL
 DSL_Runtime_Interface_Image_Has_Records (void)
 {
@@ -1252,6 +1476,11 @@ DSL_Runtime_Interface_Image_Has_Records (void)
            DSL_runtime_call_projection_table.Size() != 0;
 }
 
+/* Snapshot both segmented tables into vectors and run the shared view checker
+ * with live retired-formal context. Caller supplies valid referenced shared
+ * state; live rows remain unchanged and no PU is activated. Does not invoke the
+ * program-image cross-validator or physical-PU verifier. FALSE is the checker's
+ * first reported error; NULL diagnostic is silent, allocation exceptions escape. */
 BOOL
 DSL_Runtime_Interface_Image_Validate (FILE *diagnostic)
 {
@@ -1267,18 +1496,24 @@ DSL_Runtime_Interface_Image_Validate (FILE *diagnostic)
                 FALSE, diagnostic);
 }
 
+/* Return all value projection rows, including retired provenance, without
+ * filtering or validation. */
 UINT32
 DSL_Runtime_Interface_Image_Value_Count (void)
 {
     return DSL_runtime_value_projection_table.Size();
 }
 
+/* Return call projection table size, independently of physical CALL trees. */
 UINT32
 DSL_Runtime_Interface_Image_Call_Count (void)
 {
     return DSL_runtime_call_projection_table.Size();
 }
 
+/* Shared one-based bounds check and optional scalar-row copy, retired rows
+ * included. NULL probes presence; invalid IDs leave output unchanged. No ST/TY
+ * resolution, handle ownership transfer or PU activation. */
 BOOL
 DSL_Runtime_Interface_Image_Get_Value
         (DSL_RUNTIME_VALUE_PROJECTION_ID id,
@@ -1287,6 +1522,8 @@ DSL_Runtime_Interface_Image_Get_Value
     return DSL_IR_Table_Get(DSL_runtime_value_projection_table, id, record);
 }
 
+/* Copy a one-based call projection or probe with NULL; invalid IDs leave output
+ * unchanged. Does not resolve its IDs into physical calls or switch PU context. */
 BOOL
 DSL_Runtime_Interface_Image_Get_Call
         (DSL_RUNTIME_CALL_PROJECTION_ID id,
@@ -1295,6 +1532,9 @@ DSL_Runtime_Interface_Image_Get_Call
     return DSL_IR_Table_Get(DSL_runtime_call_projection_table, id, record);
 }
 
+/* Scan the first exact owner/source pair whose RETIRED_VIEW bit is clear.
+ * NULL output probes existence; failure leaves it unchanged. No key validation
+ * or PU activation. Unlike Get_Value, this deliberately hides retired rows. */
 BOOL
 DSL_Runtime_Interface_Image_Find_Value
         (ST_IDX owner_pu_st, DSL_IR_VALUE_ID source_value_id,
@@ -1315,6 +1555,11 @@ DSL_Runtime_Interface_Image_Find_Value
     return FALSE;
 }
 
+/* Read-only retirement preflight: absence is TRUE, otherwise require exactly
+ * one unflagged local projection, no referencing call projection, and an
+ * unretired replacement lookup with equal handle TY. Does not require distinct
+ * source/replacement IDs or prove physical handle uses, core retirement or
+ * redirect legality; the owning native-view transaction supplies those checks. */
 BOOL
 DSL_Runtime_Interface_Image_Can_Retire_View
         (ST_IDX owner_pu_st, DSL_IR_VALUE_ID source_value_id,
@@ -1349,6 +1594,11 @@ DSL_Runtime_Interface_Image_Can_Retire_View
     return TRUE;
 }
 
+/* Recheck retirement preflight, then set only the source projection's retired
+ * provenance bit. FALSE changes nothing; absent source is a TRUE no-op. Does
+ * not set a replacement link, retire core rows, rewrite WNs or validate the
+ * resulting image. Caller owns core redirect/retirement ordering, physical-use
+ * proof, postconditions and any broader rollback. */
 BOOL
 DSL_Runtime_Interface_Image_Retire_View
         (ST_IDX owner_pu_st, DSL_IR_VALUE_ID source_value_id,
@@ -1369,6 +1619,9 @@ DSL_Runtime_Interface_Image_Retire_View
     return TRUE;
 }
 
+/* Scan the first exact callsite/actual pair, with optional scalar copy or NULL
+ * probe. FALSE leaves output unchanged; keys/WNs are not validated and no PU
+ * context is established. */
 BOOL
 DSL_Runtime_Interface_Image_Find_Call
         (DSL_CALLSITE_METADATA_ID callsite_id, UINT32 actual_ordinal,
@@ -1388,10 +1641,14 @@ DSL_Runtime_Interface_Image_Find_Call
 }
 
 /*
- * Commit-only support for an atomic native-value replacement. A local runtime
- * handle remains stable while its canonical source value/ST moves to the
- * replacement. Associated call projections follow the same logical value;
- * callers reach this helper only through a transaction that owns rollback.
+ * Commit-only metadata redirect for distinct existing equal-TY source values.
+ * With no source projection, return TRUE unchanged. Otherwise require a unique
+ * local source projection with matching ST/TY, validate a copied replacement
+ * record and preflight referring call source IDs before writes. Preserve the
+ * handle/row identity, update source value/ST/TY and related call source IDs.
+ * FALSE leaves rows unchanged; no full-view uniqueness/retirement validation
+ * or physical rewrite occurs. The owning transaction establishes legality,
+ * verifies postconditions and provides rollback of the broader replacement.
  */
 BOOL
 DSL_Runtime_Interface_Image_Redirect_Value
@@ -1447,6 +1704,10 @@ DSL_Runtime_Interface_Image_Redirect_Value
     return TRUE;
 }
 
+/* Commit-only append of a copied value projection with a fresh one-based ID.
+ * Reject NULL only; no ownership/type/role/uniqueness checks or image validation.
+ * Input is unchanged, scalar IDs retain shared identity. Owning transaction
+ * supplies preflight/postconditions/rollback; allocation failures escape. */
 DSL_RUNTIME_VALUE_PROJECTION_ID
 DSL_Runtime_Interface_Image_Add_Value
         (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *record)
@@ -1459,6 +1720,10 @@ DSL_Runtime_Interface_Image_Add_Value
     return index + 1;
 }
 
+/* Commit-only append of a copied call projection with a fresh one-based ID.
+ * Reject NULL only; links, roles and complete coverage remain caller-validated.
+ * Input/physical calls are unchanged, and broader transaction rollback and
+ * allocation-failure handling are not provided here. */
 DSL_RUNTIME_CALL_PROJECTION_ID
 DSL_Runtime_Interface_Image_Add_Call
         (const DSL_RUNTIME_CALL_PROJECTION_RECORD *record)
@@ -1477,6 +1742,12 @@ struct DSL_RUNTIME_INTERFACE_MAPPED_VIEW {
     const DSL_RUNTIME_CALL_PROJECTION_RECORD *calls;
 };
 
+/* Preflight an aligned/readable section and output view: subtract checked row
+ * extents from remaining bytes, require exact size, then validate borrowed rows
+ * with supplied-or-live retired-formal context. Caller supplies valid shared
+ * tables and readable retired rows when selected. On FALSE, live tables and
+ * output view are unchanged; NULL diagnostic is silent. On TRUE, view borrows
+ * the section until commit; no physical proof or program-image cross-check. */
 static BOOL
 DSL_Runtime_Interface_Mapped_View_Parse
         (const void *section_base, UINT64 section_size,
@@ -1527,6 +1798,10 @@ DSL_Runtime_Interface_Mapped_View_Parse
     return TRUE;
 }
 
+/* Commit a previously parsed/validated view whose independent section storage
+ * remains readable: reset both projection tables and copy rows into them.
+ * Retain no input pointers; no other tables/trees change. No revalidation or
+ * allocation-exception rollback is provided after the reset. */
 static void
 DSL_Runtime_Interface_Mapped_View_Commit
         (const DSL_RUNTIME_INTERFACE_MAPPED_VIEW &view)
@@ -1540,6 +1815,14 @@ DSL_Runtime_Interface_Mapped_View_Commit
             (view.calls, view.header->call_projection_count);
 }
 
+/* Parse/validate proposed rows with live retired-formal state, then, if program
+ * rows exist, cross-check their snapshot against this runtime view before any
+ * live mutation. Boolean rejection preserves old projections. Require aligned,
+ * readable independent section storage and valid shared core/ST/TY/string and
+ * call/ABI/formal context throughout. Commit resets/copies only projections;
+ * allocation failure there has no rollback guarantee. No retained section
+ * pointers, PU activation or physical ABI proof. NULL section is invalid (reader
+ * handles absence); NULL diagnostic is silent. */
 BOOL
 DSL_Runtime_Interface_Image_Load_Mapped
         (const void *section_base, UINT64 section_size, FILE *diagnostic)
@@ -1558,6 +1841,8 @@ DSL_Runtime_Interface_Image_Load_Mapped
     return TRUE;
 }
 
+/* Optionally print one program-image error and return FALSE without changing
+ * image state. NULL is silent; fprintf status is not propagated. */
 static BOOL
 DSL_Program_Interface_Report
         (FILE *diagnostic, const char *message, UINT32 id)
@@ -1568,6 +1853,8 @@ DSL_Program_Interface_Report
     return FALSE;
 }
 
+/* Require a nonzero numeric owner with a call-image source identity. This is
+ * a metadata presence check, not live ST/PU resolution or scope activation. */
 static BOOL
 DSL_Program_Interface_PU_Valid (ST_IDX owner_pu_st)
 {
@@ -1576,6 +1863,8 @@ DSL_Program_Interface_PU_Valid (ST_IDX owner_pu_st)
            DSL_Call_Image_Find_PU_Identity(owner_pu_st, &identity);
 }
 
+/* Return the first formal-ID match in a readable contiguous count-sized view,
+ * or NULL. Result borrows that storage; no key/uniqueness validation or writes. */
 static const DSL_RETIRED_FORMAL_RECORD *
 DSL_Program_Interface_Find_Retired_Formal_In_View
         (const DSL_RETIRED_FORMAL_RECORD *records, UINT32 count,
@@ -1588,6 +1877,8 @@ DSL_Program_Interface_Find_Retired_Formal_In_View
     return NULL;
 }
 
+/* Return a borrowed first argument-ID match from a readable contiguous view,
+ * or NULL; caller owns view lifetime and key/uniqueness validation. */
 static const DSL_RETIRED_CALL_ARGUMENT_RECORD *
 DSL_Program_Interface_Find_Retired_Call_In_View
         (const DSL_RETIRED_CALL_ARGUMENT_RECORD *records, UINT32 count,
@@ -1600,6 +1891,8 @@ DSL_Program_Interface_Find_Retired_Call_In_View
     return NULL;
 }
 
+/* Find the first owner/final-ordinal pair in a readable contiguous view.
+ * Return a borrowed element or NULL; no PU activation or key validation. */
 static const DSL_RUNTIME_INPUT_BINDING_RECORD *
 DSL_Program_Interface_Find_Binding_In_View
         (const DSL_RUNTIME_INPUT_BINDING_RECORD *records, UINT32 count,
@@ -1613,6 +1906,8 @@ DSL_Program_Interface_Find_Binding_In_View
     return NULL;
 }
 
+/* Find the first owner/source pair in a readable count-sized view, including
+ * retired projection rows. Return borrowed storage or NULL; do not validate it. */
 static const DSL_RUNTIME_VALUE_PROJECTION_RECORD *
 DSL_Program_Interface_Find_Projection_In_View
         (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *records, UINT32 count,
@@ -1626,6 +1921,8 @@ DSL_Program_Interface_Find_Projection_In_View
     return NULL;
 }
 
+/* Find the first callsite/actual pair in a readable count-sized view. Return
+ * a borrowed element or NULL, without checking direction or physical WNs. */
 static const DSL_RUNTIME_CALL_PROJECTION_RECORD *
 DSL_Program_Interface_Find_Call_Projection_In_View
         (const DSL_RUNTIME_CALL_PROJECTION_RECORD *records, UINT32 count,
@@ -1639,6 +1936,9 @@ DSL_Program_Interface_Find_Call_Projection_In_View
     return NULL;
 }
 
+/* Count stored source formals for owner and subtract matching retirement rows,
+ * clamping at zero. Caller has validated the readable retirement view; this
+ * does not prove distinct retirement membership or inspect physical formals. */
 static UINT32
 DSL_Program_Interface_Live_Formal_Count
         (const DSL_RETIRED_FORMAL_RECORD *records, UINT32 count,
@@ -1659,6 +1959,9 @@ DSL_Program_Interface_Live_Formal_Count
     return formals >= retired ? formals - retired : 0;
 }
 
+/* Order validated bindings by kind, role text, then input source owner/value
+ * and input ID; missing input links fall back to numeric IDs. Caller supplies
+ * readable arrays and valid role strings. No mutation, PU lookup or policy. */
 static BOOL
 DSL_Program_Interface_Binding_Less
         (const DSL_RUNTIME_INPUT_BINDING_RECORD &left,
@@ -1687,6 +1990,17 @@ DSL_Program_Interface_Binding_Less
     return left.runtime_input_id < right.runtime_input_id;
 }
 
+/* Check readable count-sized program views against valid shared core/ST/TY/
+ * TCON/string/call/ABI/formal facts: exact retirement provenance and incoming
+ * coverage, runtime input profiles, canonical binding order, root ownership,
+ * matching flow endpoints, root coverage, acyclicity/reachability and incoming
+ * threaded-call coverage. With validate_runtime_projections, also require each
+ * canonical formal/argument to be exactly retired or present in the supplied
+ * runtime views; those views are not fully validated here. External-input
+ * checks may consult an already-active source PU's matching local context.
+ * No live writes or PU activation; first mismatch returns FALSE with optional
+ * diagnostics. Deadness/physical ABI/domain proof remains phase-owned, and
+ * scratch allocation exceptions are not converted into Boolean failures. */
 static BOOL
 DSL_Program_Interface_View_Validate
         (const DSL_RETIRED_FORMAL_RECORD *retired_formals,
@@ -1787,6 +2101,8 @@ DSL_Program_Interface_View_Validate
                        (diagnostic, "incomplete retired call coverage", i + 1);
     }
 
+    /* Standalone program parsing omits this cross-image exclusivity gate;
+     * coordinated loads enable it only after both proposed views are available. */
     for (UINT32 i = 1;
          validate_runtime_projections &&
          i <= DSL_PU_Interface_Image_Formal_Count(); ++i) {
@@ -1827,6 +2143,8 @@ DSL_Program_Interface_View_Validate
                                     "or projected", i);
     }
 
+    /* Input profiles bind explicit resources or owner-qualified source values;
+     * physical launcher and handle interpretation is deliberately elsewhere. */
     for (UINT32 i = 0; i < input_count; ++i) {
         const DSL_RUNTIME_INPUT_RECORD &record = inputs[i];
         if (record.id != i + 1 ||
@@ -1999,6 +2317,8 @@ DSL_Program_Interface_View_Validate
                        (diagnostic, "runtime input root coverage", i + 1);
     }
 
+    /* Closure is scratch metadata evidence only: every binding must be rooted
+     * and cycle-free, without walking or switching any PU's physical tree. */
     std::vector<std::vector<BOOL> > edges
         (binding_count, std::vector<BOOL>(binding_count, FALSE));
     for (UINT32 i = 0; i < call_count; ++i) {
@@ -2065,6 +2385,8 @@ DSL_Program_Interface_View_Validate
     return TRUE;
 }
 
+/* Clear the caller header and fill magic/version plus five table sizes.
+ * NULL is a no-op; no validation or image mutation occurs. */
 void
 DSL_Program_Interface_Image_Get_Header
         (DSL_PROGRAM_INTERFACE_IMAGE_HEADER *header)
@@ -2083,6 +2405,9 @@ DSL_Program_Interface_Image_Get_Header
     header->runtime_input_call_count = DSL_runtime_input_call_table.Size();
 }
 
+/* Discard all five program tables and reset process-local plan/commit evidence.
+ * IDs may be reused. Core/call/formal/runtime-projection tables and physical
+ * WNs survive; dependent invalidation/reconstruction remains caller-owned. */
 void
 DSL_Program_Interface_Image_Reset (void)
 {
@@ -2094,6 +2419,8 @@ DSL_Program_Interface_Image_Reset (void)
     DSL_Program_Interface_Reset_Commit_State();
 }
 
+/* Test the five program table sizes only, not local commit evidence or WNs.
+ * Empty rows do not establish compatibility with current projection coverage. */
 BOOL
 DSL_Program_Interface_Image_Has_Records (void)
 {
@@ -2104,6 +2431,11 @@ DSL_Program_Interface_Image_Has_Records (void)
            DSL_runtime_input_call_table.Size() != 0;
 }
 
+/* Snapshot five program tables and both runtime-projection tables into vectors,
+ * then run the shared checker with runtime exclusivity enabled. Caller supplies
+ * valid shared references and any already-active source-PU local context. No
+ * live mutation, PU activation, full runtime-view or physical ABI validation;
+ * NULL diagnostic is silent and scratch allocation exceptions propagate. */
 BOOL
 DSL_Program_Interface_Image_Validate (FILE *diagnostic)
 {
@@ -2141,6 +2473,11 @@ DSL_Program_Interface_Image_Validate (FILE *diagnostic)
          TRUE, diagnostic);
 }
 
+/* Snapshot only live program tables and cross-check them against the supplied
+ * readable runtime arrays before runtime-image commit. The shared checker has
+ * runtime exclusivity enabled, not full runtime-row verification. No live
+ * mutation; valid shared/active-source context and array lifetimes are caller
+ * obligations. FALSE reports first mismatch; scratch exceptions propagate. */
 static BOOL
 DSL_Program_Interface_Validate_Runtime_View
         (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *projections,
@@ -2174,27 +2511,36 @@ DSL_Program_Interface_Validate_Runtime_View
          call_projection_count, TRUE, diagnostic);
 }
 
+/* Define a trivial stored-row count accessor. Generated bodies neither filter
+ * liveness nor validate rows; invocation comments identify the provenance kind. */
 #define DSL_PROGRAM_INTERFACE_COUNT_GETTER(name, table) \
 UINT32 name (void) { return table.Size(); }
 
+/* Count formal-retirement provenance, not remaining physical formals. */
 DSL_PROGRAM_INTERFACE_COUNT_GETTER
     (DSL_Program_Interface_Image_Retired_Formal_Count,
      DSL_retired_formal_table)
+/* Count retired canonical call arguments without inspecting CALL kids. */
 DSL_PROGRAM_INTERFACE_COUNT_GETTER
     (DSL_Program_Interface_Image_Retired_Call_Count,
      DSL_retired_call_argument_table)
+/* Count input records independently of root/binding reachability. */
 DSL_PROGRAM_INTERFACE_COUNT_GETTER
     (DSL_Program_Interface_Image_Runtime_Input_Count,
      DSL_runtime_input_table)
+/* Count root and threaded binding rows without physical interface traversal. */
 DSL_PROGRAM_INTERFACE_COUNT_GETTER
     (DSL_Program_Interface_Image_Runtime_Binding_Count,
      DSL_runtime_input_binding_table)
+/* Count stored input-flow edges, not physical/dynamic call executions. */
 DSL_PROGRAM_INTERFACE_COUNT_GETTER
     (DSL_Program_Interface_Image_Runtime_Call_Count,
      DSL_runtime_input_call_table)
 
 #undef DSL_PROGRAM_INTERFACE_COUNT_GETTER
 
+/* Bounded one-based optional retirement-row copy through the shared accessor.
+ * NULL probes presence; invalid IDs leave output unchanged. No ST/TY resolution. */
 BOOL
 DSL_Program_Interface_Image_Get_Retired_Formal
         (DSL_RETIRED_FORMAL_ID id, DSL_RETIRED_FORMAL_RECORD *record)
@@ -2202,6 +2548,8 @@ DSL_Program_Interface_Image_Get_Retired_Formal
     return DSL_IR_Table_Get(DSL_retired_formal_table, id, record);
 }
 
+/* Copy a one-based call-retirement row or probe with NULL; invalid IDs leave
+ * output unchanged. Canonical IDs/ordinals are copied, not physically resolved. */
 BOOL
 DSL_Program_Interface_Image_Get_Retired_Call
         (DSL_RETIRED_CALL_ARGUMENT_ID id,
@@ -2210,6 +2558,8 @@ DSL_Program_Interface_Image_Get_Retired_Call
     return DSL_IR_Table_Get(DSL_retired_call_argument_table, id, record);
 }
 
+/* Copy a one-based input row or probe with NULL; invalid IDs leave output
+ * unchanged. Role/type/TCON/value IDs keep shared identity, not new ownership. */
 BOOL
 DSL_Program_Interface_Image_Get_Runtime_Input
         (DSL_RUNTIME_INPUT_ID id, DSL_RUNTIME_INPUT_RECORD *record)
@@ -2217,6 +2567,8 @@ DSL_Program_Interface_Image_Get_Runtime_Input
     return DSL_IR_Table_Get(DSL_runtime_input_table, id, record);
 }
 
+/* Copy a one-based binding row or probe with NULL; invalid IDs leave output
+ * unchanged. Does not dereference a local handle ST or establish PU context. */
 BOOL
 DSL_Program_Interface_Image_Get_Runtime_Binding
         (DSL_RUNTIME_INPUT_BINDING_ID id,
@@ -2225,6 +2577,8 @@ DSL_Program_Interface_Image_Get_Runtime_Binding
     return DSL_IR_Table_Get(DSL_runtime_input_binding_table, id, record);
 }
 
+/* Copy a one-based input-flow call row or probe with NULL; invalid IDs leave
+ * output unchanged. Does not inspect physical calls or switch either PU. */
 BOOL
 DSL_Program_Interface_Image_Get_Runtime_Call
         (DSL_RUNTIME_INPUT_CALL_ID id, DSL_RUNTIME_INPUT_CALL_RECORD *record)
@@ -2232,6 +2586,10 @@ DSL_Program_Interface_Image_Get_Runtime_Call
     return DSL_IR_Table_Get(DSL_runtime_input_call_table, id, record);
 }
 
+/* Scan a flat view rooted at table[0] for a canonical-formal ID; optional output
+ * is copied only on success. This assumes all populated rows are contiguous,
+ * unlike general SEGMENTED_ARRAY growth; indexed Get/count traversal avoids
+ * that storage assumption. No key validation or physical formal lookup. */
 BOOL
 DSL_Program_Interface_Image_Find_Retired_Formal
         (DSL_PU_FORMAL_ID pu_formal_id, DSL_RETIRED_FORMAL_RECORD *record)
@@ -2246,6 +2604,10 @@ DSL_Program_Interface_Image_Find_Retired_Formal
     return found != NULL;
 }
 
+/* Scan a table[0]-based flat view for the first canonical-argument ID. NULL
+ * probes presence; failure leaves output unchanged. Requires contiguous full
+ * populated storage, not guaranteed across segments; indexed Get/count access
+ * avoids the assumption. No physical actual validation or PU activation. */
 BOOL
 DSL_Program_Interface_Image_Find_Retired_Call
         (DSL_CALL_ARGUMENT_ID call_argument_id,
@@ -2261,6 +2623,10 @@ DSL_Program_Interface_Image_Find_Retired_Call
     return found != NULL;
 }
 
+/* Scan a table[0]-based flat view for the first owner/final-ordinal key; optional
+ * output changes only on success. The scan assumes contiguous populated rows,
+ * which segmented growth does not ensure; indexed Get/count traversal avoids
+ * that assumption. Does not validate keys/handle STs or activate the owner PU. */
 BOOL
 DSL_Program_Interface_Image_Find_Runtime_Binding
         (ST_IDX owner_pu_st, UINT32 final_formal_ordinal,
@@ -2277,6 +2643,15 @@ DSL_Program_Interface_Image_Find_Runtime_Binding
     return found != NULL;
 }
 
+/* Read a LOWERED value, count source-ID-keyed projection/input matches and
+ * require one root-promoted binding per matching external input. Reject missing
+ * or ambiguous candidates before touching output; then clear result/set source
+ * IDs and check computed or promoted ST/TY/handle agreement. Late rejection
+ * leaves those output writes, so FALSE is not an output-preserving probe.
+ * Success returns a primary relation plus any ancillary projection with zero
+ * inserted statements. Requires valid shared rows; no full owner/node/TCON,
+ * physical ABI, private-dependency or CKKS-only relation proof. Tables are not
+ * mutated and no PU is activated. */
 BOOL
 DSL_IR_Image_Resolve_Lowered_Relation
         (DSL_IR_VALUE_ID value_id,
@@ -2346,6 +2721,8 @@ DSL_IR_Image_Resolve_Lowered_Relation
     if (projection_count > 1 || input_count > 1 ||
         (projection_count == 0 && input_count == 0))
         return FALSE;
+    /* Output publication starts before the final agreement checks; callers
+     * must ignore all result fields unless the function returns TRUE. */
     memset(result, 0, sizeof(*result));
     result->source_node_id = value.producer_node_id;
     result->source_value_id = value.id;
@@ -2384,16 +2761,23 @@ DSL_IR_Image_Resolve_Lowered_Relation
     return TRUE;
 }
 
+/* Validate CKKS events, derive scratch reachability from resolvable lowered
+ * runtime values, and check dead/CKKS/runtime/private relation rules on live
+ * rows. Caller has validated core producer/operand ranges and shared image
+ * tables; dead-call lookup also inherits the current contiguous retirement
+ * storage requirement. This is not the proposed-view paired-loader checker or
+ * a complete runtime/program/core/physical validator. No live writes or PU
+ * activation; FALSE reports the first mismatch, NULL diagnostic is silent,
+ * and scratch allocation exceptions are not converted into FALSE. */
 BOOL
 DSL_IR_Image_Validate_Lowered_Relations (FILE *diagnostic)
 {
     if (!DSL_CKKS_Event_Image_Validate(diagnostic))
         return FALSE;
 
-    /* A grouped lowering has one projected output, but its pure private
-     * operands retain lowered provenance without individual projections.
-     * Walk backward from projected results through lowered logical nodes.
-     * This is derived from existing rows and survives mapped reopen. */
+    /* Seed every resolvable lowered runtime value, including promoted roots,
+     * then walk lowered operands backward. Group-private values need no direct
+     * relation when this derived dependency path reaches them. */
     std::vector<UINT8> reaches_projection
         (DSL_ir_value_table.Size() + 1, 0);
     std::vector<DSL_IR_VALUE_ID> worklist;
@@ -2535,6 +2919,9 @@ DSL_IR_Image_Validate_Lowered_Relations (FILE *diagnostic)
     return TRUE;
 }
 
+/* Commit-only copied append with fresh one-based ID, rejecting NULL only.
+ * Does not prove deadness/coverage or prune physical formals; input is unchanged.
+ * Owning transaction supplies preflight, verification and broader rollback. */
 DSL_RETIRED_FORMAL_ID
 DSL_Program_Interface_Image_Add_Retired_Formal
         (const DSL_RETIRED_FORMAL_RECORD *record)
@@ -2546,6 +2933,9 @@ DSL_Program_Interface_Image_Add_Retired_Formal
     return index + 1;
 }
 
+/* Commit-only copied append with fresh ID, rejecting NULL only. Canonical
+ * actuals/metadata are not removed or validated here; caller owns complete
+ * retirement coverage, physical edits and broader transaction rollback. */
 DSL_RETIRED_CALL_ARGUMENT_ID
 DSL_Program_Interface_Image_Add_Retired_Call
         (const DSL_RETIRED_CALL_ARGUMENT_RECORD *record)
@@ -2557,6 +2947,9 @@ DSL_Program_Interface_Image_Add_Retired_Call
     return index + 1;
 }
 
+/* Commit-only copied input append with fresh ID; NULL is the only rejection.
+ * Shared role/type/TCON/value IDs are not resolved or owned anew. No input
+ * profile/uniqueness validation, physical promotion or rollback is provided. */
 DSL_RUNTIME_INPUT_ID
 DSL_Program_Interface_Image_Add_Runtime_Input
         (const DSL_RUNTIME_INPUT_RECORD *record)
@@ -2568,6 +2961,9 @@ DSL_Program_Interface_Image_Add_Runtime_Input
     return index + 1;
 }
 
+/* Commit-only copied binding append with fresh ID, rejecting NULL only. Caller
+ * supplies handle/owner/order legality and physical formal reconstruction;
+ * no validation or broader rollback occurs, and allocation exceptions escape. */
 DSL_RUNTIME_INPUT_BINDING_ID
 DSL_Program_Interface_Image_Add_Runtime_Binding
         (const DSL_RUNTIME_INPUT_BINDING_RECORD *record)
@@ -2579,6 +2975,9 @@ DSL_Program_Interface_Image_Add_Runtime_Binding
     return index + 1;
 }
 
+/* Commit-only copied flow-edge append with fresh ID, rejecting NULL only.
+ * Does not validate endpoints/coverage/cycles or edit physical CALLs. Owning
+ * transaction supplies preflight/postconditions and broader rollback. */
 DSL_RUNTIME_INPUT_CALL_ID
 DSL_Program_Interface_Image_Add_Runtime_Call
         (const DSL_RUNTIME_INPUT_CALL_RECORD *record)
@@ -2599,6 +2998,13 @@ struct DSL_PROGRAM_INTERFACE_MAPPED_VIEW {
     const DSL_RUNTIME_INPUT_CALL_RECORD *calls;
 };
 
+/* Preflight an aligned/readable program section and output view: require exact
+ * header/row extents, borrow its five arrays and validate program relationships
+ * without runtime-projection exclusivity. Require valid shared source/type/
+ * string/TCON/call/formal context and matching locals for an already-active
+ * external-source PU. FALSE preserves live state and output view; TRUE assigns
+ * borrowed pointers, so caller retains section lifetime through commit. No
+ * lowered-relation/physical proof; NULL diagnostic is silent. */
 static BOOL
 DSL_Program_Interface_Mapped_View_Parse
         (const void *section_base, UINT64 section_size,
@@ -2622,6 +3028,8 @@ DSL_Program_Interface_Mapped_View_Parse
 
     UINT64 remaining = section_size -
                        DSL_PROGRAM_INTERFACE_IMAGE_HEADER_SIZE;
+    /* Check each remaining extent before subtraction to avoid overflowing the
+     * section-size calculation. This macro may return only before mutation. */
 #define DSL_PROGRAM_INTERFACE_TAKE(count, size) \
     if ((count) > remaining / (size)) \
         return DSL_Program_Interface_Report \
@@ -2681,6 +3089,11 @@ DSL_Program_Interface_Mapped_View_Parse
     return TRUE;
 }
 
+/* Commit a previously validated view with independent readable section storage:
+ * reset five program tables/process-local commit state, copy rows, then mark
+ * mapped eligibility for later per-PU verification. No input pointers retained
+ * or physical tree edits. Allocation exceptions during copying have no rollback
+ * guarantee; the final eligibility mark is not a physical-correctness proof. */
 static void
 DSL_Program_Interface_Mapped_View_Commit
         (const DSL_PROGRAM_INTERFACE_MAPPED_VIEW &view)
@@ -2705,6 +3118,13 @@ DSL_Program_Interface_Mapped_View_Commit
     DSL_Program_Interface_Mark_Mapped_Committed();
 }
 
+/* Parse/validate program-only structure and flow before replacing live rows.
+ * FALSE leaves program tables/commit evidence intact. Success resets/copies
+ * them and marks mapped eligibility without retaining section pointers; commit
+ * allocation exceptions have no rollback guarantee. Caller provides aligned,
+ * readable independent storage and valid shared/source context. Runtime-view
+ * exclusivity and lowered-relation checks belong to the paired loader, not
+ * this path. NULL input is invalid; NULL diagnostic is silent. */
 BOOL
 DSL_Program_Interface_Image_Load_Mapped
         (const void *section_base, UINT64 section_size, FILE *diagnostic)
@@ -2717,6 +3137,13 @@ DSL_Program_Interface_Image_Load_Mapped
     return TRUE;
 }
 
+/* Read-only paired-load preflight using readable proposed runtime/program
+ * arrays and valid current core reference ranges plus CKKS facts. Walk lowered
+ * operand dependencies back from projected values, then check dead-source
+ * retirement and lowered projection/promoted-input/private-dependency relations,
+ * including CKKS/runtime exclusion. Scratch reachability does not inspect WNs,
+ * prove physical handles, or replace full row/domain validation. First mismatch
+ * returns FALSE with optional diagnostics; allocation exceptions propagate. */
 static BOOL
 DSL_IR_Lowered_Relation_Views_Validate
         (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *projections,
@@ -2731,6 +3158,8 @@ DSL_IR_Lowered_Relation_Views_Validate
          UINT32 binding_count,
          FILE *diagnostic)
 {
+    /* Reachability admits private lowered dependencies only when connected to
+     * a projected lowered result; core operand ranges are prevalidated. */
     std::vector<UINT8> reaches_projection
         (DSL_ir_value_table.Size() + 1, 0);
     std::vector<DSL_IR_VALUE_ID> worklist;
@@ -2934,6 +3363,17 @@ DSL_IR_Lowered_Relation_Views_Validate
     return TRUE;
 }
 
+/* Coordinate both optional image families. NULL means absence (ignore its
+ * size); otherwise require aligned/readable section storage independent of
+ * both live families throughout commit. Parse program first, validate runtime
+ * with staged retired formals when present, cross-check program/runtime views
+ * (runtime parsing falls back to live retired-formal state if program is absent)
+ * and lowered/dead relations against valid shared core/type/string/TCON/call/
+ * formal/CKKS context. Already-active source PU locals remain caller-owned.
+ * All Boolean rejection precedes live writes and preserves both families.
+ * Then commit/reset program and runtime in order, retaining no input pointers;
+ * allocation failure during sequential reset/copy has no rollback guarantee.
+ * No PU activation or physical ABI proof; NULL diagnostic suppresses messages. */
 BOOL
 DSL_Program_Runtime_Interface_Images_Load_Mapped
         (const void *program_section_base, UINT64 program_section_size,
@@ -2989,6 +3429,8 @@ DSL_Program_Runtime_Interface_Images_Load_Mapped
                   program_view.header->runtime_input_binding_count : 0,
               diagnostic))
         return FALSE;
+    /* Both proposed families passed preflight; absence deliberately discards
+     * old rows rather than preserving a stale counterpart from another image. */
     if (has_program)
         DSL_Program_Interface_Mapped_View_Commit(program_view);
     else
@@ -3000,6 +3442,10 @@ DSL_Program_Runtime_Interface_Images_Load_Mapped
     return TRUE;
 }
 
+/*
+ * Zero the caller header, fill core version/capabilities and current row counts.
+ * Skip NULL without mutation; auxiliary image tables are deliberately excluded.
+ */
 void
 DSL_IR_Image_Get_Header (DSL_IR_IMAGE_HEADER *header)
 {
@@ -3021,6 +3467,7 @@ DSL_IR_Image_Get_Header (DSL_IR_IMAGE_HEADER *header)
     header->value_reference_count = DSL_ir_value_reference_table.Size();
 }
 
+/* Inspect only the five core table sizes; do not infer auxiliary image emptiness. */
 BOOL
 DSL_IR_Image_Has_Records (void)
 {
@@ -3031,6 +3478,11 @@ DSL_IR_Image_Has_Records (void)
            DSL_ir_value_reference_table.Size() != 0;
 }
 
+/*
+ * Allow zero only for optional fields; otherwise require an offset below the
+ * current STR buffer size. This does not prove string-start or NUL termination;
+ * callers rely on the shared string-table contract before dereferencing it.
+ */
 static BOOL
 DSL_IR_Image_String_Id_Valid (STR_IDX id, BOOL required)
 {
@@ -3039,7 +3491,11 @@ DSL_IR_Image_String_Id_Valid (STR_IDX id, BOOL required)
     return id < STR_Table_Size();
 }
 
-/* Generated payload and identity digests are canonical lowercase SHA-256. */
+/*
+ * After required string-offset validation, require 64 lowercase hexadecimal
+ * characters. This checks canonical digest spelling only, not a payload hash
+ * or its authenticity, and neither interns strings nor changes image state.
+ */
 static BOOL
 DSL_IR_Image_Lowercase_SHA256_Valid (STR_IDX id)
 {
@@ -3056,6 +3512,10 @@ DSL_IR_Image_Lowercase_SHA256_Valid (STR_IDX id)
     return TRUE;
 }
 
+/*
+ * Emit the internal message/row ID to a nonnull caller-owned stream, then return
+ * FALSE. NULL suppresses output; I/O errors are not propagated or tables changed.
+ */
 static BOOL
 DSL_IR_Image_Report (FILE *diagnostic, const char *message, UINT32 id)
 {
@@ -3064,6 +3524,12 @@ DSL_IR_Image_Report (FILE *diagnostic, const char *message, UINT32 id)
     return FALSE;
 }
 
+/*
+ * For a bounds/links-validated view and count-sized zero-initialized state,
+ * recursively follow operand value producers. Mark scratch nodes visiting (1)
+ * or complete (2); a back edge returns FALSE and may leave visiting marks.
+ * Only scratch state changes; borrowed image rows are never rewritten.
+ */
 static BOOL
 DSL_IR_Image_Node_Acyclic
         (const DSL_IR_IMAGE_VIEW *view,
@@ -3089,6 +3555,15 @@ DSL_IR_Image_Node_Acyclic
     return TRUE;
 }
 
+/*
+ * Read a nonnull borrowed header and readable, suitably aligned arrays covering
+ * its counts, with current shared string/type tables available. Check the core
+ * row/link/provenance, terminal-state, generated-profile and cycle invariants;
+ * scratch allocation and optional diagnostics are the only effects. This is
+ * not a byte-extent/alignment guard or full opcode-schema/domain verifier:
+ * descriptor support/names are checked, but most semantic fields are not
+ * compared with static metadata, whose version lookup narrows to UINT16.
+ */
 static BOOL
 DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
 {
@@ -3109,6 +3584,7 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
         header.reserved2 != 0)
         return DSL_IR_Image_Report(diagnostic, "invalid header", 0);
 
+    /* Establish row IDs and endpoint/string bounds before traversing links. */
     for (UINT32 i = 0; i < header.opcode_descriptor_count; ++i) {
         const DSL_IR_OPCODE_DESCRIPTOR_RECORD &record =
             view->opcode_descriptors[i];
@@ -3208,6 +3684,7 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
 
         const DSL_IR_OPCODE_DESCRIPTOR_RECORD &descriptor =
             view->opcode_descriptors[record.opcode_descriptor_id - 1];
+        /* Generated constants require a fixed profile, not arbitrary metadata. */
         BOOL typed_row_marker = FALSE;
         BOOL generated_marker = FALSE;
         BOOL generated_field = FALSE;
@@ -3382,6 +3859,7 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
                        (diagnostic, "live reference to dead value", i + 1);
     }
 
+    /* Producer recursion is safe to index only after all row/range checks. */
     std::vector<UINT8> node_state(header.node_count, 0);
     for (UINT32 i = 1; i <= header.node_count; ++i) {
         if (!DSL_IR_Image_Node_Acyclic(view, i, &node_state))
@@ -3392,6 +3870,12 @@ DSL_IR_Image_View_Validate (const DSL_IR_IMAGE_VIEW *view, FILE *diagnostic)
     return TRUE;
 }
 
+/* Commit one preflighted retype journal in either direction: require a stored
+ * value with the expected old TY and a nonzero refined TY index, then replace
+ * only value.ty. This does not resolve/check TY bounds, tensor compatibility,
+ * physical WN/ST uses or ownership. The retype transaction owns those checks,
+ * verification and reverse-order undo. FALSE leaves the row untouched; this
+ * helper neither allocates nor supplies its own journal or PU activation. */
 BOOL
 DSL_IR_Image_Retype_Value
         (DSL_IR_VALUE_ID value_id,
@@ -3406,6 +3890,20 @@ DSL_IR_Image_Retype_Value
     return TRUE;
 }
 
+/* Image-only commit for an already preflighted native retirement. Require
+ * distinct stored values, matching TYs (or a distinct representation-preserving
+ * view pair), bounded retiring producer/result backlink and selected operand
+ * equal to the replacement. View mode also checks a pure zero-motion VIEW
+ * descriptor. Caller must provide valid TYs and node operand-reference ranges;
+ * indexing the selected reference here does not bound-check the whole range.
+ * Reject self-uses by the retiring producer before writes, then redirect every
+ * stored reference to its value, set retired node flags/encoded operand, and
+ * OR REDIRECTED into the retiring value. Only typed/generated node provenance
+ * is retained; ordinary mode does not independently check opcode purity.
+ * FALSE writes nothing; after mutation there is no verifier or local rollback.
+ * The owning native transaction proves PU ownership, dominance, effects and
+ * physical/ABI/REGION uses, edits those uses and removes the physical definition.
+ * This helper does not do those edits or authorize whole-program mutation. */
 BOOL
 DSL_IR_Image_Redirect_And_Retire_Value
         (DSL_IR_VALUE_ID replacement_value_id,
@@ -3460,6 +3958,8 @@ DSL_IR_Image_Redirect_And_Retire_Value
             return FALSE;
     }
 
+    /* All Boolean rejections precede this image-wide reference update. Caller
+     * coordinates physical edits and postchecks; there is no local savepoint. */
     for (UINT32 i = 0; i < DSL_ir_value_reference_table.Size(); ++i) {
         DSL_IR_VALUE_REFERENCE_RECORD &reference =
             DSL_ir_value_reference_table[i];
@@ -3476,6 +3976,12 @@ DSL_IR_Image_Redirect_And_Retire_Value
     return TRUE;
 }
 
+/* Commit-only terminal flag update: require an unflagged value with bounded
+ * producer, matching result backlink, allowed provenance-only node flags and
+ * a pure source descriptor. Then mark node/value LOWERED, preserving allowed
+ * node provenance. FALSE writes nothing. Caller owns authorized scope, physical
+ * definition removal, consumer closure, runtime relation proof and postchecks;
+ * this helper supplies neither physical edits nor broader transaction rollback. */
 BOOL
 DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID value_id)
 {
@@ -3502,6 +4008,11 @@ DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID value_id)
     return TRUE;
 }
 
+/* Read-only core journal for a caller-owned CKKS expansion. Preflight nonnull
+ * output, bounded source/producer and their result backlink before filling five
+ * counts plus source IDs/flags; FALSE preserves output. Caller supplies valid
+ * core row identities and authorized scope/lifetime. No row copies, purity or
+ * owner proof, mutation reservation or whole-transaction snapshot is made. */
 BOOL
 DSL_IR_Image_CKKS_Save
         (DSL_IR_VALUE_ID source_value_id,
@@ -3527,6 +4038,15 @@ DSL_IR_Image_CKKS_Save
     return TRUE;
 }
 
+/* Core-only undo using a genuine savepoint from the same append/redirect
+ * episode, with saved prefixes/IDs still intact and no unrelated edits. NULL
+ * is a no-op. Scan the surviving old reference prefix and replace every match
+ * of the transaction's fresh replacement ID (INVALID skips), restore source
+ * flags only for IDs still in bounds, then trim five core tables. No owner or
+ * generation validation, exact reference edit log, deleted-row reconstruction
+ * or status is provided. Caller separately restores physical/ABI/REGION/runtime,
+ * event, string, symbol and tensor metadata state, then verifies the combined
+ * rollback. This helper neither activates a PU nor proves rollback succeeded. */
 void
 DSL_IR_Image_CKKS_Restore
         (const DSL_CKKS_IMAGE_SAVEPOINT *savepoint,
@@ -3552,6 +4072,8 @@ DSL_IR_Image_CKKS_Restore
         savepoint->source_value_id <= DSL_ir_value_table.Size())
         DSL_ir_value_table[savepoint->source_value_id - 1].flags =
             savepoint->source_value_flags;
+    /* Remove dependent appended rows before their source tables. These
+     * watermarks do not recover rows already removed by another operation. */
     DSL_ir_value_reference_table.Delete_down_to
         (savepoint->reference_count);
     DSL_ir_attribute_table.Delete_down_to(savepoint->attribute_count);
@@ -3560,6 +4082,16 @@ DSL_IR_Image_CKKS_Restore
     DSL_ir_opcode_descriptor_table.Delete_down_to(savepoint->opcode_count);
 }
 
+/* With valid core row identities, commit-only logical redirect/lower requires
+ * distinct equal-TY unflagged
+ * values with matching bounded producers/backlinks and allowed node flags, a
+ * pure source descriptor and no source-node self-reference. After preflight,
+ * redirect every matching table reference and mark only the source LOWERED.
+ * FALSE changes nothing; replacement rows and physical WNs are untouched.
+ * Caller authorizes the complete reference scope, proves replacement/owner/
+ * consumer legality and physical edits, then verifies or rolls back the wider
+ * transaction. This does not check replacement effects, general cycles or
+ * relation completeness and does not activate another PU. */
 BOOL
 DSL_IR_Image_Redirect_And_Lower_Value
         (DSL_IR_VALUE_ID source_value_id,
@@ -3616,6 +4148,12 @@ DSL_IR_Image_Redirect_And_Lower_Value
     return TRUE;
 }
 
+/* Commit-only dead-provenance flag update: require an unflagged CONSTANT with
+ * bounded producer/result backlink, allowed node provenance flags, zero operands
+ * and a pure DSLTENSORCONST descriptor. Then mark node/value DEAD_ELIDED.
+ * FALSE leaves rows unchanged; version/type/owner, physical dead-use and absent
+ * runtime-relation proof remain caller-owned. No WN edits, final verification
+ * or broader rollback are provided by this helper. */
 BOOL
 DSL_IR_Image_Mark_Value_Dead_Elided (DSL_IR_VALUE_ID value_id)
 {
@@ -3645,6 +4183,11 @@ DSL_IR_Image_Mark_Value_Dead_Elided (DSL_IR_VALUE_ID value_id)
     return TRUE;
 }
 
+/* With caller-validated producer/reference bounds, read a REDIRECTED value's
+ * RETIRED node and encoded operand ordinal, then copy that immediate operand's
+ * value ID. Reject NULL output or failed flag/ordinal checks without writes;
+ * upper bounds and returned target validity are not independently proved.
+ * No chain traversal, runtime-handle resolution, mutation or PU activation. */
 BOOL
 DSL_IR_Image_Value_Redirect_Target
         (DSL_IR_VALUE_ID value_id, DSL_IR_VALUE_ID *target_value_id)
@@ -3667,6 +4210,12 @@ DSL_IR_Image_Value_Redirect_Target
     return TRUE;
 }
 
+/*
+ * Flatten the five segmented tables into temporary copies for the shared view
+ * validator, then free them on its normal TRUE/FALSE return. Live rows remain
+ * unchanged and auxiliary validators are not called. Raw scratch allocations
+ * have no exception cleanup guarantee; this is not a mapped-section size check.
+ */
 BOOL
 DSL_IR_Image_Validate (FILE *diagnostic)
 {
@@ -3714,6 +4263,11 @@ DSL_IR_Image_Validate (FILE *diagnostic)
     return valid;
 }
 
+/*
+ * Given nonnull size and nonzero record_size, add count times row size only if
+ * it fits UINT64. Overflow returns FALSE without changing size; this is checked
+ * byte accounting, not section allocation, alignment or row validation.
+ */
 static BOOL
 DSL_IR_Image_Add_Section_Size
         (UINT64 *size, UINT32 count, UINT32 record_size)
@@ -3725,6 +4279,13 @@ DSL_IR_Image_Add_Section_Size
     return TRUE;
 }
 
+/*
+ * Preflight exact checked byte extent and a borrowed core view against shared
+ * tables before touching live image state. Input must remain aligned/readable
+ * and independent of storage discarded by Reset. Commit resets all image
+ * families and copies core rows; allocation failure after reset is not rolled
+ * back. NULL is malformed input, not the reader's absent-section protocol.
+ */
 BOOL
 DSL_IR_Image_Load_Mapped
         (const void *section_base,
@@ -3773,6 +4334,7 @@ DSL_IR_Image_Load_Mapped
     if (!DSL_IR_Image_View_Validate(&view, diagnostic))
         return FALSE;
 
+    /* Rejection above preserves old rows; commit also retires auxiliary images. */
     DSL_IR_Image_Reset();
     if (header->opcode_descriptor_count != 0)
         DSL_ir_opcode_descriptor_table.Insert
@@ -3793,6 +4355,7 @@ DSL_IR_Image_Load_Mapped
     return TRUE;
 }
 
+/* Zero the POD row and mark arity unspecified/variadic with -1; NULL is safe. */
 void
 DSL_IR_Opcode_Descriptor_Record_Init
         (DSL_IR_OPCODE_DESCRIPTOR_RECORD *record)
@@ -3802,24 +4365,28 @@ DSL_IR_Opcode_Descriptor_Record_Init
         record->operand_count = -1;
 }
 
+/* Delegate null-safe POD initialization; do not allocate or establish node links. */
 void
 DSL_IR_Node_Record_Init (DSL_IR_NODE_RECORD *record)
 {
     DSL_IR_Record_Init (record);
 }
 
+/* Delegate null-safe POD initialization, leaving attribute ownership unset. */
 void
 DSL_IR_Attribute_Record_Init (DSL_IR_ATTRIBUTE_RECORD *record)
 {
     DSL_IR_Record_Init (record);
 }
 
+/* Delegate null-safe POD initialization, leaving kind and identity unknown. */
 void
 DSL_IR_Value_Record_Init (DSL_IR_VALUE_RECORD *record)
 {
     DSL_IR_Record_Init (record);
 }
 
+/* Delegate null-safe POD initialization; neither endpoint is resolved here. */
 void
 DSL_IR_Value_Reference_Record_Init
         (DSL_IR_VALUE_REFERENCE_RECORD *record)
@@ -3827,6 +4394,11 @@ DSL_IR_Value_Reference_Record_Init
     DSL_IR_Record_Init (record);
 }
 
+/*
+ * Reject only absent input/name/version, then copy to existing table storage
+ * and replace the copied ID. Preserve caller storage and duplicate keys; defer
+ * logical/string/enum validation. No multi-row allocation rollback is provided.
+ */
 DSL_IR_OPCODE_DESCRIPTOR_ID
 DSL_IR_Image_Add_Opcode_Descriptor
         (const DSL_IR_OPCODE_DESCRIPTOR_RECORD *record)
@@ -3841,6 +4413,7 @@ DSL_IR_Image_Add_Opcode_Descriptor
     return index + 1;
 }
 
+/* Scan table order for an exact numeric key, returning the first row's index ID. */
 DSL_IR_OPCODE_DESCRIPTOR_ID
 DSL_IR_Image_Find_Opcode_Descriptor
         (UINT32 logical_operator,
@@ -3857,6 +4430,12 @@ DSL_IR_Image_Find_Opcode_Descriptor
     return DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID;
 }
 
+/*
+ * Prefer an existing exact key without validation. On a miss, use static
+ * metadata's UINT16 version lookup, intern strings with Save_Str, then append.
+ * The UINT32 argument is not range-checked before narrowing; callers must keep
+ * versions representable. String interning and append are not one transaction.
+ */
 DSL_IR_OPCODE_DESCRIPTOR_ID
 DSL_IR_Image_Ensure_Opcode_Descriptor
         (UINT32 logical_operator,
@@ -3867,6 +4446,7 @@ DSL_IR_Image_Ensure_Opcode_Descriptor
     if (id != DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID)
         return id;
 
+    /* Never substitute current-version metadata for a requested exact version. */
     DSL_OPERATOR_INFO info;
     if (!DSL_Operator_Get_Info_Version
              ((DSL_OPERATOR)logical_operator, version, &info))
@@ -3893,6 +4473,7 @@ DSL_IR_Image_Ensure_Opcode_Descriptor
     return DSL_IR_Image_Add_Opcode_Descriptor(&record);
 }
 
+/* Copy after descriptor bounds preflight; assign the table ID, not caller ID. */
 DSL_IR_NODE_ID
 DSL_IR_Image_Add_Node (const DSL_IR_NODE_RECORD *record)
 {
@@ -3907,6 +4488,10 @@ DSL_IR_Image_Add_Node (const DSL_IR_NODE_RECORD *record)
     return index + 1;
 }
 
+/*
+ * Check name presence, non-UNKNOWN kind and owner bounds before copying. Do not
+ * validate string offsets, enum range or schema; leave caller input unchanged.
+ */
 DSL_IR_ATTRIBUTE_ID
 DSL_IR_Image_Add_Attribute (const DSL_IR_ATTRIBUTE_RECORD *record)
 {
@@ -3922,6 +4507,10 @@ DSL_IR_Image_Add_Attribute (const DSL_IR_ATTRIBUTE_RECORD *record)
     return index + 1;
 }
 
+/*
+ * Reject NULL/UNKNOWN kind and out-of-range nonzero producer, then copy/assign
+ * ID. Producer zero is accepted; type, symbol and role proofs remain deferred.
+ */
 DSL_IR_VALUE_ID
 DSL_IR_Image_Add_Value (const DSL_IR_VALUE_RECORD *record)
 {
@@ -3936,6 +4525,7 @@ DSL_IR_Image_Add_Value (const DSL_IR_VALUE_RECORD *record)
     return index + 1;
 }
 
+/* Copy only after both nonzero endpoint bounds pass; ordinal checks are deferred. */
 DSL_IR_VALUE_REFERENCE_ID
 DSL_IR_Image_Add_Value_Reference
         (const DSL_IR_VALUE_REFERENCE_RECORD *record)
@@ -3953,6 +4543,12 @@ DSL_IR_Image_Add_Value_Reference
     return index + 1;
 }
 
+/*
+ * With the existing descriptor link valid, preflight bounds, count/start pairs,
+ * fixed arity, range ownership/ordinals and result producer before assigning
+ * links. Rejection preserves the old node but does not undo caller appends.
+ * No allocation, semantic verification or physical WN mutation occurs below.
+ */
 BOOL
 DSL_IR_Image_Set_Node_Links
         (DSL_IR_NODE_ID node_id,
@@ -4011,6 +4607,7 @@ DSL_IR_Image_Set_Node_Links
     if (result.producer_node_id != node_id)
         return FALSE;
 
+    /* All fallible link checks precede these five scalar assignments. */
     DSL_IR_NODE_RECORD &node = DSL_ir_node_table[node_id - 1];
     node.first_operand_reference_id = first_operand_id;
     node.operand_count = operand_count;
@@ -4020,6 +4617,21 @@ DSL_IR_Image_Set_Node_Links
     return TRUE;
 }
 
+/*
+ * Image-only part of DSL_IR_Rewrite_Native_Value: preflight target/descriptor,
+ * result backlink, fixed arity, operand bounds and minimal attribute/kind fields.
+ * Caller-valid sequential row IDs and all existing node ranges are required;
+ * this does not check complete enum/string/schema/type/effect/owner legality.
+ * Prepare replacement ranges for every node in temporary vectors, then replace
+ * both flat tables and all range starts, preserving node/result IDs and ST/TY.
+ * New references are initialized afresh; attributes retain supplied fields
+ * except assigned ID/owner. Even unchanged nodes' reference/attribute IDs may
+ * change, so callers must invalidate those IDs/views across this whole-image
+ * rebuild. Reported FALSE leaves live tables unchanged, not earlier caller
+ * allocations/appends. Commit has no FALSE path or final verification; uncaught
+ * allocation failure during table installation has no rollback guarantee.
+ * Physical WN replacement and authorized transformation scope remain external.
+ */
 BOOL
 DSL_IR_Image_Rewrite_Node
         (const DSL_IR_NODE_REWRITE_REQUEST *request)
@@ -4066,6 +4678,8 @@ DSL_IR_Image_Rewrite_Node
             return FALSE;
     }
 
+    /* Stage every range before deleting live storage, so explicit rejection
+     * and preparation do not require an old-row rollback journal. */
     std::vector<DSL_IR_VALUE_REFERENCE_RECORD> references;
     std::vector<DSL_IR_ATTRIBUTE_RECORD> attributes;
     std::vector<DSL_IR_VALUE_REFERENCE_ID> first_operand_ids;
@@ -4123,6 +4737,8 @@ DSL_IR_Image_Rewrite_Node
         }
     }
 
+    /* Commit may allocate while inserting; staging is not an exception-safe
+     * whole-image transaction once either live flat table has been cleared. */
     DSL_ir_value_reference_table.Delete_down_to(0);
     if (!references.empty())
         DSL_ir_value_reference_table.Insert(&references[0],
@@ -4145,6 +4761,14 @@ DSL_IR_Image_Rewrite_Node
     return TRUE;
 }
 
+/* Scan stored rows by numeric ST and exact name, optionally exact owner text.
+ * Do not dereference a local ST or infer the active PU; owner-sensitive native
+ * callers establish physical context before using this metadata lookup.
+ * Remember the matching table position and reject a second match before any
+ * output copy. Final indexed Get supports a NULL uniqueness probe and leaves
+ * failed-query output unchanged. Include all provenance flags; valid shared
+ * name/metadata strings are caller-owned prerequisites. Temporary string
+ * allocation exceptions propagate; no tables or interned strings are changed. */
 BOOL
 DSL_IR_Image_Find_PU_Value
         (ST_IDX st,
@@ -4178,6 +4802,9 @@ DSL_IR_Image_Find_PU_Value
            DSL_IR_Image_Get_Value(found, record);
 }
 
+/* Delegate the same read-only uniqueness check without an owner filter.
+ * This can reject otherwise valid PU-local ordinal/name collisions; it neither
+ * selects Current_pu nor substitutes a physical symbol/definition lookup. */
 BOOL
 DSL_IR_Image_Find_Value
         (ST_IDX st,
@@ -4187,12 +4814,23 @@ DSL_IR_Image_Find_Value
     return DSL_IR_Image_Find_PU_Value(st, name, NULL, record);
 }
 
+/*
+ * Roll back the clone helper's append-only managed rows, including after a
+ * later REGION/physical-interface rejection by DSL_PU_Transaction_Clone_Active.
+ * The caller must supply a genuine captured point in this image, retain all
+ * old prefixes and exclude unrelated appends. NULL is a no-op; Delete_down_to
+ * only shrinks, so stale/oversized counts neither reconstruct nor validate rows.
+ * No old-row edits, opcode descriptors, strings, WNs/STs, REGION/domain stores,
+ * pair outputs or active PU state are restored. No post-rollback check or
+ * failure status is provided; combined restoration belongs to the caller.
+ */
 void
 DSL_IR_Image_Clone_PU_Restore
         (const DSL_PU_CLONE_IMAGE_SAVEPOINT *savepoint)
 {
     if (savepoint == NULL)
         return;
+    /* Drop dependent interface suffixes before their formal/value/node rows. */
     DSL_runtime_input_call_table.Delete_down_to
         (savepoint->runtime_input_call_count);
     DSL_runtime_input_binding_table.Delete_down_to
@@ -4216,8 +4854,26 @@ DSL_IR_Image_Clone_PU_Restore
     DSL_ir_node_table.Delete_down_to(savepoint->node_count);
 }
 
-/* Copy a PU's logical rows with new IDs; the physical tree clone keeps the
- * corresponding local ST indices but has independent symbol-table storage. */
+/*
+ * Supply the logical-image portion of the owning program transaction's physical
+ * PU clone. Preflight core/formal validity, distinct same-level nonzero STs and
+ * names, exact owner-metadata values/capacity and source/absent-clone identities.
+ * The caller establishes physical ownership and independent local ST storage;
+ * unchanged ST ordinals, descriptor IDs and other copied fields rely on that.
+ * Capture table watermarks, append nodes/values with fresh IDs, then remap links
+ * and selected formal/runtime/retirement rows. Unmapped operands are retained
+ * only at the source PU ST's level; this test alone is not an ownership proof.
+ * Reject owner-local runtime calls, retired call arguments, source runtime-input
+ * resources and runtime-input caller rows; ordinary callsite/ABI rows, REGION,
+ * state/effect and domain tables are not cloned. The outer transaction owns
+ * those legality checks and any subsequent incoming-call retargeting.
+ * Verify core/formal/call images before publishing pair_count. A reported late
+ * failure truncates recorded suffixes, not strings or arbitrary external edits;
+ * pairs may be partial and savepoint remains captured. Earlier FALSE changes
+ * neither pairs nor savepoint, but every non-NULL pair_count is reset to zero.
+ * Allocation failures escape without guaranteed rollback. This is neither an
+ * atomic whole-program clone nor authority for a PU-local pass to cross PUs.
+ */
 BOOL
 DSL_IR_Image_Clone_PU_Values
         (ST_IDX source_pu_st, const char *source_pu_name,
@@ -4278,6 +4934,8 @@ DSL_IR_Image_Clone_PU_Values
             (clone_pu_st, &existing_identity))
         return FALSE;
 
+    /* Capture every suffix this helper may need to discard before appending;
+     * existing row contents and shared string storage are not journaled. */
     savepoint->node_count = DSL_ir_node_table.Size();
     savepoint->attribute_count = DSL_ir_attribute_table.Size();
     savepoint->value_count = DSL_ir_value_table.Size();
@@ -4297,6 +4955,7 @@ DSL_IR_Image_Clone_PU_Values
     savepoint->runtime_input_call_count =
         DSL_runtime_input_call_table.Size();
 
+    /* Allocate fresh identities before relinking producers and operand ranges. */
     BOOL valid = TRUE;
     for (UINT32 i = 0; valid && i < source_nodes.size(); ++i) {
         DSL_IR_NODE_ID source_id = source_nodes[i];
@@ -4391,9 +5050,8 @@ DSL_IR_Image_Clone_PU_Values
         formal_map[i + 1] = DSL_PU_Interface_Image_Add_Formal(&formal);
         valid = formal_map[i + 1] != DSL_PU_FORMAL_INVALID_ID;
     }
-    /* Owner-local calls require callsite cloning, which this transaction does
-     * not yet support. Callee-only specialization is still complete because
-     * incoming calls are retargeted later by the program transaction. */
+    /* Owner-local runtime calls need callsite cloning, which this helper does
+     * not support. Incoming-call retargeting remains an outer transaction step. */
     UINT32 original_runtime_call_count =
         savepoint->runtime_call_projection_count;
     for (UINT32 i = 0; valid && i < original_runtime_call_count; ++i) {
@@ -4483,6 +5141,8 @@ DSL_IR_Image_Clone_PU_Values
         valid = DSL_Call_Image_Add_PU_Identity(&source_identity) !=
                 DSL_PU_SOURCE_IDENTITY_INVALID_ID;
     }
+    /* Structural image checks precede count publication; physical PU/REGION
+     * verification and linking into the PU list remain caller responsibilities. */
     if (valid)
         valid = DSL_IR_Image_Validate(NULL) &&
                 DSL_PU_Interface_Image_Validate(NULL) &&
@@ -4495,18 +5155,24 @@ DSL_IR_Image_Clone_PU_Values
     return TRUE;
 }
 
+/* Read physical row count; duplicate logical keys remain distinct stored rows. */
 UINT32
 DSL_IR_Image_Opcode_Descriptor_Count (void)
 {
     return DSL_ir_opcode_descriptor_table.Size();
 }
 
+/* Include provenance rows regardless of retirement/lowering flags. */
 UINT32
 DSL_IR_Image_Node_Count (void)
 {
     return DSL_ir_node_table.Size();
 }
 
+/*
+ * Count only the absence of three terminal flags across the whole node table.
+ * Do not consult current PU, opcode category or the executable WHIRL tree.
+ */
 UINT32
 DSL_IR_Image_Executable_Node_Count (void)
 {
@@ -4520,24 +5186,28 @@ DSL_IR_Image_Executable_Node_Count (void)
     return count;
 }
 
+/* Read stored attribute count, without filtering active node link ranges. */
 UINT32
 DSL_IR_Image_Attribute_Count (void)
 {
     return DSL_ir_attribute_table.Size();
 }
 
+/* Read stored value count without filtering lowered/redirected/dead flags. */
 UINT32
 DSL_IR_Image_Value_Count (void)
 {
     return DSL_ir_value_table.Size();
 }
 
+/* Read stored reference count without traversing active node link ranges. */
 UINT32
 DSL_IR_Image_Value_Reference_Count (void)
 {
     return DSL_ir_value_reference_table.Size();
 }
 
+/* Delegate bounded, optional POD copying; no semantic verification is implied. */
 BOOL
 DSL_IR_Image_Get_Opcode_Descriptor
         (DSL_IR_OPCODE_DESCRIPTOR_ID id,
@@ -4546,12 +5216,14 @@ DSL_IR_Image_Get_Opcode_Descriptor
     return DSL_IR_Table_Get (DSL_ir_opcode_descriptor_table, id, record);
 }
 
+/* Delegate bounded optional row copying; leave invalid-query output untouched. */
 BOOL
 DSL_IR_Image_Get_Node (DSL_IR_NODE_ID id, DSL_IR_NODE_RECORD *record)
 {
     return DSL_IR_Table_Get (DSL_ir_node_table, id, record);
 }
 
+/* Copy through the shared bounds helper, retaining STR_IDX identities, not strings. */
 BOOL
 DSL_IR_Image_Get_Attribute
         (DSL_IR_ATTRIBUTE_ID id,
@@ -4560,12 +5232,14 @@ DSL_IR_Image_Get_Attribute
     return DSL_IR_Table_Get (DSL_ir_attribute_table, id, record);
 }
 
+/* Delegate row copying only; referenced symbol/type/value state is not validated. */
 BOOL
 DSL_IR_Image_Get_Value (DSL_IR_VALUE_ID id, DSL_IR_VALUE_RECORD *record)
 {
     return DSL_IR_Table_Get (DSL_ir_value_table, id, record);
 }
 
+/* Delegate bounded row copying without resolving endpoints or changing links. */
 BOOL
 DSL_IR_Image_Get_Value_Reference
         (DSL_IR_VALUE_REFERENCE_ID id,
@@ -4574,6 +5248,9 @@ DSL_IR_Image_Get_Value_Reference
     return DSL_IR_Table_Get (DSL_ir_value_reference_table, id, record);
 }
 
+/* Snapshot counts for writer/printer callers into a freshly zeroed header;
+ * preserve no old flags/reserved bytes and do not validate tables. NULL writes
+ * nothing; this neither emits a section nor changes live image ownership. */
 void
 DSL_Effect_Image_Get_Header (DSL_EFFECT_IMAGE_HEADER *header)
 {
@@ -4586,6 +5263,9 @@ DSL_Effect_Image_Get_Header (DSL_EFFECT_IMAGE_HEADER *header)
     header->state_effect_count = DSL_state_effect_table.Size();
 }
 
+/* Truncate only the two effect-family tables, as on reader-owned absence.
+ * IDs/views cease to identify retained rows; no core, shared-symbol/string,
+ * physical-state or external handle repair and no saved prefix to restore. */
 void
 DSL_Effect_Image_Reset (void)
 {
@@ -4593,6 +5273,8 @@ DSL_Effect_Image_Reset (void)
     DSL_state_effect_table.Delete_down_to(0);
 }
 
+/* Use either table's stored size for writer section-presence selection;
+ * nonempty does not imply a valid family or any active-PU state/effect. */
 BOOL
 DSL_Effect_Image_Has_Records (void)
 {
@@ -4600,6 +5282,7 @@ DSL_Effect_Image_Has_Records (void)
            DSL_state_effect_table.Size() != 0;
 }
 
+/* Optionally emit an effect-row error to a caller stream; return FALSE, no mutation. */
 static BOOL
 DSL_Effect_Image_Report (FILE *diagnostic, const char *message, UINT32 id)
 {
@@ -4609,6 +5292,7 @@ DSL_Effect_Image_Report (FILE *diagnostic, const char *message, UINT32 id)
     return FALSE;
 }
 
+/* Check the supported non-UNKNOWN state-kind range without interpreting a state. */
 static BOOL
 DSL_Effect_Image_Valid_State_Kind (UINT32 kind)
 {
@@ -4616,6 +5300,7 @@ DSL_Effect_Image_Valid_State_Kind (UINT32 kind)
            kind <= DSL_STATE_KIND_OPAQUE;
 }
 
+/* Accept READ or MODIFY only; this predicate does not analyze actual effects. */
 static BOOL
 DSL_Effect_Image_Valid_Effect_Kind (UINT32 kind)
 {
@@ -4623,6 +5308,14 @@ DSL_Effect_Image_Valid_Effect_Kind (UINT32 kind)
            kind == DSL_STATE_EFFECT_MODIFY;
 }
 
+/*
+ * Read current effect tables, relying on already valid core descriptor links.
+ * Check state identity/flags and duplicate owner/name-or-ST pairs, then effect
+ * endpoints, per-node ordinals, duplicate node/state pairs and non-pure owners.
+ * Only nonzero symbol indices are tested, not symbol liveness/PU ownership;
+ * effect flags and full domain scheduling semantics are not certified here.
+ * Fail at the first optional diagnostic without changing any rows.
+ */
 BOOL
 DSL_Effect_Image_Validate (FILE *diagnostic)
 {
@@ -4682,6 +5375,13 @@ DSL_Effect_Image_Validate (FILE *diagnostic)
     return TRUE;
 }
 
+/*
+ * With readable/aligned independent input and valid core/string context,
+ * reject header/extent failures before mutation. Then copy into freshly cleared
+ * effect tables and validate live rows. Row failure clears the replacement
+ * without restoring the old image; no allocation rollback is provided. Core rows
+ * are unchanged and no input-buffer pointers are retained after success.
+ */
 BOOL
 DSL_Effect_Image_Load_Mapped
         (const void *section_base,
@@ -4716,6 +5416,7 @@ DSL_Effect_Image_Load_Mapped
     const DSL_STATE_EFFECT_RECORD *effects =
         (const DSL_STATE_EFFECT_RECORD *)cursor;
 
+    /* Unlike the core loader, payload validation follows destructive replacement. */
     DSL_state_object_table.Delete_down_to(0);
     DSL_state_effect_table.Delete_down_to(0);
     if (header->state_object_count != 0)
@@ -4730,18 +5431,29 @@ DSL_Effect_Image_Load_Mapped
     return TRUE;
 }
 
+/* Delegate null-tolerant POD zeroing; caller still supplies kind, identities
+ * and optional ownership flags before append. No table or ST allocation. */
 void
 DSL_State_Object_Record_Init (DSL_STATE_OBJECT_RECORD *record)
 {
     DSL_IR_Record_Init(record);
 }
 
+/* Delegate null-tolerant POD zeroing without attaching an effect. Zero kind
+ * and endpoints are invalid; ordinal zero is only the first edge for a node. */
 void
 DSL_State_Effect_Record_Init (DSL_STATE_EFFECT_RECORD *record)
 {
     DSL_IR_Record_Init(record);
 }
 
+/* Preflight nonnull/name/kind/nonzero ST indices/allowed flags, copy the input
+ * and assign its slot ID. Validate both complete effect tables: bad shared
+ * string IDs, reserved words, owner-local duplicate ST/name or earlier family
+ * errors can reject the append. Truncation then removes only this tail row;
+ * no prior row or caller-created ST/string is changed. Core descriptor links
+ * and shared strings must already be safe to inspect. No physical ownership
+ * proof, diagnostic, exception recovery or general transaction journal. */
 DSL_STATE_OBJECT_ID
 DSL_Effect_Image_Add_State_Object
         (const DSL_STATE_OBJECT_RECORD *record)
@@ -4752,6 +5464,8 @@ DSL_Effect_Image_Add_State_Object
         ST_IDX_index(record->st) == 0 ||
         (record->flags & ~DSL_STATE_OBJECT_UNIQUE_OWNERSHIP) != 0)
         return DSL_STATE_OBJECT_INVALID_ID;
+    /* Assign table identity before whole-family verification; reject by tail
+     * truncation rather than replacing or repairing any pre-existing row. */
     DSL_STATE_OBJECT_RECORD copy = *record;
     UINT32 index = DSL_state_object_table.Insert(copy);
     DSL_state_object_table[index].id = index + 1;
@@ -4762,6 +5476,13 @@ DSL_Effect_Image_Add_State_Object
     return index + 1;
 }
 
+/* Bound node/state endpoints and kind before copying, then assign a slot ID
+ * and verify the whole family. The validator checks per-node ordinal order,
+ * duplicate node/state pairs and non-PURE owner descriptors, not physical
+ * ownership/scheduling or effect flags. Caller supplies the ordinal and safe
+ * core/string context; other invalid rows can cause rejection. INVALID_ID
+ * leaves old rows intact by truncating this attempted append only; allocation
+ * failures propagate without a journal or rollback of caller work. */
 DSL_STATE_EFFECT_ID
 DSL_Effect_Image_Add_State_Effect
         (const DSL_STATE_EFFECT_RECORD *record)
@@ -4772,6 +5493,8 @@ DSL_Effect_Image_Add_State_Effect
         record->state_object_id > DSL_state_object_table.Size() ||
         !DSL_Effect_Image_Valid_Effect_Kind(record->effect_kind))
         return DSL_STATE_EFFECT_INVALID_ID;
+    /* Commit a provisional tail row so the shared validator can check its
+     * ordering with existing edges; a Boolean rejection drops just that row. */
     DSL_STATE_EFFECT_RECORD copy = *record;
     UINT32 index = DSL_state_effect_table.Insert(copy);
     DSL_state_effect_table[index].id = index + 1;
@@ -4782,18 +5505,22 @@ DSL_Effect_Image_Add_State_Effect
     return index + 1;
 }
 
+/* Read the global stored count, independent of active PU or ST liveness. */
 UINT32
 DSL_Effect_Image_State_Object_Count (void)
 {
     return DSL_state_object_table.Size();
 }
 
+/* Read all stored edges, including those whose owner nodes are terminal. */
 UINT32
 DSL_Effect_Image_State_Effect_Count (void)
 {
     return DSL_state_effect_table.Size();
 }
 
+/* Delegate bounded POD copy/NULL probe; invalid IDs write nothing. Retain
+ * shared string/ST indices without resolving ownership or validating rows. */
 BOOL
 DSL_Effect_Image_Get_State_Object
         (DSL_STATE_OBJECT_ID id,
@@ -4802,6 +5529,8 @@ DSL_Effect_Image_Get_State_Object
     return DSL_IR_Table_Get(DSL_state_object_table, id, record);
 }
 
+/* Delegate bounded optional copying, not endpoint/kind/ordinal verification;
+ * no mutation, and invalid-query output remains untouched. */
 BOOL
 DSL_Effect_Image_Get_State_Effect
         (DSL_STATE_EFFECT_ID id,
@@ -4810,6 +5539,9 @@ DSL_Effect_Image_Get_State_Effect
     return DSL_IR_Table_Get(DSL_state_effect_table, id, record);
 }
 
+/* Index static diagnostic literals after unsigned conversion and bounds
+ * check; negative/out-of-range kinds share UNKNOWN's fallback. No allocation,
+ * ownership transfer or claim that the kind is legal for a stored state. */
 const char *
 DSL_State_Kind_Name (DSL_STATE_KIND kind)
 {
@@ -4822,6 +5554,8 @@ DSL_State_Kind_Name (DSL_STATE_KIND kind)
            names[index] : names[0];
 }
 
+/* Map the bounded kind to a static literal, otherwise UNKNOWN's spelling;
+ * this read-only printer helper does not validate or attach an effect. */
 const char *
 DSL_State_Effect_Kind_Name (DSL_STATE_EFFECT_KIND effect_kind)
 {

@@ -8,6 +8,8 @@
  */
 
 #include <string.h>
+#include "../../common/ir_image/dsl_image_service.h"
+#include "dsl_runtime_interface.h"
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -25,6 +27,8 @@
 extern DSL_RUNTIME_VALUE_PROJECTION_ID
 DSL_Runtime_Interface_Image_Add_Value
                                 (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *);
+/* Append a copied runtime-call projection after transaction preflight,
+ * returning its ID; no physical CALL mutation or combined rollback. */
 extern DSL_RUNTIME_CALL_PROJECTION_ID
 DSL_Runtime_Interface_Image_Add_Call
                                 (const DSL_RUNTIME_CALL_PROJECTION_RECORD *);

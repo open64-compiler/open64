@@ -5,6 +5,7 @@
 /* VHO-owned AIO-1 active-PU semantic-root capture. */
 
 #include "dsl_tensor_evolution_opt.h"
+#include "../../common/ir_image/dsl_image_service.h"
 #include "strtab.h"
 
 BOOL

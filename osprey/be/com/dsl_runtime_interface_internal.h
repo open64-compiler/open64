@@ -12,6 +12,7 @@
 #define dsl_runtime_interface_internal_INCLUDED
 
 #include <vector>
+#include "dsl_runtime_interface.h"
 
 #include "dsl_ir_image.h"
 

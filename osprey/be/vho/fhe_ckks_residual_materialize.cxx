@@ -10,6 +10,8 @@
  */
 
 #include "fhe_ckks_residual_materialize.h"
+#include "../../common/ir_image/dsl_image_service.h"
+#include "../com/dsl_ir_rewrite.h"
 
 #include <algorithm>
 #include <set>

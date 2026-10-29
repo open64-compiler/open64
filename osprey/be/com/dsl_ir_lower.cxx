@@ -7,6 +7,9 @@
  */
 
 #include <algorithm>
+#include "../../common/ir_image/dsl_lowered_relation.h"
+#include "../../common/ir_image/dsl_image_service.h"
+#include "dsl_ir_lower.h"
 #include <map>
 #include <set>
 #include <string>
@@ -27,6 +30,8 @@
 
 /* Commit-only image mutation after complete transaction preflight. */
 extern BOOL DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID);
+/* Mark a checked pure constant as dead-elided provenance only; FALSE leaves
+ * the image unchanged, and no WN is removed here. */
 extern BOOL DSL_IR_Image_Mark_Value_Dead_Elided (DSL_IR_VALUE_ID);
 
 /* Confirm that the caller selected the PU whose local WHIRL state is active. */

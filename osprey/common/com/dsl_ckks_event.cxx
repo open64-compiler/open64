@@ -6,14 +6,15 @@
  */
 
 #include <string.h>
+#include "../ir_image/dsl_image_service.h"
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "dsl_ckks_event_internal.h"
-#include "dsl_ckks_expand_internal.h"
-#include "dsl_ir_transaction_internal.h"
+#include "../../be/vho/dsl_ckks_expand_internal.h"
+#include "../../be/com/dsl_ir_transaction_internal.h"
 #include "segmented_array.h"
 #include "strtab.h"
 #include "symtab.h"

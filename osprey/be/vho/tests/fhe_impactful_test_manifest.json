@@ -286,10 +286,23 @@
     {
       "name": "common-native-transaction",
       "patterns": [
-        "osprey/common/com/dsl_ir_rewrite.*",
+        "osprey/be/com/dsl_ir_rewrite*",
+        "osprey/be/com/dsl_external_tensor.*",
+        "osprey/be/com/dsl_pu_interface_verify.*",
+        "osprey/be/com/dsl_program_interface*",
+        "osprey/be/com/dsl_runtime_interface*",
+        "osprey/be/com/dsl_ir_retype.*",
+        "osprey/be/com/dsl_ir_transaction_internal.h",
+        "osprey/be/vho/dsl_ckks_expand.*",
+        "osprey/be/vho/dsl_ckks_expand_internal.h",
+        "osprey/common/ir_image/dsl_ir_image.*",
+        "osprey/common/ir_image/dsl_image*",
+        "osprey/common/ir_image/dsl_lowered_relation.h",
+        "osprey/common/ir_image/dsl_pu_specialize_internal.h",
+        "osprey/common/util/dsl_strtab_checkpoint.h",
         "osprey/common/com/dsl_ir_image.*",
-        "osprey/common/com/dsl_ir_group_lower.*",
-        "osprey/common/com/dsl_ir_lower.*",
+        "osprey/be/com/dsl_ir_group_lower.*",
+        "osprey/be/com/dsl_ir_lower*",
         "osprey/common/com/dsl_shape.*",
         "osprey/common/com/dsl_builder.*",
         "osprey/common/fhe/fhe_plan.*",
@@ -311,7 +324,7 @@
     {
       "name": "logical-printer-reader",
       "patterns": [
-        "osprey/common/com/dsl_ir_print.*",
+        "osprey/common/ir_image/dsl_ir_print.*",
         "osprey/ir_tools/**",
         "osprey/common/com/ir_*"
       ],

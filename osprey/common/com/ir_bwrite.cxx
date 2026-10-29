@@ -47,6 +47,7 @@
 #endif /* USE_PCH */
 #pragma hdrstop
 #include <unistd.h>		    /* for unlink() */
+#include "../ir_image/dsl_image_service.h"
 #include <fcntl.h>		    /* for open() */
 #ifdef __MINGW32__
 #include <WINDOWS.h>

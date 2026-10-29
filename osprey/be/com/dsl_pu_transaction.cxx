@@ -7,6 +7,9 @@
  */
 
 #include <string.h>
+#include "../../common/ir_image/dsl_image_service.h"
+#include "dsl_pu_interface_verify.h"
+#include "dsl_ir_rewrite.h"
 
 #include "clone.h"
 #include "clone_DST_utils.h"

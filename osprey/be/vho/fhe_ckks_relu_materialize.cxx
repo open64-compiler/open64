@@ -9,6 +9,9 @@
  */
 
 #include "fhe_ckks_relu_materialize.h"
+#include "../../common/ir_image/dsl_image_service.h"
+#include "../com/dsl_ir_rewrite.h"
+#include "../com/dsl_external_tensor.h"
 
 #include <float.h>
 #include <math.h>

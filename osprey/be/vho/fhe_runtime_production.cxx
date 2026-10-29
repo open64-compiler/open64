@@ -12,6 +12,10 @@
  */
 
 #include <fcntl.h>
+#include "../../common/ir_image/dsl_lowered_relation.h"
+#include "../../common/ir_image/dsl_image_service.h"
+#include "../com/dsl_program_interface.h"
+#include "../com/dsl_ir_lower.h"
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>

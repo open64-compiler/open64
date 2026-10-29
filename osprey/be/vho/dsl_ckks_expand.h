@@ -15,6 +15,8 @@
 #include "pu_info.h"
 #include "srcpos.h"
 
+class WN;
+
 typedef enum {
     DSL_CKKS_EXPANSION_EXISTING_VALUE = 1,
     DSL_CKKS_EXPANSION_PRIOR_STEP = 2

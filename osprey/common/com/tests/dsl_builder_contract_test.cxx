@@ -3,6 +3,8 @@
  *
  * This deliberately exercises the future Python-facing construction surface
  * without adding Python bindings or backend lowering dependencies.
+ * Design: doc/WHIRL-DSL-INFRASTRUCTURE.md; mapped .B compatibility and
+ * driver-selected PU ownership remain production API responsibilities.
  */
 
 #include <stdio.h>
@@ -33,15 +35,16 @@
 #include "controls.h"
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
+#include "dwarf_DST_producer.h"
 #include "srcpos.h"
 #include "const.h"
-#include "dsl_builder.h"
-#include "dsl_pu_specialize_internal.h"
-#include "dsl_ckks_expand.h"
-#include "dsl_ckks_expand_internal.h"
+#include "../../ir_image/tests/dsl_image_owner_fixture.h"
+#include "../../ir_image/dsl_pu_specialize_internal.h"
+#include "../../../be/vho/dsl_ckks_expand.h"
+#include "../../../be/vho/dsl_ckks_expand_internal.h"
 #include "dsl_ckks_event_internal.h"
 #include "dsl_contract.h"
-#include "dsl_program_interface_internal.h"
+#include "../../../be/com/dsl_program_interface_internal.h"
 #include "dsl_region_internal.h"
 #include "fhe_image.h"
 #include "fhe_plan.h"
@@ -1540,6 +1543,84 @@ Check_Pre_PU_Native_Value_Compatibility(void)
     return 0;
 }
 
+/* Finish legacy mutable construction only for native definitions physically
+ * present in this fixture tree. Negative mutation tests run before this step;
+ * the existing seal service freezes types without changing WN/ST identities.
+ * No other PU or unrelated global type is visited, and no image is published.
+ */
+static BOOL
+Seal_Fixture_Native_Types(WN *tree, UINT32 *sealed_count)
+{
+    if (tree == NULL)
+        return TRUE;
+    if (WN_operator(tree) == OPR_BLOCK) {
+        for (WN *stmt = WN_first(tree); stmt != NULL; stmt = WN_next(stmt)) {
+            if (!Seal_Fixture_Native_Types(stmt, sealed_count))
+                return FALSE;
+        }
+        return TRUE;
+    }
+    if (WN_operator(tree) == OPR_STID && WN_kid0(tree) != NULL &&
+        DSL_WN_Is_Native(WN_kid0(tree)) &&
+        !TY_tensor_is_canonical(WN_ty(tree))) {
+        if (!TY_tensor_seal(WN_ty(tree)))
+            return FALSE;
+        ++*sealed_count;
+    }
+    for (INT32 kid = 0; kid < WN_kid_count(tree); ++kid) {
+        if (!Seal_Fixture_Native_Types(WN_kid(tree, kid), sealed_count))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+/* Verify the restored legacy fixture, prove admission rejects its unsealed
+ * types, then seal the selected PU's native definitions and recheck admission.
+ * The fixture driver owns this preparation; production checks stay unchanged.
+ * Rejection prevents publication and reports the complete verifier diagnostic.
+ */
+static BOOL
+Verify_Builder_Program_For_Test(PU_Info *pu)
+{
+    char diagnostic[8192];
+    DSL_BUILDER_VERIFY_RESULT result;
+    memset(&result, 0, sizeof(result));
+    result.diagnostic = diagnostic;
+    result.diagnostic_capacity = sizeof(diagnostic);
+    BOOL valid = DSL_Builder_Verify_Program(&result);
+    Is_True(valid, ("restored builder fixture is invalid: %s", diagnostic));
+    if (!valid)
+        fprintf(stderr, "builder fixture verification failed: %s\n",
+                diagnostic);
+    DSL_GATEKEEPER_RESULT admission;
+    if (!valid || !DSL_Builder_Select_PU(pu))
+        return FALSE;
+    if (DSL_Gatekeeper_Verify_PU_Mode
+            (pu, DSL_GATEKEEPER_ADMISSION, NULL, &admission)) {
+        fprintf(stderr, "admission accepted an unsealed legacy fixture\n");
+        return FALSE;
+    }
+    UINT32 sealed_count = 0;
+    BOOL sealed = Seal_Fixture_Native_Types
+                      (PU_Info_tree_ptr(pu), &sealed_count);
+    Is_True(sealed && sealed_count != 0,
+            ("legacy builder fixture failed descriptor sealing"));
+    if (!sealed || sealed_count == 0)
+        return FALSE;
+    BOOL admitted = DSL_Gatekeeper_Verify_PU_Mode
+                        (pu, DSL_GATEKEEPER_ADMISSION, stderr, &admission);
+    Is_True(admitted,
+            ("legacy builder fixture remains inadmissible after sealing"));
+    if (!admitted)
+        return FALSE;
+    printf("legacy fixture admission passed after sealing %u descriptors\n",
+           sealed_count);
+    return TRUE;
+}
+
+/* Exercise native construction and fail-closed mutation checks, restore the
+ * valid program, then seal legacy types and verify admission before output.
+ */
 static int
 Check_Production_Native_Builder(void)
 {
@@ -1784,7 +1865,8 @@ Check_Production_Native_Builder(void)
                    "gatekeeper_contract_test.B" : retained_artifact;
     request.flags = 0;
     (void) unlink(request.path);
-    if (!DSL_Builder_Finalize_Mapped_Image(&request) ||
+    if (failed || !Verify_Builder_Program_For_Test(pu) ||
+        !DSL_Builder_Finalize_Mapped_Image(&request) ||
         access(request.path, F_OK) != 0) {
         fprintf(stderr, "gatekeeper blocked valid mapped-image output\n");
         failed = 1;
@@ -2778,6 +2860,9 @@ Check_Native_DSL_Node_Layout(void)
     return failed;
 }
 
+/* Build and inspect the common-op ingestion fixture, including logical image
+ * checks, then seal restored legacy types and verify admission before output.
+ */
 static int
 Check_Llama2_Common_Substrate(void)
 {
@@ -3051,7 +3136,8 @@ Check_Llama2_Common_Substrate(void)
                    "llama2_common_substrate.B" : artifact;
     request.flags = 0;
     (void) unlink(request.path);
-    if (!DSL_Builder_Finalize_Mapped_Image(&request) ||
+    if (failed || !Verify_Builder_Program_For_Test(pu) ||
+        !DSL_Builder_Finalize_Mapped_Image(&request) ||
         access(request.path, F_OK) != 0) {
         fprintf(stderr, "item-23 mapped-image finalization failed\n");
         failed = 1;
@@ -3062,6 +3148,9 @@ Check_Llama2_Common_Substrate(void)
     return failed;
 }
 
+/* Exercise transformer expression construction and negative contracts in the
+ * selected fixture PU, then seal restored types and gate mapped output.
+ */
 static int
 Check_Llama2_Transformer_Expressions(void)
 {
@@ -3401,7 +3490,8 @@ Check_Llama2_Transformer_Expressions(void)
                    "llama2_transformer_expressions.B" : artifact;
     request.flags = 0;
     (void) unlink(request.path);
-    if (!DSL_Builder_Finalize_Mapped_Image(&request) ||
+    if (failed || !Verify_Builder_Program_For_Test(pu) ||
+        !DSL_Builder_Finalize_Mapped_Image(&request) ||
         access(request.path, F_OK) != 0) {
         fprintf(stderr, "item-24 mapped-image finalization failed\n");
         failed = 1;
@@ -3411,6 +3501,10 @@ Check_Llama2_Transformer_Expressions(void)
     return failed;
 }
 
+/* Exercise transformer REGION contracts and malformed cases, restoring then
+ * sealing fixture types before admission and mapped output. Source positions
+ * identify this actual C++ producer, not a nonexistent Python placeholder.
+ */
 static int
 Check_Llama2_Transformer_Regions(void)
 {
@@ -3585,7 +3679,7 @@ Check_Llama2_Transformer_Regions(void)
 
     pu = DSL_Builder_Create_Minimal_PU("llama2_transformer_regions");
     file_id = DSL_Builder_Register_Source_File
-                  (pu, "/tmp/llama2_transformer_regions.py");
+                  (pu, __FILE__);
     external[0] = DSL_Builder_Create_Model_Input("tokens", token_ty, 0);
     const char *tensor_keys[9] = {
         "tok_embeddings.weight", "layers.0.attention_norm.weight",
@@ -3625,13 +3719,23 @@ Check_Llama2_Transformer_Regions(void)
         external[i + 1] = DSL_Builder_Create_External_Tensor_Constant
                               (external_names[i], external_types[i],
                                &references[i]);
+        DSL_IR_EXTERNAL_TENSOR_REFERENCE observed;
+        if (external[i + 1] == NULL ||
+            !DSL_IR_Image_Get_External_Tensor_Reference
+                 (PU_Info_proc_sym(pu),
+                  DSL_Builder_Get_Value_Image_Id(external[i + 1]),
+                  &observed) ||
+            observed.tensor_tcon != TCON_IDX_ZERO) {
+            fprintf(stderr, "checksum-free external reference changed\n");
+            return 1;
+        }
     }
     memset(&position, 0, sizeof(position));
     position.file_id = file_id;
     position.column = 1;
     position.statement_begin = 1;
     for (UINT32 i = 0; i < 10; ++i) {
-        position.line = 10 + i;
+        position.line = __LINE__ + 1;
         if (external[i] == NULL ||
             !DSL_Builder_Set_Value_Source_Position(external[i], &position) ||
             !DSL_Builder_Append_PU_Value(pu, external[i]))
@@ -3642,14 +3746,14 @@ Check_Llama2_Transformer_Regions(void)
                   (pu, NULL, "transformer.prefill", 1);
     decoder = DSL_Builder_Create_Region
                   (pu, prefill, "transformer.decoder_layer", 1);
-    position.line = 30;
+    position.line = __LINE__ + 1;
     position.basic_block_begin = 1;
     if (prefill == NULL || decoder == NULL ||
         !DSL_Builder_Set_Region_Source_Position(prefill, &position) ||
         !DSL_Builder_Set_Region_Metadata
              (prefill, "module_path", "TinyLlama.forward"))
         return 1;
-    position.line = 40;
+    position.line = __LINE__ + 1;
     if (!DSL_Builder_Set_Region_Source_Position(decoder, &position) ||
         !DSL_Builder_Set_Region_Metadata
              (decoder, "module_path", "layers.0") ||
@@ -3753,13 +3857,13 @@ Check_Llama2_Transformer_Regions(void)
                             (output, 3, kids, 1, output_attrs, 3);
 
     position.basic_block_begin = 0;
-    position.line = 31;
+    position.line = __LINE__ + 1;
     if (prefill_values[0] == NULL ||
         !DSL_Builder_Set_Value_Source_Position(prefill_values[0], &position) ||
         !DSL_Builder_Append_Region_Value(prefill, prefill_values[0]))
         return 1;
     for (UINT32 i = 0; i < 19; ++i) {
-        position.line = 41 + i;
+        position.line = __LINE__ + 1;
         if (decoder_values[i] == NULL ||
             !DSL_Builder_Set_Value_Source_Position
                  (decoder_values[i], &position) ||
@@ -3769,7 +3873,7 @@ Check_Llama2_Transformer_Regions(void)
     if (!DSL_Builder_Append_Child_Region(prefill, decoder))
         return 1;
     for (UINT32 i = 1; i < 4; ++i) {
-        position.line = 61 + i;
+        position.line = __LINE__ + 1;
         if (prefill_values[i] == NULL ||
             !DSL_Builder_Set_Value_Source_Position
                  (prefill_values[i], &position) ||
@@ -3892,7 +3996,8 @@ Check_Llama2_Transformer_Regions(void)
                    "llama2_transformer_regions.B" : artifact;
     request.flags = 0;
     (void) unlink(request.path);
-    if (!DSL_Builder_Finalize_Mapped_Image(&request) ||
+    if (failed || !Verify_Builder_Program_For_Test(pu) ||
+        !DSL_Builder_Finalize_Mapped_Image(&request) ||
         access(request.path, F_OK) != 0) {
         fprintf(stderr, "item-25 mapped-image finalization failed\n");
         failed = 1;
@@ -5517,6 +5622,10 @@ Check_Program_Interface_Cycle_Rejection(void)
     return failed;
 }
 
+/* Exercise driver-selected caller/callee interface transactions and mapped
+ * validation, including rollback and malformed images. The final physical
+ * fixture models opaque handle definitions only, not numerical execution.
+ */
 static int
 Check_Program_Interface_Evolution(void)
 {
@@ -6629,14 +6738,73 @@ Check_Program_Interface_Evolution(void)
 
     Remove_Runtime_Interface_DSL_Definitions(PU_Info_tree_ptr(callee));
     PROGRAM_INTERFACE_CHECK
-        (DSL_Program_Interface_Validate_Lowered_PU(callee, stderr) &&
-         DSL_Builder_Select_PU(caller),
+        (!DSL_Program_Interface_Validate_Lowered_PU(callee, NULL),
+         "deleted computed projection definition rejects");
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD computed_projection;
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Runtime_Interface_Image_Find_Value
+             (PU_Info_proc_sym(callee),
+              DSL_Builder_Get_Value_Image_Id(callee_result),
+              &computed_projection),
+         "computed projection for physical verifier fixture");
+    if (failed)
+        return failed;
+    WN *lowered_callee_body = WN_func_body(PU_Info_tree_ptr(callee));
+    WN *handle_definition = WN_CreateStid
+        (OPR_STID, MTYPE_V, Pointer_Mtype, 0,
+         computed_projection.handle_st, computed_projection.handle_ty,
+         WN_Intconst(Pointer_Mtype, 0));
+    WN_Set_Linenum
+        (handle_definition,
+         ST_Srcpos(St_Table[computed_projection.handle_st]));
+    /* This verifier-only fixture supplies an opaque sentinel, not an add
+     * implementation. Deleting the DSL definition alone left a dangling read.
+     */
+    WN_INSERT_BlockFirst(lowered_callee_body, handle_definition);
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Program_Interface_Validate_Lowered_PU(callee, stderr),
          "callee lowered program interface");
+    WN *saved_handle_value = WN_kid0(handle_definition);
+    WN_kid0(handle_definition) = WN_CreateLdid
+        (OPR_LDID, Pointer_Mtype, Pointer_Mtype, 0,
+         computed_projection.handle_st, computed_projection.handle_ty);
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Validate_Lowered_PU(callee, NULL),
+         "self-referential handle definition rejects");
+    WN_DELETE_Tree(WN_kid0(handle_definition));
+    WN_kid0(handle_definition) = saved_handle_value;
+    PROGRAM_INTERFACE_CHECK(DSL_Builder_Select_PU(caller),
+                            "select caller independently of validation");
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Validate_Lowered_PU(callee, NULL),
+         "inactive callee still rejects");
     Remove_Runtime_Interface_DSL_Definitions(PU_Info_tree_ptr(caller));
+    PROGRAM_INTERFACE_CHECK
+        (!DSL_Program_Interface_Validate_Lowered_PU(caller, NULL),
+         "deleted caller input definition rejects");
+    DSL_RUNTIME_VALUE_PROJECTION_RECORD input_projection;
+    PROGRAM_INTERFACE_CHECK
+        (DSL_Runtime_Interface_Image_Find_Value
+             (PU_Info_proc_sym(caller),
+              DSL_Builder_Get_Value_Image_Id(arguments[0]),
+              &input_projection),
+         "caller input projection for physical verifier fixture");
+    if (failed)
+        return failed;
+    WN *input_definition = WN_CreateStid
+        (OPR_STID, MTYPE_V, Pointer_Mtype, 0,
+         input_projection.handle_st, input_projection.handle_ty,
+         WN_Intconst(Pointer_Mtype, 0));
+    WN_Set_Linenum
+        (input_definition, ST_Srcpos(St_Table[input_projection.handle_st]));
+    WN_INSERT_BlockFirst
+        (WN_func_body(PU_Info_tree_ptr(caller)), input_definition);
     PROGRAM_INTERFACE_CHECK
         (DSL_Program_Interface_Validate_Lowered_PU(caller, stderr),
          "caller lowered program interface");
 
+    if (failed)
+        return failed;
     (void) unlink(artifact);
     PROGRAM_INTERFACE_CHECK
         (Write_Runtime_Interface_Artifact(artifact, callee, caller),
@@ -7114,6 +7282,10 @@ Check_FHE_SYNC3_Native_Rewrite(void)
     return failed;
 }
 
+/* Exercise owner-qualified FHE entry metadata, authenticated external TCON
+ * lookup and malformed mapped rows. Restore each negative mutation before
+ * publishing a fully verified program through the normal builder finalizer.
+ */
 static int
 Check_FHE_SYNC1_Mapped_Image(void)
 {
@@ -7145,6 +7317,7 @@ Check_FHE_SYNC1_Mapped_Image(void)
     DSL_FHE_KEY_REQUIREMENT_RECORD key_requirement;
     DSL_FHE_IMAGE_HEADER image_header;
     DSL_IR_EXTERNAL_TENSOR_REFERENCE observed_external;
+    DSL_TENSOR_TCON_RECORD external_tcon;
     TY_IDX weight_ty;
     DSL_FHE_CONFIG_ID config_id;
     DSL_FHE_ENCRYPTION_DESCRIPTOR_ID ciphertext_id;
@@ -7235,7 +7408,20 @@ Check_FHE_SYNC1_Mapped_Image(void)
              DSL_Builder_Get_Value_Image_Id(weight) &&
          observed_external.descriptor_ty == weight_ty &&
          observed_external.st == WN_st_idx(weight) &&
-         observed_external.tensor_tcon == TCON_IDX_ZERO &&
+         observed_external.tensor_tcon != TCON_IDX_ZERO &&
+         DSL_Tensor_TCON_Get(observed_external.tensor_tcon, &external_tcon) &&
+         external_tcon.storage_kind ==
+             DSL_TENSOR_TCON_STORAGE_SIDE_FILE_DENSE &&
+         external_tcon.descriptor_ty == weight_ty &&
+         external_tcon.element_mtype == MTYPE_F4 &&
+         external_tcon.element_size == 4 &&
+         external_tcon.element_count == 4 &&
+         external_tcon.logical_bytes == 16 &&
+         external_tcon.required_alignment >= TY_align(weight_ty) &&
+         external_tcon.byte_offset == 0 &&
+         external_tcon.byte_length == 16 &&
+         external_tcon.checksum_hi == 0x0123456789abcdefULL &&
+         external_tcon.checksum_lo == 0x0123456789abcdefULL &&
          observed_external.rank == 2 &&
          observed_external.byte_offset == 0 &&
          observed_external.byte_length == 16 &&
@@ -7248,6 +7434,26 @@ Check_FHE_SYNC1_Mapped_Image(void)
          strcmp(observed_external.logical_shape, "[2,2]") == 0 &&
          strcmp(observed_external.layout, "row_major") == 0,
          "typed external tensor lookup");
+    if (failed)
+        return failed;
+    TCON_IDX authenticated_tcon = observed_external.tensor_tcon;
+    ST_IDX weight_st = DSL_Builder_Get_Value_Result_Symbol(weight);
+    const char *tcon_text = ST_tensor_metadata(weight_st, "tensor_tcon_idx");
+    std::string saved_tcon_text = tcon_text == NULL ? "" : tcon_text;
+    ST_tensor_bind_metadata(weight_st, "tensor_tcon_idx", "0");
+    FHE_SYNC1_CHECK
+        (!DSL_IR_Image_Get_External_Tensor_Reference
+              (PU_Info_proc_sym(pu),
+               DSL_Builder_Get_Value_Image_Id(weight), &observed_external),
+         "authenticated external reference rejects a zero TCON override");
+    ST_tensor_bind_metadata
+        (weight_st, "tensor_tcon_idx", saved_tcon_text.c_str());
+    FHE_SYNC1_CHECK
+        (DSL_IR_Image_Get_External_Tensor_Reference
+             (PU_Info_proc_sym(pu),
+              DSL_Builder_Get_Value_Image_Id(weight), &observed_external) &&
+         observed_external.tensor_tcon == authenticated_tcon,
+         "authenticated external reference restores exact TCON identity");
     ++source_position.line;
     FHE_SYNC1_CHECK
         (DSL_Builder_Set_Value_Source_Position(result, &source_position),
@@ -15341,12 +15547,80 @@ Check_PU_Clone_Region_Store(void)
     return 0;
 }
 
+/* Reuse the production builder in one process across begin and abort
+ * boundaries. Each fresh image restarts DST file indices, while a second PU
+ * shares the current CU. Optional output retains each independent .B image.
+ */
+static int
+Check_Builder_DST_Lifecycle(void)
+{
+    const char *artifact_dir = getenv("OPEN64_DSL_DST_ARTIFACT_DIR");
+    for (UINT32 program = 0; program < 3; ++program) {
+        if (program == 2)
+            DSL_Builder_Abort_Program();
+        else if (!DSL_Builder_Begin_Program())
+            return 1;
+        DSL_BUILDER_PROGRAM_UNIT first =
+            DSL_Builder_Create_Minimal_PU("dst_lifecycle_first");
+        if (first == NULL ||
+            DSL_Builder_Register_Source_File(first, __FILE__) != 1 ||
+            !DSL_Builder_Return_PU_Values(first, NULL, 0)) {
+            fprintf(stderr, "DST lifecycle first PU/source registration failed\n");
+            return 1;
+        }
+        DSL_BUILDER_PROGRAM_UNIT second =
+            DSL_Builder_Create_Minimal_PU("dst_lifecycle_second");
+        if (second == NULL ||
+            DSL_Builder_Register_Source_File(second, __FILE__) != 1 ||
+            !DSL_Builder_Return_PU_Values(second, NULL, 0) ||
+            DST_number_of_files() != 1 ||
+            DST_number_of_include_dirs() != 1 ||
+            DST_IS_NULL(PU_Info_cu_dst(first)) ||
+            !DST_ARE_EQUAL(PU_Info_cu_dst(first), PU_Info_cu_dst(second)) ||
+            !DSL_Builder_Select_PU(first)) {
+            fprintf(stderr, "DST lifecycle shared CU/file identity failed\n");
+            return 1;
+        }
+        USRCPOS source_position;
+        USRCPOS_clear(source_position);
+        USRCPOS_filenum(source_position) = 1;
+        USRCPOS_linenum(source_position) = __LINE__;
+        USRCPOS_column(source_position) = 1;
+        PU_Info *program_units[2] = { first, second };
+        for (UINT32 ordinal = 0; ordinal < 2; ++ordinal) {
+            WN *entry = PU_Info_tree_ptr(program_units[ordinal]);
+            Set_ST_Srcpos(St_Table[PU_Info_proc_sym(program_units[ordinal])],
+                          USRCPOS_srcpos(source_position));
+            WN_Set_Linenum(entry, USRCPOS_srcpos(source_position));
+            WN_Set_Linenum(WN_last(WN_func_body(entry)),
+                           USRCPOS_srcpos(source_position));
+        }
+        if (artifact_dir != NULL) {
+            char path[4096];
+            snprintf(path, sizeof(path), "%s/dst_program_%u.B",
+                     artifact_dir, program);
+            DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
+            request.path = path;
+            request.flags = 0;
+            if (!DSL_Builder_Finalize_Mapped_Image(&request))
+                return 1;
+        }
+    }
+    printf("DSL builder DST lifecycle passed: begin/begin/abort, two PUs per image\n");
+    return 0;
+}
+
+/* Dispatch focused lanes or the legacy combined suite in one initialized
+ * compiler process; aggregate failures without weakening production checks.
+ */
 int
 main(void)
 {
     int failed = 0;
 
     Initialize_Test_Context();
+    if (getenv("OPEN64_DSL_DST_LIFECYCLE_ONLY") != NULL)
+        return Check_Builder_DST_Lifecycle();
     if (getenv("OPEN64_DSL_INGESTION_API_ONLY") != NULL)
         return Check_Upgraded_Ingestion_APIs();
     if (getenv("OPEN64_DSL_TENSOR_ALIGNMENT_ONLY") != NULL)
@@ -15457,6 +15731,7 @@ main(void)
     failed |= Check_DSL_Simplifier_Bridge();
     failed |= Check_Shape_Solver();
     failed |= Check_Symbolic_Shape_Solver();
+    failed |= Check_Builder_DST_Lifecycle();
 
     return failed;
 }

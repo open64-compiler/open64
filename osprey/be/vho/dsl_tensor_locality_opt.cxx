@@ -5,6 +5,7 @@
 /* VHO-owned AIO-4 PU-local lifetime and locality derivation. */
 
 #include <algorithm>
+#include "../../common/ir_image/dsl_image_service.h"
 #include <limits.h>
 #include <string.h>
 #include <vector>

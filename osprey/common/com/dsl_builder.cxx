@@ -9,6 +9,9 @@
 #endif /* USE_PCH */
 #pragma hdrstop
 #include <algorithm>
+#include "../ir_image/dsl_image_service.h"
+#include "../../be/com/dsl_pu_interface_verify.h"
+#include "../../be/com/dsl_external_tensor.h"
 #include <ctype.h>
 #include <errno.h>
 #include <float.h>
@@ -35,6 +38,7 @@
 #include "dwarf_DST.h"
 #include "dwarf_DST_mem.h"
 #include "dwarf_DST_producer.h"
+#include "errors.h"
 #include "glob.h"
 #include "pu_info.h"
 #include "ir_bwrite.h"
@@ -120,6 +124,10 @@ static std::vector<dsl_builder_pu_source_identity *>
     DSL_builder_pu_source_identities;
 static std::vector<dsl_builder_call_record *> DSL_builder_call_registry;
 
+/* Discard builder-owned program registries and start a fresh DST producer.
+ * Begin, abort, and legacy lazy restart share this boundary; no previously
+ * returned PU/value or source-file index remains valid after it.
+ */
 static void
 DSL_Builder_Reset_Program (void)
 {
@@ -148,6 +156,7 @@ DSL_Builder_Reset_Program (void)
     DSL_FHE_Image_Reset();
     DSL_FHE_Plan_Image_Reset();
     DSL_Region_Reset();
+    DST_init_mem();
 }
 
 static dsl_builder_pu_interface *
@@ -3454,15 +3463,19 @@ DSL_Builder_Record_FHE_BN_Fold
     return DSL_FHE_Plan_Add_BN_Fold_Provenance(&record);
 }
 
+/* Start an independent builder program, including fresh DST producer state.
+ * Reset invalidates prior program handles without changing mapped contracts.
+ */
 BOOL
 DSL_Builder_Begin_Program (void)
 {
     DSL_Builder_Reset_Program();
-    Current_DST = New_DST();
-    DST_Init(NULL, 0);
     return TRUE;
 }
 
+/* Abandon the failed program through the same registry/DST reset as begin;
+ * callers cannot resume its PU, value, or source-index context afterwards.
+ */
 void
 DSL_Builder_Abort_Program (void)
 {
@@ -4259,6 +4272,11 @@ DSL_Builder_Verify_PU_Interfaces (FILE *diagnostic, UINT32 *error_count)
     return TRUE;
 }
 
+/* Verify driver-owned builder PUs and aggregate every failed contract into
+ * the caller's diagnostic/count result. Development assertions catch internal
+ * PU-context or status/count contradictions, not malformed-input rejection.
+ * No image is published; PU selection remains the builder driver's role.
+ */
 static BOOL
 DSL_Builder_Verify_Program_Mode
         (DSL_GATEKEEPER_MODE mode,
@@ -4305,6 +4323,10 @@ DSL_Builder_Verify_Program_Mode
             ++gatekeeper_result.error_count;
             continue;
         }
+        Is_True(Current_PU_Info == pu &&
+                Current_Map_Tab == PU_Info_maptab(pu),
+                ("DSL builder verifier selected an inconsistent PU context: "
+                 "owner_pu_st=%u", (UINT32)PU_Info_proc_sym(pu)));
         if (!DSL_Gatekeeper_Verify_PU_Mode
                  (pu, mode, diagnostic, &pu_result))
             valid = FALSE;
@@ -4355,6 +4377,9 @@ DSL_Builder_Verify_Program_Mode
         valid = FALSE;
         ++gatekeeper_result.error_count;
     }
+    Is_True(valid == (gatekeeper_result.error_count == 0),
+            ("DSL builder verifier status/count disagreement: "
+             "valid=%d errors=%u", (INT)valid, gatekeeper_result.error_count));
     if (diagnostic != NULL) {
         rewind(diagnostic);
         size_t count = fread(buffer, 1, capacity - 1, diagnostic);

@@ -13,6 +13,10 @@
  */
 
 #include <string.h>
+#include "../../common/ir_image/dsl_lowered_relation.h"
+#include "../../common/ir_image/dsl_image_service.h"
+#include "../com/dsl_ir_rewrite.h"
+#include "../com/dsl_ir_lower.h"
 
 #include <vector>
 

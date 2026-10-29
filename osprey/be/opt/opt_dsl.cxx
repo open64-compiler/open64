@@ -11,6 +11,7 @@
  * target-selection policy is linked into this backend component. */
 
 #include <string.h>
+#include "../../common/ir_image/dsl_image_service.h"
 #include <stdlib.h>
 #include <errno.h>
 #include <stdio.h>

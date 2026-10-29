@@ -9,6 +9,7 @@
  */
 
 #include "fhe_ckks2c_public_join.h"
+#include "../../../common/ir_image/dsl_image_service.h"
 
 #include <stdio.h>
 #include <string.h>

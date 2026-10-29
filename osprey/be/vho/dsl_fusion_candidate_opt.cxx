@@ -10,6 +10,7 @@
  */
 
 #include <string.h>
+#include "../../common/ir_image/dsl_image_service.h"
 #include <vector>
 
 #include "dsl_fusion_candidate_opt.h"

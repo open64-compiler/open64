@@ -5,6 +5,36 @@ metadata, tensor descriptors, and a future Python frontend ingestion path.
 Use this file as the compact default context. Pull the larger design documents
 only when the current task needs detail.
 
+## Instruction Intake And Completion Gate
+
+1. Before editing, identify all applicable instruction files in the actual
+   checkout or worktree, including ancestor and nested `AGENTS.md` files and
+   any other instructions required for the task. Read each applicable file in
+   full, from beginning to end. Summaries, search hits, header excerpts, and
+   arbitrary line prefixes are not substitutes for complete reading. If output
+   is truncated, continue with bounded reads until every section is covered.
+2. Apply instruction scope and precedence explicitly. Do not assume another
+   checkout has identical guidance. Before entering a new directory or changing
+   task scope, check for additional applicable instructions and read them in
+   full; reread applicable instruction files when they change.
+3. Before implementation, extract mandatory requirements into an explicit
+   compliance checklist. Cover applicable naming, formatting, architectural and
+   function-contract comments, ownership and phase boundaries, compatibility,
+   dependencies, option controls, validation, documentation, and artifact
+   retention requirements. Mark a requirement not applicable only with a reason.
+4. Before declaring a milestone complete, enumerate every new or modified file
+   in the milestone, including untracked files, headers, helpers, tests, scripts,
+   build files, and documentation. Check each file against all applicable items
+   in the compliance checklist and record its result. Keep unrelated pre-existing
+   edits outside the milestone rather than changing them to satisfy this review.
+5. Passing tests, builds, automated style checks, or `git diff --check` does not
+   replace the file-by-file compliance review. Automated checks may assist, but
+   manually verify that required comments and documentation describe the actual
+   contracts, invariants, ownership, mutation, and failure behavior.
+6. Do not declare completion while any mandatory checklist item is failed or
+   unchecked. Resolve omissions first; if a requirement cannot be satisfied,
+   report partial completion, the blocker, and the precise affected files.
+
 ## High-Level Direction
 
 1. Preserve existing Open64 and WHIRL compatibility unless a task explicitly
@@ -274,6 +304,12 @@ only when the current task needs detail.
 
 ## Coding Guidelines
 
+Whenever any existing function's implementation or signature is modified,
+review its function-head comment. If the comment no longer reflects the code's
+actual behavior or contract, update it in the same change. This maintenance
+requirement applies regardless of language, filename, or when the function was
+created; passing tests does not excuse a stale comment.
+
 1. Do not introduce tab characters in any file touched in this Open64 project.
 2. Use spaces for indentation and alignment.
 3. Makefiles may use literal tabs only where required by standard make recipe
@@ -348,6 +384,58 @@ only when the current task needs detail.
     precedents for new DSL naming. When an owning directory has a stricter
     established convention, preserve that convention and document any
     intentional departure during review.
+15. A struct or class member function whose body consists of a single simple
+    executable statement, such as a return, assignment, or forwarding call,
+    must be defined in the appropriate `.h` file and explicitly marked `inline`,
+    not defined out of line in a `.cxx` file. This rule applies only to struct
+    and class methods, not free functions; functions private to a `.cxx` file
+    remain there. Count statements, not physical source lines: wrapping one
+    statement across several lines does not exempt it. Retain the required
+    function-contract comment and preserve linkage, ownership boundaries, and
+    binary compatibility when relocating an existing method definition.
+
+## Development Assertions
+
+1. In development builds, use Open64's `Is_True` assertions (enabled by
+   `Is_True_On`) for violated internal compiler invariants so refactor defects
+   stop at the failing boundary rather than causing later silent failures.
+2. Include actionable subsystem, ownership, or contract context in assertion
+   messages. Keep assertion expressions free of side effects, since optimized
+   builds may compile them out; retain required release-build checks.
+3. Malformed source or mapped IR, unsupported user requests, and deliberately
+   rejected API inputs must still use their documented diagnostic/failure
+   paths. Assert internal contradictions, not the mere presence of bad input.
+4. Test-fixture positive restoration/preparation boundaries may assert their
+   expected invariants; deliberate negative cases must remain independently
+   exercised and must not be disabled to make development builds pass.
+
+## DSL Comment Contracts And Maintenance
+
+1. Apply these comment requirements to every repository `.h` and `.cxx` file
+   whose basename contains `dsl` (case-insensitive), including existing files
+   created before the requirements were introduced. File age is not an exemption.
+2. Each such file must begin with a concise architectural comment after any
+   existing copyright notice. Describe its purpose, owning component or scope,
+   important behavior and compatibility boundaries, and the repository-relative
+   path of the controlling design or plan document.
+3. Every function declaration and definition must have a function-level contract
+   comment, including private/static helpers, inline methods, constructors,
+   callbacks, and test functions. Describe purpose, caller/callee role, ownership,
+   mutation, required invariants, and failure or rollback behavior where relevant.
+   Brief meaningful comments suffice for trivial functions; merely restating a
+   function name or signature does not satisfy the requirement.
+4. Add orienting comments at non-obvious algorithm boundaries. Explain the
+   invariant or design reason, not just the sequence of statements.
+5. Whenever an existing function's body, signature, or behavior is modified,
+   review its existing function-head comment against the resulting code. Update
+   that comment in the same change if it no longer reflects the implementation,
+   including preconditions, ownership, effects, scope, ordering, return values,
+   and failure or rollback behavior. Add a contract comment if one is missing;
+   retain an existing comment unchanged only when it remains accurate.
+6. During compliance review, verify both comment presence and semantic accuracy.
+   A mechanical presence check cannot certify that a comment matches the code.
+   Report unresolved legacy omissions and stale contracts explicitly; do not
+   label a file compliant merely because it contains some comments.
 
 ## Driver And Phase Option Convention
 

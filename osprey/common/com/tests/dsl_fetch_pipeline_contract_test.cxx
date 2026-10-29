@@ -12,6 +12,7 @@
  */
 
 #include <stdio.h>
+#include "../../ir_image/dsl_image_service.h"
 #include <stdlib.h>
 #include <string.h>
 #include <vector>

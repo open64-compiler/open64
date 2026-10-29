@@ -2,6 +2,15 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * common/com owns insertion-ordered contract records and copied strings in a
+ * process-local registry. Legacy identity ignores versions; versioned APIs
+ * extend lookup without changing that behavior. Seeds describe required checks
+ * but do not implement gatekeeping, lowering, optimization or mapped-image
+ * changes. Callers coordinate access and domain/contract reset lifetimes.
+ * Design: doc/WHIRL-DSL-INFRASTRUCTURE.md, item 29.
+ */
+
 #include <string.h>
 #include <vector>
 
@@ -17,6 +26,7 @@ struct DSL_CONTRACT_RECORD {
     std::vector<const char *> required_checks;
     std::vector<const char *> diagnostic_codes;
 
+    /* Start unpublished, with no owned strings and empty check/code vectors. */
     DSL_CONTRACT_RECORD() :
         id(DSL_CONTRACT_INVALID_ID),
         source_domain_id(DSL_DOMAIN_INVALID_ID),
@@ -38,6 +48,7 @@ struct DSL_CONTRACT_SEED {
     UINT32 diagnostic_code_count;
 };
 
+/* Count static seed arrays at compile time; never pass a decayed pointer. */
 #define DSL_ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
 static const char *DSL_rotary_embedding_v1_checks[] = {
@@ -194,6 +205,7 @@ static const DSL_CONTRACT_SEED DSL_transformer_decode_contracts[] = {
       DSL_ARRAY_COUNT(DSL_kv_cache_state_v1_diagnostics) }
 };
 
+/* Allocate an owned string copy for a record; normalize null inputs to empty. */
 static const char *
 DSL_Contract_Save_String (const char *str)
 {
@@ -205,12 +217,18 @@ DSL_Contract_Save_String (const char *str)
     return saved;
 }
 
+/* Check the one-based contract ID range without consulting domain validity. */
 static BOOL
 DSL_Contract_Valid_Id (DSL_CONTRACT_ID id)
 {
     return id != DSL_CONTRACT_INVALID_ID && id <= DSL_contract_registry.size();
 }
 
+/*
+ * Release strings of an owning record during registry reset and clear its
+ * vectors. The caller discards the record next: name is left dangling, so this
+ * is not an idempotent release or a reusable-record initialization service.
+ */
 static void
 DSL_Contract_Free_Record (DSL_CONTRACT_RECORD &record)
 {
@@ -225,6 +243,7 @@ DSL_Contract_Free_Record (DSL_CONTRACT_RECORD &record)
     record.diagnostic_codes.clear();
 }
 
+/* Free owned payloads before clearing records; do not reset referenced domains. */
 void
 DSL_Contract_Registry_Reset (void)
 {
@@ -234,6 +253,13 @@ DSL_Contract_Registry_Reset (void)
     DSL_contract_registry.clear();
 }
 
+/*
+ * Share legacy/versioned registration while preserving first-writer metadata.
+ * Reject invalid names/versions and new-entry domains before copying strings;
+ * duplicate hits bypass domain validation. Publish only after payload copying.
+ * Ordinary validation failures do not mutate the table; allocation exceptions
+ * are neither caught nor rolled back, including partially allocated payloads.
+ */
 static DSL_CONTRACT_ID
 DSL_Contract_Register_Internal
         (const char *name,
@@ -257,6 +283,7 @@ DSL_Contract_Register_Internal
     if (safe_name[0] == '\0' || (versioned && version == 0))
         return DSL_CONTRACT_INVALID_ID;
 
+    /* Existing identity wins even when newly supplied metadata differs. */
     if (existing != DSL_CONTRACT_INVALID_ID)
         return existing;
 
@@ -282,10 +309,12 @@ DSL_Contract_Register_Internal
             (DSL_Contract_Save_String(diagnostic_codes == NULL ? NULL :
 				diagnostic_codes[i]));
 
+    /* Record copies share payload pointers; registry reset frees them once. */
     DSL_contract_registry.push_back(record);
     return record.id;
 }
 
+/* Delegate with legacy identity: version is payload, not a duplicate key. */
 DSL_CONTRACT_ID
 DSL_Contract_Register (const char *name,
                        DSL_DOMAIN_ID source_domain_id,
@@ -303,6 +332,7 @@ DSL_Contract_Register (const char *name,
                 diagnostic_code_count, FALSE);
 }
 
+/* Delegate with exact-version identity and the shared nonzero-version check. */
 DSL_CONTRACT_ID
 DSL_Contract_Register_Versioned
         (const char *name,
@@ -321,6 +351,10 @@ DSL_Contract_Register_Versioned
                 diagnostic_code_count, TRUE);
 }
 
+/*
+ * Scan in insertion order and return the first name/domain-pair match. Do not
+ * rank versions, validate domains or modify the metadata during legacy lookup.
+ */
 DSL_CONTRACT_ID
 DSL_Contract_Find (const char *name,
 		   DSL_DOMAIN_ID source_domain_id,
@@ -339,6 +373,7 @@ DSL_Contract_Find (const char *name,
     return DSL_CONTRACT_INVALID_ID;
 }
 
+/* Compare the complete versioned key without mutation; zero is a valid query. */
 DSL_CONTRACT_ID
 DSL_Contract_Find_Version (const char *name,
                            DSL_DOMAIN_ID source_domain_id,
@@ -358,6 +393,10 @@ DSL_Contract_Find_Version (const char *name,
     return DSL_CONTRACT_INVALID_ID;
 }
 
+/*
+ * Track the greatest matching numeric version, retaining the first on ties.
+ * This is metadata selection only, not a support or legality decision.
+ */
 DSL_CONTRACT_ID
 DSL_Contract_Find_Current (const char *name,
                            DSL_DOMAIN_ID source_domain_id,
@@ -382,6 +421,10 @@ DSL_Contract_Find_Current (const char *name,
     return current;
 }
 
+/*
+ * Validate before any output writes; copy scalar metadata/counts and a borrowed
+ * name, not owned storage. NULL output succeeds for a live contract ID.
+ */
 BOOL
 DSL_Contract_Get_Info (DSL_CONTRACT_ID id, DSL_CONTRACT_INFO *info)
 {
@@ -403,12 +446,14 @@ DSL_Contract_Get_Info (DSL_CONTRACT_ID id, DSL_CONTRACT_INFO *info)
     return TRUE;
 }
 
+/* Expose vector size through the public count type without changing records. */
 UINT32
 DSL_Contract_Count (void)
 {
     return DSL_contract_registry.size();
 }
 
+/* Bounds-check the zero-based ordinal before sharing Get_Info's output rules. */
 BOOL
 DSL_Contract_At (UINT32 ordinal, DSL_CONTRACT_INFO *info)
 {
@@ -418,6 +463,7 @@ DSL_Contract_At (UINT32 ordinal, DSL_CONTRACT_INFO *info)
     return DSL_Contract_Get_Info(DSL_contract_registry[ordinal].id, info);
 }
 
+/* Validate both indices and borrow a stored check name; never run the check. */
 const char *
 DSL_Contract_Required_Check_At (DSL_CONTRACT_ID id, UINT32 ordinal)
 {
@@ -431,6 +477,7 @@ DSL_Contract_Required_Check_At (DSL_CONTRACT_ID id, UINT32 ordinal)
     return record.required_checks[ordinal];
 }
 
+/* Validate both indices and borrow a stored code; do not emit a diagnostic. */
 const char *
 DSL_Contract_Diagnostic_Code_At (DSL_CONTRACT_ID id, UINT32 ordinal)
 {
@@ -444,6 +491,11 @@ DSL_Contract_Diagnostic_Code_At (DSL_CONTRACT_ID id, UINT32 ordinal)
     return record.diagnostic_codes[ordinal];
 }
 
+/*
+ * Look up, but never create, the transformer domain and register each seed as
+ * a self-domain versioned contract. Count successful IDs, including duplicates;
+ * earlier entries remain if a later registration fails or throws.
+ */
 UINT32
 DSL_Contract_Register_Transformer_Decode (void)
 {
@@ -467,6 +519,10 @@ DSL_Contract_Register_Transformer_Decode (void)
     return registered;
 }
 
+/*
+ * Dump registration-order metadata and stored check/code strings without
+ * executing them. NULL streams are skipped; the caller handles I/O failures.
+ */
 void
 DSL_Contract_fprint_registry (FILE *f)
 {

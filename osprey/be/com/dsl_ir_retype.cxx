@@ -7,6 +7,8 @@
  */
 
 #include <stdlib.h>
+#include "../../common/ir_image/dsl_image_service.h"
+#include "dsl_ir_retype.h"
 #include <string.h>
 #include <vector>
 

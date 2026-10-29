@@ -20,7 +20,7 @@
 #include "controls.h"
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
-#include "dsl_builder.h"
+#include "../../../common/ir_image/tests/dsl_image_owner_fixture.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_region.h"
 #include "dsl_shape_refine.h"

@@ -14,6 +14,7 @@
  */
 
 #include <algorithm>
+#include "../../common/ir_image/dsl_image_service.h"
 #include <string.h>
 #include <vector>
 

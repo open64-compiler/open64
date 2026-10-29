@@ -9,6 +9,11 @@
  */
 
 #include <string.h>
+#include "../../common/ir_image/dsl_lowered_relation.h"
+#include "../../common/ir_image/dsl_image_service.h"
+#include "dsl_runtime_interface.h"
+#include "dsl_program_interface.h"
+#include "dsl_external_tensor.h"
 #include <algorithm>
 #include <iterator>
 #include <set>
@@ -32,23 +37,38 @@
 extern DSL_RETIRED_FORMAL_ID
 DSL_Program_Interface_Image_Add_Retired_Formal
                                 (const DSL_RETIRED_FORMAL_RECORD *);
+/* Copy a checked retired-argument row with a fresh ID; caller coordinates its
+ * physical ABI commit and validates the complete image. */
 extern DSL_RETIRED_CALL_ARGUMENT_ID
 DSL_Program_Interface_Image_Add_Retired_Call
                                 (const DSL_RETIRED_CALL_ARGUMENT_RECORD *);
+/* Copy a checked runtime-input row into managed storage with a fresh ID;
+ * caller owns whole-plan ordering, physical state and verification. */
 extern DSL_RUNTIME_INPUT_ID DSL_Program_Interface_Image_Add_Runtime_Input
                                 (const DSL_RUNTIME_INPUT_RECORD *);
+/* Append one copied runtime binding after plan preflight. Referenced IDs/STs
+ * remain caller-established; no physical construction or whole-stage
+ * rollback. */
 extern DSL_RUNTIME_INPUT_BINDING_ID
 DSL_Program_Interface_Image_Add_Runtime_Binding
                                 (const DSL_RUNTIME_INPUT_BINDING_RECORD *);
+/* Append one copied runtime call row after plan/physical preflight; this
+ * image-only helper does not rewrite a CALL. */
 extern DSL_RUNTIME_INPUT_CALL_ID
 DSL_Program_Interface_Image_Add_Runtime_Call
                                 (const DSL_RUNTIME_INPUT_CALL_RECORD *);
+/* Append a copied value projection after owner preflight; no handle symbol
+ * construction or whole-stage rollback occurs here. */
 extern DSL_RUNTIME_VALUE_PROJECTION_ID
 DSL_Runtime_Interface_Image_Add_Value
                                 (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *);
+/* Append a copied runtime-call projection after transaction preflight,
+ * returning its ID; no physical CALL mutation or combined rollback. */
 extern DSL_RUNTIME_CALL_PROJECTION_ID
 DSL_Runtime_Interface_Image_Add_Call
                                 (const DSL_RUNTIME_CALL_PROJECTION_RECORD *);
+/* Replace a borrowed call association only when its expected pointer matches;
+ * FALSE preserves the association and WNs remain caller-owned. */
 extern BOOL DSL_Call_Image_Replace_Call_WN
                                 (DSL_CALLSITE_METADATA_ID, const WN *, WN *);
 
@@ -991,6 +1011,9 @@ DSL_Program_Interface_Projection_Uses_Only_Read
     return TRUE;
 }
 
+/* Check one source-positioned binding-to-projection copy precedes reads and
+ * that all other projection uses are reads. Borrow an already validated
+ * FUNC_ENTRY; do not mutate it. */
 static BOOL
 DSL_Program_Interface_Has_Promoted_Copy
         (const WN *entry, ST_IDX binding_st,
@@ -2039,6 +2062,9 @@ DSL_Program_Interface_Projection_Reads_Defined
     return TRUE;
 }
 
+/* With selected-PU locals resident, collect local projection handles and
+ * reject invalid symbols/types or reads lacking a definition. Diagnostics are
+ * optional; scratch/output only, no IR writes. */
 static BOOL
 DSL_Program_Interface_Verify_Projection_Handles
         (PU_Info *pu, FILE *diagnostic)

@@ -1,6 +1,7 @@
 /* Native staged-binding fixture, not a reduction kernel implementation.
  * Design: doc/AI-COMPILER-REDUCTION-STAGED-BINDING-v0.1.md. */
 #include <stdio.h>
+#include "../../../common/ir_image/dsl_image_service.h"
 #include <stdlib.h>
 #include <string.h>
 #include "defs.h"

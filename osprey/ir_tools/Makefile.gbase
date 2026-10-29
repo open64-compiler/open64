@@ -252,6 +252,7 @@ COMMON_COM_CXX_SRC =	\
         dsl_ir_group_lower.cxx \
         dsl_program_interface.cxx \
         dsl_ir_retype.cxx \
+        dsl_ckks_expand.cxx \
         dsl_ir_rewrite.cxx \
         dsl_runtime_interface.cxx \
         dsl_ir_print.cxx \
@@ -358,6 +359,8 @@ include $(COMMONRULES)
 VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_FHE_DIR) \
 	$(COMMON_COM_TARG_DIR) $(BE_COM_DIR) \
 	$(BE_VHO_DIR)
+# Preserve legacy source lookup precedence; these are relocated owners.
+VPATH += $(BUILD_TOT)/common/ir_image $(BUILD_TOT)/be/com $(BUILD_TOT)/be/vho
 
 ir_b2a: $(OBJECTS) ir_a2b.o
 	$(link.c++f) -o ir_b2a ir_a2b.o $(OBJECTS) $(LDFLAGS)

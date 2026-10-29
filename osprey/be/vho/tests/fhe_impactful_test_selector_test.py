@@ -89,7 +89,7 @@ class ImpactfulTestSelectorTest(unittest.TestCase):
     def test_common_transaction_is_conservatively_broad(self) -> None:
         """A generic rewrite change reaches mapped, miniature, and full gates."""
 
-        lanes = self.lanes("osprey/common/com/dsl_ir_rewrite.cxx")
+        lanes = self.lanes("osprey/be/com/dsl_ir_rewrite.cxx")
         self.assertIn("common-ckks-transaction", lanes)
         self.assertIn("view-retirement", lanes)
         self.assertIn("mapped-reopen", lanes)

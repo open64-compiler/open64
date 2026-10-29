@@ -26,8 +26,10 @@ DSL_IR_Image_PU_ST_Valid (ST_IDX st)
 }
 
 /*
- * Validate that owner_pu_st is the PU whose local symtab and WHIRL tree are
- * active. Callers must establish this before reading or mutating local ST_IDX.
+ * Check that owner_pu_st names a live global function and Current_pu points
+ * to its PU entry. This predicate does not validate Current_PU_Info, local
+ * Scope_tab residency, or the active WHIRL tree. Callers must establish those
+ * driver-owned contexts separately before reading or mutating local ST_IDX.
  */
 static inline BOOL
 DSL_IR_Image_Current_PU_Is (ST_IDX owner_pu_st)

@@ -7,6 +7,7 @@
  */
 
 #include <string.h>
+#include "../ir_image/dsl_image_service.h"
 
 #include "fhe_image.h"
 #include "pu_info.h"

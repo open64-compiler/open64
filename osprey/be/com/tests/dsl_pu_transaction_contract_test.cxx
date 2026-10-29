@@ -7,6 +7,8 @@
  */
 
 #include <stdio.h>
+#include "../../../common/ir_image/dsl_image_service.h"
+#include "../dsl_pu_interface_verify.h"
 #include <stdlib.h>
 #include <string.h>
 #include <vector>

@@ -7,6 +7,11 @@
  */
 
 #include <algorithm>
+#include "../../common/ir_image/dsl_lowered_relation.h"
+#include "../../common/ir_image/dsl_image_service.h"
+#include "dsl_pu_interface_verify.h"
+#include "dsl_program_interface.h"
+#include "dsl_ir_lower.h"
 #include <map>
 #include <set>
 #include <string>
@@ -25,6 +30,8 @@
 #include "wn.h"
 #include "wn_util.h"
 
+/* Commit a checked pure source to lowered provenance; FALSE preserves its
+ * rows. Physical edits and wider rollback belong to the caller. */
 extern BOOL DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID);
 
 typedef struct {
@@ -130,31 +137,7 @@ DSL_IR_Group_Index_Physical_Uses
     return TRUE;
 }
 
-typedef struct {
-    const DSL_IR_NATIVE_GROUP_LOWER_REQUEST *request;
-    UINT32 request_index;
-    UINT32 first_member;
-    UINT32 member_count;
-    UINT32 first_order;
-    UINT32 last_order;
-    UINT32 statement_count;
-    WN *containing_block;
-    WN *first_definition;
-    WN *output_definition;
-    DSL_IR_VALUE_RECORD semantic_source;
-    DSL_IR_VALUE_RECORD output;
-    ST_IDX handle_st;
-    TY_IDX handle_ty;
-} DSL_IR_GROUP_LOWER_JOURNAL;
 
-struct DSL_IR_GROUP_LOWER_LESS {
-    BOOL operator()
-        (const DSL_IR_GROUP_LOWER_JOURNAL &left,
-         const DSL_IR_GROUP_LOWER_JOURNAL &right) const
-    {
-        return left.first_order < right.first_order;
-    }
-};
 
 /* A group is closed only when every private producer contributes to output. */
 static BOOL

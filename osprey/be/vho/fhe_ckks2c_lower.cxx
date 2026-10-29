@@ -18,6 +18,9 @@
  */
 
 #include "fhe_ckks2c_lower.h"
+#include "../../common/ir_image/dsl_lowered_relation.h"
+#include "../../common/ir_image/dsl_image_service.h"
+#include "../com/dsl_ir_lower.h"
 
 #include <algorithm>
 #include <cstring>

@@ -57,7 +57,7 @@
 #include "cxx_memory.h"			// for CXX_NEW
 
 #include "strtab.h"
-#include "dsl_ckks_expand_internal.h"
+#include "../util/dsl_strtab_checkpoint.h"
 
 // The string table is implmeneted as a single character buffer, re-allocated
 // if necessary.  Byte 0 of this buffer is alwasy NULL.  Each string is

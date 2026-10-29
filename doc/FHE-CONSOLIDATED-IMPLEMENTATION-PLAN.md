@@ -17,8 +17,22 @@ in `FHE-WHIRL-INTEGRATION-PLAN.md`.
 
 The repository document
 `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx`
-is the sole highest FHE semantic authority. The reviewed copy has SHA-256
+is the sole highest FHE semantic authority. The current repository revision has
+SHA-256
+`84D7405922F2A1B6CE43A20D9591DAB6A83FE74D332569D7247DF028D6609ED1`.
+Commit `4b59755b7825711e3eef26bc1c79a06882286012` added section 11.9,
+SYNC-6 Executable Context Identity, to both the DOCX and its Markdown companion.
+The DOCX package changed only `word/document.xml`; its complete paragraph diff
+adds that section without changing the existing paragraphs. The current DOCX
+matches Git blob `7c380c5544b371472250e524f5ea74f89565fd43` exactly.
+
+The originally published v0.10 revision from commit
+`ee1dc6382246c58f49a3097157a8c4e8ff2440c8` has SHA-256
 `0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
+Historical SYNC-3 contracts and the 2026-09-29 exact-snapshot certification
+retain that original pin. Updating the current authority locator does not
+re-certify those artifacts or change their recorded verification state.
+
 This Markdown tracker may narrow architecture milestones into review
 checkpoints, but it may not override v0.10 semantics, boundaries, or completion
 criteria. In particular, focused C3 / SYNC-3 completion was not completion of

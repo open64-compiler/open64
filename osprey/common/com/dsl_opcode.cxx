@@ -1,7 +1,16 @@
 /*
  * Copyright (C) 2026 Open64 Project
- * Contracts: doc/WHIRL-DSL-INFRASTRUCTURE.md;
- * row sum: doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md.
+ */
+
+/*
+ * common/com implements immutable logical/operator trait tables and resettable
+ * opcode/wrapper/promotion metadata. Dynamic records own copied strings; static
+ * queries neither depend on registration nor expire on reset. Callers coordinate
+ * access and dependent lifetimes. This service does not lower WHIRL, execute
+ * gatekeepers or change mapped-image layouts; allocation exceptions in dynamic
+ * registration have no transactional recovery.
+ * Design: doc/WHIRL-DSL-INFRASTRUCTURE.md;
+ * reductions: doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md.
  */
 
 #include <string.h>
@@ -9,6 +18,7 @@
 
 #include "dsl_opcode.h"
 
+/* Count compile-time table elements; this is not valid for decayed pointers. */
 #define DSL_ARRAY_COUNT(a) (sizeof(a) / sizeof((a)[0]))
 
 struct DSL_OPCODE_RECORD {
@@ -26,6 +36,7 @@ struct DSL_OPCODE_RECORD {
     const char *diagnostic_prefix;
     UINT32 flags;
 
+    /* Initialize an unpublished, unwrapped record with no owned strings. */
     DSL_OPCODE_RECORD() :
         id(DSL_OPCODE_INVALID_ID),
         owner_domain_id(DSL_DOMAIN_INVALID_ID),
@@ -54,6 +65,7 @@ struct DSL_OPCODE_PROMOTION_RECORD {
     std::vector<const char *> diagnostics;
     UINT32 flags;
 
+    /* Initialize an unpublished evidence record with empty owning vectors. */
     DSL_OPCODE_PROMOTION_RECORD() :
         id(DSL_OPCODE_PROMOTION_INVALID_ID),
         source_opcode_id(DSL_OPCODE_INVALID_ID),
@@ -223,6 +235,7 @@ struct DSL_OPCODE_PROMOTION_SEED {
     const char *diagnostic;
 };
 
+/* Legacy v1 population order fixes dynamic IDs; it is not the logical table. */
 static const DSL_COMMON_OPCODE_SEED DSL_common_opcode_seed[] = {
     { "common.module", DSL_OPCODE_CATEGORY_DECLARATION,
         DSL_OPCODE_LEVEL_0_CORE, DSL_OPCODE_NKIDS_PAYLOAD_DEFINED,
@@ -500,6 +513,7 @@ static const DSL_COMMON_OPCODE_SEED DSL_common_opcode_seed[] = {
         DSL_LOWERING_MODEL_MARKER_ONLY, "DOPC_COMMON_MEAN_VAR_NORM" }
 };
 
+/* Exact-version logical contracts coexist; no query silently upgrades IR. */
 static const DSL_LOGICAL_OPERATOR_SEED DSL_logical_operator_seed[] = {
     { OPR_DSLTENSORCONST, "common.tensor_const", 1,
         DSL_OPCODE_CATEGORY_EXECUTABLE, DSL_OPCODE_LEVEL_1_TENSOR, 0,
@@ -780,6 +794,10 @@ static const DSL_FUSIBILITY_INFO DSL_fusibility_info[] = {
         DSL_FUSIBILITY_EXACT_DESCRIPTOR | DSL_FUSIBILITY_SINGLE_RESULT }
 };
 
+/*
+ * Select the greatest static version for an operator, keeping the first tie.
+ * Return a borrowed process-lifetime seed or NULL; do not populate registries.
+ */
 static const DSL_LOGICAL_OPERATOR_SEED *
 DSL_Operator_Seed (DSL_OPERATOR dsl_operator)
 {
@@ -795,6 +813,7 @@ DSL_Operator_Seed (DSL_OPERATOR dsl_operator)
     return current;
 }
 
+/* Borrow the first exact static operator/version seed, or NULL without writes. */
 static const DSL_LOGICAL_OPERATOR_SEED *
 DSL_Operator_Seed_Version
         (DSL_OPERATOR dsl_operator,
@@ -809,6 +828,10 @@ DSL_Operator_Seed_Version
     return NULL;
 }
 
+/*
+ * Reject absent/unknown seeds before output writes. Copy scalars plus borrowed
+ * static strings, setting flags to zero; NULL output is a presence probe.
+ */
 static BOOL
 DSL_Operator_Copy_Info
         (const DSL_LOGICAL_OPERATOR_SEED *seed,
@@ -836,6 +859,7 @@ DSL_Operator_Copy_Info
     return TRUE;
 }
 
+/* Select the highest static version, then share Copy_Info's output contract. */
 BOOL
 DSL_Operator_Get_Info
         (DSL_OPERATOR dsl_operator,
@@ -846,6 +870,7 @@ DSL_Operator_Get_Info
     return DSL_Operator_Copy_Info(seed, info);
 }
 
+/* Keep exact-version queries separate from current-version metadata selection. */
 BOOL
 DSL_Operator_Get_Info_Version
         (DSL_OPERATOR dsl_operator,
@@ -858,6 +883,10 @@ DSL_Operator_Get_Info_Version
     return DSL_Operator_Copy_Info(seed, info);
 }
 
+/*
+ * Match static seed name length/bytes and version exactly, with no allocation.
+ * Reject null/empty names and version zero before reading caller name bytes.
+ */
 DSL_OPERATOR
 DSL_Operator_Find
         (const char *stable_name,
@@ -881,6 +910,10 @@ DSL_Operator_Find
     return OPR_DSLUNKNOWN;
 }
 
+/*
+ * Resolve a name span in table order without filtering or ranking versions.
+ * Return only operator identity; highest-version metadata is a separate query.
+ */
 DSL_OPERATOR
 DSL_Operator_Find_Current
         (const char *stable_name,
@@ -902,6 +935,7 @@ DSL_Operator_Find_Current
     return OPR_DSLUNKNOWN;
 }
 
+/* Range-check the logical spelling table and borrow its unknown fallback. */
 const char *
 DSL_OPERATOR_name (DSL_OPERATOR dsl_operator)
 {
@@ -934,6 +968,7 @@ static const DSL_ALGEBRAIC_RELATION_INFO DSL_algebraic_relation[] = {
         DSL_ALGEBRAIC_OPERAND_ALL }
 };
 
+/* Copy an exact static trait if requested; a miss preserves caller output. */
 BOOL
 DSL_Operator_Get_Algebraic_Info
         (DSL_OPERATOR dsl_operator,
@@ -952,6 +987,10 @@ DSL_Operator_Get_Algebraic_Info
     return FALSE;
 }
 
+/*
+ * Unlike algebraic lookup, require output and clear it on a missing exact trait.
+ * Only static semantic evidence is supplied; no fusion candidate is selected.
+ */
 BOOL
 DSL_Operator_Get_Fusibility_Info
         (DSL_OPERATOR dsl_operator, UINT16 version,
@@ -970,6 +1009,7 @@ DSL_Operator_Get_Fusibility_Info
     return FALSE;
 }
 
+/* Bounds-check and borrow a static iteration spelling, falling back to unknown. */
 const char *
 DSL_fusion_iteration_class_name (UINT32 iteration_space)
 {
@@ -978,6 +1018,7 @@ DSL_fusion_iteration_class_name (UINT32 iteration_space)
            DSL_fusion_iteration_class_name_table[iteration_space] : "unknown";
 }
 
+/* Bounds-check and borrow a static indexing spelling, falling back to unknown. */
 const char *
 DSL_fusion_indexing_class_name (UINT32 operand_indexing)
 {
@@ -986,6 +1027,10 @@ DSL_fusion_indexing_class_name (UINT32 operand_indexing)
            DSL_fusion_indexing_class_name_table[operand_indexing] : "unknown";
 }
 
+/*
+ * Filter the exact algebraic trait by its commutation flag and known swap ID.
+ * NULL output probes availability; actual operand safety remains caller-owned.
+ */
 BOOL
 DSL_Operator_Get_Swap_Equivalent
         (DSL_OPERATOR dsl_operator,
@@ -1004,6 +1049,11 @@ DSL_Operator_Get_Swap_Equivalent
     return TRUE;
 }
 
+/*
+ * Require caller-supplied integer/descriptor facts and the integer-safe trait
+ * before choosing constant-right or lexical key order. Return a decision only;
+ * this function does not swap operands or duplicate simplifier rewrite rules.
+ */
 BOOL
 DSL_Algebraic_Should_Swap_Binary_Operands
         (DSL_OPERATOR dsl_operator,
@@ -1025,17 +1075,20 @@ DSL_Algebraic_Should_Swap_Binary_Operands
         info.commutation_safety != DSL_ALGEBRAIC_SAFETY_INTEGER)
         return FALSE;
 
+    /* Constant placement takes precedence over lexical canonical ordering. */
     if (kid0_is_constant != kid1_is_constant)
         return kid0_is_constant;
     return strcmp(kid0_key, kid1_key) > 0;
 }
 
+/* Return the immutable relation-table size, unaffected by dynamic reset. */
 UINT32
 DSL_Algebraic_Relation_Count (void)
 {
     return DSL_ARRAY_COUNT(DSL_algebraic_relation);
 }
 
+/* Bounds-check a static ordinal before an optional copy; failure writes nothing. */
 BOOL
 DSL_Algebraic_Relation_At
         (UINT32 ordinal,
@@ -1048,6 +1101,10 @@ DSL_Algebraic_Relation_At
     return TRUE;
 }
 
+/*
+ * Scan all relation key fields exactly, optionally copying the first match.
+ * No safety predicate is executed and no caller output changes on a miss.
+ */
 BOOL
 DSL_Algebraic_Relation_Get
         (DSL_OPERATOR outer_operator,
@@ -1131,6 +1188,7 @@ static const DSL_OPCODE_PROMOTION_SEED DSL_opcode_promotion_seed[] = {
         "mask_position_head_layout_kv_cache", "CPROM-006" }
 };
 
+/* Allocate a record-owned copy, normalizing NULL to empty; failures propagate. */
 static const char *
 DSL_Opcode_Save_String (const char *str)
 {
@@ -1142,12 +1200,14 @@ DSL_Opcode_Save_String (const char *str)
     return saved;
 }
 
+/* Check the one-based dynamic opcode range, without validating its owner. */
 static BOOL
 DSL_Opcode_Valid_Id (DSL_OPCODE_ID id)
 {
     return id != DSL_OPCODE_INVALID_ID && id <= DSL_opcode_registry.size();
 }
 
+/* Check the one-based promotion range, not the liveness of its opcode fields. */
 static BOOL
 DSL_Opcode_Promotion_Valid_Id (DSL_OPCODE_PROMOTION_ID id)
 {
@@ -1155,6 +1215,7 @@ DSL_Opcode_Promotion_Valid_Id (DSL_OPCODE_PROMOTION_ID id)
          id <= DSL_opcode_promotion_registry.size();
 }
 
+/* Accept only the declared contiguous category range; no registry mutation. */
 static BOOL
 DSL_Opcode_Valid_Category (DSL_OPCODE_CATEGORY category)
 {
@@ -1162,6 +1223,7 @@ DSL_Opcode_Valid_Category (DSL_OPCODE_CATEGORY category)
          category <= DSL_OPCODE_CATEGORY_LOWERING_POLICY;
 }
 
+/* Accept the declared level range, without treating it as an optimization level. */
 static BOOL
 DSL_Opcode_Valid_Level (DSL_OPCODE_LEVEL level)
 {
@@ -1169,6 +1231,7 @@ DSL_Opcode_Valid_Level (DSL_OPCODE_LEVEL level)
          level <= DSL_OPCODE_LEVEL_4_RUNTIME;
 }
 
+/* Check shape-rule enum membership only, not any tensor's shape compatibility. */
 static BOOL
 DSL_Opcode_Valid_Shape_Rule (DSL_SHAPE_RULE shape_rule)
 {
@@ -1176,6 +1239,7 @@ DSL_Opcode_Valid_Shape_Rule (DSL_SHAPE_RULE shape_rule)
          shape_rule <= DSL_SHAPE_RULE_RUNTIME_GUARDED;
 }
 
+/* Check effect enum membership, without proving an operation's actual effects. */
 static BOOL
 DSL_Opcode_Valid_Effect_Model (DSL_EFFECT_MODEL effect_model)
 {
@@ -1183,6 +1247,7 @@ DSL_Opcode_Valid_Effect_Model (DSL_EFFECT_MODEL effect_model)
          effect_model <= DSL_EFFECT_MODEL_RUNTIME_EFFECT;
 }
 
+/* Check the lowering-model enum range, not availability of a lowering provider. */
 static BOOL
 DSL_Opcode_Valid_Lowering_Model (DSL_LOWERING_MODEL lowering_model)
 {
@@ -1190,6 +1255,7 @@ DSL_Opcode_Valid_Lowering_Model (DSL_LOWERING_MODEL lowering_model)
          lowering_model <= DSL_LOWERING_MODEL_TARGET_SPECIFIC;
 }
 
+/* Check promotion-state enum membership; do not certify semantic promotion. */
 static BOOL
 DSL_Opcode_Valid_Promotion_State (DSL_OPCODE_PROMOTION_STATE state)
 {
@@ -1197,6 +1263,10 @@ DSL_Opcode_Valid_Promotion_State (DSL_OPCODE_PROMOTION_STATE state)
          state <= DSL_OPCODE_PROMOTION_COMMON_NATIVE;
 }
 
+/*
+ * Delete the two owned strings before registry discard. Pointers are not reset,
+ * so the same record must not be released twice or read as live afterward.
+ */
 static void
 DSL_Opcode_Free_Record (DSL_OPCODE_RECORD &record)
 {
@@ -1204,6 +1274,7 @@ DSL_Opcode_Free_Record (DSL_OPCODE_RECORD &record)
     delete [] record.diagnostic_prefix;
 }
 
+/* Free owned evidence strings and empty vectors before the record is discarded. */
 static void
 DSL_Opcode_Promotion_Free_Record (DSL_OPCODE_PROMOTION_RECORD &record)
 {
@@ -1224,6 +1295,7 @@ DSL_Opcode_Promotion_Free_Record (DSL_OPCODE_PROMOTION_RECORD &record)
     record.diagnostics.clear();
 }
 
+/* Retire all promotion IDs/payloads, leaving dynamic opcode and static data live. */
 void
 DSL_Opcode_Promotion_Registry_Reset (void)
 {
@@ -1233,6 +1305,10 @@ DSL_Opcode_Promotion_Registry_Reset (void)
     DSL_opcode_promotion_registry.clear();
 }
 
+/*
+ * Retire dependent promotions before releasing opcode strings and entries.
+ * Domain lifetime and any other external ID holders remain caller-owned.
+ */
 void
 DSL_Opcode_Registry_Reset (void)
 {
@@ -1244,6 +1320,12 @@ DSL_Opcode_Registry_Reset (void)
     DSL_opcode_registry.clear();
 }
 
+/*
+ * Preserve first-writer metadata by returning a duplicate before owner/enum
+ * checks. For a new key, validate those fields, copy strings and append a
+ * one-based record. nkids/flags remain opaque; allocation failures are not
+ * caught or rolled back, including partially allocated string payloads.
+ */
 DSL_OPCODE_ID
 DSL_Opcode_Register (DSL_DOMAIN_ID owner_domain_id,
                      const char *name,
@@ -1264,6 +1346,7 @@ DSL_Opcode_Register (DSL_DOMAIN_ID owner_domain_id,
     if (safe_name[0] == '\0' || version == 0)
         return DSL_OPCODE_INVALID_ID;
 
+    /* Duplicate lookup must not replace existing semantics or wrapper links. */
     if (existing != DSL_OPCODE_INVALID_ID)
         return existing;
 
@@ -1293,6 +1376,7 @@ DSL_Opcode_Register (DSL_DOMAIN_ID owner_domain_id,
     return record.id;
 }
 
+/* Scan exact owner/version/name keys; do not revalidate domains during lookup. */
 DSL_OPCODE_ID
 DSL_Opcode_Find (DSL_DOMAIN_ID owner_domain_id,
                  const char *name,
@@ -1311,6 +1395,10 @@ DSL_Opcode_Find (DSL_DOMAIN_ID owner_domain_id,
     return DSL_OPCODE_INVALID_ID;
 }
 
+/*
+ * Validate before optional output assignment; copy fields and borrowed strings.
+ * NULL output succeeds for a live ID without allocating or mutating records.
+ */
 BOOL
 DSL_Opcode_Get_Info (DSL_OPCODE_ID id, DSL_OPCODE_INFO *info)
 {
@@ -1337,6 +1425,12 @@ DSL_Opcode_Get_Info (DSL_OPCODE_ID id, DSL_OPCODE_INFO *info)
     return TRUE;
 }
 
+/*
+ * Snapshot a live target's fields before registration can grow the vector.
+ * Reused keys retain old metadata; reject conflicting links before writing
+ * only wrapper_target_id. Do not require common ownership, matching semantics
+ * on reused keys or acyclic wrapper chains. Registration exceptions propagate.
+ */
 DSL_OPCODE_ID
 DSL_Opcode_Register_Domain_Wrapper (DSL_DOMAIN_ID owner_domain_id,
                                     const char *name,
@@ -1366,6 +1460,7 @@ DSL_Opcode_Register_Domain_Wrapper (DSL_DOMAIN_ID owner_domain_id,
     if (!DSL_Opcode_Valid_Id(id))
         return DSL_OPCODE_INVALID_ID;
 
+    /* An existing unwrapped key can gain a link, but never change a set link. */
     if (DSL_opcode_registry[id - 1].wrapper_target_id !=
         DSL_OPCODE_INVALID_ID &&
             DSL_opcode_registry[id - 1].wrapper_target_id != wrapper_target_id)
@@ -1375,12 +1470,14 @@ DSL_Opcode_Register_Domain_Wrapper (DSL_DOMAIN_ID owner_domain_id,
     return id;
 }
 
+/* Expose the dynamic vector size through the public count type, read-only. */
 UINT32
 DSL_Opcode_Count (void)
 {
     return DSL_opcode_registry.size();
 }
 
+/* Bounds-check the zero-based ordinal, then share Get_Info's output semantics. */
 BOOL
 DSL_Opcode_At (UINT32 ordinal, DSL_OPCODE_INFO *info)
 {
@@ -1390,6 +1487,11 @@ DSL_Opcode_At (UINT32 ordinal, DSL_OPCODE_INFO *info)
     return DSL_Opcode_Get_Info(DSL_opcode_registry[ordinal].id, info);
 }
 
+/*
+ * For a nonnull NUL-terminated domain prefix, register matching dotted static
+ * names at or above the version floor into the supplied domain. Count successes
+ * including duplicates; no cross-entry rollback or domain-name/ID proof occurs.
+ */
 static UINT32
 DSL_Opcode_Register_Logical_Domain
         (const char *domain_name,
@@ -1416,6 +1518,11 @@ DSL_Opcode_Register_Logical_Domain
     return registered;
 }
 
+/*
+ * Ensure common, preserve legacy v1 seed order, then append logical versions
+ * >= 2. Count successful registration calls, including repeated v1 seed keys;
+ * keep prior additions on later failure rather than performing batch rollback.
+ */
 UINT32
 DSL_Opcode_Register_Common_Substrate (void)
 {
@@ -1452,6 +1559,11 @@ DSL_Opcode_Register_Common_Substrate (void)
     return registered;
 }
 
+/*
+ * Seed prerequisites, then example child domains/wrappers and CNN versions >= 2.
+ * Skip failed items and count successful wrapper/CNN calls including duplicates;
+ * common prerequisite successes are not counted and no additions are rolled back.
+ */
 UINT32
 DSL_Opcode_Register_Domain_Wrapper_Examples (void)
 {
@@ -1495,6 +1607,10 @@ DSL_Opcode_Register_Domain_Wrapper_Examples (void)
     return registered;
 }
 
+/*
+ * Seed common and create transformer only if absent, then count matching logical
+ * seed successes from v1 upward. Prerequisite mutations are not rolled back.
+ */
 UINT32
 DSL_Opcode_Register_Transformer_Domain (void)
 {
@@ -1513,6 +1629,10 @@ DSL_Opcode_Register_Transformer_Domain (void)
                ("transformer", transformer_id, 1);
 }
 
+/*
+ * Seed common and create ckks only if absent; register its logical metadata from
+ * v1 upward. Count only CKKS successes; do not validate ciphertext semantics.
+ */
 UINT32
 DSL_Opcode_Register_CKKS_Domain (void)
 {
@@ -1529,6 +1649,7 @@ DSL_Opcode_Register_CKKS_Domain (void)
     return DSL_Opcode_Register_Logical_Domain("ckks", ckks_id, 1);
 }
 
+/* Validate the source ID and read its direct link; do not follow wrapper chains. */
 DSL_OPCODE_ID
 DSL_Opcode_Wrapper_Target (DSL_OPCODE_ID id)
 {
@@ -1538,6 +1659,13 @@ DSL_Opcode_Wrapper_Target (DSL_OPCODE_ID id)
     return DSL_opcode_registry[id - 1].wrapper_target_id;
 }
 
+/*
+ * Validate both opcode IDs, state and nonzero version before honoring an existing
+ * pair. Otherwise copy counted evidence strings and append a one-based record;
+ * NULL strings/arrays become empty entries. Payload/state/version do not enter
+ * identity. Validation failure is read-only; allocation exceptions have no
+ * cleanup/rollback guarantee and no IR transformation is performed.
+ */
 DSL_OPCODE_PROMOTION_ID
 DSL_Opcode_Promotion_Register
                 (DSL_OPCODE_ID source_opcode_id,
@@ -1594,10 +1722,12 @@ DSL_Opcode_Promotion_Register
             (DSL_Opcode_Save_String(diagnostics == NULL ? NULL :
                               diagnostics[i]));
 
+    /* Vector copies share payload pointers; registry retirement frees them. */
     DSL_opcode_promotion_registry.push_back(record);
     return record.id;
 }
 
+/* Scan the stored numeric source/target pair without live-opcode validation. */
 DSL_OPCODE_PROMOTION_ID
 DSL_Opcode_Promotion_Find (DSL_OPCODE_ID source_opcode_id,
                            DSL_OPCODE_ID promoted_opcode_id)
@@ -1613,6 +1743,10 @@ DSL_Opcode_Promotion_Find (DSL_OPCODE_ID source_opcode_id,
     return DSL_OPCODE_PROMOTION_INVALID_ID;
 }
 
+/*
+ * Validate the promotion ID before optional scalar/count copies; misses do not
+ * write and live opcode references are not rechecked.
+ */
 BOOL
 DSL_Opcode_Promotion_Get_Info (DSL_OPCODE_PROMOTION_ID id,
                                DSL_OPCODE_PROMOTION_INFO *info)
@@ -1640,12 +1774,14 @@ DSL_Opcode_Promotion_Get_Info (DSL_OPCODE_PROMOTION_ID id,
     return TRUE;
 }
 
+/* Read promotion vector size through UINT32 without allocating or changing it. */
 UINT32
 DSL_Opcode_Promotion_Count (void)
 {
     return DSL_opcode_promotion_registry.size();
 }
 
+/* Bounds-check a zero-based ordinal before delegating optional output copying. */
 BOOL
 DSL_Opcode_Promotion_At (UINT32 ordinal, DSL_OPCODE_PROMOTION_INFO *info)
 {
@@ -1656,6 +1792,7 @@ DSL_Opcode_Promotion_At (UINT32 ordinal, DSL_OPCODE_PROMOTION_INFO *info)
         (DSL_opcode_promotion_registry[ordinal].id, info);
 }
 
+/* Check ID and semantic ordinal before borrowing an owned string, or return NULL. */
 const char *
 DSL_Opcode_Promotion_Required_Common_Semantic_At
                 (DSL_OPCODE_PROMOTION_ID id, UINT32 ordinal)
@@ -1671,6 +1808,7 @@ DSL_Opcode_Promotion_Required_Common_Semantic_At
     return record.required_common_semantics[ordinal];
 }
 
+/* Check ID and wrapper ordinal before borrowing a name; no link is followed. */
 const char *
 DSL_Opcode_Promotion_Retained_Wrapper_At
                 (DSL_OPCODE_PROMOTION_ID id, UINT32 ordinal)
@@ -1686,6 +1824,7 @@ DSL_Opcode_Promotion_Retained_Wrapper_At
     return record.retained_wrappers[ordinal];
 }
 
+/* Borrow a check name after both bounds tests; this does not execute verification. */
 const char *
 DSL_Opcode_Promotion_Required_Verifier_Check_At
                 (DSL_OPCODE_PROMOTION_ID id, UINT32 ordinal)
@@ -1701,6 +1840,7 @@ DSL_Opcode_Promotion_Required_Verifier_Check_At
     return record.required_verifier_checks[ordinal];
 }
 
+/* Borrow a stored diagnostic after bounds checks; do not emit or interpret it. */
 const char *
 DSL_Opcode_Promotion_Diagnostic_At
                 (DSL_OPCODE_PROMOTION_ID id, UINT32 ordinal)
@@ -1716,6 +1856,11 @@ DSL_Opcode_Promotion_Diagnostic_At
     return record.diagnostics[ordinal];
 }
 
+/*
+ * Seed wrapper prerequisites, synthesize missing source metadata where a target
+ * exists and publish each example pair. Count successful promotions including
+ * duplicates, leaving earlier/prerequisite additions intact on later failures.
+ */
 UINT32
 DSL_Opcode_Promotion_Register_Examples (void)
 {
@@ -1783,6 +1928,11 @@ DSL_Opcode_Promotion_Register_Examples (void)
     return registered;
 }
 
+/*
+ * Check live IDs/pair presence, target version, then optional source-link
+ * presence in diagnostic priority order. NULL is not a complete legality proof:
+ * payloads/state and equality of wrapper target to promoted ID are not checked.
+ */
 const char *
 DSL_Opcode_Check_Promotion (DSL_OPCODE_ID source_opcode_id,
                             DSL_OPCODE_ID promoted_opcode_id,
@@ -1811,6 +1961,7 @@ DSL_Opcode_Check_Promotion (DSL_OPCODE_ID source_opcode_id,
     return NULL;
 }
 
+/* Borrow a category spelling using an unsigned bounds check and static fallback. */
 const char *
 DSL_Opcode_Category_Name (DSL_OPCODE_CATEGORY category)
 {
@@ -1820,6 +1971,7 @@ DSL_Opcode_Category_Name (DSL_OPCODE_CATEGORY category)
          DSL_opcode_category_name[index] : "unknown";
 }
 
+/* Borrow a level spelling; out-of-range enum values map to static unknown. */
 const char *
 DSL_Opcode_Level_Name (DSL_OPCODE_LEVEL level)
 {
@@ -1829,6 +1981,7 @@ DSL_Opcode_Level_Name (DSL_OPCODE_LEVEL level)
          DSL_opcode_level_name[index] : "unknown";
 }
 
+/* Borrow a shape spelling without inspecting tensor descriptors or shape facts. */
 const char *
 DSL_Shape_Rule_Name (DSL_SHAPE_RULE shape_rule)
 {
@@ -1838,6 +1991,7 @@ DSL_Shape_Rule_Name (DSL_SHAPE_RULE shape_rule)
          DSL_shape_rule_name[index] : "unknown";
 }
 
+/* Borrow an effect spelling or static unknown, without effect analysis. */
 const char *
 DSL_Effect_Model_Name (DSL_EFFECT_MODEL effect_model)
 {
@@ -1847,6 +2001,7 @@ DSL_Effect_Model_Name (DSL_EFFECT_MODEL effect_model)
          DSL_effect_model_name[index] : "unknown";
 }
 
+/* Borrow a model spelling or static unknown, not a lowering implementation. */
 const char *
 DSL_Lowering_Model_Name (DSL_LOWERING_MODEL lowering_model)
 {
@@ -1856,6 +2011,7 @@ DSL_Lowering_Model_Name (DSL_LOWERING_MODEL lowering_model)
          DSL_lowering_model_name[index] : "unknown";
 }
 
+/* Borrow a promotion-state label without validating a promotion record. */
 const char *
 DSL_Opcode_Promotion_State_Name (DSL_OPCODE_PROMOTION_STATE state)
 {
@@ -1865,6 +2021,7 @@ DSL_Opcode_Promotion_State_Name (DSL_OPCODE_PROMOTION_STATE state)
          DSL_opcode_promotion_state_name[index] : "unknown";
 }
 
+/* Bounds-check and borrow a CPROM code or static unknown; never emit a message. */
 const char *
 DSL_CPROM_Diagnostic_Code (DSL_CPROM_DIAGNOSTIC diagnostic)
 {
@@ -1874,6 +2031,10 @@ DSL_CPROM_Diagnostic_Code (DSL_CPROM_DIAGNOSTIC diagnostic)
          DSL_cprom_diagnostic_code[index] : "unknown";
 }
 
+/*
+ * Print dynamic opcode records in registration order, skipping NULL streams.
+ * No static registry seeding, mutation or stream-error propagation occurs.
+ */
 void
 DSL_Opcode_fprint_registry (FILE *f)
 {
@@ -1904,6 +2065,10 @@ DSL_Opcode_fprint_registry (FILE *f)
     }
 }
 
+/*
+ * Print promotion records and owned evidence strings without executing checks.
+ * Skip NULL streams; leave stream ownership and error handling to the caller.
+ */
 void
 DSL_Opcode_Promotion_fprint_registry (FILE *f)
 {
