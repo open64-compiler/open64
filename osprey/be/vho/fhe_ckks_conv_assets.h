@@ -13,6 +13,7 @@
 #define fhe_ckks_conv_assets_INCLUDED
 
 #include <stdio.h>
+#include "../com/dsl_external_tensor.h"
 #include <vector>
 
 #include "defs.h"

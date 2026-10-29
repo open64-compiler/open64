@@ -42,6 +42,7 @@
 
 
 #include <errno.h>		    /* for sys_errlist */
+#include "../common/ir_image/dsl_image_service.h"
 #include <stdio.h>		    /* for stderr */
 #ifdef __MINGW32__
 #include <WINDOWS.h>

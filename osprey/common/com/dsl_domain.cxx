@@ -2,6 +2,14 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * common/com implements the process-local, insertion-ordered domain registry.
+ * It owns copied names, not WHIRL trees, and performs no optimization or
+ * mapped-image changes. Callers serialize access and coordinate dependent
+ * registry resets; allocation exceptions have no transactional recovery here.
+ * Design: doc/WHIRL-DSL-INFRASTRUCTURE.md.
+ */
+
 #include <string.h>
 #include <vector>
 
@@ -14,6 +22,7 @@ struct DSL_DOMAIN_RECORD {
     UINT32 version;
     UINT32 flags;
 
+    /* Initialize an unpublished record; registration supplies its owned name. */
     DSL_DOMAIN_RECORD() :
         id(DSL_DOMAIN_INVALID_ID),
         parent_id(DSL_DOMAIN_INVALID_ID),
@@ -24,6 +33,7 @@ struct DSL_DOMAIN_RECORD {
 
 static std::vector<DSL_DOMAIN_RECORD> DSL_domain_registry;
 
+/* Allocate a private name copy (NULL becomes empty) for registry ownership. */
 static const char *
 DSL_Domain_Save_Name (const char *name)
 {
@@ -35,12 +45,17 @@ DSL_Domain_Save_Name (const char *name)
     return saved;
 }
 
+/* Check the one-based ID range in this epoch without touching any record. */
 static BOOL
 DSL_Domain_Valid_Id (DSL_DOMAIN_ID id)
 {
     return id != DSL_DOMAIN_INVALID_ID && id <= DSL_domain_registry.size();
 }
 
+/*
+ * Free every copied name before clearing IDs. Dependent registry retirement
+ * remains caller-owned; clearing this vector does not repair their references.
+ */
 void
 DSL_Domain_Registry_Reset (void)
 {
@@ -50,6 +65,11 @@ DSL_Domain_Registry_Reset (void)
     DSL_domain_registry.clear();
 }
 
+/*
+ * Preserve the first registration of a name. Reject ordinary validation errors
+ * before allocation, then append an owning record with a one-based ID. This
+ * path does not catch allocation exceptions or provide exception rollback.
+ */
 DSL_DOMAIN_ID
 DSL_Domain_Register (const char *name, DSL_DOMAIN_ID parent_id,
 		     UINT32 version, UINT32 flags)
@@ -60,6 +80,7 @@ DSL_Domain_Register (const char *name, DSL_DOMAIN_ID parent_id,
     if (safe_name[0] == '\0')
         return DSL_DOMAIN_INVALID_ID;
 
+    /* Duplicate metadata is deliberately ignored before parent validation. */
     if (existing != DSL_DOMAIN_INVALID_ID)
         return existing;
 
@@ -77,12 +98,14 @@ DSL_Domain_Register (const char *name, DSL_DOMAIN_ID parent_id,
     return record.id;
 }
 
+/* Use the shared exact-name lookup; no registration or metadata update occurs. */
 BOOL
 DSL_Domain_Is_Registered (const char *name)
 {
     return DSL_Domain_Find(name) != DSL_DOMAIN_INVALID_ID;
 }
 
+/* Scan owned names in registration order; normalize NULL to an absent name. */
 DSL_DOMAIN_ID
 DSL_Domain_Find (const char *name)
 {
@@ -96,6 +119,7 @@ DSL_Domain_Find (const char *name)
     return DSL_DOMAIN_INVALID_ID;
 }
 
+/* Validate before indexing and return the owned string, never a new copy. */
 const char *
 DSL_Domain_Name (DSL_DOMAIN_ID id)
 {
@@ -105,6 +129,10 @@ DSL_Domain_Name (DSL_DOMAIN_ID id)
     return DSL_domain_registry[id - 1].name;
 }
 
+/*
+ * Validate before writing any output; copy scalars and the borrowed name only
+ * when requested. A valid ID with NULL output still succeeds without mutation.
+ */
 BOOL
 DSL_Domain_Get_Info (DSL_DOMAIN_ID id, DSL_DOMAIN_INFO *info)
 {
@@ -123,12 +151,14 @@ DSL_Domain_Get_Info (DSL_DOMAIN_ID id, DSL_DOMAIN_INFO *info)
     return TRUE;
 }
 
+/* Report vector size through the public count type; do not allocate or mutate. */
 UINT32
 DSL_Domain_Count (void)
 {
     return DSL_domain_registry.size();
 }
 
+/* Bounds-check the zero-based ordinal, then share Get_Info's output contract. */
 BOOL
 DSL_Domain_At (UINT32 ordinal, DSL_DOMAIN_INFO *info)
 {
@@ -138,6 +168,10 @@ DSL_Domain_At (UINT32 ordinal, DSL_DOMAIN_INFO *info)
     return DSL_Domain_Get_Info(DSL_domain_registry[ordinal].id, info);
 }
 
+/*
+ * Emit a read-only registration-order dump, skipping NULL streams. The caller
+ * owns stream lifetime and error handling; no I/O status is propagated here.
+ */
 void
 DSL_Domain_fprint_registry (FILE *f)
 {

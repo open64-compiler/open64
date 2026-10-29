@@ -87,6 +87,34 @@ static mUINT16            num_macros = 0;
 static BOOL               begin_PU = FALSE;
 static mINT32             file_scope_locks = 0;
 
+#if !defined(MONGOOSE_BE)
+/* Start an independent frontend DST image, discarding producer cursors from
+ * the previous file. The caller owns program lifetime and must not use this
+ * to resume a mapped image or while retaining the previous producer context.
+ * DST_Init remains the memory-only entry point used by mapped readers.
+ */
+void
+DST_init_mem(void)
+{
+   pstate = DST_begin_state;
+   last_include_dir = DST_INVALID_IDX;
+   last_file_name = DST_INVALID_IDX;
+   last_info_idx = DST_INVALID_IDX;
+   file_scope_info = DST_INVALID_IDX;
+   forced_exit_info = DST_INVALID_IDX;
+#ifdef KEY
+   last_macro = DST_INVALID_IDX;
+   num_macros = 0;
+#endif
+   num_file_names = 0;
+   num_incl_dirs = 0;
+   begin_PU = FALSE;
+   file_scope_locks = 0;
+   Current_DST = New_DST();
+   DST_Init(NULL, 0);
+}
+#endif
+
 
    /*-------------------------
     * Memory allocation stuff

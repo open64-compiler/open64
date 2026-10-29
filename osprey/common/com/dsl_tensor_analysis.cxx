@@ -10,6 +10,7 @@
  */
 
 #include <vector>
+#include "../ir_image/dsl_image_service.h"
 
 #include "dsl_tensor_analysis.h"
 #include "dsl_tensor_analysis_internal.h"

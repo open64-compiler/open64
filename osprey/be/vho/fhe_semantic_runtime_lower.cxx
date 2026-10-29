@@ -20,6 +20,7 @@
  */
 
 #include <string.h>
+#include "../../common/ir_image/dsl_image_service.h"
 
 #include <algorithm>
 #include <map>

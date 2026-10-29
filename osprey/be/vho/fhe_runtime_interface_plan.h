@@ -20,6 +20,8 @@
 #define fhe_runtime_interface_plan_INCLUDED
 
 #include <stdio.h>
+#include "../com/dsl_runtime_interface.h"
+#include "../com/dsl_program_interface.h"
 
 #include "defs.h"
 #include "dsl_ir_image.h"

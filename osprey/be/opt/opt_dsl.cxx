@@ -12,6 +12,7 @@
  * doc/AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md. */
 
 #include <string.h>
+#include "../../common/ir_image/dsl_image_service.h"
 #include <stdlib.h>
 #include <errno.h>
 #include <stdio.h>

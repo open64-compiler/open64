@@ -8,6 +8,7 @@
  */
 
 #include "fhe_ckks_conv_context.h"
+#include "../../common/ir_image/dsl_image_service.h"
 
 #include <ctype.h>
 #include <stdlib.h>

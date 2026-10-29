@@ -23,6 +23,7 @@
  */
 
 #include <ctype.h>
+#include "../../common/ir_image/dsl_image_service.h"
 #include <fcntl.h>
 #include <limits.h>
 #include <stdarg.h>

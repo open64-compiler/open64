@@ -10,6 +10,8 @@
  */
 
 #include "fhe_ckks_conv_assets.h"
+#include "../../common/ir_image/dsl_image_service.h"
+#include "../com/dsl_external_tensor.h"
 
 #include <string.h>
 

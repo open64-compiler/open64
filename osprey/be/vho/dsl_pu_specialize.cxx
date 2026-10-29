@@ -7,6 +7,7 @@
  */
 
 #include <float.h>
+#include "../../common/ir_image/dsl_image_service.h"
 #include <string.h>
 
 #include "dsl_pu_specialize.h"

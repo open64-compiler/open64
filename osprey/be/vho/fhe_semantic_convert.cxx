@@ -3,6 +3,9 @@
  */
 
 #include <ctype.h>
+#include "../../common/ir_image/dsl_image_service.h"
+#include "../com/dsl_ir_rewrite.h"
+#include "../com/dsl_external_tensor.h"
 #include <errno.h>
 #include <math.h>
 #include <stdlib.h>

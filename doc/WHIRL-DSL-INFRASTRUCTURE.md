@@ -12,6 +12,14 @@ and compiler-library codesign are planned separately in
 representation, mapped binary image, inspection, gatekeeper, compatibility,
 and final VHO lowering boundary.
 
+The [persistent IR / nonpersistent service separation plan](#persistent-ir--nonpersistent-service-separation)
+documents removal of compiler-only requests, views and transaction state from the
+persistent image-definition interface and relocation of those structures and
+their related methods beside the logic that owns them. This is
+ownership cleanup, not a new binary WHIRL format. The separation is implemented;
+follow-up fixes and current PR validation are recorded in
+[DSL image ownership split and fixes](DSL-IR-OWNERSHIP-SPLIT-VALIDATION.md).
+
 CNN domain meaning, including the proposed `cnn.bottleneck.v1` contract and
 its relationship to PyTorch source structure, is documented separately in
 `doc/DSL-WHIRL-CNN-REGION-CONTRACTS.md`.
@@ -712,6 +720,102 @@ an older reader rejects `0.34` at the revision gate before it can traverse an
 unknown physical operator.  This explicit revision boundary prevents native
 `OPR_DSL` trees from being mislabeled as baseline binary WHIRL.
 
+### Persistent IR / nonpersistent service separation
+
+Status: the full pair and its direct nonpersistent companion closure are
+relocated in one implementation batch (2026-10-28). This is a behavior-preserving
+owner split, not a representation or file-version change. See the
+[current ownership inventory](DSL-IR-PERSISTENCE-OWNERSHIP-INVENTORY.md) for
+located definitions, source-equivalence proof, build consumers and limitations.
+The prior 15 comment batches are retained historical evidence; this split also
+repairs missing companion contracts and corrects allocation-rollback overclaims.
+
+**Directory admission:** only `.B`-preserved schema remains in
+`osprey/common/com/dsl_ir_image.h`: 25 image headers/fixed rows plus 119 total
+retained record and symbolic contracts. There are no service declarations,
+transient definitions, WN/PU forward declarations, or reverse owner includes.
+The former `common/com/dsl_ir_image.cxx` is removed, not kept as a forwarding
+translation unit. Other common/com infrastructure is outside this pair's scope.
+
+#### Reviewed owning-logic boundaries
+
+| Owner | Types, state and related logic |
+| --- | --- |
+| `common/ir_image/dsl_image_service.h` and `dsl_ir_image.cxx` | The single managed row store, structural checks, borrowed mapped views, live call-WN associations, resets, mapped commit and row mutation. Uses existing segmented tables and WHIRL ELF services, not a second file format. |
+| `common/ir_image/dsl_lowered_relation.h` and `dsl_ir_print.cxx` | Derived scalar relation queries and logical inspection. `DSL_IR_LOWERED_RELATION_INFO` aliases the legacy result typedef so C++ linkage stays unchanged; printers import no lowering-request header. |
+| `common/ir_image/dsl_image_checkpoint_internal.h` and `dsl_pu_specialize_internal.h` | Private image-only append/flag checkpoints and row cloning with their existing implementations in the managed-store owner. No raw tables or phase-wide journals are exposed. Physical transactions separately own trees, symbols, REGION, scope and combined rollback. |
+| `be/com/dsl_external_tensor.{h,cxx}` | Backend-free external-tensor facts, the single generation-qualified source snapshot store, provenance, runtime-input source checks and active-PU materialization. |
+| `be/com/dsl_ir_rewrite.{h,cxx}` | Native definition lookup, caller-selected native value rewrite, redirect and retirement; no external snapshot state or PU-interface implementation remains here. |
+| `be/com/dsl_pu_interface_verify.{h,cxx}` and its private `_internal.h` | Backend-free structural and physical PU/call ABI checks used by readers and builders as well as backend phases. Structural TY predicates and the explicitly inline formal comparator are private owner contracts. No CG dependency or PU activation is introduced. |
+| `be/com/dsl_runtime_interface*` and `dsl_program_interface*` | Caller-selected runtime/program ABI transactions and process-local plan/commit evidence, with unchanged reset/load eligibility. The driver/IPA still owns traversal; no service activates another PU. |
+| `be/com/dsl_ir_lower*`, `dsl_ir_group_lower.cxx`, `dsl_ir_retype*` | Caller-selected active-PU lowering, dead-source elision and shape-only retyping. VHO/WOPT/IPA retain analysis, policy and scope. |
+| `be/vho/dsl_ckks_expand*` | Executable CKKS expansion, physical operand/use scans and fault injection. Shared physical queries have a single private header definition and internal linkage, not new global utility symbols. |
+| `common/util/dsl_strtab_checkpoint.h` | Existing string-owner checkpoint contract; implementation remains with the established string store in `strtab.cxx`, without exposing that private store or changing its persistent behavior. |
+
+The original inventory's proposed `common/whirl_pu` directory is unnecessary:
+existing `be/com` already owns backend-free physical PU mechanisms. All former
+frontend/reader consumers still compile/link those same mechanisms directly.
+No library, CG, frontend-builder or JSON dependency is added to the backend.
+
+The initial phase-owned classification of clone/CKKS **image-only** savepoints
+is refined after reviewing their code: their counts/flags, trims and row-copy
+algorithms belong to the actual managed-store owner. They remain private,
+outside `common/com`, and confer no physical or cross-PU mutation authority.
+Count-only rollback limits, partial output and allocation-exception behavior
+remain explicit. The wider phase transaction is not reclassified as image IR.
+
+#### Implementation and validation status
+
+1. [x] Reconcile the original 647 occurrences/67 structures/407 methods with
+   the current owner inventory and direct companion closure. The current Clang
+   and lexical/ctags inventory accounts for 912 occurrences, 100 structures
+   (25 persistent, 75 nonpersistent), and 570 method occurrences. The matching
+   external-tensor and PU-verification implementations now have separate
+   translation units; four private predicate declarations and one include guard
+   account for the additional occurrences, not new persistent contracts.
+2. [x] Move types, stores, helpers and owning implementation together; migrate
+   direct includes, nine source-list consumers, native Python object linkage,
+   syntax/layout fixtures and impactful-test selection. Keep source basenames
+   where possible and add no legacy schema-to-service compatibility include.
+3. [x] Prove all 351 compared function-definition bodies and all 119 retained
+   schema contracts unchanged. The only normalized source spelling is the
+   image-summary typedef alias. Preserve public names/signatures, reset order,
+   row encodings/layouts, active-PU boundaries and existing failure behavior.
+   Two private one-statement comparator methods now live explicitly inline in
+   their owner-private headers. Schema include-boundary checks fail closed.
+4. [x] Build the reader/producers, `be`, `be.so`, `lw_inline` and physical clone
+   harness; inspect shared symbols and loader resolution with the normal backend
+   library path. Six target syntax/layout configurations, the native syntax
+   matrix, linked clone test and selector self-tests pass. No `DSL_Builder_*`
+   or `Json::` symbols enter backend/shared consumers.
+5. [x] Run identical focused fixtures against independently rebuilt pre-split
+   and post-split producers. Eight of nine lanes pass on both; the program ABI
+   fixture fails identically at its pre-existing projection-dominance/active-PU
+   checks. All 17 paired `ir_b2a -st -src` traces match exactly. Sixteen of 18
+   `.B` files match exactly; two terminal fixtures differ in one byte each in
+   reserved local ST row zero, allocated without initialization by the existing
+   symbol-store code. All meaningful table rows/DSL sections match. Retain raw
+   comparisons, sentinel-row attribution and unchanged traces; do not hide the
+   full-file exceptions. The pre-split reader independently accepts all 18
+   post-split images, including the diagnostic image emitted by the failing fixture.
+
+**Validation limitations:** this is Linux GNU x86-64 shared-build and six-way
+syntax/layout evidence, not static-build, GPU, performance or full-model
+certification. `WHIRL.pdf` is absent; no representation design, mapped-layout
+or version change is made, and none is approved by this source-only split.
+The native Python extension links, but both its runtime suite and the default
+builder suite reproduce the pre-existing DST double file-scope assertion on
+both versions; neither suite is labelled green. Existing
+fixture failures are not repaired in a behavior-preserving ownership change.
+These are the initial relocation results, before the separately validated
+program-interface, DST and fixture fixes. See the
+[current validation record](DSL-IR-OWNERSHIP-SPLIT-VALIDATION.md) for their
+root causes, passing follow-up suites and exact retained evidence. The remaining
+rewrite implementation decomposition is recorded in the
+[matching-owner follow-up](DSL-IR-REWRITE-SPLIT-VALIDATION.md).
+The completed relocation does not certify unrelated DSL comment gaps or
+ownership throughout the repository. No commit or PR is part of this batch.
+
 ### Completed foundation
 
 - [x] Add the append-only physical escape operator at value 148 without
@@ -920,6 +1024,25 @@ layout nor the ELF section contract.  A tensor-specific sealed-type scan uses
 complete, insertion-order-independent equivalence and ignores diagnostic `TY`
 names; the generic Open64 type hash remains unchanged.
 
+Legacy native/transformer contract fixtures deliberately use mutable descriptor
+construction for their malformed-type tests. After restoring those mutations,
+the fixture driver must seal the descriptors of its selected PU's native
+definitions through `TY_tensor_seal` before finalization. Strict verification
+of a complete shape alone is not admission: mapped publication additionally
+requires canonical tensor types. The fixtures prove rejection before sealing
+and admission afterwards; production gates, layouts, and compatibility wrappers
+are unchanged. REGION source positions identify the actual C++ fixture, not a
+nonexistent Python placeholder, so retained `ir_b2a -st -src` output can
+interleave the original producer source.
+
+The FHE SYNC-1 lookup fixture follows the existing external-constant builder
+contract: an authenticated side-file tensor has a nonzero canonical typed TCON
+with matching descriptor, range, alignment, element facts, and digest prefix.
+An explicit zero-TCON metadata override is malformed and must reject without
+changing that contract. Checksum-free legacy references retain zero TCONs and
+remain covered by the transformer REGION fixture. This repairs test
+expectations only; no external-data representation or reader/writer changes.
+
 #### Typed inputs, constants, operators, and value context
 
 1. Expose the existing `DSL_Builder_Create_Model_Input` through an opaque
@@ -978,6 +1101,25 @@ names; the generic Open64 type hash remains unchanged.
 producer compatibility.  A frontend calls `DSL_Builder_Begin_Program` before
 each model, including the model following successful finalization, and calls
 `DSL_Builder_Abort_Program` after capture or construction failure.
+
+Builder reset also starts a fresh DST producer through the existing
+`DST_init_mem` frontend entry point. `New_DST`/`DST_Init` alone initialize
+memory blocks, not the producer's last-info/file/directory cursors, counters,
+PU state, or file-scope locks. Reusing those cursors after beginning another
+program caused a second compile-unit assertion. Begin, abort, and the legacy
+lazy restart now share the complete reset. Multiple PUs within one program
+still share its compile unit and source-file numbering. Mapped readers retain
+the memory-only `DST_Init` path; no DST record, ELF section, or `.B` version
+changes. This is not a facility for resuming a previous producer context.
+
+The program-interface contract fixture must provide standard-WHIRL definitions
+for projected local handles after removing native definitions. The final
+fixture uses opaque zero sentinels only to exercise physical ABI validation,
+not numerical lowering or runtime execution. Missing definitions, a
+self-referential definition, and validation of an inactive PU remain negative
+cases. Caller selection is checked separately rather than short-circuited
+behind callee validation. Production dominance and active-PU validators are
+unchanged.
 
 #### Multiple-PU Python callable contract
 

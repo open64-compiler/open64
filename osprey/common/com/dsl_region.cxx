@@ -3,6 +3,7 @@
  */
 
 #include <errno.h>
+#include "../ir_image/dsl_image_service.h"
 #include <ctype.h>
 #include <string.h>
 #include <vector>
@@ -10,7 +11,7 @@
 #include "dsl_region.h"
 #include "dsl_region_internal.h"
 #include "dsl_ir_image.h"
-#include "dsl_ir_transaction_internal.h"
+#include "../../be/com/dsl_ir_transaction_internal.h"
 #include "ir_bwrite.h"
 #include "ir_bcom.h"
 #include "strtab.h"

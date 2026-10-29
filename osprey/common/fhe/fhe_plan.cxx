@@ -7,6 +7,7 @@
  */
 
 #include <float.h>
+#include "../ir_image/dsl_image_service.h"
 #include <string.h>
 
 #include "dsl_domain.h"

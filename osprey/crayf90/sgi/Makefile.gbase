@@ -199,6 +199,9 @@ COMMON_COM_CXX_SRCS =	\
   dsl_ir_lower.cxx      \
   dsl_ir_group_lower.cxx \
   dsl_ir_retype.cxx     \
+  dsl_ckks_expand.cxx \
+  dsl_external_tensor.cxx \
+  dsl_pu_interface_verify.cxx \
   dsl_ir_rewrite.cxx    \
   dsl_region.cxx        \
   dsl_memory_behavior.cxx \
@@ -255,7 +258,9 @@ LDIRT = mfef95 cf95.i cf95.cat cf95.exp cf95.cat.m cf95.exp.m ii_files compiler_
 
 HEADER_DIRS = $(FE90_DIR) $(SRC_DIRS) $(CURDIR) $(BUILD_TOT)/include
 
-VPATH    =  $(FE90_DIR) $(SRC_DIRS) 
+VPATH    =  $(FE90_DIR) $(SRC_DIRS)
+# Preserve legacy source lookup precedence; these are relocated owners.
+VPATH += $(BUILD_TOT)/common/ir_image $(BUILD_TOT)/be/com $(BUILD_TOT)/be/vho
 
 LCINCS = $(addprefix -I, $(HEADER_DIRS))
 ifeq ($(BUILD_OS_LINUX_OR_DARWIN), TRUE)

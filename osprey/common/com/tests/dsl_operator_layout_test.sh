@@ -7,7 +7,7 @@ repo_root="$(cd "$script_dir/../../../.." && pwd)"
 cxx="${CXX:-g++}"
 source_file="$script_dir/dsl_operator_layout_test.cxx"
 operator_info_source="$repo_root/osprey/common/com/opcode_gen_core.cxx"
-image_table_source="$repo_root/osprey/common/com/dsl_ir_image.cxx"
+image_table_source="$repo_root/osprey/common/ir_image/dsl_ir_image.cxx"
 
 common_flags=(
   -std=gnu++98

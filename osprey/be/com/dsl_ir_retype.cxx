@@ -1,12 +1,16 @@
 /*
  * Copyright (C) 2026 Open64 Project
  *
- * Transactional shape-only refinement of native DSL tensor value types.
+ * Backend-free shape-only retyping for caller-selected values in the active PU.
+ * Inference/policy stay with the owning phase; only recorded type assignments
+ * are reversed on reported postcheck failure, with no mapped-format change.
  * See doc/WHIRL-DSL-SHAPE-PROPAGATION-DESIGN.md and
  * doc/WHIRL-DSL-SHAPE-PROPAGATION-IMPLEMENTATION-PLAN.md.
  */
 
 #include <stdlib.h>
+#include "../../common/ir_image/dsl_image_service.h"
+#include "dsl_ir_retype.h"
 #include <string.h>
 #include <vector>
 
@@ -30,10 +34,9 @@
 extern BOOL DSL_IR_Image_Retype_Value (DSL_IR_VALUE_ID, TY_IDX, TY_IDX);
 
 /*
- * Confirm that owner_pu_st names the PU whose local symbol table and WN tree
- * are currently active. Local ST_IDX values are not safe to interpret outside
- * that ownership context. DSL_IR_Retype_Preflight uses this as the first
- * owner-safety check for every request.
+ * Match owner_pu_st to nonnull Current_PU_Info's procedure identity. This does
+ * not inspect Current_pu, local symbol residency or the physical tree; caller
+ * establishes those separately before interpreting local ST_IDX. Read-only.
  */
 static BOOL
 DSL_IR_Retype_Current_PU_Is (ST_IDX owner_pu_st)
@@ -121,8 +124,9 @@ DSL_IR_Retype_Scan_Tree
  * Prove that refined_ty is a monotonic shape-only refinement of old_ty. The
  * new canonical tensor type may fill unknown dimensions, but it must preserve
  * rank, every known dimension, element type, dtype, traits, layout, sharding,
- * placement, memory, quantization, and alignment. This is not a dtype, layout,
- * representation, encryption, or packing conversion.
+ * placement, memory, quantization, and alignment. Runtime-state and lineage
+ * fields are not compared here; this predicate alone is not a proof that every
+ * nonshape descriptor fact is identical. No conversion is performed.
  */
 static BOOL
 DSL_IR_Retype_Type_Valid (TY_IDX old_ty, TY_IDX refined_ty)
@@ -165,12 +169,11 @@ DSL_IR_Retype_Type_Valid (TY_IDX old_ty, TY_IDX refined_ty)
 }
 
 /*
- * Reject a type whose identity is already consumed by an auxiliary image that
- * has no participant in this transaction. Current FHE plan, approximation,
- * context-state, and tensor-binding relationships are intentionally
- * fail-closed: shape retyping cannot leave their persisted type evidence
- * stale. Future auxiliary images must add an explicit retype participant
- * before this guard can be relaxed.
+ * Conservatively exclude auxiliary images without a retype participant. Any
+ * FHE plan, approximation or context-state rows block retyping, even if they
+ * do not mention old_ty. Tensor bindings block only on old_ty or an unreadable
+ * row. No image is changed; relaxing these exclusions requires an explicit
+ * participant that keeps the affected persisted evidence consistent.
  */
 static BOOL
 DSL_IR_Retype_Has_Auxiliary_Relation (TY_IDX old_ty)
@@ -371,9 +374,11 @@ DSL_IR_Retype_Apply
  *
  * All requests and REGION state are preflighted before the first mutation.
  * After commit, managed-image, REGION, and strict gatekeeper verification run
- * together. Any failure reapplies the journals in reverse direction so the
- * caller observes either a completely refined program or the original type
- * graph.
+ * together. A reported postcheck failure reverses recorded type assignments
+ * and asserts restored image/REGION validity. Optional result is cleared on
+ * entry and reports attempted/rollback counts on that FALSE path. This is not
+ * general exception recovery: allocation/assertion failures are uncaught, and
+ * verifier side effects outside the WN/ST/value type journal are not snapshotted.
  */
 BOOL
 DSL_IR_Refine_Native_Value_Types

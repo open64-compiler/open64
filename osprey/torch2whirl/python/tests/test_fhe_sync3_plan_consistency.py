@@ -9,7 +9,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 PLAN_PATH = "doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx"
 PLAN_SHA256 = (
+    "84D7405922F2A1B6CE43A20D9591DAB6A83FE74D332569D7247DF028D6609ED1"
+)
+PLAN_REVISION_COMMIT = "4b59755b7825711e3eef26bc1c79a06882286012"
+SYNC3_PLAN_SHA256 = (
     "0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9"
+)
+CURRENT_AUTHORITY_DOCS = (
+    "doc/FHE-CONSOLIDATED-IMPLEMENTATION-PLAN.md",
+    "doc/FHE-SYNC4-TO-SYNC6-TEAM-HANDOFF.md",
 )
 
 PRIMARY_SYNC3_DOCS = (
@@ -59,15 +67,28 @@ def authority_excerpt(document: str) -> str:
 
 class FHESync3PlanConsistencyTest(unittest.TestCase):
     def test_v010_authority_digest_matches_repository_bytes(self) -> None:
+        """Reject byte drift from the verified section 11.9 document revision."""
         digest = hashlib.sha256((ROOT / PLAN_PATH).read_bytes()).hexdigest().upper()
         self.assertEqual(digest, PLAN_SHA256)
 
-    def test_primary_contracts_pin_the_v010_authority(self) -> None:
-        for relative_path in PRIMARY_SYNC3_DOCS:
+    def test_current_coordination_docs_pin_the_verified_revision(self) -> None:
+        """Keep current authority provenance distinct from historical evidence."""
+        for relative_path in CURRENT_AUTHORITY_DOCS:
             with self.subTest(document=relative_path):
                 authority = authority_excerpt(read_document(relative_path))
                 self.assertIn(PLAN_PATH, authority)
                 self.assertIn(PLAN_SHA256, authority)
+                self.assertIn(PLAN_REVISION_COMMIT, authority)
+                self.assertIn(SYNC3_PLAN_SHA256, authority)
+                self.assertIn("11.9", authority)
+
+    def test_primary_contracts_preserve_the_sync3_authority_pin(self) -> None:
+        """Retain the original v0.10 digest for the historical SYNC-3 contracts."""
+        for relative_path in PRIMARY_SYNC3_DOCS:
+            with self.subTest(document=relative_path):
+                authority = authority_excerpt(read_document(relative_path))
+                self.assertIn(PLAN_PATH, authority)
+                self.assertIn(SYNC3_PLAN_SHA256, authority)
                 active_versions = set(
                     re.findall(
                         r"DSC_FHE_Compiler_Architecture_and_Integration_Plan_"

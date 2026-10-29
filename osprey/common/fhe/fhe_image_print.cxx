@@ -7,6 +7,7 @@
  */
 
 #include "fhe_image.h"
+#include "../ir_image/dsl_image_service.h"
 #include "strtab.h"
 #include "symtab.h"
 

@@ -7,6 +7,7 @@
  */
 
 #include <string.h>
+#include "../../common/ir_image/dsl_image_service.h"
 
 #include "fhe_materialize.h"
 #include "fhe_checkpoint.h"
@@ -15,7 +16,7 @@
 #include "fhe_plan.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_ir_image.h"
-#include "dsl_program_interface_internal.h"
+#include "../com/dsl_program_interface_internal.h"
 #include "errors.h"
 #include "pu_info.h"
 #include "wn.h"

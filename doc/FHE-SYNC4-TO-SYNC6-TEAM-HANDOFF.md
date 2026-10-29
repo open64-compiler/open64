@@ -38,7 +38,7 @@ The team must read these files from the same `develop` revision before coding:
 
 | Document | Role |
 | --- | --- |
-| `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx` | Sole highest FHE semantic authority; required SHA-256 `0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9` |
+| `doc/DSC_FHE_Compiler_Architecture_and_Integration_Plan_v0.10.docx` | Sole highest FHE semantic authority; current required SHA-256 `84D7405922F2A1B6CE43A20D9591DAB6A83FE74D332569D7247DF028D6609ED1` |
 | `doc/FHE-CONSOLIDATED-IMPLEMENTATION-PLAN.md` | Coordination authority, ownership, ordering, and joint exit criteria |
 | `doc/FHE-WHIRL-INTEGRATION-PLAN.md` | FHE semantics, lowering stages, diagnostics, and artifacts |
 | `doc/FHE-DSL-INTEGRATION-PLAN.md` | Complete frontend-to-runtime execution architecture |
@@ -48,8 +48,19 @@ The team must read these files from the same `develop` revision before coding:
 | `doc/FHE-SYNC3-CONTEXT-CKKS-STATE-CONTRACT.md` | Context-specific CKKS state and callee-identity contract |
 | `doc/FHE-SYNC6-RAW-TO-CKKS-PLAINTEXT-FLOW.md` | Onboarding execution flow for immutable model parameters, derived plaintext side assets, WHIRL lineage, CKKS encoding, and atomic publication |
 
-At kickoff, verify the fixed v0.10 content hash above and record the active Git
-baseline and subordinate-document blob IDs with:
+The current DOCX revision is Git blob
+`7c380c5544b371472250e524f5ea74f89565fd43`, introduced by commit
+`4b59755b7825711e3eef26bc1c79a06882286012`. It adds section 11.9,
+SYNC-6 Executable Context Identity; the companion Markdown and the SYNC-6
+coordination changes were committed together. The original v0.10 publication
+in commit `ee1dc6382246c58f49a3097157a8c4e8ff2440c8` has SHA-256
+`0018769C26B5A0BCD1BDFCBD85AA97B8BAFEA381D7640FBB9E2E81B0022013D9`.
+Keep that original pin in the historical SYNC-3 contracts and exact-snapshot
+certification. The later authority revision does not re-certify historical
+artifacts or change the machine-readable stage-entry gate above.
+
+At kickoff, verify the fixed current v0.10 content hash above and record the
+active Git baseline and subordinate-document blob IDs with:
 
 ```sh
 git rev-parse HEAD

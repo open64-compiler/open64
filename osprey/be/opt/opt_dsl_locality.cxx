@@ -9,6 +9,7 @@
  */
 
 #include <string.h>
+#include "../com/dsl_ir_rewrite.h"
 
 #include "opt_cfg.h"
 #include "opt_dsl_locality.h"

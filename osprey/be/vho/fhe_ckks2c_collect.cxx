@@ -9,6 +9,8 @@
  */
 
 #include "fhe_ckks2c_collect.h"
+#include "../../common/ir_image/dsl_image_service.h"
+#include "../com/dsl_external_tensor.h"
 
 #include <algorithm>
 #include <cerrno>

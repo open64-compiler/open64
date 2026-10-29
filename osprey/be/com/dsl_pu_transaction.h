@@ -11,7 +11,7 @@
 
 #include <stdio.h>
 
-#include "dsl_pu_specialize_internal.h"
+#include "../../common/ir_image/dsl_pu_specialize_internal.h"
 #include "mempool.h"
 #include "pu_info.h"
 #include "srcpos.h"

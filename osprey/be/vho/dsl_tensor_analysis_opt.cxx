@@ -5,6 +5,7 @@
 /* VHO-owned AIO-3 active-PU tensor fact capture. */
 
 #include <string.h>
+#include "../../common/ir_image/dsl_image_service.h"
 #include <vector>
 
 #include "dsl_tensor_analysis_opt.h"

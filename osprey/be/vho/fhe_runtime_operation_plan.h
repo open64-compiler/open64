@@ -15,6 +15,8 @@
 #define fhe_runtime_operation_plan_INCLUDED
 
 #include <stdio.h>
+#include "../../common/ir_image/dsl_lowered_relation.h"
+#include "../com/dsl_ir_lower.h"
 
 #include "defs.h"
 #include "dsl_ir_image.h"

@@ -387,6 +387,9 @@ COMMON_COM_CXX_SRCS = \
   dsl_ir_group_lower.cxx \
   dsl_program_interface.cxx \
   dsl_ir_retype.cxx    \
+  dsl_ckks_expand.cxx \
+  dsl_external_tensor.cxx \
+  dsl_pu_interface_verify.cxx \
   dsl_ir_rewrite.cxx   \
   dsl_runtime_interface.cxx \
   dsl_region.cxx       \
@@ -865,6 +868,8 @@ LLDLIBS =
 LLDLIBS += $(LIBIBERTY_OBJS)
 
 VPATH    =  $(SRC_DIRS)
+# Preserve legacy source lookup precedence; these are relocated owners.
+VPATH += $(BUILD_TOT)/common/ir_image $(BUILD_TOT)/be/com $(BUILD_TOT)/be/vho
 
 #----------------------------------------------------------------------
 #  Variables for ld_plugin.so
@@ -887,7 +892,7 @@ LD_PLUGIN_CXX_OBJS = $(LD_PLUGIN_CXX_SRCS:.cxx=.o)
 LD_PLUGIN_OBJS = $(LD_PLUGIN_CXX_OBJS)
 LD_PLUGIN_DSO_OPTS = -Wl,--export-dynamic -shared
 LD_PLUGIN_DSO_LIBS = $(LD_PLUGIN_LIBS) $(LIBIBERTY_OBJS) $(TARGDIR)/libelf/libelf.a
-VPATH += $(LD_PLUGIN_DIR)
+VPATH += $(BUILD_TOT)/be/vho  $(LD_PLUGIN_DIR)
 LC++INCS += -I $(LD_PLUGIN_DIR) -I $(RAPIDJSON_INCS)
 
 ifeq ($(BUILD_PRODUCT), MASTIFF)

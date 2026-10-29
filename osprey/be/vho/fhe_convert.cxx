@@ -3,6 +3,7 @@
  */
 
 #include <string.h>
+#include "../../common/ir_image/dsl_image_service.h"
 
 #include "fhe_convert.h"
 #include "fhe_checkpoint.h"

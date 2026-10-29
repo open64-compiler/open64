@@ -7,6 +7,7 @@
  */
 
 #include "fhe_ckks_source_events.h"
+#include "../../../common/ir_image/dsl_image_service.h"
 #include "fhe_ckks_relu_plan.h"
 
 #include <assert.h>

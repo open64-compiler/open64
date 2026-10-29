@@ -2,7 +2,16 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * common/ir_image inspection of managed DSL and delegated FHE rows using the
+ * established logical names and shared string/type services. This is a trusted
+ * image printer, not a malformed-input verifier or a lowering policy owner.
+ * Design: doc/WHIRL-DSL-INFRASTRUCTURE.md, persistent IR / service separation.
+ */
+
 #include "dsl_ir_image.h"
+#include "dsl_lowered_relation.h"
+#include "dsl_image_service.h"
 #include "dsl_ckks_event.h"
 #include "fhe_image.h"
 #include "fhe_plan.h"
@@ -10,6 +19,8 @@
 #include "strtab.h"
 #include "symtab.h"
 
+/* Return a static inspection name for the attribute-value kind; out-of-range
+ * values use unknown. No allocation or mutation. */
 static const char *
 DSL_IR_Attribute_Value_Kind_Name (UINT32 value_kind)
 {
@@ -21,6 +32,8 @@ DSL_IR_Attribute_Value_Kind_Name (UINT32 value_kind)
            names[value_kind] : names[0];
 }
 
+/* Return a static inspection name for the logical value kind; out-of-range
+ * values use unknown. No allocation or mutation. */
 static const char *
 DSL_IR_Value_Kind_Name (UINT32 value_kind)
 {
@@ -31,6 +44,8 @@ DSL_IR_Value_Kind_Name (UINT32 value_kind)
            names[value_kind] : names[0];
 }
 
+/* Return a static inspection name for the runtime binding kind; out-of-range
+ * values use unknown. No allocation or mutation. */
 static const char *
 DSL_Runtime_Binding_Kind_Name (UINT32 kind)
 {
@@ -41,6 +56,8 @@ DSL_Runtime_Binding_Kind_Name (UINT32 kind)
            names[kind] : names[0];
 }
 
+/* Return a static inspection name for the runtime call direction; out-of-
+ * range values use unknown. No allocation or mutation. */
 static const char *
 DSL_Runtime_Call_Direction_Name (UINT32 direction)
 {
@@ -49,6 +66,8 @@ DSL_Runtime_Call_Direction_Name (UINT32 direction)
            names[direction] : names[0];
 }
 
+/* Return a static inspection name for the interface retirement reason; out-
+ * of-range values use unknown. No allocation or mutation. */
 static const char *
 DSL_Interface_Retirement_Reason_Name (UINT32 reason)
 {
@@ -57,6 +76,8 @@ DSL_Interface_Retirement_Reason_Name (UINT32 reason)
            names[reason] : names[0];
 }
 
+/* Return a static inspection name for the runtime input kind; out-of-range
+ * values use unknown. No allocation or mutation. */
 static const char *
 DSL_Runtime_Input_Kind_Name (UINT32 kind)
 {
@@ -68,6 +89,8 @@ DSL_Runtime_Input_Kind_Name (UINT32 kind)
            names[kind] : names[0];
 }
 
+/* Return a static inspection name for the runtime input binding kind; out-of-
+ * range values use unknown. No allocation or mutation. */
 static const char *
 DSL_Runtime_Input_Binding_Kind_Name (UINT32 kind)
 {
@@ -79,12 +102,16 @@ DSL_Runtime_Input_Binding_Kind_Name (UINT32 kind)
            names[kind] : names[0];
 }
 
+/* Borrow a shared string for a valid index, using an empty literal for zero.
+ * No interning or lifetime extension. */
 static const char *
 DSL_IR_String (STR_IDX id)
 {
     return id == STR_IDX_ZERO ? "" : Index_To_Str(id);
 }
 
+/* Print available tensor attributes to a borrowed stream for a valid tensor
+ * TY; ignore zero/nontensor types. No table mutation or I/O recovery. */
 static void
 DSL_IR_Print_Tensor_Descriptor (FILE *file, TY_IDX ty)
 {
@@ -112,6 +139,10 @@ DSL_IR_Print_Tensor_Descriptor (FILE *file, TY_IDX ty)
     fprintf (file, "}");
 }
 
+/* Print the supplied numeric ST/name and conditionally borrow no-alias metadata
+ * when a resident scope has that ordinal and spelling. Those guards do not
+ * establish owner-PU identity; caller must supply the correct local context.
+ * Require a valid stream/shared strings; no PU switch, writes or I/O status. */
 static void
 DSL_IR_Print_Result_Symbol (FILE *file, ST_IDX st, STR_IDX name)
 {
@@ -131,6 +162,10 @@ DSL_IR_Print_Result_Symbol (FILE *file, ST_IDX st, STR_IDX name)
     }
 }
 
+/* Print current managed and delegated image families to a borrowed stream;
+ * NULL is a no-op. Require valid rows/strings/types and relevant local
+ * context. No mutation, PU activation, stream close or I/O recovery;
+ * allocation failures may leave partial text. */
 void
 DSL_IR_Image_Print (FILE *file)
 {
@@ -209,7 +244,7 @@ DSL_IR_Image_Print (FILE *file)
         if ((node.flags & DSL_IR_NODE_FLAG_DEAD_ELIDED) != 0)
             fprintf(file, " status=dead_elided relation=none");
         if ((node.flags & DSL_IR_NODE_FLAG_LOWERED) != 0) {
-            DSL_IR_NATIVE_VALUE_LOWER_RESULT relation;
+            DSL_IR_LOWERED_RELATION_INFO relation;
             if (DSL_IR_Image_Resolve_Lowered_Relation
                     (node.result_value_id, &relation)) {
                 fprintf(file, " status=lowered relation=%s",
@@ -275,7 +310,7 @@ DSL_IR_Image_Print (FILE *file)
         if ((record.flags & DSL_IR_VALUE_FLAG_DEAD_ELIDED) != 0)
             fprintf(file, " status=dead_elided relation=none");
         if ((record.flags & DSL_IR_VALUE_FLAG_LOWERED) != 0) {
-            DSL_IR_NATIVE_VALUE_LOWER_RESULT relation;
+            DSL_IR_LOWERED_RELATION_INFO relation;
             if (DSL_IR_Image_Resolve_Lowered_Relation
                     (record.id, &relation)) {
                 fprintf(file, " status=lowered relation=%s",

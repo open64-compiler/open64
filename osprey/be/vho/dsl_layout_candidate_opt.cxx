@@ -10,6 +10,7 @@
  */
 
 #include <string.h>
+#include "../../common/ir_image/dsl_image_service.h"
 #include <vector>
 
 #include "dsl_layout_candidate_opt.h"

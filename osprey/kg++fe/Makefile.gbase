@@ -238,6 +238,9 @@ COMMON_COM_CXX_SRCS =	\
   dsl_ir_lower.cxx      \
   dsl_ir_group_lower.cxx \
   dsl_ir_retype.cxx     \
+  dsl_ckks_expand.cxx \
+  dsl_external_tensor.cxx \
+  dsl_pu_interface_verify.cxx \
   dsl_ir_rewrite.cxx    \
   dsl_region.cxx        \
   dsl_memory_behavior.cxx \
@@ -300,6 +303,8 @@ CFILES = $(FRONT_END_C_SRCS)
 CXXFILES = $(FRONT_END_CXX_SRCS)
 
 VPATH    =  $(SRC_DIRS)
+# Preserve legacy source lookup precedence; these are relocated owners.
+VPATH += $(BUILD_TOT)/common/ir_image $(BUILD_TOT)/be/com $(BUILD_TOT)/be/vho
 
 #Temporarily turn off Werror when compile C++ FE
 ifeq ($(BUILD_ARCH), IA64)

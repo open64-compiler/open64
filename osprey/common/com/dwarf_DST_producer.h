@@ -87,9 +87,11 @@ extern "C" {
     *---------------------------*/
 
 
-/* Must be called first!  Initiates the memory system used to hold 
- * DST structures.
-*/
+/* Begin a fresh frontend DST image and reset all producer cursors, counts,
+ * and locks. Call only at a program boundary after abandoning the previous
+ * producer context. This does not reload or resume a mapped DST; readers use
+ * DST_Init without resetting producer state or changing the binary layout.
+ */
 extern void DST_init_mem(void);
 
 

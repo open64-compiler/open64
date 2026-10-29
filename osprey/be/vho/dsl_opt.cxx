@@ -3,6 +3,7 @@
  */
 
 #include <errno.h>
+#include "../../common/ir_image/dsl_image_service.h"
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>

@@ -3,6 +3,8 @@
  */
 
 #include <string.h>
+#include "../../common/ir_image/dsl_image_service.h"
+#include "../com/dsl_ir_retype.h"
 #include <vector>
 
 #include "dsl_shape_refine.h"

@@ -1,12 +1,17 @@
 /*
  * Copyright (C) 2026 Open64 Project
  *
- * Atomic lowering of native DSL value definitions to standard WHIRL blocks.
+ * Backend-free lowering of caller-selected native definitions in the active PU.
+ * Boolean preflight is read-only; commit consumes detached blocks and asserts
+ * postconditions without a rollback journal or mapped-layout change.
  * See doc/FHE-SYNC5-STANDARD-WHIRL-LOWERING-CONTRACT.md and
  * doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md.
  */
 
 #include <algorithm>
+#include "../../common/ir_image/dsl_lowered_relation.h"
+#include "../../common/ir_image/dsl_image_service.h"
+#include "dsl_ir_lower.h"
 #include <map>
 #include <set>
 #include <string>
@@ -25,11 +30,16 @@
 #include "wn.h"
 #include "wn_util.h"
 
-/* Commit-only image mutation after complete transaction preflight. */
+/* Mark preflighted node/value provenance LOWERED; FALSE writes nothing.
+ * Caller removes physical definitions, supplies runtime relations and owns
+ * postconditions; this helper does not edit WNs or journal wider rollback. */
 extern BOOL DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID);
+/* Mark a checked pure constant as dead-elided provenance only; FALSE leaves
+ * the image unchanged, and no WN is removed here. */
 extern BOOL DSL_IR_Image_Mark_Value_Dead_Elided (DSL_IR_VALUE_ID);
 
-/* Confirm that the caller selected the PU whose local WHIRL state is active. */
+/* Check nonnull Current_PU_Info pointer equality, not Current_pu, tree validity
+ * or symbol residency; preflight's caller establishes those independently. */
 BOOL
 DSL_IR_Lower_Current_PU_Is (PU_Info *pu_info)
 {
@@ -44,7 +54,10 @@ typedef struct {
     UINT32 occurrences;
 } DSL_IR_LOWER_TREE_POSITION;
 
-/* One preorder walk locates every requested definition and attached block. */
+/* Index pointer-equal requests and attached replacement BLOCKs in one preorder
+ * tree walk. Caller provides bounded definition indexes and initialized nonnull
+ * position/order/set scratch; repeated occurrences are counted, not repaired.
+ * Only scratch changes; valid WN lifetime and overflow bounds are caller-owned. */
 static void
 DSL_IR_Lower_Index_Tree
         (WN *tree, WN *containing_block,
@@ -84,7 +97,10 @@ DSL_IR_Lower_Index_Tree
 typedef std::map<std::pair<ST_IDX, std::string>,
                  std::vector<DSL_IR_VALUE_RECORD> > DSL_IR_LOWER_VALUE_INDEX;
 
-/* Preserve Find_PU_Value's owner/name and duplicate semantics in one pass. */
+/* Append copied rows to caller scratch by exact owner metadata/ST/name, retaining
+ * duplicates for later rejection. Require selected-PU identity/shared strings
+ * and nonnull index; FALSE may leave a populated prefix. No live table writes
+ * or context activation; scratch allocation exceptions propagate. */
 static BOOL
 DSL_IR_Lower_Build_Value_Index
         (PU_Info *pu_info, DSL_IR_LOWER_VALUE_INDEX *values)
@@ -105,7 +121,10 @@ DSL_IR_Lower_Build_Value_Index
     return TRUE;
 }
 
-/* Resolve a native definition by exact value ID without rescanning values. */
+/* Resolve native STID/opcode/ST/TY/backlink identity through a prebuilt owner
+ * index, admitting constants only in elision modes. Caller supplies resident
+ * locals and coherent shared rows; physical tree membership is checked elsewhere.
+ * Optional output copies only on TRUE; FALSE preserves it, with no IR writes. */
 static BOOL
 DSL_IR_Lower_Find_Native_Definition_Value
         (const WN *definition,
@@ -197,7 +216,10 @@ DSL_IR_Lower_Call_Argument_Is_Verified_Dead
                DSL_INTERFACE_RETIREMENT_VERIFIED_DEAD_INPUT;
 }
 
-/* One walk checks source uses and dead local projections for the entire batch. */
+/* Census symbols and disqualify source uses outside selected native definitions
+ * or their LDID operands. Caller initializes bounded per-request valid scratch;
+ * this does not itself prove dead local projections or logical edge closure.
+ * NULL tree is empty; only scratch changes, and allocation exceptions escape. */
 static void
 DSL_IR_Lower_Scan_All_Source_Uses
         (const WN *tree, const WN *native_definition,
@@ -243,7 +265,10 @@ DSL_IR_Lower_Scan_All_Source_Uses
              source_symbols, valid, used_symbols);
 }
 
-/* Validate a detached replacement block and its sole final handle definition. */
+/* Accumulate standard-WHIRL statement/handle counts and flag native/source uses,
+ * wrong source positions or a handle STID unlike the caller's expected pointer.
+ * Require initialized nonnull scan; detachment, final placement and exactly-one
+ * count are caller checks. No WN/image writes, ownership transfer or PU switch. */
 void
 DSL_IR_Lower_Scan_Standard_Block
         (const WN *tree, DSL_IR_LOWER_STANDARD_BLOCK_SCAN *scan)
@@ -293,7 +318,10 @@ typedef struct {
              DSL_RETIRED_CALL_ARGUMENT_RECORD> retired_calls;
 } DSL_IR_LOWER_RELATION_INDEX;
 
-/* Snapshot runtime relations once; every request observes the same tables. */
+/* Append current projection/input/call/argument/retirement rows to caller index
+ * scratch without changing live tables. Require a fresh nonnull index and stable
+ * shared tables throughout batch preflight; FALSE leaves partial scratch and
+ * does not validate every row or roll back allocations. */
 static BOOL
 DSL_IR_Lower_Build_Relation_Index (DSL_IR_LOWER_RELATION_INDEX *index)
 {
@@ -377,7 +405,11 @@ DSL_IR_Lower_Logical_Uses_Closed
     return TRUE;
 }
 
-/* Resolve a computed projection or promoted root input to its runtime handle. */
+/* Preflight a computed projection, promoted root or verified-dead relation
+ * against indexed shared metadata and selected-PU locals. Require nonnull output
+ * slots; clear local-projection outputs first and allow partial scratch on FALSE.
+ * This establishes relation/handle facts, not physical deadness or block closure;
+ * no IR writes or context activation, and caller discards outputs on rejection. */
 static BOOL
 DSL_IR_Lower_Relation_Resolve
         (ST_IDX owner_pu_st,
@@ -549,7 +581,10 @@ struct DSL_IR_LOWER_JOURNAL_LESS {
  * every physical parent/result relationship from PU_Info and the borrowed
  * request blocks, validates source/effect/runtime closure, then commits WHIRL
  * extraction and logical LOWERED flags in tree order. No rollback allocation
- * or mapped-image layout change is part of the commit path.
+ * or mapped-image layout change is part of the commit path. Clear count-sized
+ * results before checks; FALSE preserves IR/borrowed blocks, not old results.
+ * Commit consumes blocks/deletes definitions and marks LOWERED or DEAD_ELIDED;
+ * failed commit/postcondition invariants assert, not recoverable rollback.
  */
 BOOL
 DSL_IR_Lower_Native_Values_To_Standard_Blocks
@@ -872,7 +907,9 @@ DSL_IR_Lower_Native_Values_To_Standard_Blocks
 
 /* Reuse the complete native-lowering transaction for dead constant batches.
  * The stricter identity record prevents a caller from selecting a different
- * definition after its deadness decision was made. */
+ * definition after its deadness decision was made. Require nonnull count output;
+ * leave it unchanged on FALSE and assign only after lowering succeeds. No payload
+ * computation or independent mutation path; assertions/exceptions are not rollback. */
 BOOL
 DSL_IR_Elide_Dead_Native_Constants
         (PU_Info *pu_info,

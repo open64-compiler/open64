@@ -5,6 +5,10 @@
  */
 
 #include <stdarg.h>
+#include "../ir_image/dsl_lowered_relation.h"
+#include "../ir_image/dsl_image_service.h"
+#include "../../be/com/dsl_pu_interface_verify.h"
+#include "../../be/com/dsl_program_interface.h"
 #include <ctype.h>
 #include <float.h>
 #include <limits.h>
@@ -17,7 +21,7 @@
 #include "dsl_ckks_event.h"
 #include "dsl_memory_behavior.h"
 #include "dsl_opcode.h"
-#include "dsl_program_interface_internal.h"
+#include "../../be/com/dsl_program_interface_internal.h"
 #include "dsl_region.h"
 #include "dsl_shape.h"
 #include "dsl_tensor_fold.h"

@@ -1,14 +1,21 @@
 /*
  * Copyright (C) 2026 Open64 Project
  *
- * Program-interface ABI retirement, runtime-input promotion, reconstruction,
- * and verification for native DSL PUs. See
+ * Backend-free program-interface retirement, promotion, reconstruction and
+ * verification for the caller-selected active PU. Plan-wide metadata and local
+ * commit evidence do not authorize traversal/activation of other PUs. Physical
+ * commits have no general rollback journal; mapped row layouts are unchanged. See
  * doc/FHE-SYNC5-RUNTIME-ENTRY-BINDING-GAP.md,
  * doc/FHE-RUNTIME-C-ABI-V1-CONTRACT.md, and
  * doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md.
  */
 
 #include <string.h>
+#include "../../common/ir_image/dsl_lowered_relation.h"
+#include "../../common/ir_image/dsl_image_service.h"
+#include "dsl_runtime_interface.h"
+#include "dsl_program_interface.h"
+#include "dsl_external_tensor.h"
 #include <algorithm>
 #include <iterator>
 #include <set>
@@ -28,27 +35,44 @@
 #include "wn.h"
 #include "wn_util.h"
 
-/* Commit-only image/tree services used after complete program-plan preflight. */
+/* Append a copied formal-retirement row with a fresh ID (INVALID on NULL).
+ * This is image-only: the caller proves deadness and coordinates physical
+ * edits, postchecks and wider rollback; the append does not validate the row. */
 extern DSL_RETIRED_FORMAL_ID
 DSL_Program_Interface_Image_Add_Retired_Formal
                                 (const DSL_RETIRED_FORMAL_RECORD *);
+/* Copy a checked retired-argument row with a fresh ID; caller coordinates its
+ * physical ABI commit and validates the complete image. */
 extern DSL_RETIRED_CALL_ARGUMENT_ID
 DSL_Program_Interface_Image_Add_Retired_Call
                                 (const DSL_RETIRED_CALL_ARGUMENT_RECORD *);
+/* Copy a checked runtime-input row into managed storage with a fresh ID;
+ * caller owns whole-plan ordering, physical state and verification. */
 extern DSL_RUNTIME_INPUT_ID DSL_Program_Interface_Image_Add_Runtime_Input
                                 (const DSL_RUNTIME_INPUT_RECORD *);
+/* Append one copied runtime binding after plan preflight. Referenced IDs/STs
+ * remain caller-established; no physical construction or whole-stage
+ * rollback. */
 extern DSL_RUNTIME_INPUT_BINDING_ID
 DSL_Program_Interface_Image_Add_Runtime_Binding
                                 (const DSL_RUNTIME_INPUT_BINDING_RECORD *);
+/* Append one copied runtime call row after plan/physical preflight; this
+ * image-only helper does not rewrite a CALL. */
 extern DSL_RUNTIME_INPUT_CALL_ID
 DSL_Program_Interface_Image_Add_Runtime_Call
                                 (const DSL_RUNTIME_INPUT_CALL_RECORD *);
+/* Append a copied value projection after owner preflight; no handle symbol
+ * construction or whole-stage rollback occurs here. */
 extern DSL_RUNTIME_VALUE_PROJECTION_ID
 DSL_Runtime_Interface_Image_Add_Value
                                 (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *);
+/* Append a copied runtime-call projection after transaction preflight,
+ * returning its ID; no physical CALL mutation or combined rollback. */
 extern DSL_RUNTIME_CALL_PROJECTION_ID
 DSL_Runtime_Interface_Image_Add_Call
                                 (const DSL_RUNTIME_CALL_PROJECTION_RECORD *);
+/* Replace a borrowed call association only when its expected pointer matches;
+ * FALSE preserves the association and WNs remain caller-owned. */
 extern BOOL DSL_Call_Image_Replace_Call_WN
                                 (DSL_CALLSITE_METADATA_ID, const WN *, WN *);
 
@@ -70,7 +94,9 @@ DSL_Program_Interface_String_Valid (const char *text)
     return text != NULL && text[0] != '\0';
 }
 
-/* Find the unique retirement request for one persisted PU formal row. */
+/* Return the first borrowed formal-ID request or NULL, without uniqueness
+ * checks. Caller owns plan-array lifetime; plan validation rejects duplicates.
+ * NULL plan means no request; no image or physical formal is changed. */
 static const DSL_RETIRED_FORMAL_REQUEST *
 DSL_Program_Interface_Find_Retired_Formal_Request
         (const DSL_PROGRAM_INTERFACE_PLAN *plan,
@@ -83,7 +109,9 @@ DSL_Program_Interface_Find_Retired_Formal_Request
     return NULL;
 }
 
-/* Find the unique retirement request for one persisted call-argument row. */
+/* Return the first borrowed argument-ID request or NULL (also for NULL plan).
+ * Caller supplies readable arrays; duplicates are rejected separately during
+ * plan validation. No image or physical actual mutation. */
 static const DSL_RETIRED_CALL_ARGUMENT_REQUEST *
 DSL_Program_Interface_Find_Retired_Call_Request
         (const DSL_PROGRAM_INTERFACE_PLAN *plan,
@@ -135,7 +163,9 @@ DSL_Program_Interface_Live_Formal_Count
     return count;
 }
 
-/* Find one runtime value projection request by exact owner and value ID. */
+/* Return the first borrowed owner/value projection or NULL, including for a
+ * NULL plan. Caller keeps request arrays stable and separately establishes
+ * uniqueness; no local ST access, output mutation or PU activation. */
 static const DSL_RUNTIME_VALUE_PROJECTION_REQUEST *
 DSL_Program_Interface_Find_Runtime_Value
         (const DSL_RUNTIME_INTERFACE_PLAN *plan, ST_IDX owner_pu_st,
@@ -149,7 +179,9 @@ DSL_Program_Interface_Find_Runtime_Value
     return NULL;
 }
 
-/* Find one runtime call projection request by callsite and old ordinal. */
+/* Return the first borrowed callsite/original-ordinal projection or NULL.
+ * NULL plan is empty; readable arrays and uniqueness are caller obligations.
+ * This does not resolve physical CALLs or alter requests/images. */
 static const DSL_RUNTIME_CALL_PROJECTION_REQUEST *
 DSL_Program_Interface_Find_Runtime_Call
         (const DSL_RUNTIME_INTERFACE_PLAN *plan,
@@ -230,7 +262,10 @@ DSL_Program_Interface_Binding_Ordinal
 
 /*
  * Validate that a runtime projection request names an owner-local tensor value
- * and a canonical handle type suitable for ABI reconstruction.
+ * and an existing pointer-kind handle TY for ABI reconstruction. Shared types,
+ * strings and source rows must be safe to inspect; no descriptor sealing,
+ * pointee/canonical-uniqueness or physical local-symbol proof is made here.
+ * Read-only; FALSE changes nothing and does not activate the owner PU.
  */
 static BOOL
 DSL_Program_Interface_Runtime_Value_Valid
@@ -265,14 +300,18 @@ DSL_Program_Interface_Reset_Commit_State (void)
     DSL_program_interface_mapped_committed = FALSE;
 }
 
-/* A complete mapped image is eligible for strict per-PU reader validation. */
+/* Set process-local mapped eligibility for every owner after image commit.
+ * No rows are validated here; the reader still performs selected-PU physical
+ * checks. Prepared keys/committed-PU entries are not cleared by this setter. */
 void
 DSL_Program_Interface_Mark_Mapped_Committed (void)
 {
     DSL_program_interface_mapped_committed = TRUE;
 }
 
-/* Query process-local eligibility without interpreting local PU state. */
+/* Report mapped eligibility for any owner, otherwise exact membership in the
+ * committed-PU list. This is not a live ST/PU or physical-validity test; no
+ * output/state change or context activation occurs. */
 BOOL
 DSL_Program_Interface_PU_Is_Committed (ST_IDX owner_pu_st)
 {
@@ -284,7 +323,9 @@ DSL_Program_Interface_PU_Is_Committed (ST_IDX owner_pu_st)
            DSL_program_interface_committed_pus.end();
 }
 
-/* Append one length-delimited text field to the canonical plan fingerprint. */
+/* Append length-delimited borrowed text to a nonnull caller-owned stream;
+ * NULL text encodes as empty. Stream state changes, not shared strings/IR;
+ * allocation exceptions propagate and stream failure is not returned. */
 static void
 DSL_Program_Interface_Append_Text
         (std::ostringstream *stream, const char *text)
@@ -296,7 +337,8 @@ DSL_Program_Interface_Append_Text
     *stream << ';';
 }
 
-/* Build the stable semantic key used to order one runtime-input request. */
+/* Build an owned fingerprint key from input scalars and borrowed role text.
+ * This does not install input rows or choose ABI order; allocations may throw. */
 static std::string
 DSL_Program_Interface_Input_Request_Key
         (const DSL_RUNTIME_INPUT_REQUEST &request)
@@ -309,7 +351,9 @@ DSL_Program_Interface_Input_Request_Key
     return stream.str();
 }
 
-/* Build the stable semantic key used to order one PU binding request. */
+/* Build an owned fingerprint key for a bounded binding index, including its
+ * referenced input key when present. Require readable plan arrays/indexes;
+ * no bounds validation, interning, physical mutation or exception recovery. */
 static std::string
 DSL_Program_Interface_Binding_Request_Key
         (const DSL_PROGRAM_INTERFACE_PLAN *plan, UINT32 index)
@@ -328,7 +372,9 @@ DSL_Program_Interface_Binding_Request_Key
     return stream.str();
 }
 
-/* Append a sorted request-key set to the canonical plan fingerprint. */
+/* Sort caller scratch keys in place and append every length-delimited entry
+ * (including duplicates) to a nonnull stream. Borrow category text; do not
+ * change plans/images or treat this as a uniqueness check. Allocations escape. */
 static void
 DSL_Program_Interface_Append_Keys
         (std::ostringstream *stream, const char *category,
@@ -345,7 +391,9 @@ DSL_Program_Interface_Append_Keys
 
 /*
  * Canonicalize all program/runtime requests into an order-independent plan
- * fingerprint. Apply_PU requires this exact prevalidated fingerprint.
+ * fingerprint. Require complete readable arrays and valid binding/input indexes;
+ * no validation is performed before dereferencing them. Apply_PU compares or
+ * records the owned key; this helper changes only scratch and may allocate.
  */
 static std::string
 DSL_Program_Interface_Plan_Fingerprint
@@ -435,9 +483,12 @@ DSL_Program_Interface_Result_Init (DSL_PROGRAM_INTERFACE_RESULT *result)
 
 /*
  * Validate the complete program-wide ABI transformation before any PU commit.
- * It proves retirement liveness, runtime-input/TCON identity, binding/call
- * coverage, deterministic ordering, and cross-plan consistency, then records
- * only an in-memory fingerprint; failure mutates no WHIRL or image rows.
+ * Check metadata retirement/projection coverage, runtime-input/TCON profiles,
+ * rooted acyclic binding flow and cross-plan identities. This does not inspect
+ * inactive PU trees or prove retirement deadness; selected-PU preflight does
+ * that later. Success does not record the fingerprint (Apply_PU does), and
+ * neither return path mutates WHIRL, images or process-local commit evidence.
+ * Caller supplies valid shared references; scratch allocations may throw.
  */
 BOOL
 DSL_Program_Interface_Plan_Validate
@@ -820,7 +871,8 @@ struct DSL_PROGRAM_RUNTIME_VALUE_INDEX_LESS {
     /* Borrow the immutable plan used to compare request indexes. */
     explicit DSL_PROGRAM_RUNTIME_VALUE_INDEX_LESS
         (const DSL_RUNTIME_INTERFACE_PLAN *value) : plan(value) {}
-    /* Order runtime values by owner, source value, then request index. */
+    /* Order borrowed runtime requests by owner, source value, then binding kind;
+     * equal keys compare false. Require bounded indexes; no mutation. */
     BOOL operator() (UINT32 left, UINT32 right) const {
         const DSL_RUNTIME_VALUE_PROJECTION_REQUEST &a = plan->values[left];
         const DSL_RUNTIME_VALUE_PROJECTION_REQUEST &b = plan->values[right];
@@ -880,7 +932,8 @@ struct DSL_PROGRAM_RUNTIME_CALL_INDEX_LESS {
     /* Borrow the immutable plan used to compare call projection indexes. */
     explicit DSL_PROGRAM_RUNTIME_CALL_INDEX_LESS
         (const DSL_RUNTIME_INTERFACE_PLAN *value) : plan(value) {}
-    /* Order projected calls by owner, callsite, ordinal, then index. */
+    /* Order borrowed calls by owner, callsite, actual ordinal, then direction;
+     * equal keys compare false. Require bounded indexes; no mutation. */
     BOOL operator() (UINT32 left, UINT32 right) const {
         const DSL_RUNTIME_CALL_PROJECTION_REQUEST &a = plan->calls[left];
         const DSL_RUNTIME_CALL_PROJECTION_REQUEST &b = plan->calls[right];
@@ -915,7 +968,9 @@ struct DSL_PROGRAM_INPUT_CALL_INDEX_LESS {
     }
 };
 
-/* Find a runtime handle created for one exact owner/source value pair. */
+/* Return the first borrowed created-value journal for this source ID, or NULL.
+ * The caller filters the vector to one owner and keeps its requests stable;
+ * no independent owner/handle validation or journal mutation occurs. */
 static const DSL_PROGRAM_CREATED_VALUE *
 DSL_Program_Interface_Find_Created_Value
         (const std::vector<DSL_PROGRAM_CREATED_VALUE> &created,
@@ -964,7 +1019,10 @@ DSL_Program_Interface_Tree_Uses_ST (const WN *tree, ST_IDX st)
     return FALSE;
 }
 
-/* A promoted source may retain a local call projection, initialized once. */
+/* Require every reference to the supplied projection ST to be an LDID, except
+ * the exact allowed copy node. Caller separately proves that copy's identity,
+ * uniqueness and ordering; this read-only recursion neither proves them nor
+ * initializes the handle. NULL tree is a successful empty scan. */
 static BOOL
 DSL_Program_Interface_Projection_Uses_Only_Read
         (const WN *tree, ST_IDX projection_st, const WN *copy)
@@ -991,6 +1049,9 @@ DSL_Program_Interface_Projection_Uses_Only_Read
     return TRUE;
 }
 
+/* Check one source-positioned binding-to-projection copy precedes reads and
+ * that all other projection uses are reads. Borrow an already validated
+ * FUNC_ENTRY; do not mutate it. */
 static BOOL
 DSL_Program_Interface_Has_Promoted_Copy
         (const WN *entry, ST_IDX binding_st,
@@ -1260,7 +1321,10 @@ DSL_Program_Interface_Create_Binding_Parm
 
 /*
  * Publish globally ordered runtime-input rows once, after plan validation and
- * before per-PU binding rows. Existing rows must match exactly.
+ * before per-PU binding rows. Existing nonempty storage is checked for count
+ * equality only, relying on Apply_PU's fingerprint/lifetime discipline rather
+ * than comparing row contents here. Late FALSE may leave interned strings and
+ * an appended input prefix; no physical edits or rollback journal are provided.
  */
 static BOOL
 DSL_Program_Interface_Install_Inputs
@@ -1308,7 +1372,10 @@ DSL_Program_Interface_Install_Inputs
 /*
  * Commit the prepared program-interface plan for one active PU. It rebuilds
  * formals/prototype/calls/returns, retires verified-dead ABI slots, installs
- * runtime handles, and finally publishes matching image rows and counters.
+ * runtime handles, and finally appends image rows/counters and committed-PU
+ * evidence. Clear result first; a rejected input installation may retain rows
+ * and the prepared key. No general journal, append-ID checks or final verifier;
+ * commit assertions/allocation failures are not recoverable Boolean rollback.
  */
 BOOL
 DSL_Program_Interface_Apply_PU
@@ -1345,6 +1412,8 @@ DSL_Program_Interface_Apply_PU
                 (diagnostic, "prepared plan does not match", 0);
         return FALSE;
     }
+    /* Publication starts here: even a later FALSE can retain the prepared key
+     * or an installed input prefix. Physical reconstruction has no journal. */
     if (!already_applied)
         DSL_program_interface_prepared_plan = fingerprint;
     if (!DSL_Program_Interface_Install_Inputs(program_plan))
@@ -1780,7 +1849,10 @@ DSL_Program_Interface_Parm_Matches_Handle
                 WN_PARM_PASSED_NOT_SAVED);
 }
 
-/* Verify exactly one canonical null initialization immediately before call. */
+/* Find exactly one matching canonical null STID in the contiguous STID run
+ * preceding call, allowing stores to other symbols in between. Caller provides
+ * a live statement list/handle TY; no earlier-block/CFG initialization proof,
+ * mutation or diagnostics. Any malformed matching store returns FALSE. */
 static BOOL
 DSL_Program_Interface_Call_Has_Null_Initialization
         (const WN *call, ST_IDX handle_st, TY_IDX handle_ty)
@@ -1969,7 +2041,11 @@ DSL_Program_Interface_Validate_PU (PU_Info *pu, FILE *diagnostic)
     return TRUE;
 }
 
-/* Check executable projection-handle reads in structured WHIRL order. */
+/* Check tracked LDID reads in structured tree order using caller-owned defined
+ * scratch: STID checks RHS first, IF merges branch intersections, REGION scans
+ * its body and other SCF nodes discard definitions on exit. Require nonnull
+ * scratch/output and valid WNs; FALSE sets missing and can retain prior scratch
+ * writes. No IR changes; this is not general CFG/SSA dominance analysis. */
 static BOOL
 DSL_Program_Interface_Projection_Reads_Defined
         (const WN *tree, const std::set<ST_IDX> &handles,
@@ -2039,6 +2115,9 @@ DSL_Program_Interface_Projection_Reads_Defined
     return TRUE;
 }
 
+/* With selected-PU locals resident, collect local projection handles and
+ * reject invalid symbols/types or reads lacking a definition. Diagnostics are
+ * optional; scratch/output only, no IR writes. */
 static BOOL
 DSL_Program_Interface_Verify_Projection_Handles
         (PU_Info *pu, FILE *diagnostic)
@@ -2078,7 +2157,11 @@ DSL_Program_Interface_Verify_Projection_Handles
     return TRUE;
 }
 
-/* Final lowering requires no executable source symbols or undefined handles. */
+/* After the active-PU ABI check, reject promoted/canonical/dead source uses,
+ * validate any promoted local-copy relation and scan local projection reads
+ * for structured-order definitions. Require coherent shared/lowered facts and
+ * resident locals; no repair, PU switch or full CFG/domain proof. FALSE emits
+ * the first optional diagnostic; scratch allocations escape without IR writes. */
 BOOL
 DSL_Program_Interface_Validate_Lowered_PU
         (PU_Info *pu, FILE *diagnostic)

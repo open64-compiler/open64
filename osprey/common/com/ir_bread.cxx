@@ -51,6 +51,10 @@
 #endif /* USE_PCH */
 #pragma hdrstop
 #include <unistd.h>		    /* for close(), etc. */
+#include "../ir_image/dsl_image_service.h"
+#include "../../be/com/dsl_pu_interface_verify.h"
+#include "../../be/com/dsl_program_interface.h"
+#include "../../be/com/dsl_external_tensor.h"
 #include <sys/stat.h>		    /* for fstat() */
 #ifdef __MINGW32__
 #include <WINDOWS.h>
@@ -99,7 +103,7 @@
 #include "ir_bcom.h"
 #include "ir_bread.h"
 #include "dsl_ir_image.h"
-#include "dsl_program_interface_internal.h"
+#include "../../be/com/dsl_program_interface_internal.h"
 #include "dsl_ckks_event.h"
 #include "fhe_image.h"
 #include "fhe_plan.h"

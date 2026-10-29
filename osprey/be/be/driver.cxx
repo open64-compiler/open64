@@ -66,6 +66,10 @@
  */
 
 #include <sys/types.h>
+#include "../../common/ir_image/dsl_image_service.h"
+#include "../com/dsl_pu_interface_verify.h"
+#include "../com/dsl_program_interface.h"
+#include "../com/dsl_external_tensor.h"
 #if ! defined(BUILD_OS_DARWIN)
 #include <elf.h>		    /* for wn.h */
 #endif /* ! defined(BUILD_OS_DARWIN) */
@@ -141,7 +145,7 @@
 #include "vho_lower.h"
 #include "dsl_lower.h"
 #include "dsl_shape_refine.h"
-#include "dsl_program_interface_internal.h"
+#include "../com/dsl_program_interface_internal.h"
 #include "dsl_pu_transaction.h"
 #include "dsl_ir_image.h"
 #include "dsl_ckks_event.h"

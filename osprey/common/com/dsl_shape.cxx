@@ -6,6 +6,7 @@
  */
 
 #include <ctype.h>
+#include "../ir_image/dsl_image_service.h"
 #include <float.h>
 #include <limits.h>
 #include <stdarg.h>

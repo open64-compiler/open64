@@ -10,6 +10,7 @@
  */
 
 #include "fhe_ckks_conv_specialize.h"
+#include "../../common/ir_image/dsl_image_service.h"
 
 #include <algorithm>
 #include <map>

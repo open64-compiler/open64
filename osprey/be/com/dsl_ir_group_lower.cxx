@@ -3,10 +3,16 @@
  *
  * Atomic grouped native-value lowering for one active PU. The local contract
  * is doc/WHIRL-DSL-GROUPED-LOWERING-M1.md; the FHE consumer boundary follows
- * doc/FHE-SYNC6-CKKS-ABI-LOWERING-BOUNDARY.md. No FHE policy belongs here.
+ * doc/FHE-SYNC6-CKKS-ABI-LOWERING-BOUNDARY.md. No policy or PU activation belongs
+ * here; commit asserts postconditions without rollback or mapped-layout changes.
  */
 
 #include <algorithm>
+#include "../../common/ir_image/dsl_lowered_relation.h"
+#include "../../common/ir_image/dsl_image_service.h"
+#include "dsl_pu_interface_verify.h"
+#include "dsl_program_interface.h"
+#include "dsl_ir_lower.h"
 #include <map>
 #include <set>
 #include <string>
@@ -25,6 +31,8 @@
 #include "wn.h"
 #include "wn_util.h"
 
+/* Commit a checked pure source to lowered provenance; FALSE preserves its
+ * rows. Physical edits and wider rollback belong to the caller. */
 extern BOOL DSL_IR_Image_Mark_Value_Lowered (DSL_IR_VALUE_ID);
 
 typedef struct {
@@ -34,7 +42,10 @@ typedef struct {
     UINT32 block_ordinal;
 } DSL_IR_GROUP_TREE_POSITION;
 
-/* One preorder walk indexes both direct BLOCK membership and WN presence. */
+/* Index borrowed WNs, BLOCK-statement ordinals and subtree extents into fresh
+ * nonnull caller scratch, collecting symbol uses. NULL/overflow/repeated WNs
+ * reject with a partial index; no physical/image mutation or PU activation.
+ * Caller uses this census before admitting detached replacements. */
 static BOOL
 DSL_IR_Group_Index_Tree
         (WN *tree, WN *containing_block, UINT32 block_ordinal,
@@ -80,7 +91,9 @@ DSL_IR_Group_Index_Tree
 
 typedef std::pair<UINT32, UINT32> DSL_IR_GROUP_USE_EDGE;
 
-/* A second linear PU walk records only uses of the transaction's symbols. */
+/* Accumulate selected definition counts and member-to-member LDID edges in
+ * bounded caller scratch. Reject escaping/non-LDID symbol uses; FALSE can leave
+ * prior counts/edges. Require live WNs and valid member indexes; no IR writes. */
 static BOOL
 DSL_IR_Group_Index_Physical_Uses
         (const WN *tree, UINT32 enclosing_member,
@@ -130,33 +143,12 @@ DSL_IR_Group_Index_Physical_Uses
     return TRUE;
 }
 
-typedef struct {
-    const DSL_IR_NATIVE_GROUP_LOWER_REQUEST *request;
-    UINT32 request_index;
-    UINT32 first_member;
-    UINT32 member_count;
-    UINT32 first_order;
-    UINT32 last_order;
-    UINT32 statement_count;
-    WN *containing_block;
-    WN *first_definition;
-    WN *output_definition;
-    DSL_IR_VALUE_RECORD semantic_source;
-    DSL_IR_VALUE_RECORD output;
-    ST_IDX handle_st;
-    TY_IDX handle_ty;
-} DSL_IR_GROUP_LOWER_JOURNAL;
 
-struct DSL_IR_GROUP_LOWER_LESS {
-    BOOL operator()
-        (const DSL_IR_GROUP_LOWER_JOURNAL &left,
-         const DSL_IR_GROUP_LOWER_JOURNAL &right) const
-    {
-        return left.first_order < right.first_order;
-    }
-};
 
-/* A group is closed only when every private producer contributes to output. */
+/* Walk managed operands backward from the selected group output and require
+ * every bounded member to be reachable within that group. Borrow validated
+ * journals/shared rows; scratch allocation only, no WN/row writes or PU switch.
+ * Physical edge correspondence and escape checks are separate preflight gates. */
 static BOOL
 DSL_IR_Group_Lower_Reaches_Output
         (const DSL_IR_GROUP_LOWER_JOURNAL &group,
@@ -204,7 +196,9 @@ DSL_IR_Group_Lower_Reaches_Output
     return TRUE;
 }
 
-/* Between the first and last member, only inert comments may be retained. */
+/* Using preindexed noncomment statement ordinals, require contiguous selected
+ * members and output last; inert comments do not consume ordinals. Caller has
+ * proved unique same-BLOCK membership. Read-only; this does not walk WNs again. */
 static BOOL
 DSL_IR_Group_Lower_Statements_Closed
         (const DSL_IR_GROUP_LOWER_JOURNAL &group,
@@ -237,7 +231,10 @@ typedef struct {
     DSL_RUNTIME_VALUE_PROJECTION_RECORD projection;
 } DSL_IR_GROUP_MEMBER_USES;
 
-/* Census every managed relation once, keyed by exact value, node, or ST. */
+/* Populate fresh nonnull bounded caller scratch with projection/input/call/ABI/
+ * retirement/effect and selected-PU REGION use counts. Reject missing rows and
+ * repeated call/actual keys; FALSE may retain scratch prefixes, not live writes.
+ * Caller supplies valid shared rows/member indexes and owns allocation failures. */
 static BOOL
 DSL_IR_Group_Index_Managed_Uses
         (PU_Info *pu_info,
@@ -400,7 +397,8 @@ DSL_IR_Group_Output_Calls_Valid
     return TRUE;
 }
 
-/* Detached replacement blocks cannot read any retiring native symbol. */
+/* Detect any physical symbol reference to a retiring member in a borrowed tree,
+ * not only LDID reads. NULL is empty; no tree/image mutation or scope changes. */
 static BOOL
 DSL_IR_Group_Block_Uses_Member
         (const WN *tree, const std::map<ST_IDX, UINT32> &member_by_st)
@@ -432,7 +430,9 @@ typedef struct {
     std::vector<WN *> reads;
 } DSL_IR_GROUP_RETIRED_ALIAS;
 
-/* A detached block must not hide a read of a retired projection handle. */
+/* Detect any symbol reference to a retired projection alias in a borrowed tree.
+ * NULL is empty; preflight rejects such replacements without consuming them.
+ * No WN/image mutation, alias-map edits or PU activation. */
 static BOOL
 DSL_IR_Group_Block_Uses_Alias
         (const WN *tree,
@@ -458,10 +458,14 @@ DSL_IR_Group_Block_Uses_Alias
 
 /*
  * Replace complete, pure, owner-local native groups with one checked standard
- * block apiece. This is the common/com side of
+ * block apiece. This is the backend-free be/com mechanism for
  * doc/FHE-SYNC6-CKKS-ABI-LOWERING-BOUNDARY.md. All caller arrays and detached
  * blocks remain owned by the caller on rejection; a successful commit
- * consumes each detached block. No fallible work follows full preflight.
+ * consumes each detached block. FALSE leaves caller results and live IR intact;
+ * commit rewrites checked aliases/REGIONs and marks provenance, then asserts
+ * postconditions. There is no recoverable commit/exception rollback journal;
+ * scratch allocation or compiler-invariant failures must not be called atomic
+ * recovery. Caller retains policy, resident-PU context and shared-table lifetime.
  */
 BOOL
 DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
@@ -1038,6 +1042,9 @@ DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
                        (diagnostic, groups[i].request_index,
                         "interleaved groups");
     }
+    /* All Boolean rejection paths are past. Consume detached replacement
+     * blocks, retire members, then assert image/REGION postconditions; this
+     * commit does not provide recovery from assertions or allocation failure. */
     for (UINT32 i = 0; i < groups.size(); ++i) {
         DSL_IR_GROUP_LOWER_JOURNAL &group = groups[i];
         WN *block = group.request->standard_block;

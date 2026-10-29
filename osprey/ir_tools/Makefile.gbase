@@ -257,6 +257,9 @@ COMMON_COM_CXX_SRC =	\
         dsl_ir_group_lower.cxx \
         dsl_program_interface.cxx \
         dsl_ir_retype.cxx \
+        dsl_ckks_expand.cxx \
+        dsl_external_tensor.cxx \
+        dsl_pu_interface_verify.cxx \
         dsl_ir_rewrite.cxx \
         dsl_runtime_interface.cxx \
         dsl_ir_print.cxx \
@@ -363,6 +366,8 @@ include $(COMMONRULES)
 VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_FHE_DIR) \
 	$(COMMON_COM_TARG_DIR) $(BE_COM_DIR) \
 	$(BE_VHO_DIR)
+# Preserve legacy source lookup precedence; these are relocated owners.
+VPATH += $(BUILD_TOT)/common/ir_image $(BUILD_TOT)/be/com $(BUILD_TOT)/be/vho
 
 ir_b2a: $(OBJECTS) ir_a2b.o
 	$(link.c++f) -o ir_b2a ir_a2b.o $(OBJECTS) $(LDFLAGS)
@@ -390,11 +395,12 @@ dsl_builder_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_builder_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-dsl_pu_transaction_contract_test: dsl_builder.o dsl_contract.o \
+# The builder's fresh-program DST initializer is frontend-only, not in be.so.
+dsl_pu_transaction_contract_test: dsl_builder.o dsl_contract.o dwarf_DST_producer.o \
 		dsl_simp.o controls.o \
 		dsl_pu_transaction_contract_test.o $(BUILD_AREA)/be/$(BE_SO)
 	$(link.c++f) -o $@ dsl_pu_transaction_contract_test.o controls.o \
-		dsl_builder.o dsl_contract.o dsl_simp.o \
+		dsl_builder.o dsl_contract.o dwarf_DST_producer.o dsl_simp.o \
 		$(BUILD_AREA)/be/$(BE_SO) $(LDFLAGS)
 
 dsl_pu_transaction_contract_test.o: \
