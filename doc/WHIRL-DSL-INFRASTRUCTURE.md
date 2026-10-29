@@ -740,8 +740,11 @@ translation unit. Other common/com infrastructure is outside this pair's scope.
 The directory-wide **DSL-only** follow-up is classified in
 [common/com DSL persistence and ownership audit](COMMON-COM-DSL-PERSISTENCE-OWNERSHIP-AUDIT.md).
 It distinguishes actual stored rows from transient registries, views and AIO
-planning records, including DSL fragments in shared files. This is an inventory
-and relocation proposal, not another completed source move. The explicit
+planning records, including DSL fragments in shared files. The dedicated
+runtime families and mixed-owner splits are now implemented as recorded in
+[the relocation ledger](DSL-BACKEND-OWNERSHIP-RELOCATION.md), including focused
+validation results and existing fixture limitations. Shared legacy fragments
+are not wholesale file moves. The explicit
 construction boundary remains: `dsl_builder.{h,cxx}` stays in `common/com` as
 the interface for persistent-data construction. Its transient input/private
 state objects are not classified as separately persisted rows.

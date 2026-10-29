@@ -73,10 +73,14 @@ not imply equal real hardware performance. Table selection does not create
 lowering support. Unknown names, unsupported suffixes and planning-only
 emission requests fail before selected-image publication.
 
-The common registry is in `osprey/common/com/dsl_memory_hierarchy.cxx`, beside
-the existing family tables, not in the optimizer. The standalone policy-free
-payload is in `dsl_hardware_performance.h`. Both are runtime-only; existing
-tier/capability records, enums and mapped-image contracts remain compatible.
+The shared registry is in
+`osprey/common/targ_info/access/dsl_memory_hierarchy.cxx`, beside the existing
+family tables, not in the optimizer. Its standalone performance/resource
+payload is in `dsl_hardware_performance.h` in the same target owner. Immutable
+compute profile vocabulary, rows and exact lookup are in
+`dsl_compute_profile.{h,cxx}`; `dsl_compute_format.h` shares existing format
+labels without including VHO numerical plans. These records are runtime-only;
+existing values, tier/capability records and mapped-image contracts are unchanged.
 
 ## Table Contents And Provenance
 

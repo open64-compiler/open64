@@ -107,7 +107,7 @@
 #include "dsl_ckks_event.h"
 #include "fhe_image.h"
 #include "fhe_plan.h"
-#include "dsl_region.h"
+#include "../ir_image/dsl_region_image.h"
 #include "config_opt.h"
 
 #if defined(BACK_END)

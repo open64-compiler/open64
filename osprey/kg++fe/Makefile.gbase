@@ -136,6 +136,9 @@ endif
 FE_DIR 			= $(BUILD_BASE)
 COMMON_COM_DIR 		= $(BUILD_TOT)/common/com
 COMMON_FHE_DIR 		= $(BUILD_TOT)/common/fhe
+COMMON_IR_IMAGE_DIR = $(BUILD_TOT)/common/ir_image
+BE_VHO_DIR = $(BUILD_TOT)/be/vho
+BE_COM_DIR = $(BUILD_TOT)/be/com
 COMMON_COM_TARG_DIR	= $(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR)
 COMMON_TARG_INFO_ACCESS_DIR = $(BUILD_TOT)/common/targ_info/access
 COMMON_UTIL_DIR		= $(BUILD_TOT)/common/util
@@ -189,6 +192,7 @@ SRC_DIRS =		\
   $(COMMON_UTIL_DIR)	\
   $(COMMON_UTIL_TARG_DIR)\
   $(COMMON_TARG_INFO_ACCESS_DIR)
+SRC_DIRS += $(COMMON_IR_IMAGE_DIR) $(BE_COM_DIR) $(BE_VHO_DIR)
 INC_DIRS =		\
   $(INCLUDE_DIR)	\
   $(TARGDIR)/include \
@@ -206,6 +210,7 @@ INC_DIRS =		\
   $(BUILD_TOT)/include/gnu \
   $(BUILD_TOT)/include \
   $(GNU_CP_DIR)
+INC_DIRS += $(COMMON_IR_IMAGE_DIR) $(BE_COM_DIR) $(BE_VHO_DIR)
 
 #----------------------------------------------------------------------
 #  List of source files.  Please keep them in alphabetical order.
@@ -232,17 +237,8 @@ COMMON_COM_CXX_SRCS =	\
   const.cxx		\
   controls.cxx		\
   dsl_domain.cxx        \
-  fhe_image.cxx         \
-  fhe_plan.cxx          \
-  dsl_ir_image.cxx      \
-  dsl_ir_lower.cxx      \
-  dsl_ir_group_lower.cxx \
-  dsl_ir_retype.cxx     \
-  dsl_ckks_expand.cxx \
-  dsl_external_tensor.cxx \
-  dsl_pu_interface_verify.cxx \
-  dsl_ir_rewrite.cxx    \
-  dsl_region.cxx        \
+  dsl_gatekeeper.cxx \
+  dsl_shape.cxx \
   dsl_memory_behavior.cxx \
   dsl_opcode.cxx        \
   dsl_tensor_fold.cxx   \
@@ -272,6 +268,33 @@ COMMON_COM_CXX_SRCS =	\
   wutil.cxx		\
   xstats.cxx
 
+# Keep image storage, FHE records and backend-free live services with their owners.
+COMMON_IR_IMAGE_CXX_SRCS = \
+  dsl_contract.cxx \
+  dsl_ir_image.cxx \
+  dsl_region_image.cxx
+
+COMMON_FHE_CXX_SRCS = \
+  dsl_ckks_event.cxx \
+  fhe_image.cxx \
+  fhe_plan.cxx
+
+BE_COM_CXX_SRCS = \
+  dsl_external_tensor.cxx \
+  dsl_ir_group_lower.cxx \
+  dsl_ir_lower.cxx \
+  dsl_ir_retype.cxx \
+  dsl_ir_rewrite.cxx \
+  dsl_program_interface.cxx \
+  dsl_pu_interface_verify.cxx \
+  dsl_region.cxx \
+  dsl_runtime_interface.cxx
+
+# Direct objects only: check-only shape propagation needs no be.so or CG.
+BE_VHO_CXX_SRCS = \
+  dsl_ckks_expand.cxx \
+  dsl_shape_analysis.cxx
+
 COMMON_COM_TARG_SRCS =	\
   config_host.c		\
   config_platform.c
@@ -290,6 +313,10 @@ FRONT_END_C_SRCS =		\
 
 FRONT_END_CXX_SRCS =		\
   $(COMMON_COM_CXX_SRCS)	\
+  $(COMMON_IR_IMAGE_CXX_SRCS) \
+  $(COMMON_FHE_CXX_SRCS) \
+  $(BE_COM_CXX_SRCS) \
+  $(BE_VHO_CXX_SRCS) \
   $(COMMON_COM_TARG_CXX_SRCS)	\
   $(FE_CXX_SRCS)	
 
@@ -303,8 +330,7 @@ CFILES = $(FRONT_END_C_SRCS)
 CXXFILES = $(FRONT_END_CXX_SRCS)
 
 VPATH    =  $(SRC_DIRS)
-# Preserve legacy source lookup precedence; these are relocated owners.
-VPATH += $(BUILD_TOT)/common/ir_image $(BUILD_TOT)/be/com $(BUILD_TOT)/be/vho
+
 
 #Temporarily turn off Werror when compile C++ FE
 ifeq ($(BUILD_ARCH), IA64)

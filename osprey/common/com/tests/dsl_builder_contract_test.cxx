@@ -51,6 +51,7 @@
 #include "dsl_gatekeeper.h"
 #include "dsl_memory_behavior.h"
 #include "dsl_shape.h"
+#include "../../../be/vho/dsl_shape_analysis.h"
 #include "dsl_simp.h"
 #include "dsl_tensor_fold.h"
 

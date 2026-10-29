@@ -16,10 +16,13 @@ HERE = Path(__file__).resolve().parent
 
 class ReadinessTest(unittest.TestCase):
     def test_production_header_against_literal_schedule(self):
+        """Compile the real evaluator with target-owned description headers."""
+
         with tempfile.TemporaryDirectory(prefix="readiness-") as tmp:
             binary = str(Path(tmp) / "contract")
             subprocess.run([os.environ.get("CXX", "c++"), "-std=c++11", "-O2",
                             "-I", str(HERE.parents[3] / "common/com"),
+                            "-I", str(HERE.parents[3] / "common/targ_info/access"),
                             "-I", str(HERE.parents[1]), str(HERE / "readiness_contract.cxx"),
                             "-o", binary], check=True, capture_output=True, text=True)
             result = subprocess.run([binary], check=True, capture_output=True, text=True, timeout=10)
@@ -32,10 +35,13 @@ class ReadinessTest(unittest.TestCase):
                     smem=dict(b_issues=1280, address=0), layout=dict(bank_work=0))
 
     def test_occupancy_production_against_literal_oracles(self):
+        """Check literal occupancy oracles using the relocated resource payload."""
+
         with tempfile.TemporaryDirectory(prefix="occupancy-") as tmp:
             binary = str(Path(tmp) / "contract")
             subprocess.run([os.environ.get("CXX", "c++"), "-std=c++11", "-O2",
                             "-I", str(HERE.parents[3] / "common/com"),
+                            "-I", str(HERE.parents[3] / "common/targ_info/access"),
                             "-I", str(HERE.parents[1]), str(HERE / "occupancy_contract.cxx"),
                             "-o", binary], check=True, capture_output=True, text=True)
             result = subprocess.run([binary], check=True, capture_output=True, text=True, timeout=10)

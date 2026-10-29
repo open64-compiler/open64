@@ -41,7 +41,7 @@
 #include "dsl_ir_image.h"
 #include "dsl_opt.h"
 #include "dsl_opcode.h"
-#include "dsl_region.h"
+#include "../com/dsl_region.h"
 #include "dsl_shape_refine.h"
 #include "dsl_tensor_analysis_opt.h"
 #include "dsl_tensor_evolution_opt.h"

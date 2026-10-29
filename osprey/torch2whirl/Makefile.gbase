@@ -56,6 +56,9 @@ PYTHON_NATIVE_CPPFLAGS ?= \
   -I$(OPEN64_SRC_ROOT)/osprey/ir_tools \
   -I$(OPEN64_SRC_ROOT)/osprey/common/com \
   -I$(OPEN64_SRC_ROOT)/osprey/common/fhe \
+  -I$(OPEN64_SRC_ROOT)/osprey/common/ir_image \
+  -I$(OPEN64_SRC_ROOT)/osprey/be/com \
+  -I$(OPEN64_SRC_ROOT)/osprey/be/vho \
   -I$(OPEN64_SRC_ROOT)/osprey/common/com/x8664 \
   -I$(OPEN64_SRC_ROOT)/osprey/common/util \
   -I$(OPEN64_SRC_ROOT)/osprey/ipa/common \
@@ -97,9 +100,11 @@ OPEN64_DSC_NATIVE_IR_TOOL_OBJS = \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_ir_rewrite.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_runtime_interface.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_region.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_region_image.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_memory_behavior.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_opcode.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_shape.o) \
+  $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_shape_analysis.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_simp.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dsl_tensor_fold.o) \
   $(if $(OPEN64_DSC_NATIVE_OBJDIR),$(OPEN64_DSC_NATIVE_OBJDIR)/dwarf_DST.o) \

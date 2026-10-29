@@ -9,6 +9,7 @@
 
 #include "defs.h"
 #include "dsl_shape.h"
+#include "dsl_shape_analysis.h"
 
 class WN;
 struct pu_info;

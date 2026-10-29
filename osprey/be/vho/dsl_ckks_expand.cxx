@@ -27,7 +27,7 @@
 #include "dsl_ir_image.h"
 #include "../com/dsl_ir_transaction_internal.h"
 #include "../com/dsl_runtime_interface_internal.h"
-#include "dsl_region.h"
+#include "../com/dsl_region.h"
 #include "dsl_shape.h"
 #include "pu_info.h"
 #include "strtab.h"

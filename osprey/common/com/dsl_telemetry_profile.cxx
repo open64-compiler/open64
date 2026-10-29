@@ -3,8 +3,13 @@
  */
 
 /*
- * TelemetryProfileIR storage, structural verification, access, and generic
- * printing. VHO owns freshness checks and optimization policy.
+ * common/com owns general TelemetryProfileIR copies, structural verification,
+ * access and generic printing. Intended cross-session data currently has only
+ * in-memory storage and text inspection, no new .B rows or transport. The
+ * caller owns each allocated profile; no active PU or phase store is consulted.
+ * Consuming phases own freshness, interpretation, costs and selection.
+ * Design: doc/AI-COMPILER-OPTIMIZATION-AIO13-TELEMETRY-FEEDBACK.md;
+ * doc/DSL-BACKEND-OWNERSHIP-RELOCATION.md.
  */
 
 #include <string.h>
@@ -21,6 +26,8 @@ static const char *DSL_telemetry_producer_name_table[] = {
     "unknown", "open64_feedback", "runtime", "benchmark"
 };
 
+/* Report one structural rejection to the borrowed optional stream and return
+ * FALSE. No profile mutation; diagnostic I/O failures are not propagated. */
 static BOOL
 DSL_Telemetry_Profile_Report
         (FILE *diagnostic, const char *message, UINT32 id)
@@ -31,6 +38,8 @@ DSL_Telemetry_Profile_Report
     return FALSE;
 }
 
+/* Compute a checked UINT64 product for range verification. NULL/overflow fails
+ * without writing result; success publishes only to caller scratch. */
 static BOOL
 DSL_Telemetry_Multiply
         (UINT64 left, UINT64 right, UINT64 *result)
@@ -41,6 +50,8 @@ DSL_Telemetry_Multiply
     return TRUE;
 }
 
+/* Return an immutable process-lifetime table string, falling back to "unknown"
+ * for out-of-range labels; no allocation or producer admission occurs. */
 const char *
 DSL_telemetry_producer_name (UINT32 producer_kind)
 {
@@ -49,6 +60,15 @@ DSL_telemetry_producer_name (UINT32 producer_kind)
            DSL_telemetry_producer_name_table[producer_kind] : "unknown";
 }
 
+/* Validate the copied v1 header and complete rows without changing them or
+ * consulting compiler tables. Require nonzero owner/generation/target, known
+ * producer, BEFORE_VHO phase, exact count and zero reserved fields. Each row
+ * needs sequential ID, nonzero identities/samples, selected<=samples,
+ * pass<=evaluation and evaluation<=UINT64_MAX/1000000. Check min>0, max>=min,
+ * overflow-free min/max*sample bounds on total latency, occupancy<=1000000,
+ * overlap<=communication, launch<=latency, exact COMPLETE flags, and unique
+ * site/variant pairs. Reject first error, optionally print; no freshness,
+ * measurement confidence, variant coverage or policy is inferred. */
 BOOL
 DSL_telemetry_profile_verify
         (const DSL_TELEMETRY_PROFILE_IR *profile, FILE *diagnostic)
@@ -67,6 +87,8 @@ DSL_telemetry_profile_verify
         return DSL_Telemetry_Profile_Report
                    (diagnostic, "invalid profile header", 0);
 
+    /* Checked products keep wrapped counter arithmetic from passing the range
+     * test; pairwise identity checks do not require a phase-owned plan store. */
     for (UINT32 i = 0; i < profile->records.size(); ++i) {
         const DSL_TELEMETRY_RECORD &record = profile->records[i];
         UINT64 minimum_total;
@@ -107,6 +129,10 @@ DSL_telemetry_profile_verify
     return TRUE;
 }
 
+/* Copy caller-owned header/rows into a separately allocated immutable profile.
+ * Preflight rejects inconsistent counts/pointers; structural rejection deletes
+ * the copy. Success transfers ownership to the caller. new/vector allocation
+ * exceptions are not caught and do not follow the NULL cleanup path. */
 DSL_TELEMETRY_PROFILE_IR *
 DSL_telemetry_profile_create
         (const DSL_TELEMETRY_PROFILE_CREATE_INFO *info, FILE *diagnostic)
@@ -129,12 +155,17 @@ DSL_telemetry_profile_create
     return profile;
 }
 
+/* Delete the owned profile and vector together; NULL is safe. No borrowed
+ * caller rows, compiler tables or phase-specific stores are released. */
 void
 DSL_telemetry_profile_destroy (DSL_TELEMETRY_PROFILE_IR *profile)
 {
     delete profile;
 }
 
+/* Print borrowed header/rows in order for human inspection, without verification
+ * or state changes. NULL is a no-op; unchecked stream errors can leave partial
+ * text. No file-format, persistence or runtime instrumentation is implemented. */
 void
 DSL_telemetry_profile_print
         (FILE *file, const DSL_TELEMETRY_PROFILE_IR *profile)
@@ -181,6 +212,8 @@ DSL_telemetry_profile_print
     }
 }
 
+/* Copy a live profile header into caller output, without revalidation; reject
+ * NULL before assignment so failure preserves the output object. */
 BOOL
 DSL_telemetry_profile_get_header
         (const DSL_TELEMETRY_PROFILE_IR *profile,
@@ -192,6 +225,8 @@ DSL_telemetry_profile_get_header
     return TRUE;
 }
 
+/* Read the vector size of a live profile, or zero for NULL; no external identity
+ * lookup, profile validation or allocation is performed. */
 UINT32
 DSL_telemetry_profile_record_count
         (const DSL_TELEMETRY_PROFILE_IR *profile)
@@ -199,6 +234,8 @@ DSL_telemetry_profile_record_count
     return profile == NULL ? 0 : profile->records.size();
 }
 
+/* Copy one owned row selected by contiguous 1-based ID; reject NULL/invalid
+ * IDs before assignment. Output is independent of profile lifetime afterward. */
 BOOL
 DSL_telemetry_profile_get_record
         (const DSL_TELEMETRY_PROFILE_IR *profile,

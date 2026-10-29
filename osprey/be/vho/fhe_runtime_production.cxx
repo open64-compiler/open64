@@ -26,7 +26,7 @@
 #include <vector>
 
 #include "dsl_ir_image.h"
-#include "dsl_region.h"
+#include "../com/dsl_region.h"
 #include "fhe_plan.h"
 #include "fhe_runtime_lower.h"
 #include "fhe_runtime_operation_plan.h"

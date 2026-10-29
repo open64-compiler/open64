@@ -1,11 +1,15 @@
 # common/com DSL Persistence And Ownership Audit
 
 Status: the classification below records source `da6f4fbd` (2026-10-29).
-Backend relocation has started: `dsl_accumulation`, `dsl_compute_model` and
-`dsl_typed_simt` pairs now live in `osprey/be/vho`, with contract comments and
-build ownership updated. See [the staged relocation ledger](DSL-BACKEND-OWNERSHIP-RELOCATION.md)
-for completed moves, remaining splits and validation gates. No binary layout
-or executable behavior changes are intended.
+The dedicated-file relocation and mixed-owner splits are implemented and
+focused validation is complete, with the fixture limitations recorded in the
+relocation ledger. Runtime analyses/plans live with VHO,
+copied control/live REGION mechanisms with be/com, managed image services with
+common/ir_image, CKKS events with common/fhe, options with common/util and
+hardware descriptions with common/targ_info/access. See
+[the relocation ledger](DSL-BACKEND-OWNERSHIP-RELOCATION.md) for current paths,
+retained common-service exceptions and validation gates. No binary layout or
+executable behavior changes are intended.
 
 ## Scope And Authority
 
@@ -17,10 +21,13 @@ contain no additional matches under the recorded DSL/tensor discovery rule.
 The former 40-file/942-comment-gap count was a presence backlog, not an owner
 or persistence classification. It is not the scope boundary of this audit.
 
-The current common/com policy now contains 58 files; its `relocated_groups`
-ledger retains the six moved files and their previous paths separately. The
-64-file counts and original receipt in this document describe the pre-move
-classification, not a claim that all 64 files remain in common/com today.
+The current JSON policy and fresh auditor output enumerate 22 retained files,
+58 relocated/extracted files and mixed extraction origins, with 78 classifier
+self-tests and the same 34 persisted definitions. The 64-file counts and
+original receipt in this document describe the pre-move classification, not
+a claim that all 64 files remain in common/com today. Current relocation does
+not promote runtime records to persisted rows or change the original stored
+schema contracts.
 
 Persistence and service ownership are separate axes. An independent optimizer
 analysis record does **not** belong in `common/com` merely because it is named

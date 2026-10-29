@@ -15,6 +15,7 @@ common_flags=(
   -I"$repo_root/osprey/be/vho"
   -I"$repo_root/osprey/linux/include"
   -I"$repo_root/osprey/common/com"
+  -I"$repo_root/osprey/common/ir_image"
   -I"$repo_root/osprey/common/com/x8664"
   -I"$repo_root/osprey/common/util"
   -I"$repo_root/osprey/common/fhe"

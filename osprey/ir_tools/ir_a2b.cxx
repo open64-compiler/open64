@@ -75,7 +75,7 @@
 #include "profile_com.h"
 #include "fb_info.h"
 #include "dsl_ir_image.h"
-#include "dsl_region.h"
+#include "../be/com/dsl_region.h"
 
 
 BOOL Run_vsaopt = FALSE; // hack to workaround undefine since
