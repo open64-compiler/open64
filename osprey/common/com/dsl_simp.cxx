@@ -2,6 +2,15 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * common/com implements integral DSL preparation, traditional WN-engine
+ * dispatch and pointer-identity result classification for caller-owned scalar
+ * projections. No duplicate algebraic rules, tensor publication, PU selection
+ * or mapped-image changes live here; caller context and WN ownership remain
+ * governed by the existing simplifier protocol.
+ * Design: doc/WHIRL-DSL-SIMPLIFICATION-PLAN.md, traditional-engine reuse.
+ */
+
 #include <string.h>
 
 #include "defs.h"
@@ -35,6 +44,9 @@ static const char *DSL_simp_replacement_name[] = {
     "new_wn"
 };
 
+/* Update only status and rejection in a nonnull caller-owned result. Rejection
+ * statuses (including INVALID) are copied to rejection; other statuses clear it
+ * to NOT_APPLICABLE. No pointer cleanup, allocation or WN mutation. */
 static void
 DSL_Simp_Set_Status
         (DSL_SIMP_BINARY_RESULT *result,
@@ -45,6 +57,9 @@ DSL_Simp_Set_Status
         status >= DSL_SIMP_REJECT_DISABLED ? status : DSL_SIMP_NOT_APPLICABLE;
 }
 
+/* Map only logical ADD/MUL to their scalar ADD/MPY opcode at caller-supplied
+ * mtype. NULL output probes support; unsupported operators return FALSE without
+ * changing output. Registry/version/type legality is the preparer's job. */
 static BOOL
 DSL_Simp_Map_Binary_Operator
         (DSL_OPERATOR dsl_operator,
@@ -69,6 +84,10 @@ DSL_Simp_Map_Binary_Operator
     return TRUE;
 }
 
+/* Require canonical tensor extensions with equal rank, tensor attributes,
+ * element types and whole types under name-ignoring equivalence. Read caller's
+ * initialized type/extension tables without sealing or rewriting descriptors;
+ * this is not broadcast compatibility or projected operand-effect validation. */
 static BOOL
 DSL_Simp_Tensor_Descriptors_Equivalent (TY_IDX first, TY_IDX second)
 {
@@ -84,6 +103,8 @@ DSL_Simp_Tensor_Descriptors_Equivalent (TY_IDX first, TY_IDX second)
            TY_are_equivalent(first, second, TY_EQUIV_IGNORE_NAMES);
 }
 
+/* Borrow a process-lifetime literal for a status ordinal. Unsigned bounds
+ * checking maps negative or oversized enum values to "unknown"; no writes. */
 const char *
 DSL_Simp_Status_Name (DSL_SIMP_STATUS status)
 {
@@ -95,6 +116,8 @@ DSL_Simp_Status_Name (DSL_SIMP_STATUS status)
     return DSL_simp_status_name[ordinal];
 }
 
+/* Borrow a process-lifetime replacement spelling, using "unknown" for every
+ * out-of-range ordinal. Do not inspect or transfer any projected tree. */
 const char *
 DSL_Simp_Replacement_Name (DSL_SIMP_REPLACEMENT_KIND replacement)
 {
@@ -106,6 +129,11 @@ DSL_Simp_Replacement_Name (DSL_SIMP_REPLACEMENT_KIND replacement)
     return DSL_simp_replacement_name[ordinal];
 }
 
+/* Clear result, preserve candidate identity for tracing and reject unsupported
+ * controls/semantics before initializing the temporary physical view. Require
+ * valid table/pool context and disposable strict-tree scalar kids from caller;
+ * rejection never consumes them or changes stack_view. Accepted NOT_APPLICABLE
+ * means ready for Apply, not that the engine has examined the expression. */
 DSL_SIMP_STATUS
 DSL_Simp_Prepare_Binary
         (const DSL_SIMP_BINARY_CANDIDATE *candidate,
@@ -130,6 +158,8 @@ DSL_Simp_Prepare_Binary
     result->projected_kid[0] = candidate->projected_kid[0];
     result->projected_kid[1] = candidate->projected_kid[1];
 
+    /* The master switch and semantic gates precede all stack-view writes;
+     * logical purity does not prove the caller's projected kids are effect-free. */
     if (!Enable_WN_Simp) {
         DSL_Simp_Set_Status(result, DSL_SIMP_REJECT_DISABLED);
         return result->status;
@@ -174,6 +204,8 @@ DSL_Simp_Prepare_Binary
         return result->status;
     }
 
+    /* This is an unowned stack view, never a new published WN. Apply borrows
+     * its opcode/kids, and the caller discards the view without deleting it. */
     memset(stack_view, 0, sizeof(*stack_view));
     WN_set_opcode(stack_view, opcode);
     WN_set_map_id(stack_view, -1);
@@ -184,6 +216,11 @@ DSL_Simp_Prepare_Binary
     return result->status;
 }
 
+/* Dispatch an unmodified prepared view/result once through WN_SimplifyExp2.
+ * The engine owns normal simplification, controls, unused-tree deletion and
+ * pool allocation. Record its NULL/non-NULL result; do not classify replacement
+ * yet. Malformed stage/opcode changes only status/rejection, not other fields;
+ * this is neither a full state revalidation nor an engine rollback boundary. */
 DSL_SIMP_STATUS
 DSL_Simp_Apply_Binary
         (WN *stack_view,
@@ -197,6 +234,8 @@ DSL_Simp_Apply_Binary
         return DSL_SIMP_REJECT_MALFORMED;
     }
 
+    /* Reuse the existing rule engine rather than a DSL identity/folding table.
+     * A rewrite may consume either input; saved kid addresses are identity only. */
     result->engine_result =
         WN_SimplifyExp2(WN_opcode(stack_view),
                         WN_kid0(stack_view), WN_kid1(stack_view));
@@ -205,6 +244,10 @@ DSL_Simp_Apply_Binary
     return result->status;
 }
 
+/* Classify the accepted Apply status by pointer identity only. No tree access,
+ * symbol/type creation or logical/image publication occurs; caller must keep
+ * the engine result valid. Bad stage/NULL input rejects without cleanup or
+ * restoring previously consumed trees; other fields are not cleared. */
 DSL_SIMP_STATUS
 DSL_Simp_Postprocess_Binary (DSL_SIMP_BINARY_RESULT *result)
 {
@@ -227,6 +270,10 @@ DSL_Simp_Postprocess_Binary (DSL_SIMP_BINARY_RESULT *result)
     return result->status;
 }
 
+/* Sequence the three stages using one non-published stack-local WN. Propagate
+ * the first rejection and the stages' output/ownership effects; only a retained
+ * engine result can escape on rewrite, never the view. Caller still owns DSL
+ * result construction and rejected/unchanged projection cleanup; no journal. */
 DSL_SIMP_STATUS
 DSL_Simp_Binary
         (const DSL_SIMP_BINARY_CANDIDATE *candidate,
@@ -245,6 +292,9 @@ DSL_Simp_Binary
     return DSL_Simp_Postprocess_Binary(result);
 }
 
+/* Write one logical-operator diagnostic line for a borrowed result/stream,
+ * using registry metadata when available and fallback names otherwise. NULL
+ * arguments are silent; no state validation/mutation or I/O status is supplied. */
 void
 DSL_Simp_Trace_Binary
         (FILE *file,
