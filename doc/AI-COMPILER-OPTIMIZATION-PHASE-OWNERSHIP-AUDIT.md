@@ -13,6 +13,11 @@ Shared WHIRL canonicalization and constant folding, including tensor types/data,
 also remain `common/com` ingestion-callable services, with their transient
 helper descriptions and caches. That service ownership is separate from data
 persistence and does not admit independent optimizer facts/plans into common.
+Opcode/domain definition registries and WHIRL integrity checks also remain
+common services. TelemetryProfileIR stays in common as a general data service
+intended for data beyond a compiler session; only phase-specific freshness,
+interpretation, cost construction and recommendation belong to VHO. The current
+profile implementation does not thereby acquire a new `.B` storage section.
 
 This audit applies the project ownership rule to AIO-0 through AIO-13:
 

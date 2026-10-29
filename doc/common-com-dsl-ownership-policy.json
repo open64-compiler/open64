@@ -1,7 +1,7 @@
 {
   "schema": "open64.common-com-dsl-ownership-policy.v1",
   "scope": "DSL-related production sources in common/com plus DSL fragments in shared files; tests separately inventoried. Historical non-DSL code is excluded.",
-  "authority": "User persistence classification plus shared WHIRL ingestion-service ownership: dsl_builder, canonicalization and constant folding including tensor types/data stay in common/com. No code moves authorized.",
+  "authority": "User-reviewed common WHIRL service ownership: retain builder, canonicalization/folding, opcode/domain registries, integrity checks and general cross-session telemetry service in common/com. Classify actual .B preservation separately. No code moves authorized.",
   "groups": [
     {
       "id": "persistent-core",
@@ -115,10 +115,10 @@
         "osprey/common/com/dsl_opcode.cxx",
         "osprey/common/com/dsl_opcode.h"
       ],
-      "classification": "mixed_schema_and_runtime_registry",
-      "proposed_owner": "osprey/common/com + osprey/common/ir_image",
-      "action": "split_encoded_vocabulary_from_registry",
-      "reason": "Keep encoded DSL/operator vocabulary and shared static logical, algebraic and fusibility semantics used by ingestion-time canonicalization in common/com. Dynamic opcode/promotion registries remain separately proposed for common/ir_image. Neither pointer-bearing runtime views nor static trait tables become .B rows merely by retention.",
+      "classification": "WHIRL_definition_registry_and_encoded_vocabulary",
+      "proposed_owner": "osprey/common/com",
+      "action": "retain_general_WHIRL_service",
+      "reason": "Retain encoded logical vocabulary, static traits and complete opcode/wrapper/promotion registries in common/com because they support WHIRL definition. Registration data and owning vectors/views are not thereby .B rows; retain their semantics and lifetimes with the definition service.",
       "witnesses": [
         {
           "path": "osprey/common/com/dsl_opcode.cxx",
@@ -136,10 +136,10 @@
         "osprey/common/com/dsl_domain.cxx",
         "osprey/common/com/dsl_domain.h"
       ],
-      "classification": "nonpersistent_registry",
-      "proposed_owner": "osprey/common/ir_image",
-      "action": "relocate_with_registry",
-      "reason": "Copied domain names and registration-epoch IDs live in a resettable vector. Domain name/version projections may be written elsewhere, not these pointer-bearing registry objects.",
+      "classification": "WHIRL_definition_registry",
+      "proposed_owner": "osprey/common/com",
+      "action": "retain_general_WHIRL_service",
+      "reason": "Retain domain registration/lookup, copied names and registration-epoch IDs in common/com because the registry supports WHIRL definition. The current registry object is process-local; projected names/versions in persistent IR do not turn its owning vector into an image row.",
       "witnesses": [
         {
           "path": "osprey/common/com/dsl_domain.cxx",
@@ -191,10 +191,10 @@
         "osprey/common/com/dsl_gatekeeper.cxx",
         "osprey/common/com/dsl_gatekeeper.h"
       ],
-      "classification": "nonpersistent_verification",
-      "proposed_owner": "osprey/be/com",
-      "action": "relocate_shared_verifier",
-      "reason": "Result counts, modes and decode profile are verification scratch. Shared builder/reader/phase admission must remain backend-free; row checks go to image owner, PU/WN/domain admission to be/com, invocation/program traversal remains construction/driver-owned.",
+      "classification": "shared_WHIRL_integrity_service",
+      "proposed_owner": "osprey/common/com",
+      "action": "retain_general_WHIRL_service",
+      "reason": "Retain gatekeeper APIs, verification context/results and domain/PU integrity checks in common/com as general WHIRL integrity services available to ingestion and compiler phases. Temporary check state is not optimization planning data. Caller/driver retains compilation scope; no new cross-PU optimization authority.",
       "witnesses": [
         {
           "path": "osprey/common/com/dsl_gatekeeper.cxx",
@@ -504,10 +504,10 @@
         "osprey/common/com/dsl_telemetry_profile.cxx",
         "osprey/common/com/dsl_telemetry_profile.h"
       ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Caller-owned telemetry header/record vector; versioned textual inspection stream is not a .B image. Feedback interpretation belongs to VHO.",
+      "classification": "general_telemetry_data_service",
+      "proposed_owner": "osprey/common/com",
+      "action": "retain_general_WHIRL_service",
+      "reason": "Retain telemetry profile records, storage/construction, structural validation, access and printing in common/com as a general data service intended to support data beyond a compiler session. Current implementation is an in-memory vector with text inspection and no .B telemetry section; this ownership correction does not implement cross-session storage. VHO retains phase-specific interpretation, freshness checks and optimization decisions.",
       "witnesses": [
         {
           "path": "osprey/common/com/dsl_telemetry_profile.h",
@@ -517,7 +517,9 @@
           "path": "osprey/common/com/dsl_telemetry_profile.cxx",
           "token": "#include"
         }
-      ]
+      ],
+      "intended_data_lifetime": "beyond_compiler_session",
+      "current_storage": "in_memory_profile_and_text_inspection_not_a_WHIRL_image_section"
     },
     {
       "id": "accumulation",

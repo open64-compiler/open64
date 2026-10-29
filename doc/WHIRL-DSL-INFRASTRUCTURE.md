@@ -752,6 +752,13 @@ Their temporary descriptions and private caches are not stored rows, but
 transience alone does not move them into a backend phase. The audit keeps
 these services distinct from independent optimizer analysis and planning.
 
+The same common-service boundary retains opcode/domain registries supporting
+WHIRL definition, gatekeeper/integrity checks, and general telemetry profile
+services intended to carry data beyond a compiler session. Their runtime
+implementation data is not automatically a `.B` row. Telemetry's intended
+cross-session lifetime does not claim a new storage format is implemented;
+phase-specific interpretation and optimization choices remain phase-owned.
+
 #### Reviewed owning-logic boundaries
 
 | Owner | Types, state and related logic |

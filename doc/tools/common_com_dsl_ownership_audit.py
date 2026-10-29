@@ -36,8 +36,8 @@ SHARED = {
     'symtab_defs.h': ('encoded_schema_vocabulary', 'osprey/common/com', 'KIND_TENSOR and three SHDR tensor additions are binary encodings; SCOPE and generic table management are outside DSL-only relocation scope.'),
     'symtab_verify.cxx': ('persistent_structural_verification', 'osprey/common/com', 'Tensor-kind row integrity checks, not PU candidate discovery.'),
     'ttype.cxx': ('logical_inspection', 'osprey/common/ir_image', 'DSL/tensor logical type inspection; do not move unrelated historical type printers in this audit.'),
-    'wn.cxx': ('mixed_persistent_construction_and_transient_scan', 'osprey/common/com + osprey/be/com', 'Native/marker constructors and accessors stay. VHO_*unconsumed marker traversal and its counter state are transient shared admission helpers, not persisted WN fields.'),
-    'wn.h': ('mixed_shared_IR_services_and_admission_scan', 'osprey/common/com + osprey/be/com', 'WN DSL encodings, constructors/accessors and their transient decoded views stay with shared IR services. Separate the unrelated unconsumed-marker scan rather than moving construction views because they are transient.'),
+    'wn.cxx': ('shared_IR_construction_access_and_integrity', 'osprey/common/com', 'Native/marker constructors, accessors and generic unconsumed-DSL integrity checks stay. Their temporary scan counters are not persisted WN fields or optimization-policy objects.'),
+    'wn.h': ('shared_IR_definitions_views_and_integrity', 'osprey/common/com', 'WN DSL encodings, constructors/accessors, decoded views and generic integrity-scan contracts stay with common WHIRL services, independently of helper-data durability.'),
     'wn_simp_ftable.h': ('shared_ingestion_simplifier_hook', 'osprey/common/com', 'DSL adapter entries stay with the existing common WHIRL canonicalization/folding rule engine, callable during ingestion. Do not move or duplicate the engine.'),
 }
 
@@ -189,17 +189,17 @@ def assignment(group, name, category):
     if group['id'] in {'tensor-fold', 'simp', 'memory-behavior'}:
         return dict(persistence='service_not_stored' if category == 'function' else 'nonpersistent',
                     owner='osprey/common/com', action='retain_shared_ingestion_IR_service')
-    if group['id'] == 'opcode' and (name.startswith(('DSL_Operator_', 'DSL_Algebraic_', 'DSL_fusion_')) or
-            name in {'DSL_OPERATOR_name', 'DSL_ALGEBRAIC_INFO', 'DSL_ALGEBRAIC_RELATION_INFO',
-                'DSL_FUSIBILITY_INFO', 'DSL_OPERATOR_INFO', 'DSL_LOGICAL_OPERATOR_SEED',
-                'DSL_Effect_Model_Name', 'DSL_Lowering_Model_Name', 'DSL_Shape_Rule_Name',
-                'DSL_Opcode_Category_Name', 'DSL_Opcode_Level_Name'}):
-        return dict(persistence='service_not_stored' if category == 'function' else 'nonpersistent',
-                    owner='osprey/common/com', action='retain_shared_operator_semantics')
+    if group['id'] in {'opcode', 'domain', 'gatekeeper', 'telemetry'}:
+        decision = dict(persistence='service_not_stored' if category == 'function' else 'nonpersistent',
+                        owner='osprey/common/com', action='retain_general_WHIRL_service')
+        if group['id'] == 'telemetry':
+            decision.update(intended_data_lifetime='beyond_compiler_session',
+                current_storage='in_memory_profile_and_text_inspection_not_a_WHIRL_image_section')
+        return decision
     if group['id'] == 'shared':
         if name.startswith('VHO_'):
             return dict(persistence='service_not_stored' if category == 'function' else 'nonpersistent',
-                        owner='osprey/be/com', action='relocate_shared_admission_scan')
+                        owner='osprey/common/com', action='retain_shared_IR_integrity_scan')
         if category == 'function' and re.match(r'(?:DSL_WN_|WN_.*DSL|TY_|ST_|TENSOR_)', name):
             return dict(persistence='persistent_construction_access_not_stored',
                         owner='osprey/common/com', action='retain_shared_IR_interface_and_service_views')
@@ -210,8 +210,6 @@ def assignment(group, name, category):
     owner = group['proposed_owner']
     if group['id'] == 'region':
         owner = 'osprey/common/ir_image' if name in {'DSL_Region_Write_PU', 'DSL_Region_Load_Mapped_PU', 'DSL_REGION_STORE', 'dsl_region_runtime', 'DSL_Region_Find_Store', 'DSL_Region_Get_Store', 'DSL_Region_Find_Owning_Store', 'DSL_Region_Reset', 'DSL_Region_Print_PU'} else 'osprey/be/com'
-    elif group['id'] == 'opcode':
-        owner = 'osprey/common/ir_image'
     elif group['id'] == 'shape':
         owner = 'osprey/be/vho' if 'Analyze_PU' in name or 'SOLVER' in name or '_Solver_' in name or 'REFINEMENT' in name else 'osprey/common/com'
     elif group['id'] == 'tensor-locality':
@@ -333,8 +331,22 @@ def self_tests():
     assert assignment(group, 'DSL_Shape_Analyze_PU', 'function')['owner'] == 'osprey/be/vho'
     group['id'] = 'opcode'
     assert assignment(group, 'DSL_Operator_Get_Algebraic_Info', 'function')['owner'] == 'osprey/common/com'
+    assert assignment(group, 'DSL_Opcode_Register', 'function')['owner'] == 'osprey/common/com'
+    assert assignment(group, 'DSL_OPCODE_RECORD', 'record')['owner'] == 'osprey/common/com'
+    group['id'] = 'domain'
+    assert assignment(group, 'DSL_Domain_Register', 'function')['owner'] == 'osprey/common/com'
+    assert assignment(group, 'DSL_DOMAIN_RECORD', 'record')['owner'] == 'osprey/common/com'
+    group['id'] = 'gatekeeper'
+    assert assignment(group, 'DSL_Gatekeeper_Verify_PU', 'function')['owner'] == 'osprey/common/com'
+    assert assignment(group, 'DSL_GATEKEEPER_RESULT', 'record')['persistence'] == 'nonpersistent'
+    group['id'] = 'telemetry'
+    assert assignment(group, 'DSL_telemetry_profile_create', 'function')['owner'] == 'osprey/common/com'
+    telemetry = assignment(group, 'DSL_TELEMETRY_RECORD', 'record')
+    assert telemetry['owner'] == 'osprey/common/com' and telemetry['persistence'] == 'nonpersistent'
+    assert telemetry['intended_data_lifetime'] == 'beyond_compiler_session'
+    assert 'not_a_WHIRL_image_section' in telemetry['current_storage']
     group['id'] = 'shared'
-    assert assignment(group, 'VHO_UNCONSUMED_DSL_SCAN', 'record')['owner'] == 'osprey/be/com'
+    assert assignment(group, 'VHO_UNCONSUMED_DSL_SCAN', 'record')['owner'] == 'osprey/common/com'
     assert assignment(group, 'TY_DSL_BIND_STATE', 'enum')['persistence'] == 'encoded_schema_symbol'
     assert assignment(group, 'DSL_LOGICAL_OPCODE', 'record')['owner'] == 'osprey/common/com'
     assert macros('#define TEST \\ \n  continuation\n')[0]['name'] == 'TEST'
@@ -353,7 +365,7 @@ def self_tests():
         pass
     else:
         raise AssertionError('Unwitnessed core row accepted')
-    return 29
+    return 39
 
 
 def main():
