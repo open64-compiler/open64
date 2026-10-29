@@ -137,7 +137,7 @@ host receipts, not public download links. Resolve them beneath
 | Program-interface and DST fixes | `dsl-image-ownership/validation-fixes/sha256-0610ecfcbbbcb2831948a07345dae605290dd3d6891f1defff2386d9143d0ba6` |
 | Builder sealing, FHE lookup and development assertions | `dsl-image-ownership/combined-builder-fixes/sha256-7f242f48aaea5258532ba8f234cd7919d0bad9002553d84cfa0143fd12d5f573` |
 | Verified authority revision and digest fix | `dsl-image-ownership/python-document-digest/sha256-33f69514ddfbb4459e3350fdc27642b0b64423efe3c3343836b69c6bed734baa` |
-| Fresh merged PR validation | `dsl-image-ownership/pr-submission/sha256-7f242f48aaea5258532ba8f234cd7919d0bad9002553d84cfa0143fd12d5f573` |
+| Fresh merged PR validation | `dsl-image-ownership/pr-submission/sha256-8bb75c64663b5d46fa7b442fa3891fd54fd4a315c32a2f4fa0bb3879214314b3` |
 
 The PR receipt retains source snapshots, all 28 `.B` files, matching old/new
 `.T` files, raw diffs, producer/build/negative diagnostics, symbol/loader
