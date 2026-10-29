@@ -214,8 +214,10 @@ def assignment(group, name, category):
         owner = 'osprey/be/vho' if 'Analyze_PU' in name or 'SOLVER' in name or '_Solver_' in name or 'REFINEMENT' in name else 'osprey/common/com'
     elif group['id'] == 'tensor-locality':
         owner = 'osprey/be/com' if 'CONTROL_' in name or 'control_snapshot' in name else 'osprey/be/vho'
-    elif group['id'] == 'compute-realization' and name in {'DSL_COMPUTE_PROFILE_RECORD', 'DSL_compute_profile_get', 'DSL_compute_profile_find'}:
-        owner = 'osprey/common/targ_info'
+    elif group['id'] == 'compute-realization':
+        owner = 'osprey/common/targ_info' if category == 'enum' or name in {
+            'DSL_COMPUTE_PROFILE_ID', 'DSL_COMPUTE_PROFILE_RECORD',
+            'DSL_compute_profile_get', 'DSL_compute_profile_find'} else 'osprey/be/vho'
     return dict(persistence='service_not_stored' if category == 'function' else 'nonpersistent',
                 owner=owner, action='retain_shared_IR_service' if owner == 'osprey/common/com' else 'relocate_with_related_logic')
 
@@ -345,6 +347,18 @@ def self_tests():
     assert telemetry['owner'] == 'osprey/common/com' and telemetry['persistence'] == 'nonpersistent'
     assert telemetry['intended_data_lifetime'] == 'beyond_compiler_session'
     assert 'not_a_WHIRL_image_section' in telemetry['current_storage']
+    group.update(id='memory-hierarchy', proposed_owner='osprey/common/targ_info')
+    assert assignment(group, 'DSL_MEMORY_TIER_RECORD', 'record')['owner'] == 'osprey/common/targ_info'
+    assert assignment(group, 'DSL_hardware_description_get_arch', 'function')['owner'] == 'osprey/common/targ_info'
+    group['id'] = 'hardware-performance'
+    assert assignment(group, 'DSL_HARDWARE_RESOURCE_RECORD', 'record')['owner'] == 'osprey/common/targ_info'
+    group.update(id='compute-realization', proposed_owner='osprey/be/vho + osprey/common/targ_info')
+    assert assignment(group, 'DSL_COMPUTE_PROFILE_RECORD', 'record')['owner'] == 'osprey/common/targ_info'
+    assert assignment(group, 'DSL_compute_profile_find', 'function')['owner'] == 'osprey/common/targ_info'
+    assert assignment(group, 'DSL_COMPUTE_PROTOCOL_RECORD', 'record')['owner'] == 'osprey/be/vho'
+    assert assignment(group, 'DSL_compute_realization_verify', 'function')['owner'] == 'osprey/be/vho'
+    group.update(id='compute-model', proposed_owner='osprey/be/vho')
+    assert assignment(group, 'DSL_compute_model_verify', 'function')['owner'] == 'osprey/be/vho'
     group['id'] = 'shared'
     assert assignment(group, 'VHO_UNCONSUMED_DSL_SCAN', 'record')['owner'] == 'osprey/common/com'
     assert assignment(group, 'TY_DSL_BIND_STATE', 'enum')['persistence'] == 'encoded_schema_symbol'
@@ -365,7 +379,7 @@ def self_tests():
         pass
     else:
         raise AssertionError('Unwitnessed core row accepted')
-    return 39
+    return 47
 
 
 def main():

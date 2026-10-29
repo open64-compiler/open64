@@ -1,6 +1,6 @@
 # common/com DSL Persistence And Ownership Audit
 
-Status: classification and relocation proposal only, corrected at source `70485362`
+Status: classification and relocation proposal only, corrected at source `da6f4fbd`
 (2026-10-29). No compiler source, API, binary layout or execution changes.
 
 ## Scope And Authority
@@ -52,6 +52,18 @@ telemetry `.B` image section or implemented cross-session storage in this module
 That implementation fact is separate from the intended service/data lifetime.
 This classification correction neither adds storage nor promotes its current
 profile structs into the count of `.B`-preserved rows.
+
+**Hardware descriptions belong in the existing `osprey/common/targ_info`
+owner**, which already supplies CPU target descriptions and access services.
+GPU/accelerator memory hierarchy, performance/resource capacity and immutable
+compute-instruction descriptions should extend that owner, not create a second
+hardware-description service in `common/com` or an optimizer. This confirms
+`dsl_memory_hierarchy.{h,cxx}` and `dsl_hardware_performance.h` for relocation
+there. Mixed compute-realization files require a definite split: hardware/ISA
+profile vocabulary, static `DSL_compute_profiles` and exact lookup to
+`common/targ_info`; PU-specific plans/protocol joins and optimization choices
+remain phase-owned. Referencing hardware does not turn an analytical cost model
+or a software-provider capability table into a hardware description.
 
 The existing generic-versus-FHE and PU/REGION/IPA scope rules still apply.
 Generic tensor services do not become FHE-specific because an FHE caller uses
@@ -167,15 +179,15 @@ design choices, not files created by this audit.
 | `dsl_residency_candidate.{h,cxx}` | Residency descriptor/site/alternative, create-info and container | `be/vho`; target facts remain separate from capacity/profitability decisions. |
 | `dsl_tile_candidate.{h,cxx}` | Tile site/plan/stage, create-info and container | `be/vho` planning owner; canonical-loop realization remains `be/lno`. |
 | `dsl_fetch_pipeline.{h,cxx}` | Fetch sites/plans/records, pipeline stages, resources, create-info and container | `be/vho`, alongside movement/overlap/barrier planning; no new writer. |
-| `dsl_physical_plan.{h,cxx}` | Provider capability inventory, physical site/implementation, create-info and container | Plans/services to `be/vho`; immutable provider descriptions may split to `common/targ_info`. |
+| `dsl_physical_plan.{h,cxx}` | Software-provider capability inventory, physical site/implementation, create-info and container | Provider planning remains `be/vho`; library/kernel availability is not automatically hardware description data, even when records reference a target profile. |
 | `dsl_runtime_variant.{h,cxx}` | Variant sites/variants/guards, create-info and container | `be/vho`; emitted guard WNs may persist, these planning objects do not. |
 | `dsl_telemetry_profile.{h,cxx}` | General telemetry header/records, create-info and owning profile/vector; intended data lifetime extends beyond compiler sessions | Keep storage/construction/structural checks/access/printing in `common/com`. VHO retains freshness/interpretation and optimization policy. Current in-memory/text implementation is not a `.B` telemetry section or implemented cross-session storage. |
 | `dsl_accumulation.{h,cxx}` | Numerical contract, accumulation plan and segment records | `be/vho`, with numerical planning/verification/inspection. No numerical-plan image section exists here. |
-| `dsl_compute_realization.{h,cxx}` | Realization, fallback, protocol, resource, borrowed links and static recipe-profile rows | VHO realization planning/validation/inspection; immutable target recipe inventory can split to `common/targ_info`. Preserve exact profile identities/support states. |
+| `dsl_compute_realization.{h,cxx}` | Mixed immutable hardware/ISA recipe vocabulary/profiles and PU-specific realization/fallback/protocol/resource/link records | Split static profile vocabulary/table/exact lookup to `common/targ_info`; keep PU realization joins/validation/inspection in `be/vho`. Do not relocate the mixed pair wholesale. Preserve exact profile identities/support states. |
 | `dsl_compute_model.{h,cxx}` | Unknown/known ranges, provenance and analytical/synthetic model records | `be/vho` shadow-model owner; unknown timing stays explicit, never a zero-rate or measured-performance claim. |
 | `dsl_typed_simt.{h,cxx}` | Typed baseline acceptance record | `be/vho` with typed SIMT lowering; lowered F16/BF16 WN/ST/TY persistence is distinct from this transient request. |
-| `dsl_memory_hierarchy.{h,cxx}` | Hardware description, hierarchy profile, tier, shared-bank and movement-capability records | `common/targ_info` for immutable planning descriptions; VHO retains occupancy/cost/selection policy. |
-| `dsl_hardware_performance.h` | Runtime performance/resource capacity payloads and structural inline predicates | `common/targ_info`; not persisted allocations, measured timing or calibration. |
+| `dsl_memory_hierarchy.{h,cxx}` | Hardware description, hierarchy profile, tier, shared-bank and movement-capability records | Relocate with related lookup/validation to existing `common/targ_info`, extending CPU target-description ownership for GPU/accelerator hardware. VHO retains occupancy/cost/selection policy. |
+| `dsl_hardware_performance.h` | Runtime performance/resource capacity payloads and structural inline predicates | Relocate to `common/targ_info` with hardware descriptions; not persisted allocations, measured timing or calibration. |
 
 Earlier AIO Ownership M1-M5 separated optimization decisions from policy-free
 storage. That work was useful and is not reversed. However, its completion
@@ -236,8 +248,11 @@ Recommended staged implementation order, subject to an explicit next request:
 3. Move AIO transient fact/graph/plan families with their existing VHO owners;
    split the WOPT-compatible control snapshot first. Maintain include/link
    direction and move related tests rather than duplicating definitions.
-4. Move target-description and numerical/compute runtime records with the
-   reviewed owners. Preserve SIMT default and explicit unknown timing.
+4. Relocate memory hierarchy and hardware performance/resource descriptions
+   to `common/targ_info`. Split immutable compute hardware/ISA profiles from
+   PU realization state first, preserving lookup/build direction. Analytical
+   cost models, numerical plans and software-provider selection remain with
+   their actual logic owners. Preserve SIMT default and explicit unknown timing.
 5. Keep shared WN/TY construction/canonicalization views, simplifier hooks and
    integrity checks with their common services. Audit independent option fragments
    separately; do not couple this to a historical common/com reorganization.

@@ -759,6 +759,12 @@ implementation data is not automatically a `.B` row. Telemetry's intended
 cross-session lifetime does not claim a new storage format is implemented;
 phase-specific interpretation and optimization choices remain phase-owned.
 
+Hardware-description ownership uses the existing `common/targ_info` service,
+including GPU/accelerator extensions alongside CPU descriptions. The inventory
+assigns `dsl_memory_hierarchy`, hardware performance/resource descriptions and
+immutable compute hardware/ISA profiles there. Split mixed PU-planning files;
+do not move cost/profitability/selection policy into target-description access.
+
 #### Reviewed owning-logic boundaries
 
 | Owner | Types, state and related logic |

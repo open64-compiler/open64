@@ -18,6 +18,10 @@ common services. TelemetryProfileIR stays in common as a general data service
 intended for data beyond a compiler session; only phase-specific freshness,
 interpretation, cost construction and recommendation belong to VHO. The current
 profile implementation does not thereby acquire a new `.B` storage section.
+Hardware descriptions use existing `common/targ_info` ownership: memory
+hierarchy, performance/resource payloads and static compute hardware/ISA
+profiles belong there. Their consumers' occupancy estimates, analytical costs,
+PU-specific realization joins and plan/provider selection remain phase-owned.
 
 This audit applies the project ownership rule to AIO-0 through AIO-13:
 

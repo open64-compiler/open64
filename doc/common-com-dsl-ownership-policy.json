@@ -1,7 +1,7 @@
 {
   "schema": "open64.common-com-dsl-ownership-policy.v1",
   "scope": "DSL-related production sources in common/com plus DSL fragments in shared files; tests separately inventoried. Historical non-DSL code is excluded.",
-  "authority": "User-reviewed common WHIRL service ownership: retain builder, canonicalization/folding, opcode/domain registries, integrity checks and general cross-session telemetry service in common/com. Classify actual .B preservation separately. No code moves authorized.",
+  "authority": "User-reviewed common WHIRL service ownership: retain builder, canonicalization/folding, opcode/domain registries, integrity checks and general cross-session telemetry service in common/com. Classify actual .B preservation separately. No code moves authorized. Hardware descriptions extend the existing common/targ_info owner; mixed hardware-description/phase-planning files must be split.",
   "groups": [
     {
       "id": "persistent-core",
@@ -465,7 +465,7 @@
       "classification": "nonpersistent_phase_records",
       "proposed_owner": "osprey/be/vho",
       "action": "relocate_records_and_related_services",
-      "reason": "Runtime physical sites/implementations and provider capability inventory. Plan containers to VHO; immutable provider descriptions may split to common/targ_info without changing selection.",
+      "reason": "Runtime physical sites/implementations and software-provider capabilities remain with provider planning in VHO. Software library/kernel availability is not by itself a hardware description; target profile references do not justify moving the whole service to common/targ_info.",
       "witnesses": [
         {
           "path": "osprey/common/com/dsl_physical_plan.h",
@@ -548,10 +548,10 @@
         "osprey/common/com/dsl_compute_realization.cxx",
         "osprey/common/com/dsl_compute_realization.h"
       ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Runtime realization/fallback/protocol/resource/link records plus static target recipe profiles. Realization validation/inspection to VHO; immutable recipe inventory can split to common/targ_info.",
+      "classification": "mixed_hardware_description_and_phase_records",
+      "proposed_owner": "osprey/common/targ_info + osprey/be/vho",
+      "action": "split_hardware_profiles_from_PU_realization",
+      "reason": "Move immutable compute hardware/ISA profile vocabulary, DSL_compute_profiles table and exact profile lookup to common/targ_info. Keep PU-specific realization/fallback/protocol/resource/link records and their joins/verification in VHO. Do not move the entire mixed file or make target-description access import VHO planning state.",
       "witnesses": [
         {
           "path": "osprey/common/com/dsl_compute_realization.h",
@@ -614,7 +614,7 @@
       "classification": "nonpersistent_target_inventory",
       "proposed_owner": "osprey/common/targ_info",
       "action": "relocate_target_description",
-      "reason": "Immutable target memory tiers, movement capabilities, hardware descriptions and their names/rates/resources are compiled-in planning descriptions, not .B records. Unknown capacity/rate remains unknown; lookup does not choose a plan.",
+      "reason": "Relocate dsl_memory_hierarchy.h/cxx and related immutable hardware description, tier/bank/movement/profile data and lookups to the existing common/targ_info owner, extending CPU target-description infrastructure for GPU/accelerator descriptions. This is hardware information, not VHO planning policy. Preserve exact identities and explicit unknown rates/capacities.",
       "witnesses": [
         {
           "path": "osprey/common/com/dsl_memory_hierarchy.cxx",
@@ -630,7 +630,7 @@
       "classification": "nonpersistent_target_inventory",
       "proposed_owner": "osprey/common/targ_info",
       "action": "relocate_target_description",
-      "reason": "Runtime performance/capacity payload and structural denominator checks; not a persisted native allocation or calibration promise.",
+      "reason": "Relocate runtime hardware performance/resource capacity descriptions and structural predicates to common/targ_info with hardware descriptions. These are not VHO cost models, calibrated timing, selected resource allocations or .B rows.",
       "witnesses": [
         {
           "path": "osprey/common/com/dsl_hardware_performance.h",
