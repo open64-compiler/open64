@@ -1,17 +1,26 @@
 # common/com DSL Persistence And Ownership Audit
 
-Status: classification and relocation proposal only, corrected at source `da6f4fbd`
-(2026-10-29). No compiler source, API, binary layout or execution changes.
+Status: the classification below records source `da6f4fbd` (2026-10-29).
+Backend relocation has started: `dsl_accumulation`, `dsl_compute_model` and
+`dsl_typed_simt` pairs now live in `osprey/be/vho`, with contract comments and
+build ownership updated. See [the staged relocation ledger](DSL-BACKEND-OWNERSHIP-RELOCATION.md)
+for completed moves, remaining splits and validation gates. No binary layout
+or executable behavior changes are intended.
 
 ## Scope And Authority
 
-This audit covers **DSL-related code only**, not a relocation of historical
+The original inventory below covers **DSL-related code only**, not a relocation of historical
 non-DSL Open64 infrastructure. It includes all 64 top-level `dsl_*` production
 files in `osprey/common/com`, DSL fragments in 21 shared files, and a separate
 inventory of 80 related test/support files. Target-specific legacy directories
 contain no additional matches under the recorded DSL/tensor discovery rule.
 The former 40-file/942-comment-gap count was a presence backlog, not an owner
 or persistence classification. It is not the scope boundary of this audit.
+
+The current common/com policy now contains 58 files; its `relocated_groups`
+ledger retains the six moved files and their previous paths separately. The
+64-file counts and original receipt in this document describe the pre-move
+classification, not a claim that all 64 files remain in common/com today.
 
 Persistence and service ownership are separate axes. An independent optimizer
 analysis record does **not** belong in `common/com` merely because it is named

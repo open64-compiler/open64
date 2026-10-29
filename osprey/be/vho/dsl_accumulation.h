@@ -1,7 +1,8 @@
 /* Copyright (C) 2026 Open64 Project */
 
-/* Policy-free, runtime-only numerical and bounded-reduction contracts.
- * VHO owns planning and WHIRL mutation; no binary WHIRL fields are added.
+/* VHO-owned, runtime-only numerical and bounded-reduction contracts.
+ * These records support backend planning and verification, not persisted IR;
+ * they neither select a target nor change binary WHIRL fields.
  * Design: doc/AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md. */
 #ifndef dsl_accumulation_INCLUDED
 #define dsl_accumulation_INCLUDED
@@ -16,7 +17,9 @@ typedef enum {
     DSL_ACC_FORMAT_F8_E4M3 = 2,
     DSL_ACC_FORMAT_F8_E5M2 = 3,
     DSL_ACC_FORMAT_F4_E2M1 = 4,
-    /* MMA1 runtime compute inventory only; no typed scalar/MMA lowering.
+    /* Numerical format vocabulary shared by VHO compute contracts. The
+     * segmented accumulation API below still rejects F16/BF16; the separate
+     * typed-SIMT verifier accepts their explicit FP32 accumulation contract.
      * doc/AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md. */
     DSL_ACC_FORMAT_F16 = 5,
     DSL_ACC_FORMAT_BF16 = 6
@@ -78,8 +81,9 @@ typedef struct {
 
 /* Check exact coverage, permitted reassociation/narrowing, scale boundaries,
  * instruction alignment and evidence identity without selecting a target.
- * F16/BF16 are currently inventory-only and remain rejected by this segmented
- * accumulation API; their compute-view validation is a separate contract. */
+ * F16/BF16 remain rejected by this segmented accumulation API; typed-SIMT
+ * validation is separate. Inputs are borrowed and never mutated; invalid
+ * input returns FALSE with an optional diagnostic. */
 extern BOOL DSL_accumulation_verify
     (const DSL_NUMERICAL_CONTRACT_RECORD *contract,
      const DSL_ACCUMULATION_PLAN_RECORD *plan,
@@ -87,7 +91,8 @@ extern BOOL DSL_accumulation_verify
      FILE *diagnostic);
 
 /* Print a separate versioned compact stream; do not silently extend AI_OPT v7.
- * This records planning only, never an executable/native-accuracy claim. */
+ * This records planning only, never an executable/native-accuracy claim.
+ * Borrow all inputs; a null stream or invalid contract emits nothing. */
 extern void DSL_accumulation_print
     (FILE *file, const DSL_NUMERICAL_CONTRACT_RECORD *contract,
      const DSL_ACCUMULATION_PLAN_RECORD *plan,

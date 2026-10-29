@@ -310,6 +310,9 @@ BE_REGION_CXX_SRCS = \
   region_util.cxx
 
 BE_VHO_CXX_SRCS = \
+  dsl_accumulation.cxx \
+  dsl_compute_model.cxx \
+  dsl_typed_simt.cxx \
   dsl_lower.cxx          \
   dsl_pu_specialize.cxx  \
   dsl_shape_refine.cxx   \
@@ -403,10 +406,7 @@ COMMON_COM_CXX_SRCS = \
   dsl_residency_candidate.cxx \
   dsl_tile_candidate.cxx \
   dsl_fetch_pipeline.cxx \
-  dsl_accumulation.cxx \
-  dsl_typed_simt.cxx \
   dsl_compute_realization.cxx \
-  dsl_compute_model.cxx \
   dsl_physical_plan.cxx \
   dsl_runtime_variant.cxx \
   dsl_telemetry_profile.cxx \

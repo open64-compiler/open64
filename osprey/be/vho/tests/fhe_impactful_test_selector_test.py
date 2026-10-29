@@ -95,6 +95,20 @@ class ImpactfulTestSelectorTest(unittest.TestCase):
         self.assertIn("mapped-reopen", lanes)
         self.assertIn("full-s6-0c-certification", lanes)
 
+    def test_backend_numerical_contracts_select_linked_gates(self) -> None:
+        """Runtime contract owners need real linked consumers, not full ResNet."""
+
+        for stem in ("dsl_accumulation", "dsl_compute_model", "dsl_typed_simt"):
+            for suffix in ("h", "cxx"):
+                path = f"osprey/be/vho/{stem}.{suffix}"
+                with self.subTest(path=path):
+                    plan = SELECTOR.select_lanes([path], self.manifest)
+                    self.assertEqual(plan["unknown_files"], [])
+                    self.assertEqual({lane["name"] for lane in plan["lanes"]}, {
+                        "hygiene", "backend-numerical-contracts",
+                        "backend-link-boundary", "mapped-reopen",
+                    })
+
     def test_unknown_production_file_escalates(self) -> None:
         """An unclassified source file can never silently skip certification."""
 

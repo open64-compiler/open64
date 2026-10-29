@@ -1,7 +1,8 @@
 /* Copyright (C) 2026 Open64 Project */
 
-/* Structural numerical-contract verification and printing only. Target
- * legality, segment generation and executable mutation belong to VHO.
+/* VHO numerical-contract structural verification and diagnostic printing.
+ * Planning and WHIRL mutation remain in the VHO optimization implementation;
+ * this service changes neither caller-owned records nor binary WHIRL.
  * Design: doc/AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md. */
 #include "dsl_accumulation.h"
 
@@ -14,7 +15,8 @@ DSL_Accumulation_Error(FILE *file, const char *reason)
     return FALSE;
 }
 
-/* Accept only public formats; unknown does not mean native full precision. */
+/* Accept only the segmented API's F32/FP8/FP4 format range. F16/BF16
+ * and unknown are deliberately rejected, not interpreted as full precision. */
 static BOOL
 DSL_Accumulation_Format(UINT32 format)
 {
@@ -22,7 +24,9 @@ DSL_Accumulation_Format(UINT32 format)
 }
 
 /* Verify evidence and complete contiguous segmentation before any consumer
- * uses this runtime-only contract; leave policy and target facts to VHO. */
+ * uses this runtime-only contract. Read borrowed records without mutation;
+ * report the first invalid join/permission/coverage through the optional
+ * diagnostic and return FALSE. No WHIRL or store rollback is needed. */
 BOOL
 DSL_accumulation_verify(const DSL_NUMERICAL_CONTRACT_RECORD *contract,
     const DSL_ACCUMULATION_PLAN_RECORD *plan,
@@ -88,7 +92,8 @@ DSL_accumulation_verify(const DSL_NUMERICAL_CONTRACT_RECORD *contract,
 }
 
 /* Emit positional fields with one header per stream and explicit planning
- * status; an action row is the materializer's separate responsibility. */
+ * status; an action row is the materializer's separate responsibility.
+ * Verify borrowed inputs first; a null stream or invalid input emits nothing. */
 void
 DSL_accumulation_print(FILE *file, const DSL_NUMERICAL_CONTRACT_RECORD *contract,
     const DSL_ACCUMULATION_PLAN_RECORD *plan,

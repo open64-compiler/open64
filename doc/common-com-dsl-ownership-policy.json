@@ -1,7 +1,7 @@
 {
   "schema": "open64.common-com-dsl-ownership-policy.v1",
   "scope": "DSL-related production sources in common/com plus DSL fragments in shared files; tests separately inventoried. Historical non-DSL code is excluded.",
-  "authority": "User-reviewed common WHIRL service ownership: retain builder, canonicalization/folding, opcode/domain registries, integrity checks and general cross-session telemetry service in common/com. Classify actual .B preservation separately. No code moves authorized. Hardware descriptions extend the existing common/targ_info owner; mixed hardware-description/phase-planning files must be split.",
+  "authority": "User-reviewed common WHIRL service ownership: retain builder, canonicalization/folding, opcode/domain registries, integrity checks and general cross-session telemetry service in common/com. Classify actual .B preservation separately. Backend relocation is now authorized; the numerical/model leaf batch below has moved, while remaining groups are proposals. Hardware descriptions extend the existing common/targ_info owner; mixed hardware-description/phase-planning files must be split.",
   "groups": [
     {
       "id": "persistent-core",
@@ -522,27 +522,6 @@
       "current_storage": "in_memory_profile_and_text_inspection_not_a_WHIRL_image_section"
     },
     {
-      "id": "accumulation",
-      "files": [
-        "osprey/common/com/dsl_accumulation.cxx",
-        "osprey/common/com/dsl_accumulation.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Runtime numerical contract, segmented accumulation plan and coverage segments. Verification/printing are tied to VHO planning, not a persisted numerical section.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_accumulation.h",
-          "token": "dsl_accumulation_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_accumulation.cxx",
-          "token": "#include"
-        }
-      ]
-    },
-    {
       "id": "compute-realization",
       "files": [
         "osprey/common/com/dsl_compute_realization.cxx",
@@ -559,48 +538,6 @@
         },
         {
           "path": "osprey/common/com/dsl_compute_realization.cxx",
-          "token": "#include"
-        }
-      ]
-    },
-    {
-      "id": "compute-model",
-      "files": [
-        "osprey/common/com/dsl_compute_model.cxx",
-        "osprey/common/com/dsl_compute_model.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Runtime unknown/known analytical ranges and synthetic scenario model, not measured rates or stored image records. Keep unknown timing explicit.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_compute_model.h",
-          "token": "dsl_compute_model_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_compute_model.cxx",
-          "token": "#include"
-        }
-      ]
-    },
-    {
-      "id": "typed-simt",
-      "files": [
-        "osprey/common/com/dsl_typed_simt.cxx",
-        "osprey/common/com/dsl_typed_simt.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Runtime typed baseline numerical/shape/alias acceptance record. Lowered F16/BF16 WN/ST/TY may persist, but this input record has no image writer.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_typed_simt.h",
-          "token": "dsl_typed_simt_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_typed_simt.cxx",
           "token": "#include"
         }
       ]
@@ -636,6 +573,83 @@
           "path": "osprey/common/com/dsl_hardware_performance.h",
           "token": "DSL_HARDWARE_PERFORMANCE_RECORD"
         }
+      ]
+    }
+  ],
+  "relocated_groups": [
+    {
+      "id": "accumulation",
+      "files": [
+        "osprey/be/vho/dsl_accumulation.cxx",
+        "osprey/be/vho/dsl_accumulation.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_phase_owner",
+      "reason": "Runtime numerical contract, segmented accumulation plan and coverage segments. Verification/printing are tied to VHO planning, not a persisted numerical section.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_accumulation.h",
+          "token": "dsl_accumulation_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_accumulation.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_accumulation.cxx",
+        "osprey/common/com/dsl_accumulation.h"
+      ]
+    },
+    {
+      "id": "compute-model",
+      "files": [
+        "osprey/be/vho/dsl_compute_model.cxx",
+        "osprey/be/vho/dsl_compute_model.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_phase_owner",
+      "reason": "Runtime unknown/known analytical ranges and synthetic scenario model, not measured rates or stored image records. Keep unknown timing explicit.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_compute_model.h",
+          "token": "dsl_compute_model_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_compute_model.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_compute_model.cxx",
+        "osprey/common/com/dsl_compute_model.h"
+      ]
+    },
+    {
+      "id": "typed-simt",
+      "files": [
+        "osprey/be/vho/dsl_typed_simt.cxx",
+        "osprey/be/vho/dsl_typed_simt.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_phase_owner",
+      "reason": "Runtime typed baseline numerical/shape/alias acceptance record. Lowered F16/BF16 WN/ST/TY may persist, but this input record has no image writer.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_typed_simt.h",
+          "token": "dsl_typed_simt_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_typed_simt.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_typed_simt.cxx",
+        "osprey/common/com/dsl_typed_simt.h"
       ]
     }
   ]

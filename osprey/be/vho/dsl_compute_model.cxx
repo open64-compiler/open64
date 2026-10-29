@@ -1,10 +1,14 @@
-/* MMA2 runtime description construction and structural verification only.
- * Optimizer-owned analysis/scheduling lives in be/vho; no image or emitter.
+/* VHO analytical description construction and structural verification.
+ * Scheduling remains in dsl_compute_shadow_opt.cxx; neither service changes
+ * WHIRL, emits code, nor converts unknown timing into measured/synthetic data.
  * Design: doc/AI-COMPILER-MMA2-SHADOW-MODEL.md. */
 #include "dsl_compute_model.h"
 #include <string.h>
 
-/* No private Tensor Core rates or synthetic defaults enter target lookup. */
+/* Build an explicitly unknown description from an exact profile/family
+ * match. Copy to the borrowed output only on success; null output, missing
+ * profile or incompatible family returns FALSE without changing the output.
+ * No private Tensor Core rates or synthetic defaults enter target lookup. */
 BOOL DSL_compute_model_unknown(DSL_COMPUTE_PROFILE_ID profile_id,
     UINT32 family, DSL_COMPUTE_MODEL_RECORD *model)
 {
@@ -22,7 +26,9 @@ BOOL DSL_compute_model_unknown(DSL_COMPUTE_PROFILE_ID profile_id,
 }
 
 /* A known duration can be zero; a known service rate must be positive.
- * Synthetic provenance is mandatory for all supplied timing in MMA2. */
+ * Synthetic provenance is mandatory for all supplied timing in MMA2.
+ * Read the caller-owned model without mutation and return FALSE for malformed
+ * profile/configuration joins, unsupported provenance or inconsistent ranges. */
 BOOL DSL_compute_model_verify(const DSL_COMPUTE_MODEL_RECORD *model)
 {
     DSL_COMPUTE_PROFILE_RECORD profile;

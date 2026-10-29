@@ -1,5 +1,6 @@
-/* Runtime-only native typed matmul source contract for MMA3. No image fields,
- * target selection or expression simplification. VHO owns lowering.
+/* VHO-owned runtime-only typed matmul source contract for MMA3.
+ * No binary image fields, target selection or expression simplification;
+ * dsl_typed_simt_opt.cxx owns executable lowering.
  * Design: doc/AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md. */
 #ifndef dsl_typed_simt_INCLUDED
 #define dsl_typed_simt_INCLUDED
@@ -22,7 +23,9 @@ typedef struct {
 } DSL_TYPED_SIMT_RECORD;
 
 /* Validate only the accepted numerical, storage-alias and static shape
- * contract. No permissions are inferred and failure mutates no input. */
+ * contract for borrowed records. Require F16/BF16 inputs with explicit FP32
+ * product/partial/outer/output formats; return FALSE with optional diagnostics
+ * on rejection. No permissions are inferred and no input is mutated. */
 extern BOOL DSL_typed_simt_verify(const DSL_TYPED_SIMT_RECORD *record,
     const DSL_NUMERICAL_CONTRACT_RECORD *numerical, FILE *diagnostic);
 

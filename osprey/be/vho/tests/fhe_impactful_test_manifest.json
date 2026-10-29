@@ -93,6 +93,10 @@
       "status": "environment",
       "command": "run the affected independent audit against a receipt-matched retained .T"
     },
+    "backend-numerical-contracts": {
+      "status": "environment",
+      "command": "rebuild/run ir_tools dsl_accumulation_contract_test, dsl_compute_shadow_contract_test, dsl_typed_simt_contract_test, dsl_wgmma_contract_test, dsl_wgmma_pipeline_contract_test and dsl_wgmma_pipeline_model_test; preserve numerical rejections, explicit unknown timing and unchanged SIMT emission"
+    },
     "complete-audit-format": {
       "status": "automated",
       "command": "python3 osprey/be/vho/tests/test_fhe_ckks_complete_checkpoint_audit.py"
@@ -366,6 +370,18 @@
       "name": "native-syntax-dispatch",
       "patterns": ["osprey/common/com/tests/dsl_native_syntax_test.sh"],
       "lanes": ["hygiene", "syntax-layout-matrix"]
+    },
+    {
+      "name": "backend-numerical-runtime-contracts",
+      "patterns": [
+        "osprey/be/vho/dsl_accumulation.h",
+        "osprey/be/vho/dsl_accumulation.cxx",
+        "osprey/be/vho/dsl_compute_model.h",
+        "osprey/be/vho/dsl_compute_model.cxx",
+        "osprey/be/vho/dsl_typed_simt.h",
+        "osprey/be/vho/dsl_typed_simt.cxx"
+      ],
+      "lanes": ["hygiene", "backend-numerical-contracts", "backend-link-boundary", "mapped-reopen"]
     }
   ],
   "unknown_file_lanes": [
