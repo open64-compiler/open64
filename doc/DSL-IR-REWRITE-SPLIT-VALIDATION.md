@@ -84,7 +84,7 @@ Durable family (Git-ignored, local host evidence rather than public downloads):
 
 ```text
 /Users/shinmingliu/open64/artifacts/review/code-quality/dsl-image-ownership/rewrite-owner-completion/
-  sha256-7efab6233c9c2feae75a18532d32e409dedfc814b4ccd1bb322450742e60d2ff/
+  source-complete/sha256-7efab6233c9c2feae75a18532d32e409dedfc814b4ccd1bb322450742e60d2ff/
 ```
 
 The identity is the retained `tools/dsl_builder_contract_test` SHA-256. The
@@ -95,6 +95,13 @@ verifies checksum membership, repeats independent reader comparisons,
 combined/clone fixtures and the complete Python suite with read-only retained
 inputs and no network. Its separate immutable result is referenced by the
 review index; the receipt itself is never edited to add replay results.
+
+The initial sealed package omitted the shape-refinement fixture source needed
+by DST interleave. Its final-path replay correctly rejected three missing
+source lines rather than accepting a weakened dump. That immutable package
+and failed replay remain retained. The accepted `source-complete` package adds
+the exact unchanged fixture source and derives its source closure from every
+trace's DST file/directory table; no compiler or binary image was changed.
 
 Exact build commands appear in `evidence/build-*-final.log` and
 `evidence/build-python.log`; focused driver commands are in `run-focused.sh`.
