@@ -450,6 +450,7 @@ static BOOL need_fhe_runtime_lower_output = FALSE;
 static UINT32 cuda_emitted_pu_count = 0;
 static Output_File *ir_output = 0;
 static char *fhe_checkpoint_temp_name = NULL;
+static BOOL fhe_codegen_owns_checkpoint_output = FALSE;
 static char *dsl_pu_checkpoint_temp_name = NULL;
 static UINT32 fhe_checkpoint_pu_count;
 static VHO_FHE_CONVERT_RESULT fhe_checkpoint_result;
@@ -569,6 +570,47 @@ Release_FHE_Conversion_Checkpoint (void)
   free(fhe_checkpoint_temp_name);
   fhe_checkpoint_temp_name = NULL;
   need_fhe_checkpoint_output = FALSE;
+  if (fhe_codegen_owns_checkpoint_output) {
+    free(VHO_FHE_Conversion_Checkpoint_Output);
+    VHO_FHE_Conversion_Checkpoint_Output = NULL;
+    fhe_codegen_owns_checkpoint_output = FALSE;
+  }
+}
+
+/* Select the terminal CKKS2C transaction after mapped-image inspection.
+ * The route reuses the conversion-checkpoint writer and all-PU atomic
+ * publication contract established by S6-0d D4.  An explicit checkpoint
+ * pathname is a destination override; otherwise the input stem determines
+ * the sibling .ckks2c.B commit marker.  See
+ * doc/FHE-SYNC6-S6-0D-DETAILED-EXECUTION-PLAN.md, D5. */
+static BOOL
+Configure_FHE_CKKS2C_Route (void)
+{
+  if (DSL_CKKS_Event_Image_Count() == 0) {
+    fprintf(stderr,
+            "CFHECKKS2C-003: -FHE:codegen=ckks2c requires a certified "
+            "CKKS event image; no fallback route was selected\n");
+    return FALSE;
+  }
+  if (FHE_Materialization_Checkpoint_Enabled() ||
+      FHE_Runtime_Lowering_Checkpoint_Enabled() ||
+      DSL_PU_Specialization_Checkpoint_Enabled()) {
+    fprintf(stderr,
+            "CFHECKKS2C-005: -FHE:codegen=ckks2c conflicts with another "
+            "checkpoint route; no output was selected\n");
+    return FALSE;
+  }
+  if (!FHE_Conversion_Checkpoint_Enabled()) {
+    VHO_FHE_Conversion_Checkpoint_Output =
+        New_Extension(Irb_File_Name, ".ckks2c.B");
+    FmtAssert(VHO_FHE_Conversion_Checkpoint_Output != NULL,
+              ("could not allocate CKKS2C output pathname"));
+    fhe_codegen_owns_checkpoint_output = TRUE;
+  }
+  fprintf(stderr,
+          "FHE-CKKS2C-ROUTE: selected=ckks2c input=%s output=%s\n",
+          Irb_File_Name, VHO_FHE_Conversion_Checkpoint_Output);
+  return TRUE;
 }
 
 static void
@@ -2983,11 +3025,16 @@ main (INT argc, char **argv)
         DSL_FHE_Context_State_Image_Has_Records() ||
         DSL_FHE_Materialization_Image_Has_Records();
     if (fhe_image) {
-      fprintf(stderr,
-              "CFHECKKS2C-003: -FHE:codegen=%s is not yet available; "
-              "no fallback route was selected\n",
-              VHO_FHE_Codegen);
-      return 1;
+      if (fhe_codegen == VHO_FHE_CODEGEN_CKKS2C) {
+        if (!Configure_FHE_CKKS2C_Route())
+          return 1;
+      }
+      else {
+        fprintf(stderr,
+                "CFHECKKS2C-003: -FHE:codegen=poly2c is not yet available; "
+                "no fallback route was selected\n");
+        return 1;
+      }
     }
     load_components (argc, argv);
     be_debug();
@@ -3227,6 +3274,10 @@ main (INT argc, char **argv)
             fhe_checkpoint_result.folded_batch_norm_count,
             fhe_checkpoint_result.approximation_contract_count,
             fhe_checkpoint_result.error_count);
+    if (fhe_codegen == VHO_FHE_CODEGEN_CKKS2C)
+      fprintf(stderr,
+              "FHE-CKKS2C-ROUTE: exit=ckks2c output=%s poly_entered=0\n",
+              VHO_FHE_Conversion_Checkpoint_Output);
     Release_FHE_Conversion_Checkpoint();
   }
   else if (need_fhe_materialization_output) {
