@@ -1,11 +1,13 @@
-/* MMA3 runtime source-record verification only; never mutate WHIRL, select
+/* VHO MMA3 runtime source-record verification only; never mutate WHIRL, select
  * an implementation or broaden the old F32-buffer accumulation adapter.
  * Design: doc/AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md. */
 #include "dsl_typed_simt.h"
 #include <limits.h>
 
 /* Reject unsupported accepted-source contracts before VHO touches any tree.
- * Full increasing-K accumulation needs no reassociation permission. */
+ * Full increasing-K accumulation needs no reassociation permission. Read both
+ * borrowed records without mutation; return FALSE with an optional diagnostic
+ * for invalid identities, formats, dimensions, thread counts or output extent. */
 BOOL DSL_typed_simt_verify(const DSL_TYPED_SIMT_RECORD *record,
     const DSL_NUMERICAL_CONTRACT_RECORD *numerical, FILE *diagnostic)
 {

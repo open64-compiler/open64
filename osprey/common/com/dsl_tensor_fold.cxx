@@ -2,6 +2,15 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * common/com implements compact integral tensor folding through Targ_WhirlOp,
+ * the existing persistent string-TCON carrier and a bounded derived index cache.
+ * Caller phases own controls, PU context and WN/ST/managed-image publication;
+ * mock dispatch and descriptions are runtime-only. No carrier layout, binary
+ * WHIRL mapping or reader/writer behavior is changed here.
+ * Design: doc/WHIRL-DSL-SIMPLIFICATION-PLAN.md, M2/M3 storage and folding.
+ */
+
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,12 +21,26 @@
 #include "dsl_tensor_fold.h"
 #include "strtab.h"
 #ifdef DSL_TENSOR_FOLD_TEST_STUB
+/* Standalone-test adapter supplies the current scalar/carrier table extent
+ * for bounds checks; no table reset or allocation is requested here. */
 extern UINT32 TCON_Table_Size (void);
+/* Standalone-test adapter supplies the type-table extent for packed TY index
+ * checks; this declaration does not validate a particular descriptor. */
 extern UINT32 TY_Table_Size (void);
+/* Ask the standalone type adapter whether this identity is a tensor extension;
+ * caller provides adapter-valid TY context, with no descriptor mutation. */
 extern BOOL TY_is_tensor_extension (TY_IDX ty);
+/* Read the standalone adapter's canonical-type predicate; this interface does
+ * not seal a descriptor or establish its full production semantic invariants. */
 extern BOOL TY_tensor_is_canonical (TY_IDX ty);
+/* Read the standalone adapter's element-type identity for a tensor type;
+ * returned TY remains table-owned and no lifetime or scope is extended. */
 extern TY_IDX TY_tensor_element_ty (TY_IDX ty);
+/* Read a standalone adapter type's machine type without modifying it;
+ * caller must supply an identity understood by that adapter. */
 extern TYPE_ID TY_mtype (TY_IDX ty);
+/* Read a standalone adapter type's byte size for geometry checks;
+ * no storage is allocated or descriptor shape inferred. */
 extern UINT64 TY_size (TY_IDX ty);
 #else
 #include "symtab.h"
@@ -48,11 +71,18 @@ static DSL_TENSOR_FOLD_MOCK_RESPONSE DSL_tensor_fold_mock_response;
 static TCON_IDX DSL_tensor_tcon_cache[4096];
 static UINT32 DSL_tensor_tcon_cache_count = 0;
 
+/* Use the existing global TCON interner (or standalone adapter) to retain a
+ * constant and return its index. It may mutate table state; this caller adds
+ * no allocation-exception journal or independent return-index validation. */
 extern TCON_IDX Enter_tcon (const TCON& tcon);
 #ifdef DSL_TENSOR_FOLD_TEST_STUB
+/* Read a TCON copy through the standalone adapter at a caller-validated index;
+ * embedded string identities still refer to adapter-owned character storage. */
 extern TCON TCON_from_IDX (TCON_IDX tcon_idx);
 #endif
 
+/* Read a caller-bounded TCON row from the real table or standalone adapter.
+ * Return a value copy with borrowed embedded identities; no validation or writes. */
 static TCON
 DSL_Tensor_TCON_From_IDX (TCON_IDX tcon_idx)
 {
@@ -63,6 +93,8 @@ DSL_Tensor_TCON_From_IDX (TCON_IDX tcon_idx)
 #endif
 }
 
+/* Zero a nonnull caller output, ignoring NULL. Former borrowed constant
+ * identities are not released and table state is not restored. */
 static void
 DSL_Tensor_Fold_Clear_Output (DSL_TENSOR_FOLD_OUTPUT *output)
 {
@@ -70,6 +102,8 @@ DSL_Tensor_Fold_Clear_Output (DSL_TENSOR_FOLD_OUTPUT *output)
         memset(output, 0, sizeof(*output));
 }
 
+/* Write only status/rejection in a nonnull output, ignoring NULL. Other fields
+ * remain intact; INVALID is not in the defined rejection interval. No cleanup. */
 static void
 DSL_Tensor_Fold_Set_Output_Status
         (DSL_TENSOR_FOLD_OUTPUT *output,
@@ -83,42 +117,56 @@ DSL_Tensor_Fold_Set_Output_Status
                             status : DSL_TENSOR_FOLD_NOT_APPLICABLE;
 }
 
+/* Accept nonzero powers of two only. This predicate establishes neither an
+ * actual buffer address's alignment nor a target's alignment requirement. */
 static BOOL
 DSL_Tensor_TCON_Alignment_Valid (UINT32 alignment)
 {
     return alignment != 0 && (alignment & (alignment - 1)) == 0;
 }
 
+/* Check nonzero index against the live TCON table extent; do not inspect row
+ * kind, carrier fields or payload. No table/cache mutation. */
 static BOOL
 DSL_Tensor_TCON_IDX_Valid (TCON_IDX tcon_idx)
 {
     return tcon_idx != TCON_IDX_ZERO && tcon_idx < TCON_Table_Size();
 }
 
+/* Check nonzero packed TY's table index against the live type extent; do not
+ * prove kind, canonicality or a valid descriptor payload. */
 static BOOL
 DSL_Tensor_TY_IDX_Valid (TY_IDX ty)
 {
     return ty != TY_IDX_ZERO && TY_IDX_index(ty) < TY_Table_Size();
 }
 
+/* Accept enum ordinals above UNKNOWN through MTYPE_LAST. This is not
+ * an integral-only, scalar-only or supported-element lowering predicate. */
 static BOOL
 DSL_Tensor_TCON_Element_Mtype_Valid (UINT32 mtype)
 {
     return mtype > MTYPE_UNKNOWN && mtype <= MTYPE_LAST;
 }
 
+/* Require at least one nonzero checksum word. No checksum is calculated,
+ * compared to payload bytes or interpreted as an authentication guarantee. */
 static BOOL
 DSL_Tensor_TCON_Checksum_Valid (UINT64 checksum_hi, UINT64 checksum_lo)
 {
     return checksum_hi != 0 || checksum_lo != 0;
 }
 
+/* Check a nonempty unsigned byte range for addition wraparound. Do not prove
+ * that a file exists, contains the range or satisfies an alignment constraint. */
 static BOOL
 DSL_Tensor_TCON_Range_Valid (UINT64 offset, UINT64 length)
 {
     return length != 0 && offset + length >= offset;
 }
 
+/* Zero optional result, reject unsigned 64-bit product overflow, then assign
+ * left*right on success. NULL probes arithmetic validity; zero factors are legal. */
 static BOOL
 DSL_Tensor_TCON_Mul_Exact (UINT64 left, UINT32 right, UINT64 *result)
 {
@@ -132,6 +180,11 @@ DSL_Tensor_TCON_Mul_Exact (UINT64 left, UINT32 right, UINT64 *result)
 }
 
 #ifndef DSL_TENSOR_FOLD_TEST_STUB
+/* Parse the descriptor's rank-matched bracketed shape and multiply nonzero
+ * strtoull dimensions without overflow; rank zero [] yields one. Clear required
+ * output first, publishing count only on success. Parsing affects errno and
+ * inherits libc signs/whitespace and accepts trailing commas: not a canonical
+ * shape grammar validator. Caller supplies coherent descriptor/type/string tables. */
 static BOOL
 DSL_Tensor_TCON_Static_Element_Count
         (TY_IDX descriptor_ty,
@@ -187,6 +240,9 @@ DSL_Tensor_TCON_Static_Element_Count
 }
 #endif
 
+/* Inspect exactly length readable bytes: disallow leading separators,
+ * backslashes/NULs, empty components and dot/dot-dot components. FALSE has no
+ * outputs or writes. No filesystem, symlink, URI or platform-drive resolution. */
 static BOOL
 DSL_Tensor_TCON_Relative_Path_Valid (const char *text, UINT32 length)
 {
@@ -224,6 +280,10 @@ DSL_Tensor_TCON_Relative_Path_Valid (const char *text, UINT32 length)
     return TRUE;
 }
 
+/* Read common creation geometry/type facts: canonical tensor, valid element
+ * machine type/size, nonzero count/bytes, power-of-two alignment and exact byte
+ * product. Do not compare count to descriptor shape or inspect buffer contents,
+ * scalar values, storage-specific fields or target execution legality. */
 static BOOL
 DSL_Tensor_TCON_Common_Info_Valid
         (const DSL_TENSOR_TCON_CREATE_INFO *info)
@@ -258,6 +318,8 @@ DSL_Tensor_TCON_Common_Info_Valid
     return TRUE;
 }
 
+/* Check an existing bounded scalar TCON's machine type only. A matching type
+ * does not prove the ZERO/ONE/SPLAT numeric marker or its mathematical value. */
 static BOOL
 DSL_Tensor_TCON_Scalar_Info_Valid
         (TCON_IDX scalar_tcon,
@@ -272,6 +334,8 @@ DSL_Tensor_TCON_Scalar_Info_Valid
     return TCON_ty(scalar) == element_mtype;
 }
 
+/* Mix one integer into a caller-owned hash accumulator by value, with normal
+ * unsigned wraparound; no global state or collision-resistance guarantee. */
 static UINT64
 DSL_Tensor_TCON_Hash_Combine (UINT64 hash, UINT64 value)
 {
@@ -280,6 +344,8 @@ DSL_Tensor_TCON_Hash_Combine (UINT64 hash, UINT64 value)
     return hash;
 }
 
+/* Recognize only INLINE_DENSE and SIDE_FILE_DENSE storage tags; no carrier,
+ * byte-availability, path or target-format validation. */
 static BOOL
 DSL_Tensor_TCON_Is_Dense
         (DSL_TENSOR_TCON_STORAGE_KIND storage_kind)
@@ -288,6 +354,10 @@ DSL_Tensor_TCON_Is_Dense
            storage_kind == DSL_TENSOR_TCON_STORAGE_SIDE_FILE_DENSE;
 }
 
+/* Borrow embedded dense bytes for prevalidated record/carrier and live string
+ * storage, checking nonzero length and envelope-relative bounds. NULL on missing
+ * or out-of-range bytes; no file access, full carrier revalidation or ownership
+ * transfer. Lifetime follows backing character storage. */
 static const unsigned char *
 DSL_Tensor_TCON_Record_Dense_Bytes
         (const DSL_TENSOR_TCON_RECORD *record,
@@ -308,6 +378,11 @@ DSL_Tensor_TCON_Record_Dense_Bytes
     return (const unsigned char *)(payload + record->dense_offset);
 }
 
+/* Compare prevalidated records. Dense forms ignore location/alignment but
+ * require type/geometry/checksum matches and available byte-for-byte equality;
+ * missing bytes reject even identical record contents. Compact forms compare
+ * storage/type/geometry/scalar identities and marker. No hashing/authentication,
+ * file reads, interning or table writes. */
 static BOOL
 DSL_Tensor_TCON_Record_Semantic_Equal
         (const DSL_TENSOR_TCON_RECORD *left,
@@ -351,6 +426,9 @@ DSL_Tensor_TCON_Record_Semantic_Equal
            left->scalar_integer_value == right->scalar_integer_value;
 }
 
+/* Hash selected prevalidated record fields; NULL returns zero. Dense hashing
+ * omits bytes, location, storage kind and alignment, relying on equality for
+ * collision resolution. Compact hashing includes scalar identity/marker. Read-only. */
 static UINT64
 DSL_Tensor_TCON_Record_Semantic_Hash
         (const DSL_TENSOR_TCON_RECORD *record)
@@ -382,6 +460,9 @@ DSL_Tensor_TCON_Record_Semantic_Hash
     return hash;
 }
 
+/* Search bounded cached indices in insertion order, skipping out-of-range or
+ * invalid carriers and comparing semantics against a prevalidated candidate.
+ * Return zero if absent. Do not scan the full table, intern or refresh cache. */
 static TCON_IDX
 DSL_Tensor_TCON_Find_Cached_Equal
         (const DSL_TENSOR_TCON_RECORD *record,
@@ -407,6 +488,9 @@ DSL_Tensor_TCON_Find_Cached_Equal
     return TCON_IDX_ZERO;
 }
 
+/* Append a nonzero unique index to the bounded derived cache if capacity
+ * remains. Silently ignore zero/duplicates/full cache; caller supplies valid
+ * row identity. No authoritative TCON/character storage is modified. */
 static void
 DSL_Tensor_TCON_Cache (TCON_IDX tcon_idx)
 {
@@ -425,6 +509,9 @@ DSL_Tensor_TCON_Cache (TCON_IDX tcon_idx)
     DSL_tensor_tcon_cache[DSL_tensor_tcon_cache_count++] = tcon_idx;
 }
 
+/* Check header/reserved/flag values and contiguous counted path/dense extents
+ * ending before the final terminator byte. Read-only; does not inspect payload,
+ * magic/version, storage semantics or the terminator's actual value. */
 static BOOL
 DSL_Tensor_TCON_Envelope_Offsets_Valid
         (const DSL_TENSOR_TCON_RECORD *record,
@@ -477,6 +564,12 @@ DSL_Tensor_TCON_Envelope_Offsets_Valid
     return payload_length == DSL_TENSOR_TCON_ENVELOPE_SIZE + 1;
 }
 
+/* Validate a copied envelope against a coherent live string carrier, header
+ * bytes/terminator, type/geometry and storage-specific field constraints. Do not
+ * read side files, authenticate digests, compare count to descriptor shape or
+ * scalar numeric value to marker; side-file offset+length wrap is not rechecked
+ * here. Character-table identity safety is a caller precondition, not a full
+ * untrusted-memory bounds check. */
 static BOOL
 DSL_Tensor_TCON_Record_Valid
         (const DSL_TENSOR_TCON_RECORD *record,
@@ -594,6 +687,10 @@ DSL_Tensor_TCON_Record_Valid
     }
 }
 
+/* Clear optional record, copy the existing envelope bytes from a coherent
+ * string carrier and run structural/type validation; NULL output probes validity.
+ * FALSE leaves a supplied record zero. No cache/table writes, external I/O or
+ * new binary-format conversion; valid backing character identities are required. */
 BOOL
 DSL_Tensor_TCON_Decode_Carrier
         (const TCON *carrier,
@@ -625,6 +722,13 @@ DSL_Tensor_TCON_Decode_Carrier
     return TRUE;
 }
 
+/* Clear optional index then validate common/storage constraints and counted
+ * payload lengths before allocation. Copy envelope/path/available bytes into the
+ * existing string-TCON carrier, validate, reuse cached semantic equality or
+ * Enter_tcon, then publish outputs and cache. FALSE preserves carrier but may
+ * retain interned string state; success does not independently check Enter_tcon's
+ * index. Caller ensures readable buffers, shape/count and scalar/digest truth;
+ * no exception rollback, file I/O or WN/ST publication. */
 static BOOL
 DSL_Tensor_TCON_Create_Record
         (DSL_TENSOR_TCON_STORAGE_KIND storage_kind,
@@ -755,6 +859,8 @@ DSL_Tensor_TCON_Create_Record
     payload_length += 1;
     record.record_size = payload_length;
 
+    /* Preflight proves counted extents, not payload truth. Buffer copying below
+     * requires caller-readable path/dense bytes; no side file is consulted. */
     payload = (char *)malloc(payload_length);
     if (payload == NULL)
         return FALSE;
@@ -776,12 +882,16 @@ DSL_Tensor_TCON_Create_Record
     }
     memcpy(payload, &record, sizeof(record));
 
+    /* String interning precedes semantic reuse, so even cache hits/rejection
+     * can leave unreferenced character storage. There is no allocation journal. */
     built_carrier = Host_To_Targ_String(MTYPE_STRING, payload,
                                         payload_length);
     free(payload);
     if (!DSL_Tensor_TCON_Decode_Carrier(&built_carrier, NULL))
         return FALSE;
 
+    /* Dense equality uses available bytes and ignores storage location. Reuse
+     * is bounded-cache based here, not a full-table semantic canonicalization. */
     existing_idx = DSL_Tensor_TCON_Find_Cached_Equal(&record, &built_carrier);
     if (existing_idx != TCON_IDX_ZERO) {
         if (carrier != NULL)
@@ -800,6 +910,8 @@ DSL_Tensor_TCON_Create_Record
     return TRUE;
 }
 
+/* Initialize caller policy to zero limits and preserve compact splats, or
+ * ignore NULL. This does not infer budgets, target facts or phase controls. */
 void
 DSL_Tensor_Fold_Default_Policy (DSL_TENSOR_FOLD_POLICY *policy)
 {
@@ -810,6 +922,8 @@ DSL_Tensor_Fold_Default_Policy (DSL_TENSOR_FOLD_POLICY *policy)
     policy->preserve_compact_splats = TRUE;
 }
 
+/* Disable and clear the sole process-local synthetic evaluator response.
+ * No candidate, constant table or image state is changed; caller serializes use. */
 void
 DSL_Tensor_Fold_Reset_Mock_Evaluator (void)
 {
@@ -818,6 +932,10 @@ DSL_Tensor_Fold_Reset_Mock_Evaluator (void)
            sizeof(DSL_tensor_fold_mock_response));
 }
 
+/* Preflight status/count before copying a response and enabling the mock.
+ * Reject NULL, too many results or inconsistent success/no-result/rejection;
+ * FALSE preserves prior configuration. Other fields are copied unchecked and
+ * mock success manufactures no real TCON payload. */
 BOOL
 DSL_Tensor_Fold_Set_Mock_Response
         (const DSL_TENSOR_FOLD_MOCK_RESPONSE *response)
@@ -847,12 +965,17 @@ DSL_Tensor_Fold_Set_Mock_Response
     return TRUE;
 }
 
+/* Return the current mock switch without resetting or consuming it; no
+ * claim about production evaluator availability or numerical correctness. */
 BOOL
 DSL_Tensor_Fold_Mock_Evaluator_Enabled (void)
 {
     return DSL_tensor_fold_mock_enabled;
 }
 
+/* Clear optional output and recognize only reviewed v1 operator identities,
+ * with one ordinary or two DIVREM results. NULL output is a supported probe;
+ * unsupported version/operator returns FALSE. No operand or target validation. */
 BOOL
 DSL_Tensor_Fold_Get_Evaluator
         (DSL_OPERATOR dsl_operator,
@@ -890,6 +1013,8 @@ DSL_Tensor_Fold_Get_Evaluator
     }
 }
 
+/* Map evaluator kind to a fixed result bound (one/two), zero for unknown;
+ * no evaluation or state mutation. */
 UINT16
 DSL_Tensor_Fold_Max_Results (DSL_TENSOR_FOLD_EVALUATOR_KIND kind)
 {
@@ -903,6 +1028,8 @@ DSL_Tensor_Fold_Max_Results (DSL_TENSOR_FOLD_EVALUATOR_KIND kind)
     }
 }
 
+/* Return an immutable process-lifetime status spelling, falling back to
+ * "unknown" after unsigned bounds checking. Caller must not free it. */
 const char *
 DSL_Tensor_Fold_Status_Name (DSL_TENSOR_FOLD_STATUS status)
 {
@@ -914,6 +1041,8 @@ DSL_Tensor_Fold_Status_Name (DSL_TENSOR_FOLD_STATUS status)
     return DSL_tensor_fold_status_name[ordinal];
 }
 
+/* Read-only closed-interval test for named rejection statuses, excluding
+ * NOT_APPLICABLE, SUCCESS, INVALID and out-of-range values. */
 BOOL
 DSL_Tensor_Fold_Status_Is_Rejection (DSL_TENSOR_FOLD_STATUS status)
 {
@@ -921,6 +1050,11 @@ DSL_Tensor_Fold_Status_Is_Rejection (DSL_TENSOR_FOLD_STATUS status)
            status <= DSL_TENSOR_FOLD_REJECT_PROFITABILITY;
 }
 
+/* Set optional reason to SUCCESS, then report the first shallow contract
+ * failure. Check array presence/counts, operator/purity/flags, evaluator/result
+ * bound and operand-count work limit. Do not inspect array elements, exact arity,
+ * carrier/type/shape/attribute content or inline/side-file budget fields; no writes
+ * to candidate/tables. Evaluation, not this predicate, performs deeper checks. */
 BOOL
 DSL_Tensor_Fold_Candidate_Valid
         (const DSL_TENSOR_FOLD_CANDIDATE *candidate,
@@ -992,6 +1126,10 @@ DSL_Tensor_Fold_Candidate_Valid
     return TRUE;
 }
 
+/* Apply the installed synthetic response to a prevalidated candidate and
+ * cleared optional output. Enforce candidate result capacity, otherwise copy
+ * unchecked rejection index/flags and typed placeholder slots; no actual TCON
+ * results or target arithmetic. Do not reset the process-global mock. */
 static DSL_TENSOR_FOLD_STATUS
 DSL_Tensor_Fold_Apply_Mock
         (const DSL_TENSOR_FOLD_CANDIDATE *candidate,
@@ -1028,6 +1166,9 @@ DSL_Tensor_Fold_Apply_Mock
     return response->status;
 }
 
+/* Decode to required record and require ZERO/ONE/SPLAT. A structurally valid
+ * dense carrier returns FALSE with its decoded record still filled; malformed
+ * decoding clears it. No byte extraction, interning or file access. */
 static BOOL
 DSL_Tensor_Fold_Compact_Record
         (const TCON *carrier,
@@ -1041,6 +1182,11 @@ DSL_Tensor_Fold_Compact_Record
            record->storage_kind == DSL_TENSOR_TCON_STORAGE_SPLAT;
 }
 
+/* Intern a target-produced integral scalar, derive result geometry from the
+ * validated left operand and max input alignment, then create ZERO/ONE/SPLAT
+ * by scalar value. Require live nonnull operands/scalar/output and compatible
+ * caller-validated result TY. Late FALSE can retain scalar/string rows; no WN
+ * publication or allocation journal, and carrier is written only by creation. */
 static BOOL
 DSL_Tensor_Fold_Create_Compact_Result
         (TY_IDX result_ty,
@@ -1087,6 +1233,13 @@ DSL_Tensor_Fold_Create_Compact_Result
     return created && tensor_idx != TCON_IDX_ZERO;
 }
 
+/* Evaluate a preflighted borrowed compact integral binary candidate. Check
+ * exact arity/results, exact descriptor identities/geometry, compact-preservation
+ * and result/work budgets, division-by-zero and signed-min/-1. Reuse target
+ * Targ_WhirlOp, then intern every compact result before publishing optional output.
+ * Output remains caller-cleared until all results exist, but a late rejection
+ * can retain unreferenced TCON/string entries. Inline/side-file byte budgets are
+ * not applied on this compact-only path; phase/master controls remain caller-owned. */
 static DSL_TENSOR_FOLD_STATUS
 DSL_Tensor_Fold_Compact_Integer_Binary
         (const DSL_TENSOR_FOLD_CANDIDATE *candidate,
@@ -1190,6 +1343,8 @@ DSL_Tensor_Fold_Compact_Integer_Binary
             return DSL_TENSOR_FOLD_REJECT_NUMERIC_POLICY;
     }
 
+    /* Preserve target arithmetic semantics rather than evaluating tensor data
+     * with host arithmetic; dense payload evaluation is not supported here. */
     for (UINT16 i = 0; i < expected_results; ++i) {
         BOOL folded = FALSE;
         result_scalar[i] = Targ_WhirlOp
@@ -1200,6 +1355,8 @@ DSL_Tensor_Fold_Compact_Integer_Binary
         if (!folded || TCON_ty(result_scalar[i]) != element_mtype)
             return DSL_TENSOR_FOLD_REJECT_TARGET_CAPABILITY;
     }
+    /* Publish no output slot until every result exists. Earlier global scalar/
+     * carrier allocations may still survive a later result-creation failure. */
     for (UINT16 i = 0; i < expected_results; ++i) {
         if (!DSL_Tensor_Fold_Create_Compact_Result
                  (candidate->result_ty[i], element_mtype,
@@ -1221,6 +1378,10 @@ DSL_Tensor_Fold_Compact_Integer_Binary
     return DSL_TENSOR_FOLD_SUCCESS;
 }
 
+/* Clear optional output, run shallow validation, then dispatch the enabled
+ * mock or compact target evaluator and record failure status. No master-option
+ * check, WN/ST/image mutation or publication transaction is added. NULL output
+ * still performs evaluation/interning; late failure is not table/string rollback. */
 DSL_TENSOR_FOLD_STATUS
 Targ_DSL_WhirlOp
         (const DSL_TENSOR_FOLD_CANDIDATE *candidate,
@@ -1244,6 +1405,8 @@ Targ_DSL_WhirlOp
     return reason;
 }
 
+/* Clear caller value description or ignore NULL, without freeing borrowed
+ * TCON/type/symbol/string identities or changing global tables. */
 void
 DSL_Tensor_Fold_Value_Init (DSL_TENSOR_FOLD_VALUE *value)
 {
@@ -1251,6 +1414,10 @@ DSL_Tensor_Fold_Value_Init (DSL_TENSOR_FOLD_VALUE *value)
         memset(value, 0, sizeof(*value));
 }
 
+/* Clear caller value and initialize optional reason before compact-carrier
+ * and expected-descriptor checks. Copy st/dsl_value_id without validating owner,
+ * type or image association; no symbol/PU activation or table mutation. FALSE
+ * keeps value zero and reports the selected reason where supplied. */
 BOOL
 DSL_Tensor_Fold_Identify_Compact_TCON
         (TCON_IDX tcon_idx,
@@ -1305,6 +1472,8 @@ DSL_Tensor_Fold_Identify_Compact_TCON
     return TRUE;
 }
 
+/* Clear optional caller replacement and set NOT_APPLICABLE; ignore NULL.
+ * Existing borrowed identities and interned constants are not released. */
 void
 DSL_Tensor_Fold_Replacement_Init
         (DSL_TENSOR_FOLD_REPLACEMENT *replacement)
@@ -1315,6 +1484,8 @@ DSL_Tensor_Fold_Replacement_Init
     }
 }
 
+/* Reset optional replacement completely, keep only the requested status and
+ * return it. This clears a description, not allocations or prior fold side effects. */
 static DSL_TENSOR_FOLD_STATUS
 DSL_Tensor_Fold_Describe_Failure
         (DSL_TENSOR_FOLD_REPLACEMENT *replacement,
@@ -1326,6 +1497,11 @@ DSL_Tensor_Fold_Describe_Failure
     return status;
 }
 
+/* Describe one folded compact result: check context TY, evaluate, find a
+ * validated interned carrier and copy context identities/flags for later caller
+ * publication. Failures clear the description except status, not prior TCON/string
+ * or cache effects. Context ST/source/metadata/lineage IDs are not verified or
+ * mutated; no replacement WN, symbol or managed row is created. */
 DSL_TENSOR_FOLD_STATUS
 DSL_Tensor_Fold_Describe_Replacement
         (const DSL_TENSOR_FOLD_CANDIDATE *candidate,
@@ -1386,6 +1562,8 @@ DSL_Tensor_Fold_Describe_Replacement
                    (replacement,
                     DSL_TENSOR_FOLD_REJECT_DESCRIPTOR_MISMATCH);
 
+    /* Only describe the replacement. The phase must separately validate and
+     * publish these borrowed symbol/metadata identities into its active IR. */
     replacement->status = DSL_TENSOR_FOLD_SUCCESS;
     replacement->logical_operator = OPR_DSLTENSORCONST;
     replacement->version = 1;
@@ -1412,6 +1590,8 @@ DSL_Tensor_Fold_Describe_Replacement
     return DSL_TENSOR_FOLD_SUCCESS;
 }
 
+/* Clear only the nonauthoritative bounded index cache. Persistent constants
+ * and character payloads survive; no table, program, type or generation reset. */
 void
 DSL_Tensor_TCON_Reset (void)
 {
@@ -1423,6 +1603,10 @@ DSL_Tensor_TCON_Reset (void)
     DSL_tensor_tcon_cache_count = 0;
 }
 
+/* Reset cache, normalize zero first/limit and clamp upper bound to live table
+ * size, then cache valid rows in [first,limit). Capacity loss is silent and no
+ * record is repaired. Caller establishes mapped type/TCON/string readiness;
+ * this is cache restoration, not a new image reader or whole-table verifier. */
 void
 DSL_Tensor_TCON_Rebuild_Derived_Cache
         (TCON_IDX first_tcon_idx,
@@ -1446,6 +1630,9 @@ DSL_Tensor_TCON_Rebuild_Derived_Cache
     }
 }
 
+/* Require record and nonzero bounded index before fetching/decoding. Early
+ * FALSE preserves old record; decoding first zeros it. Read-only, with coherent
+ * backing tables required and no Boolean-only NULL-record probe. */
 BOOL
 DSL_Tensor_TCON_Get
         (TCON_IDX tcon_idx,
@@ -1462,6 +1649,9 @@ DSL_Tensor_TCON_Get
     return DSL_Tensor_TCON_Decode_Carrier(&carrier, record);
 }
 
+/* Clear nonnull carrier, bounds-check index, then copy and validate the row.
+ * On a post-copy FALSE the raw invalid carrier remains copied, not re-cleared.
+ * No table/cache writes or payload I/O. */
 BOOL
 DSL_Tensor_TCON_Get_Carrier
         (TCON_IDX tcon_idx,
@@ -1478,6 +1668,9 @@ DSL_Tensor_TCON_Get_Carrier
     return DSL_Tensor_TCON_Decode_Carrier(carrier, &record);
 }
 
+/* Clear required index, validate candidate and search cache before a full
+ * row scan. Cache the first full-scan semantic match without entering a new row;
+ * FALSE leaves index zero. Read-only authoritative tables, mutable derived cache. */
 BOOL
 DSL_Tensor_TCON_Find_Carrier
         (const TCON *carrier,
@@ -1514,6 +1707,8 @@ DSL_Tensor_TCON_Find_Carrier
     return TRUE;
 }
 
+/* Delegate to Get, retaining required-record and early-versus-decode failure
+ * output behavior. No independent validity-only probe or state changes. */
 BOOL
 DSL_Tensor_TCON_Is_Carrier
         (TCON_IDX tcon_idx,
@@ -1522,6 +1717,9 @@ DSL_Tensor_TCON_Is_Carrier
     return DSL_Tensor_TCON_Get(tcon_idx, record);
 }
 
+/* Clear supplied outputs, validate both and carrier, then borrow counted
+ * path bytes with backing-storage lifetime. No NUL-termination promise, file
+ * resolution, payload authentication or cache mutation. */
 BOOL
 DSL_Tensor_TCON_Get_Side_Path
         (TCON_IDX tcon_idx,
@@ -1554,6 +1752,9 @@ DSL_Tensor_TCON_Get_Side_Path
     return TRUE;
 }
 
+/* Clear supplied outputs and borrow validated available dense bytes after
+ * bounds checks. Reject absent bytes without loading side files; pointers follow
+ * live backing character storage. No digest recomputation or ownership transfer. */
 BOOL
 DSL_Tensor_TCON_Get_Dense_Bytes
         (TCON_IDX tcon_idx,
@@ -1585,6 +1786,8 @@ DSL_Tensor_TCON_Get_Dense_Bytes
     return TRUE;
 }
 
+/* Borrow a static storage spelling, or "unknown" for an out-of-range ordinal.
+ * No carrier validation, table lookup or mutation. */
 static const char *
 DSL_Tensor_TCON_Storage_Name (DSL_TENSOR_TCON_STORAGE_KIND storage_kind)
 {
@@ -1602,6 +1805,9 @@ DSL_Tensor_TCON_Storage_Name (DSL_TENSOR_TCON_STORAGE_KIND storage_kind)
     return storage_name[index];
 }
 
+/* Write compact scalar or dense storage metadata for a validated carrier.
+ * Bad input returns FALSE; late failure can leave partial text, and fprintf/
+ * fwrite failures are not checked. No trailing newline or payload/file reads. */
 BOOL
 DSL_Tensor_TCON_Print (FILE *file, TCON_IDX tcon_idx)
 {
@@ -1658,6 +1864,10 @@ DSL_Tensor_TCON_Print (FILE *file, TCON_IDX tcon_idx)
     return TRUE;
 }
 
+/* Forward ZERO creation without extra validation or rollback. Shared helper
+ * checks typed scalar plus zero marker, not actual scalar numerical zero; index
+ * is cleared before work, carrier only assigned on TRUE. Global string/TCON
+ * allocations can remain after late failure. */
 BOOL
 DSL_Tensor_TCON_Create_Zero
         (const DSL_TENSOR_TCON_CREATE_INFO *info,
@@ -1668,6 +1878,9 @@ DSL_Tensor_TCON_Create_Zero
                (DSL_TENSOR_TCON_STORAGE_ZERO, info, tcon_idx, carrier);
 }
 
+/* Forward ONE creation under the shared helper's output/allocation contract.
+ * Typed scalar and one marker must be supplied consistently by caller; no
+ * numerical-one proof or independent table rollback. */
 BOOL
 DSL_Tensor_TCON_Create_One
         (const DSL_TENSOR_TCON_CREATE_INFO *info,
@@ -1678,6 +1891,9 @@ DSL_Tensor_TCON_Create_One
                (DSL_TENSOR_TCON_STORAGE_ONE, info, tcon_idx, carrier);
 }
 
+/* Forward SPLAT creation under shared validation/output rules; do not prove
+ * that caller's integer marker equals its typed scalar TCON. Late failures can
+ * retain global allocation effects, with carrier unchanged. */
 BOOL
 DSL_Tensor_TCON_Create_Splat
         (const DSL_TENSOR_TCON_CREATE_INFO *info,
@@ -1688,6 +1904,12 @@ DSL_Tensor_TCON_Create_Splat
                (DSL_TENSOR_TCON_STORAGE_SPLAT, info, tcon_idx, carrier);
 }
 
+/* In native builds derive static count, exact target integral scalar, byte
+ * product and sufficient alignment before delegated compact creation. Require
+ * index output and valid canonical descriptor context; clear index first but
+ * preserve carrier on native failure. Scalar interning can survive later FALSE.
+ * The standalone test-stub branch clears both outputs and always rejects; no WN
+ * or managed-row publication or general exception journal in either branch. */
 BOOL
 DSL_Tensor_TCON_Create_Integer_Splat
         (TY_IDX descriptor_ty,
@@ -1747,6 +1969,9 @@ DSL_Tensor_TCON_Create_Integer_Splat
 #endif
 }
 
+/* Delegate copied inline-byte creation and the shared helper's optional-output
+ * and allocation rules. Check only length/geometry and nonzero checksum words,
+ * not target byte interpretation or digest authenticity; no file I/O. */
 BOOL
 DSL_Tensor_TCON_Create_Inline_Dense
         (const DSL_TENSOR_TCON_CREATE_INFO *info,
@@ -1758,6 +1983,10 @@ DSL_Tensor_TCON_Create_Inline_Dense
                 carrier);
 }
 
+/* Delegate path/optional-byte copying with shared geometry/range rules and
+ * optional outputs. Caller supplies a valid nonnull buffer for positive byte
+ * count. Cached equality may return an inline or other-location carrier; no file
+ * read, digest authentication or general rollback. */
 BOOL
 DSL_Tensor_TCON_Create_Side_File_Dense
         (const DSL_TENSOR_TCON_CREATE_INFO *info,
@@ -1769,6 +1998,9 @@ DSL_Tensor_TCON_Create_Side_File_Dense
                 carrier);
 }
 
+/* Validate a table row then hash selected fields, returning zero if invalid.
+ * Not a byte digest; dense collisions, including unavailable payloads, require
+ * separate equality proof and are not unique content identities. */
 UINT64
 DSL_Tensor_TCON_Semantic_Hash (TCON_IDX tcon_idx)
 {
@@ -1779,6 +2011,10 @@ DSL_Tensor_TCON_Semantic_Hash (TCON_IDX tcon_idx)
     return DSL_Tensor_TCON_Record_Semantic_Hash(&record);
 }
 
+/* Bounds-check rows; identical valid index succeeds directly, while distinct
+ * rows decode and compare selected compact fields or byte-proven dense contents.
+ * Dense path/alignment/storage are not identity. No I/O, cache writes or
+ * checksum-only equivalence; unavailable distinct dense bytes reject. */
 BOOL
 DSL_Tensor_TCON_Semantic_Equal
         (TCON_IDX left,
@@ -1803,6 +2039,9 @@ DSL_Tensor_TCON_Semantic_Equal
                (&left_record, &left_carrier, &right_record, &right_carrier);
 }
 
+/* Clear required output, validate carrier and index, then return the existing
+ * compact scalar TCON. Dense kinds reject rather than extracting bytes, even
+ * when embedded. No interning, external I/O or mutation of authoritative tables. */
 BOOL
 DSL_Tensor_TCON_Get_Element_TCON
         (TCON_IDX tcon_idx,

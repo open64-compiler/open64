@@ -274,7 +274,6 @@ COMMON_COM_CXX_SRC =	\
 	dsl_residency_candidate.cxx \
 	dsl_tile_candidate.cxx \
 	dsl_fetch_pipeline.cxx \
-        dsl_accumulation.cxx \
 	dsl_physical_plan.cxx \
 	dsl_runtime_variant.cxx \
 	dsl_telemetry_profile.cxx \
@@ -317,6 +316,9 @@ COMMON_FHE_CXX_SRC = \
         fhe_plan.cxx \
         fhe_plan_print.cxx
 
+# Runtime-only structural contract support, not the VHO optimizer.
+BE_VHO_CONTRACT_SRCS = dsl_accumulation.cxx
+
 BE_COM_SRCS =           \
 	wssa_defs.cxx   \
 	wssa_sym.cxx    \
@@ -335,7 +337,8 @@ CXXFILES =		\
 	$(COMMON_COM_CXX_SRC) \
 	$(COMMON_FHE_CXX_SRC) \
 	$(COMMON_COM_TARG_CXX_SRCS) \
-        $(BE_COM_SRCS)
+        $(BE_COM_SRCS) \
+        $(BE_VHO_CONTRACT_SRCS)
 
 .PHONY: default first last install
 
@@ -538,17 +541,17 @@ dsl_compute_realization_contract_test.o: $(COMMON_COM_DIR)/tests/dsl_compute_rea
 dsl_compute_shadow_contract_test: dsl_compute_realization.o dsl_compute_model.o dsl_compute_shadow_opt.o dsl_compute_shadow_contract_test.o
 	$(link.c++f) -o $@ $^ $(LDFLAGS)
 
-dsl_compute_model.o: $(COMMON_COM_DIR)/dsl_compute_model.cxx $(COMMON_COM_DIR)/dsl_compute_model.h $(COMMON_COM_DIR)/dsl_compute_realization.h
+dsl_compute_model.o: $(BE_VHO_DIR)/dsl_compute_model.cxx $(BE_VHO_DIR)/dsl_compute_model.h $(COMMON_COM_DIR)/dsl_compute_realization.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-dsl_compute_shadow_opt.o: $(BE_VHO_DIR)/dsl_compute_shadow_opt.cxx $(BE_VHO_DIR)/dsl_compute_shadow_opt.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h $(BE_VHO_DIR)/dsl_gemm_readiness.h $(COMMON_COM_DIR)/dsl_compute_model.h $(COMMON_COM_DIR)/dsl_compute_realization.h
+dsl_compute_shadow_opt.o: $(BE_VHO_DIR)/dsl_compute_shadow_opt.cxx $(BE_VHO_DIR)/dsl_compute_shadow_opt.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h $(BE_VHO_DIR)/dsl_gemm_readiness.h $(BE_VHO_DIR)/dsl_compute_model.h $(COMMON_COM_DIR)/dsl_compute_realization.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-dsl_compute_shadow_contract_test.o: $(BE_VHO_DIR)/tests/dsl_compute_shadow_contract_test.cxx $(COMMON_COM_DIR)/tests/dsl_compute_test_fixture.h $(BE_VHO_DIR)/dsl_compute_shadow_opt.h $(COMMON_COM_DIR)/dsl_compute_model.h
+dsl_compute_shadow_contract_test.o: $(BE_VHO_DIR)/tests/dsl_compute_shadow_contract_test.cxx $(COMMON_COM_DIR)/tests/dsl_compute_test_fixture.h $(BE_VHO_DIR)/dsl_compute_shadow_opt.h $(BE_VHO_DIR)/dsl_compute_model.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_compute_realization.o dsl_compute_realization_contract_test.o: \
-    $(COMMON_COM_DIR)/dsl_accumulation.h $(COMMON_COM_DIR)/dsl_fetch_pipeline.h \
+    $(BE_VHO_DIR)/dsl_accumulation.h $(COMMON_COM_DIR)/dsl_fetch_pipeline.h \
     $(COMMON_COM_DIR)/dsl_tile_candidate.h $(COMMON_COM_DIR)/dsl_opt_plan.h \
     $(COMMON_COM_DIR)/dsl_tensor_evolution.h $(COMMON_COM_DIR)/dsl_ir_image.h \
     $(COMMON_COM_DIR)/dsl_memory_hierarchy.h $(COMMON_COM_DIR)/dsl_hardware_performance.h
@@ -589,13 +592,13 @@ dsl_wgmma_pipeline_model_test: dsl_compute_realization.o dsl_compute_model.o dsl
 dsl_wgmma_pipeline_model_test.o: $(BE_VHO_DIR)/tests/dsl_wgmma_pipeline_model_test.cxx $(BE_VHO_DIR)/dsl_wgmma_pipeline_opt.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-dsl_typed_simt.o: $(COMMON_COM_DIR)/dsl_typed_simt.cxx $(COMMON_COM_DIR)/dsl_typed_simt.h $(COMMON_COM_DIR)/dsl_accumulation.h
+dsl_typed_simt.o: $(BE_VHO_DIR)/dsl_typed_simt.cxx $(BE_VHO_DIR)/dsl_typed_simt.h $(BE_VHO_DIR)/dsl_accumulation.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-dsl_typed_simt_opt.o: $(BE_VHO_DIR)/dsl_typed_simt_opt.cxx $(BE_VHO_DIR)/dsl_typed_simt_opt.h $(COMMON_COM_DIR)/dsl_typed_simt.h $(COMMON_COM_DIR)/dsl_accumulation.h
+dsl_typed_simt_opt.o: $(BE_VHO_DIR)/dsl_typed_simt_opt.cxx $(BE_VHO_DIR)/dsl_typed_simt_opt.h $(BE_VHO_DIR)/dsl_typed_simt.h $(BE_VHO_DIR)/dsl_accumulation.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-dsl_typed_simt_contract_test.o: $(BE_VHO_DIR)/tests/dsl_typed_simt_contract_test.cxx $(BE_VHO_DIR)/dsl_typed_simt_opt.h $(COMMON_COM_DIR)/dsl_typed_simt.h
+dsl_typed_simt_contract_test.o: $(BE_VHO_DIR)/tests/dsl_typed_simt_contract_test.cxx $(BE_VHO_DIR)/dsl_typed_simt_opt.h $(BE_VHO_DIR)/dsl_typed_simt.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_fetch_pipeline_contract_test: $(OBJECTS) controls.o \

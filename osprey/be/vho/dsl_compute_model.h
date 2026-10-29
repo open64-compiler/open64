@@ -1,5 +1,6 @@
-/* Policy-free runtime ranges for MMA2 conditional compute schedules.
- * No measured rates, image fields or selection policy are supplied here.
+/* VHO analytical-model ranges for conditional compute schedules.
+ * These nonpersistent backend records supply no measured rates, binary image
+ * fields or implementation-selection policy; unknown timing stays explicit.
  * Design: doc/AI-COMPILER-MMA2-SHADOW-MODEL.md. */
 #ifndef dsl_compute_model_INCLUDED
 #define dsl_compute_model_INCLUDED
@@ -65,6 +66,7 @@ extern BOOL DSL_compute_model_unknown(DSL_COMPUTE_PROFILE_ID profile_id,
     UINT32 family, DSL_COMPUTE_MODEL_RECORD *model);
 
 /* Check known-state/range/provenance consistency without interpreting costs
- * or selecting a resource configuration. Unknown fields are not zero rates. */
+ * or selecting a resource configuration. Borrow the model without mutation;
+ * return FALSE for invalid data. Unknown fields are not zero rates. */
 extern BOOL DSL_compute_model_verify(const DSL_COMPUTE_MODEL_RECORD *model);
 #endif

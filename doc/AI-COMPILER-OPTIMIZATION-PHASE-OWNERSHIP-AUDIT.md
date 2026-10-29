@@ -2,6 +2,27 @@
 
 ## Purpose
 
+Directory-admission follow-up (2026-10-29): the completed policy/phase split
+below does not establish that its common runtime containers are preserved in
+`.B`. Under the stricter persistence rule, see the
+[DSL-only common/com persistence audit](COMMON-COM-DSL-PERSISTENCE-OWNERSHIP-AUDIT.md)
+for proposed relocation of the remaining nonpersistent records and related
+methods to their logic owners. No new move is claimed here, and the explicitly
+retained `dsl_builder` persistent-construction interface is not a phase planner.
+Shared WHIRL canonicalization and constant folding, including tensor types/data,
+also remain `common/com` ingestion-callable services, with their transient
+helper descriptions and caches. That service ownership is separate from data
+persistence and does not admit independent optimizer facts/plans into common.
+Opcode/domain definition registries and WHIRL integrity checks also remain
+common services. TelemetryProfileIR stays in common as a general data service
+intended for data beyond a compiler session; only phase-specific freshness,
+interpretation, cost construction and recommendation belong to VHO. The current
+profile implementation does not thereby acquire a new `.B` storage section.
+Hardware descriptions use existing `common/targ_info` ownership: memory
+hierarchy, performance/resource payloads and static compute hardware/ISA
+profiles belong there. Their consumers' occupancy estimates, analytical costs,
+PU-specific realization joins and plan/provider selection remain phase-owned.
+
 This audit applies the project ownership rule to AIO-0 through AIO-13:
 
 - `common/com` defines IR records and stable IDs, constructs or interns those

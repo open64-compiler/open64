@@ -737,6 +737,34 @@ transient definitions, WN/PU forward declarations, or reverse owner includes.
 The former `common/com/dsl_ir_image.cxx` is removed, not kept as a forwarding
 translation unit. Other common/com infrastructure is outside this pair's scope.
 
+The directory-wide **DSL-only** follow-up is classified in
+[common/com DSL persistence and ownership audit](COMMON-COM-DSL-PERSISTENCE-OWNERSHIP-AUDIT.md).
+It distinguishes actual stored rows from transient registries, views and AIO
+planning records, including DSL fragments in shared files. This is an inventory
+and relocation proposal, not another completed source move. The explicit
+construction boundary remains: `dsl_builder.{h,cxx}` stays in `common/com` as
+the interface for persistent-data construction. Its transient input/private
+state objects are not classified as separately persisted rows.
+
+Shared WHIRL canonicalization and constant folding, including tensor types
+and tensor data, also stay in `common/com` as ingestion-callable IR services.
+Their temporary descriptions and private caches are not stored rows, but
+transience alone does not move them into a backend phase. The audit keeps
+these services distinct from independent optimizer analysis and planning.
+
+The same common-service boundary retains opcode/domain registries supporting
+WHIRL definition, gatekeeper/integrity checks, and general telemetry profile
+services intended to carry data beyond a compiler session. Their runtime
+implementation data is not automatically a `.B` row. Telemetry's intended
+cross-session lifetime does not claim a new storage format is implemented;
+phase-specific interpretation and optimization choices remain phase-owned.
+
+Hardware-description ownership uses the existing `common/targ_info` service,
+including GPU/accelerator extensions alongside CPU descriptions. The inventory
+assigns `dsl_memory_hierarchy`, hardware performance/resource descriptions and
+immutable compute hardware/ISA profiles there. Split mixed PU-planning files;
+do not move cost/profitability/selection policy into target-description access.
+
 #### Reviewed owning-logic boundaries
 
 | Owner | Types, state and related logic |
