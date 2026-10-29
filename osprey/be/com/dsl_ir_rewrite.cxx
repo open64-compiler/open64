@@ -354,7 +354,10 @@ DSL_IR_Retire_Has_Symbol_Use (const WN *wn, ST_IDX st)
 /*
  * Atomically redirect all owner-safe uses to a dominating replacement and
  * retire one pure native definition. Tree, REGION interfaces, logical value
- * references, and status flags commit only after exhaustive preflight.
+ * references, and status flags commit only after preflight. FALSE precedes
+ * writes; committed relation/REGION/postcondition failures assert and are not
+ * journaled rollback. Caller supplies safe shared/local state; neither this
+ * selected-PU mechanism nor its view variant activates another PU.
  */
 static BOOL
 DSL_IR_Redirect_And_Retire_Native_Value_Internal

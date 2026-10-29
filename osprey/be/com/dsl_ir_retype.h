@@ -37,8 +37,11 @@ typedef struct {
 } DSL_IR_VALUE_TYPE_REFINEMENT_RESULT;
 
 /* Atomically apply a nonempty borrowed array of monotonic shape-only tensor
- * refinements to the exact active Current_PU_Info, preserving canonical TY
- * records, representation and nonshape semantics. Preflight distinct value/ST
+ * refinements to the exact active Current_PU_Info without editing canonical TY
+ * records. Compare element type, kind, dtype, traits, layout, sharding,
+ * placement, memory, quantization and alignment, preserving rank and known
+ * dimensions; this does not compare every descriptor field, including runtime
+ * state and lineage. Preflight distinct value/ST
  * requests, pure unique local definitions/uses and REGION/ABI/auxiliary-image
  * exclusions before changing WN, ST and logical value TYs. Postcheck image,
  * REGION and strict gatekeeper contracts; failure reverses those type journals

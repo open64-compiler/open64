@@ -239,14 +239,25 @@ extern BOOL DSL_IR_Materialize_Generated_External_Tensor_Values
                                  DSL_IR_GENERATED_EXTERNAL_TENSOR_RESULT
                                      *results);
 
-/* Returned strings are borrowed until the next image mutation or reset. */
+/* Resolve generated provenance with matching owner locals and valid shared
+ * core/type/TCON/string tables. Require nonnull output; clear it first and leave
+ * it zero on FALSE. Check external reference, exclusive generated marker,
+ * generation label/version, digest spellings and bounded stage/diagonal ordinals.
+ * TRUE returns scalar IDs and borrowed strings, valid only while backing state
+ * remains unchanged. No geometry/payload authentication, PU activation or table
+ * writes; scratch allocation exceptions propagate. */
 extern BOOL DSL_IR_Image_Get_Generated_External_Tensor_Provenance
                                 (ST_IDX owner_pu_st,
                                  DSL_IR_VALUE_ID value_id,
                                  DSL_IR_GENERATED_EXTERNAL_TENSOR_PROVENANCE
                                      *provenance);
 
-/* Check generated values while the owning PU's local symbols are active. */
+/* With selected-PU locals and prevalidated shared core/string state, check
+ * generated markers/provenance, unique names and generation identities on owned
+ * values with resolvable producers. Missing producers are skipped; this does
+ * not replace core/physical-tree validation or authenticate payloads/geometry.
+ * No mutation or PU switch; FALSE may be silent even with diagnostics supplied,
+ * and scratch allocation exceptions propagate. */
 extern BOOL DSL_IR_Generated_External_Tensor_Validate_PU
                                 (PU_Info *pu_info, FILE *diagnostic);
 

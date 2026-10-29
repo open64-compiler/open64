@@ -1,8 +1,10 @@
 /*
  * Copyright (C) 2026 Open64 Project
  *
- * Runtime handle, formal, call, and return projection transactions for native
- * DSL values. See doc/FHE-SYNC5-RUNTIME-ENTRY-BINDING-GAP.md,
+ * Backend-free runtime handle/formal/call/return projection for a caller-selected
+ * active PU. Shared plans are metadata evidence, not authority to activate other
+ * PUs. Commit is not a general rollback transaction and changes no mapped format.
+ * See doc/FHE-SYNC5-RUNTIME-ENTRY-BINDING-GAP.md,
  * doc/FHE-RUNTIME-C-ABI-V1-CONTRACT.md, and
  * doc/FHE-SYNC5-NATIVE-OWNERSHIP-AUDIT.md.
  */
@@ -23,7 +25,8 @@
 #include "wn.h"
 #include "wn_util.h"
 
-/* Commit-only image services used after complete runtime-plan preflight. */
+/* Append a copied projection with a fresh ID (INVALID on NULL); no validation,
+ * physical mutation or wider rollback. The runtime transaction owns preflight. */
 extern DSL_RUNTIME_VALUE_PROJECTION_ID
 DSL_Runtime_Interface_Image_Add_Value
                                 (const DSL_RUNTIME_VALUE_PROJECTION_RECORD *);
@@ -63,8 +66,9 @@ DSL_Runtime_Interface_Report
 }
 
 /*
- * Find the unique planned projection for one owner/value pair. Plan validation
- * establishes uniqueness, so callers borrow the request without mutation.
+ * Return the first borrowed owner/value request or NULL, without proving
+ * uniqueness. Caller supplies readable count-sized arrays; validated plans
+ * establish uniqueness before commit. No output/table mutation or PU activation.
  */
 static const DSL_RUNTIME_VALUE_PROJECTION_REQUEST *
 DSL_Runtime_Interface_Find_Value_Request
@@ -302,7 +306,9 @@ typedef struct {
     DSL_RUNTIME_VALUE_PROJECTION_ID projection_id;
 } DSL_RUNTIME_CREATED_VALUE;
 
-/* Resolve a source value to the handle symbol created during PU commit. */
+/* Return the first borrowed journal entry for a source value or NULL. The
+ * caller has already filtered created to one owner and keeps requests/vector
+ * stable; this does not validate handles or mutate the journal. */
 static const DSL_RUNTIME_CREATED_VALUE *
 DSL_Runtime_Interface_Find_Created
         (const std::vector<DSL_RUNTIME_CREATED_VALUE> &created,
@@ -362,8 +368,11 @@ DSL_Runtime_Interface_Find_Source_Value
 }
 
 /*
- * Preflight projected result-formal stores and journal their source/target
- * relations. No tree is changed; unsupported return shapes fail the whole PU.
+ * Preflight projected result-formal stores and append borrowed source/target
+ * relations to caller scratch. Require a readable validated plan, matching
+ * owner-local context and nonnull sites; NULL tree succeeds. A later unsupported
+ * store returns FALSE with optional diagnostics and leaves earlier scratch
+ * entries in place, but changes no tree/image rows. Scratch allocation escapes.
  */
 BOOL
 DSL_Runtime_Interface_Collect_Returns
@@ -465,8 +474,10 @@ DSL_Runtime_Interface_Function_TY
 
 /*
  * Create one owner-local runtime handle symbol from a validated projection.
- * The caller owns commit ordering; source position and formal storage class
- * are preserved from the canonical tensor source.
+ * Require a resident canonical source ST and validated request; derive AUTO,
+ * FORMAL or FORMAL_REF storage from binding_kind and copy the source position.
+ * Caller owns commit ordering and later tree placement; symbols/strings are
+ * allocated without a recoverable failure journal or canonical-TY mutation.
  */
 ST_IDX
 DSL_Runtime_Interface_Create_Handle_ST
@@ -602,7 +613,10 @@ DSL_Runtime_Interface_Preflight_PU
 /*
  * Commit runtime handle projection for one active PU after global and local
  * preflight. It rebuilds the FUNC_ENTRY prototype, rewrites call/return ABI,
- * then publishes projection rows and result counters as one phase operation.
+ * then appends projection rows/counters. Clear required result on entry; late
+ * FALSE may leave allocated handles/trees, and commit has no rollback journal,
+ * projection-ID success checks or final verifier. Owning phase must establish
+ * postconditions; allocation failures/assertions are not Boolean rollback.
  */
 BOOL
 DSL_Runtime_Interface_Apply_PU
@@ -624,6 +638,8 @@ DSL_Runtime_Interface_Apply_PU
              (pu, plan, &returns, diagnostic))
         return FALSE;
 
+    /* Preflight is complete. Handle allocation and subsequent entry/call
+     * replacement are not rolled back if a later commit helper fails. */
     ST_IDX owner_pu_st = PU_Info_proc_sym(pu);
     WN *old_entry = PU_Info_tree_ptr(pu);
     std::vector<DSL_RUNTIME_CREATED_VALUE> created;
@@ -808,8 +824,11 @@ DSL_Runtime_Interface_Tree_Uses_Source_ST
 
 /*
  * Verify a committed PU against persisted runtime projection rows. It checks
- * the rebuilt prototype, handle symbols, calls, returns, and absence of source
- * tensor uses without modifying either WHIRL or image state.
+ * the rebuilt prototype, handle symbols/source positions, formal/call ABI and
+ * absence of canonical source-symbol uses. Return-store semantics and local
+ * handle initialization/dominance are not independently proved. Caller keeps
+ * local symbols/shared rows/TYLISTs valid; no mutation, repair or PU activation.
+ * FALSE reports the first mismatch; NULL diagnostic is silent.
  */
 BOOL
 DSL_Runtime_Interface_Validate_PU (PU_Info *pu, FILE *diagnostic)

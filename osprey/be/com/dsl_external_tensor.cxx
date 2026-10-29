@@ -28,12 +28,16 @@
 #include "wn_util.h"
 #include "dsl_ir_rewrite_queries_internal.h"
 
-/* Update a preflighted call actual after materialization; the caller owns
- * the physical edit and no new mutation authority is exported. */
+/* Compare/replace the associated actual's logical value ID after preflight;
+ * no physical actual is changed here. Require a valid replacement; unmatched
+ * argument is a successful no-op and FALSE writes nothing. Caller owns WN edits. */
 extern BOOL DSL_Call_ABI_Image_Update_Argument_Value
                                 (const WN *, UINT32, DSL_IR_VALUE_ID,
                                  DSL_IR_VALUE_ID);
-/* Parse a complete decimal unsigned value with overflow/error rejection. */
+/* Parse with base-10 strtoull, rejecting NULL/empty, a leading '-' byte, ERANGE
+ * and unconsumed suffixes; FALSE preserves output. Libc leading whitespace/sign
+ * admission is retained, not a canonical unsigned-spelling guarantee. Success
+ * assigns caller storage; errno is cleared/set by parsing, no IR is changed. */
 static BOOL
 DSL_IR_Parse_Unsigned (const char *text, UINT64 *value)
 {
@@ -89,7 +93,11 @@ DSL_IR_Tensor_Element_Size (const char *dtype)
 
 /*
  * Derive exact dense tensor byte size from rank, static dimensions, and dtype.
- * Dynamic, malformed, or overflowing descriptors fail closed.
+ * Require valid shared descriptor strings, a known dtype, positive dimensions
+ * and rank agreement; reject dynamic syntax/overflow without output writes.
+ * The implemented bracket parser admits whitespace and a trailing comma, not
+ * a canonical-shape grammar. Optional size outputs are assigned only on TRUE;
+ * no descriptor/table mutation or allocation occurs.
  */
 static BOOL
 DSL_IR_Static_Tensor_Byte_Size
@@ -151,7 +159,10 @@ DSL_IR_Static_Tensor_Byte_Size
     return TRUE;
 }
 
-/* Return one canonical attribute value from a logical node, if present. */
+/* Return the first name-matching borrowed attribute text (empty literal for
+ * zero value). Require valid shared strings; NULL arguments, a missing row/name
+ * or no match returns FALSE without output writes. No duplicate, kind/schema
+ * or whole-node validation, interning or lifetime extension is performed. */
 static BOOL
 DSL_IR_Node_Attribute
         (const DSL_IR_NODE_RECORD &node,
@@ -177,8 +188,11 @@ DSL_IR_Node_Attribute
 
 /*
  * Resolve one external tensor value into a typed, borrowed side-file reference
- * plus canonical tensor TCON. It validates owner, descriptor, range, checksum,
- * and metadata agreement and performs no mutation.
+ * and optional legacy TCON facts. Clear required output first, then check owner,
+ * resident ST/type, descriptor size/range, checksum spelling and URI agreement.
+ * Missing legacy checksum/TCON is allowed; a supplied TCON must match side-file
+ * geometry. Success borrows strings, not payloads; no file read, digest-content
+ * authentication, PU activation or table mutation. Allocation failures escape.
  */
 BOOL
 DSL_IR_Image_Get_External_Tensor_Reference
@@ -366,8 +380,10 @@ static std::vector<DSL_IR_EXTERNAL_SOURCE_SNAPSHOT>
     DSL_ir_external_source_snapshots;
 static UINT32 DSL_ir_external_source_generation = 1;
 
-/* Discard copied source proofs and advance the nonzero generation so all old
- * handles reject. Persistent rows, WNs and payload files are untouched. */
+/* Discard copied source proofs and advance the nonzero 32-bit generation,
+ * rejecting handles from the previous generation. This is a process-local
+ * lifetime fence, not unbounded uniqueness after generation wraparound.
+ * Persistent rows, WNs and payload files are untouched; no PU activation. */
 void
 DSL_IR_External_Tensor_Source_Reset (void)
 {
@@ -377,7 +393,11 @@ DSL_IR_External_Tensor_Source_Reset (void)
         ++DSL_ir_external_source_generation;
 }
 
-/* Capture a caller-owned external value before switching local symtabs. */
+/* Capture validated external facts from the exact Current_PU_Info before a
+ * caller switches locals. Clear nonnull output on entry; require a TCON and
+ * 64-lowercase-hex checksum, then append copied strings/scalars and publish the
+ * generation/index handle. No image/WN/file writes; shared source rows remain
+ * caller-owned and allocation exceptions are not converted to FALSE. */
 BOOL
 DSL_IR_Capture_External_Tensor_Source
         (PU_Info *source_pu_info,
@@ -425,7 +445,9 @@ DSL_IR_Capture_External_Tensor_Source
 }
 
 /* Borrow a copied source snapshot only when generation and one-based index
- * match. NULL rejects stale/invalid handles; no PU switch or mutation. */
+ * match. NULL rejects mismatches; returned storage expires on snapshot-vector
+ * reallocation/reset, so do not keep it across another capture. No PU switch
+ * or mutation; generation wraparound is not an indefinite freshness proof. */
 static const DSL_IR_EXTERNAL_SOURCE_SNAPSHOT *
 DSL_IR_External_Tensor_Source_Snapshot
         (DSL_IR_EXTERNAL_TENSOR_SOURCE_HANDLE handle)
@@ -440,8 +462,11 @@ DSL_IR_External_Tensor_Source_Snapshot
 
 /*
  * Validate one persisted runtime-input row, including source tensor/TCON,
- * stable role, handle TY, and owner-sensitive value identity. This predicate
- * is shared by mapped-image validation and program-plan preflight.
+ * pointer handle kind and owner-sensitive source identity. If an external
+ * source owner is already active, also check resident reference facts; never
+ * activate it. Require valid shared rows/strings/types/TCONs. Stable role, row
+ * IDs, flags/reserved and full physical ABI are caller/outer-validator checks,
+ * not checked here. Read-only, FALSE changes nothing; no payload authentication.
  */
 BOOL
 DSL_Program_Interface_Runtime_Input_Contract_Valid
@@ -514,7 +539,10 @@ DSL_Program_Interface_Runtime_Input_Contract_Valid
 /*
  * Preflight one converted external tensor request: source policy, call target,
  * TCON/path/range/checksum, type, shape, and provenance must all agree. It
- * records no symbols, values, or call edits.
+ * records no symbols, values, or call edits. Caller supplies selected-PU locals,
+ * readable strings and nonnull uri/payload scratch. source_value is cleared
+ * first and may be filled before later FALSE; strings are produced on success.
+ * No payload read/computation/authentication or allocation-exception rollback.
  */
 static BOOL
 DSL_IR_External_Tensor_Request_Valid
@@ -766,6 +794,8 @@ DSL_IR_Materialize_External_Tensor_Values
     if (descriptor_id == DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID)
         return FALSE;
 
+    /* Every request is accepted before clearing output and publishing symbols,
+     * trees and image rows. Commit failures have no general rollback journal. */
     memset(results, 0, request_count * sizeof(*results));
 
     for (UINT32 i = 0; i < request_count; ++i) {
@@ -882,7 +912,9 @@ DSL_IR_Typed_External_Tensor_Value_Request_Init
         memset(request, 0, sizeof(*request));
 }
 
-/* A transformation label is lineage, never an executable opcode. */
+/* Admit a nonempty lineage label containing '.' and only alnum/underscore/dot.
+ * This is spelling admission, not a registered transformation or executable
+ * opcode lookup; NULL rejects and no strings or IR are changed. */
 static BOOL
 DSL_IR_Transformation_Name_Valid (const char *name)
 {
@@ -896,7 +928,11 @@ DSL_IR_Transformation_Name_Valid (const char *name)
     return TRUE;
 }
 
-/* Read-only active-PU query for one owner-qualified persisted lineage. */
+/* Clear required lineage output, verify destination reference/typed marker and
+ * source owner/value constant facts, then publish scalars/borrowed name text.
+ * Caller supplies active destination locals and valid shared source tables;
+ * source locals are not activated. FALSE leaves zero output; no IR/file writes
+ * or complete transformation/numerical proof, and scratch allocations escape. */
 BOOL
 DSL_IR_Image_Get_Typed_External_Tensor_Lineage
         (ST_IDX owner_pu_st,
@@ -979,7 +1015,11 @@ DSL_IR_Image_Get_Typed_External_Tensor_Lineage
     return TRUE;
 }
 
-/* Check complete typed-row lineage while this PU's local STs are active. */
+/* Scan owner-qualified values under resident selected-PU locals: check local ST
+ * bounds even on untyped rows and require valid lineage for any typed marker.
+ * Producerless rows are skipped after ST checks. No physical-definition, payload
+ * or full core proof; FALSE is sometimes silent even with diagnostic supplied.
+ * No mutation/PU activation; shared row/string validity is a prerequisite. */
 BOOL
 DSL_IR_Typed_External_Tensor_Validate_PU
         (PU_Info *pu_info, FILE *diagnostic)
@@ -1030,7 +1070,11 @@ DSL_IR_Typed_External_Tensor_Validate_PU
     return TRUE;
 }
 
-/* Validate a typed result and captured source without inactive local STs. */
+/* Preflight one typed destination against a live copied source handle and
+ * shared source identity, descriptor/TCON/range/path/checksum/lineage facts.
+ * Caller supplies a derived containing BLOCK and nonnull string scratch; no
+ * inactive local ST access or PU switch. FALSE leaves strings unchanged; TRUE
+ * fills URI/payload only. No payload authentication; allocation failures escape. */
 static BOOL
 DSL_IR_Typed_External_Tensor_Request_Valid
         (const DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST &request,
@@ -1231,6 +1275,8 @@ DSL_IR_Materialize_Typed_External_Tensor_Values
     if (descriptor_id == DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID)
         return FALSE;
 
+    /* Preflight used copied source facts rather than activating source PUs.
+     * From here on, append destination symbols/rows without exception rollback. */
     for (UINT32 i = 0; i < request_count; ++i) {
         const DSL_IR_TYPED_EXTERNAL_TENSOR_VALUE_REQUEST &request =
             requests[i];
@@ -1324,7 +1370,8 @@ DSL_IR_Materialize_Typed_External_Tensor_Values
     return TRUE;
 }
 
-/* Keep persisted checksum and identity fields in canonical lowercase form. */
+/* Test exactly 64 lowercase hexadecimal digest characters; NULL rejects.
+ * This does not normalize/write the text or hash/authenticate any payload. */
 static BOOL
 DSL_IR_Lowercase_SHA256_Valid (const char *digest)
 {
@@ -1338,7 +1385,11 @@ DSL_IR_Lowercase_SHA256_Valid (const char *digest)
     return TRUE;
 }
 
-/* No source tensor is implied by this generated-value admission check. */
+/* Preflight a source-free generated value's descriptor, dense TCON geometry,
+ * path/range, provenance label/version and three lowercase digest spellings.
+ * Require shared types/strings and nonnull URI/payload scratch; caller proves
+ * insertion membership. FALSE preserves scratch, TRUE fills owned strings;
+ * no symbol/row/file writes, geometry computation or digest authentication. */
 static BOOL
 DSL_IR_Generated_External_Tensor_Request_Valid
         (const DSL_IR_GENERATED_EXTERNAL_TENSOR_REQUEST &request,
@@ -1441,7 +1492,11 @@ DSL_IR_Generated_External_Tensor_Request_Init
         memset(request, 0, sizeof(*request));
 }
 
-/* Resolve owner-local generated provenance without interpreting geometry. */
+/* Clear required provenance output, then verify the selected owner's reference,
+ * exclusive generated marker, field spellings and bounded ordinals. Publish
+ * borrowed names/digests only on TRUE; FALSE leaves zero output. Require valid
+ * shared tables and matching resident locals; no geometry interpretation,
+ * payload authentication, row mutation or PU activation. Allocations escape. */
 BOOL
 DSL_IR_Image_Get_Generated_External_Tensor_Provenance
         (ST_IDX owner_pu_st, DSL_IR_VALUE_ID value_id,
@@ -1504,7 +1559,11 @@ DSL_IR_Image_Get_Generated_External_Tensor_Provenance
     return TRUE;
 }
 
-/* Verify every generated result while its local ST table is selected. */
+/* Scan owner-qualified values with resolvable producers for generated markers,
+ * validate provenance and reject repeated generated names/semantic identities.
+ * Caller has prevalidated core links and selected resident owner locals; missing
+ * producers are skipped, not a full core error check. No tree/file/row mutation
+ * or geometry proof; some FALSE paths are silent and scratch allocations escape. */
 BOOL
 DSL_IR_Generated_External_Tensor_Validate_PU
         (PU_Info *pu_info, FILE *diagnostic)
@@ -1647,6 +1706,8 @@ DSL_IR_Materialize_Generated_External_Tensor_Values
     if (descriptor_id == DSL_IR_OPCODE_DESCRIPTOR_INVALID_ID)
         return FALSE;
 
+    /* Commit trusts the reviewed generation identity and digest spelling;
+     * payload contents and geometry computation remain the producer's job. */
     for (UINT32 i = 0; i < request_count; ++i) {
         const DSL_IR_GENERATED_EXTERNAL_TENSOR_REQUEST &request = requests[i];
         ST_IDX st = DSL_Tensor_Create_Result_Symbol

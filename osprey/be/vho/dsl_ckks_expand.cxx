@@ -37,7 +37,9 @@
 
 #include "../com/dsl_ir_rewrite_queries_internal.h"
 
-/* Commit-only helpers; public callers use the transactional APIs below. */
+/* Compare/replace one associated call-ABI value after owner preflight; FALSE
+ * changes nothing and a missing argument is a TRUE no-op. No physical actual
+ * edit or broader rollback; the expansion journal coordinates those. */
 extern BOOL DSL_Call_ABI_Image_Update_Argument_Value
                                 (const WN *, UINT32, DSL_IR_VALUE_ID,
                                  DSL_IR_VALUE_ID);
@@ -79,7 +81,10 @@ DSL_IR_CKKS_Report (FILE *diagnostic, const char *message, UINT32 index)
     return FALSE;
 }
 
-/* The opcode registry, not a frontend payload, owns exact static attributes. */
+/* Match every registry schema name exactly once with no extra step attributes,
+ * then require nonempty values without forbidden payload separators. Require
+ * readable count-sized step arrays; no semantic value/numerical proof, string
+ * interning or mutation. FALSE rejects only this static admission contract. */
 static BOOL
 DSL_IR_CKKS_Attributes_Match
         (const DSL_OPERATOR_INFO &info,
@@ -179,7 +184,10 @@ typedef struct {
     std::vector<WN *> addresses;
 } DSL_IR_CKKS_USE_SCAN;
 
-/* The address exception is limited to an exact read-only call-ABI actual. */
+/* Census one source definition plus subsequent LDID reads and only preflighted
+ * call-actual LDA pointers in caller scratch. Reject other definitions, early
+ * uses and escapes by clearing valid; lists/counts may already be partial.
+ * Require initialized scan/live WNs; no tree writes or general CFG proof. */
 static void
 DSL_IR_CKKS_Scan_Tree (WN *wn, DSL_IR_CKKS_USE_SCAN *scan)
 {
@@ -346,7 +354,10 @@ DSL_IR_CKKS_Preflight_Calls
     return TRUE;
 }
 
-/* V1 accepts a formal or a same-BLOCK definition before the source STID. */
+/* With validated resident value ST and a known containing BLOCK/source STID,
+ * accept FORMAL/FORMAL_REF immediately or an earlier same-ST STID in that BLOCK.
+ * Read-only restricted ordering check, not unique-def or general CFG dominance;
+ * caller keeps symbols/tree alive and proves source membership separately. */
 static BOOL
 DSL_IR_CKKS_Operand_Dominates
         (WN *block, WN *source_definition,
@@ -395,8 +406,11 @@ DSL_IR_CKKS_Has_Handle_Address_Use (const WN *wn, ST_IDX handle_st)
     return FALSE;
 }
 
-/* A projected result is defined by its exact by-reference call, not its
- * semantic tensor ST. Keep the logical value ID in the DSL image. */
+/* Resolve a validated existing value to its semantic ST/TY or one exact projected
+ * result handle with a preceding initialized by-reference CALL in this BLOCK.
+ * Require nonnull physical scratch and resident owner/shared context; initialize
+ * scratch before checks, so FALSE can leave it filled. No row/WN writes or PU
+ * switch; handle initialization checks STID type/order, not its full RHS meaning. */
 static BOOL
 DSL_IR_CKKS_Resolve_Existing_Operand
         (WN *block, WN *source_definition, ST_IDX owner_pu_st,
@@ -513,7 +527,9 @@ DSL_IR_CKKS_Resolve_Existing_Operand
 
 /* Validate the complete caller-selected expansion against the exact active
  * PU, schema, groups, contexts, physical uses and operands. Fill borrowed-
- * pointer scratch only; rejection does not mutate IR or consume inputs. */
+ * pointer scratch only; rejection may leave partial scratch but does not mutate
+ * IR or consume inputs. Caller supplies safe shared references/local context;
+ * scratch allocation escapes and this is not a numerical/cryptographic proof. */
 static BOOL
 DSL_IR_CKKS_Preflight
         (PU_Info *pu_info, const DSL_CKKS_EXPANSION_REQUEST *request,
@@ -802,7 +818,10 @@ DSL_CKKS_Expand_Set_Test_Fault (UINT32 stage)
 
 /* Append one preflighted CKKS step as managed node/value/operand/attribute
  * rows, deriving links from earlier step results. Caller owns capacity and
- * complete rollback on failure; no physical insertion here. */
+ * complete rollback on failure; no physical insertion here. Require nonnull
+ * result and valid preflighted strings/operands/ST; FALSE may leave interned
+ * strings and appended row prefixes, while result is published only on TRUE.
+ * No whole-image validation or exception recovery is supplied by this helper. */
 static BOOL
 DSL_IR_CKKS_Add_Image_Step
         (ST_IDX owner_pu_st, const DSL_CKKS_EXPANSION_STEP &step,
@@ -880,7 +899,11 @@ DSL_IR_CKKS_Add_Image_Step
  * Atomically replace one owner-qualified native DSL value with its complete
  * CKKS event expansion. The transaction redirects physical reads, call ABI,
  * REGION, optional runtime projections, and managed-image references together;
- * every late failure restores all of them before returning FALSE.
+ * every reported late failure attempts coordinated restoration and verifies it
+ * before returning FALSE with cleared count-sized results. Earlier preflight/
+ * savepoint rejection preserves output; failed restoration stops compilation.
+ * Allocation exceptions are not caught and have no journal-unwind guarantee.
+ * Success deletes the source definition and publishes step results; no PU switch.
  */
 BOOL
 DSL_IR_Expand_Native_Value_To_CKKS_Events
@@ -898,6 +921,8 @@ DSL_IR_Expand_Native_Value_To_CKKS_Events
              &calls, &scan, &physical_operands, diagnostic))
         return FALSE;
 
+    /* Couple append-only image/string savepoints with the physical mutation
+     * journal below; neither savepoint alone can restore an expansion. */
     DSL_CKKS_IMAGE_SAVEPOINT image_savepoint;
     DSL_CKKS_STRTAB_SAVEPOINT string_savepoint;
     if (!DSL_IR_Image_CKKS_Save(source.id, &image_savepoint) ||
@@ -1124,6 +1149,8 @@ DSL_IR_Expand_Native_Value_To_CKKS_Events
         return TRUE;
     }
 
+    /* Undo only the stages reached, then validate the coordinated restoration.
+     * A failed restore is fatal rather than a recoverable transaction FALSE. */
     const DSL_CKKS_EXPANSION_STEP_RESULT &final_result =
         produced[request->final_step_index];
     BOOL restored = TRUE;

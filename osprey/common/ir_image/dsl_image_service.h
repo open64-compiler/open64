@@ -284,7 +284,7 @@ extern BOOL DSL_PU_Interface_Image_Has_Records (void);
  * prove local ST residency, TY validity beyond a nonzero index, value owner
  * metadata, contiguous ordinals or physical interface coverage. Read-only;
  * FALSE reports the first error, NULL diagnostic is silent. Implemented in
- * dsl_ir_rewrite.cxx; no callee PU activation is needed. */
+ * be/com/dsl_pu_interface_verify.cxx; no callee PU activation is needed. */
 extern BOOL DSL_PU_Interface_Image_Validate (FILE *diagnostic);
 
 /* Require an aligned, readable section independent of live formal storage,

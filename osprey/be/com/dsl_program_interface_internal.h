@@ -12,13 +12,19 @@
 
 #include "dsl_ir_image.h"
 
-/* Clear all process-local plan and PU commit evidence. */
+/* Clear the prepared key, committed-PU list and mapped-eligibility flag at a
+ * caller-controlled program/image boundary. No persisted rows or WNs change;
+ * this is invalidation, not restoration of earlier commit evidence. */
 extern void DSL_Program_Interface_Reset_Commit_State (void);
 
-/* Mark a successfully loaded mapped interface as fully committed. */
+/* Set mapped eligibility for every owner after successful image loading. This
+ * setter performs no structural/physical verification and clears neither the
+ * prepared key nor the per-PU list; caller owns loading and lifetime ordering. */
 extern void DSL_Program_Interface_Mark_Mapped_Committed (void);
 
-/* Test whether reader-side physical validation applies to this PU now. */
+/* Report global mapped eligibility or exact membership in the committed-PU
+ * list. No owner/ST validation, physical-correctness proof, mutation or PU switch;
+ * callers use this only to decide whether to run the real physical verifier. */
 extern BOOL DSL_Program_Interface_PU_Is_Committed (ST_IDX owner_pu_st);
 
 #endif /* dsl_program_interface_internal_INCLUDED */

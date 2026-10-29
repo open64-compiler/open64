@@ -29,7 +29,8 @@
 #include "segmented_array.h"
 #include "strtab.h"
 
-/* Structural predicate implemented in dsl_ir_rewrite.cxx: check source value
+/* Structural predicate implemented in be/com/dsl_pu_interface_verify.cxx:
+ * check source value
  * ownership/ST/TY agreement, local-level nonzero source/handle ST indices and
  * pointer handle TY, using valid shared core/type/string state. Read-only; no
  * local-ST residency, physical handle or full projection-row/role proof. */
@@ -44,7 +45,7 @@ extern BOOL DSL_Program_Interface_Pointer_TY_Contract_Valid (TY_IDX);
  * activation or mutation; row IDs/roles/flags/reserved checks remain separate. */
 extern BOOL DSL_Program_Interface_Runtime_Input_Contract_Valid
                                 (const DSL_RUNTIME_INPUT_RECORD *);
-/* Retire rewrite-owned external-source snapshots and advance their nonzero
+/* Retire dsl_external_tensor.cxx-owned source snapshots and advance their nonzero
  * handle generation during whole-image reset. Does not reset persistent rows,
  * free external files or restore an earlier handle generation; no PU switch. */
 extern void DSL_IR_External_Tensor_Source_Reset (void);

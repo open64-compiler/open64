@@ -22,9 +22,17 @@ typedef struct {
     STR_IDX next_index;
 } DSL_CKKS_STRTAB_SAVEPOINT;
 
-/* Capture the current string table and append index; NULL rejects. */
+/* Capture the current table pointer and nonzero append index into caller POD
+ * storage. NULL output, absent table or zero index returns FALSE without output
+ * writes. No string copies, generation token, reservation or table mutation;
+ * caller must keep this exact store and its saved prefix alive until restore. */
 extern BOOL DSL_CKKS_Strtab_Save (DSL_CKKS_STRTAB_SAVEPOINT *savepoint);
-/* Restore only a matching live string table suffix; stale points reject. */
+/* Require a nonnull point with matching table pointer and nonzero saved index
+ * no greater than the current end; FALSE changes nothing. Then rewind the end
+ * and rebuild interning hashes, invalidating appended STR_IDX meanings. Pointer/
+ * bound checks do not detect reset/reuse of the same store or recover old bytes;
+ * caller excludes those cases and restores all consumers of discarded strings.
+ * No buffer shrink or wider rollback; hash-allocation failures are uncaught. */
 extern BOOL DSL_CKKS_Strtab_Restore
                      (const DSL_CKKS_STRTAB_SAVEPOINT *savepoint);
 

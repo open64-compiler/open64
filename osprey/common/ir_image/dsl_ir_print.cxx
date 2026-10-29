@@ -139,9 +139,10 @@ DSL_IR_Print_Tensor_Descriptor (FILE *file, TY_IDX ty)
     fprintf (file, "}");
 }
 
-/* Print stable ST identity and, only with matching resident locals, no-alias
- * metadata. Require valid shared strings; no PU switch, table writes or I/O
- * status. */
+/* Print the supplied numeric ST/name and conditionally borrow no-alias metadata
+ * when a resident scope has that ordinal and spelling. Those guards do not
+ * establish owner-PU identity; caller must supply the correct local context.
+ * Require a valid stream/shared strings; no PU switch, writes or I/O status. */
 static void
 DSL_IR_Print_Result_Symbol (FILE *file, ST_IDX st, STR_IDX name)
 {

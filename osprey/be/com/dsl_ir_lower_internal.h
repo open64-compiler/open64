@@ -43,14 +43,19 @@ typedef struct {
     BOOL valid;
 } DSL_IR_LOWER_STANDARD_BLOCK_SCAN;
 
-/* Test exact active-PU pointer identity without changing scope or resident
- * locals. */
+/* Test nonnull Current_PU_Info pointer equality only; no Current_pu, tree or
+ * local-scope residency proof. Caller establishes those contexts separately;
+ * no scope or compiler state is changed. */
 extern BOOL DSL_IR_Lower_Current_PU_Is (PU_Info *pu_info);
 /* Emit a lowering diagnostic when requested and return FALSE; no IR mutation. */
 extern BOOL DSL_IR_Lower_Report (FILE *diagnostic, UINT32 request_index,
                                  const char *message);
-/* Read-only preflight of a detached standard block and final result, filling
- * caller scratch; rejection does not consume or attach WNs. */
+/* Scan valid WNs using nonnull initialized scratch (expected source/handle,
+ * result pointer/position, counts and valid flag). Accumulate statement/handle
+ * counts and clear valid on native/source uses, position mismatch or a different
+ * handle definition. NULL tree is empty; already-invalid scratch stops early.
+ * Caller separately proves BLOCK detachment, final-STID placement and exactly
+ * one handle definition. No WN consumption, table mutation or PU activation. */
 extern void DSL_IR_Lower_Scan_Standard_Block
                     (const WN *tree, DSL_IR_LOWER_STANDARD_BLOCK_SCAN *scan);
 

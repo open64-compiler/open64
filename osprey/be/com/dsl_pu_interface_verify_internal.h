@@ -19,7 +19,8 @@ extern BOOL DSL_Program_Interface_Pointer_TY_Contract_Valid (TY_IDX ty);
 /* Require an existing tensor-extension TY without changing canonical types. */
 extern BOOL DSL_Program_Interface_Tensor_TY_Contract_Valid (TY_IDX ty);
 
-/* Require a nonzero in-range TCON index; no payload authentication is done. */
+/* Require a nonzero in-range TCON index; no tensor kind/storage/shape or payload
+ * authentication is proved. Shared tables are initialized; no mutation. */
 extern BOOL DSL_Program_Interface_TCON_Contract_Valid (TCON_IDX tcon);
 
 struct DSL_PU_FORMAL_ORDINAL_LESS {

@@ -80,7 +80,14 @@ typedef struct {
  * and each computed standard block's final result STID from its inputs. It
  * mutates WHIRL and logical lowered flags only after all requests, relations,
  * source uses, effects, and detached block contracts validate; failure before
- * commit leaves the physical tree and image unchanged.
+ * commit leaves the physical tree and image unchanged. Require stable arrays,
+ * resident owner locals/shared tables and request_count result slots; clear
+ * nonnull results before entry/preflight checks, so FALSE does not preserve
+ * old result contents. Detached replacement BLOCKs stay caller-owned on FALSE;
+ * success consumes their containers/statements and removes native definitions.
+ * Commit marks LOWERED or DEAD_ELIDED, applies REGION redirects and asserts
+ * image/relation/REGION postconditions, with no rollback journal or general
+ * allocation recovery. Caller retains policy and does not transfer PU scope.
  */
 extern BOOL DSL_IR_Lower_Native_Values_To_Standard_Blocks
                                 (PU_Info *pu_info,
@@ -91,7 +98,11 @@ extern BOOL DSL_IR_Lower_Native_Values_To_Standard_Blocks
                                  DSL_IR_NATIVE_VALUE_LOWER_RESULT *results);
 
 /* Batch preflight then elide dead pure tensor-constant definitions in one PU.
- * Rejection leaves the WHIRL tree and logical image unchanged. */
+ * Rejection leaves the WHIRL tree/image and required elided_count unchanged;
+ * TRUE sets the count after the reused lowering transaction succeeds. Require
+ * exact active-PU/shared identity context and a nonempty readable request array.
+ * Commit/postcheck failures assert rather than provide recoverable rollback;
+ * no payload/constant computation, PU activation or canonical-TY mutation. */
 extern BOOL DSL_IR_Elide_Dead_Native_Constants
                                 (PU_Info *pu_info,
                                  const DSL_IR_DEAD_NATIVE_CONSTANT_REQUEST
@@ -100,7 +111,14 @@ extern BOOL DSL_IR_Elide_Dead_Native_Constants
                                  FILE *diagnostic,
                                  UINT32 *elided_count);
 
-/* Complete-array grouped lowering consumes detached blocks only on success. */
+/* Preflight a nonempty complete group array in the selected active PU: verify
+ * unique pure members, contiguous same-BLOCK ordering (comments allowed), exact
+ * physical/logical use closure, output projections, retired-handle aliases and
+ * REGION transitions. Caller supplies stable arrays, valid shared/local context
+ * and request_count result slots; FALSE preserves results, IR and detached blocks.
+ * Success consumes blocks, removes native members, rewrites checked aliases,
+ * marks provenance LOWERED and fills results. Postchecks assert; there is no
+ * commit/exception rollback journal, candidate selection or PU activation. */
 extern BOOL DSL_IR_Lower_Native_Value_Groups_To_Standard_Blocks
                                 (PU_Info *pu_info,
                                  const DSL_IR_NATIVE_GROUP_LOWER_REQUEST

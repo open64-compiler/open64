@@ -69,14 +69,17 @@ extern void DSL_IR_Image_Clone_PU_Restore
 extern BOOL DSL_Call_Image_Replace_Call_WN
                 (DSL_CALLSITE_METADATA_ID id, const WN *expected,
                  WN *replacement);
-/* Shift managed formal ordinals at/after a selected-PU insertion point;
- * caller coordinates physical formals, ABI rows and final verification. */
+/* Preflight identity/count/overflow and shift managed ordinals at/after an
+ * insertion point, then structurally validate. FALSE before shifting preserves
+ * rows, but final-validator FALSE does not undo shifts. Caller coordinates
+ * physical formals/related rows and broader rollback; no PU activation. */
 extern BOOL DSL_PU_Interface_Image_Shift_Formals
                 (ST_IDX owner_pu_st, UINT32 first_ordinal,
                  UINT32 count);
-/* Shift managed actual ordinals at/after the insertion point for one
- * callsite. Caller owns the corresponding physical CALL/ABI transaction and
- * final validation. */
+/* Preflight callsite/count/overflow and matching actual/formal ordinals, then
+ * shift both at/after the insertion point and validate the ABI table. Early
+ * FALSE preserves rows; final-validator FALSE does not undo shifts. Caller owns
+ * physical CALL changes, postconditions and wider rollback; no PU activation. */
 extern BOOL DSL_Call_ABI_Image_Shift_Arguments
                 (DSL_CALLSITE_METADATA_ID callsite_id,
                  UINT32 first_ordinal, UINT32 count);

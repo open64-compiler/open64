@@ -19,7 +19,10 @@
  * reconstruction or status is provided. */
 extern void DSL_CKKS_Event_Image_Trim (UINT32 record_count);
 
-/* Focused transaction fault injection; zero disables the test hook. */
+/* Set the process-global focused rollback-test hook; zero disables it, stages
+ * 1-4 select implemented commit boundaries and other values are inert. The
+ * value is not consumed automatically, so test callers must reset it. No image,
+ * tree or active-PU state changes and no production optimization control. */
 extern void DSL_CKKS_Expand_Set_Test_Fault (UINT32 stage);
 
 #endif /* dsl_ckks_expand_internal_INCLUDED */

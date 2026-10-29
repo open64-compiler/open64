@@ -18,12 +18,11 @@ typedef struct pu_info PU_Info;
 typedef INT32 WN_MAP;
 
 /*
- * Runtime-only standard-WHIRL lowering transaction. The PU_Info supplied to
- * DSL_IR_Lower_Native_Values_To_Standard_Blocks is the sole owner/tree
- * authority; the native definition's containing BLOCK and a computed block's
- * final result STID are derived during preflight. Logical DSL node/value rows
- * remain immutable provenance and are marked LOWERED after their native
- * definition leaves the executable tree. No mapped-image row is added.
+ * Nonpersistent modes shared by physical lowering requests and derived image
+ * summaries. The owning transaction selects the active PU and derives physical
+ * BLOCK/result-STID facts; this header supplies neither a transaction nor PU
+ * authority. Source rows remain as provenance with their terminal flags updated
+ * after physical removal. No mode/result aggregate here adds a mapped row.
  */
 typedef enum {
     DSL_IR_NATIVE_LOWER_UNKNOWN = 0,
@@ -61,7 +60,7 @@ typedef struct {
 
 /* Resolve a LOWERED value's computed projection or primary promoted-input/root
  * relation from current, already-validated shared image tables; a compatible
- * local call projection may accompany the latter. Require nonnull result, not
+ * local value projection may accompany the latter. Require nonnull result, not
  * a presence probe. Success fills scalar IDs/handle and zero statement count;
  * no pointers or ownership are transferred. FALSE may leave result cleared
  * with source IDs assigned, so consume output only on TRUE. This is not full

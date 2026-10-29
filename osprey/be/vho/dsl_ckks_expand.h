@@ -2,7 +2,10 @@
  * Copyright (C) 2026 Open64 Project
  *
  * Owner-PU transaction for replacing one native DSL value with ordered
- * executable CKKS events. See
+ * executable CKKS events. Caller owns plan/policy, active-PU locals and shared
+ * image lifetime; these request/result structures are not persisted rows and
+ * add no mapped-layout change. Reported commit rejection uses bounded journals,
+ * not general allocation-exception recovery. See
  * doc/FHE-SYNC6-NATIVE-CKKS-EXPANSION-CONTRACT.md.
  */
 
@@ -79,13 +82,29 @@ typedef struct {
     ST_IDX result_st;
 } DSL_CKKS_EXPANSION_STEP_RESULT;
 
-/* Read-only preflight. It never reserves names or changes the active PU. */
+/* Preflight a complete borrowed request against the exact Current_PU_Info with
+ * resident locals, coherent shared images/strings/types and live source WNs.
+ * Check source identity/purity/use closure, ordered step groups, exact static
+ * attribute names, contexts, existing/prior-step operands and restricted physical
+ * dominance. No request/name reservation, file/IR writes or PU activation;
+ * TRUE does not prove numerical/cryptographic correctness or reserve future
+ * acceptance. FALSE may diagnose (NULL is silent); scratch allocations escape. */
 extern BOOL DSL_IR_Can_Expand_Native_Value_To_CKKS_Events
                                 (PU_Info *pu_info,
                                  const DSL_CKKS_EXPANSION_REQUEST *request,
                                  FILE *diagnostic);
 
-/* An accepted request publishes all steps or restores the active PU. */
+/* Recheck complete preflight, save core/string/event/symbol/metadata watermarks,
+ * build steps/events and redirect source WN/ABI/REGION/runtime/image uses.
+ * Caller supplies step_count result slots and stable borrowed arrays/strings.
+ * Success deletes the original source definition, retains PU-owned step WNs
+ * and publishes every scalar result after image/event/ABI/REGION postchecks.
+ * Entry/preflight/savepoint FALSE preserves result slots; later reported failure
+ * reverses recorded edits, removes appends and zeroes results. Failed restoration
+ * is a fatal compiler assertion, not a recoverable partial program. Allocation
+ * exceptions are not caught; no general exception rollback, PU switch, payload
+ * computation or canonical-TY mutation is promised. NULL diagnostic is silent
+ * except failed-rollback diagnostics may fall back to stderr. */
 extern BOOL DSL_IR_Expand_Native_Value_To_CKKS_Events
                                 (PU_Info *pu_info,
                                  const DSL_CKKS_EXPANSION_REQUEST *request,

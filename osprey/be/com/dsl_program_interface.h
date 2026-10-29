@@ -81,9 +81,14 @@ typedef struct {
 } DSL_PROGRAM_INTERFACE_RESULT;
 
 /*
- * Program-interface evolution is committed only through this combined
- * transaction.  The plan uses global identities; local ST/WN interpretation
- * occurs only while the owning PU is active.
+ * Preflight complete borrowed program/runtime plans against canonical shared
+ * images before the first PU commit; require count-sized arrays, readable role
+ * strings and valid referenced tables. Reject existing program-image rows,
+ * inconsistent retirement/projection coverage, input profiles or unrooted/cyclic
+ * binding flow. Does not prove physical deadness, activate PUs, install rows or
+ * cache a fingerprint; Apply_PU performs physical preflight and records its key.
+ * FALSE reports the first mismatch (NULL diagnostic is silent); scratch
+ * allocations may throw, but no WHIRL/image/commit evidence is changed here.
  */
 extern BOOL DSL_Program_Interface_Plan_Validate
                                 (const DSL_PROGRAM_INTERFACE_PLAN *program_plan,

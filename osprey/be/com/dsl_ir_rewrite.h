@@ -54,8 +54,11 @@ typedef struct {
 /*
  * Resolve one native STID definition to its stable logical result value in the
  * exact active PU. PU_Info is the sole owner authority; the query rejects an
- * inactive PU, local-ST collisions, and physical/logical opcode disagreement.
- * It borrows no state and performs no mutation.
+ * inactive PU, ambiguous owner-qualified rows and physical/logical opcode
+ * disagreement. Caller supplies valid shared/local tables; this does not prove
+ * definition membership in the tree or uniqueness of its physical STID. Optional
+ * output is a scalar row copy (NULL probes); FALSE preserves output. No retained
+ * WN/row pointer, table mutation or PU activation.
  */
 extern BOOL DSL_IR_Image_Find_Definition_Value
                                 (PU_Info *pu_info,
@@ -82,13 +85,21 @@ extern BOOL DSL_IR_Rewrite_Native_Value
  * one pure definition. The transaction derives the PU tree and common parent
  * BLOCK from PU_Info, preflights WHIRL, image, call-ABI, effect, and REGION
  * uses, then commits without accepting caller-supplied physical ownership.
+ * FALSE is preflight-only and leaves IR unchanged; post-commit image/runtime/
+ * REGION failures assert rather than roll back. No general allocation recovery
+ * or canonical-TY mutation. Caller supplies resident locals/shared tables and
+ * treats TRUE as completion of this selected-PU mechanism, not domain proof.
  */
 extern BOOL DSL_IR_Redirect_And_Retire_Native_Value
                                 (PU_Info *pu_info,
                                  const DSL_IR_NATIVE_VALUE_RETIRE_REQUEST
                                      *request);
 
-/* Cross-TY zero-motion view retirement; canonical TY records stay immutable. */
+/* Use the same selected-PU retirement preflight/commit boundary for distinct
+ * representation-preserving zero-motion view TYs. Also require unused retired
+ * projection handles and compatible replacement projection; redirect LDID TYs
+ * and record view retirement, leaving canonical TYs unchanged. FALSE precedes
+ * writes; postcheck failures assert with no rollback journal or PU switch. */
 extern BOOL DSL_IR_Redirect_And_Retire_Native_View
                                 (PU_Info *pu_info,
                                  const DSL_IR_NATIVE_VALUE_RETIRE_REQUEST

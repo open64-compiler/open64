@@ -17,8 +17,10 @@ typedef struct pu_info PU_Info;
 typedef INT32 WN_MAP;
 
 /* With driver-established active PU/tree/local-symbol context and consistent
- * call/value/interface/projection tables, check that PU's physical caller and
+ * call/value/interface/projection tables, including canonical formal rows for
+ * every represented callee-side argument, check that PU's physical caller and
  * callee ABI sides, accounting for retired slots and runtime projections.
+ * This does not replace full runtime/type/row or handle-initialization checks.
  * Does not activate other PUs or mutate trees/tables. FALSE reports the first
  * mismatch; NULL diagnostic is silent. Implemented in dsl_pu_interface_verify.cxx. */
 extern BOOL DSL_Call_ABI_Image_Validate_PU

@@ -1,7 +1,7 @@
 /*
  * Private backend-free physical PU queries shared by external tensors, native
- * rewrite and CKKS expansion. Keep internal linkage and one source definition of each query;
- * no tables, mutation authority or phase policy is exported.
+ * rewrite and CKKS expansion. One shared header definition gives each consumer
+ * an internal-linkage helper; no tables, mutation authority or policy is exported.
  * Design: doc/WHIRL-DSL-INFRASTRUCTURE.md, persistent IR / service separation.
  */
 
@@ -17,8 +17,10 @@
 #include "wn.h"
 
 /*
- * Resolve structured owner identity for a value row before local ST access.
- * This read-only check rejects owner-name aliases and local-index collisions.
+ * Match a value ID through exact owner-name/ST/name metadata before local ST
+ * access. Require valid shared row/string state and a global function owner;
+ * uniqueness comes from Find_PU_Value, not a physical tree/ST residency proof.
+ * Read-only; FALSE leaves caller data unchanged and no PU is activated.
  */
 static BOOL
 DSL_IR_Image_Value_Belongs_To_PU
@@ -34,7 +36,9 @@ DSL_IR_Image_Value_Belongs_To_PU
            owned_value.id == value.id;
 }
 
-/* Find the innermost active-PU BLOCK that directly contains target. */
+/* Search a caller-selected tree for pointer-equal target as a BLOCK statement;
+ * return its borrowed containing BLOCK, or NULL for missing/NULL inputs. No PU
+ * context is checked or changed, and nonstatement kids have no BLOCK result. */
 static WN *
 DSL_IR_Find_Containing_Block (WN *tree, const WN *target)
 {
@@ -61,8 +65,12 @@ DSL_IR_Find_Containing_Block (WN *tree, const WN *target)
 }
 
 /*
- * Resolve a by-reference call actual to its exact owner-local DSL value row.
- * The call and argument metadata must agree with physical ST/TY identity.
+ * Resolve a readonly, passed-not-saved by-reference LDA actual through its
+ * associated callsite owner and resident local ST/name. Caller supplies the
+ * active owner's valid shared/local context and readable WNs. This does not
+ * compare a call-ABI argument row, PARM/address TYs or the actual's source TY.
+ * Find_PU_Value copies on success (NULL output probes); FALSE preserves output.
+ * No mutation or PU activation; later materialization preflight proves types.
  */
 static BOOL
 DSL_IR_Value_From_Call_Actual
@@ -94,7 +102,9 @@ DSL_IR_Value_From_Call_Actual
                 ST_name(St_Table[owner_pu_st]), value);
 }
 
-/* Check whether an owner PU already has a structured value with this name. */
+/* Test exact owner-name metadata and value spelling across stored rows, including
+ * terminal provenance. Require valid global owner/name/shared strings; no local
+ * ST or tree proof, interning or mutation. Scratch allocation failures escape. */
 static BOOL
 DSL_IR_PU_Value_Name_Exists (ST_IDX owner_pu_st, const char *name)
 {

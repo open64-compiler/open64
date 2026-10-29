@@ -24,8 +24,10 @@
 
 /*
  * Validate one persisted runtime value projection independently of an active
- * local symtab. Reader and gatekeeper paths use this structural predicate; it
- * performs no mutation.
+ * local symtab. Require safe shared core/type/string and global owner state;
+ * check source ST/TY/owner metadata and local-level nonzero ST indices plus a
+ * pointer handle TY. No local residency, binding role/flags or physical-handle
+ * proof; those remain outer-validator/caller checks. Read-only, NULL rejects.
  */
 BOOL
 DSL_Runtime_Interface_Value_Record_Contract_Valid
@@ -72,7 +74,8 @@ DSL_Program_Interface_Tensor_TY_Contract_Valid (TY_IDX ty)
            TY_is_tensor_extension(ty);
 }
 
-/* Validate that a persisted tensor constant index resolves in TCON storage. */
+/* Check nonzero TCON index bounds only; no tensor kind, storage or payload proof.
+ * Shared storage is caller-initialized and no TCON/table is changed. */
 BOOL
 DSL_Program_Interface_TCON_Contract_Valid (TCON_IDX tcon)
 {
@@ -109,7 +112,11 @@ DSL_Call_ABI_Value_Matches_ST
 /*
  * Validate persisted call argument roles against one active caller/callee
  * physical ABI. It checks ordinals, directions, pointer contracts, and formal
- * identity without mutating the tree or mapped tables.
+ * identity without mutating the tree or mapped tables. Caller has validated
+ * shared row/string/TY identities and established resident active locals and
+ * canonical formal rows for represented callee arguments. This is not complete
+ * runtime ABI, full type/row or handle-initialization validation. Retired rows
+ * are skipped; first mismatch returns FALSE with optional diagnostics.
  */
 BOOL
 DSL_Call_ABI_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
@@ -135,6 +142,8 @@ DSL_Call_ABI_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
         if (retired)
             continue;
 
+        /* Inspect only this active caller's actuals; callee identities remain
+         * shared metadata, never permission to activate the opposite PU. */
         if (callsite.owner_pu_st == owner_pu_st) {
             const WN *call = DSL_Call_Image_Get_Call_WN(callsite.id);
             UINT32 effective_ordinal = argument.actual_ordinal;
@@ -210,6 +219,8 @@ DSL_Call_ABI_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
                            (diagnostic, "argument value mismatch", argument.id);
         }
 
+        /* The active callee side uses stored source ordinals minus retirements,
+         * substituting only its already-established runtime projection. */
         if (callsite.callee_pu_st == owner_pu_st) {
             UINT32 effective_ordinal = argument.callee_formal_ordinal;
             for (UINT32 retired_id = 1;
@@ -273,6 +284,10 @@ DSL_PU_Interface_PU_Report
 /*
  * Validate logical formal-row identity, ownership, uniqueness and matching
  * recorded ST/TY facts without a callee local symtab or physical tree proof.
+ * Owner is a live global function; source value owner metadata/TY table bounds,
+ * contiguous ordinal coverage and physical identity are not proved here.
+ * Require safe shared rows; first error returns FALSE with optional diagnostics,
+ * no table writes or PU activation.
  */
 BOOL
 DSL_PU_Interface_Image_Validate (FILE *diagnostic)
@@ -313,8 +328,12 @@ DSL_PU_Interface_Image_Validate (FILE *diagnostic)
 
 
 
-/* Cross-check the physical formal order, even when append-only row IDs are
- * not in ordinal order after insertion before hidden results. */
+/* Sort owned source rows by ordinal, skip retirements and compare remaining
+ * physical IDNAME/ST/TY/class with canonical or projected formals. Add runtime
+ * binding count for total coverage, without proving each binding's identity.
+ * Empty formal storage succeeds even for NULL pu; otherwise caller establishes
+ * active locals and valid shared/retirement/projection facts. No PU switch or
+ * tree/table edits; FALSE diagnoses first mismatch, scratch allocations escape. */
 BOOL
 DSL_PU_Interface_Image_Validate_PU (PU_Info *pu, FILE *diagnostic)
 {
