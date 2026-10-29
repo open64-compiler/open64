@@ -150,6 +150,8 @@ endif
 COMMON_UTIL_DIR= $(BUILD_TOT)/common/util
 COMMON_COM_DIR= $(BUILD_TOT)/common/com
 COMMON_FHE_DIR= $(BUILD_TOT)/common/fhe
+COMMON_IR_IMAGE_DIR= $(BUILD_TOT)/common/ir_image
+COMMON_TARG_INFO_ACCESS_DIR= $(BUILD_TOT)/common/targ_info/access
 COMMON_COM_TARG_DIR= $(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR)
 BE_COM_DIR= $(BUILD_TOT)/be/com
 BE_VHO_DIR= $(BUILD_TOT)/be/vho
@@ -222,11 +224,13 @@ LDIRT += dsl_normalization_contract_test dsl_normalization_contract_test.o
 LDIRT += dsl_normalization_ref_test dsl_normalization_ref_test.o
 LDIRT += opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 
-LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_FHE_DIR) \
+LCINCS = -I$(BUILD_BASE) -I$(BE_COM_DIR) -I$(COMMON_COM_DIR) \
+        -I$(COMMON_FHE_DIR) -I$(COMMON_IR_IMAGE_DIR) \
 	-I$(COMMON_COM_TARG_DIR) \
-	-I$(COMMON_UTIL_DIR) -I$(BE_COM_DIR) -I$(BE_VHO_DIR) -I$(BE_OPT_DIR) $(XINC)  \
+        -I$(COMMON_UTIL_DIR) -I$(BE_VHO_DIR) -I$(BE_OPT_DIR) $(XINC)  \
         -I$(BUILD_TOT)/include
 LCINCS += -I$(BUILD_TOT)
+LCINCS += -I$(COMMON_TARG_INFO_ACCESS_DIR)
 ifeq ($(BUILD_OS), LINUX)
 LCINCS += -I$(BUILD_AREA)/include/libelf -I$(BUILD_TOT)/libjson/include
 endif
@@ -243,90 +247,99 @@ CFILES= \
 	$(COMMON_COM_SRC) \
 	$(COMMON_COM_TARG_SRC)
 
-COMMON_COM_CXX_SRC =	\
-	config.cxx	\
-	config_elf_targ.cxx \
-	const.cxx	\
-	dsl_builder.cxx \
-        dsl_gatekeeper.cxx \
-	dsl_contract.cxx \
-        dsl_domain.cxx	\
-        dsl_ir_image.cxx \
-        dsl_ckks_event.cxx \
-        dsl_ir_lower.cxx \
-        dsl_ir_group_lower.cxx \
-        dsl_program_interface.cxx \
-        dsl_ir_retype.cxx \
-        dsl_ckks_expand.cxx \
-        dsl_external_tensor.cxx \
-        dsl_pu_interface_verify.cxx \
-        dsl_ir_rewrite.cxx \
-        dsl_runtime_interface.cxx \
-        dsl_ir_print.cxx \
-        dsl_region.cxx \
-	dsl_memory_behavior.cxx \
-	dsl_opcode.cxx	\
-	dsl_opt_plan.cxx \
-	dsl_fusion_candidate.cxx \
-	dsl_layout_candidate.cxx \
-	dsl_distributed_candidate.cxx \
-	dsl_memory_hierarchy.cxx \
-	dsl_residency_candidate.cxx \
-	dsl_tile_candidate.cxx \
-	dsl_fetch_pipeline.cxx \
-	dsl_physical_plan.cxx \
-	dsl_runtime_variant.cxx \
-	dsl_telemetry_profile.cxx \
-	dsl_shape.cxx	\
-	dsl_tensor_analysis.cxx \
-	dsl_tensor_locality.cxx \
-	dsl_simp.cxx	\
-        dsl_tensor_evolution.cxx \
-        dsl_tensor_fold.cxx \
-	dwarf_DST.cxx	\
-	dwarf_DST_dump.cxx	\
-	dwarf_DST_mem.cxx	\
-	dwarf_DST_producer.cxx  \
-	glob.cxx	\
-	ir_bcom.cxx	\
-	ir_bread.cxx	\
-	ir_bwrite.cxx	\
-	ir_reader.cxx	\
-	irbdata.cxx	\
-	ir_verify.cxx   \
-	mtypes.cxx	\
-	opcode.cxx	\
-	opcode_core.cxx	\
-	pu_info.cxx	\
-	strtab.cxx	\
-	symtab.cxx	\
-	symtab_verify.cxx	\
-	wn.cxx		\
-	wn_map.cxx	\
-	wn_pragmas.cxx	\
-	wn_simp.cxx	\
-	wn_util.cxx	\
-	wutil.cxx	\
-	xstats.cxx	\
-	intrn_info.cxx
+COMMON_COM_CXX_SRC = \
+  config.cxx \
+  config_elf_targ.cxx \
+  const.cxx \
+  dsl_builder.cxx \
+  dsl_gatekeeper.cxx \
+  dsl_domain.cxx \
+  dsl_memory_behavior.cxx \
+  dsl_opcode.cxx \
+  dsl_telemetry_profile.cxx \
+  dsl_shape.cxx \
+  dsl_simp.cxx \
+  dsl_tensor_fold.cxx \
+  dwarf_DST.cxx \
+  dwarf_DST_dump.cxx \
+  dwarf_DST_mem.cxx \
+  dwarf_DST_producer.cxx \
+  glob.cxx \
+  ir_bcom.cxx \
+  ir_bread.cxx \
+  ir_bwrite.cxx \
+  ir_reader.cxx \
+  irbdata.cxx \
+  ir_verify.cxx \
+  mtypes.cxx \
+  opcode.cxx \
+  opcode_core.cxx \
+  pu_info.cxx \
+  strtab.cxx \
+  symtab.cxx \
+  symtab_verify.cxx \
+  wn.cxx \
+  wn_map.cxx \
+  wn_pragmas.cxx \
+  wn_simp.cxx \
+  wn_util.cxx \
+  wutil.cxx \
+  xstats.cxx \
+  intrn_info.cxx
 
 COMMON_FHE_CXX_SRC = \
-        fhe_image.cxx \
-        fhe_image_print.cxx \
-        fhe_plan.cxx \
-        fhe_plan_print.cxx
+  dsl_ckks_event.cxx \
+  fhe_image.cxx \
+  fhe_image_print.cxx \
+  fhe_plan.cxx \
+  fhe_plan_print.cxx
 
-# Runtime-only structural contract support, not the VHO optimizer.
-BE_VHO_CONTRACT_SRCS = dsl_accumulation.cxx
+# Direct VHO support required by readers/builders and contract fixtures.
+# Discovery and selection optimizer objects remain explicit test inputs.
+BE_VHO_CONTRACT_SRCS = \
+  dsl_ckks_expand.cxx \
+  dsl_opt_plan.cxx \
+  dsl_fusion_candidate.cxx \
+  dsl_layout_candidate.cxx \
+  dsl_distributed_candidate.cxx \
+  dsl_residency_candidate.cxx \
+  dsl_tile_candidate.cxx \
+  dsl_fetch_pipeline.cxx \
+  dsl_physical_plan.cxx \
+  dsl_runtime_variant.cxx \
+  dsl_tensor_analysis.cxx \
+  dsl_tensor_locality.cxx \
+  dsl_tensor_evolution.cxx \
+  dsl_shape_analysis.cxx \
+  dsl_accumulation.cxx
 
-BE_COM_SRCS =           \
-	wssa_defs.cxx   \
-	wssa_sym.cxx    \
-	wssa_mgr.cxx    \
-	wssa_wn.cxx     \
-	wssa_io.cxx     \
-	wssa_utils.cxx
- 
+COMMON_IR_IMAGE_CXX_SRC = \
+  dsl_contract.cxx \
+  dsl_ir_image.cxx \
+  dsl_ir_print.cxx \
+  dsl_region_image.cxx
+
+COMMON_TARG_INFO_CXX_SRCS = \
+        dsl_memory_hierarchy.cxx \
+        dsl_compute_profile.cxx
+
+BE_COM_SRCS = \
+  dsl_ir_lower.cxx \
+  dsl_ir_group_lower.cxx \
+  dsl_program_interface.cxx \
+  dsl_ir_retype.cxx \
+  dsl_external_tensor.cxx \
+  dsl_pu_interface_verify.cxx \
+  dsl_ir_rewrite.cxx \
+  dsl_runtime_interface.cxx \
+  dsl_region.cxx \
+  dsl_tensor_control_snapshot.cxx \
+  wssa_defs.cxx \
+  wssa_sym.cxx \
+  wssa_mgr.cxx \
+  wssa_wn.cxx \
+  wssa_io.cxx \
+  wssa_utils.cxx
 
 COMMON_COM_TARG_CXX_SRCS =	\
 	config_targ.cxx	\
@@ -335,7 +348,9 @@ COMMON_COM_TARG_CXX_SRCS =	\
 
 CXXFILES =		\
 	$(COMMON_COM_CXX_SRC) \
+        $(COMMON_IR_IMAGE_CXX_SRC) \
 	$(COMMON_FHE_CXX_SRC) \
+        $(COMMON_TARG_INFO_CXX_SRCS) \
 	$(COMMON_COM_TARG_CXX_SRCS) \
         $(BE_COM_SRCS) \
         $(BE_VHO_CONTRACT_SRCS)
@@ -367,10 +382,9 @@ install: default
 include $(COMMONRULES)
 
 VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_FHE_DIR) \
-	$(COMMON_COM_TARG_DIR) $(BE_COM_DIR) \
-	$(BE_VHO_DIR)
-# Preserve legacy source lookup precedence; these are relocated owners.
-VPATH += $(BUILD_TOT)/common/ir_image $(BUILD_TOT)/be/com $(BUILD_TOT)/be/vho
+        $(COMMON_COM_TARG_DIR) $(BE_COM_DIR) $(BE_VHO_DIR) \
+        $(COMMON_IR_IMAGE_DIR)
+VPATH += $(COMMON_TARG_INFO_ACCESS_DIR)
 
 ir_b2a: $(OBJECTS) ir_a2b.o
 	$(link.c++f) -o ir_b2a ir_a2b.o $(OBJECTS) $(LDFLAGS)
@@ -529,32 +543,32 @@ dsl_tile_candidate_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_tile_candidate_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-dsl_compute_realization_contract_test: dsl_compute_realization.o dsl_compute_realization_contract_test.o
-	$(link.c++f) -o $@ dsl_compute_realization_contract_test.o dsl_compute_realization.o $(LDFLAGS)
+dsl_compute_realization_contract_test: dsl_compute_realization.o dsl_compute_profile.o dsl_compute_realization_contract_test.o
+	$(link.c++f) -o $@ dsl_compute_realization_contract_test.o dsl_compute_realization.o dsl_compute_profile.o $(LDFLAGS)
 
-dsl_compute_realization.o: $(COMMON_COM_DIR)/dsl_compute_realization.cxx $(COMMON_COM_DIR)/dsl_compute_realization.h
+dsl_compute_realization.o: $(BE_VHO_DIR)/dsl_compute_realization.cxx $(BE_VHO_DIR)/dsl_compute_realization.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-dsl_compute_realization_contract_test.o: $(COMMON_COM_DIR)/tests/dsl_compute_realization_contract_test.cxx $(COMMON_COM_DIR)/dsl_compute_realization.h $(COMMON_COM_DIR)/tests/dsl_compute_test_fixture.h
+dsl_compute_realization_contract_test.o: $(COMMON_COM_DIR)/tests/dsl_compute_realization_contract_test.cxx $(BE_VHO_DIR)/dsl_compute_realization.h $(COMMON_COM_DIR)/tests/dsl_compute_test_fixture.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-dsl_compute_shadow_contract_test: dsl_compute_realization.o dsl_compute_model.o dsl_compute_shadow_opt.o dsl_compute_shadow_contract_test.o
+dsl_compute_shadow_contract_test: dsl_compute_realization.o dsl_compute_profile.o dsl_compute_model.o dsl_compute_shadow_opt.o dsl_compute_shadow_contract_test.o
 	$(link.c++f) -o $@ $^ $(LDFLAGS)
 
-dsl_compute_model.o: $(BE_VHO_DIR)/dsl_compute_model.cxx $(BE_VHO_DIR)/dsl_compute_model.h $(COMMON_COM_DIR)/dsl_compute_realization.h
+dsl_compute_model.o: $(BE_VHO_DIR)/dsl_compute_model.cxx $(BE_VHO_DIR)/dsl_compute_model.h $(BE_VHO_DIR)/dsl_compute_realization.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-dsl_compute_shadow_opt.o: $(BE_VHO_DIR)/dsl_compute_shadow_opt.cxx $(BE_VHO_DIR)/dsl_compute_shadow_opt.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h $(BE_VHO_DIR)/dsl_gemm_readiness.h $(BE_VHO_DIR)/dsl_compute_model.h $(COMMON_COM_DIR)/dsl_compute_realization.h
+dsl_compute_shadow_opt.o: $(BE_VHO_DIR)/dsl_compute_shadow_opt.cxx $(BE_VHO_DIR)/dsl_compute_shadow_opt.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h $(BE_VHO_DIR)/dsl_gemm_readiness.h $(BE_VHO_DIR)/dsl_compute_model.h $(BE_VHO_DIR)/dsl_compute_realization.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_compute_shadow_contract_test.o: $(BE_VHO_DIR)/tests/dsl_compute_shadow_contract_test.cxx $(COMMON_COM_DIR)/tests/dsl_compute_test_fixture.h $(BE_VHO_DIR)/dsl_compute_shadow_opt.h $(BE_VHO_DIR)/dsl_compute_model.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_compute_realization.o dsl_compute_realization_contract_test.o: \
-    $(BE_VHO_DIR)/dsl_accumulation.h $(COMMON_COM_DIR)/dsl_fetch_pipeline.h \
-    $(COMMON_COM_DIR)/dsl_tile_candidate.h $(COMMON_COM_DIR)/dsl_opt_plan.h \
-    $(COMMON_COM_DIR)/dsl_tensor_evolution.h $(COMMON_COM_DIR)/dsl_ir_image.h \
-    $(COMMON_COM_DIR)/dsl_memory_hierarchy.h $(COMMON_COM_DIR)/dsl_hardware_performance.h
+    $(BE_VHO_DIR)/dsl_accumulation.h $(BE_VHO_DIR)/dsl_fetch_pipeline.h \
+    $(BE_VHO_DIR)/dsl_tile_candidate.h $(BE_VHO_DIR)/dsl_opt_plan.h \
+    $(BE_VHO_DIR)/dsl_tensor_evolution.h $(COMMON_COM_DIR)/dsl_ir_image.h \
+    $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_memory_hierarchy.h $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_hardware_performance.h
 
 dsl_accumulation_contract_test: $(OBJECTS) controls.o dsl_accumulation_opt.o dsl_accumulation_contract_test.o
 	$(link.c++f) -o $@ dsl_accumulation_contract_test.o controls.o dsl_accumulation_opt.o $(OBJECTS) $(LDFLAGS)
@@ -586,7 +600,7 @@ dsl_wgmma_pipeline_model_opt.o: $(BE_VHO_DIR)/dsl_wgmma_pipeline_model_opt.cxx $
 dsl_wgmma_pipeline_contract_test.o: $(BE_VHO_DIR)/tests/dsl_wgmma_pipeline_contract_test.cxx $(BE_VHO_DIR)/tests/dsl_wgmma_contract_test.cxx $(BE_VHO_DIR)/dsl_wgmma_pipeline_opt.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-dsl_wgmma_pipeline_model_test: dsl_compute_realization.o dsl_compute_model.o dsl_typed_simt.o dsl_wgmma_pipeline_model_opt.o dsl_wgmma_pipeline_model_test.o
+dsl_wgmma_pipeline_model_test: dsl_compute_realization.o dsl_compute_profile.o dsl_compute_model.o dsl_typed_simt.o dsl_wgmma_pipeline_model_opt.o dsl_wgmma_pipeline_model_test.o
 	$(link.c++f) -o $@ $^ $(LDFLAGS)
 
 dsl_wgmma_pipeline_model_test.o: $(BE_VHO_DIR)/tests/dsl_wgmma_pipeline_model_test.cxx $(BE_VHO_DIR)/dsl_wgmma_pipeline_opt.h
@@ -616,7 +630,7 @@ dsl_fetch_pipeline_contract_test: $(OBJECTS) controls.o \
 
 dsl_fetch_pipeline_contract_test.o: $(BE_VHO_DIR)/dsl_fetch_pipeline_opt.h \
     $(BE_VHO_DIR)/dsl_gemm_readiness.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h \
-    $(COMMON_COM_DIR)/dsl_hardware_performance.h $(COMMON_COM_DIR)/dsl_memory_hierarchy.h
+    $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_hardware_performance.h $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_memory_hierarchy.h
 
 dsl_fetch_pipeline_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_fetch_pipeline_contract_test.cxx
@@ -700,7 +714,7 @@ dsl_tile_candidate_opt.o: $(BE_VHO_DIR)/dsl_tile_candidate_opt.cxx
 
 dsl_fetch_pipeline_opt.o: $(BE_VHO_DIR)/dsl_fetch_pipeline_opt.h \
     $(BE_VHO_DIR)/dsl_gemm_readiness.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h \
-    $(COMMON_COM_DIR)/dsl_hardware_performance.h $(COMMON_COM_DIR)/dsl_memory_hierarchy.h
+    $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_hardware_performance.h $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_memory_hierarchy.h
 
 dsl_fetch_pipeline_opt.o: $(BE_VHO_DIR)/dsl_fetch_pipeline_opt.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
@@ -1003,3 +1017,93 @@ whirl2mpl.o: LC++INCS += $(MAPLE_INCS)
 whirl2llvm.o: LC++INCS += $(MAPLE_INCS) $(LLVM_INCS)
 
 wn_util.o: HOSTDEFS += -DMONGOOSE_BE
+
+# Shared target-description dependencies for explicit standalone recipes.
+dsl_compute_profile.o: $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_compute_profile.cxx \
+    $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_compute_profile.h \
+    $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_compute_format.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_compute_realization.o dsl_compute_realization_contract_test.o \
+dsl_compute_model.o dsl_compute_shadow_opt.o dsl_compute_shadow_contract_test.o \
+dsl_typed_simt.o dsl_typed_simt_opt.o dsl_typed_simt_contract_test.o \
+dsl_wgmma_opt.o dsl_wgmma_contract_test.o \
+dsl_wgmma_pipeline_model_opt.o dsl_wgmma_pipeline_contract_test.o \
+dsl_wgmma_pipeline_model_test.o: \
+    $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_compute_profile.h \
+    $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_compute_format.h
+
+# Owner-qualified prerequisites for relocated and split DSL support.
+config.o: $(COMMON_COM_DIR)/config.cxx \
+    $(COMMON_UTIL_DIR)/config_dsl.cxx $(COMMON_UTIL_DIR)/config_dsl.h
+
+dsl_ckks_event.o: $(COMMON_FHE_DIR)/dsl_ckks_event.cxx \
+    $(COMMON_FHE_DIR)/dsl_ckks_event.h \
+    $(COMMON_FHE_DIR)/dsl_ckks_event_internal.h
+
+dsl_region_image.o: $(COMMON_IR_IMAGE_DIR)/dsl_region_image.cxx \
+    $(COMMON_IR_IMAGE_DIR)/dsl_region_image.h \
+    $(COMMON_IR_IMAGE_DIR)/dsl_region_store_internal.h \
+    $(COMMON_COM_DIR)/dsl_region.h $(BE_COM_DIR)/dsl_region.h
+
+dsl_region.o: $(BE_COM_DIR)/dsl_region.cxx \
+    $(BE_COM_DIR)/dsl_region.h $(BE_COM_DIR)/dsl_region_internal.h \
+    $(COMMON_COM_DIR)/dsl_region.h \
+    $(COMMON_IR_IMAGE_DIR)/dsl_region_image.h \
+    $(COMMON_IR_IMAGE_DIR)/dsl_region_store_internal.h
+
+dsl_tensor_control_snapshot.o: $(BE_COM_DIR)/dsl_tensor_control_snapshot.cxx \
+    $(BE_COM_DIR)/dsl_tensor_control_snapshot.h \
+    $(BE_COM_DIR)/dsl_tensor_control_snapshot_internal.h
+
+dsl_shape.o: $(COMMON_COM_DIR)/dsl_shape.cxx \
+    $(COMMON_COM_DIR)/dsl_shape.h $(COMMON_COM_DIR)/dsl_shape_fact_internal.h
+
+dsl_shape_analysis.o: $(BE_VHO_DIR)/dsl_shape_analysis.cxx \
+    $(BE_VHO_DIR)/dsl_shape_analysis.h $(COMMON_COM_DIR)/dsl_shape.h \
+    $(COMMON_COM_DIR)/dsl_shape_fact_internal.h
+
+dsl_distributed_candidate.o: $(BE_VHO_DIR)/dsl_distributed_candidate.cxx \
+    $(BE_VHO_DIR)/dsl_distributed_candidate.h
+
+dsl_fetch_pipeline.o: $(BE_VHO_DIR)/dsl_fetch_pipeline.cxx \
+    $(BE_VHO_DIR)/dsl_fetch_pipeline.h
+
+dsl_fusion_candidate.o: $(BE_VHO_DIR)/dsl_fusion_candidate.cxx \
+    $(BE_VHO_DIR)/dsl_fusion_candidate.h
+
+dsl_layout_candidate.o: $(BE_VHO_DIR)/dsl_layout_candidate.cxx \
+    $(BE_VHO_DIR)/dsl_layout_candidate.h
+
+dsl_opt_plan.o: $(BE_VHO_DIR)/dsl_opt_plan.cxx \
+    $(BE_VHO_DIR)/dsl_opt_plan.h
+
+dsl_physical_plan.o: $(BE_VHO_DIR)/dsl_physical_plan.cxx \
+    $(BE_VHO_DIR)/dsl_physical_plan.h
+
+dsl_residency_candidate.o: $(BE_VHO_DIR)/dsl_residency_candidate.cxx \
+    $(BE_VHO_DIR)/dsl_residency_candidate.h
+
+dsl_runtime_variant.o: $(BE_VHO_DIR)/dsl_runtime_variant.cxx \
+    $(BE_VHO_DIR)/dsl_runtime_variant.h
+
+dsl_tensor_analysis.o: $(BE_VHO_DIR)/dsl_tensor_analysis.cxx \
+    $(BE_VHO_DIR)/dsl_tensor_analysis.h
+
+dsl_tensor_evolution.o: $(BE_VHO_DIR)/dsl_tensor_evolution.cxx \
+    $(BE_VHO_DIR)/dsl_tensor_evolution.h
+
+dsl_tensor_locality.o: $(BE_VHO_DIR)/dsl_tensor_locality.cxx \
+    $(BE_VHO_DIR)/dsl_tensor_locality.h
+
+dsl_tile_candidate.o: $(BE_VHO_DIR)/dsl_tile_candidate.cxx \
+    $(BE_VHO_DIR)/dsl_tile_candidate.h
+
+dsl_tensor_analysis.o: $(BE_VHO_DIR)/dsl_tensor_analysis_internal.h
+
+dsl_tensor_locality.o: $(BE_VHO_DIR)/dsl_tensor_locality_internal.h \
+    $(BE_COM_DIR)/dsl_tensor_control_snapshot.h \
+    $(BE_COM_DIR)/dsl_tensor_control_snapshot_internal.h
+
+dsl_contract.o: $(COMMON_IR_IMAGE_DIR)/dsl_contract.cxx \
+    $(COMMON_IR_IMAGE_DIR)/dsl_contract.h

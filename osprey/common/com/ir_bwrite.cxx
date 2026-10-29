@@ -104,8 +104,8 @@
 #include "dsl_ckks_event.h"
 #include "fhe_image.h"
 #include "fhe_plan.h"
-#include "dsl_region.h"
-#include "dsl_region_internal.h"
+#include "../ir_image/dsl_region_image.h"
+#include "../../be/com/dsl_region_internal.h"
 #include "ir_bread.h"
 #ifndef OWN_ERROR_PACKAGE
 #include "dsl_gatekeeper.h"

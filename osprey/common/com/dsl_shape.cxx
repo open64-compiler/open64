@@ -1,8 +1,17 @@
 /*
  * Copyright (C) 2026 Open64 Project
+ * Common local schema predicates and inference reused during ingestion.
+ * PU-wide traversal/solver state lives in be/vho, not this shared service.
  * Contracts: doc/WHIRL-DSL-INFRASTRUCTURE.md;
  * row sum: doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md;
  * normalization: doc/AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md.
+ * Local facts/containers are transient scratch, not new .B records. Borrowed
+ * TY/image/string identities require the caller's live compiler context;
+ * no helper activates another PU or changes a descriptor, tree or image row.
+ * Temporary strings/vectors may allocate and allocation exceptions propagate.
+ * Structural inference does not certify full schemas, runtime storage, target
+ * support or transformation permissions. Ownership split:
+ * doc/DSL-BACKEND-OWNERSHIP-RELOCATION.md.
  */
 
 #include <ctype.h>
@@ -18,16 +27,21 @@
 #include <vector>
 
 #include "dsl_shape.h"
+#include "dsl_shape_fact_internal.h"
 #include "pu_info.h"
 #include "symtab.h"
 #include "wn.h"
 
+/* Check a borrowed TY index against the active type table before dereference;
+ * nonzero in-range index is not a tensor/schema validity guarantee. */
 static BOOL
 DSL_Shape_TY_Valid (TY_IDX ty)
 {
     return TY_IDX_index(ty) != 0 && TY_IDX_index(ty) < TY_Table_Size();
 }
 
+/* Read the active TY extension's four core attributes after the bounds check.
+ * Presence alone suffices here; no attribute parsing or table mutation. */
 BOOL
 DSL_Shape_Tensor_Core_Complete (TY_IDX ty)
 {
@@ -37,6 +51,8 @@ DSL_Shape_Tensor_Core_Complete (TY_IDX ty)
            TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_RANK) != NULL &&
            TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_SHAPE) != NULL;
 }
+/* Compare one borrowed schema value by exact text; two missing values match.
+ * Callers supply live tensor TYs; returned evidence retains no string pointer. */
 static BOOL
 DSL_Shape_Tensor_Key_Equal
         (TY_IDX ty0,
@@ -49,6 +65,9 @@ DSL_Shape_Tensor_Key_Equal
            value1 != NULL && strcmp(value0, value1) == 0;
 }
 
+/* Require core attributes, identical element TY/dtype and matching layout,
+ * sharding, placement, memory, quantization and runtime-state text. Read-only;
+ * rank/shape and other semantic keys are deliberately outside this subset. */
 static BOOL
 DSL_Shape_Tensor_Element_Representation_Compatible
         (TY_IDX ty0,
@@ -80,6 +99,9 @@ DSL_Shape_Tensor_Element_Representation_Compatible
     return TRUE;
 }
 
+/* Extend the read-only element/representation subset with exact rank spelling
+ * and optional exact shape spelling. This does not normalize symbolic shapes
+ * or compare every descriptor key; no table ownership is transferred. */
 BOOL
 DSL_Shape_Tensor_Compatible
         (TY_IDX ty0,
@@ -94,6 +116,8 @@ DSL_Shape_Tensor_Compatible
                                   (ty0, ty1, TY_TENSOR_SCHEMA_SHAPE));
 }
 
+/* Check core presence plus identical element TY/dtype for mixed-representation
+ * domain operands. Do not require rank, shape or storage attributes to match. */
 static BOOL
 DSL_Shape_Tensor_Element_Type_Compatible
         (TY_IDX ty0,
@@ -106,6 +130,10 @@ DSL_Shape_Tensor_Element_Type_Compatible
                (ty0, ty1, TY_TENSOR_SCHEMA_DTYPE);
 }
 
+/* Extract two trimmed nonempty matrix dimension strings into distinct caller
+ * buffers. Validate both lengths before writing, preserving both on failure.
+ * This lexical helper does not parse dimensions or reject suffix text after
+ * the last ']'; complete descriptor admission is the caller's responsibility. */
 static BOOL
 DSL_Shape_Parse_Matrix_Shape
         (const char *shape,
@@ -152,6 +180,9 @@ DSL_Shape_Parse_Matrix_Shape
     return TRUE;
 }
 
+/* Compare borrowed rank-2 shape text as [M,K]*[K,N]->[M,N] using bounded
+ * local buffers. Only exact trimmed dimension spellings prove equality here;
+ * rank, element representation and schema checks belong to the caller. */
 static BOOL
 DSL_Shape_Matmul_Shapes_Compatible
         (TY_IDX kid0_ty,
@@ -180,6 +211,10 @@ DSL_Shape_Matmul_Shapes_Compatible
            strcmp(result_dim0, kid0_dim0) == 0 &&
            strcmp(result_dim1, kid1_dim1) == 0;
 }
+/* Scan a borrowed node's attribute range in the active managed image/string
+ * tables. Return the first matching non-UNKNOWN value as a borrowed string
+ * (valid only while that table context remains live). Missing/unreadable rows
+ * return FALSE without writing optional value; no schema uniqueness check. */
 static BOOL
 DSL_Shape_Node_Attribute
         (const DSL_IR_NODE_RECORD *node,
@@ -201,6 +236,8 @@ DSL_Shape_Node_Attribute
     return FALSE;
 }
 
+/* Match a borrowed node attribute to a non-NULL expected string exactly, with
+ * no retention or mutation; missing, unknown or unreadable attributes fail. */
 static BOOL
 DSL_Shape_Attribute_Equals
         (const DSL_IR_NODE_RECORD *node,
@@ -212,6 +249,9 @@ DSL_Shape_Attribute_Equals
            value != NULL && strcmp(value, expected) == 0;
 }
 
+/* Parse a complete strtol base-10 spelling in INT32 range, allowing its leading
+ * whitespace/sign syntax. Publish optional output only on success; no errno
+ * recovery or compiler-state mutation is performed. */
 static BOOL
 DSL_Shape_Parse_Signed
         (const char *text,
@@ -229,6 +269,10 @@ DSL_Shape_Parse_Signed
     return TRUE;
 }
 
+/* Parse bracketed positive UINT64 extents, including [] and a trailing comma,
+ * into caller-owned vector scratch. NULL inputs preserve it; otherwise clear
+ * first, then append, so later failure leaves a partial vector. Reject overflow
+ * and trailing non-whitespace; scratch growth may allocate. */
 static BOOL
 DSL_Shape_Parse_Static_Shape
         (const char *shape,
@@ -276,6 +320,9 @@ DSL_Shape_Parse_Static_Shape
     return *cursor == '\0';
 }
 
+/* Parse into a private vector before publishing rank; parse failure preserves
+ * outputs. Once parsed, rank is written even on capacity/NULL-array failure;
+ * extent storage is touched only after all capacity checks. No table mutation. */
 BOOL
 DSL_Shape_Parse_Static_Dimensions
         (const char *shape,
@@ -299,6 +346,10 @@ DSL_Shape_Parse_Static_Dimensions
     return TRUE;
 }
 
+/* Check the static representation-view subset without changing either TY.
+ * Require matching storage size/alignment and listed representation keys, then
+ * compare overflow-checked element counts for ranks <=16 matching TY rank.
+ * Strides/runtime state and runtime alias legality are not established here. */
 BOOL
 DSL_Shape_Representation_Preserving_View
         (TY_IDX source_ty, TY_IDX view_ty)
@@ -358,6 +409,8 @@ DSL_Shape_Representation_Preserving_View
     return source_count == view_count;
 }
 
+/* Recognize the exact flatten.v2 zero-motion spelling only; no type, source
+ * storage or use-site evidence is consulted or changed. */
 BOOL
 DSL_Shape_Zero_Motion_View_Operator
         (UINT32 dsl_operator, UINT16 version)
@@ -365,6 +418,9 @@ DSL_Shape_Zero_Motion_View_Operator
     return dsl_operator == OPR_DSLFLATTEN && version == 2;
 }
 
+/* Write positive extents into caller text storage incrementally without heap
+ * allocation. Invalid pointers fail before writing; zero extents or insufficient
+ * capacity can leave a prefix/truncated string. Rank zero formats as []. */
 BOOL
 DSL_Shape_Format_Static_Dimensions
         (const UINT64 *dimensions,
@@ -395,6 +451,9 @@ DSL_Shape_Format_Static_Dimensions
     return written >= 0 && (size_t)written < buffer_size - used;
 }
 
+/* Parse a nonempty comma-only list of UINT64 decimals (no whitespace), accepting
+ * zero only when requested. NULL/empty preserves scratch; otherwise clear then
+ * append, retaining a parsed prefix on later failure/overflow. May allocate. */
 static BOOL
 DSL_Shape_Parse_Unsigned_List
         (const char *text,
@@ -428,8 +487,14 @@ DSL_Shape_Parse_Unsigned_List
     return !values->empty();
 }
 
+/* Parse all-decimal UINT64 text with checked accumulation, accepting zero;
+ * optional caller output is written only after the complete text succeeds. */
 static BOOL DSL_Shape_Parse_Unsigned(const char *, UINT64 *);
 
+/* Read exactly two comma-separated strtoull values from a live node attribute.
+ * Require digit-leading fields, no suffix, and optionally nonzero values;
+ * publish both caller slots only after success. libc range/errno overflow is
+ * not checked here, so this is not the checked unsigned-list parser. */
 static BOOL
 DSL_Shape_Parse_Pair
         (const DSL_IR_NODE_RECORD *node,
@@ -457,6 +522,8 @@ DSL_Shape_Parse_Pair
     return TRUE;
 }
 
+/* Parse a live TY's shape into caller vector scratch via the static parser;
+ * failure can leave a cleared/partial vector. No TY mutation; may allocate. */
 static BOOL
 DSL_Shape_Static_Dimensions
         (TY_IDX ty,
@@ -466,6 +533,8 @@ DSL_Shape_Static_Dimensions
                (TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_SHAPE), dimensions);
 }
 
+/* Compare borrowed extent vectors by length and exact UINT64 values, without
+ * allocation, shape normalization or mutation. */
 static BOOL
 DSL_Shape_Dimensions_Equal
         (const std::vector<UINT64> &left,
@@ -480,6 +549,9 @@ DSL_Shape_Dimensions_Equal
     return TRUE;
 }
 
+/* Check result shape against caller-derived static extents and require input/
+ * result element/representation compatibility. Allocate only local parse scratch;
+ * reject without modifying either borrowed TY or expected vector. */
 static BOOL
 DSL_Shape_Result_Dimensions
         (TY_IDX input_ty,
@@ -493,6 +565,9 @@ DSL_Shape_Result_Dimensions
                (input_ty, result_ty);
 }
 
+/* Check computed result extents, element/dtype, layout and quantization against
+ * a borrowed operand. Reject result placement=side_file or memory=external_data;
+ * other representation keys need not match. Local parse allocations only. */
 static BOOL
 DSL_Shape_Computed_Result_Dimensions
         (TY_IDX input_ty,
@@ -516,6 +591,10 @@ DSL_Shape_Computed_Result_Dimensions
            (memory == NULL || strcmp(memory, "external_data") != 0);
 }
 
+/* Validate linear.v2 (input, OI weight, bias) or v3 (no bias), with exact
+ * has_bias/transpose_input=false/transpose_weight=true/weight_layout=OI tokens.
+ * Static [...,K]*[N,K] produces [...,N], bias [N]; compare element types and
+ * result representation. Borrow all records/TYs; local vectors only, no writes. */
 static BOOL
 DSL_Shape_Linear_Result_Valid
         (const DSL_IR_NODE_RECORD *node,
@@ -558,6 +637,9 @@ DSL_Shape_Linear_Result_Valid
                (operands[0], result_ty, input);
 }
 
+/* Check attr.target_shape against static result extents and overflow-checked
+ * source/target element products, preserving element representation. Borrow
+ * node/TYs; scratch vectors may allocate, with no table/descriptor mutation. */
 static BOOL
 DSL_Shape_Reshape_Result_Valid
         (const DSL_IR_NODE_RECORD *node,
@@ -594,6 +676,9 @@ DSL_Shape_Reshape_Result_Valid
                (input_ty, result_ty);
 }
 
+/* Validate a zero-based full permutation with no repeats and the corresponding
+ * static result extents/representation. Borrow node/TYs; seen/extent vectors
+ * are private scratch and rejection leaves compiler state unchanged. */
 static BOOL
 DSL_Shape_Transpose_Result_Valid
         (const DSL_IR_NODE_RECORD *node,
@@ -623,6 +708,10 @@ DSL_Shape_Transpose_Result_Valid
     return DSL_Shape_Result_Dimensions(input_ty, result_ty, expected);
 }
 
+/* Validate v2 static matmul using exact true/false transpose tokens, exact
+ * batch_rule and float32 accumulation. Require equal batch extents, matching
+ * contraction K and result [...,M,N]; no broadcast, TY mutation or target choice.
+ * Caller dispatch establishes version/arity; vectors are local scratch. */
 static BOOL
 DSL_Shape_Matmul_V2_Result_Valid
         (const DSL_IR_NODE_RECORD *node,
@@ -681,6 +770,9 @@ DSL_Shape_Matmul_V2_Result_Valid
     return DSL_Shape_Result_Dimensions(kid0_ty, result_ty, expected);
 }
 
+/* Check exact result compatibility plus v2 semantic=logits, or v3 rank-3
+ * semantic=token_logits with sequence_axis=-2/vocabulary_axis=-1. Borrow
+ * node/TYs, allocate only local shape scratch, and reject without mutation. */
 static BOOL
 DSL_Shape_Output_Logits_Result_Valid
         (const DSL_IR_NODE_RECORD *node,
@@ -707,6 +799,9 @@ DSL_Shape_Output_Logits_Result_Valid
            dimensions.size() == 3;
 }
 
+/* Read a borrowed attribute as a complete strtod value >0 and <=DBL_MAX;
+ * this host-number predicate is not a canonical FP32-bit binding. No output,
+ * descriptor mutation or target numeric-environment permission results. */
 static BOOL
 DSL_Shape_Positive_Float_Attribute
         (const DSL_IR_NODE_RECORD *node,
@@ -721,6 +816,14 @@ DSL_Shape_Positive_Float_Attribute
     return end != text && *end == '\0' && value > 0.0 && value <= DBL_MAX;
 }
 
+/* Check local static transformer contracts on live node/TY inputs using private
+ * vectors: int64 tokens/[V,H] float32 embeddings; last-axis FP32 RMSNorm with
+ * positive epsilon; BHSD half_split rotary v1 static positions or v2 explicit
+ * int64 position operand; equal-head attention v1 full_sequence/causal/none or
+ * v2 single_token_decode/implicit_prefix_causal/functional_append; rank-3 silu
+ * SwiGLU with exact shapes. Enforce the branch's layout/axis/scale tokens and
+ * descriptor subset only. Dispatch owns supported versions; no lowering,
+ * runtime bounds proof, allocation of compiler records or target policy. */
 static BOOL
 DSL_Shape_Transformer_Result_Valid
         (DSL_OPERATOR dsl_operator,
@@ -893,6 +996,11 @@ DSL_Shape_Transformer_Result_Valid
            DSL_Shape_Result_Dimensions(operands[0], result_ty, kid0);
 }
 
+/* Validate three static NCHW/OIHW convolution operands with group/channel/bias
+ * consistency and positive kernel/stride/dilation, nonnegative padding. Derive
+ * spatial floor extents after local arithmetic guards and compare result
+ * representation. No descriptor writes or convolution algorithm selection;
+ * parser/range limitations remain those of Parse_Pair and this arithmetic. */
 static BOOL
 DSL_Shape_Conv2D_Result_Valid
         (const DSL_IR_NODE_RECORD *node,
@@ -957,6 +1065,10 @@ DSL_Shape_Conv2D_Result_Valid
                (operands[0], result_ty, result);
 }
 
+/* Validate inference-only NCHW batch norm with channel_axis=1, host-parsed
+ * 0<epsilon<1, input rank 4 and four matching channel vectors. Compare element
+ * types/result representation without changing borrowed records or choosing
+ * numerical implementation; private extent vectors may allocate. */
 static BOOL
 DSL_Shape_Batch_Norm_Result_Valid
         (const DSL_IR_NODE_RECORD *node,
@@ -994,6 +1106,10 @@ DSL_Shape_Batch_Norm_Result_Valid
                (operands[0], result_ty, input);
 }
 
+/* Check static rank-4 pooling extents from kernel/stride/padding/dilation and
+ * exact true/false ceil_mode. Local guards precede floor/ceil extent arithmetic;
+ * compare input/result representation without adding framework edge adjustment
+ * or choosing implementation. Borrow tables, allocate only scratch vectors. */
 static BOOL
 DSL_Shape_Max_Pool_Result_Valid
         (const DSL_IR_NODE_RECORD *node,
@@ -1040,6 +1156,9 @@ DSL_Shape_Max_Pool_Result_Valid
     return DSL_Shape_Result_Dimensions(input_ty, result_ty, result);
 }
 
+/* Admit only rank-4 spatial global averaging with reduction_axes=spatial and
+ * output_size=1,1; compare [N,C,1,1] and input representation. Read-only borrowed
+ * node/TYs, local parse scratch; no reduction-order or target permission. */
 static BOOL
 DSL_Shape_Global_Avg_Pool_Result_Valid
         (const DSL_IR_NODE_RECORD *node,
@@ -1061,6 +1180,10 @@ DSL_Shape_Global_Avg_Pool_Result_Valid
     return DSL_Shape_Result_Dimensions(input_ty, result_ty, input);
 }
 
+/* Normalize signed start/end axes against positive TY rank, check the static
+ * flattened extent product for UINT64 overflow and match unchanged outer axes.
+ * Borrow types/node and preserve their representation; scratch parsing may
+ * allocate. This validates shape, not runtime alias or zero-motion legality. */
 static BOOL
 DSL_Shape_Flatten_Result_Valid
         (const DSL_IR_NODE_RECORD *node,
@@ -1121,6 +1244,9 @@ DSL_Shape_Flatten_Result_Valid
                (input_ty, result_ty);
 }
 
+/* Parse digit-only UINT64 text, including zero, with overflow checks. Optional
+ * output is published only after full success; no whitespace/signs or mutation
+ * of borrowed text/compiler context are permitted. */
 static BOOL
 DSL_Shape_Parse_Unsigned
         (const char *text,
@@ -1144,6 +1270,9 @@ DSL_Shape_Parse_Unsigned
 }
 
 
+/* Local rule callbacks borrow a live node, ordered operand TYs and result TY
+ * for one exact version. Return structural acceptance without compiler-state
+ * mutation; scratch allocation is allowed, but no target/optimization choice. */
 typedef BOOL (*DSL_SHAPE_RULE_FUNCTION)
         (const DSL_IR_NODE_RECORD *,
          const std::vector<TY_IDX> &,
@@ -1158,6 +1287,9 @@ typedef struct {
 
 /* Shape contracts are selected by exact semantic version; never fall forward. */
 
+/* Require a nonempty operand list with exact compatible rank/shape and
+ * representation across all operands/result. Registry callback ignores node
+ * and version; read-only, with no broadcast or symbolic normalization. */
 static BOOL
 DSL_Shape_Same_Result
         (const DSL_IR_NODE_RECORD *,
@@ -1174,6 +1306,9 @@ DSL_Shape_Same_Result
     return DSL_Shape_Tensor_Compatible(operands[0], result_ty, TRUE);
 }
 
+/* Dispatch broadcast_rule=none to exact compatibility; numpy right-aligns two
+ * static shapes and expands singleton/missing dimensions only. Borrow node/TYs;
+ * local vectors allocate, while failure changes no caller or compiler state. */
 static BOOL
 DSL_Shape_Broadcast_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1213,6 +1348,9 @@ DSL_Shape_Broadcast_Result
                (operands[0], result_ty, expected);
 }
 
+/* Registry callback checks only first operand/result exact compatibility and
+ * nonempty arity. Other operands/attributes belong to surrounding gatekeepers;
+ * no mutation, allocation or runtime-value equivalence is established. */
 static BOOL
 DSL_Shape_Result_Matches_Kid0
         (const DSL_IR_NODE_RECORD *,
@@ -1224,6 +1362,9 @@ DSL_Shape_Result_Matches_Kid0
            DSL_Shape_Tensor_Compatible(operands[0], result_ty, TRUE);
 }
 
+/* Require two compatible operand representations/ranks; v1 compares lexical
+ * matrix dimensions, v2 delegates transpose/exact-batch static checks. Unknown
+ * versions fail. Borrow all inputs and change no tables; v2 may allocate scratch. */
 static BOOL
 DSL_Shape_Matmul_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1243,6 +1384,9 @@ DSL_Shape_Matmul_Result
                (node, operands[0], operands[1], result_ty);
 }
 
+/* Route the exact-version rule to linear v2/v3 static shape/attribute checks.
+ * Borrow node/operand/result identities; only callee scratch is allocated and
+ * FALSE leaves compiler/caller data unchanged. */
 static BOOL
 DSL_Shape_Linear_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1254,6 +1398,9 @@ DSL_Shape_Linear_Result
                (node, operands, result_ty, version);
 }
 
+/* Require one operand before the flatten axis/product validator. Registry
+ * supplies the version; this callback changes no borrowed node/TY data and
+ * grants no runtime view/alias permission on success. */
 static BOOL
 DSL_Shape_Flatten_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1266,6 +1413,9 @@ DSL_Shape_Flatten_Result
                (node, operands[0], result_ty);
 }
 
+/* Forward the registered convolution contract to static NCHW/OIHW shape
+ * validation, which checks three operands. Borrow all data; reject without
+ * table changes, with local parse allocation only. */
 static BOOL
 DSL_Shape_Conv2D_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1276,6 +1426,9 @@ DSL_Shape_Conv2D_Result
     return DSL_Shape_Conv2D_Result_Valid(node, operands, result_ty);
 }
 
+/* Route the registered inference batch-norm rule to its five-operand static
+ * channel/epsilon validator. Borrow data for the call, allocate only scratch,
+ * and leave all compiler/caller records unchanged on either result. */
 static BOOL
 DSL_Shape_Batch_Norm_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1286,6 +1439,9 @@ DSL_Shape_Batch_Norm_Result
     return DSL_Shape_Batch_Norm_Result_Valid(node, operands, result_ty);
 }
 
+/* Enforce one operand before static rank-4 floor/ceil pooling validation.
+ * Exact version is registry-owned; no mutation or pooling implementation
+ * choice, and only callee extent scratch may allocate. */
 static BOOL
 DSL_Shape_Max_Pool_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1298,6 +1454,9 @@ DSL_Shape_Max_Pool_Result
                (node, operands[0], result_ty);
 }
 
+/* Enforce one operand before the static spatial [1,1] average-pool check.
+ * Borrow node/TYs and leave them unchanged; extent scratch may allocate and
+ * acceptance does not choose accumulation order. */
 static BOOL
 DSL_Shape_Global_Avg_Pool_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1310,6 +1469,9 @@ DSL_Shape_Global_Avg_Pool_Result
                (node, operands[0], result_ty);
 }
 
+/* Enforce one operand before target-shape/checked-element-count validation.
+ * Version admission is the registry's role; borrowed inputs remain unchanged
+ * and success does not prove a runtime storage/alias plan. */
 static BOOL
 DSL_Shape_Reshape_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1322,6 +1484,9 @@ DSL_Shape_Reshape_Result
                (node, operands[0], result_ty);
 }
 
+/* Enforce one operand before full static permutation/result validation.
+ * The registered version is not reinterpreted here; private scratch may
+ * allocate, but no node/TY mutation or physical transpose selection occurs. */
 static BOOL
 DSL_Shape_Transpose_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1334,6 +1499,9 @@ DSL_Shape_Transpose_Result
                (node, operands[0], result_ty);
 }
 
+/* Bind the shared domain validator to token embedding, preserving the caller's
+ * exact version. Check int64 indices/float32 weights and result shape, not
+ * runtime index bounds; borrow inputs and mutate no compiler records. */
 static BOOL
 DSL_Shape_Token_Embedding_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1345,6 +1513,9 @@ DSL_Shape_Token_Embedding_Result
                (OPR_DSLTOKENEMBEDDING, version, node, operands, result_ty);
 }
 
+/* Bind the shared domain validator to RMSNorm's last-axis static FP32 shape
+ * and positive epsilon subset. Borrow inputs, allow local scratch allocation;
+ * no rsqrt accuracy, reassociation or target permission is inferred. */
 static BOOL
 DSL_Shape_RMS_Norm_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1356,6 +1527,9 @@ DSL_Shape_RMS_Norm_Result
                (OPR_DSLRMSNORM, version, node, operands, result_ty);
 }
 
+/* Bind rotary embedding's shared validator to the exact supplied version so
+ * v1 static-position and v2 explicit-position rules remain distinct. Borrow
+ * node/TYs and allocate only scratch; runtime position values are not proved. */
 static BOOL
 DSL_Shape_Rotary_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1367,6 +1541,9 @@ DSL_Shape_Rotary_Result
                (OPR_DSLROTARYEMBEDDING, version, node, operands, result_ty);
 }
 
+/* Bind attention's static domain validator, retaining version-specific mask,
+ * cache and sequence contracts. Borrow inputs, allocate scratch only; no
+ * runtime cache policy, attention lowering or target support is selected. */
 static BOOL
 DSL_Shape_Attention_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1378,6 +1555,9 @@ DSL_Shape_Attention_Result
                (OPR_DSLATTENTION, version, node, operands, result_ty);
 }
 
+/* Bind SwiGLU to the rank-3 equal-shape silu domain check. Borrow node/TYs;
+ * local scratch may allocate, with no compiler-record mutation or approximation
+ * choice implied by structural acceptance. */
 static BOOL
 DSL_Shape_SwiGLU_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1389,6 +1569,9 @@ DSL_Shape_SwiGLU_Result
                (OPR_DSLSWIGLU, version, node, operands, result_ty);
 }
 
+/* Require exact compatible operand/result shapes plus broadcast_rule=none,
+ * shape_check=exact and residual_path=true. Borrow the registered residual node
+ * and types; no allocation, graph rewrite or residual fusion permission. */
 static BOOL
 DSL_Shape_Residual_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1405,6 +1588,9 @@ DSL_Shape_Residual_Result
                (node, "attr.residual_path", "true");
 }
 
+/* Enforce one operand before the v2 logits/v3 token-logits static contract.
+ * Preserve the exact version, borrow all identities, and leave records
+ * unchanged; v3 may allocate shape scratch and performs no output lowering. */
 static BOOL
 DSL_Shape_Output_Logits_Result
         (const DSL_IR_NODE_RECORD *node,
@@ -1419,7 +1605,10 @@ DSL_Shape_Output_Logits_Result
 
 /* Validate the published static FP32 row-sum type/attribute contract without
  * mutating descriptors. Builder, gatekeeper and PREOPT share this predicate;
- * it does not choose a reduction order or authorize a native implementation. */
+ * it does not choose a reduction order or authorize a native implementation.
+ * Require F4/float32 positive static [R,N]->[R], axis=1, keepdim=false,
+ * accum_dtype=float32 and reassociate=false with matching representation.
+ * Borrow live TYs/strings; parser vectors may allocate, but no tables change. */
 BOOL
 DSL_Shape_Reduce_Sum_Types_Valid
         (TY_IDX operand_ty, TY_IDX result_ty, const char *axis,
@@ -1451,7 +1640,10 @@ DSL_Shape_Reduce_Sum_Types_Valid
 }
 
 /* Validate explicit ordered source meaning, independently of target support.
- * See AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md. */
+ * Require ascending_left_fold, positive-zero bits 00000000,
+ * rne_gradual_no_traps and class_only exactly. NULL/mismatch fails without
+ * allocation or mutation. See
+ * doc/AI-COMPILER-REDUCTION-NUMERICAL-BINDING-v0.1.md. */
 BOOL
 DSL_ordered_reduce_sum_binding_valid
     (const char *order, const char *identity_bits,
@@ -1463,7 +1655,10 @@ DSL_ordered_reduce_sum_binding_valid
            nan_policy != NULL && strcmp(nan_policy, "class_only") == 0;
 }
 
-/* Adapt existing image attributes to the shared policy-free row-sum check. */
+/* Adapt borrowed attributes to the row-sum check: one operand, exactly four
+ * v1 fields or eight v2 fields with explicit ordered binding. Unsupported
+ * versions/counts/missing fields fail without mutation; retain v1's unresolved
+ * order and do not upgrade it by borrowing the v2 predicate. */
 static BOOL
 DSL_Shape_Reduce_Sum_Result
         (const DSL_IR_NODE_RECORD *node, const std::vector<TY_IDX> &operands,
@@ -1491,7 +1686,10 @@ DSL_Shape_Reduce_Sum_Result
 }
 
 /* Check only static descriptors and the exact source-recipe permissions.
- * No exp implementation, exceptional-value policy or FP merge is inferred. */
+ * No exp implementation, exceptional-value policy or FP merge is inferred.
+ * Require equal positive static F4/float32 [R,N], axis=1, float32 accumulation,
+ * reassociate/state_reformulation=false, exp_semantics=source_unresolved and
+ * matching representation. Borrow live types/strings; parse scratch may allocate. */
 BOOL
 DSL_Shape_Stable_Softmax_Types_Valid
     (TY_IDX operand_ty, TY_IDX result_ty, const char *axis,
@@ -1526,7 +1724,9 @@ DSL_Shape_Stable_Softmax_Types_Valid
            output[0] == input[0] && output[1] == input[1];
 }
 
-/* Adapt managed attributes to the same verifier used before builder allocation. */
+/* Read the five borrowed v1 Softmax attributes and one operand, then apply the
+ * shared descriptor/permission validator. Exact count/version/missing fields
+ * fail without image or TY changes; no numerical binding is manufactured. */
 static BOOL
 DSL_Shape_Stable_Softmax_Result
     (const DSL_IR_NODE_RECORD *node, const std::vector<TY_IDX> &operands,
@@ -1546,7 +1746,9 @@ DSL_Shape_Stable_Softmax_Result
 }
 
 /* Decode canonical IEEE bits without host strtod, endianness or rounding.
- * Positive subnormals are representable; target preservation is not inferred. */
+ * Positive subnormals are representable; target preservation is not inferred.
+ * Require non-NULL output and exactly eight lowercase hex digits with bits
+ * strictly between zero and 0x7f800000. Publish only on success; no allocation. */
 BOOL
 DSL_positive_f32_bits_valid(const char *text, UINT32 *bits)
 {
@@ -1563,7 +1765,10 @@ DSL_positive_f32_bits_valid(const char *text, UINT32 *bits)
 }
 
 /* Share only descriptor relations and centered permissions across versions;
- * numerical binding is checked by the owning version-specific predicate. */
+ * numerical binding is checked by the owning version-specific predicate.
+ * Require axis=1, float32 accumulation, population_centered variance, canonical
+ * positive finite epsilon, and reassociate/state_reformulation/contract=false.
+ * Borrow strings only; no mutation or allocation, NULL/mismatch fails. */
 static BOOL
 DSL_normalization_recipe_valid
     (const char *axis, const char *accum_dtype, const char *variance_kind,
@@ -1581,7 +1786,10 @@ DSL_normalization_recipe_valid
 }
 
 /* Check the shared logical descriptor relations without interpreting rsqrt
- * policy. Publish width only on complete success; no allocation is performed. */
+ * policy. Require F4/float32 [R,N],[N],[N]->[R,N], positive static extents and
+ * matching element/representation keys. Publish optional rows/width only on
+ * full success; failure preserves them. Parsing allocates temporary vectors,
+ * not TYs or image records; active type/string context remains caller-owned. */
 static BOOL
 DSL_normalization_descriptors_valid
     (TY_IDX input_ty, TY_IDX gamma_ty, TY_IDX beta_ty, TY_IDX result_ty,
@@ -1614,7 +1822,9 @@ DSL_normalization_descriptors_valid
 }
 
 /* Preserve v1's unresolved source recipe and positive-width domain exactly;
- * sharing descriptor code does not authorize an ordered mean or rsqrt. */
+ * sharing descriptor code does not authorize an ordered mean or rsqrt.
+ * Require rsqrt_semantics=source_unresolved and shared recipe/descriptor checks;
+ * borrow live TYs/strings, allocate only scratch, and mutate no tables. */
 BOOL
 DSL_mean_variance_norm_types_valid
     (TY_IDX input_ty, TY_IDX gamma_ty, TY_IDX beta_ty, TY_IDX result_ty,
@@ -1630,7 +1840,9 @@ DSL_mean_variance_norm_types_valid
 }
 
 /* Exact reference fields are source meaning, not a producer-name allowlist or
- * target capability. Contradictory reference IDs never override these checks. */
+ * target capability. Contradictory reference IDs never override these checks.
+ * Compare all eight borrowed strings to the exact LN-REF-1 spellings below;
+ * NULL/mismatch fails with no allocation, retention or compiler-state mutation. */
 BOOL
 DSL_mean_variance_norm_ref_binding_valid
     (const char *rsqrt_semantics, const char *mean_order,
@@ -1649,7 +1861,9 @@ DSL_mean_variance_norm_ref_binding_valid
 }
 
 /* Convert the bounded integer exactly without host FP mode, parsing or
- * target assumptions. The width guard precedes shifts and output publication. */
+ * target assumptions. Require 1<=count<=2^24 and non-NULL output; invalid input
+ * preserves output. Integer exponent/significand construction yields exact
+ * positive binary32 count bits without allocation or compiler-state mutation. */
 BOOL
 DSL_mean_variance_norm_ref_count_bits(UINT64 count, UINT32 *bits)
 {
@@ -1663,7 +1877,10 @@ DSL_mean_variance_norm_ref_count_bits(UINT64 count, UINT32 *bits)
 }
 
 /* V2 shares logical descriptors, not v1's unresolved numerical policy.
- * Complete numerical-field validation remains a separate required preflight. */
+ * Complete numerical-field validation remains a separate required preflight.
+ * Require sqrt_rne_then_div_rne_f32, shared recipe/descriptors, exact binary32
+ * width in 1..2^24 and R*N*4 fitting UINT64. Borrow inputs and allocate local
+ * parse scratch only; failure changes no caller/compiler state. */
 BOOL
 DSL_mean_variance_norm_ref_types_valid
     (TY_IDX input_ty, TY_IDX gamma_ty, TY_IDX beta_ty, TY_IDX result_ty,
@@ -1683,7 +1900,10 @@ DSL_mean_variance_norm_ref_types_valid
         rows <= (~(UINT64)0 / 4) / width;
 }
 
-/* Adapt managed attributes to the shared structural contract without mutation. */
+/* Read exactly eight v1 or fifteen v2 attributes with three borrowed operands.
+ * V2 requires the entire LN-REF-1 binding before its bounded descriptor check;
+ * v1 retains unresolved rsqrt semantics. Reject counts, missing fields and
+ * unsupported versions without table mutation; parse scratch may allocate. */
 static BOOL
 DSL_mean_variance_norm_result
     (const DSL_IR_NODE_RECORD *node, const std::vector<TY_IDX> &operands,
@@ -1747,6 +1967,8 @@ static const DSL_SHAPE_RULE_ENTRY DSL_shape_rules[] = {
     { OPR_DSLREM, 1, DSL_Shape_Broadcast_Result }
 };
 
+/* Borrow the immutable exact operator/version entry for process lifetime, or
+ * NULL when absent. No version fallback, registration or mutable state. */
 static const DSL_SHAPE_RULE_ENTRY *
 DSL_Shape_Find_Rule
         (DSL_OPERATOR dsl_operator,
@@ -1762,6 +1984,9 @@ DSL_Shape_Find_Rule
     return NULL;
 }
 
+/* Prove one bounded canonical dimension equal by kind/text, excluding pending
+ * and anonymous dynamic dimensions. Caller supplies nonnegative bounded ranks;
+ * ordinal bounds are checked, numeric caches are not revalidated. Read-only. */
 static BOOL
 DSL_Shape_Dimension_Proves_Equal
         (const DSL_SHAPE_FACT &left,
@@ -1786,6 +2011,9 @@ DSL_Shape_Dimension_Proves_Equal
                   right.dimension_text[right_ordinal]) == 0;
 }
 
+/* Require COMPLETE equal-rank borrowed facts and proof for every dimension.
+ * Anonymous '?' never proves equality; rank-zero facts compare vacuously.
+ * Caller guarantees bounded ranks/canonical text; no mutation/allocation. */
 static BOOL
 DSL_Shape_Facts_Prove_Equal
         (const DSL_SHAPE_FACT &left,
@@ -1802,6 +2030,11 @@ DSL_Shape_Facts_Prove_Equal
     return TRUE;
 }
 
+/* Validate v2 symbolic single-token attention from three complete bounded facts:
+ * equal K/V and Q/result, proved shared batch, static equal head counts/width,
+ * Q sequence=1 and exact decode/cache/BHSD/scale/softmax tokens. Borrow live
+ * types/image and canonical facts; no runtime cache or target policy proof.
+ * Caller has checked basic input context; failure changes nothing. */
 static BOOL
 DSL_Shape_Check_Symbolic_Attention
         (const DSL_SHAPE_OPERATOR_INPUT *input,
@@ -1868,6 +2101,10 @@ DSL_Shape_Check_Symbolic_Attention
                (input->node, "attr.softmax_accum_dtype", "float32");
 }
 
+/* Decode transpose flags into non-NULL caller scratch, defaulting both FALSE
+ * even on failure. V1 needs no attributes; v2 needs explicit true/false flags,
+ * batch_rule=exact and accum_dtype=float32. A later rejection may leave the
+ * first flag set; borrow node/image strings and change no compiler state. */
 static BOOL
 DSL_Shape_Matmul_Attributes
         (const DSL_IR_NODE_RECORD *node,
@@ -1899,6 +2136,10 @@ DSL_Shape_Matmul_Attributes
                (node, "attr.accum_dtype", "float32");
 }
 
+/* Prove batched matmul dimensions using canonical symbolic equality and exact
+ * transpose flags; v1 remains rank-2, v2 uses equal batch axes. Require matching
+ * operand/result representations. Borrow checked input/facts; local flag writes
+ * only, no symbol solving, runtime guards or compiler-state mutation. */
 static BOOL
 DSL_Shape_Check_Symbolic_Matmul
         (const DSL_SHAPE_OPERATOR_INPUT *input,
@@ -1940,6 +2181,10 @@ DSL_Shape_Check_Symbolic_Matmul
                (operands[1], right_n, result, rank - 1);
 }
 
+/* Check complete canonical facts for none/exact or numpy right-aligned
+ * broadcast, permitting only proved equal dimensions or static singleton
+ * expansion. Require operand/result representation compatibility. Borrow
+ * bounded inputs; unknown/anonymous equality fails, with no state changes. */
 static BOOL
 DSL_Shape_Check_Symbolic_Broadcast
         (const DSL_SHAPE_OPERATOR_INPUT *input,
@@ -2012,6 +2257,8 @@ DSL_Shape_Check_Symbolic_Broadcast
     return TRUE;
 }
 
+/* Query immutable exact-version rule membership without consulting active
+ * nodes/TYs, registering anything, or implying legality for a particular node. */
 BOOL
 DSL_Shape_Has_Operator_Rule
         (DSL_OPERATOR dsl_operator,
@@ -2020,6 +2267,12 @@ DSL_Shape_Has_Operator_Rule
     return DSL_Shape_Find_Rule(dsl_operator, version) != NULL;
 }
 
+/* Validate one caller-selected node in its live image/type/string context.
+ * Resolve opcode/rule before arity/type facts: absent registration returns
+ * UNREGISTERED; malformed input or incomplete facts return INVALID. Nonstatic
+ * attention/matmul/broadcast use proof predicates; other multioperand anonymous
+ * dimensions fail. Borrow inputs, allocate local vectors, never mutate tables,
+ * activate a PU, harvest graph facts or select a target/optimization. */
 DSL_SHAPE_CHECK_RESULT
 DSL_Shape_Check_Operator
         (const DSL_SHAPE_OPERATOR_INPUT *input)
@@ -2074,6 +2327,8 @@ DSL_Shape_Check_Operator
             result_fact.dimension_kind[i] ==
                 DSL_SHAPE_DIMENSION_ANONYMOUS_DYNAMIC;
     }
+    /* Nonstatic spelling equality is not enough: domain-specific proof checks
+     * preserve symbolic identity and refuse anonymous equality assumptions. */
     if (non_static && input->dsl_operator == OPR_DSLATTENTION)
         return DSL_Shape_Check_Symbolic_Attention
                    (input, operand_facts, result_fact) ?
@@ -2097,6 +2352,8 @@ DSL_Shape_Check_Operator
            DSL_SHAPE_CHECK_VALID : DSL_SHAPE_CHECK_INVALID;
 }
 
+/* Reset non-NULL caller scratch, including numeric/text caches, to unknown-rank
+ * PENDING evidence. No allocation, table access or ownership transfer. */
 static void
 DSL_Shape_Fact_Init (DSL_SHAPE_FACT *fact)
 {
@@ -2105,24 +2362,11 @@ DSL_Shape_Fact_Init (DSL_SHAPE_FACT *fact)
     fact->rank = -1;
 }
 
-static void
-DSL_Shape_Fact_Classify (DSL_SHAPE_FACT *fact)
-{
-    if (fact->state == DSL_SHAPE_FACT_CONTRADICTION)
-        return;
-    if (fact->rank < 0) {
-        fact->state = DSL_SHAPE_FACT_PENDING;
-        return;
-    }
-    for (INT32 i = 0; i < fact->rank; ++i) {
-        if (fact->dimension_kind[i] == DSL_SHAPE_DIMENSION_PENDING) {
-            fact->state = DSL_SHAPE_FACT_PENDING;
-            return;
-        }
-    }
-    fact->state = DSL_SHAPE_FACT_COMPLETE;
-}
 
+
+/* Accept a nonempty alpha/underscore-leading alnum/underscore identifier under
+ * the active C character classification. Borrow text; no allocation/mutation
+ * or compiler-symbol lookup is performed. */
 static BOOL
 DSL_Shape_Identifier_Valid (const std::string &text)
 {
@@ -2136,6 +2380,10 @@ DSL_Shape_Identifier_Valid (const std::string &text)
     return TRUE;
 }
 
+/* Canonicalize a borrowed identifier to name@puXXXXXXXX (lowercase hex).
+ * Bare names require nonzero owner index; an explicit nonzero eight-hex PU ID
+ * is accepted independently of that owner, without lookup or PU activation.
+ * Non-NULL canonical output is assigned only on success; strings may allocate. */
 static BOOL
 DSL_Shape_Parse_Symbol
         (ST_IDX owner_pu_st,
@@ -2175,6 +2423,11 @@ DSL_Shape_Parse_Symbol
     return TRUE;
 }
 
+/* Parse one logical token: <pending>, ?, positive UINT64 extent, scoped symbol,
+ * or symbol +/- UINT64 offset; zero offsets canonicalize back to symbols.
+ * Borrow input/owner label and require non-NULL output pointers. Failure leaves
+ * outputs unchanged; success writes kind/text and writes static_value only for
+ * a static token. String allocation can throw; no compiler tables are changed. */
 static BOOL
 DSL_Shape_Parse_Dimension
         (ST_IDX owner_pu_st,
@@ -2257,6 +2510,9 @@ DSL_Shape_Parse_Dimension
     return TRUE;
 }
 
+/* Copy kind/cache/canonical text into one caller-bounded ordinal of non-NULL
+ * scratch. Text must fit the fixed slot; failure preserves the entire fact.
+ * Numeric cache validity is the caller's role, no compiler-state mutation. */
 static BOOL
 DSL_Shape_Store_Dimension
         (DSL_SHAPE_FACT *fact,
@@ -2276,6 +2532,12 @@ DSL_Shape_Store_Dimension
     return TRUE;
 }
 
+/* Reset non-NULL scratch before parsing rank -1/<pending> or rank 0..16 shapes.
+ * Fill canonical dimensions using the owner only to qualify bare symbols;
+ * complete means no pending kind, while '?' remains anonymous. Whole-shape
+ * <pending> keeps PENDING state even with known rank. Whitespace and trailing
+ * comma are accepted; failure leaves reset/partial scratch, not a rollback.
+ * Temporary strings may allocate; no TY writes or symbol-table lookup. */
 static BOOL
 DSL_Shape_Parse_Fact
         (ST_IDX owner_pu_st,
@@ -2350,6 +2612,10 @@ DSL_Shape_Parse_Fact
     return TRUE;
 }
 
+/* Format caller-owned bounded scratch using its terminated dimension text,
+ * independent of state/caches; unknown rank becomes <pending>. No allocation
+ * or table access. Invalid arguments fail before writes, but missing text,
+ * formatting errors or insufficient capacity can leave partial/truncated text. */
 BOOL
 DSL_Shape_Format_Fact
         (const DSL_SHAPE_FACT *fact,
@@ -2381,6 +2647,10 @@ DSL_Shape_Format_Fact
     return written >= 0 && (size_t)written < buffer_size - used;
 }
 
+/* Canonicalize borrowed shape text through a local fact, then format into caller
+ * storage. Owner qualifies bare symbols without activating/validating a PU.
+ * Parsing may allocate; parse failure preserves buffer, format failure can
+ * partially overwrite it. No compiler identity or descriptor is constructed. */
 BOOL
 DSL_Shape_Normalize_Logical_Shape
         (ST_IDX owner_pu_st,
@@ -2395,6 +2665,10 @@ DSL_Shape_Normalize_Logical_Shape
            DSL_Shape_Format_Fact(&fact, buffer, buffer_size);
 }
 
+/* Extract borrowed live TY rank/shape only if core fields exist and parsed rank
+ * matches TY rank. Parse with owner=zero, requiring explicit symbol qualifiers.
+ * Early failures preserve output; Parse_Fact resets then may partially write it.
+ * Success may be PENDING. No TY mutation; temporary parsing may allocate. */
 BOOL
 DSL_Shape_Fact_From_Type (TY_IDX ty, DSL_SHAPE_FACT *fact)
 {
@@ -2411,67 +2685,21 @@ DSL_Shape_Fact_From_Type (TY_IDX ty, DSL_SHAPE_FACT *fact)
            DSL_Shape_Parse_Fact(ST_IDX_ZERO, shape, rank, fact);
 }
 
-static BOOL
-DSL_Shape_Facts_Equal
-        (const DSL_SHAPE_FACT &left,
-         const DSL_SHAPE_FACT &right)
-{
-    if (left.state != right.state || left.rank != right.rank)
-        return FALSE;
-    if (left.rank < 0)
-        return TRUE;
-    for (INT32 i = 0; i < left.rank; ++i) {
-        if (left.dimension_kind[i] != right.dimension_kind[i] ||
-            strcmp(left.dimension_text[i],
-                   right.dimension_text[i]) != 0)
-            return FALSE;
-    }
-    return TRUE;
-}
 
-static BOOL
-DSL_Shape_Merge_Equal_Fact
-        (DSL_SHAPE_FACT *target,
-         const DSL_SHAPE_FACT &source)
-{
-    if (target->state == DSL_SHAPE_FACT_CONTRADICTION ||
-        source.state == DSL_SHAPE_FACT_CONTRADICTION) {
-        target->state = DSL_SHAPE_FACT_CONTRADICTION;
-        return FALSE;
-    }
-    if (target->rank < 0)
-        target->rank = source.rank;
-    else if (source.rank >= 0 && target->rank != source.rank) {
-        target->state = DSL_SHAPE_FACT_CONTRADICTION;
-        return FALSE;
-    }
-    if (target->rank < 0)
-        return TRUE;
-    for (INT32 i = 0; i < target->rank; ++i) {
-        if (source.dimension_kind[i] == DSL_SHAPE_DIMENSION_PENDING)
-            continue;
-        if (target->dimension_kind[i] != DSL_SHAPE_DIMENSION_PENDING &&
-            (target->dimension_kind[i] != source.dimension_kind[i] ||
-             strcmp(target->dimension_text[i],
-                    source.dimension_text[i]) != 0)) {
-            target->state = DSL_SHAPE_FACT_CONTRADICTION;
-            return FALSE;
-        }
-        target->dimension_kind[i] = source.dimension_kind[i];
-        target->dimension_known[i] = source.dimension_known[i];
-        target->dimension[i] = source.dimension[i];
-        strcpy(target->dimension_text[i], source.dimension_text[i]);
-    }
-    DSL_Shape_Fact_Classify(target);
-    return TRUE;
-}
 
+
+
+/* Inspect the caller's state tag only; COMPLETE does not imply static extents,
+ * nonanonymous dimensions or independently validated text/cache invariants. */
 static BOOL
 DSL_Shape_Fact_Complete (const DSL_SHAPE_FACT &fact)
 {
     return fact.state == DSL_SHAPE_FACT_COMPLETE;
 }
 
+/* Copy the first borrowed operand fact into distinct result scratch, then merge
+ * equal-shape evidence. No operands fails before writing; a later conflict
+ * marks contradiction and retains prior field updates. No TY/IR mutation. */
 static BOOL
 DSL_Shape_Infer_Same
         (const DSL_SHAPE_INFERENCE_INPUT *input,
@@ -2487,6 +2715,11 @@ DSL_Shape_Infer_Same
     return TRUE;
 }
 
+/* Infer two-operand none/numpy broadcast after representation checks. Incomplete
+ * facts return TRUE leaving the caller-initialized pending result; complete
+ * facts fill right-aligned axes by proved equality or singleton expansion.
+ * Rejection may leave partial result fields; no input/TY/IR mutation, solving
+ * or runtime guard insertion. Caller supplies distinct bounded scratch. */
 static BOOL
 DSL_Shape_Infer_Broadcast
         (const DSL_SHAPE_INFERENCE_INPUT *input,
@@ -2559,6 +2792,9 @@ DSL_Shape_Infer_Broadcast
     return TRUE;
 }
 
+/* Materialize <=16 positive extents into distinct caller fact as COMPLETE.
+ * Excess rank preserves output; otherwise reset first, so a zero extent leaves
+ * partial PENDING scratch. No allocation or compiler-record mutation. */
 static BOOL
 DSL_Shape_Set_Complete
         (const std::vector<UINT64> &dimensions,
@@ -2582,6 +2818,9 @@ DSL_Shape_Set_Complete
     return TRUE;
 }
 
+/* Copy static extents from borrowed bounded COMPLETE evidence to caller vector.
+ * NULL/incomplete preserves vector; otherwise clear and append, leaving a
+ * prefix on the first nonstatic dimension. Growth may allocate; facts unchanged. */
 static BOOL
 DSL_Shape_Fact_To_Dimensions
         (const DSL_SHAPE_FACT &fact,
@@ -2598,6 +2837,11 @@ DSL_Shape_Fact_To_Dimensions
     return TRUE;
 }
 
+/* Infer v1 rank-2 or v2 equal-batch matmul from borrowed canonical facts and
+ * exact transpose tokens. Validate type compatibility/rank before deferring
+ * incomplete facts; prove batch/K equality before copying M/N and batch axes.
+ * Rejection precedes result writes; incomplete success leaves initialized
+ * pending scratch. Require nonaliasing bounded result; no graph/IR mutation. */
 static BOOL
 DSL_Shape_Infer_Matmul
         (const DSL_SHAPE_INFERENCE_INPUT *input,
@@ -2657,6 +2901,11 @@ DSL_Shape_Infer_Matmul
     return TRUE;
 }
 
+/* Infer linear v2 with bias or v3 without, using exact OI/transpose/has_bias
+ * tokens and static activation/weight extents. Nonstatic activation/weight
+ * defers with TRUE; v2 nonstatic/invalid bias rejects once those are known.
+ * Replace trailing K with N in local scratch, then Set_Complete; final failure
+ * may leave partial result. This is shape inference, not full type admission. */
 static BOOL
 DSL_Shape_Infer_Linear
         (const DSL_SHAPE_INFERENCE_INPUT *input,
@@ -2695,6 +2944,11 @@ DSL_Shape_Infer_Linear
     return DSL_Shape_Set_Complete(activation, result);
 }
 
+/* Infer the positive static target_shape, checking element counts/overflow only
+ * when source facts are entirely static. A nonstatic source does not block
+ * publishing target extents; full legality remains the checker's job. Borrow
+ * input, allocate private vectors, and allow Set_Complete partial output on
+ * rejection; no source descriptor or compiler tables are changed. */
 static BOOL
 DSL_Shape_Infer_Reshape
         (const DSL_SHAPE_INFERENCE_INPUT *input,
@@ -2727,6 +2981,10 @@ DSL_Shape_Infer_Reshape
     return DSL_Shape_Set_Complete(target, result);
 }
 
+/* Parse a zero-based permutation; unknown source rank defers without writes.
+ * For known bounded rank, reset distinct result then copy permuted evidence
+ * and classify it. Duplicate/out-of-range entries can fail after partial writes.
+ * Private permutation/seen vectors may allocate; borrowed input is unchanged. */
 static BOOL
 DSL_Shape_Infer_Transpose
         (const DSL_SHAPE_INFERENCE_INPUT *input,
@@ -2763,6 +3021,11 @@ DSL_Shape_Infer_Transpose
     return TRUE;
 }
 
+/* Normalize signed axes against a known bounded source rank and copy outer
+ * dimensions into distinct scratch. Multiply static inner extents with overflow
+ * checks; any nonstatic inner extent yields one pending dimension. Failure may
+ * leave partial result; unknown rank rejects rather than defers. Borrow input
+ * and require consistent nonzero static caches; no TY/IR mutation. */
 static BOOL
 DSL_Shape_Infer_Flatten
         (const DSL_SHAPE_INFERENCE_INPUT *input,
@@ -2831,6 +3094,12 @@ DSL_Shape_Infer_Flatten
     return TRUE;
 }
 
+/* Infer NCHW/OIHW convolution extents from three static operand facts and exact
+ * layout/group/kernel tokens. Nonstatic input defers without writing; full
+ * group divisibility/type checks remain in the checker. UINT64 spatial
+ * arithmetic here has no additional overflow guards, so callers must establish
+ * representable intermediates. Local vectors allocate; Set_Complete can leave
+ * partial scratch on failure, with no compiler-record mutation. */
 static BOOL
 DSL_Shape_Infer_Conv2D
         (const DSL_SHAPE_INFERENCE_INPUT *input,
@@ -2889,6 +3158,12 @@ DSL_Shape_Infer_Conv2D
     return DSL_Shape_Set_Complete(output, result);
 }
 
+/* Infer rank-4 static pool extents; nonstatic input defers. Global mode copies
+ * positive output_size directly (the checker separately restricts it to 1,1
+ * and spatial reduction); max mode uses exact ceil token and window pairs.
+ * Callers establish representable UINT64 spatial intermediates here. Allocate
+ * local vectors, publish via Set_Complete with possible partial failure output;
+ * no descriptor writes, framework edge adjustments or policy choices. */
 static BOOL
 DSL_Shape_Infer_Pool
         (const DSL_SHAPE_INFERENCE_INPUT *input,
@@ -2942,8 +3217,14 @@ DSL_Shape_Infer_Pool
     return DSL_Shape_Set_Complete(output, result);
 }
 
-/* Infer only registered structural rules from caller-owned facts. This does
- * not mutate TYs or infer floating-point transformation permission. */
+/* Infer one registered structural rule from borrowed bounded canonical facts
+ * into distinct caller result. Reset output before inspecting input: malformed
+ * preflight can return CONTRADICTION with state still PENDING; absent rules
+ * leave initialized UNREGISTERED output. Rule failure marks contradiction but
+ * retains partial fields; success reclassifies complete/pending evidence.
+ * Shape-preserving cases may only copy kid0; full type/attribute/domain legality
+ * is a separate Check_Operator/gatekeeper obligation. Allocate scratch only;
+ * do not mutate TYs, infer FP permissions, traverse PUs or choose optimizations. */
 DSL_SHAPE_INFERENCE_RESULT
 DSL_Shape_Infer_Operator
         (const DSL_SHAPE_INFERENCE_INPUT *input,
@@ -2969,6 +3250,8 @@ DSL_Shape_Infer_Operator
             return DSL_SHAPE_INFERENCE_CONTRADICTION;
     }
 
+    /* These local propagation rules can derive a candidate shape before full
+     * legality is known; the owning caller must still run structural admission. */
     BOOL valid = FALSE;
     switch (input->dsl_operator) {
     case OPR_DSLMEANVARNORM: {
@@ -3094,469 +3377,4 @@ DSL_Shape_Infer_Operator
     DSL_Shape_Fact_Classify(result);
     return result->state == DSL_SHAPE_FACT_COMPLETE ?
            DSL_SHAPE_INFERENCE_COMPLETE : DSL_SHAPE_INFERENCE_PENDING;
-}
-
-typedef struct {
-    DSL_IR_VALUE_ID value_id;
-    TY_IDX ty;
-    DSL_SHAPE_FACT seed;
-    DSL_SHAPE_FACT fact;
-    BOOL has_producer;
-    SRCPOS source_position;
-} DSL_SHAPE_SOLVER_VALUE;
-
-typedef struct {
-    DSL_IR_NODE_ID node_id;
-    DSL_OPERATOR dsl_operator;
-    UINT16 version;
-    DSL_IR_NODE_RECORD node;
-    UINT32 result_index;
-    std::vector<UINT32> operand_indices;
-    SRCPOS source_position;
-} DSL_SHAPE_SOLVER_CONSTRAINT;
-
-static UINT32
-DSL_Shape_Solver_Find_Value
-        (const std::vector<DSL_SHAPE_SOLVER_VALUE> &values,
-         DSL_IR_VALUE_ID value_id)
-{
-    for (UINT32 i = 0; i < values.size(); ++i) {
-        if (values[i].value_id == value_id)
-            return i;
-    }
-    return ~(UINT32)0;
-}
-
-static UINT32
-DSL_Shape_Solver_Add_Value
-        (std::vector<DSL_SHAPE_SOLVER_VALUE> *values,
-         const DSL_IR_VALUE_RECORD &record,
-         SRCPOS source_position)
-{
-    UINT32 found = DSL_Shape_Solver_Find_Value(*values, record.id);
-    if (found != ~(UINT32)0)
-        return found;
-    DSL_SHAPE_SOLVER_VALUE value;
-    memset(&value, 0, sizeof(value));
-    value.value_id = record.id;
-    value.ty = record.ty;
-    value.has_producer =
-        record.producer_node_id != DSL_IR_NODE_INVALID_ID;
-    value.source_position = source_position;
-    if (!DSL_Shape_Fact_From_Type(record.ty, &value.seed))
-        value.seed.state = DSL_SHAPE_FACT_CONTRADICTION;
-    value.fact = value.seed;
-    values->push_back(value);
-    return values->size() - 1;
-}
-
-static BOOL
-DSL_Shape_Constraint_Order
-        (const DSL_SHAPE_SOLVER_CONSTRAINT &left,
-         const DSL_SHAPE_SOLVER_CONSTRAINT &right)
-{
-    return left.node_id < right.node_id;
-}
-
-static BOOL
-DSL_Shape_Find_Definition_Value
-        (ST_IDX owner_pu_st,
-         WN *definition,
-         DSL_IR_VALUE_RECORD *value,
-         DSL_IR_NODE_RECORD *node,
-         DSL_IR_OPCODE_DESCRIPTOR_RECORD *descriptor,
-         DSL_LOGICAL_OPCODE *logical_opcode)
-{
-    if (definition == NULL || WN_operator(definition) != OPR_STID ||
-        WN_kid0(definition) == NULL ||
-        !DSL_WN_Get_Logical_Opcode
-             (WN_kid0(definition), logical_opcode, NULL))
-        return FALSE;
-    ST_IDX result_st = WN_st_idx(definition);
-    if (ST_IDX_index(owner_pu_st) == 0 || ST_IDX_index(result_st) == 0 ||
-        ST_IDX_level(result_st) != CURRENT_SYMTAB ||
-        ST_IDX_index(result_st) >= ST_Table_Size(CURRENT_SYMTAB) ||
-        !DSL_IR_Image_Find_PU_Value
-             (result_st, ST_name(St_Table[result_st]),
-              ST_name(St_Table[owner_pu_st]), value) ||
-        value->st != result_st || value->ty != WN_ty(definition) ||
-        !DSL_IR_Image_Get_Node(value->producer_node_id, node) ||
-        node->result_value_id != value->id ||
-        !DSL_IR_Image_Get_Opcode_Descriptor
-             (node->opcode_descriptor_id, descriptor) ||
-        descriptor->logical_operator !=
-            (UINT32)logical_opcode->dsl_operator ||
-        descriptor->version != logical_opcode->source_version ||
-        node->operand_count != (UINT32)WN_kid_count(WN_kid0(definition)))
-        return FALSE;
-    return TRUE;
-}
-
-static BOOL
-DSL_Shape_Collect_Constraints
-        (ST_IDX owner_pu_st,
-         WN *wn,
-         std::vector<DSL_SHAPE_SOLVER_VALUE> *values,
-         std::vector<DSL_SHAPE_SOLVER_CONSTRAINT> *constraints,
-         FILE *diagnostic)
-{
-    if (wn == NULL)
-        return TRUE;
-    BOOL valid = TRUE;
-    if (WN_operator(wn) == OPR_STID && WN_kid0(wn) != NULL &&
-        DSL_WN_Is_Native(WN_kid0(wn))) {
-        DSL_IR_VALUE_RECORD result_value;
-        DSL_IR_NODE_RECORD node;
-        DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
-        DSL_LOGICAL_OPCODE logical_opcode;
-        if (!DSL_Shape_Find_Definition_Value
-                 (owner_pu_st, wn, &result_value, &node, &descriptor,
-                  &logical_opcode)) {
-            SRCPOS source_position = WN_Get_Linenum(wn);
-            if (diagnostic != NULL)
-                fprintf(diagnostic,
-                        "DSL-SHAPE-001: malformed native definition at "
-                        "line %u\n", SRCPOS_linenum(source_position));
-            return FALSE;
-        }
-        DSL_SHAPE_SOLVER_CONSTRAINT constraint;
-        constraint.node_id = node.id;
-        constraint.dsl_operator = logical_opcode.dsl_operator;
-        constraint.version = logical_opcode.effective_version;
-        constraint.node = node;
-        constraint.source_position = WN_Get_Linenum(wn);
-        constraint.result_index = DSL_Shape_Solver_Add_Value
-                                      (values, result_value,
-                                       constraint.source_position);
-        if (logical_opcode.dsl_operator == OPR_DSLMODELINPUT ||
-            logical_opcode.dsl_operator == OPR_DSLTENSORCONST) {
-            if (logical_opcode.dsl_operator == OPR_DSLMODELINPUT)
-                (*values)[constraint.result_index].has_producer = FALSE;
-            return TRUE;
-        }
-        for (UINT32 i = 0; i < node.operand_count; ++i) {
-            DSL_IR_VALUE_REFERENCE_RECORD reference;
-            DSL_IR_VALUE_RECORD operand;
-            if (!DSL_IR_Image_Get_Value_Reference
-                    (node.first_operand_reference_id + i, &reference) ||
-                reference.owner_node_id != node.id ||
-                reference.ordinal != i ||
-                !DSL_IR_Image_Get_Value(reference.value_id, &operand)) {
-                if (diagnostic != NULL)
-                    fprintf(diagnostic,
-                            "DSL-SHAPE-001: malformed operand %u for node "
-                            "%u at line %u\n", i, node.id,
-                            SRCPOS_linenum(constraint.source_position));
-                valid = FALSE;
-                break;
-            }
-            constraint.operand_indices.push_back
-                (DSL_Shape_Solver_Add_Value
-                     (values, operand, constraint.source_position));
-        }
-        if (valid)
-            constraints->push_back(constraint);
-    }
-    if (WN_operator(wn) == OPR_BLOCK) {
-        for (WN *stmt = WN_first(wn); stmt != NULL; stmt = WN_next(stmt)) {
-            if (!DSL_Shape_Collect_Constraints
-                     (owner_pu_st, stmt, values, constraints, diagnostic))
-                valid = FALSE;
-        }
-        return valid;
-    }
-    for (INT32 i = 0; i < WN_kid_count(wn); ++i) {
-        if (!DSL_Shape_Collect_Constraints
-                 (owner_pu_st, WN_kid(wn, i), values, constraints,
-                  diagnostic))
-            valid = FALSE;
-    }
-    return valid;
-}
-
-static BOOL
-DSL_Shape_Merge_Inference
-        (DSL_SHAPE_FACT *fact,
-         const DSL_SHAPE_FACT &inferred,
-         BOOL *changed)
-{
-    DSL_SHAPE_FACT before = *fact;
-    if (!DSL_Shape_Merge_Equal_Fact(fact, inferred))
-        return FALSE;
-    *changed = !DSL_Shape_Facts_Equal(before, *fact);
-    return TRUE;
-}
-
-static UINT64
-DSL_Shape_Fingerprint_Bytes
-        (UINT64 fingerprint,
-         const void *data,
-         size_t size)
-{
-    const unsigned char *bytes = (const unsigned char *)data;
-    for (size_t i = 0; i < size; ++i) {
-        fingerprint ^= bytes[i];
-        fingerprint *= 1099511628211ULL;
-    }
-    return fingerprint;
-}
-
-static UINT64
-DSL_Shape_Image_Fingerprint (void)
-{
-    UINT64 fingerprint = 1469598103934665603ULL;
-    DSL_IR_IMAGE_HEADER header;
-    DSL_IR_Image_Get_Header(&header);
-    fingerprint = DSL_Shape_Fingerprint_Bytes
-                      (fingerprint, &header, sizeof(header));
-    for (UINT32 i = 1; i <= header.opcode_descriptor_count; ++i) {
-        DSL_IR_OPCODE_DESCRIPTOR_RECORD record;
-        DSL_IR_Image_Get_Opcode_Descriptor(i, &record);
-        fingerprint = DSL_Shape_Fingerprint_Bytes
-                          (fingerprint, &record, sizeof(record));
-    }
-    for (UINT32 i = 1; i <= header.node_count; ++i) {
-        DSL_IR_NODE_RECORD record;
-        DSL_IR_Image_Get_Node(i, &record);
-        fingerprint = DSL_Shape_Fingerprint_Bytes
-                          (fingerprint, &record, sizeof(record));
-    }
-    for (UINT32 i = 1; i <= header.attribute_count; ++i) {
-        DSL_IR_ATTRIBUTE_RECORD record;
-        DSL_IR_Image_Get_Attribute(i, &record);
-        fingerprint = DSL_Shape_Fingerprint_Bytes
-                          (fingerprint, &record, sizeof(record));
-    }
-    for (UINT32 i = 1; i <= header.value_count; ++i) {
-        DSL_IR_VALUE_RECORD record;
-        DSL_IR_Image_Get_Value(i, &record);
-        fingerprint = DSL_Shape_Fingerprint_Bytes
-                          (fingerprint, &record, sizeof(record));
-    }
-    for (UINT32 i = 1; i <= header.value_reference_count; ++i) {
-        DSL_IR_VALUE_REFERENCE_RECORD record;
-        DSL_IR_Image_Get_Value_Reference(i, &record);
-        fingerprint = DSL_Shape_Fingerprint_Bytes
-                          (fingerprint, &record, sizeof(record));
-    }
-    return fingerprint;
-}
-
-static BOOL
-DSL_Shape_Analyze_PU_Internal
-        (PU_Info *pu,
-         WN *tree,
-         FILE *diagnostic,
-         DSL_SHAPE_REFINEMENT_VISITOR visitor,
-         void *visitor_context,
-         DSL_SHAPE_SOLVER_RESULT *result)
-{
-    DSL_SHAPE_SOLVER_RESULT local_result;
-    memset(&local_result, 0, sizeof(local_result));
-    DSL_IR_IMAGE_HEADER image_before;
-    DSL_IR_IMAGE_HEADER image_after;
-    DSL_IR_Image_Get_Header(&image_before);
-    UINT64 image_fingerprint_before = DSL_Shape_Image_Fingerprint();
-    UINT32 type_count_before = TY_Table_Size();
-
-    if (pu == NULL || tree == NULL) {
-        if (diagnostic != NULL)
-            fprintf(diagnostic, "DSL-SHAPE-001: missing PU or WHIRL tree\n");
-        local_result.contradiction_count = 1;
-        local_result.diagnostic_count = 1;
-        if (result != NULL)
-            *result = local_result;
-        return FALSE;
-    }
-
-    std::vector<DSL_SHAPE_SOLVER_VALUE> values;
-    std::vector<DSL_SHAPE_SOLVER_CONSTRAINT> constraints;
-    BOOL valid = DSL_Shape_Collect_Constraints
-                     (PU_Info_proc_sym(pu), tree, &values, &constraints,
-                      diagnostic);
-    std::sort(constraints.begin(), constraints.end(),
-              DSL_Shape_Constraint_Order);
-    local_result.visited_node_count = constraints.size();
-    local_result.value_count = values.size();
-
-    BOOL changed = TRUE;
-    UINT32 iteration_limit = values.size() + constraints.size() + 1;
-    while (valid && changed && local_result.iteration_count < iteration_limit) {
-        changed = FALSE;
-        ++local_result.iteration_count;
-        for (UINT32 i = 0; i < constraints.size(); ++i) {
-            DSL_SHAPE_SOLVER_CONSTRAINT &constraint = constraints[i];
-            std::vector<TY_IDX> operand_types;
-            std::vector<DSL_SHAPE_FACT> operand_facts;
-            for (UINT32 j = 0; j < constraint.operand_indices.size(); ++j) {
-                DSL_SHAPE_SOLVER_VALUE &operand =
-                    values[constraint.operand_indices[j]];
-                operand_types.push_back(operand.ty);
-                operand_facts.push_back(operand.fact);
-            }
-            DSL_SHAPE_INFERENCE_INPUT input;
-            input.dsl_operator = constraint.dsl_operator;
-            input.version = constraint.version;
-            input.node = &constraint.node;
-            input.operand_types = operand_types.empty() ?
-                                  NULL : &operand_types[0];
-            input.operand_facts = operand_facts.empty() ?
-                                  NULL : &operand_facts[0];
-            input.operand_count = operand_types.size();
-            input.result_ty = values[constraint.result_index].ty;
-            DSL_SHAPE_FACT inferred;
-            DSL_SHAPE_INFERENCE_RESULT inference =
-                DSL_Shape_Infer_Operator(&input, &inferred);
-            if (inference == DSL_SHAPE_INFERENCE_UNREGISTERED)
-                continue;
-            BOOL all_seed_facts_complete =
-                values[constraint.result_index].seed.state ==
-                    DSL_SHAPE_FACT_COMPLETE;
-            for (UINT32 j = 0;
-                 j < constraint.operand_indices.size() &&
-                 all_seed_facts_complete; ++j) {
-                all_seed_facts_complete =
-                    values[constraint.operand_indices[j]].seed.state ==
-                        DSL_SHAPE_FACT_COMPLETE;
-            }
-            if (all_seed_facts_complete) {
-                DSL_SHAPE_OPERATOR_INPUT check;
-                check.dsl_operator = constraint.dsl_operator;
-                check.version = constraint.version;
-                check.node = &constraint.node;
-                check.operand_types = input.operand_types;
-                check.operand_count = input.operand_count;
-                check.result_ty = input.result_ty;
-                if (DSL_Shape_Check_Operator(&check) !=
-                    DSL_SHAPE_CHECK_VALID)
-                    inference = DSL_SHAPE_INFERENCE_CONTRADICTION;
-            }
-            if (inference == DSL_SHAPE_INFERENCE_CONTRADICTION) {
-                values[constraint.result_index].fact.state =
-                    DSL_SHAPE_FACT_CONTRADICTION;
-                valid = FALSE;
-            } else {
-                BOOL value_changed = FALSE;
-                if (!DSL_Shape_Merge_Inference
-                         (&values[constraint.result_index].fact, inferred,
-                          &value_changed))
-                    valid = FALSE;
-                changed = changed || value_changed;
-            }
-            if (!valid && diagnostic != NULL) {
-                fprintf(diagnostic,
-                        "DSL-SHAPE-002: %s.v%u shape contradiction for "
-                        "value %u at file %u line %u\n",
-                        DSL_OPERATOR_name(constraint.dsl_operator),
-                        constraint.version,
-                        values[constraint.result_index].value_id,
-                        SRCPOS_filenum(constraint.source_position),
-                        SRCPOS_linenum(constraint.source_position));
-                ++local_result.diagnostic_count;
-            }
-            if (!valid)
-                break;
-        }
-    }
-
-    for (UINT32 i = 0; i < values.size(); ++i) {
-        const DSL_SHAPE_SOLVER_VALUE &value = values[i];
-        if (TY_kind(value.ty) == KIND_SCALAR)
-            continue;
-        if (value.fact.state == DSL_SHAPE_FACT_CONTRADICTION) {
-            ++local_result.contradiction_count;
-            continue;
-        }
-        if (value.fact.state == DSL_SHAPE_FACT_COMPLETE) {
-            BOOL symbolic = FALSE;
-            BOOL runtime_dynamic = FALSE;
-            for (INT32 j = 0; j < value.fact.rank; ++j) {
-                symbolic = symbolic ||
-                    value.fact.dimension_kind[j] ==
-                        DSL_SHAPE_DIMENSION_SYMBOL ||
-                    value.fact.dimension_kind[j] ==
-                        DSL_SHAPE_DIMENSION_EXPRESSION;
-                runtime_dynamic = runtime_dynamic ||
-                    value.fact.dimension_kind[j] ==
-                        DSL_SHAPE_DIMENSION_ANONYMOUS_DYNAMIC;
-            }
-            if (symbolic)
-                ++local_result.symbolic_value_count;
-            if (runtime_dynamic)
-                ++local_result.runtime_dynamic_value_count;
-            if (DSL_Shape_Facts_Equal(value.seed, value.fact))
-                ++local_result.unchanged_value_count;
-            else
-                ++local_result.refinable_value_count;
-        } else if (value.has_producer) {
-            ++local_result.unresolved_value_count;
-        } else {
-            ++local_result.pending_value_count;
-        }
-    }
-
-    DSL_IR_Image_Get_Header(&image_after);
-    if (TY_Table_Size() != type_count_before ||
-        memcmp(&image_before, &image_after, sizeof(image_before)) != 0 ||
-        DSL_Shape_Image_Fingerprint() != image_fingerprint_before) {
-        if (diagnostic != NULL)
-            fprintf(diagnostic,
-                    "DSL-SHAPE-003: check-only analysis mutated compiler "
-                    "tables\n");
-        ++local_result.contradiction_count;
-        ++local_result.diagnostic_count;
-        valid = FALSE;
-    }
-    if (valid && visitor != NULL) {
-        for (UINT32 i = 0; i < values.size(); ++i) {
-            const DSL_SHAPE_SOLVER_VALUE &value = values[i];
-            if (value.fact.state != DSL_SHAPE_FACT_COMPLETE ||
-                DSL_Shape_Facts_Equal(value.seed, value.fact))
-                continue;
-            DSL_SHAPE_REFINEMENT refinement;
-            refinement.value_id = value.value_id;
-            refinement.expected_old_ty = value.ty;
-            refinement.refined_fact = value.fact;
-            refinement.source_position = value.source_position;
-            if (!visitor(&refinement, visitor_context)) {
-                if (diagnostic != NULL)
-                    fprintf(diagnostic,
-                            "DSL-SHAPE-004: refinement consumer rejected "
-                            "value %u at file %u line %u\n",
-                            refinement.value_id,
-                            SRCPOS_filenum(refinement.source_position),
-                            SRCPOS_linenum(refinement.source_position));
-                ++local_result.diagnostic_count;
-                valid = FALSE;
-                break;
-            }
-        }
-    }
-    if (result != NULL)
-        *result = local_result;
-    return valid && local_result.contradiction_count == 0;
-}
-
-BOOL
-DSL_Shape_Analyze_PU
-        (PU_Info *pu,
-         WN *tree,
-         FILE *diagnostic,
-         DSL_SHAPE_SOLVER_RESULT *result)
-{
-    return DSL_Shape_Analyze_PU_Internal
-               (pu, tree, diagnostic, NULL, NULL, result);
-}
-
-BOOL
-DSL_Shape_Analyze_PU_With_Refinements
-        (PU_Info *pu,
-         WN *tree,
-         FILE *diagnostic,
-         DSL_SHAPE_REFINEMENT_VISITOR visitor,
-         void *visitor_context,
-         DSL_SHAPE_SOLVER_RESULT *result)
-{
-    return DSL_Shape_Analyze_PU_Internal
-               (pu, tree, diagnostic, visitor, visitor_context, result);
 }

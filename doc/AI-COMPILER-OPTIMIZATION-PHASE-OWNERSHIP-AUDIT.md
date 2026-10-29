@@ -6,8 +6,10 @@ Directory-admission follow-up (2026-10-29): the completed policy/phase split
 below does not establish that its common runtime containers are preserved in
 `.B`. Under the stricter persistence rule, see the
 [DSL-only common/com persistence audit](COMMON-COM-DSL-PERSISTENCE-OWNERSHIP-AUDIT.md)
-for proposed relocation of the remaining nonpersistent records and related
-methods to their logic owners. No new move is claimed here, and the explicitly
+and the [current relocation ledger](DSL-BACKEND-OWNERSHIP-RELOCATION.md)
+for the implemented relocation of nonpersistent records and related methods
+to their logic owners. The phase table below is historical context, not the
+current source-path inventory. The explicitly
 retained `dsl_builder` persistent-construction interface is not a phase planner.
 Shared WHIRL canonicalization and constant folding, including tensor types/data,
 also remain `common/com` ingestion-callable services, with their transient

@@ -100,6 +100,8 @@ TARGETS = wffi.a libwffi.so whirl_ffi_gen whirl_ffi_dummy.o $(WRAPPER_TARGETS)
 COMMON_UTIL_DIR= $(BUILD_TOT)/common/util
 COMMON_COM_DIR= $(BUILD_TOT)/common/com
 COMMON_FHE_DIR= $(BUILD_TOT)/common/fhe
+COMMON_IR_IMAGE_DIR = $(BUILD_TOT)/common/ir_image
+BE_VHO_DIR = $(BUILD_TOT)/be/vho
 COMMON_COM_TARG_DIR= $(BUILD_TOT)/common/com/$(BUILD_TARGET_DIR)
 BE_COM_DIR= $(BUILD_TOT)/be/com
 BE_OPT_DIR= $(BUILD_TOT)/be/opt
@@ -110,6 +112,7 @@ LCINCS = -I$(BUILD_BASE) -I$(COMMON_COM_DIR) -I$(COMMON_FHE_DIR) \
 	-I$(COMMON_COM_TARG_DIR) \
 	-I$(COMMON_UTIL_DIR) -I$(BE_COM_DIR) -I$(BE_OPT_DIR) $(XINC)  \
         -I$(BUILD_TOT)/include
+LCINCS += -I$(COMMON_IR_IMAGE_DIR) -I$(BE_VHO_DIR)
 ifeq ($(BUILD_OS), LINUX)
 LCINCS += -I$(BUILD_AREA)/include/libelf -I$(BUILD_TOT)/libjson/include
 endif
@@ -134,17 +137,8 @@ COMMON_COM_CXX_SRC =	\
         const.cxx       \
         controls.cxx    \
         dsl_domain.cxx  \
-        fhe_image.cxx   \
-        fhe_plan.cxx    \
-        dsl_ir_image.cxx \
-        dsl_ir_lower.cxx \
-        dsl_ir_group_lower.cxx \
-        dsl_ir_retype.cxx \
-        dsl_ckks_expand.cxx \
-        dsl_external_tensor.cxx \
-        dsl_pu_interface_verify.cxx \
-        dsl_ir_rewrite.cxx \
-        dsl_region.cxx  \
+        dsl_gatekeeper.cxx \
+        dsl_shape.cxx \
         dsl_memory_behavior.cxx \
         dsl_opcode.cxx  \
         dsl_tensor_fold.cxx \
@@ -174,6 +168,33 @@ COMMON_COM_CXX_SRC =	\
         wutil.cxx       \
         xstats.cxx
 
+# Keep image storage, FHE records and backend-free live services with their owners.
+COMMON_IR_IMAGE_CXX_SRCS = \
+  dsl_contract.cxx \
+  dsl_ir_image.cxx \
+  dsl_region_image.cxx
+
+COMMON_FHE_CXX_SRCS = \
+  dsl_ckks_event.cxx \
+  fhe_image.cxx \
+  fhe_plan.cxx
+
+BE_COM_DSL_CXX_SRCS = \
+  dsl_external_tensor.cxx \
+  dsl_ir_group_lower.cxx \
+  dsl_ir_lower.cxx \
+  dsl_ir_retype.cxx \
+  dsl_ir_rewrite.cxx \
+  dsl_program_interface.cxx \
+  dsl_pu_interface_verify.cxx \
+  dsl_region.cxx \
+  dsl_runtime_interface.cxx
+
+# Direct objects only: check-only shape propagation needs no be.so or CG.
+BE_VHO_CXX_SRCS = \
+  dsl_ckks_expand.cxx \
+  dsl_shape_analysis.cxx
+
 # common targ cxx files
 COMMON_COM_TARG_CXX_SRCS =  \
         config_targ.cxx	    \
@@ -188,6 +209,10 @@ BE_COM_CXX_SRCS = \
 # wffi library cxx files
 WFFI_LIB_CXX_SRCS =                 \
         $(COMMON_COM_CXX_SRC)       \
+        $(COMMON_IR_IMAGE_CXX_SRCS) \
+        $(COMMON_FHE_CXX_SRCS)      \
+        $(BE_COM_DSL_CXX_SRCS)      \
+        $(BE_VHO_CXX_SRCS)          \
         $(COMMON_COM_TARG_CXX_SRCS) \
         $(BE_COM_CXX_SRCS)          \
         wgen_core.cxx               \
@@ -211,6 +236,10 @@ WFFI_GEN_EXTRA_SRCS =   \
 # full cxx files for whirl_ffi_gen
 CXXFILES =		            \
         $(COMMON_COM_CXX_SRC)       \
+        $(COMMON_IR_IMAGE_CXX_SRCS) \
+        $(COMMON_FHE_CXX_SRCS)      \
+        $(BE_COM_DSL_CXX_SRCS)      \
+        $(BE_VHO_CXX_SRCS)          \
         $(COMMON_COM_TARG_CXX_SRCS) \
         $(WFFI_GEN_EXTRA_SRCS)
 
@@ -236,8 +265,7 @@ include $(COMMONRULES)
 
 VPATH = $(BUILD_BASE) $(COMMON_COM_DIR) $(COMMON_FHE_DIR) \
 	$(COMMON_COM_TARG_DIR) $(BE_COM_DIR)
-# Preserve legacy source lookup precedence; these are relocated owners.
-VPATH += $(BUILD_TOT)/common/ir_image $(BUILD_TOT)/be/com $(BUILD_TOT)/be/vho
+VPATH += $(COMMON_IR_IMAGE_DIR) $(BE_VHO_DIR)
 
 wffi.a: $(WFFI_LIB_OBJS)
 	$(AR) rc $@ $^

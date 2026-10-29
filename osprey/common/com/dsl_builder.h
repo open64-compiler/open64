@@ -12,7 +12,7 @@
 #include "dsl_contract.h"
 #include "dsl_ir_image.h"
 #include "dsl_opcode.h"
-#include "dsl_region.h"
+#include "../../be/com/dsl_region.h"
 
 /*
  * Minimal C++ builder-facing DSL API.

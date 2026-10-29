@@ -1,7 +1,7 @@
 {
   "schema": "open64.common-com-dsl-ownership-policy.v1",
-  "scope": "DSL-related production sources in common/com plus DSL fragments in shared files; tests separately inventoried. Historical non-DSL code is excluded.",
-  "authority": "User-reviewed common WHIRL service ownership: retain builder, canonicalization/folding, opcode/domain registries, integrity checks and general cross-session telemetry service in common/com. Classify actual .B preservation separately. Backend relocation is now authorized; the numerical/model leaf batch below has moved, while remaining groups are proposals. Hardware descriptions extend the existing common/targ_info owner; mixed hardware-description/phase-planning files must be split.",
+  "scope": "Current DSL production files in common/com and reviewed relocated/extracted production families at their current owners; shared common/com DSL fragments and related tests are separately inventoried. Historical non-DSL code and existing phase *_opt implementations are excluded.",
+  "authority": "User-reviewed current ownership is authoritative. groups enumerates current common/com files; relocated_groups enumerates current moved/extracted production files and historical origins. Completed splits keep local shape facts and REGION schema in common/com, copied control/live REGION mechanisms in be/com, image REGION storage and contract registry in common/ir_image, CKKS event images in common/fhe, option storage in common/util, and PU plans/analysis in be/vho. Hardware groups retain the reviewed common/targ_info/access ownership; software-provider capabilities stay with VHO.",
   "groups": [
     {
       "id": "persistent-core",
@@ -45,46 +45,22 @@
       ]
     },
     {
-      "id": "ckks-event",
-      "files": [
-        "osprey/common/com/dsl_ckks_event.cxx",
-        "osprey/common/com/dsl_ckks_event.h",
-        "osprey/common/com/dsl_ckks_event_internal.h"
-      ],
-      "classification": "mixed_persistent_and_service",
-      "proposed_owner": "osprey/common/fhe",
-      "action": "relocate_domain_owned_schema_and_service",
-      "reason": "Two stored event headers/rows are .B data, but CKKS ownership is irreducibly FHE. Table containers, join keys, maps and validation scratch are transient. Keep row ABI intact; no VHO dependency in readers.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/ir_bwrite.cxx",
-          "token": "WN_write_dsl_ckks_event_image"
-        },
-        {
-          "path": "osprey/common/com/ir_bread.cxx",
-          "token": "WN_get_dsl_ckks_event_image"
-        }
-      ]
-    },
-    {
       "id": "region",
       "files": [
-        "osprey/common/com/dsl_region.cxx",
-        "osprey/common/com/dsl_region.h",
-        "osprey/common/com/dsl_region_internal.h"
+        "osprey/common/com/dsl_region.h"
       ],
-      "classification": "mixed_persistent_and_service",
-      "proposed_owner": "osprey/common/com + osprey/common/ir_image + osprey/be/com",
-      "action": "split_schema_store_and_physical_mechanism",
-      "reason": "Three fixed REGION header/rows persist in WT_REGIONS. dsl_region_runtime, DSL_REGION_STORE, handles, PU/WN pointers and lowering-transition requests do not. Keep schema; mapped/store support to common/ir_image, live PU mechanisms to be/com.",
+      "classification": "persistent_schema",
+      "proposed_owner": "osprey/common/com",
+      "action": "retain_schema_after_store_and_live_split",
+      "reason": "Only the existing three WT_REGIONS schema rows, roles, flags and version constants remain here. Managed storage/mapped I/O is in common/ir_image; live PU/REGION mechanisms are in be/com. Field order and image ABI are unchanged.",
       "witnesses": [
         {
-          "path": "osprey/common/com/dsl_region.cxx",
-          "token": "DSL_Region_Write_PU"
+          "path": "osprey/common/com/dsl_region.h",
+          "token": "DSL_REGION_IMAGE_RECORD"
         },
         {
-          "path": "osprey/common/com/dsl_region.cxx",
-          "token": "DSL_Region_Load_Mapped_PU"
+          "path": "osprey/common/ir_image/dsl_region_image.cxx",
+          "token": "DSL_Region_Write_PU"
         }
       ]
     },
@@ -148,23 +124,6 @@
       ]
     },
     {
-      "id": "contract",
-      "files": [
-        "osprey/common/com/dsl_contract.cxx",
-        "osprey/common/com/dsl_contract.h"
-      ],
-      "classification": "nonpersistent_registry",
-      "proposed_owner": "osprey/common/ir_image",
-      "action": "relocate_with_registry",
-      "reason": "Contract seeds, required-check lists, borrowed public INFO and owning dynamic vectors are process-local. Persisted contract name/version in WN or REGION records is a projection, not registry object persistence.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_contract.cxx",
-          "token": "DSL_contract_registry"
-        }
-      ]
-    },
-    {
       "id": "memory-behavior",
       "files": [
         "osprey/common/com/dsl_memory_behavior.cxx",
@@ -210,20 +169,21 @@
       "id": "shape",
       "files": [
         "osprey/common/com/dsl_shape.cxx",
-        "osprey/common/com/dsl_shape.h"
+        "osprey/common/com/dsl_shape.h",
+        "osprey/common/com/dsl_shape_fact_internal.h"
       ],
-      "classification": "nonpersistent_analysis_and_semantics",
-      "proposed_owner": "osprey/common/com + osprey/be/vho",
-      "action": "split_predicates_from_PU_solver",
-      "reason": "Shared tensor type/operator predicates and local shape inference stay in common/com for ingestion/canonicalization. Facts and input descriptions remain transient service data. PU-wide fixed-point/refinement discovery remains separately phase-owned in VHO; caller controls mutation and scope.",
+      "classification": "nonpersistent_shared_local_semantics",
+      "proposed_owner": "osprey/common/com",
+      "action": "retain_local_predicates_inference_and_facts",
+      "reason": "Shared ingestion-callable tensor type/operator predicates, local inference and private fact classification/equality/merge stay here. The bounded PU fixed-point solver and refinement visitor now live in VHO; no type or image mutation is authorized by these local helpers.",
       "witnesses": [
         {
           "path": "osprey/common/com/dsl_shape.cxx",
-          "token": "DSL_Shape_Analyze_PU_With_Refinements"
+          "token": "DSL_Shape_Check_Operator"
         },
         {
-          "path": "osprey/be/vho/dsl_shape_refine.cxx",
-          "token": "DSL_Shape_Analyze_PU_With_Refinements"
+          "path": "osprey/common/com/dsl_shape_fact_internal.h",
+          "token": "DSL_Shape_Merge_Equal_Fact"
         }
       ]
     },
@@ -241,260 +201,6 @@
         {
           "path": "osprey/common/com/dsl_simp.cxx",
           "token": "WN_SimplifyExp2"
-        }
-      ]
-    },
-    {
-      "id": "tensor-evolution",
-      "files": [
-        "osprey/common/com/dsl_tensor_evolution.cxx",
-        "osprey/common/com/dsl_tensor_evolution.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "PU-local evolution graph, nodes/edges, representation descendants and add/get/verify/print services; graph identity is not a .B section.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_tensor_evolution.h",
-          "token": "dsl_tensor_evolution_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_tensor_evolution.cxx",
-          "token": "#include"
-        }
-      ]
-    },
-    {
-      "id": "opt-plan",
-      "files": [
-        "osprey/common/com/dsl_opt_plan.cxx",
-        "osprey/common/com/dsl_opt_plan.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Runtime candidate, cost, budget, plan, membership and recorded-selection objects; policy-free storage remains nonpersistent. Cost selection already lives in VHO.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_opt_plan.h",
-          "token": "dsl_opt_plan_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_opt_plan.cxx",
-          "token": "#include"
-        }
-      ]
-    },
-    {
-      "id": "tensor-analysis",
-      "files": [
-        "osprey/common/com/dsl_tensor_analysis.cxx",
-        "osprey/common/com/dsl_tensor_analysis.h",
-        "osprey/common/com/dsl_tensor_analysis_internal.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "PU-local tensor fact/use vectors and generation/completeness state; facts are derived from persistent rows, not written as a separate image.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_tensor_analysis.h",
-          "token": "dsl_tensor_analysis_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_tensor_analysis.cxx",
-          "token": "#include"
-        }
-      ]
-    },
-    {
-      "id": "tensor-locality",
-      "files": [
-        "osprey/common/com/dsl_tensor_locality.cxx",
-        "osprey/common/com/dsl_tensor_locality.h",
-        "osprey/common/com/dsl_tensor_locality_internal.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/com + osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Copied control snapshot and lifetime/locality facts are transient; WOPT captures CFG facts and VHO derives locality. Shared copied snapshot contract should live in be/com, not force WOPT to link VHO.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_tensor_locality.h",
-          "token": "dsl_tensor_locality_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_tensor_locality.cxx",
-          "token": "#include"
-        }
-      ]
-    },
-    {
-      "id": "fusion",
-      "files": [
-        "osprey/common/com/dsl_fusion_candidate.cxx",
-        "osprey/common/com/dsl_fusion_candidate.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Runtime fusion sites/members/boundaries and create-info arrays; candidate discovery and costing already in VHO.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_fusion_candidate.h",
-          "token": "dsl_fusion_candidate_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_fusion_candidate.cxx",
-          "token": "#include"
-        }
-      ]
-    },
-    {
-      "id": "layout",
-      "files": [
-        "osprey/common/com/dsl_layout_candidate.cxx",
-        "osprey/common/com/dsl_layout_candidate.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Runtime logical-layout descriptor/axis/block/site/alternative vectors; no image writer. A flat layout record is not automatically a persisted tensor descriptor.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_layout_candidate.h",
-          "token": "dsl_layout_candidate_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_layout_candidate.cxx",
-          "token": "#include"
-        }
-      ]
-    },
-    {
-      "id": "distributed",
-      "files": [
-        "osprey/common/com/dsl_distributed_candidate.cxx",
-        "osprey/common/com/dsl_distributed_candidate.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Runtime placement, alias/range, communication epoch/intent and candidate containers. No cross-PU authority follows from global IDs.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_distributed_candidate.h",
-          "token": "dsl_distributed_candidate_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_distributed_candidate.cxx",
-          "token": "#include"
-        }
-      ]
-    },
-    {
-      "id": "residency",
-      "files": [
-        "osprey/common/com/dsl_residency_candidate.cxx",
-        "osprey/common/com/dsl_residency_candidate.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Runtime residency descriptions/sites/alternatives; counts/IDs/getters do not make them persisted.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_residency_candidate.h",
-          "token": "dsl_residency_candidate_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_residency_candidate.cxx",
-          "token": "#include"
-        }
-      ]
-    },
-    {
-      "id": "tile",
-      "files": [
-        "osprey/common/com/dsl_tile_candidate.cxx",
-        "osprey/common/com/dsl_tile_candidate.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Runtime tile sites/plans/stages; selected WHIRL may persist after lowering, not these planning records. Canonical-loop realization remains LNO-owned.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_tile_candidate.h",
-          "token": "dsl_tile_candidate_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_tile_candidate.cxx",
-          "token": "#include"
-        }
-      ]
-    },
-    {
-      "id": "fetch",
-      "files": [
-        "osprey/common/com/dsl_fetch_pipeline.cxx",
-        "osprey/common/com/dsl_fetch_pipeline.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Runtime fetch/pipeline sites/plans/resource ledgers/stages; transfer selection/overlap/resource estimates remain VHO, not image schema.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_fetch_pipeline.h",
-          "token": "dsl_fetch_pipeline_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_fetch_pipeline.cxx",
-          "token": "#include"
-        }
-      ]
-    },
-    {
-      "id": "physical",
-      "files": [
-        "osprey/common/com/dsl_physical_plan.cxx",
-        "osprey/common/com/dsl_physical_plan.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Runtime physical sites/implementations and software-provider capabilities remain with provider planning in VHO. Software library/kernel availability is not by itself a hardware description; target profile references do not justify moving the whole service to common/targ_info.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_physical_plan.h",
-          "token": "dsl_physical_plan_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_physical_plan.cxx",
-          "token": "#include"
-        }
-      ]
-    },
-    {
-      "id": "variant",
-      "files": [
-        "osprey/common/com/dsl_runtime_variant.cxx",
-        "osprey/common/com/dsl_runtime_variant.h"
-      ],
-      "classification": "nonpersistent_phase_records",
-      "proposed_owner": "osprey/be/vho",
-      "action": "relocate_records_and_related_services",
-      "reason": "Runtime variant/guard descriptions and containers. Runtime meaning, version and pointer-free records do not prove .B persistence; emitted guard WNs are separate.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_runtime_variant.h",
-          "token": "dsl_runtime_variant_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_runtime_variant.cxx",
-          "token": "#include"
         }
       ]
     },
@@ -522,57 +228,23 @@
       "current_storage": "in_memory_profile_and_text_inspection_not_a_WHIRL_image_section"
     },
     {
-      "id": "compute-realization",
+      "id": "plan-identity",
       "files": [
-        "osprey/common/com/dsl_compute_realization.cxx",
-        "osprey/common/com/dsl_compute_realization.h"
+        "osprey/common/com/dsl_plan_identity.h"
       ],
-      "classification": "mixed_hardware_description_and_phase_records",
-      "proposed_owner": "osprey/common/targ_info + osprey/be/vho",
-      "action": "split_hardware_profiles_from_PU_realization",
-      "reason": "Move immutable compute hardware/ISA profile vocabulary, DSL_compute_profiles table and exact profile lookup to common/targ_info. Keep PU-specific realization/fallback/protocol/resource/link records and their joins/verification in VHO. Do not move the entire mixed file or make target-description access import VHO planning state.",
+      "classification": "nonpersistent_shared_identity_vocabulary",
+      "proposed_owner": "osprey/common/com",
+      "action": "retain_shared_telemetry_and_plan_identity",
+      "reason": "Stable plan/site/variant labels are shared with retained general telemetry; they neither own VHO optimization stores nor introduce persisted image rows.",
       "witnesses": [
         {
-          "path": "osprey/common/com/dsl_compute_realization.h",
-          "token": "dsl_compute_realization_INCLUDED"
-        },
-        {
-          "path": "osprey/common/com/dsl_compute_realization.cxx",
-          "token": "#include"
+          "path": "osprey/common/com/dsl_plan_identity.h",
+          "token": "DSL_RUNTIME_VARIANT_SITE_ID"
         }
-      ]
-    },
-    {
-      "id": "memory-hierarchy",
-      "files": [
-        "osprey/common/com/dsl_memory_hierarchy.cxx",
-        "osprey/common/com/dsl_memory_hierarchy.h"
       ],
-      "classification": "nonpersistent_target_inventory",
-      "proposed_owner": "osprey/common/targ_info",
-      "action": "relocate_target_description",
-      "reason": "Relocate dsl_memory_hierarchy.h/cxx and related immutable hardware description, tier/bank/movement/profile data and lookups to the existing common/targ_info owner, extending CPU target-description infrastructure for GPU/accelerator descriptions. This is hardware information, not VHO planning policy. Preserve exact identities and explicit unknown rates/capacities.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_memory_hierarchy.cxx",
-          "token": "DSL_hardware_descriptions"
-        }
-      ]
-    },
-    {
-      "id": "hardware-performance",
-      "files": [
-        "osprey/common/com/dsl_hardware_performance.h"
-      ],
-      "classification": "nonpersistent_target_inventory",
-      "proposed_owner": "osprey/common/targ_info",
-      "action": "relocate_target_description",
-      "reason": "Relocate runtime hardware performance/resource capacity descriptions and structural predicates to common/targ_info with hardware descriptions. These are not VHO cost models, calibrated timing, selected resource allocations or .B rows.",
-      "witnesses": [
-        {
-          "path": "osprey/common/com/dsl_hardware_performance.h",
-          "token": "DSL_HARDWARE_PERFORMANCE_RECORD"
-        }
+      "extracted_from": [
+        "osprey/common/com/dsl_opt_plan.h",
+        "osprey/common/com/dsl_runtime_variant.h"
       ]
     }
   ],
@@ -650,6 +322,584 @@
       "relocated_from": [
         "osprey/common/com/dsl_typed_simt.cxx",
         "osprey/common/com/dsl_typed_simt.h"
+      ]
+    },
+    {
+      "id": "memory-hierarchy",
+      "files": [
+        "osprey/common/targ_info/access/dsl_memory_hierarchy.cxx",
+        "osprey/common/targ_info/access/dsl_memory_hierarchy.h"
+      ],
+      "classification": "nonpersistent_target_inventory",
+      "proposed_owner": "osprey/common/targ_info/access",
+      "action": "relocated_to_hardware_owner",
+      "reason": "Relocate dsl_memory_hierarchy.h/cxx and related immutable hardware description, tier/bank/movement/profile data and lookups to the existing common/targ_info owner, extending CPU target-description infrastructure for GPU/accelerator descriptions. This is hardware information, not VHO planning policy. Preserve exact identities and explicit unknown rates/capacities.",
+      "witnesses": [
+        {
+          "path": "osprey/common/targ_info/access/dsl_memory_hierarchy.cxx",
+          "token": "DSL_hardware_descriptions"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_memory_hierarchy.cxx",
+        "osprey/common/com/dsl_memory_hierarchy.h"
+      ]
+    },
+    {
+      "id": "hardware-performance",
+      "files": [
+        "osprey/common/targ_info/access/dsl_hardware_performance.h"
+      ],
+      "classification": "nonpersistent_target_inventory",
+      "proposed_owner": "osprey/common/targ_info/access",
+      "action": "relocated_to_hardware_owner",
+      "reason": "Relocate runtime hardware performance/resource capacity descriptions and structural predicates to common/targ_info with hardware descriptions. These are not VHO cost models, calibrated timing, selected resource allocations or .B rows.",
+      "witnesses": [
+        {
+          "path": "osprey/common/targ_info/access/dsl_hardware_performance.h",
+          "token": "DSL_HARDWARE_PERFORMANCE_RECORD"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_hardware_performance.h"
+      ]
+    },
+    {
+      "id": "compute-profile",
+      "files": [
+        "osprey/common/targ_info/access/dsl_compute_profile.h",
+        "osprey/common/targ_info/access/dsl_compute_profile.cxx"
+      ],
+      "extracted_from": [
+        "osprey/common/com/dsl_compute_realization.h",
+        "osprey/common/com/dsl_compute_realization.cxx"
+      ],
+      "classification": "nonpersistent_target_inventory",
+      "proposed_owner": "osprey/common/targ_info/access",
+      "action": "extracted_to_hardware_owner",
+      "reason": "Immutable profile vocabulary, bounded static ISA/toolkit rows and exact lookup; no PU joins, analytical schedules, measured timing or software-provider selection.",
+      "witnesses": [
+        {
+          "path": "osprey/common/targ_info/access/dsl_compute_profile.cxx",
+          "token": "DSL_compute_profiles"
+        },
+        {
+          "path": "osprey/common/targ_info/access/dsl_compute_profile.h",
+          "token": "DSL_COMPUTE_PROFILE_RECORD"
+        }
+      ]
+    },
+    {
+      "id": "compute-format",
+      "files": [
+        "osprey/common/targ_info/access/dsl_compute_format.h"
+      ],
+      "extracted_from": [
+        "osprey/be/vho/dsl_accumulation.h"
+      ],
+      "classification": "nonpersistent_target_vocabulary",
+      "proposed_owner": "osprey/common/targ_info/access",
+      "action": "extracted_shared_format_vocabulary",
+      "reason": "Existing numerical format labels shared by ISA rows and backend numerical contracts. Preserve all numbers; not new WHIRL MTYPE or .B encodings. No target-to-backend include dependency.",
+      "witnesses": [
+        {
+          "path": "osprey/common/targ_info/access/dsl_compute_format.h",
+          "token": "DSL_ACCUMULATION_FORMAT"
+        }
+      ]
+    },
+    {
+      "id": "ckks-event",
+      "files": [
+        "osprey/common/fhe/dsl_ckks_event.cxx",
+        "osprey/common/fhe/dsl_ckks_event.h",
+        "osprey/common/fhe/dsl_ckks_event_internal.h"
+      ],
+      "classification": "mixed_persistent_and_service",
+      "proposed_owner": "osprey/common/fhe",
+      "action": "relocated_domain_schema_and_service_unchanged",
+      "reason": "Two stored event headers/rows are .B data, but CKKS ownership is irreducibly FHE. Table containers, join keys, maps and validation scratch are transient. Keep row ABI intact; no VHO dependency in readers.",
+      "witnesses": [
+        {
+          "path": "osprey/common/com/ir_bwrite.cxx",
+          "token": "WN_write_dsl_ckks_event_image"
+        },
+        {
+          "path": "osprey/common/com/ir_bread.cxx",
+          "token": "WN_get_dsl_ckks_event_image"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_ckks_event.cxx",
+        "osprey/common/com/dsl_ckks_event.h",
+        "osprey/common/com/dsl_ckks_event_internal.h"
+      ]
+    },
+    {
+      "id": "contract",
+      "files": [
+        "osprey/common/ir_image/dsl_contract.cxx",
+        "osprey/common/ir_image/dsl_contract.h"
+      ],
+      "classification": "nonpersistent_registry",
+      "proposed_owner": "osprey/common/ir_image",
+      "action": "relocated_to_current_service_owner",
+      "reason": "Contract seeds, required-check lists, borrowed public INFO and owning dynamic vectors are process-local. Persisted contract name/version in WN or REGION records is a projection, not registry object persistence.",
+      "witnesses": [
+        {
+          "path": "osprey/common/ir_image/dsl_contract.cxx",
+          "token": "DSL_contract_registry"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_contract.cxx",
+        "osprey/common/com/dsl_contract.h"
+      ]
+    },
+    {
+      "id": "tensor-evolution",
+      "files": [
+        "osprey/be/vho/dsl_tensor_evolution.cxx",
+        "osprey/be/vho/dsl_tensor_evolution.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_current_service_owner",
+      "reason": "PU-local evolution graph, nodes/edges, representation descendants and add/get/verify/print services; graph identity is not a .B section.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_tensor_evolution.h",
+          "token": "dsl_tensor_evolution_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_tensor_evolution.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_tensor_evolution.cxx",
+        "osprey/common/com/dsl_tensor_evolution.h"
+      ]
+    },
+    {
+      "id": "opt-plan",
+      "files": [
+        "osprey/be/vho/dsl_opt_plan.cxx",
+        "osprey/be/vho/dsl_opt_plan.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_current_service_owner",
+      "reason": "Runtime candidate, cost, budget, plan, membership and recorded-selection objects; policy-free storage remains nonpersistent. Cost selection already lives in VHO.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_opt_plan.h",
+          "token": "dsl_opt_plan_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_opt_plan.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_opt_plan.cxx",
+        "osprey/common/com/dsl_opt_plan.h"
+      ]
+    },
+    {
+      "id": "tensor-analysis",
+      "files": [
+        "osprey/be/vho/dsl_tensor_analysis.cxx",
+        "osprey/be/vho/dsl_tensor_analysis.h",
+        "osprey/be/vho/dsl_tensor_analysis_internal.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_current_service_owner",
+      "reason": "PU-local tensor fact/use vectors and generation/completeness state; facts are derived from persistent rows, not written as a separate image.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_tensor_analysis.h",
+          "token": "dsl_tensor_analysis_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_tensor_analysis.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_tensor_analysis.cxx",
+        "osprey/common/com/dsl_tensor_analysis.h",
+        "osprey/common/com/dsl_tensor_analysis_internal.h"
+      ]
+    },
+    {
+      "id": "tensor-locality",
+      "files": [
+        "osprey/be/vho/dsl_tensor_locality.cxx",
+        "osprey/be/vho/dsl_tensor_locality.h",
+        "osprey/be/vho/dsl_tensor_locality_internal.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_current_service_owner",
+      "reason": "VHO owns PU-local locality/lifetime facts, vectors, derivation and structural access. Copied control snapshots are extracted separately to be/com so WOPT does not acquire a VHO store dependency.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_tensor_locality.h",
+          "token": "dsl_tensor_locality_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_tensor_locality.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_tensor_locality.cxx",
+        "osprey/common/com/dsl_tensor_locality.h",
+        "osprey/common/com/dsl_tensor_locality_internal.h"
+      ]
+    },
+    {
+      "id": "fusion",
+      "files": [
+        "osprey/be/vho/dsl_fusion_candidate.cxx",
+        "osprey/be/vho/dsl_fusion_candidate.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_current_service_owner",
+      "reason": "Runtime fusion sites/members/boundaries and create-info arrays; candidate discovery and costing already in VHO.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_fusion_candidate.h",
+          "token": "dsl_fusion_candidate_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_fusion_candidate.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_fusion_candidate.cxx",
+        "osprey/common/com/dsl_fusion_candidate.h"
+      ]
+    },
+    {
+      "id": "layout",
+      "files": [
+        "osprey/be/vho/dsl_layout_candidate.cxx",
+        "osprey/be/vho/dsl_layout_candidate.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_current_service_owner",
+      "reason": "Runtime logical-layout descriptor/axis/block/site/alternative vectors; no image writer. A flat layout record is not automatically a persisted tensor descriptor.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_layout_candidate.h",
+          "token": "dsl_layout_candidate_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_layout_candidate.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_layout_candidate.cxx",
+        "osprey/common/com/dsl_layout_candidate.h"
+      ]
+    },
+    {
+      "id": "distributed",
+      "files": [
+        "osprey/be/vho/dsl_distributed_candidate.cxx",
+        "osprey/be/vho/dsl_distributed_candidate.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_current_service_owner",
+      "reason": "Runtime placement, alias/range, communication epoch/intent and candidate containers. No cross-PU authority follows from global IDs.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_distributed_candidate.h",
+          "token": "dsl_distributed_candidate_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_distributed_candidate.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_distributed_candidate.cxx",
+        "osprey/common/com/dsl_distributed_candidate.h"
+      ]
+    },
+    {
+      "id": "residency",
+      "files": [
+        "osprey/be/vho/dsl_residency_candidate.cxx",
+        "osprey/be/vho/dsl_residency_candidate.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_current_service_owner",
+      "reason": "Runtime residency descriptions/sites/alternatives; counts/IDs/getters do not make them persisted.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_residency_candidate.h",
+          "token": "dsl_residency_candidate_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_residency_candidate.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_residency_candidate.cxx",
+        "osprey/common/com/dsl_residency_candidate.h"
+      ]
+    },
+    {
+      "id": "tile",
+      "files": [
+        "osprey/be/vho/dsl_tile_candidate.cxx",
+        "osprey/be/vho/dsl_tile_candidate.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_current_service_owner",
+      "reason": "Runtime tile sites/plans/stages; selected WHIRL may persist after lowering, not these planning records. Canonical-loop realization remains LNO-owned.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_tile_candidate.h",
+          "token": "dsl_tile_candidate_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_tile_candidate.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_tile_candidate.cxx",
+        "osprey/common/com/dsl_tile_candidate.h"
+      ]
+    },
+    {
+      "id": "fetch",
+      "files": [
+        "osprey/be/vho/dsl_fetch_pipeline.cxx",
+        "osprey/be/vho/dsl_fetch_pipeline.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_current_service_owner",
+      "reason": "Runtime fetch/pipeline sites/plans/resource ledgers/stages; transfer selection/overlap/resource estimates remain VHO, not image schema.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_fetch_pipeline.h",
+          "token": "dsl_fetch_pipeline_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_fetch_pipeline.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_fetch_pipeline.cxx",
+        "osprey/common/com/dsl_fetch_pipeline.h"
+      ]
+    },
+    {
+      "id": "physical",
+      "files": [
+        "osprey/be/vho/dsl_physical_plan.cxx",
+        "osprey/be/vho/dsl_physical_plan.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_current_service_owner",
+      "reason": "Runtime physical sites/implementations and software-provider capabilities remain with provider planning in VHO. Software library/kernel availability is not by itself a hardware description; target profile references do not justify moving the whole service to common/targ_info.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_physical_plan.h",
+          "token": "dsl_physical_plan_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_physical_plan.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_physical_plan.cxx",
+        "osprey/common/com/dsl_physical_plan.h"
+      ]
+    },
+    {
+      "id": "variant",
+      "files": [
+        "osprey/be/vho/dsl_runtime_variant.cxx",
+        "osprey/be/vho/dsl_runtime_variant.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_current_service_owner",
+      "reason": "Runtime variant/guard descriptions and containers. Runtime meaning, version and pointer-free records do not prove .B persistence; emitted guard WNs are separate.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_runtime_variant.h",
+          "token": "dsl_runtime_variant_INCLUDED"
+        },
+        {
+          "path": "osprey/be/vho/dsl_runtime_variant.cxx",
+          "token": "#include"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_runtime_variant.cxx",
+        "osprey/common/com/dsl_runtime_variant.h"
+      ]
+    },
+    {
+      "id": "compute-realization",
+      "files": [
+        "osprey/be/vho/dsl_compute_realization.cxx",
+        "osprey/be/vho/dsl_compute_realization.h"
+      ],
+      "classification": "nonpersistent_phase_records",
+      "proposed_owner": "osprey/be/vho",
+      "action": "relocated_to_current_service_owner",
+      "reason": "Immutable hardware profiles and exact lookup remain in common/targ_info/access. The remaining PU realization, fallback, resource/protocol joins and inspection now live in VHO; no additional mapped-image rows are introduced.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_compute_realization.h",
+          "token": "DSL_COMPUTE_REALIZATION_RECORD"
+        },
+        {
+          "path": "osprey/be/vho/dsl_compute_realization.cxx",
+          "token": "DSL_compute_realization_verify"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_compute_realization.cxx",
+        "osprey/common/com/dsl_compute_realization.h"
+      ]
+    },
+    {
+      "id": "tensor-control-snapshot",
+      "files": [
+        "osprey/be/com/dsl_tensor_control_snapshot.h",
+        "osprey/be/com/dsl_tensor_control_snapshot.cxx",
+        "osprey/be/com/dsl_tensor_control_snapshot_internal.h"
+      ],
+      "classification": "nonpersistent_copied_control_mechanism",
+      "proposed_owner": "osprey/be/com",
+      "action": "extracted_to_shared_backend_owner",
+      "reason": "Backend-free copied control records and snapshot storage are shared between WOPT capture and VHO analysis. CFG capture remains WOPT-owned; neither these copied records nor their runtime store are .B rows.",
+      "witnesses": [
+        {
+          "path": "osprey/be/com/dsl_tensor_control_snapshot.h",
+          "token": "DSL_TENSOR_CONTROL_SNAPSHOT"
+        }
+      ],
+      "extracted_from": [
+        "osprey/common/com/dsl_tensor_locality.h",
+        "osprey/common/com/dsl_tensor_locality.cxx",
+        "osprey/common/com/dsl_tensor_locality_internal.h"
+      ]
+    },
+    {
+      "id": "shape-analysis",
+      "files": [
+        "osprey/be/vho/dsl_shape_analysis.h",
+        "osprey/be/vho/dsl_shape_analysis.cxx"
+      ],
+      "classification": "nonpersistent_PU_analysis",
+      "proposed_owner": "osprey/be/vho",
+      "action": "extracted_to_phase_owner",
+      "reason": "VHO owns bounded active-PU fixed-point shape propagation, solver scratch, refinement descriptions and callback visitation; common/com retains local inference/fact helpers. No implicit PU activation or new image state.",
+      "witnesses": [
+        {
+          "path": "osprey/be/vho/dsl_shape_analysis.cxx",
+          "token": "DSL_Shape_Analyze_PU_With_Refinements"
+        }
+      ],
+      "extracted_from": [
+        "osprey/common/com/dsl_shape.h",
+        "osprey/common/com/dsl_shape.cxx"
+      ]
+    },
+    {
+      "id": "region-image",
+      "files": [
+        "osprey/common/ir_image/dsl_region_image.h",
+        "osprey/common/ir_image/dsl_region_image.cxx",
+        "osprey/common/ir_image/dsl_region_store_internal.h"
+      ],
+      "classification": "mapped_image_store_and_service",
+      "proposed_owner": "osprey/common/ir_image",
+      "action": "extracted_to_image_owner",
+      "reason": "The sole managed REGION registry owns runtime wrappers/interface vectors and existing WT_REGIONS I/O. Its containers, live WN/PU pointers and lookup bridges do not persist; the three row definitions stay in common/com.",
+      "witnesses": [
+        {
+          "path": "osprey/common/ir_image/dsl_region_image.cxx",
+          "token": "DSL_Region_Load_Mapped_PU"
+        },
+        {
+          "path": "osprey/common/ir_image/dsl_region_store_internal.h",
+          "token": "DSL_REGION_STORE"
+        }
+      ],
+      "extracted_from": [
+        "osprey/common/com/dsl_region.h",
+        "osprey/common/com/dsl_region.cxx",
+        "osprey/common/com/dsl_region_internal.h"
+      ]
+    },
+    {
+      "id": "region-live",
+      "files": [
+        "osprey/be/com/dsl_region.h",
+        "osprey/be/com/dsl_region.cxx",
+        "osprey/be/com/dsl_region_internal.h"
+      ],
+      "classification": "nonpersistent_live_PU_mechanism",
+      "proposed_owner": "osprey/be/com",
+      "action": "relocated_live_mechanism_after_image_split",
+      "reason": "Backend-free physical REGION construction, interfaces, validation, printing and lowering-transition operations borrow the image-owned store and caller-owned PU/tree. Stored row definitions and mapped I/O have separate owners.",
+      "witnesses": [
+        {
+          "path": "osprey/be/com/dsl_region.cxx",
+          "token": "DSL_Region_Verify_PU"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/dsl_region.cxx",
+        "osprey/common/com/dsl_region_internal.h"
+      ],
+      "extracted_from": [
+        "osprey/common/com/dsl_region.h"
+      ]
+    },
+    {
+      "id": "config-dsl",
+      "files": [
+        "osprey/common/util/config_dsl.h",
+        "osprey/common/util/config_dsl.cxx"
+      ],
+      "classification": "nonpersistent_options",
+      "proposed_owner": "osprey/common/util",
+      "action": "relocated_to_option_infrastructure_owner",
+      "reason": "DSL option storage, declarations and descriptor table belong to the shared option infrastructure. VHO/WOPT retain option meaning; central registration and complete option propagation remain unchanged.",
+      "witnesses": [
+        {
+          "path": "osprey/common/util/config_dsl.cxx",
+          "token": "Options_DSL"
+        }
+      ],
+      "relocated_from": [
+        "osprey/common/com/config_dsl.h",
+        "osprey/common/com/config_dsl.cxx"
       ]
     }
   ]

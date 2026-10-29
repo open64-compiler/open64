@@ -201,6 +201,7 @@ IPC_DIR			= $(BUILD_TOT)/ipa/common
 COMMON_DIR 		= $(BUILD_TOT)/common
 COMMON_COM_DIR 		= $(COMMON_DIR)/com
 COMMON_FHE_DIR 		= $(COMMON_DIR)/fhe
+COMMON_IR_IMAGE_DIR = $(COMMON_DIR)/ir_image
 COMMON_UTIL_DIR		= $(COMMON_DIR)/util
 COMMON_COM_TARG_DIR 	= $(COMMON_COM_DIR)/$(BUILD_TARGET_DIR)
 COMMON_TARG_INFO_ACCESS_DIR = $(TARG_INFO_SRC)/access
@@ -218,6 +219,7 @@ SRC_DIRS = \
   $(BE_LNO_DIR)		\
   $(COMMON_COM_DIR)	\
   $(COMMON_FHE_DIR)	\
+  $(COMMON_IR_IMAGE_DIR)\
   $(COMMON_COM_TARG_DIR)\
   $(COMMON_TARG_INFO_ACCESS_DIR)\
   $(COMMON_UTIL_DIR)	\
@@ -310,14 +312,29 @@ BE_REGION_CXX_SRCS = \
   region_util.cxx
 
 BE_VHO_CXX_SRCS = \
+  dsl_ckks_expand.cxx \
+  dsl_opt_plan.cxx \
+  dsl_fusion_candidate.cxx \
+  dsl_layout_candidate.cxx \
+  dsl_distributed_candidate.cxx \
+  dsl_residency_candidate.cxx \
+  dsl_tile_candidate.cxx \
+  dsl_fetch_pipeline.cxx \
+  dsl_compute_realization.cxx \
+  dsl_physical_plan.cxx \
+  dsl_runtime_variant.cxx \
+  dsl_tensor_analysis.cxx \
+  dsl_tensor_locality.cxx \
+  dsl_tensor_evolution.cxx \
+  dsl_shape_analysis.cxx \
   dsl_accumulation.cxx \
   dsl_compute_model.cxx \
   dsl_typed_simt.cxx \
-  dsl_lower.cxx          \
-  dsl_pu_specialize.cxx  \
-  dsl_shape_refine.cxx   \
-  dsl_opt.cxx            \
-  dsl_opt_plan_opt.cxx   \
+  dsl_lower.cxx \
+  dsl_pu_specialize.cxx \
+  dsl_shape_refine.cxx \
+  dsl_opt.cxx \
+  dsl_opt_plan_opt.cxx \
   dsl_tensor_evolution_opt.cxx \
   dsl_tensor_analysis_opt.cxx \
   dsl_tensor_locality_opt.cxx \
@@ -335,13 +352,13 @@ BE_VHO_CXX_SRCS = \
   dsl_physical_plan_opt.cxx \
   dsl_runtime_variant_opt.cxx \
   dsl_telemetry_feedback_opt.cxx \
-  fhe_checkpoint.cxx     \
-  fhe_convert.cxx        \
-  fhe_materialize.cxx    \
+  fhe_checkpoint.cxx \
+  fhe_convert.cxx \
+  fhe_materialize.cxx \
   fhe_runtime_interface_plan.cxx \
   fhe_runtime_operation_plan.cxx \
   fhe_runtime_production.cxx \
-  fhe_runtime_lower.cxx  \
+  fhe_runtime_lower.cxx \
   fhe_standard_whirl.cxx \
   fhe_unlowered_gate.cxx \
   fhe_semantic_convert.cxx \
@@ -373,64 +390,47 @@ BE_VHO_CXX_SRCS = \
   fhe_ckks_source_events.cxx \
   fhe_sha256.cxx \
   fhe_ckks_variant_signature.cxx \
-  f90_lower.cxx           \
-  f90_lower_dep.cxx     \
-  vho_lower.cxx		\
-  wb_f90_lower.cxx	\
+  f90_lower.cxx \
+  f90_lower_dep.cxx \
+  vho_lower.cxx \
+  wb_f90_lower.cxx
 
 COMMON_COM_CXX_SRCS = \
-  com_whirlview.cxx     \
-  config.cxx		\
-  config_cache.cxx	\
-  dsl_domain.cxx       \
-  dsl_gatekeeper.cxx   \
-  dsl_ir_image.cxx     \
-  dsl_ckks_event.cxx   \
-  dsl_ir_lower.cxx     \
-  dsl_ir_group_lower.cxx \
-  dsl_program_interface.cxx \
-  dsl_ir_retype.cxx    \
-  dsl_ckks_expand.cxx \
-  dsl_external_tensor.cxx \
-  dsl_pu_interface_verify.cxx \
-  dsl_ir_rewrite.cxx   \
-  dsl_runtime_interface.cxx \
-  dsl_region.cxx       \
+  com_whirlview.cxx \
+  config.cxx \
+  config_cache.cxx \
+  dsl_domain.cxx \
+  dsl_gatekeeper.cxx \
   dsl_memory_behavior.cxx \
-  dsl_opcode.cxx       \
-  dsl_opt_plan.cxx     \
-  dsl_fusion_candidate.cxx \
-  dsl_layout_candidate.cxx \
-  dsl_distributed_candidate.cxx \
-  dsl_memory_hierarchy.cxx \
-  dsl_residency_candidate.cxx \
-  dsl_tile_candidate.cxx \
-  dsl_fetch_pipeline.cxx \
-  dsl_compute_realization.cxx \
-  dsl_physical_plan.cxx \
-  dsl_runtime_variant.cxx \
+  dsl_opcode.cxx \
   dsl_telemetry_profile.cxx \
-  dsl_shape.cxx        \
-  dsl_tensor_analysis.cxx \
-  dsl_tensor_locality.cxx \
-  dsl_tensor_evolution.cxx \
-  dsl_tensor_fold.cxx  \
-  dra_demangle.cxx	\
-  dwarf_DST.cxx		\
-  dwarf_DST_dump.cxx	\
-  dwarf_DST_producer.cxx	\
-  fb_info.cxx		\
-  intrn_info.cxx	\
-  ll.cxx		\
-  mtypes.cxx		\
-  opcode.cxx		\
-  opcode_core.cxx	\
-  wutil.cxx		\
-  DaVinci.cxx           \
+  dsl_shape.cxx \
+  dsl_tensor_fold.cxx \
+  dra_demangle.cxx \
+  dwarf_DST.cxx \
+  dwarf_DST_dump.cxx \
+  dwarf_DST_producer.cxx \
+  fb_info.cxx \
+  intrn_info.cxx \
+  ll.cxx \
+  mtypes.cxx \
+  opcode.cxx \
+  opcode_core.cxx \
+  wutil.cxx \
+  DaVinci.cxx \
   comp_decl.cxx
 
+COMMON_IR_IMAGE_CXX_SRCS = \
+  dsl_ir_image.cxx \
+  dsl_region_image.cxx
+
+COMMON_TARG_INFO_CXX_SRCS = \
+  dsl_memory_hierarchy.cxx \
+  dsl_compute_profile.cxx
+
 COMMON_FHE_CXX_SRCS = \
-  fhe_image.cxx        \
+  dsl_ckks_event.cxx \
+  fhe_image.cxx \
   fhe_plan.cxx
 
 COMMON_COM_PCH_CXX_SRCS = \
@@ -609,37 +609,47 @@ BE_C_SRCS = \
 BE_C_OBJS =  $(BE_C_SRCS:.c=.o)
 
 BE_COM_CXX_SRCS = \
-  be_util.cxx           \
-  be_version.cxx        \
-  cxx_base.cxx		\
-  cxx_graph.cxx		\
-  cxx_hash_util.cxx	\
-  mfmc_misc.cxx		\
-  mfmc_query.cxx	\
-  mfmc_setup.cxx	\
-  mfmc_solve.cxx	\
-  opt_addr_flags.cxx	\
-  opt_cvtl_rule.cxx	\
-  printsrc.cxx		\
-  timing.cxx	 	\
-  weak.cxx		\
-  output_func_start_profiler.cxx        \
+  dsl_ir_lower.cxx \
+  dsl_ir_group_lower.cxx \
+  dsl_program_interface.cxx \
+  dsl_ir_retype.cxx \
+  dsl_external_tensor.cxx \
+  dsl_pu_interface_verify.cxx \
+  dsl_ir_rewrite.cxx \
+  dsl_runtime_interface.cxx \
+  dsl_region.cxx \
+  dsl_tensor_control_snapshot.cxx \
+  be_util.cxx \
+  be_version.cxx \
+  cxx_base.cxx \
+  cxx_graph.cxx \
+  cxx_hash_util.cxx \
+  mfmc_misc.cxx \
+  mfmc_query.cxx \
+  mfmc_setup.cxx \
+  mfmc_solve.cxx \
+  opt_addr_flags.cxx \
+  opt_cvtl_rule.cxx \
+  printsrc.cxx \
+  timing.cxx \
+  weak.cxx \
+  output_func_start_profiler.cxx \
   wn_cyg_instrument.cxx \
   wn_instrument.cxx \
-  wn_cfg.cxx            \
-  tls.cxx               \
-  be_memop_annot.cxx    \
-  wssa_update.cxx       \
-  wssa_utils.cxx        \
-  wssa_defs.cxx         \
-  wssa_sym.cxx          \
-  wssa_mgr.cxx          \
-  wssa_points_to.cxx    \
-  wssa_du.cxx           \
-  wssa_wn.cxx           \
-  wssa_io.cxx           \
-  comp_driver.cxx	\
-  whirl_file_mgr.cxx	\
+  wn_cfg.cxx \
+  tls.cxx \
+  be_memop_annot.cxx \
+  wssa_update.cxx \
+  wssa_utils.cxx \
+  wssa_defs.cxx \
+  wssa_sym.cxx \
+  wssa_mgr.cxx \
+  wssa_points_to.cxx \
+  wssa_du.cxx \
+  wssa_wn.cxx \
+  wssa_io.cxx \
+  comp_driver.cxx \
+  whirl_file_mgr.cxx \
   whirl_file_ctx.cxx
 
 ifneq ($(BUILD_SKIP_LNO), TRUE)
@@ -728,6 +738,8 @@ BE_CXX_SRCS = \
   $(BE_BE_TARG_CXX_SRCS) \
   $(BE_COM_CXX_SRCS)	\
   $(COMMON_COM_CXX_SRCS) \
+  $(COMMON_IR_IMAGE_CXX_SRCS) \
+  $(COMMON_TARG_INFO_CXX_SRCS) \
   $(COMMON_FHE_CXX_SRCS) \
   $(COMMON_UTIL_CXX_SRCS) \
   $(BE_REGION_CXX_SRCS)	\
@@ -868,8 +880,6 @@ LLDLIBS =
 LLDLIBS += $(LIBIBERTY_OBJS)
 
 VPATH    =  $(SRC_DIRS)
-# Preserve legacy source lookup precedence; these are relocated owners.
-VPATH += $(BUILD_TOT)/common/ir_image $(BUILD_TOT)/be/com $(BUILD_TOT)/be/vho
 
 #----------------------------------------------------------------------
 #  Variables for ld_plugin.so
@@ -1111,3 +1121,78 @@ ifeq (gcc,$(firstword $(CCNAME)))
 # work around gcc bug optimizing this file on ia32
 flags.o: OPTIMIZER = -O0
 endif
+
+# Owner-qualified prerequisites for relocated and split DSL support.
+config.o: $(COMMON_COM_DIR)/config.cxx \
+    $(COMMON_UTIL_DIR)/config_dsl.cxx $(COMMON_UTIL_DIR)/config_dsl.h
+
+dsl_ckks_event.o: $(COMMON_FHE_DIR)/dsl_ckks_event.cxx \
+    $(COMMON_FHE_DIR)/dsl_ckks_event.h \
+    $(COMMON_FHE_DIR)/dsl_ckks_event_internal.h
+
+dsl_region_image.o: $(COMMON_IR_IMAGE_DIR)/dsl_region_image.cxx \
+    $(COMMON_IR_IMAGE_DIR)/dsl_region_image.h \
+    $(COMMON_IR_IMAGE_DIR)/dsl_region_store_internal.h \
+    $(COMMON_COM_DIR)/dsl_region.h $(BE_COM_DIR)/dsl_region.h
+
+dsl_region.o: $(BE_COM_DIR)/dsl_region.cxx \
+    $(BE_COM_DIR)/dsl_region.h $(BE_COM_DIR)/dsl_region_internal.h \
+    $(COMMON_COM_DIR)/dsl_region.h \
+    $(COMMON_IR_IMAGE_DIR)/dsl_region_image.h \
+    $(COMMON_IR_IMAGE_DIR)/dsl_region_store_internal.h
+
+dsl_tensor_control_snapshot.o: $(BE_COM_DIR)/dsl_tensor_control_snapshot.cxx \
+    $(BE_COM_DIR)/dsl_tensor_control_snapshot.h \
+    $(BE_COM_DIR)/dsl_tensor_control_snapshot_internal.h
+
+dsl_shape.o: $(COMMON_COM_DIR)/dsl_shape.cxx \
+    $(COMMON_COM_DIR)/dsl_shape.h $(COMMON_COM_DIR)/dsl_shape_fact_internal.h
+
+dsl_shape_analysis.o: $(BE_VHO_DIR)/dsl_shape_analysis.cxx \
+    $(BE_VHO_DIR)/dsl_shape_analysis.h $(COMMON_COM_DIR)/dsl_shape.h \
+    $(COMMON_COM_DIR)/dsl_shape_fact_internal.h
+
+dsl_compute_realization.o: $(BE_VHO_DIR)/dsl_compute_realization.cxx \
+    $(BE_VHO_DIR)/dsl_compute_realization.h
+
+dsl_distributed_candidate.o: $(BE_VHO_DIR)/dsl_distributed_candidate.cxx \
+    $(BE_VHO_DIR)/dsl_distributed_candidate.h
+
+dsl_fetch_pipeline.o: $(BE_VHO_DIR)/dsl_fetch_pipeline.cxx \
+    $(BE_VHO_DIR)/dsl_fetch_pipeline.h
+
+dsl_fusion_candidate.o: $(BE_VHO_DIR)/dsl_fusion_candidate.cxx \
+    $(BE_VHO_DIR)/dsl_fusion_candidate.h
+
+dsl_layout_candidate.o: $(BE_VHO_DIR)/dsl_layout_candidate.cxx \
+    $(BE_VHO_DIR)/dsl_layout_candidate.h
+
+dsl_opt_plan.o: $(BE_VHO_DIR)/dsl_opt_plan.cxx \
+    $(BE_VHO_DIR)/dsl_opt_plan.h
+
+dsl_physical_plan.o: $(BE_VHO_DIR)/dsl_physical_plan.cxx \
+    $(BE_VHO_DIR)/dsl_physical_plan.h
+
+dsl_residency_candidate.o: $(BE_VHO_DIR)/dsl_residency_candidate.cxx \
+    $(BE_VHO_DIR)/dsl_residency_candidate.h
+
+dsl_runtime_variant.o: $(BE_VHO_DIR)/dsl_runtime_variant.cxx \
+    $(BE_VHO_DIR)/dsl_runtime_variant.h
+
+dsl_tensor_analysis.o: $(BE_VHO_DIR)/dsl_tensor_analysis.cxx \
+    $(BE_VHO_DIR)/dsl_tensor_analysis.h
+
+dsl_tensor_evolution.o: $(BE_VHO_DIR)/dsl_tensor_evolution.cxx \
+    $(BE_VHO_DIR)/dsl_tensor_evolution.h
+
+dsl_tensor_locality.o: $(BE_VHO_DIR)/dsl_tensor_locality.cxx \
+    $(BE_VHO_DIR)/dsl_tensor_locality.h
+
+dsl_tile_candidate.o: $(BE_VHO_DIR)/dsl_tile_candidate.cxx \
+    $(BE_VHO_DIR)/dsl_tile_candidate.h
+
+dsl_tensor_analysis.o: $(BE_VHO_DIR)/dsl_tensor_analysis_internal.h
+
+dsl_tensor_locality.o: $(BE_VHO_DIR)/dsl_tensor_locality_internal.h \
+    $(BE_COM_DIR)/dsl_tensor_control_snapshot.h \
+    $(BE_COM_DIR)/dsl_tensor_control_snapshot_internal.h

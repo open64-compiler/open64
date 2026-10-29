@@ -120,7 +120,7 @@ static INT32 Ignore_Int;
 #include "config_list.cxx"
 #include "config_opt.cxx"
 #include "config_wopt.cxx"
-#include "config_dsl.cxx"
+#include "../util/config_dsl.cxx"
 #include "config_fhe.cxx"
 #include "config_vho.cxx"
 #include "config_vsa.cxx"

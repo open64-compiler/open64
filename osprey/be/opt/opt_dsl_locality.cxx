@@ -5,6 +5,7 @@
 /*
  * Adapts the active WOPT CFG into the AIO-4 PU-local control snapshot without
  * exporting WOPT-owned pointers or widening analysis beyond the active PU.
+ * be/com owns copied storage and sealing; binary .B representation is unchanged.
  * Design: doc/AI-COMPILER-OPTIMIZATION-AIO4-LIFETIME-LOCALITY.md.
  */
 
@@ -14,9 +15,13 @@
 #include "opt_cfg.h"
 #include "opt_dsl_locality.h"
 #include "dsl_ir_image.h"
-#include "dsl_tensor_locality.h"
+#include "dsl_tensor_control_snapshot.h"
 #include "pu_info.h"
 
+/*
+ * Classify the borrowed non-NULL CFG block using existing branch, loop,
+ * REGION, and call predicates. Return copied flags without mutating WOPT state.
+ */
 static UINT32
 WOPT_DSL_Control_Flags (const BB_NODE *bb)
 {
@@ -34,6 +39,12 @@ WOPT_DSL_Control_Flags (const BB_NODE *bb)
   return flags;
 }
 
+/*
+ * Capture scalar block relationships before DSL-definition placements while
+ * the driver PU and CFG statement mapping are active, then seal through be/com.
+ * Retain no CFG-owned pointers. Rejection leaves any earlier appends in place;
+ * a failed seal may leave sorted sealed storage, with disposal owned by caller.
+ */
 BOOL
 WOPT_DSL_populate_tensor_control_snapshot
     (CFG *cfg, PU_Info *pu, DSL_TENSOR_CONTROL_SNAPSHOT *snapshot,
@@ -44,7 +55,7 @@ WOPT_DSL_populate_tensor_control_snapshot
     return FALSE;
 
   /*
-   * Copy stable block relationships into common/com while this PU and CFG are
+   * Copy stable block relationships into be/com while this PU and CFG are
    * active. No BB_NODE, STMTREP, or other WOPT-local pointer crosses the API.
    */
   CFG_ITER iterator(cfg);

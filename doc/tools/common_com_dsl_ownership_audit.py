@@ -7,20 +7,21 @@ AST, a linker call graph, a new persistence format or runtime certification.
 """
 import argparse
 import collections
+import copy
 import csv
 import hashlib
 import json
 from pathlib import Path
 import re
 import subprocess
+import tempfile
+from unittest import mock
 
 import dsl_ir_ownership_inventory as previous
 
 
 SHARED = {
     'config.cxx': ('nonpersistent_options', 'osprey/common/util', 'DSL option-group inclusion/registration only; leave unrelated option groups outside this audit.'),
-    'config_dsl.cxx': ('nonpersistent_options', 'osprey/common/util', 'Option storage and descriptor table; phase owns meaning. Preserve central registration and complete option propagation.'),
-    'config_dsl.h': ('nonpersistent_options', 'osprey/common/util', 'Option declarations and trace bit are controls, not image fields.'),
     'ir_bcom.cxx': ('mapped_image_mechanism', 'osprey/common/ir_image', 'Actual tensor extension/metadata/KV and TCON/string image writer; these services are not row definitions.'),
     'ir_bread.cxx': ('mapped_image_mechanism', 'osprey/common/ir_image + osprey/be/com', 'Section mapping/loads and cache rebuild; physical PU checks stay backend-free and separately owned.'),
     'ir_bread.h': ('mapped_image_mechanism', 'osprey/common/ir_image', 'DSL section reader interfaces, not new image records.'),
@@ -61,6 +62,42 @@ SYMBOL_ACCESS = {
     'DSL_Tensor_Has_Unique_Ownership',
 }
 
+# This independently bounded production scope also discovers unstaged moves.
+# Existing *_opt implementations are outside this storage-relocation ledger.
+RELOCATED_SOURCES = {
+    'osprey/be/vho': (
+        'dsl_accumulation', 'dsl_compute_model', 'dsl_typed_simt',
+        'dsl_tensor_evolution', 'dsl_opt_plan', 'dsl_tensor_analysis',
+        'dsl_tensor_locality', 'dsl_fusion_candidate', 'dsl_layout_candidate',
+        'dsl_distributed_candidate', 'dsl_residency_candidate',
+        'dsl_tile_candidate', 'dsl_fetch_pipeline', 'dsl_physical_plan',
+        'dsl_runtime_variant', 'dsl_compute_realization', 'dsl_shape_analysis'),
+    'osprey/be/com': ('dsl_tensor_control_snapshot', 'dsl_region'),
+    'osprey/common/ir_image': ('dsl_contract', 'dsl_region_image',
+                               'dsl_region_store'),
+    'osprey/common/fhe': ('dsl_ckks_event',),
+    'osprey/common/util': ('config_dsl',),
+    'osprey/common/targ_info/access': (
+        'dsl_memory_hierarchy', 'dsl_hardware_performance',
+        'dsl_compute_profile', 'dsl_compute_format'),
+}
+GROUP_OWNERS = {
+    **dict.fromkeys(('persistent-core', 'persistent-builder', 'region',
+        'tensor-fold', 'opcode', 'domain', 'memory-behavior', 'gatekeeper',
+        'shape', 'simp', 'telemetry', 'plan-identity'), 'osprey/common/com'),
+    **dict.fromkeys(('accumulation', 'compute-model', 'typed-simt',
+        'tensor-evolution', 'opt-plan', 'tensor-analysis', 'tensor-locality',
+        'fusion', 'layout', 'distributed', 'residency', 'tile', 'fetch',
+        'physical', 'variant', 'compute-realization', 'shape-analysis'),
+        'osprey/be/vho'),
+    **dict.fromkeys(('tensor-control-snapshot', 'region-live'), 'osprey/be/com'),
+    **dict.fromkeys(('contract', 'region-image'), 'osprey/common/ir_image'),
+    **dict.fromkeys(('memory-hierarchy', 'hardware-performance',
+        'compute-profile', 'compute-format'), 'osprey/common/targ_info/access'),
+    'ckks-event': 'osprey/common/fhe',
+    'config-dsl': 'osprey/common/util',
+}
+
 
 def sha(path):
     """Fingerprint complete source/evidence bytes, never normalized text."""
@@ -68,9 +105,33 @@ def sha(path):
 
 
 def tracked(root):
-    """Use Git's tracked directory inventory, excluding build/untracked copies."""
-    return subprocess.check_output(
-        ['git', 'ls-files', 'osprey/common/com'], cwd=root, text=True).splitlines()
+    """Read existing tracked/untracked common sources, excluding deleted index paths.
+
+    Git supplies ignore filtering; filesystem checks decide current existence.
+    This is read-only and does not stage or otherwise modify the index.
+    """
+    names = subprocess.check_output(
+        ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard',
+         '--', 'osprey/common/com'], cwd=root, text=True).split('\0')
+    return sorted({name for name in names if name and (root / name).is_file()})
+
+
+def dedicated_sources(root):
+    """Discover current production files in the reviewed filesystem scope.
+
+    Include untracked relocation destinations independently of ledger entries,
+    so dropping a moved file from policy cannot silently shrink coverage.
+    Tests, optimizer implementations and generated trees remain outside scope.
+    """
+    result = {str(path.relative_to(root))
+              for path in (root / 'osprey/common/com').glob('dsl_*')
+              if path.is_file() and path.suffix in ('.h', '.cxx')}
+    for directory, stems in RELOCATED_SOURCES.items():
+        for path in (root / directory).glob('*'):
+            if (path.is_file() and path.suffix in ('.h', '.cxx') and
+                    any(path.stem in (stem, stem + '_internal') for stem in stems)):
+                result.add(str(path.relative_to(root)))
+    return sorted(result)
 
 
 def close_brace(text, start):
@@ -151,9 +212,9 @@ def macros(text):
 def assignment(group, name, category):
     """Classify durability separately from shared-service or phase ownership.
 
-    Ingestion-time canonicalization/folding and their transient descriptions stay
-    with common IR services. Independent optimizer facts/plans do not inherit
-    that ownership merely because they reference the same persistent WHIRL.
+    Current split-file groups determine service ownership, including private
+    helpers. Persistent rows retain their separately witnessed schema owners;
+    transient optimizer descriptions do not inherit those owners by reference.
     """
     core = {name: family for family, names in previous.PERSISTENT.items()
             for name in names.split()}
@@ -161,7 +222,7 @@ def assignment(group, name, category):
     if family and category == 'record':
         owner = 'osprey/common/fhe' if family == 'ckks-event' else 'osprey/common/com'
         return dict(persistence='persisted_record', persistence_family=family,
-                    owner=owner, action='retain_schema' if family != 'ckks-event' else 'relocate_FHE_schema_unchanged')
+                    owner=owner, action='retain_schema_with_current_owner')
     if name == 'DSL_TENSOR_TCON_RECORD':
         return dict(persistence='alias_of_persisted_record', owner='osprey/common/com', action='retain_alias')
     if name.endswith(('_INCLUDED', '_Size_Check', '_SIZE_ASSERT')):
@@ -186,7 +247,7 @@ def assignment(group, name, category):
         return dict(persistence='encoded_schema_symbol', owner='osprey/common/fhe' if group['id'] == 'ckks-event' else 'osprey/common/com', action='retain_encoding_with_schema_owner')
     if name == 'TY_DSL_BIND_STATE':
         return dict(persistence='encoded_schema_symbol', owner='osprey/common/com', action='retain_encoding')
-    if group['id'] in {'tensor-fold', 'simp', 'memory-behavior'}:
+    if group['id'] in {'tensor-fold', 'simp', 'memory-behavior', 'shape', 'plan-identity'}:
         return dict(persistence='service_not_stored' if category == 'function' else 'nonpersistent',
                     owner='osprey/common/com', action='retain_shared_ingestion_IR_service')
     if group['id'] in {'opcode', 'domain', 'gatekeeper', 'telemetry'}:
@@ -208,18 +269,8 @@ def assignment(group, name, category):
                 'DSL_OPCODE_VERSION_DISPOSITION', 'DSL_OPCODE_OUTPUT_MODE'}:
             return dict(persistence='nonpersistent', owner='osprey/common/com', action='retain_shared_IR_service_view')
     owner = group['proposed_owner']
-    if group['id'] == 'region':
-        owner = 'osprey/common/ir_image' if name in {'DSL_Region_Write_PU', 'DSL_Region_Load_Mapped_PU', 'DSL_REGION_STORE', 'dsl_region_runtime', 'DSL_Region_Find_Store', 'DSL_Region_Get_Store', 'DSL_Region_Find_Owning_Store', 'DSL_Region_Reset', 'DSL_Region_Print_PU'} else 'osprey/be/com'
-    elif group['id'] == 'shape':
-        owner = 'osprey/be/vho' if 'Analyze_PU' in name or 'SOLVER' in name or '_Solver_' in name or 'REFINEMENT' in name else 'osprey/common/com'
-    elif group['id'] == 'tensor-locality':
-        owner = 'osprey/be/com' if 'CONTROL_' in name or 'control_snapshot' in name else 'osprey/be/vho'
-    elif group['id'] == 'compute-realization':
-        owner = 'osprey/common/targ_info' if category == 'enum' or name in {
-            'DSL_COMPUTE_PROFILE_ID', 'DSL_COMPUTE_PROFILE_RECORD',
-            'DSL_compute_profile_get', 'DSL_compute_profile_find'} else 'osprey/be/vho'
     return dict(persistence='service_not_stored' if category == 'function' else 'nonpersistent',
-                owner=owner, action='retain_shared_IR_service' if owner == 'osprey/common/com' else 'relocate_with_related_logic')
+                owner=owner, action='retain_with_current_service_owner')
 
 
 def witness(root, item):
@@ -254,8 +305,9 @@ def persistence_witnesses(root):
         'ckks-event': ('.WHIRL.dsl_ckks_event', [
             ('ir_bwrite.cxx', 'WN_write_dsl_ckks_event_image'), ('ir_bread.cxx', 'WN_get_dsl_ckks_event_image')]),
         'region': ('WT_REGIONS PU subsection', [
-            ('dsl_region.cxx', 'ir_b_save_buf(&header'), ('dsl_region.cxx', 'sizeof(store->interfaces[0])'),
-            ('dsl_region.cxx', 'DSL_Region_Load_Mapped_PU')]),
+            ('../ir_image/dsl_region_image.cxx', 'ir_b_save_buf(&header'),
+            ('../ir_image/dsl_region_image.cxx', 'sizeof(store->interfaces[0])'),
+            ('../ir_image/dsl_region_image.cxx', 'DSL_Region_Load_Mapped_PU')]),
         'tensor-carrier': ('SHDR_TCON plus SHDR_STR, not a new ELF section', [
             ('dsl_tensor_fold.cxx', 'memcpy(payload, &record, sizeof(record))'),
             ('dsl_tensor_fold.cxx', 'Host_To_Targ_String'), ('dsl_tensor_fold.cxx', 'DSL_Tensor_TCON_Decode_Carrier'),
@@ -268,7 +320,7 @@ def persistence_witnesses(root):
     for family, (section, locations) in special.items():
         result[family] = dict(section=section,
             records=[name for name, owner in EXTRA_RECORDS.items() if owner == family],
-            witnesses=[witness(root, dict(path='osprey/common/com/' + path, token=token))
+            witnesses=[witness(root, dict(path=str((root / 'osprey/common/com' / path).resolve().relative_to(root)), token=token))
                        for path, token in locations])
     return result
 
@@ -293,15 +345,72 @@ def include_consumers(root, files):
     return result
 
 
-def check_policy(policy, dedicated):
-    """Require exactly one reviewed assignment for every dedicated source path."""
-    assigned = [path for group in policy['groups'] for path in group['files']]
+def check_policy(policy, dedicated, root=None):
+    """Reject incomplete, duplicate, absent, overlapping or misowned current paths.
+
+    Check both current-common and relocated ledgers against independent discovery.
+    Historical extraction inputs may overlap intentionally; relocated_from paths
+    must be unique, absent now, and disjoint from current production assignments.
+    No source, ledger or index is changed, including when validation fails.
+    """
+    groups = policy['groups'] + policy.get('relocated_groups', [])
+    ids = [group['id'] for group in groups]
+    assert len(ids) == len(set(ids)), 'Duplicate family assignment'
+    assigned = [path for group in groups for path in group['files']]
     assert len(assigned) == len(set(assigned)), 'Duplicate source assignment'
-    assert set(assigned) == set(dedicated), 'Missing or foreign source assignment'
+    missing = sorted(set(dedicated) - set(assigned))
+    foreign = sorted(set(assigned) - set(dedicated))
+    assert not missing and not foreign, ('Missing or foreign source assignment', missing, foreign)
+    origins = [path for group in groups for path in group.get('relocated_from', [])]
+    assert len(origins) == len(set(origins)), 'Duplicate relocation origin'
+    assert not set(origins) & set(assigned), 'Current/relocated origin overlap'
+    for section in ('groups', 'relocated_groups'):
+        for group in policy.get(section, []):
+            assert group['id'] in GROUP_OWNERS, 'Unreviewed family: ' + group['id']
+            owner = GROUP_OWNERS[group['id']]
+            assert group['proposed_owner'] == owner, ('Wrong semantic owner', group['id'])
+            assert group['files'], 'Empty family: ' + group['id']
+            for relative in group['files']:
+                path = Path(relative)
+                assert not path.is_absolute() and '..' not in path.parts, ('Unsafe source path', relative)
+                assert str(path.parent) == owner, ('Wrong current owner', relative, owner)
+                assert (owner == 'osprey/common/com') == (section == 'groups'), ('Wrong ledger section', relative)
+                if root is not None:
+                    assert (root / path).is_file(), 'Absent source: ' + relative
+                    assert (root / path).resolve().parent == (root / owner).resolve(), ('Foreign source symlink', relative)
+            for relative in group.get('relocated_from', []) + group.get('extracted_from', []):
+                path = Path(relative)
+                assert not path.is_absolute() and '..' not in path.parts, ('Unsafe historical path', relative)
+            if root is not None:
+                for relative in group.get('relocated_from', []):
+                    assert not (root / relative).exists(), 'Relocation left original source: ' + relative
+
+
+def comment_census(root, audit):
+    """Select exactly one matching root and reject duplicate source identities.
+
+    Return borrowed census entries without changing the caller's audit object;
+    source-byte authentication remains the per-file inventory consumer's duty.
+    """
+    scopes = [scope for scope in audit['scopes'] if Path(scope['root']).resolve() == root.resolve()]
+    assert len(scopes) == 1, 'Expected exactly one comment census for the selected root'
+    census = {item['path']: item for item in scopes[0]['files']}
+    assert len(census) == len(scopes[0]['files']), 'Duplicate census source path'
+    return census
+
+
+def check_source_hashes(root, items):
+    """Reject source changes during census consumption before publishing counts.
+
+    Compare complete bytes with each authenticated snapshot without mutation;
+    a concurrent edit requires a fresh census/audit rather than stale evidence.
+    """
+    for item in items:
+        assert sha(root / item['path']) == item['sha256'], 'Source changed during audit: ' + item['path']
 
 
 def self_tests():
-    """Exercise masking, nested/anonymous types, aliases and critical mixed roles."""
+    """Exercise lexical extraction and current split ownership without certification."""
     assert types('/* struct Fake {}; */ "struct AlsoFake {};"') == []
     assert types('typedef struct { int nested[2]; } REAL;')[0]['name'] == 'REAL'
     assert types('struct REAL { void Member() { if (true) { return; } } };')[0]['name'] == 'REAL'
@@ -330,6 +439,7 @@ def self_tests():
     assert assignment(group, 'DSL_Simp_Binary', 'function')['owner'] == 'osprey/common/com'
     group['id'] = 'shape'
     assert assignment(group, 'DSL_Shape_Check_Operator', 'function')['owner'] == 'osprey/common/com'
+    group.update(id='shape-analysis', proposed_owner='osprey/be/vho')
     assert assignment(group, 'DSL_Shape_Analyze_PU', 'function')['owner'] == 'osprey/be/vho'
     group['id'] = 'opcode'
     assert assignment(group, 'DSL_Operator_Get_Algebraic_Info', 'function')['owner'] == 'osprey/common/com'
@@ -347,14 +457,15 @@ def self_tests():
     assert telemetry['owner'] == 'osprey/common/com' and telemetry['persistence'] == 'nonpersistent'
     assert telemetry['intended_data_lifetime'] == 'beyond_compiler_session'
     assert 'not_a_WHIRL_image_section' in telemetry['current_storage']
-    group.update(id='memory-hierarchy', proposed_owner='osprey/common/targ_info')
-    assert assignment(group, 'DSL_MEMORY_TIER_RECORD', 'record')['owner'] == 'osprey/common/targ_info'
-    assert assignment(group, 'DSL_hardware_description_get_arch', 'function')['owner'] == 'osprey/common/targ_info'
+    group.update(id='memory-hierarchy', proposed_owner='osprey/common/targ_info/access')
+    assert assignment(group, 'DSL_MEMORY_TIER_RECORD', 'record')['owner'] == 'osprey/common/targ_info/access'
+    assert assignment(group, 'DSL_hardware_description_get_arch', 'function')['owner'] == 'osprey/common/targ_info/access'
     group['id'] = 'hardware-performance'
-    assert assignment(group, 'DSL_HARDWARE_RESOURCE_RECORD', 'record')['owner'] == 'osprey/common/targ_info'
-    group.update(id='compute-realization', proposed_owner='osprey/be/vho + osprey/common/targ_info')
-    assert assignment(group, 'DSL_COMPUTE_PROFILE_RECORD', 'record')['owner'] == 'osprey/common/targ_info'
-    assert assignment(group, 'DSL_compute_profile_find', 'function')['owner'] == 'osprey/common/targ_info'
+    assert assignment(group, 'DSL_HARDWARE_RESOURCE_RECORD', 'record')['owner'] == 'osprey/common/targ_info/access'
+    group.update(id='compute-profile', proposed_owner='osprey/common/targ_info/access')
+    assert assignment(group, 'DSL_COMPUTE_PROFILE_RECORD', 'record')['owner'] == 'osprey/common/targ_info/access'
+    assert assignment(group, 'DSL_compute_profile_find', 'function')['owner'] == 'osprey/common/targ_info/access'
+    group.update(id='compute-realization', proposed_owner='osprey/be/vho')
     assert assignment(group, 'DSL_COMPUTE_PROTOCOL_RECORD', 'record')['owner'] == 'osprey/be/vho'
     assert assignment(group, 'DSL_compute_realization_verify', 'function')['owner'] == 'osprey/be/vho'
     group.update(id='compute-model', proposed_owner='osprey/be/vho')
@@ -365,13 +476,6 @@ def self_tests():
     assert assignment(group, 'DSL_LOGICAL_OPCODE', 'record')['owner'] == 'osprey/common/com'
     assert macros('#define TEST \\ \n  continuation\n')[0]['name'] == 'TEST'
     assert assignment(group, 'dsl_example_INCLUDED', 'macro')['persistence'] == 'compile_time_scaffolding'
-    for files in ([], ['one', 'one'], ['other']):
-        try:
-            check_policy(dict(groups=[dict(files=files)]), ['one'])
-        except AssertionError:
-            pass
-        else:
-            raise AssertionError('Invalid policy coverage accepted')
     group['id'] = 'persistent-core'
     try:
         assignment(group, 'UNKNOWN_ROW', 'record')
@@ -379,37 +483,197 @@ def self_tests():
         pass
     else:
         raise AssertionError('Unwitnessed core row accepted')
-    return 47
+    return 44 + policy_self_tests()
+
+
+def policy_self_tests():
+    """Exercise real temporary paths and mocked Git output without Git writes.
+
+    Positive cases include untracked destinations and intentional extraction
+    lineage overlap; negatives corrupt one coverage/owner/existence invariant
+    at a time. Temporary fixture files are isolated from the shared checkout.
+    """
+    checks = 0
+    with tempfile.TemporaryDirectory(prefix='open64-ownership-selftest-') as temporary:
+        root = Path(temporary)
+        common = 'osprey/common/com/dsl_shape.h'
+        moved = 'osprey/be/vho/dsl_physical_plan.h'
+        old = 'osprey/common/com/dsl_physical_plan.h'
+        test = 'osprey/common/com/tests/dsl_example.cxx'
+        for relative in (common, moved, test):
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('/* isolated source fixture */\n')
+        policy = dict(groups=[dict(id='shape', files=[common],
+            proposed_owner='osprey/common/com')], relocated_groups=[
+            dict(id='physical', files=[moved], proposed_owner='osprey/be/vho',
+                 relocated_from=[old], extracted_from=[common])])
+        discovered = dedicated_sources(root)
+        assert discovered == sorted((common, moved))
+        check_policy(policy, discovered, root)
+        checks += 2
+        output = '\0'.join((common, old, common, test)) + '\0'
+        with mock.patch.object(subprocess, 'check_output', return_value=output):
+            assert tracked(root) == sorted((common, test))
+        checks += 1
+        corruptions = []
+        bad = copy.deepcopy(policy)
+        bad['relocated_groups'] = []
+        corruptions.append(bad)
+        bad = copy.deepcopy(policy)
+        bad['relocated_groups'][0]['files'].append(common)
+        corruptions.append(bad)
+        bad = copy.deepcopy(policy)
+        bad['groups'].append(copy.deepcopy(bad['groups'][0]))
+        corruptions.append(bad)
+        bad = copy.deepcopy(policy)
+        bad['relocated_groups'][0]['files'].append('osprey/be/vho/absent.h')
+        corruptions.append(bad)
+        bad = copy.deepcopy(policy)
+        bad['relocated_groups'][0]['proposed_owner'] = 'osprey/common/targ_info/access'
+        corruptions.append(bad)
+        bad = copy.deepcopy(policy)
+        bad['relocated_groups'][0]['relocated_from'] = [common]
+        corruptions.append(bad)
+        bad = copy.deepcopy(policy)
+        bad['relocated_groups'][0]['relocated_from'] = [old, old]
+        corruptions.append(bad)
+        bad = copy.deepcopy(policy)
+        bad['groups'].append(bad['relocated_groups'].pop())
+        corruptions.append(bad)
+        bad = copy.deepcopy(policy)
+        bad['relocated_groups'][0]['id'] = 'unreviewed'
+        corruptions.append(bad)
+        bad = copy.deepcopy(policy)
+        bad['relocated_groups'][0]['extracted_from'] = ['../outside.h']
+        corruptions.append(bad)
+        for bad in corruptions:
+            try:
+                check_policy(bad, discovered, root)
+            except AssertionError:
+                checks += 1
+            else:
+                raise AssertionError('Invalid relocation policy accepted')
+        for relative in (old, 'osprey/be/vho/dsl_physical_plan_internal.h'):
+            path = root / relative
+            path.write_text('/* unexpected source */\n')
+            try:
+                check_policy(policy, dedicated_sources(root), root)
+            except AssertionError:
+                checks += 1
+            else:
+                raise AssertionError('Unexpected source accepted')
+            path.unlink()
+        for relative in (common, moved):
+            path = root / relative
+            path.unlink()
+            try:
+                check_policy(policy, discovered, root)
+            except AssertionError:
+                checks += 1
+            else:
+                raise AssertionError('Absent source accepted')
+            path.write_text('/* restored source */\n')
+        wrong = 'osprey/common/fhe/dsl_physical_plan.h'
+        path = root / wrong
+        path.parent.mkdir(parents=True)
+        path.write_text('/* misplaced fixture */\n')
+        bad = copy.deepcopy(policy)
+        bad['relocated_groups'][0]['files'] = [wrong]
+        try:
+            check_policy(bad, [common, wrong], root)
+        except AssertionError as error:
+            assert 'Wrong current owner' in str(error)
+            checks += 1
+        else:
+            raise AssertionError('Wrong directory accepted')
+        path.unlink()
+        path = root / moved
+        path.unlink()
+        path.symlink_to(root / common)
+        try:
+            check_policy(policy, discovered, root)
+        except AssertionError as error:
+            assert 'Foreign source symlink' in str(error)
+            checks += 1
+        else:
+            raise AssertionError('Foreign symlink accepted')
+        path.unlink()
+        path.write_text('/* restored source */\n')
+        scope = dict(root=str(root), files=[dict(path=common, sha256=sha(root / common))])
+        unrelated = dict(root=str(root / 'unrelated'), files=[])
+        assert common in comment_census(root, dict(scopes=[unrelated, scope]))
+        checks += 1
+        check_source_hashes(root, scope['files'])
+        checks += 1
+        (root / common).write_text('/* concurrent edit */\n')
+        try:
+            check_source_hashes(root, scope['files'])
+        except AssertionError as error:
+            assert 'Source changed during audit' in str(error)
+            checks += 1
+        else:
+            raise AssertionError('Concurrent source edit accepted')
+        for scopes in ([unrelated], [scope, scope],
+                       [dict(root=str(root), files=scope['files'] * 2)]):
+            try:
+                comment_census(root, dict(scopes=scopes))
+            except AssertionError:
+                checks += 1
+            else:
+                raise AssertionError('Ambiguous census identity accepted')
+        for family, owner, name in (
+                ('region', 'osprey/common/com', 'DSL_REGION_IMAGE_RECORD'),
+                ('region-image', 'osprey/common/ir_image', 'DSL_REGION_STORE'),
+                ('region-live', 'osprey/be/com', 'DSL_Region_Verify_PU'),
+                ('tensor-control-snapshot', 'osprey/be/com', 'DSL_TENSOR_CONTROL_BLOCK'),
+                ('tensor-locality', 'osprey/be/vho', 'DSL_TENSOR_LOCALITY_FACT'),
+                ('ckks-event', 'osprey/common/fhe', 'DSL_CKKS_EVENT_RECORD'),
+                ('contract', 'osprey/common/ir_image', 'DSL_CONTRACT_RECORD'),
+                ('config-dsl', 'osprey/common/util', 'DSL_Enable'),
+                ('plan-identity', 'osprey/common/com', 'DSL_OPT_PLAN_ID')):
+            assert assignment(dict(id=family, proposed_owner=owner), name, 'record')['owner'] == owner
+            checks += 1
+    return checks
 
 
 def main():
-    """Emit exhaustive family/file and located type/API inventories into fresh output.
+    """Emit current common/relocated inventories into a fresh output directory.
 
-    Authenticate function-census source hashes and reject uncovered source files,
-    anchors or public declarations. A path/type-family decision is a reviewed
-    relocation proposal, not permission to move private dependencies blindly.
+    Authenticate the selected root's independent function-census hashes, require
+    complete current path/owner coverage and retain 34 positive row witnesses.
+    Counts classify source ownership; they do not certify contracts, binaries,
+    compilation, runtime behavior or completion of a compiler milestone.
     """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--root', type=Path, required=True)
-    parser.add_argument('--comment-audit', type=Path, required=True)
-    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--root', type=Path)
+    parser.add_argument('--comment-audit', type=Path)
+    parser.add_argument('--output', type=Path)
+    parser.add_argument('--self-test', action='store_true')
     arguments = parser.parse_args()
+    if arguments.self_test:
+        print(json.dumps(dict(self_tests=self_tests(), status='pass')))
+        return
+    if any(value is None for value in (arguments.root, arguments.comment_audit, arguments.output)):
+        parser.error('--root, --comment-audit and --output are required for an audit')
     root = arguments.root.resolve()
     policy_path = root / 'doc/common-com-dsl-ownership-policy.json'
     policy = json.loads(policy_path.read_text())
     source_paths = tracked(root)
-    dedicated = [path for path in source_paths if Path(path).parent == Path('osprey/common/com') and Path(path).name.startswith('dsl_')]
-    check_policy(policy, dedicated)
+    dedicated = dedicated_sources(root)
+    check_policy(policy, dedicated, root)
     audit = json.loads(arguments.comment_audit.read_text())
-    census = {item['path']: item for item in audit['scopes'][0]['files']}
+    census = comment_census(root, audit)
     files = []
     entities = []
     excluded_functionlike_macros = []
-    for group in policy['groups']:
+    for group in policy['groups'] + policy.get('relocated_groups', []):
         witnesses = [witness(root, item) for item in group['witnesses']]
         for relative in group['files']:
             path = root / relative
-            assert sha(path) == census[relative]['sha256'], relative
+            assert relative in census, 'Missing census source: ' + relative
+            source_sha = census[relative]['sha256']
+            assert sha(path) == source_sha, 'Stale census source: ' + relative
             text = path.read_text()
             raw_functions = census[relative]['functions']
             excluded = [item for item in raw_functions if re.match(r'\s*#\s*define\b', item['signature'])]
@@ -423,8 +687,11 @@ def main():
             for item in located:
                 entities.append(dict(path=relative, family=group['id'], **item,
                     **assignment(group, item['name'], item['category'])))
-            files.append(dict(path=relative, sha256=sha(path), family=group['id'],
+            files.append(dict(path=relative, sha256=source_sha, family=group['id'],
                 classification=group['classification'], proposed_owner=group['proposed_owner'],
+                current_owner=str(path.relative_to(root).parent),
+                relocated_from=group.get('relocated_from', []),
+                extracted_from=group.get('extracted_from', []),
                 action=group['action'], reason=group['reason'], witnesses=witnesses,
                 types=sum(item['category'] in {'record', 'enum', 'alias', 'callback'} for item in located),
                 macros=sum(item['category'] == 'macro' for item in located), function_sites=len(functions)))
@@ -434,6 +701,7 @@ def main():
         if relative in dedicated:
             continue
         path = root / relative
+        source_sha = sha(path)
         text = path.read_text(errors='replace')
         if '/tests/' in relative:
             if re.search('dsl|tensor', path.name, re.I) or re.search('dsl|tensor', text, re.I):
@@ -447,7 +715,8 @@ def main():
         classification, owner, reason = SHARED[path.name]
         matches = [dict(line=number, text=line) for number, line in enumerate(text.splitlines(), 1)
                    if re.search('dsl|tensor', line, re.I)]
-        shared.append(dict(path=relative, sha256=sha(path), classification=classification,
+        shared.append(dict(path=relative, sha256=source_sha, classification=classification,
+                           current_owner=str(path.relative_to(root).parent),
                            proposed_owner=owner, reason=reason, matches=matches))
         if path.suffix in ('.h', '.cxx'):
             for item in types(text):
@@ -489,14 +758,19 @@ def main():
     persisted = [item for item in entities if item['persistence'] == 'persisted_record']
     expected = {name for names in previous.PERSISTENT.values() for name in names.split()} | set(EXTRA_RECORDS)
     assert {item['name'] for item in persisted} == expected and len(persisted) == len(expected)
+    assert len(persisted) == 34, 'Reviewed stored-row boundary changed'
+    check_source_hashes(root, files + shared)
     output = arguments.output
     output.mkdir()
     report = dict(schema='open64.common-com-dsl-ownership-audit.v1',
-        status='classification_only_no_code_moves',
+        status='current_ownership_classification_no_source_certification',
         source_commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(),
         policy_sha256=sha(policy_path), generator_sha256=sha(Path(__file__)),
         comment_audit_sha256=sha(arguments.comment_audit), self_tests=self_tests(),
         dedicated_files=len(files), shared_fragment_files=len(shared), test_files=len(tests),
+        common_com_files=sum(item['current_owner'] == 'osprey/common/com' for item in files),
+        relocated_files=sum(item['current_owner'] != 'osprey/common/com' for item in files),
+        current_owner_counts=dict(collections.Counter(item['current_owner'] for item in files)),
         persisted_record_definitions=len(persisted),
         function_sites=sum(item['function_sites'] for item in files),
         excluded_functionlike_macros=excluded_functionlike_macros,
@@ -505,11 +779,11 @@ def main():
         persistence_witnesses=persistence_witnesses(root),
         include_consumers=include_consumers(root, files),
         files=files, shared_fragments=shared, tests=tests, entities=entities,
-        limits=['No code moves, schema changes, new sections or runtime certification.',
+        limits=['This audit changes no compiler code and provides no source, binary, build or runtime certification.',
             'Explicit lexical types/functions, not implicit members, macro expansion or conditional AST reachability.',
             'Source occurrences and include consumers are not a resolved call graph or link proof.',
             'Function persistence labels describe role; no function machine code is part of .B.',
-            'Per-family methods inherit ownership unless an explicit mixed-file override is recorded; exact helper cuts require migration review.',
+            'Current dedicated files inherit their reviewed split-family owners; shared-fragment proposed owners remain separate from physical file locations.',
             'Historical non-DSL records/functions in shared files are out of scope.'])
     (output / 'inventory.json').write_text(json.dumps(report, indent=2) + '\n')
     (output / 'shared-ctags.txt').write_text(tags.stdout)

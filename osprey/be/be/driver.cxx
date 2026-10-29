@@ -149,7 +149,7 @@
 #include "dsl_pu_transaction.h"
 #include "dsl_ir_image.h"
 #include "dsl_ckks_event.h"
-#include "dsl_region.h"
+#include "../com/dsl_region.h"
 #include "fhe_checkpoint.h"
 #include "fhe_ckks_conv_specialize.h"
 #include "fhe_convert.h"
