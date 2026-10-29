@@ -2,11 +2,21 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/*
+ * common/com implements immutable memory-behavior seeds and tensor temporary/
+ * no-alias attribute mechanisms in the caller's compiler-table context. The
+ * owning phase supplies legality and lifetime; no graph analysis, storage
+ * lowering, PU selection or mapped-image format change is performed here.
+ * Design: doc/WHIRL-DSL-INFRASTRUCTURE.md, native result/ownership contract.
+ */
+
 #include <string.h>
 
 #include "dsl_memory_behavior.h"
 #include "strtab.h"
 
+/* Private process-local seed, not a persisted table row. Only the reviewed
+ * subset below has a memory contract; absence does not imply no memory effect. */
 typedef struct {
     DSL_OPERATOR dsl_operator;
     UINT16 version;
@@ -42,6 +52,10 @@ static const DSL_MEMORY_BEHAVIOR_SEED DSL_memory_behavior_seed[] = {
       DSL_MEMORY_BEHAVIOR_UNIQUE_OWNERSHIP, 0 }
 };
 
+/* Initialize required output to an empty contract with no related operand,
+ * then copy the exact seed and its trusted operand prefix. A missing seed
+ * returns FALSE without restoring prior output. No registry consultation,
+ * allocation or live-tree/effect/alias verification; NULL cannot probe support. */
 BOOL
 DSL_Memory_Behavior_Get_Contract
         (DSL_OPERATOR dsl_operator,
@@ -71,6 +85,10 @@ DSL_Memory_Behavior_Get_Contract
     return FALSE;
 }
 
+/* Map zero or the highest set bit to an immutable name. The shift loop
+ * does not validate a single-bit input: combined flags name only
+ * their highest bit. Unknown high bits map to "unknown"; no writes or ownership
+ * transfer, and this is not a complete-mask diagnostic formatter. */
 const char *
 DSL_Memory_Behavior_Flag_Name (UINT32 flag)
 {
@@ -88,6 +106,11 @@ DSL_Memory_Behavior_Flag_Name (UINT32 flag)
            names[index] : "unknown";
 }
 
+/* Reject a null ordinal/non-tensor type, then bind the existing semantic
+ * no-alias symbol attribute and return TRUE without independent readback.
+ * Caller supplies resident, bounded ST/type context and legality of the claim;
+ * this annotates, not proves, uniqueness. Binding can allocate table/string
+ * state and no rollback or allocation-failure status is supplied here. */
 BOOL
 DSL_Tensor_Set_Unique_Ownership (ST_IDX st)
 {
@@ -95,11 +118,17 @@ DSL_Tensor_Set_Unique_Ownership (ST_IDX st)
         !TY_is_tensor_extension(ST_type(St_Table[st])))
         return FALSE;
 
+    /* Preserve the tensor attribute protocol; baseline unique-memory flags
+     * apply to a later pointer representation, not this tensor symbol. */
     ST_tensor_bind_attribute
         (st, TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_NO_ALIAS), "true");
     return TRUE;
 }
 
+/* Read the current symbol annotation and compare exact lowercase "true".
+ * Nonzero ST identities must already be valid in resident caller tables;
+ * FALSE covers null ordinal, non-tensor or absent/different annotation.
+ * Do not perform alias analysis, repair state or switch PU/symbol-table scope. */
 BOOL
 DSL_Tensor_Has_Unique_Ownership (ST_IDX st)
 {
@@ -114,6 +143,12 @@ DSL_Tensor_Has_Unique_Ownership (ST_IDX st)
     return value != NULL && strcmp(value, "true") == 0;
 }
 
+/* Create a variable in the current ST scope after the tensor-kind gate,
+ * intern its name, mark it temporary and request semantic unique ownership.
+ * Invalid tensor kind returns zero before creation; late failure can retain
+ * the new symbol/name/attributes, with no journal. Caller owns scope, alias
+ * legality and declaration source-position propagation (not set explicitly
+ * here). No canonical-type proof, WN, physical storage or runtime allocation. */
 ST_IDX
 DSL_Tensor_Create_Result_Symbol
         (const char *name,
@@ -124,6 +159,8 @@ DSL_Tensor_Create_Result_Symbol
     if (!TY_is_tensor_extension(ty))
         return ST_IDX_ZERO;
 
+    /* The caller chose this scope and result role. From symbol allocation on,
+     * there is no cleanup path that removes partially created table entries. */
     ST *st = New_ST();
     ST_Init (st, Save_Str(name == NULL ? "" : name), CLASS_VAR,
              storage_class, export_class, ty);
