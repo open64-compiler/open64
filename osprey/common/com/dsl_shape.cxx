@@ -1,7 +1,8 @@
 /*
  * Copyright (C) 2026 Open64 Project
  * Contracts: doc/WHIRL-DSL-INFRASTRUCTURE.md;
- * row sum: doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md.
+ * row sum: doc/AI-COMPILER-NATIVE-REDUCTION-CONTRACT-v0.1.md;
+ * normalization: doc/AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md.
  */
 
 #include <ctype.h>
@@ -1561,26 +1562,31 @@ DSL_positive_f32_bits_valid(const char *text, UINT32 *bits)
     return TRUE;
 }
 
-/* Validate the source recipe, exact affine broadcasts and epsilon before any
- * construction. This neither picks a mean reduction nor proves accuracy. */
-BOOL
-DSL_mean_variance_norm_types_valid
-    (TY_IDX input_ty, TY_IDX gamma_ty, TY_IDX beta_ty, TY_IDX result_ty,
-     const char *axis, const char *accum_dtype, const char *variance_kind,
+/* Share only descriptor relations and centered permissions across versions;
+ * numerical binding is checked by the owning version-specific predicate. */
+static BOOL
+DSL_normalization_recipe_valid
+    (const char *axis, const char *accum_dtype, const char *variance_kind,
      const char *epsilon_bits, const char *reassociate,
-     const char *state_reformulation, const char *contract,
-     const char *rsqrt_semantics)
+     const char *state_reformulation, const char *contract)
 {
     UINT32 bits;
-    if (axis == NULL || strcmp(axis, "1") != 0 ||
-        accum_dtype == NULL || strcmp(accum_dtype, "float32") != 0 ||
-        variance_kind == NULL || strcmp(variance_kind, "population_centered") != 0 ||
-        !DSL_positive_f32_bits_valid(epsilon_bits, &bits) ||
-        reassociate == NULL || strcmp(reassociate, "false") != 0 ||
-        state_reformulation == NULL || strcmp(state_reformulation, "false") != 0 ||
-        contract == NULL || strcmp(contract, "false") != 0 ||
-        rsqrt_semantics == NULL || strcmp(rsqrt_semantics, "source_unresolved") != 0)
-        return FALSE;
+    return axis != NULL && strcmp(axis, "1") == 0 &&
+        accum_dtype != NULL && strcmp(accum_dtype, "float32") == 0 &&
+        variance_kind != NULL && strcmp(variance_kind, "population_centered") == 0 &&
+        DSL_positive_f32_bits_valid(epsilon_bits, &bits) &&
+        reassociate != NULL && strcmp(reassociate, "false") == 0 &&
+        state_reformulation != NULL && strcmp(state_reformulation, "false") == 0 &&
+        contract != NULL && strcmp(contract, "false") == 0;
+}
+
+/* Check the shared logical descriptor relations without interpreting rsqrt
+ * policy. Publish width only on complete success; no allocation is performed. */
+static BOOL
+DSL_normalization_descriptors_valid
+    (TY_IDX input_ty, TY_IDX gamma_ty, TY_IDX beta_ty, TY_IDX result_ty,
+     UINT64 *rows, UINT64 *width)
+{
     TY_IDX types[4] = { input_ty, gamma_ty, beta_ty, result_ty };
     UINT32 ranks[4] = { 2, 1, 1, 2 };
     UINT64 dimensions[4][2];
@@ -1597,11 +1603,84 @@ DSL_mean_variance_norm_types_valid
                  dimensions[i], 2, &rank) || rank != ranks[i])
             return FALSE;
     }
-    return dimensions[0][0] > 0 && dimensions[0][1] > 0 &&
+    if (!(dimensions[0][0] > 0 && dimensions[0][1] > 0 &&
            dimensions[1][0] == dimensions[0][1] &&
            dimensions[2][0] == dimensions[0][1] &&
            dimensions[3][0] == dimensions[0][0] &&
-           dimensions[3][1] == dimensions[0][1];
+           dimensions[3][1] == dimensions[0][1])) return FALSE;
+    if (width != NULL) *width = dimensions[0][1];
+    if (rows != NULL) *rows = dimensions[0][0];
+    return TRUE;
+}
+
+/* Preserve v1's unresolved source recipe and positive-width domain exactly;
+ * sharing descriptor code does not authorize an ordered mean or rsqrt. */
+BOOL
+DSL_mean_variance_norm_types_valid
+    (TY_IDX input_ty, TY_IDX gamma_ty, TY_IDX beta_ty, TY_IDX result_ty,
+     const char *axis, const char *accum_dtype, const char *variance_kind,
+     const char *epsilon_bits, const char *reassociate,
+     const char *state_reformulation, const char *contract,
+     const char *rsqrt_semantics)
+{
+    return rsqrt_semantics != NULL && strcmp(rsqrt_semantics, "source_unresolved") == 0 &&
+        DSL_normalization_recipe_valid(axis, accum_dtype, variance_kind,
+            epsilon_bits, reassociate, state_reformulation, contract) &&
+        DSL_normalization_descriptors_valid(input_ty, gamma_ty, beta_ty, result_ty, NULL, NULL);
+}
+
+/* Exact reference fields are source meaning, not a producer-name allowlist or
+ * target capability. Contradictory reference IDs never override these checks. */
+BOOL
+DSL_mean_variance_norm_ref_binding_valid
+    (const char *rsqrt_semantics, const char *mean_order,
+     const char *mean_identity_bits, const char *mean_finalize,
+     const char *count_conversion, const char *fp_environment,
+     const char *nan_policy, const char *reference_binding)
+{
+    const char *actual[8] = { rsqrt_semantics, mean_order, mean_identity_bits,
+        mean_finalize, count_conversion, fp_environment, nan_policy, reference_binding };
+    const char *expected[8] = { "sqrt_rne_then_div_rne_f32", "ascending_left_fold",
+        "00000000", "sum_then_div_rne", "exact_f32_from_static_n",
+        "rne_gradual_no_traps", "class_only", "ln_ref_1" };
+    for (UINT32 i = 0; i < 8; ++i)
+        if (actual[i] == NULL || strcmp(actual[i], expected[i]) != 0) return FALSE;
+    return TRUE;
+}
+
+/* Convert the bounded integer exactly without host FP mode, parsing or
+ * target assumptions. The width guard precedes shifts and output publication. */
+BOOL
+DSL_mean_variance_norm_ref_count_bits(UINT64 count, UINT32 *bits)
+{
+    if (bits == NULL || count == 0 || count > 16777216ULL) return FALSE;
+    UINT32 exponent = 0;
+    for (UINT64 value = count; value > 1; value >>= 1) ++exponent;
+    UINT32 significand = exponent <= 23 ? (UINT32)count << (23 - exponent) :
+                                         (UINT32)count >> (exponent - 23);
+    *bits = ((127U + exponent) << 23) | (significand & 0x7fffffU);
+    return TRUE;
+}
+
+/* V2 shares logical descriptors, not v1's unresolved numerical policy.
+ * Complete numerical-field validation remains a separate required preflight. */
+BOOL
+DSL_mean_variance_norm_ref_types_valid
+    (TY_IDX input_ty, TY_IDX gamma_ty, TY_IDX beta_ty, TY_IDX result_ty,
+     const char *axis, const char *accum_dtype, const char *variance_kind,
+     const char *epsilon_bits, const char *reassociate,
+     const char *state_reformulation, const char *contract,
+     const char *rsqrt_semantics)
+{
+    UINT64 rows, width;
+    UINT32 bits;
+    return rsqrt_semantics != NULL &&
+        strcmp(rsqrt_semantics, "sqrt_rne_then_div_rne_f32") == 0 &&
+        DSL_normalization_recipe_valid(axis, accum_dtype, variance_kind,
+            epsilon_bits, reassociate, state_reformulation, contract) &&
+        DSL_normalization_descriptors_valid(input_ty, gamma_ty, beta_ty, result_ty, &rows, &width) &&
+        DSL_mean_variance_norm_ref_count_bits(width, &bits) &&
+        rows <= (~(UINT64)0 / 4) / width;
 }
 
 /* Adapt managed attributes to the shared structural contract without mutation. */
@@ -1610,14 +1689,24 @@ DSL_mean_variance_norm_result
     (const DSL_IR_NODE_RECORD *node, const std::vector<TY_IDX> &operands,
      TY_IDX result_ty, UINT16 version)
 {
-    const char *a[8];
-    const char *names[8] = { "attr.axis", "attr.accum_dtype", "attr.variance_kind",
+    const char *a[15];
+    const char *names[15] = { "attr.axis", "attr.accum_dtype", "attr.variance_kind",
         "attr.epsilon_bits", "attr.reassociate", "attr.state_reformulation",
-        "attr.contract", "attr.rsqrt_semantics" };
-    if (node == NULL || node->attribute_count != 8 || operands.size() != 3 || version != 1)
+        "attr.contract", "attr.rsqrt_semantics", "attr.mean_order", "attr.mean_identity_bits",
+        "attr.mean_finalize", "attr.count_conversion", "attr.fp_environment",
+        "attr.nan_policy", "attr.reference_binding" };
+    UINT32 count = version == 1 ? 8 : 15;
+    if (node == NULL || node->attribute_count != count || operands.size() != 3 ||
+        (version != 1 && version != 2))
         return FALSE;
-    for (UINT32 i = 0; i < 8; ++i)
+    for (UINT32 i = 0; i < count; ++i)
         if (!DSL_Shape_Node_Attribute(node, names[i], &a[i])) return FALSE;
+    if (version == 2)
+        return DSL_mean_variance_norm_ref_binding_valid
+            (a[7], a[8], a[9], a[10], a[11], a[12], a[13], a[14]) &&
+            DSL_mean_variance_norm_ref_types_valid
+            (operands[0], operands[1], operands[2], result_ty,
+             a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
     return DSL_mean_variance_norm_types_valid
         (operands[0], operands[1], operands[2], result_ty,
          a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
@@ -1625,6 +1714,7 @@ DSL_mean_variance_norm_result
 
 static const DSL_SHAPE_RULE_ENTRY DSL_shape_rules[] = {
     { OPR_DSLMEANVARNORM, 1, DSL_mean_variance_norm_result },
+    { OPR_DSLMEANVARNORM, 2, DSL_mean_variance_norm_result },
     { OPR_DSLSTABLESOFTMAX, 1, DSL_Shape_Stable_Softmax_Result },
     { OPR_DSLREDUCESUM, 1, DSL_Shape_Reduce_Sum_Result },
     { OPR_DSLREDUCESUM, 2, DSL_Shape_Reduce_Sum_Result },

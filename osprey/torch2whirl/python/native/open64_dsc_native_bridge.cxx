@@ -2,6 +2,10 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/* Frontend-only opaque builder bridge. Exact-version LN-REF-1 admission:
+ * doc/AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md. This bridge
+ * neither infers numerical source permission nor links backend optimizers. */
+
 #ifdef USE_PCH
 #include "common_com_pch.h"
 #endif /* USE_PCH */
@@ -282,6 +286,8 @@ Open64_DSC_Create_External_Tensor_Constant
     return (Open64_DSC_Handle) value;
 }
 
+/* Forward an explicit, range-checked semantic version to the existing inferred
+ * builder. Row contracts still require the explicit-result interface. */
 Open64_DSC_Handle
 Open64_DSC_Create_Operator(const char *opcode_name,
                            unsigned int version,
@@ -297,7 +303,7 @@ Open64_DSC_Create_Operator(const char *opcode_name,
     DSL_BUILDER_OPERATOR op;
     unsigned int i;
 
-    if (opcode_name == NULL || opcode_name[0] == '\0' || version == 0 ||
+    if (opcode_name == NULL || opcode_name[0] == '\0' || version == 0 || version > 65535U ||
         (kid_count != 0 && kids == NULL) ||
         (attr_count != 0 && attrs == NULL))
         return 0;
@@ -346,6 +352,9 @@ Open64_DSC_Create_Operator(const char *opcode_name,
     return (Open64_DSC_Handle) op;
 }
 
+/* Preserve the producer's explicit version and result type through native
+ * preflight. Invalid public versions fail before context/product allocation;
+ * numerical schema and PU ownership remain common/com's responsibility. */
 Open64_DSC_Handle
 Open64_DSC_Create_Operator_With_Result
         (const char *opcode_name,
@@ -364,7 +373,10 @@ Open64_DSC_Create_Operator_With_Result
     DSL_BUILDER_OPERATOR op;
     unsigned int i;
 
-    if (opcode_name == NULL || version == 0 || result_name == NULL ||
+    /* Version is a public unsigned value: reject before UINT16 conversion so
+     * 65538 cannot masquerade as explicit LN-REF-1 version 2. This preserves
+     * every supported v1 call; no source promotion is performed. */
+    if (opcode_name == NULL || version == 0 || version > 65535U || result_name == NULL ||
         result_name[0] == '\0' || result_type == 0 ||
         (kid_count != 0 && kids == NULL) ||
         (attr_count != 0 && attrs == NULL))

@@ -4,6 +4,36 @@ Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
+2026-10-28 LayerNorm native-contract design:
+[LN-REF-1 native v2/admission](AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md)
+specifies an exact fifteen-field schema under existing logical ID 39, ordinary
+three-input assignment, producer versus structural trust boundaries and
+version-dispatched PREOPT/inspection. V1's eight-field schema, source matcher
+and unresolved meaning remain unchanged. Native registration/implementation
+is open; this design is independent of reduction profitability/lowering and
+adds no physical image layout, public API, compiler option or executable path.
+
+2026-10-28 LayerNorm reference-arithmetic decision:
+[LN-REF-1](AI-COMPILER-LAYERNORM-REFERENCE-ARITHMETIC-v0.1.md) defines ascending
+positive-zero FP32 folds with exact count and one final division per mean,
+then separately rounded sqrt and reciprocal division. RNE/gradual/no-trap,
+exact non-NaN bits/signed zeros and NaN-class observations are explicit.
+This is a separate reference definition, never resolution of native v1's
+unknowns. The implementation plan splits LN1 into defined arithmetic and open
+native admission, target carriers, oracle and integrated evidence. No source,
+binary schema, option, emitter support or GPU claim changes in this amendment.
+
+2026-10-28 LayerNorm planning proposal:
+[LayerNorm common-execution detail v0.1](AI-COMPILER-LAYERNORM-OPTIMIZATION-DESIGN-v0.1.md)
+separates source-compatible storage/schedule alternatives from authorized
+statistics reformulations. Direct, centered-retained and full-row-retained
+plans remain provisional through numerical binding, lane/transaction/bank
+analysis, lifetime/events and complete costs. Welford stays permission-rejected
+under current v1; unresolved mean/rsqrt semantics cannot become an invented
+fallback. The LN0-LN6 queue and phase summaries are proposed, not implemented.
+Reduction profitability and selected WHIRL lowering proceed in the independent
+coding chat; this amendment changes no contract, option or emitter.
+
 2026-10-28 R2-c2 staged ordered reduction amendment:
 [staged binding](AI-COMPILER-REDUCTION-STAGED-BINDING-v0.1.md) now specifies
 synchronous bit-copy visibility, disjoint padded shared slots, last-read release

@@ -1,0 +1,20 @@
+# Independent LN2-d runtime bridge; no compiler or reduction objects linked.
+# Design: doc/AI-COMPILER-LAYERNORM-RUNTIME-GUARDS-v0.1.md.
+CXX ?= c++
+AR ?= ar
+SOURCE ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
+CPPFLAGS += -I$(SOURCE)/include
+CXXFLAGS += -std=c++11 -Wall -Wextra -Werror -pthread
+
+all: libopen64_normalization_runtime.a normalization_runtime_test
+
+normalization_runtime.o: $(SOURCE)/libopen64rt/normalization_runtime.cxx $(SOURCE)/include/open64_normalization_runtime.h \
+                        $(SOURCE)/include/open64_target_buffer_service.h
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
+libopen64_normalization_runtime.a: normalization_runtime.o
+	$(AR) rcs $@ $<
+
+normalization_runtime_test: $(SOURCE)/libopen64rt/tests/normalization_runtime_test.cxx \
+                            $(SOURCE)/include/open64_normalization_runtime.h libopen64_normalization_runtime.a
+	$(CXX) -I$(SOURCE)/include $(CXXFLAGS) $< libopen64_normalization_runtime.a $(LDFLAGS) -o $@

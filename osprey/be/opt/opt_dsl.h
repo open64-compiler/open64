@@ -139,7 +139,8 @@ extern BOOL WOPT_DSL_verify_softmax_forms
 typedef UINT32 WOPT_DSL_SEMANTIC_INFO_ID;
 /* Transient active-PU centered population normalization, not storage or an
  * executable algorithm. See doc/AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md.
- * Operand order is X, gamma, beta; epsilon is canonical IEEE binary32 bits. */
+ * Operand order is X, gamma, beta; epsilon is canonical IEEE binary32 bits.
+ * V2: doc/AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md. */
 enum {
   WOPT_DSL_NORM_INPUTS_READ_ONLY = 1U << 0,
   WOPT_DSL_NORM_REASSOC_FORBIDDEN = 1U << 1,
@@ -154,7 +155,10 @@ enum {
   WOPT_DSL_NORM_RSQRT_UNRESOLVED = 1U << 10,
   WOPT_DSL_NORM_EXCEPTION_UNRESOLVED = 1U << 11,
   WOPT_DSL_NORM_CONTRACTION_FORBIDDEN = 1U << 12,
-  WOPT_DSL_NORM_CENTERED_POPULATION_F32_ROWS_V1 = 1
+  WOPT_DSL_NORM_REFERENCE_BOUND = 1U << 13,
+  WOPT_DSL_NORM_TARGET_UNBOUND = 1U << 14,
+  WOPT_DSL_NORM_CENTERED_POPULATION_F32_ROWS_V1 = 1,
+  WOPT_DSL_NORM_CENTERED_ORDERED_LN_REF_1 = 2
 };
 
 typedef struct {
@@ -173,7 +177,8 @@ typedef struct {
 } WOPT_DSL_NORMALIZATION_CHARACTERIZATION;
 
 /* Derive a snapshot only after whole active-PU/native/membership validation.
- * Failure leaves output unchanged; no Python, sample or debug facts are read. */
+ * Failure leaves output unchanged; no Python, sample or debug facts are read.
+ * V1 retains unresolved flags; explicit v2 binds source arithmetic only. */
 extern BOOL WOPT_DSL_characterize_normalization
     (WN *scope, WN *assignment, WOPT_DSL_NORMALIZATION_CHARACTERIZATION *output,
      FILE *diagnostic);

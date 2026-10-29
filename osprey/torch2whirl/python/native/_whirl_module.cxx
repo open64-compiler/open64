@@ -1,5 +1,8 @@
 /*
  * Copyright (C) 2026 Open64 Project
+ * Native DSL bridge boundary: see
+ * doc/AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md.
+ * Source matchers remain responsible for choosing an explicit semantic version.
  */
 
 #define PY_SSIZE_T_CLEAN
@@ -564,11 +567,34 @@ Open64_DSC_Read_FHE_Key_Requirement
     return !PyErr_Occurred();
 }
 
+/* Read a public semantic version before Python's masking integer conversions
+ * can truncate it. LN-REF-1 requires exact-version admission, not modulo 2^16
+ * or 2^32 lookup; invalid input leaves the output untouched. */
+static bool
+Open64_DSC_Read_Semantic_Version(PyObject *object, unsigned int *version)
+{
+    if (!PyLong_Check(object) || PyBool_Check(object)) {
+        PyErr_SetString(PyExc_TypeError, "semantic version must be an integer");
+        return false;
+    }
+    unsigned long value = PyLong_AsUnsignedLong(object);
+    if (PyErr_Occurred()) return false;
+    if (value == 0 || value > 65535UL) {
+        PyErr_SetString(PyExc_ValueError, "semantic version must be in [1,65535]");
+        return false;
+    }
+    *version = (unsigned int)value;
+    return true;
+}
+
+/* Forward exact public semantics to the existing opaque native builder;
+ * malformed versions fail before handle/schema conversion or construction. */
 static PyObject *
 Open64_DSC_Create_Operator(PyObject *self, PyObject *args)
 {
     const char *opcode_name;
     unsigned int version;
+    PyObject *version_obj;
     PyObject *kids_obj;
     PyObject *attrs_obj;
     std::vector<Open64_DSC_Handle> kids;
@@ -577,8 +603,9 @@ Open64_DSC_Create_Operator(PyObject *self, PyObject *args)
 
     (void) self;
 
-    if (!PyArg_ParseTuple(args, "sIOO:create_operator",
-                          &opcode_name, &version, &kids_obj, &attrs_obj))
+    if (!PyArg_ParseTuple(args, "sOOO:create_operator",
+                          &opcode_name, &version_obj, &kids_obj, &attrs_obj) ||
+        !Open64_DSC_Read_Semantic_Version(version_obj, &version))
         return NULL;
 
     if (!Open64_DSC_Read_Handle_Sequence(kids_obj, &kids))
@@ -594,11 +621,14 @@ Open64_DSC_Create_Operator(PyObject *self, PyObject *args)
     return Open64_DSC_Handle_Result(handle, "create operator");
 }
 
+/* Keep explicit result/version admission in common/com without exposing WN
+ * internals. No source mean/rsqrt binding is inferred by this Python wrapper. */
 static PyObject *
 Open64_DSC_Create_Operator_With_Result(PyObject *self, PyObject *args)
 {
     const char *opcode_name;
     unsigned int version;
+    PyObject *version_obj;
     PyObject *kids_obj;
     PyObject *attrs_obj;
     const char *result_name;
@@ -607,9 +637,10 @@ Open64_DSC_Create_Operator_With_Result(PyObject *self, PyObject *args)
     std::vector<Open64_DSC_Attribute> attrs;
 
     (void) self;
-    if (!PyArg_ParseTuple(args, "sIOOsK:create_operator_with_result",
-                          &opcode_name, &version, &kids_obj, &attrs_obj,
-                          &result_name, &result_type))
+    if (!PyArg_ParseTuple(args, "sOOOsK:create_operator_with_result",
+                          &opcode_name, &version_obj, &kids_obj, &attrs_obj,
+                          &result_name, &result_type) ||
+        !Open64_DSC_Read_Semantic_Version(version_obj, &version))
         return NULL;
     if (!Open64_DSC_Read_Handle_Sequence(kids_obj, &kids) ||
         !Open64_DSC_Read_Attributes(attrs_obj, &attrs))

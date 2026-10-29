@@ -3084,17 +3084,27 @@ DSL_Builder_Create_Operator_With_Result
             sources[i] = DSL_Builder_Find_Value_Record(kids[i]);
             if (sources[i] == NULL || sources[i]->pu != DSL_Builder_Active_PU) return NULL;
         }
-        if (!DSL_mean_variance_norm_types_valid
-                 (sources[0]->result_ty, sources[1]->result_ty, sources[2]->result_ty, result_ty,
-                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.axis"),
-                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.accum_dtype"),
-                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.variance_kind"),
-                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.epsilon_bits"),
-                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.reassociate"),
-                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.state_reformulation"),
-                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.contract"),
-                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.rsqrt_semantics")))
-            return NULL;
+        /* Exact schema preflight precedes every product allocation. V2 is an
+         * explicit LN-REF-1 declaration, never inferred from the v1 recipe.
+         * Design: doc/AI-COMPILER-LAYERNORM-NATIVE-REFERENCE-CONTRACT-v0.1.md. */
+        const char *names[15] = { "attr.axis", "attr.accum_dtype", "attr.variance_kind",
+            "attr.epsilon_bits", "attr.reassociate", "attr.state_reformulation",
+            "attr.contract", "attr.rsqrt_semantics", "attr.mean_order", "attr.mean_identity_bits",
+            "attr.mean_finalize", "attr.count_conversion", "attr.fp_environment",
+            "attr.nan_policy", "attr.reference_binding" };
+        const char *a[15];
+        UINT32 count = version == 1 ? 8 : 15;
+        for (UINT32 i = 0; i < count; ++i)
+            a[i] = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, names[i]);
+        BOOL valid = version == 1 ? DSL_mean_variance_norm_types_valid
+            (sources[0]->result_ty, sources[1]->result_ty, sources[2]->result_ty, result_ty,
+             a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]) :
+            version == 2 && DSL_mean_variance_norm_ref_binding_valid
+            (a[7], a[8], a[9], a[10], a[11], a[12], a[13], a[14]) &&
+            DSL_mean_variance_norm_ref_types_valid
+            (sources[0]->result_ty, sources[1]->result_ty, sources[2]->result_ty, result_ty,
+             a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
+        if (!valid) return NULL;
     }
     if (dsl_operator == OPR_DSLSTABLESOFTMAX) {
         DSL_BUILDER_VALUE_RECORD *source =
