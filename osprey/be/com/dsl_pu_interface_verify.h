@@ -20,7 +20,7 @@ typedef INT32 WN_MAP;
  * call/value/interface/projection tables, check that PU's physical caller and
  * callee ABI sides, accounting for retired slots and runtime projections.
  * Does not activate other PUs or mutate trees/tables. FALSE reports the first
- * mismatch; NULL diagnostic is silent. Implemented in dsl_ir_rewrite.cxx. */
+ * mismatch; NULL diagnostic is silent. Implemented in dsl_pu_interface_verify.cxx. */
 extern BOOL DSL_Call_ABI_Image_Validate_PU
                                 (PU_Info *pu, FILE *diagnostic);
 
@@ -31,7 +31,7 @@ extern BOOL DSL_Call_ABI_Image_Validate_PU
  * substituting projected handles, and include runtime-binding count in coverage.
  * Does not activate other PUs or independently prove each runtime binding's
  * physical identity. No tree/table mutation; FALSE reports the first mismatch,
- * NULL diagnostic is silent. Implemented in dsl_ir_rewrite.cxx. */
+ * NULL diagnostic is silent. Implemented in dsl_pu_interface_verify.cxx. */
 extern BOOL DSL_PU_Interface_Image_Validate_PU
                                 (PU_Info *pu, FILE *diagnostic);
 

@@ -744,8 +744,9 @@ translation unit. Other common/com infrastructure is outside this pair's scope.
 | `common/ir_image/dsl_image_service.h` and `dsl_ir_image.cxx` | The single managed row store, structural checks, borrowed mapped views, live call-WN associations, resets, mapped commit and row mutation. Uses existing segmented tables and WHIRL ELF services, not a second file format. |
 | `common/ir_image/dsl_lowered_relation.h` and `dsl_ir_print.cxx` | Derived scalar relation queries and logical inspection. `DSL_IR_LOWERED_RELATION_INFO` aliases the legacy result typedef so C++ linkage stays unchanged; printers import no lowering-request header. |
 | `common/ir_image/dsl_image_checkpoint_internal.h` and `dsl_pu_specialize_internal.h` | Private image-only append/flag checkpoints and row cloning with their existing implementations in the managed-store owner. No raw tables or phase-wide journals are exposed. Physical transactions separately own trees, symbols, REGION, scope and combined rollback. |
-| `be/com/dsl_external_tensor.h` and `dsl_ir_rewrite.cxx` | Backend-free external-tensor facts, generation-qualified source snapshots, materialization and native definition/rewrite/retire mechanisms. |
-| `be/com/dsl_pu_interface_verify.h` and `dsl_ir_rewrite.cxx` | Backend-free physical PU/call ABI checks used by readers and builders as well as backend phases. Directory ownership does not introduce a CG dependency. |
+| `be/com/dsl_external_tensor.{h,cxx}` | Backend-free external-tensor facts, the single generation-qualified source snapshot store, provenance, runtime-input source checks and active-PU materialization. |
+| `be/com/dsl_ir_rewrite.{h,cxx}` | Native definition lookup, caller-selected native value rewrite, redirect and retirement; no external snapshot state or PU-interface implementation remains here. |
+| `be/com/dsl_pu_interface_verify.{h,cxx}` and its private `_internal.h` | Backend-free structural and physical PU/call ABI checks used by readers and builders as well as backend phases. Structural TY predicates and the explicitly inline formal comparator are private owner contracts. No CG dependency or PU activation is introduced. |
 | `be/com/dsl_runtime_interface*` and `dsl_program_interface*` | Caller-selected runtime/program ABI transactions and process-local plan/commit evidence, with unchanged reset/load eligibility. The driver/IPA still owns traversal; no service activates another PU. |
 | `be/com/dsl_ir_lower*`, `dsl_ir_group_lower.cxx`, `dsl_ir_retype*` | Caller-selected active-PU lowering, dead-source elision and shape-only retyping. VHO/WOPT/IPA retain analysis, policy and scope. |
 | `be/vho/dsl_ckks_expand*` | Executable CKKS expansion, physical operand/use scans and fault injection. Shared physical queries have a single private header definition and internal linkage, not new global utility symbols. |
@@ -767,8 +768,11 @@ remain explicit. The wider phase transaction is not reclassified as image IR.
 
 1. [x] Reconcile the original 647 occurrences/67 structures/407 methods with
    the current owner inventory and direct companion closure. The current Clang
-   and lexical/ctags inventory accounts for 907 occurrences, 100 structures
-   (25 persistent, 75 nonpersistent), and 566 method occurrences.
+   and lexical/ctags inventory accounts for 912 occurrences, 100 structures
+   (25 persistent, 75 nonpersistent), and 570 method occurrences. The matching
+   external-tensor and PU-verification implementations now have separate
+   translation units; four private predicate declarations and one include guard
+   account for the additional occurrences, not new persistent contracts.
 2. [x] Move types, stores, helpers and owning implementation together; migrate
    direct includes, nine source-list consumers, native Python object linkage,
    syntax/layout fixtures and impactful-test selection. Keep source basenames
@@ -806,7 +810,9 @@ fixture failures are not repaired in a behavior-preserving ownership change.
 These are the initial relocation results, before the separately validated
 program-interface, DST and fixture fixes. See the
 [current validation record](DSL-IR-OWNERSHIP-SPLIT-VALIDATION.md) for their
-root causes, passing follow-up suites and exact retained evidence.
+root causes, passing follow-up suites and exact retained evidence. The remaining
+rewrite implementation decomposition is recorded in the
+[matching-owner follow-up](DSL-IR-REWRITE-SPLIT-VALIDATION.md).
 The completed relocation does not certify unrelated DSL comment gaps or
 ownership throughout the repository. No commit or PR is part of this batch.
 

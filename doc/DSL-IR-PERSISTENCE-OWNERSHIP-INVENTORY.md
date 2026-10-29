@@ -37,8 +37,9 @@ Runtime/program-interface rows remain persistent despite their runtime meaning.
 | `common/ir_image/dsl_image_service.h`, `dsl_ir_image.cxx` | One authoritative managed store, segmented containers, mapped views, live call-WN associations, resets, row services and structural validation. |
 | `common/ir_image/dsl_lowered_relation.h`, `dsl_ir_print.cxx` | Derived lowered-row summaries and logical inspection; the new image-query alias preserves the legacy typedef's C++ linkage and layout. |
 | `common/ir_image/dsl_image_checkpoint_internal.h`, `dsl_pu_specialize_internal.h` | Private image-only append/flag checkpoints and logical row cloning; implementations stay beside the private managed tables. No physical journal or raw table is exported. |
-| `be/com/dsl_external_tensor.h`, `dsl_ir_rewrite.cxx` | External facts, typed/generated provenance, copied source snapshots/handles, active-PU materialization, native definition lookup, rewrite and retirement. |
-| `be/com/dsl_pu_interface_verify.h`, `dsl_ir_rewrite.cxx` | Backend-free physical PU/call ABI verification, shared by readers/builders and backend phases. |
+| `be/com/dsl_external_tensor.{h,cxx}` | External facts, typed/generated provenance, the single copied source snapshot/generation store, active-PU materialization and external runtime-input source checks. |
+| `be/com/dsl_ir_rewrite.{h,cxx}` | Native definition lookup, caller-selected rewrite, redirect and retirement only. |
+| `be/com/dsl_pu_interface_verify.{h,cxx}`, `dsl_pu_interface_verify_internal.h` | Backend-free structural/physical PU/call ABI verification, shared by readers/builders and backend phases; private TY predicates and the explicitly inline formal comparator. |
 | `be/com/dsl_runtime_interface*`, `dsl_program_interface*` | ABI requests/results, return-site scratch, plan fingerprints, committed-PU evidence, active-PU mutation and verification. |
 | `be/com/dsl_ir_lower*`, `dsl_ir_group_lower.cxx`, `dsl_ir_retype*` | Lowering/group/retype requests, scans/journals, standard-block preflight, mutation, postcheck and existing rollback. |
 | `be/com/dsl_ir_rewrite_queries_internal.h`, `dsl_ir_transaction_internal.h` | Shared physical read-only queries with internal linkage and active-PU predicates. Two trivial comparator methods are explicitly inline in private headers. |
@@ -67,19 +68,22 @@ to printers/readers without importing physical lowering requests.
 ## Complete Manifest And Reproduction
 
 - [Current CSV](dsl-ir-ownership-inventory.csv): every located occurrence.
-- [Current JSON](dsl-ir-ownership-inventory.json): 907 occurrences, 100 complete
-  structures (25 persistent, 75 nonpersistent), 566 method occurrences,
+- [Current JSON](dsl-ir-ownership-inventory.json): 912 occurrences, 100 complete
+  structures (25 persistent, 75 nonpersistent), 570 method occurrences,
   implementation/reference locations, source hashes, token/body hashes and
   positive persistence evidence. The expansion from the original three files
   reflects direct companion closure, not new persisted records.
-- [Extractor](tools/dsl_ir_ownership_inventory.py): nine implementation ASTs,
+- [Extractor](tools/dsl_ir_ownership_inventory.py): eleven implementation ASTs,
   all owner headers, lexical structure/header reconciliation and independent
   ctags reconciliation. Twelve primitive tests pass; five macro-generated
   accessors and one split-line getter remain explicit AST-only cases.
 - [Relocation oracle](tools/dsl_ir_owner_split_check.py): independently parses
   before/after sources, reconciles every original inventory name, compares all
   351 function-definition bodies and 119 retained contracts, and rejects phase
-  includes/foreign WN context in the schema. Four tokenizer tests pass.
+  includes/foreign WN context in the schema. It accepts original or current-owner
+  source snapshots and asserts exact owners for eleven critical entry points.
+  Four tokenizer tests pass. Four added private predicate declarations and an
+  include guard explain the inventory increase; no definitions or schema were added.
 
 Run the extractor into a fresh directory:
 
@@ -103,6 +107,9 @@ This section preserves the original relocation run. The subsequent fixes and
 fresh merged-PR results are recorded separately in
 [DSL image ownership split and fixes](DSL-IR-OWNERSHIP-SPLIT-VALIDATION.md);
 the earlier program/DST failure records below are not the current PR status.
+The subsequent matching external-tensor/PU-verification implementation split
+and its fresh evidence are recorded in
+[rewrite owner completion](DSL-IR-REWRITE-SPLIT-VALIDATION.md).
 
 - All 351 compared definitions retain their tokenized bodies. The only allowed
   spelling normalization is the image-summary typedef alias in the printer.

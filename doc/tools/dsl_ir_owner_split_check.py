@@ -34,10 +34,12 @@ def capture(root, paths, output, arguments):
     commands = inventory.capture(arguments.extra_arg, arguments.cxx)
     entries = inventory.supplements(inventory.collect())
     bodies = collections.defaultdict(list)
+    definition_owners = collections.defaultdict(set)
     schemas = {}
     for entry in entries:
         sequence = tokens(entry['source'])
         if entry['category'] == 'method' and entry['role'] == 'definition':
+            definition_owners[entry['name']].add(entry['path'])
             body = sequence[sequence.index('{'):] if '{' in sequence else sequence
             body = ['DSL_IR_NATIVE_VALUE_LOWER_RESULT'
                     if token == 'DSL_IR_LOWERED_RELATION_INFO' else token for token in body]
@@ -47,6 +49,8 @@ def capture(root, paths, output, arguments):
             schemas[entry['name']] = digest(sequence)
     return dict(commands=commands, schemas=schemas,
                 bodies={name: sorted(values) for name, values in sorted(bodies.items())},
+                definition_owners={name: sorted(paths) for name, paths in
+                                   sorted(definition_owners.items())},
                 source_sha256={path: hashlib.sha256((root / path).read_bytes()).hexdigest()
                                for path in paths})
 
@@ -61,7 +65,7 @@ def self_test():
 
 
 def main():
-    """Retain complete before/after token receipts and fail on unexplained drift."""
+    """Prove legacy or current-owner relocation without losing bodies or schema."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--before-root', type=Path, required=True)
     parser.add_argument('--after-root', type=Path, required=True)
@@ -72,8 +76,14 @@ def main():
     arguments.output.mkdir()
     tests = self_test()
     after_paths = list(inventory.FILES)
-    before_paths = ['osprey/common/com/' + Path(path).name for path in after_paths
-                    if (arguments.before_root / 'osprey/common/com' / Path(path).name).is_file()]
+    legacy_layout = not (arguments.before_root /
+                         'osprey/common/ir_image/dsl_ir_image.cxx').is_file()
+    if legacy_layout:
+        before_paths = ['osprey/common/com/' + Path(path).name for path in after_paths
+                        if (arguments.before_root / 'osprey/common/com' / Path(path).name).is_file()]
+    else:
+        before_paths = [path for path in after_paths
+                        if (arguments.before_root / path).is_file()]
     before_paths = list(dict.fromkeys(before_paths))
     before = capture(arguments.before_root, before_paths, arguments.output / 'before', arguments)
     after = capture(arguments.after_root, after_paths, arguments.output / 'after', arguments)
@@ -93,8 +103,24 @@ def main():
     historical = json.loads((arguments.before_root / 'doc/dsl-ir-ownership-inventory.json').read_text())
     current_names = {entry['name'] for entry in inventory.supplements(inventory.collect())}
     assert {entry['name'] for entry in historical['entities']} <= current_names
-    assert all(not (arguments.after_root / path).exists() for path in before_paths
-               if path != 'osprey/common/com/dsl_ir_image.h')
+    if legacy_layout:
+        assert all(not (arguments.after_root / path).exists() for path in before_paths
+                   if path != 'osprey/common/com/dsl_ir_image.h')
+    expected_owners = {
+        'DSL_Call_ABI_Image_Validate_PU': 'osprey/be/com/dsl_pu_interface_verify.cxx',
+        'DSL_PU_Interface_Image_Validate': 'osprey/be/com/dsl_pu_interface_verify.cxx',
+        'DSL_PU_Interface_Image_Validate_PU': 'osprey/be/com/dsl_pu_interface_verify.cxx',
+        'DSL_Runtime_Interface_Value_Record_Contract_Valid': 'osprey/be/com/dsl_pu_interface_verify.cxx',
+        'DSL_IR_External_Tensor_Source_Reset': 'osprey/be/com/dsl_external_tensor.cxx',
+        'DSL_IR_Capture_External_Tensor_Source': 'osprey/be/com/dsl_external_tensor.cxx',
+        'DSL_IR_Materialize_External_Tensor_Values': 'osprey/be/com/dsl_external_tensor.cxx',
+        'DSL_IR_Materialize_Typed_External_Tensor_Values': 'osprey/be/com/dsl_external_tensor.cxx',
+        'DSL_IR_Materialize_Generated_External_Tensor_Values': 'osprey/be/com/dsl_external_tensor.cxx',
+        'DSL_IR_Rewrite_Native_Value': 'osprey/be/com/dsl_ir_rewrite.cxx',
+        'DSL_IR_Redirect_And_Retire_Native_Value': 'osprey/be/com/dsl_ir_rewrite.cxx',
+    }
+    for name, path in expected_owners.items():
+        assert after['definition_owners'].get(name) == [path], (name, path)
     report = dict(schema='open64.dsl-owner-relocation-equivalence.v1', self_tests=tests,
                   before=before, after=after, changed_function_bodies=changed,
                   changed_retained_schema=missing_schema,
@@ -102,7 +128,9 @@ def main():
                   compared_function_definitions=sum(len(values) for values in before['bodies'].values()),
                   schema_include_boundary='no transient or phase headers',
                   historical_inventory_names='all original names accounted for',
-                  retired_source_paths='no forwarding files remain',
+                  retired_source_paths=('no forwarding files remain' if legacy_layout
+                                        else 'current-owner implementation decomposition'),
+                  owner_partition=expected_owners,
                   allowed_spelling_only_change='Image-owned DSL_IR_LOWERED_RELATION_INFO is an alias of the legacy result typedef.',
                   limits=['No ABI, mapped-file or runtime certification from this source proof alone.'])
     (arguments.output / 'equivalence.json').write_text(json.dumps(report, indent=2) + '\n')

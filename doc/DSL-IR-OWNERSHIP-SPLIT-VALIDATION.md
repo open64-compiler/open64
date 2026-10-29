@@ -3,6 +3,10 @@
 Status: PR submission validation against `develop` at
 `ecbb857fc26a83dd35c7800845b654890f0dffbd`, 2026-10-28.
 
+The subsequent [matching-owner rewrite completion](DSL-IR-REWRITE-SPLIT-VALIDATION.md)
+moves external-tensor and PU-verification implementations into their matching
+translation units and records fresh before/after compatibility validation.
+
 ## Scope
 
 This change packages the reviewed common registry/image comment cleanup, the

@@ -50,7 +50,8 @@ typedef enum {
 /*
  * Runtime-only request for materializing converted side-file tensor values.
  * All requests are preflighted before any symbol, WN, or image table changes.
- * source_value_id must name an existing external tensor in the active PU. The
+ * source_value_id names an external tensor in the active PU, or an implicit
+ * zero only when the explicit alternate source policy allows it. The
  * transaction derives the insertion BLOCK from PU_Info and insert_before. A
  * null call creates an entry-owned value without rewriting a call actual.
  */
@@ -225,7 +226,11 @@ extern void DSL_IR_Generated_External_Tensor_Request_Init
                                 (DSL_IR_GENERATED_EXTERNAL_TENSOR_REQUEST
                                      *request);
 
-/* Rejects the complete array without mutation, or commits every result. */
+/* Clear count-sized caller result slots, then preflight a nonempty borrowed
+ * source-free request array for the exact active PU. Boolean rejection precedes
+ * physical/image appends but does not preserve prior result-slot contents.
+ * Commit creates PU-owned symbols/STIDs and existing generated-constant rows;
+ * no payload computation, PU switch or allocation-failure journal is provided. */
 extern BOOL DSL_IR_Materialize_Generated_External_Tensor_Values
                                 (PU_Info *pu_info,
                                  const DSL_IR_GENERATED_EXTERNAL_TENSOR_REQUEST

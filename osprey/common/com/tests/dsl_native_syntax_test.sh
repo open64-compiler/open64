@@ -142,6 +142,8 @@ sources=(
   "osprey/be/com/dsl_program_interface.cxx"
   "osprey/be/com/dsl_ir_retype.cxx"
   "osprey/be/vho/dsl_ckks_expand.cxx"
+  "osprey/be/com/dsl_external_tensor.cxx"
+  "osprey/be/com/dsl_pu_interface_verify.cxx"
   "osprey/be/com/dsl_ir_rewrite.cxx"
   "osprey/be/com/dsl_runtime_interface.cxx"
   "osprey/common/com/dsl_region.cxx"

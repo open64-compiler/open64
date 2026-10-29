@@ -105,6 +105,28 @@ class ImpactfulTestSelectorTest(unittest.TestCase):
                          ["osprey/be/vho/new_pass.cxx"])
         self.assertIn("full-s6-0c-certification", lanes)
 
+    def test_owner_private_verifier_header_selects_transaction_gates(self) -> None:
+        """The new private header reaches the same gates as its implementation."""
+
+        private_header = "osprey/be/com/dsl_pu_interface_verify_internal.h"
+        self.assertEqual(self.lanes(private_header), self.lanes(
+            "osprey/be/com/dsl_pu_interface_verify.cxx"))
+        self.assertEqual(SELECTOR.select_lanes(
+            [private_header], self.manifest)["unknown_files"], [])
+
+    def test_direct_object_consumers_select_link_boundary(self) -> None:
+        """Reviewed frontend source lists are build wiring, not unknown code."""
+
+        for directory in ("clang2whirl", "crayf90/sgi",
+                          "jfe/libb2w/wgen-java/wgen", "kg++fe", "kgccfe",
+                          "libwffi", "wgen"):
+            with self.subTest(directory=directory):
+                plan = SELECTOR.select_lanes(
+                    ["osprey/" + directory + "/Makefile.gbase"], self.manifest)
+                self.assertEqual(plan["unknown_files"], [])
+                self.assertEqual({lane["name"] for lane in plan["lanes"]},
+                                 {"hygiene", "backend-link-boundary"})
+
 
 if __name__ == "__main__":
     unittest.main()

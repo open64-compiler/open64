@@ -1,6 +1,6 @@
 /*
- * Private backend-free physical PU queries shared by native rewrite and CKKS
- * expansion. Keep internal linkage and one source definition of each query;
+ * Private backend-free physical PU queries shared by external tensors, native
+ * rewrite and CKKS expansion. Keep internal linkage and one source definition of each query;
  * no tables, mutation authority or phase policy is exported.
  * Design: doc/WHIRL-DSL-INFRASTRUCTURE.md, persistent IR / service separation.
  */
@@ -140,12 +140,5 @@ DSL_IR_Retire_Has_Use_Outside_Block
     }
     return FALSE;
 }
-
-struct DSL_PU_FORMAL_ORDINAL_LESS {
-    /* Order borrowed formal rows by ordinal; equal ordinals compare false. */
-    inline BOOL operator()(const DSL_PU_FORMAL_RECORD &kid0,
-                    const DSL_PU_FORMAL_RECORD &kid1) const
-    { return kid0.formal_ordinal < kid1.formal_ordinal; }
-};
 
 #endif /* DSL_IR_REWRITE_QUERIES_INTERNAL_INCLUDED */
