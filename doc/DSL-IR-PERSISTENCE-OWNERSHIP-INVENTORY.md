@@ -99,6 +99,11 @@ Inventory and token equality alone are not runtime certification.
 
 ## Validation Results And Limits
 
+This section preserves the original relocation run. The subsequent fixes and
+fresh merged-PR results are recorded separately in
+[DSL image ownership split and fixes](DSL-IR-OWNERSHIP-SPLIT-VALIDATION.md);
+the earlier program/DST failure records below are not the current PR status.
+
 - All 351 compared definitions retain their tokenized bodies. The only allowed
   spelling normalization is the image-summary typedef alias in the printer.
   All 119 retained schema contracts are token-identical.

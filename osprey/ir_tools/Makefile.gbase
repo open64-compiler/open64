@@ -393,11 +393,12 @@ dsl_builder_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_builder_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
-dsl_pu_transaction_contract_test: dsl_builder.o dsl_contract.o \
+# The builder's fresh-program DST initializer is frontend-only, not in be.so.
+dsl_pu_transaction_contract_test: dsl_builder.o dsl_contract.o dwarf_DST_producer.o \
 		dsl_simp.o controls.o \
 		dsl_pu_transaction_contract_test.o $(BUILD_AREA)/be/$(BE_SO)
 	$(link.c++f) -o $@ dsl_pu_transaction_contract_test.o controls.o \
-		dsl_builder.o dsl_contract.o dsl_simp.o \
+		dsl_builder.o dsl_contract.o dwarf_DST_producer.o dsl_simp.o \
 		$(BUILD_AREA)/be/$(BE_SO) $(LDFLAGS)
 
 dsl_pu_transaction_contract_test.o: \

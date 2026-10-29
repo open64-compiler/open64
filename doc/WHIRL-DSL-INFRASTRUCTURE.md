@@ -13,10 +13,12 @@ representation, mapped binary image, inspection, gatekeeper, compatibility,
 and final VHO lowering boundary.
 
 The [persistent IR / nonpersistent service separation plan](#persistent-ir--nonpersistent-service-separation)
-tracks removal of compiler-only requests, views and transaction state from the
+documents removal of compiler-only requests, views and transaction state from the
 persistent image-definition interface and relocation of those structures and
-their related methods beside the logic that owns them. This is planned
-ownership cleanup, not a new binary WHIRL format or an implemented separation.
+their related methods beside the logic that owns them. This is
+ownership cleanup, not a new binary WHIRL format. The separation is implemented;
+follow-up fixes and current PR validation are recorded in
+[DSL image ownership split and fixes](DSL-IR-OWNERSHIP-SPLIT-VALIDATION.md).
 
 CNN domain meaning, including the proposed `cnn.bottleneck.v1` contract and
 its relationship to PyTorch source structure, is documented separately in
@@ -801,6 +803,10 @@ The native Python extension links, but both its runtime suite and the default
 builder suite reproduce the pre-existing DST double file-scope assertion on
 both versions; neither suite is labelled green. Existing
 fixture failures are not repaired in a behavior-preserving ownership change.
+These are the initial relocation results, before the separately validated
+program-interface, DST and fixture fixes. See the
+[current validation record](DSL-IR-OWNERSHIP-SPLIT-VALIDATION.md) for their
+root causes, passing follow-up suites and exact retained evidence.
 The completed relocation does not certify unrelated DSL comment gaps or
 ownership throughout the repository. No commit or PR is part of this batch.
 
