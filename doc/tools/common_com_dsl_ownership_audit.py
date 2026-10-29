@@ -31,14 +31,14 @@ SHARED = {
     'opcode_gen_core.cxx': ('mixed_encoded_vocabulary_and_generator', 'osprey/common/com + generator owner', 'Physical DSL operator table/generation additions; preserve every target slot and property.'),
     'opcode_gen_core.h': ('encoded_schema_vocabulary', 'osprey/common/com', 'Physical OPR_DSL spelling/slot and operator properties support the persisted WN encoding.'),
     'strtab.cxx': ('mixed_persistent_store_and_private_checkpoint', 'osprey/common/com + osprey/common/ir_image', 'String bytes persist; CKKS count save/restore is private transient store support, with declaration already in common/util. Do not expose raw tables or move unrelated legacy strings.'),
-    'symtab.cxx': ('mixed_persistent_access_and_derived_state', 'osprey/common/com + osprey/common/ir_image', 'Persistent tensor/ST annotation constructors/accessors remain; canonical hash/index/cache is process-only store support. No phase-policy or whole-file relocation.'),
-    'symtab.h': ('mixed_persistent_schema_access_and_views', 'osprey/common/com + osprey/common/ir_image', 'Three tensor/KV STORE rows persist; canonical descriptor inputs, INFO, refinement and derived TENSOR_DESCRIPTOR_RECORD do not. Keep persistent constructors/access APIs; separate borrowed view definitions.'),
+    'symtab.cxx': ('persistent_access_and_shared_type_canonicalization', 'osprey/common/com', 'Persistent tensor/ST access and shared tensor type canonicalization stay. Canonical hash/index/cache is transient service-private state, not a reason to move the service or a new .B row.'),
+    'symtab.h': ('persistent_schema_and_shared_type_service_views', 'osprey/common/com', 'Three tensor/KV STORE rows persist. Canonical descriptor inputs, INFO, refinement and derived TENSOR_DESCRIPTOR_RECORD do not persist, but stay with shared tensor type construction/canonicalization services.'),
     'symtab_defs.h': ('encoded_schema_vocabulary', 'osprey/common/com', 'KIND_TENSOR and three SHDR tensor additions are binary encodings; SCOPE and generic table management are outside DSL-only relocation scope.'),
     'symtab_verify.cxx': ('persistent_structural_verification', 'osprey/common/com', 'Tensor-kind row integrity checks, not PU candidate discovery.'),
     'ttype.cxx': ('logical_inspection', 'osprey/common/ir_image', 'DSL/tensor logical type inspection; do not move unrelated historical type printers in this audit.'),
     'wn.cxx': ('mixed_persistent_construction_and_transient_scan', 'osprey/common/com + osprey/be/com', 'Native/marker constructors and accessors stay. VHO_*unconsumed marker traversal and its counter state are transient shared admission helpers, not persisted WN fields.'),
-    'wn.h': ('mixed_persistent_construction_access_and_views', 'osprey/common/com + osprey/common/ir_image', 'WN DSL encodings and constructors/accessors stay; transient decoded views must be distinguished from physical fields and stable schema symbols.'),
-    'wn_simp_ftable.h': ('nonpersistent_simplifier_hook', 'osprey/be/com', 'DSL adapter entries use the existing WN rule engine; no duplicated simplifier or wholesale legacy engine move.'),
+    'wn.h': ('mixed_shared_IR_services_and_admission_scan', 'osprey/common/com + osprey/be/com', 'WN DSL encodings, constructors/accessors and their transient decoded views stay with shared IR services. Separate the unrelated unconsumed-marker scan rather than moving construction views because they are transient.'),
+    'wn_simp_ftable.h': ('shared_ingestion_simplifier_hook', 'osprey/common/com', 'DSL adapter entries stay with the existing common WHIRL canonicalization/folding rule engine, callable during ingestion. Do not move or duplicate the engine.'),
 }
 
 EXTRA_RECORDS = {
@@ -149,7 +149,12 @@ def macros(text):
 
 
 def assignment(group, name, category):
-    """Apply explicit mixed-family boundaries; functions themselves are never rows."""
+    """Classify durability separately from shared-service or phase ownership.
+
+    Ingestion-time canonicalization/folding and their transient descriptions stay
+    with common IR services. Independent optimizer facts/plans do not inherit
+    that ownership merely because they reference the same persistent WHIRL.
+    """
     core = {name: family for family, names in previous.PERSISTENT.items()
             for name in names.split()}
     family = core.get(name) or EXTRA_RECORDS.get(name)
@@ -181,30 +186,40 @@ def assignment(group, name, category):
         return dict(persistence='encoded_schema_symbol', owner='osprey/common/fhe' if group['id'] == 'ckks-event' else 'osprey/common/com', action='retain_encoding_with_schema_owner')
     if name == 'TY_DSL_BIND_STATE':
         return dict(persistence='encoded_schema_symbol', owner='osprey/common/com', action='retain_encoding')
+    if group['id'] in {'tensor-fold', 'simp', 'memory-behavior'}:
+        return dict(persistence='service_not_stored' if category == 'function' else 'nonpersistent',
+                    owner='osprey/common/com', action='retain_shared_ingestion_IR_service')
+    if group['id'] == 'opcode' and (name.startswith(('DSL_Operator_', 'DSL_Algebraic_', 'DSL_fusion_')) or
+            name in {'DSL_OPERATOR_name', 'DSL_ALGEBRAIC_INFO', 'DSL_ALGEBRAIC_RELATION_INFO',
+                'DSL_FUSIBILITY_INFO', 'DSL_OPERATOR_INFO', 'DSL_LOGICAL_OPERATOR_SEED',
+                'DSL_Effect_Model_Name', 'DSL_Lowering_Model_Name', 'DSL_Shape_Rule_Name',
+                'DSL_Opcode_Category_Name', 'DSL_Opcode_Level_Name'}):
+        return dict(persistence='service_not_stored' if category == 'function' else 'nonpersistent',
+                    owner='osprey/common/com', action='retain_shared_operator_semantics')
     if group['id'] == 'shared':
         if name.startswith('VHO_'):
             return dict(persistence='service_not_stored' if category == 'function' else 'nonpersistent',
                         owner='osprey/be/com', action='relocate_shared_admission_scan')
         if category == 'function' and re.match(r'(?:DSL_WN_|WN_.*DSL|TY_|ST_|TENSOR_)', name):
             return dict(persistence='persistent_construction_access_not_stored',
-                        owner='osprey/common/com', action='retain_interface_separate_transient_views')
+                        owner='osprey/common/com', action='retain_shared_IR_interface_and_service_views')
+        if name in {'DSL_OPCODE_ANNOTATION', 'DSL_WHIRL_NODE_RECORD', 'DSL_LOGICAL_OPCODE',
+                'DSL_WHIRL_OPERAND_RECORD', 'DSL_OPCODE_CARRIER_KIND',
+                'DSL_OPCODE_VERSION_DISPOSITION', 'DSL_OPCODE_OUTPUT_MODE'}:
+            return dict(persistence='nonpersistent', owner='osprey/common/com', action='retain_shared_IR_service_view')
     owner = group['proposed_owner']
     if group['id'] == 'region':
         owner = 'osprey/common/ir_image' if name in {'DSL_Region_Write_PU', 'DSL_Region_Load_Mapped_PU', 'DSL_REGION_STORE', 'dsl_region_runtime', 'DSL_Region_Find_Store', 'DSL_Region_Get_Store', 'DSL_Region_Find_Owning_Store', 'DSL_Region_Reset', 'DSL_Region_Print_PU'} else 'osprey/be/com'
-    elif group['id'] == 'tensor-fold':
-        owner = 'osprey/common/ir_image' if name.startswith('DSL_Tensor_TCON_') or name == 'DSL_TENSOR_TCON_CREATE_INFO' else 'osprey/be/com'
     elif group['id'] == 'opcode':
         owner = 'osprey/common/ir_image'
-    elif group['id'] == 'memory-behavior':
-        owner = 'osprey/be/com'
     elif group['id'] == 'shape':
-        owner = 'osprey/be/vho' if 'Analyze_PU' in name or 'SOLVER' in name or '_Solver_' in name or 'REFINEMENT' in name else 'osprey/be/com'
+        owner = 'osprey/be/vho' if 'Analyze_PU' in name or 'SOLVER' in name or '_Solver_' in name or 'REFINEMENT' in name else 'osprey/common/com'
     elif group['id'] == 'tensor-locality':
         owner = 'osprey/be/com' if 'CONTROL_' in name or 'control_snapshot' in name else 'osprey/be/vho'
     elif group['id'] == 'compute-realization' and name in {'DSL_COMPUTE_PROFILE_RECORD', 'DSL_compute_profile_get', 'DSL_compute_profile_find'}:
         owner = 'osprey/common/targ_info'
     return dict(persistence='service_not_stored' if category == 'function' else 'nonpersistent',
-                owner=owner, action='relocate_with_related_logic')
+                owner=owner, action='retain_shared_IR_service' if owner == 'osprey/common/com' else 'relocate_with_related_logic')
 
 
 def witness(root, item):
@@ -309,9 +324,19 @@ def self_tests():
     group['id'] = 'tensor-fold'
     assert assignment(group, 'DSL_TENSOR_TCON_ENVELOPE', 'record')['persistence'] == 'persisted_record'
     assert assignment(group, 'DSL_TENSOR_FOLD_CANDIDATE', 'record')['persistence'] == 'nonpersistent'
+    assert assignment(group, 'DSL_TENSOR_FOLD_CANDIDATE', 'record')['owner'] == 'osprey/common/com'
+    assert assignment(group, 'DSL_Tensor_TCON_Decode_Carrier', 'function')['owner'] == 'osprey/common/com'
+    group['id'] = 'simp'
+    assert assignment(group, 'DSL_Simp_Binary', 'function')['owner'] == 'osprey/common/com'
+    group['id'] = 'shape'
+    assert assignment(group, 'DSL_Shape_Check_Operator', 'function')['owner'] == 'osprey/common/com'
+    assert assignment(group, 'DSL_Shape_Analyze_PU', 'function')['owner'] == 'osprey/be/vho'
+    group['id'] = 'opcode'
+    assert assignment(group, 'DSL_Operator_Get_Algebraic_Info', 'function')['owner'] == 'osprey/common/com'
     group['id'] = 'shared'
     assert assignment(group, 'VHO_UNCONSUMED_DSL_SCAN', 'record')['owner'] == 'osprey/be/com'
     assert assignment(group, 'TY_DSL_BIND_STATE', 'enum')['persistence'] == 'encoded_schema_symbol'
+    assert assignment(group, 'DSL_LOGICAL_OPCODE', 'record')['owner'] == 'osprey/common/com'
     assert macros('#define TEST \\ \n  continuation\n')[0]['name'] == 'TEST'
     assert assignment(group, 'dsl_example_INCLUDED', 'macro')['persistence'] == 'compile_time_scaffolding'
     for files in ([], ['one', 'one'], ['other']):
@@ -328,7 +353,7 @@ def self_tests():
         pass
     else:
         raise AssertionError('Unwitnessed core row accepted')
-    return 22
+    return 29
 
 
 def main():

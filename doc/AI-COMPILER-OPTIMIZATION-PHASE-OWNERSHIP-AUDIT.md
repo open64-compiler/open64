@@ -9,6 +9,10 @@ below does not establish that its common runtime containers are preserved in
 for proposed relocation of the remaining nonpersistent records and related
 methods to their logic owners. No new move is claimed here, and the explicitly
 retained `dsl_builder` persistent-construction interface is not a phase planner.
+Shared WHIRL canonicalization and constant folding, including tensor types/data,
+also remain `common/com` ingestion-callable services, with their transient
+helper descriptions and caches. That service ownership is separate from data
+persistence and does not admit independent optimizer facts/plans into common.
 
 This audit applies the project ownership rule to AIO-0 through AIO-13:
 

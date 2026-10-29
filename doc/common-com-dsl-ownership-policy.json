@@ -1,7 +1,7 @@
 {
   "schema": "open64.common-com-dsl-ownership-policy.v1",
   "scope": "DSL-related production sources in common/com plus DSL fragments in shared files; tests separately inventoried. Historical non-DSL code is excluded.",
-  "authority": "User persistence-only direction with explicit dsl_builder persistent-construction exception; no code moves authorized.",
+  "authority": "User persistence classification plus shared WHIRL ingestion-service ownership: dsl_builder, canonicalization and constant folding including tensor types/data stay in common/com. No code moves authorized.",
   "groups": [
     {
       "id": "persistent-core",
@@ -95,9 +95,9 @@
         "osprey/common/com/dsl_tensor_fold.h"
       ],
       "classification": "mixed_persistent_and_service",
-      "proposed_owner": "osprey/common/com + osprey/common/ir_image + osprey/be/com",
-      "action": "split_carrier_from_evaluation",
-      "reason": "Only the existing 128-byte TCON envelope and its storage encoding persist (plus referenced carrier bytes). Creation descriptions, evaluator/mocks, policies, candidates, output/replacement objects and derived cache do not. Keep schema; carrier/cache services to common/ir_image; shared folding bridge to be/com. VHO/WOPT retain optimization policy.",
+      "proposed_owner": "osprey/common/com",
+      "action": "retain_shared_ingestion_IR_service",
+      "reason": "The existing 128-byte TCON envelope and storage encoding persist. Shared tensor constant folding, carrier access/construction, evaluator/candidate/output descriptions and private derived cache stay in common/com as ingestion-callable IR services. Transient helper objects are not .B rows. VHO/WOPT still own phase-specific optimization policy.",
       "witnesses": [
         {
           "path": "osprey/common/com/dsl_tensor_fold.cxx",
@@ -118,7 +118,7 @@
       "classification": "mixed_schema_and_runtime_registry",
       "proposed_owner": "osprey/common/com + osprey/common/ir_image",
       "action": "split_encoded_vocabulary_from_registry",
-      "reason": "DSL_OPERATOR and descriptor-field enum values are encoded, but DSL_OPCODE_RECORD/INFO, promotions, trait views and seed/string/vector registries are not .B rows. Retain encoded vocabulary; reader/builder-safe logical metadata and registry implementation to common/ir_image. Dynamic registry IDs are not DSL_IR_OPCODE_DESCRIPTOR_ID.",
+      "reason": "Keep encoded DSL/operator vocabulary and shared static logical, algebraic and fusibility semantics used by ingestion-time canonicalization in common/com. Dynamic opcode/promotion registries remain separately proposed for common/ir_image. Neither pointer-bearing runtime views nor static trait tables become .B rows merely by retention.",
       "witnesses": [
         {
           "path": "osprey/common/com/dsl_opcode.cxx",
@@ -171,9 +171,9 @@
         "osprey/common/com/dsl_memory_behavior.h"
       ],
       "classification": "mixed_runtime_contract_and_persistent_access",
-      "proposed_owner": "osprey/common/com + osprey/be/com",
-      "action": "split_inventory_from_symbol_construction_access",
-      "reason": "Seed array and DSL_MEMORY_BEHAVIOR_CONTRACT are runtime semantic inventory, not written. Three DSL_Tensor_* symbol construction/annotation access functions directly manipulate persisted ST/metadata and can remain as persistent construction/access. Contract lookup/flag naming and seed descriptions belong to shared semantic verification in be/com.",
+      "proposed_owner": "osprey/common/com",
+      "action": "retain_shared_ingestion_IR_service",
+      "reason": "Static memory/effect contract inventory and flag naming support common IR construction/canonicalization eligibility and stay with shared semantics in common/com, alongside persistent symbol annotation access. Seeds/output objects are nonpersistent; their service ownership is not determined by row durability.",
       "witnesses": [
         {
           "path": "osprey/common/com/dsl_memory_behavior.cxx",
@@ -213,9 +213,9 @@
         "osprey/common/com/dsl_shape.h"
       ],
       "classification": "nonpersistent_analysis_and_semantics",
-      "proposed_owner": "osprey/be/com + osprey/be/vho",
+      "proposed_owner": "osprey/common/com + osprey/be/vho",
       "action": "split_predicates_from_PU_solver",
-      "reason": "Facts, dimensions, borrowed operand/node arrays, refinement requests, visitors and solver state are transient. Shared pure type/operator predicates to be/com; PU fixed-point/refinement discovery to VHO, with callback application owned by the caller. No implicit IPA scope.",
+      "reason": "Shared tensor type/operator predicates and local shape inference stay in common/com for ingestion/canonicalization. Facts and input descriptions remain transient service data. PU-wide fixed-point/refinement discovery remains separately phase-owned in VHO; caller controls mutation and scope.",
       "witnesses": [
         {
           "path": "osprey/common/com/dsl_shape.cxx",
@@ -234,9 +234,9 @@
         "osprey/common/com/dsl_simp.h"
       ],
       "classification": "nonpersistent_construction_simplifier",
-      "proposed_owner": "osprey/be/com",
-      "action": "relocate_shared_bridge",
-      "reason": "Disposable scalar projections/candidates/results adapt the established WN simplifier. Results may be persistent WNs, but these control objects are not image schema; preserve Enable_WN_Simp and frontend direct-object linkage.",
+      "proposed_owner": "osprey/common/com",
+      "action": "retain_shared_ingestion_IR_service",
+      "reason": "Shared WHIRL canonicalization and constant-folding bridge stays in common/com, callable during ingestion and later phases. Disposable projections/candidates/results are nonpersistent service data; preserve wn_simp_code.h reuse and Enable_WN_Simp. No backend phase dependency is introduced.",
       "witnesses": [
         {
           "path": "osprey/common/com/dsl_simp.cxx",

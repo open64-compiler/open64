@@ -1,6 +1,6 @@
 # common/com DSL Persistence And Ownership Audit
 
-Status: classification and relocation proposal only, at source `c6f25599`
+Status: classification and relocation proposal only, corrected at source `a2c47f9a`
 (2026-10-29). No compiler source, API, binary layout or execution changes.
 
 ## Scope And Authority
@@ -13,17 +13,30 @@ contain no additional matches under the recorded DSL/tensor discovery rule.
 The former 40-file/942-comment-gap count was a presence backlog, not an owner
 or persistence classification. It is not the scope boundary of this audit.
 
-The user's directory rule is stricter than the earlier policy-free-common
-criterion: a pointer-free, domain-neutral, immutable or structurally verified
+Persistence and service ownership are separate axes. An independent optimizer
 analysis record does **not** belong in `common/com` merely because it is named
-`IR` or `RECORD`. Its actual preservation in binary WHIRL must be established.
+`IR` or `RECORD`, immutable or pointer-free. A claim that it is persistent still
+requires actual binary-WHIRL evidence. However, shared IR services and their
+transient helper descriptions do not need to be stored rows to belong here.
 
 The explicit clarification is equally important: **`dsl_builder.{h,cxx}` stays
 in `common/com` as the interface for persistent-data construction.** This audit
 also distinguishes direct persistent ST/TY/WN construction/access interfaces
 from independent analysis infrastructure. Temporary constructor arguments and
 private builder state are not falsely classified as stored rows. The builder
-exception is not permission to put optimization decisions into the builder.
+role is not permission to put optimization decisions into the builder.
+
+**Shared WHIRL canonicalization and constant folding, including tensor types
+and tensor data, belong in `common/com`.** They are callable during ingestion
+as well as later phases. Keep the existing WHIRL simplifier, `dsl_simp`, shared
+tensor folding/carrier services, type canonicalization, local shape/type
+predicates and supporting semantic traits with those services. Their temporary
+inputs/results, decoded views and private caches remain nonpersistent; that is
+not a relocation reason. Independent PU analysis, candidate discovery, costing,
+profitability, plan selection and phase-specific transformations remain with
+their compilation-scope owners. This corrects the earlier overbroad proposal
+to move ingestion-time simplification/folding merely because its helpers are
+transient; it does not change the stored-record count.
 
 The existing generic-versus-FHE and PU/REGION/IPA scope rules still apply.
 Generic tensor services do not become FHE-specific because an FHE caller uses
@@ -118,14 +131,14 @@ design choices, not files created by this audit.
 | `dsl_builder.{h,cxx}` | Persistent-construction interface; 20 transient input/private-state record definitions, borrowed handles, source/DST tracking and registries | **Keep both files**, as directed. Retain emission/finalization and construction lifecycle; delegate analysis, do not broaden it. |
 | `dsl_ckks_event.{h,cxx}`, `dsl_ckks_event_internal.h` | Two stored types; transient table container, owner/context/event/result keys and maps | Move with FHE owner to `common/fhe`; not VHO-only, because readers/printers consume the image. |
 | `dsl_region.{h,cxx}`, `dsl_region_internal.h` | Three stored types; `dsl_region_runtime`, `DSL_REGION_STORE`, handles, WN/PU associations, symbol-redirection and lowering-transition scratch are transient | Split retained image schema, `common/ir_image` store/mapping support and backend-free `be/com` physical PU/REGION mechanisms. |
-| `dsl_tensor_fold.{h,cxx}` | One stored envelope; creation-info, evaluator identity, policy, candidate, result-slot, output, mock, value, replacement context/result and cache are transient | Split retained carrier schema, `common/ir_image` carrier services/cache and shared `be/com` construction-time folding bridge. VHO/WOPT retain optimization decisions. |
-| `dsl_opcode.{h,cxx}` | Encoded logical vocabulary; dynamic `DSL_OPCODE_RECORD`, promotions, INFO/trait views, seeds, copied strings and vectors are not stored rows | Retain encoded definitions; runtime logical/registry services to reader/builder-safe `common/ir_image`. |
+| `dsl_tensor_fold.{h,cxx}` | One stored envelope; creation-info, evaluator identity, policy, candidate, result-slot, output, mock, value, replacement context/result and cache are transient | Keep shared tensor constant folding, carrier construction/access and private helper/cache data in `common/com`, callable during ingestion. VHO/WOPT retain phase-specific optimization policy. |
+| `dsl_opcode.{h,cxx}` | Encoded vocabulary plus nonpersistent static logical/algebraic/fusibility semantics and dynamic registry objects | Keep encoded definitions and shared operator semantics used by canonicalization in `common/com`; only the independent dynamic registry remains proposed for reader/builder-safe `common/ir_image`. |
 | `dsl_domain.{h,cxx}` | Dynamic domain record/INFO, copied names, epoch-local IDs | Registry owner in `common/ir_image`; no claim that `DSL_DOMAIN_ID` is a mapped descriptor ID. |
 | `dsl_contract.{h,cxx}` | Owning records, seeds, INFO and required-check/diagnostic vectors | Registry owner in `common/ir_image`; projected contract names/versions in WNs or region rows may persist, not these registry objects. |
-| `dsl_memory_behavior.{h,cxx}` | Static seed and contract-output objects are transient; three `DSL_Tensor_*` symbol creation/annotation access APIs act on persisted ST/metadata | Keep persistent-symbol construction/access boundary; move independent semantic contract inventory/flag lookup to shared `be/com` with its descriptions. |
+| `dsl_memory_behavior.{h,cxx}` | Static seed and contract-output objects are transient; three `DSL_Tensor_*` symbol creation/annotation access APIs act on persisted ST/metadata | Keep in `common/com`: shared memory/effect semantics support construction/canonicalization eligibility, without claiming that the inventory is stored or constitutes alias proof. |
 | `dsl_gatekeeper.{h,cxx}` | Verification context/results/modes/decode profile; no stored rows | Shared backend-free PU/domain admission in `be/com`; row-only validation with `common/ir_image`. Builder/driver still controls scope and traversal. |
-| `dsl_shape.{h,cxx}` | Operator input, facts, inference input, solver value/constraint/result, refinement and visitor are transient | Shared pure operator/type predicates in `be/com`; PU fixed-point/refinement discovery in `be/vho`. Caller owns mutation and scope. |
-| `dsl_simp.{h,cxx}` | Candidate/result and disposable physical-WN projections are transient | Shared construction-time bridge in `be/com`, preserving `wn_simp_code.h` reuse and master switch. Do not introduce a VHO dependency in the frontend builder. |
+| `dsl_shape.{h,cxx}` | Operator input, facts, inference input, solver value/constraint/result, refinement and visitor are transient | Shared type/operator predicates and local shape inference stay in `common/com` as ingestion/type services; PU fixed-point/refinement discovery stays phase-owned in `be/vho`. Caller owns mutation and scope. |
+| `dsl_simp.{h,cxx}` | Candidate/result and disposable physical-WN projections are transient | Keep the shared ingestion-callable bridge in `common/com`, preserving `wn_simp_code.h` reuse and the master switch. No backend-phase dependency is needed. |
 | `dsl_tensor_evolution.{h,cxx}` | PU graph and node/edge representation records are runtime-only | Move records, graph storage, add/get/verify/print APIs to `be/vho`, alongside existing `dsl_tensor_evolution_opt`. |
 | `dsl_opt_plan.{h,cxx}` | Budget, candidate/input, cost/input/term, plan/input/member, recorded selection and owning context vectors are runtime-only | `be/vho`, beside existing selection owner; recording a selection does not create an image. |
 | `dsl_tensor_analysis.{h,cxx}`, `dsl_tensor_analysis_internal.h` | Semantic fact/use records, owning analysis, completeness/generation state | `be/vho`, with existing fact derivation; pointers to persistent rows do not persist the analysis. |
@@ -149,8 +162,10 @@ design choices, not files created by this audit.
 Earlier AIO Ownership M1-M5 separated optimization decisions from policy-free
 storage. That work was useful and is not reversed. However, its completion
 criterion did **not** prove those retained runtime storage objects persistent.
-The stricter directory-admission follow-up moves the remaining nonpersistent
-records and their related services together, without moving policy back to common.
+The directory-admission follow-up proposes moving independent nonpersistent
+optimizer records and their related services together. It retains shared IR
+canonicalization/folding and their helper data in common, without moving
+optimization policy back there.
 
 ## Shared-File DSL Fragments
 
@@ -160,14 +175,14 @@ symbol-table, WN, option, opcode, debug or printing infrastructure wholesale.
 
 | Current shared files | DSL classification and proposed boundary |
 | --- | --- |
-| `symtab.h`, `symtab.cxx`, `symtab_defs.h`, `symtab_verify.cxx` | Keep stored tensor/KV rows, encoded `KIND_TENSOR`/SHDR vocabulary and persistent constructors/accessors/structural checks. `TY_TENSOR_EXTENSION_INFO`, canonical descriptor/refinement inputs, attribute-copy scratch, canonical hash index and `TENSOR_DESCRIPTOR_RECORD` are transient views/store support: separate them with `common/ir_image`. The last is derived by `TY_get_tensor_descriptor_record`, not a separately written descriptor table. |
-| `wn.h`, `wn.cxx` | Keep encoded native/marker WN meaning and persistent constructors/logical accessors. `DSL_OPCODE_ANNOTATION`, `DSL_WHIRL_NODE_RECORD`, `DSL_LOGICAL_OPCODE` and `DSL_WHIRL_OPERAND_RECORD` are borrowed decoded views, despite their names. `VHO_UNCONSUMED_DSL_SCAN` and four scan/print helpers are transient shared admission logic, proposed `be/com`; no production VHO pass is inferred merely from their prefix. |
+| `symtab.h`, `symtab.cxx`, `symtab_defs.h`, `symtab_verify.cxx` | Keep stored tensor/KV rows, encoded vocabulary and shared tensor construction/canonicalization/access services in `common/com`, including their transient canonical descriptor/refinement inputs, INFO, attribute-copy scratch and canonical index/cache. `TENSOR_DESCRIPTOR_RECORD` stays a derived service view, not a separately written table. |
+| `wn.h`, `wn.cxx` | Keep encoded native/marker meaning, shared constructors/logical accessors and their borrowed `DSL_OPCODE_ANNOTATION`, `DSL_WHIRL_NODE_RECORD`, `DSL_LOGICAL_OPCODE` and `DSL_WHIRL_OPERAND_RECORD` views in `common/com`. The separate `VHO_UNCONSUMED_DSL_SCAN` and four scan/print helpers remain proposed shared admission logic in `be/com`; their prefix alone does not establish a production VHO pass. |
 | `ir_bcom.cxx`, `ir_bread.{h,cxx}`, `ir_bwrite.{h,cxx}` | DSL writer/mapped-reader machinery belongs to `common/ir_image`, not a schema record. Preserve row vocabulary in `common/com`, image bytes, optional sections, cleanup/reset order and backend-free physical validation linkage. |
 | `ir_reader.cxx`, `ttype.cxx` | DSL/tensor logical inspection belongs with image/type inspection services; retain persistent semantics and logical names, never expose private physical-tag details. |
 | `strtab.cxx` | Ordinary string bytes are persistent. Private CKKS count save/restore is transient store support; existing declaration is in `common/util/dsl_strtab_checkpoint.h`. Keep store ownership and private access coherent; do not export raw string tables or pretend the savepoint is a stored row. |
 | `config_dsl.{h,cxx}`, DSL registration in `config.cxx` | Options/globals/descriptor table and trace bits are process controls, not image schema. Shared option infrastructure (`common/util`) owns registration/storage, while VHO/WOPT own option meaning. Preserve the existing include-registration arrangement until a reviewed build move. |
 | `opcode_gen`, `opcode_gen_core.{h,cxx}` | Physical DSL slot/properties are compatibility vocabulary; generator execution/name/property tables are build/service logic. Preserve every target slot and generator gate; no wholesale legacy generator move is part of this proposal. |
-| `wn_simp_ftable.h` | DSL adapter hook in the traditional rule engine is transient simplification support. Keep one authoritative rule engine; move only a reviewed DSL adapter boundary, not duplicate it in a new engine. |
+| `wn_simp_ftable.h` | Keep the DSL adapter hook with the traditional common WHIRL canonicalization/folding engine, callable during ingestion. Do not move or duplicate it merely because adapter data is transient. |
 
 ## Consumer And Migration Constraints
 
@@ -192,10 +207,11 @@ Important edges reviewed for the proposal are:
 
 Recommended staged implementation order, subject to an explicit next request:
 
-1. Keep the builder; extract the remaining region and tensor-carrier schema,
+1. Keep the builder and shared canonicalization/folding/type services, including
+   tensor carriers and their helper data. Extract region schema as needed,
    preserving every stored field/ID/flag/version/size. Move CKKS event schema
    and related implementation to `common/fhe` under the existing domain rule.
-2. Move shared registry, carrier/mapped and semantic-verification mechanisms
+2. Move independent dynamic registry, mapped and admission-verification mechanisms
    with their private storage/lifetimes; preserve builder/reader consumers
    before touching phase-only records.
 3. Move AIO transient fact/graph/plan families with their existing VHO owners;
@@ -203,8 +219,9 @@ Recommended staged implementation order, subject to an explicit next request:
    direction and move related tests rather than duplicating definitions.
 4. Move target-description and numerical/compute runtime records with the
    reviewed owners. Preserve SIMT default and explicit unknown timing.
-5. Audit shared WN/TY borrowed views and option/simplifier fragments separately;
-   do not couple this DSL effort to a historical common/com reorganization.
+5. Keep shared WN/TY construction/canonicalization views and simplifier hooks
+   with their common services. Audit independent option/admission fragments
+   separately; do not couple this to a historical common/com reorganization.
 
 Each actual move requires its own source-equivalence, API/symbol/build closure,
 focused malformed/rollback tests and independently reopened `ir_b2a -st -src`

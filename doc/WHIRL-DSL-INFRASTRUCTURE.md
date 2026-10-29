@@ -746,6 +746,12 @@ construction boundary remains: `dsl_builder.{h,cxx}` stays in `common/com` as
 the interface for persistent-data construction. Its transient input/private
 state objects are not classified as separately persisted rows.
 
+Shared WHIRL canonicalization and constant folding, including tensor types
+and tensor data, also stay in `common/com` as ingestion-callable IR services.
+Their temporary descriptions and private caches are not stored rows, but
+transience alone does not move them into a backend phase. The audit keeps
+these services distinct from independent optimizer analysis and planning.
+
 #### Reviewed owning-logic boundaries
 
 | Owner | Types, state and related logic |
