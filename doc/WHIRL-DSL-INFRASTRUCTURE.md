@@ -12,6 +12,13 @@ and compiler-library codesign are planned separately in
 representation, mapped binary image, inspection, gatekeeper, compatibility,
 and final VHO lowering boundary.
 
+The current [native tensor expression contract](AI-COMPILER-NATIVE-TENSOR-EXPRESSION-CONTRACT-v0.1.md)
+uses ordinary typed ADD, SUB, MPY, DIV, REM, GT, LNOT and SELECT WNs for matching
+elementwise semantics. Mandatory managed contracts preserve broadcasting and
+strict floating-point behavior. The mapped writer retains the existing native
+wire representation for older readers; mapping restores ordinary live identity.
+This changes neither persisted IDs nor binary section or node layouts.
+
 The [persistent IR / nonpersistent service separation plan](#persistent-ir--nonpersistent-service-separation)
 documents removal of compiler-only requests, views and transaction state from the
 persistent image-definition interface and relocation of those structures and

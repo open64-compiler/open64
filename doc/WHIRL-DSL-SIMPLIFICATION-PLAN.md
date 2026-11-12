@@ -55,8 +55,13 @@ line convention.
 The native tensor-expression extension shares its scalar opcode/intrinsic
 mapping in `osprey/common/com/dsl_scalar.h`. `DSL_simp_scalar` provides an
 expression-scoped, checked disposable-leaf adapter to the traditional WN
-engine; it adds no algebraic rules. The bounded admission and retained tensor
-wrapper rationale are specified in
+engine; it adds no algebraic rules. Matching live tensor elementwise expressions
+use ordinary operators with mandatory tensor TY/semantic contracts. Raw tensor
+simplifier dispatch remains excluded until checked scalar preparation;
+copy/equality and WOPT import preserve their complete identity. Frozen .B output
+copies retain the legacy representation for previous readers; mapping restores
+ordinary typed operators without numerical optimization.
+The bounded admission and remaining unresolved intrinsic wrappers are specified in
 `doc/AI-COMPILER-NATIVE-TENSOR-EXPRESSION-CONTRACT-v0.1.md`.
 Mapping is separate from numerical admission: unresolved EXP/LOG never enter
 the intrinsic folder, and strict FP arithmetic is only an unchanged probe on

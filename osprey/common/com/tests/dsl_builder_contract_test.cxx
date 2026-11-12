@@ -1758,8 +1758,8 @@ Check_Production_Native_Builder(void)
         count = fread(text, 1, sizeof(text) - 1, dump);
         text[count] = '\0';
         fclose(dump);
-        if (strstr(text, "OPR_DSLADD") == NULL ||
-            strstr(text, "dsl_comment_projection=OPR_COMMENT") == NULL ||
+        if (strstr(text, "MADD") == NULL ||
+            strstr(text, "tensor_contract=elementwise.v1") == NULL ||
             strstr(text, "OPR_DSL ") != NULL ||
             strstr(text, "MDSL ") != NULL) {
             fprintf(stderr, "production native dump exposed storage detail\n");

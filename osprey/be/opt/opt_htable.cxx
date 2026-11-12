@@ -3197,6 +3197,8 @@ CODEMAP::Update_pref(CODEREP *ivar) const
 // the parent would call the simplifier for the entire tree.
 // 
 // For no_complex_preg, see opt_prop.cxx's bug 10577 fixes.
+// Ordinary tensor WNs enter the existing complete semantic CODEREP carrier;
+// never hash their M result as scalar arithmetic or lose required contracts.
 // ====================================================================
 BOOL
 CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
@@ -3206,8 +3208,9 @@ CODEMAP::Add_expr(WN *wn, OPT_STAB *opt_stab, STMTREP *stmt, CANON_CR *ccr,
   // coderep for it.
   CODEREP          *cr = Alloc_stack_cr(WN_kid_count(wn)+IVAR_EXTRA_NODE_CNT);
   CODEREP          *retv;
-  const OPCODE      op = WN_opcode(wn);
-  const OPERATOR    oper = WN_operator(wn);
+  const OPCODE      op = DSL_opcode_is_tensor_elementwise(WN_opcode(wn)) ?
+                          OPC_MDSL : WN_opcode(wn);
+  const OPERATOR    oper = OPCODE_operator(op);
   BOOL  propagated = FALSE;
 
   FmtAssert (OPCODE_is_expression(op) || OPCODE_is_fake(op),

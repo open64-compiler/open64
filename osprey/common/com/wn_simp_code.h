@@ -872,6 +872,8 @@ static YESNOMAYBE LDA_Equal_Address (simpnode lda_x,simpnode lda_y)
  * If t1 is "less than" t2, this routine returns -1, otherwise it returns 1.
  *
  * The order is computed as follows:
+ * Distinct whole-tensor WNs compare conservatively by pointer identity;
+ * scalar structural equality cannot certify their managed contracts.
  * 1) If the root opcodes are different, the numerical value of the opcode
  *    determines the order.
  * 2) Compare children. The result will be the result of the first non-zero
@@ -895,6 +897,13 @@ INT32 SIMPNODE_Simp_Compare_Trees(simpnode t1, simpnode t2)
     * will happen for the WOPT IR.
     */
    if (t1 == t2) return (0);
+
+   /* Distinct whole tensors cannot be equated by scalar opcode/kids alone.
+    * Their type, broadcast domain and FP contracts are owner-checked semantic
+    * identity. Conservatively keep distinct nodes ordered by pointer identity. */
+   if (DSL_opcode_is_tensor_elementwise(SIMPNODE_opcode(t1)) ||
+       DSL_opcode_is_tensor_elementwise(SIMPNODE_opcode(t2)))
+      return (UINTPS)t1 < (UINTPS)t2 ? -1 : 1;
 
    /* First compare opcodes */
    if (SIMPNODE_opcode(t1) < SIMPNODE_opcode(t2))
@@ -5870,8 +5879,16 @@ static simpnode  SIMPNODE_ConstantFold2(OPCODE opc, simpnode  k0, simpnode  k1)
 
 
 
+/* Apply existing binary scalar rules to owner-prepared inputs only. Tensor
+ * roots or kids decline without consuming operands or losing contracts. */
 static simpnode SIMPNODE_SimplifyExp2_h(OPCODE opc, simpnode k0, simpnode k1) 
 {
+   /* Whole-tensor shape/effect/FP contracts require caller preparation. Reuse
+    * scalar rules only through checked element projections, never by treating
+    * an M tensor as a scalar or discarding broadcast/result annotations. */
+   if (DSL_opcode_is_tensor_elementwise(opc) ||
+       DSL_opcode_is_tensor_elementwise(SIMPNODE_opcode(k0)) ||
+       DSL_opcode_is_tensor_elementwise(SIMPNODE_opcode(k1))) return NULL;
    BOOL  k0const, k1const;
    OPERATOR  op;
    OPCODE    canon_opc;
@@ -6072,8 +6089,13 @@ simpnode SIMPNODE_SimplifyExp2(OPCODE opc, simpnode k0, simpnode k1)
 }
    
 
+/* Reuse unary scalar rules under existing controls; whole tensors decline
+ * without mutation and require a checked element projection by their owner. */
 simpnode SIMPNODE_SimplifyExp1(OPCODE opc, simpnode k0) 
 {
+   /* Tensor identities retain their result domain until checked projection. */
+   if (DSL_opcode_is_tensor_elementwise(opc) ||
+       DSL_opcode_is_tensor_elementwise(SIMPNODE_opcode(k0))) return NULL;
    OPERATOR  op;
    simpnode result=NULL;
    simpnode k1,k2;
@@ -6144,8 +6166,12 @@ simpnode SIMPNODE_SimplifyExp1(OPCODE opc, simpnode k0)
 -------------------------------------------------*/
 
 
+/* Fold a scalar bit truncation with the existing rules. A tensor predicate
+ * retains its full domain and is never consumed as scalar 0/1 evidence. */
 simpnode simp_cvtl(OPCODE opc, INT16 cvtl_bits, simpnode k0)
 {
+   /* Tensor predicates are not scalar 0/1 values; retain their full domain. */
+   if (DSL_opcode_is_tensor_elementwise(SIMPNODE_opcode(k0))) return NULL;
    simpnode r=NULL,k1,k2;
    TYPE_ID source_ty,dest_ty;
    INT16   s_size,d_size,k0_bits;
@@ -6327,8 +6353,12 @@ simpnode simp_cvtl(OPCODE opc, INT16 cvtl_bits, simpnode k0)
    return (r);
 }      
 
+/* Honor the simplifier control for scalar CVTL; reject tensor kids intact
+ * before the scalar helper can infer an incompatible scalar result type. */
 simpnode SIMPNODE_SimplifyCvtl(OPCODE opc, INT16 cvtl_bits, simpnode k0) 
 {
+   /* No scalar CVTL rule may consume a whole tensor predicate. */
+   if (DSL_opcode_is_tensor_elementwise(SIMPNODE_opcode(k0))) return NULL;
    simpnode result = NULL;
    if (!SIMPNODE_enable) return (result);
    if (!SIMPNODE_simp_initialized) SIMPNODE_Simplify_Initialize();
@@ -6355,9 +6385,16 @@ simpnode SIMPNODE_SimplifyCvtl(OPCODE opc, INT16 cvtl_bits, simpnode k0)
 -------------------------------------------------*/
 
 
+/* Apply scalar ternary rules only to scalar inputs. Tensor SELECT expansion
+ * and eager evaluation remain the owning phase's reviewed obligation. */
 simpnode SIMPNODE_SimplifyExp3(OPCODE opc, simpnode k0, simpnode k1, 
 			       simpnode k2) 
 {
+   /* A scalar SELECT identity cannot erase expansion from any tensor kid. */
+   if (DSL_opcode_is_tensor_elementwise(opc) ||
+       DSL_opcode_is_tensor_elementwise(SIMPNODE_opcode(k0)) ||
+       DSL_opcode_is_tensor_elementwise(SIMPNODE_opcode(k1)) ||
+       DSL_opcode_is_tensor_elementwise(SIMPNODE_opcode(k2))) return NULL;
    simpnode r = NULL;
    OPCODE   k0op;
    

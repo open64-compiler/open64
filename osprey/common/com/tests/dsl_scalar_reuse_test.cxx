@@ -1,7 +1,8 @@
 /* Native scalar-operation reuse fixture, owned by the common/com tests.
  * Exercise the real WN engine and fail-closed tensor/FP boundaries without
  * a parallel arithmetic evaluator. Retained core-WHIRL before/after images
- * demonstrate eligible rewrites; tensor wrappers keep their existing .B IDs.
+ * demonstrate eligible rewrites; a separate direct-tensor lane proves typed
+ * ordinary live operators and the unchanged native .B compatibility encoding.
  * Design: doc/AI-COMPILER-NATIVE-TENSOR-EXPRESSION-CONTRACT-v0.1.md. */
 
 #include <stdio.h>
@@ -29,6 +30,7 @@
 #include "const.h"
 #include "dsl_builder.h"
 #include "dsl_simp.h"
+#include "dsl_tensor_elementwise_fixture.h"
 
 BOOL Run_vsaopt = FALSE;
 INT8 Debug_Level = 0;
@@ -435,5 +437,7 @@ int
 main (void)
 {
     DSL_scalar_test_initialize();
+    if (getenv("OPEN64_DSL_DIRECT_TENSOR_ONLY") != NULL)
+        return DSL_tensor_elementwise_contract();
     return DSL_scalar_reuse_contract();
 }

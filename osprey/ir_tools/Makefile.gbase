@@ -422,6 +422,7 @@ dsl_scalar_reuse_test: $(OBJECTS) controls.o dsl_scalar_reuse_test.o
 		$(OBJECTS) $(LDFLAGS)
 
 dsl_scalar_reuse_test.o: $(COMMON_COM_DIR)/tests/dsl_scalar_reuse_test.cxx \
+    $(COMMON_COM_DIR)/tests/dsl_tensor_elementwise_fixture.h \
     $(COMMON_COM_DIR)/dsl_scalar.h $(COMMON_COM_DIR)/dsl_simp.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
@@ -672,10 +673,20 @@ dsl_physical_plan_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_physical_plan_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
+# Standalone lowering validation must link the analysis services used by VHO.
+# These are existing owner objects, not new backend shared-library dependencies.
 dsl_lower_contract_test: $(OBJECTS) controls.o dsl_lower.o \
-		dsl_opt.o dsl_shape_refine.o dsl_lower_contract_test.o
+    dsl_opt.o dsl_shape_refine.o dsl_lower_contract_test.o \
+    $(DSL_FACT_CAPTURE_OPT_OBJS) $(DSL_SELECTION_OPT_OBJS) \
+    dsl_distributed_candidate_opt.o dsl_residency_candidate_opt.o dsl_tile_candidate_opt.o \
+    dsl_fetch_pipeline_opt.o dsl_physical_plan_opt.o dsl_compute_shadow_opt.o \
+    dsl_compute_model.o dsl_compute_realization.o
 	$(link.c++f) -o $@ dsl_lower_contract_test.o controls.o \
-		dsl_lower.o dsl_opt.o dsl_shape_refine.o $(OBJECTS) $(LDFLAGS)
+		dsl_lower.o dsl_opt.o dsl_shape_refine.o \
+		$(DSL_FACT_CAPTURE_OPT_OBJS) $(DSL_SELECTION_OPT_OBJS) \
+		dsl_distributed_candidate_opt.o dsl_residency_candidate_opt.o dsl_tile_candidate_opt.o \
+		dsl_fetch_pipeline_opt.o dsl_physical_plan_opt.o dsl_compute_shadow_opt.o \
+		dsl_compute_model.o dsl_compute_realization.o $(OBJECTS) $(LDFLAGS)
 
 dsl_lower_contract_test.o: \
 	$(BE_VHO_DIR)/tests/dsl_lower_contract_test.cxx

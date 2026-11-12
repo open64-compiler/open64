@@ -64,6 +64,7 @@
 #include "wio.h"
 #include "wn_pragmas.h"
 #include "dsl_opcode.h"
+#include "dsl_scalar.h"
 
 #include "stab.h"
 #include "wn_util.h"
@@ -1166,11 +1167,50 @@ extern WN *DSL_WN_Create_Logical_Opcode
                                  WN **operands,
                                  UINT32 operand_count,
                                  DSL_OPCODE_OUTPUT_MODE output_mode);
+/* Recognize legacy native carriers and ordinary tensor expressions; this
+ * classification alone does not certify their mandatory semantic contracts. */
 extern BOOL DSL_WN_Is_Native (const WN *wn);
 extern DSL_OPERATOR DSL_WN_operator (const WN *wn);
 extern BOOL DSL_WN_Get_Logical_Opcode (const WN *wn,
                                        DSL_LOGICAL_OPCODE *logical_opcode,
                                        FILE *diagnostic);
+
+/* Prepare ordinary tensor elementwise identity after the owner establishes
+ * the result TY. Keep the existing semantic record and strict direct-kid tree;
+ * no scalar simplification, type inference, effects or source evaluation runs.
+ * Callers own type, broadcast, schema and numerical legality. Nonmatching
+ * versions/families/operands reject without mutation. Header-local linkage
+ * adds no be.so/plugin dynamic symbol dependency. */
+static inline BOOL
+DSL_WN_bind_tensor_elementwise (WN *wn, TY_IDX result_ty)
+{
+    if (wn == NULL || WN_operator(wn) != OPR_DSL ||
+        result_ty == TY_IDX_ZERO || TY_IDX_index(result_ty) >= TY_Table_Size() ||
+        !TY_is_tensor_extension(result_ty))
+        return FALSE;
+    DSL_LOGICAL_OPCODE logical;
+    OPERATOR opr;
+    if (!DSL_WN_Get_Logical_Opcode(wn, &logical, NULL) ||
+        !DSL_scalar_operator(logical.dsl_operator, logical.effective_version, &opr))
+        return FALSE;
+    OPCODE opcode = OPCODE_make_op_MACRO
+        (opr, MTYPE_M, opr == OPR_GT ? MTYPE_M : MTYPE_V);
+    if (!DSL_opcode_is_tensor_elementwise(opcode) ||
+        WN_kid_count(wn) != OPERATOR_nkids(opr))
+        return FALSE;
+    for (INT index = 0; index < WN_kid_count(wn); ++index) {
+        WN *kid = WN_kid(wn, index);
+        if (kid == NULL || WN_operator(kid) != OPR_LDID ||
+            WN_rtype(kid) != MTYPE_M || WN_desc(kid) != MTYPE_M ||
+            TY_IDX_index(WN_ty(kid)) >= TY_Table_Size() ||
+            !TY_is_tensor_extension(WN_ty(kid)))
+            return FALSE;
+    }
+    WN_set_opcode(wn, opcode);
+    WN_set_ty(wn, result_ty);
+    return TRUE;
+}
+
 extern const char *DSL_Opcode_Version_Disposition_Name
                                 (DSL_OPCODE_VERSION_DISPOSITION disposition);
 extern const char *DSL_Opcode_Output_Mode_Name

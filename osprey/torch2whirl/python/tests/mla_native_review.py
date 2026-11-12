@@ -48,7 +48,7 @@ def produce(context, destination):
 
 
 def review(root, ir_b2a, driver=None):
-    """Run fresh producers, standalone driver if provided, and separate ir_b2a."""
+    """Produce and reopen native MLA; verify ordinary tensor ops and contracts."""
     root = Path(root).resolve()
     root.mkdir(parents=True, exist_ok=False)
     (root / "logs").mkdir()
@@ -74,7 +74,7 @@ def review(root, ir_b2a, driver=None):
                                    destination / "ascii/mla.T"])
         trace = (destination / "ascii/mla.T").read_text()
         for token in ("OPR_DSLRESHAPE", "OPR_DSLTRANSPOSE", "OPR_DSLMATMUL",
-                      "OPR_DSLSELECT", "OPR_DSLREDUCEMAX", "OPR_DSLREDUCESUM",
+                      "MSELECT", "MSUB", "MMGT", "OPR_DSLREDUCEMAX", "OPR_DSLREDUCESUM",
                       "OPR_DSLEXP", "OPR_DSLLOG", "attr.batch_rule=numpy",
                       "attr.value_bits=ff800000", "query_nope", "allowed",
                       "squeeze_4", "squeeze_5"):

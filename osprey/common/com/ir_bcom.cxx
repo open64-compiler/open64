@@ -326,7 +326,9 @@ ir_b_create_map (Output_File *fl)
 } /* ir_b_create_map */
 
 
-/* Walk the tree and copy it to contiguous memory block in the temp. file */
+/* Copy a preflighted tree into the mapped output without mutating its WNs.
+ * Callers verify live tensor contracts before this recursive writer projects
+ * output copies to the frozen native representation. off_map keys stay live. */
 #if defined(KEY) && !defined(FRONT_END) && !defined(IR_TOOLS)
 
 // ******************** IPA weak symbols^
@@ -357,6 +359,16 @@ ir_b_write_tree (WN *node, off_t base_offset, Output_File *fl, WN_MAP off_map)
 
     node_offset = ir_b_save_buf (real_addr, size, __ALIGNOF(WN),
 				 (char *)(node) - real_addr, fl); 
+
+    /* Project only the output copy to the established native wire carrier.
+     * Direct kids, offsets, map IDs and all image records retain their existing
+     * binary contracts; the live ordinary operator and tensor TY are untouched.
+     * The reader rebinds the TY from the defining STID after mapping the tree. */
+    if (DSL_opcode_is_tensor_elementwise(WN_opcode(node))) {
+        WN *wire = WN_ADDR(node_offset);
+        WN_set_opcode(wire, OPC_MDSL);
+        WN_set_ty(wire, TY_IDX_ZERO);
+    }
 
     opcode = (OPCODE) WN_opcode (node);
 

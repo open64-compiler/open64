@@ -76,6 +76,7 @@
 #include "stab.h"
 #include "irbdata.h"
 #include "wn.h"
+#include "dsl_scalar.h"
 #include "config_targ.h"
 #include "wn_simp.h"
 #include "wio.h"
@@ -2479,11 +2480,16 @@ DSL_WN_Create_Logical_Opcode
     }
 }
 
+/* Recognize both legacy native carriers and ordinary tensor expressions so
+ * existing semantic verifiers, lowering owners and terminal gates see both.
+ * Recognition does not certify a type, payload or managed-table contract. */
 BOOL
 DSL_WN_Is_Native (const WN *wn)
 {
-    return wn != NULL && WN_operator(wn) == OPR_DSL;
+    return wn != NULL && (WN_operator(wn) == OPR_DSL ||
+                           DSL_opcode_is_tensor_elementwise(WN_opcode(wn)));
 }
+
 
 WN *
 DSL_WN_Create_Tensor_Const (const char *value_name,
@@ -2705,13 +2711,25 @@ DSL_Record_Is_Operand (const char *record)
                    strlen(WN_DSL_OPERAND_PREFIX)) == 0;
 }
 
+/* Borrow a bounded native semantic record. The signed WN_OFFSET slot carries
+ * an unsigned 32-bit STR_IDX bit pattern; preserve that historical range while
+ * rejecting out-of-table indices and unterminated records in every build. */
 static const char *
 DSL_WN_Native_Record (const WN *wn)
 {
-    if (!DSL_WN_Is_Native(wn) || WN_offset(wn) == 0)
+    if (!DSL_WN_Is_Native(wn))
         return NULL;
-
-    return Index_To_Str((STR_IDX)WN_offset(wn));
+    STR_IDX index = (STR_IDX)(UINT32)WN_offset(wn);
+    if (index == STR_IDX_ZERO || index >= STR_Table_Size())
+        return NULL;
+    const char *record = Index_To_Str(index);
+    /* A bounded terminator check adds no new be.so library import. Grammar
+     * decoding remains in the established native-record service below. */
+    for (UINT64 remaining = STR_Table_Size() - index, offset = 0;
+         offset < remaining; ++offset)
+        if (record[offset] == '\0')
+            return record;
+    return NULL;
 }
 
 BOOL
@@ -3187,6 +3205,9 @@ DSL_WN_Get_Opcode_Annotation (const WN *wn,
     return TRUE;
 }
 
+/* Inspect a borrowed semantic annotation. Ordinary tensor expressions print
+ * their real operator/TY and required contract; legacy forms retain their
+ * compatibility projection. No mutation or independent semantic verification. */
 void
 DSL_fprint_opcode_annotation (FILE *f, const WN *wn)
 {
@@ -3199,12 +3220,17 @@ DSL_fprint_opcode_annotation (FILE *f, const WN *wn)
     carrier = DSL_WN_Opcode_Carrier_Kind (wn);
     if (carrier == DSL_OPCODE_CARRIER_NATIVE) {
         fprintf (f, " # %s version=%u operand_count=%u",
-                 DSL_OPERATOR_name(DSL_WN_operator(wn)),
+                 DSL_opcode_is_tensor_elementwise(WN_opcode(wn)) ?
+                     OPERATOR_name(WN_operator(wn)) :
+                     DSL_OPERATOR_name(DSL_WN_operator(wn)),
                  annotation.version,
                  DSL_WN_Opcode_Operand_Count(wn));
         if (annotation.payload[0] != '\0')
             fprintf (f, " payload=%s", annotation.payload);
-        DSL_fprint_opcode_comment_projection (f, wn);
+        if (DSL_opcode_is_tensor_elementwise(WN_opcode(wn)))
+            fprintf(f, " tensor_contract=elementwise.v1 result_ty=%u", WN_ty(wn));
+        else
+            DSL_fprint_opcode_comment_projection (f, wn);
         return;
     }
 

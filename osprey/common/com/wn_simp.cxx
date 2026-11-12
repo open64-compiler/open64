@@ -194,13 +194,23 @@ static void show_tree(OPCODE opc, WN *k0, WN *k1, WN *r)
 }
 
 
-/* Walk a tree, simplifying from the bottom up. For operators
+/* Walk a tree, simplifying from the bottom up. Whole tensor elementwise
+ * expressions retain their contracts and direct kids without scalar rules.
+ * For operators
  * that the simplifier doesn't know how to deal with, simplify and replace the
  * children. For those that it does, simplify the children, then try and 
  * simplify the argument with new children.
  */
 WN *WN_Simplify_Tree(WN *t, ALIAS_MANAGER *alias_manager)
 {
+   /* Preserve whole-tensor contracts and evaluation; their scalar elements
+    * are simplified only through the checked owner preparation bridge. */
+   if (DSL_opcode_is_tensor_elementwise(WN_opcode(t))) {
+      if (WN_SimpParentMap != WN_MAP_UNDEFINED)
+         for (INT index = 0; index < WN_kid_count(t); ++index)
+            WN_MAP_Set(WN_SimpParentMap, WN_kid(t, index), (void *)t);
+      return t;
+   }
    OPCODE op;
    OPERATOR opr;
    WN *k0, *k1, *k2, *r=NULL, *temp, *result, *next, *prev;
@@ -340,7 +350,8 @@ WN *WN_Simplify_Tree(WN *t, ALIAS_MANAGER *alias_manager)
 }
 
 /* Assume that all children are already simplified, rebuild a tree using the new children.
- * This only applies itself to a subset of expression nodes.
+ * This only applies itself to a subset of expression nodes. Whole tensor
+ * elementwise forms remain unchanged until checked element preparation.
  */
 WN *WN_Simplify_Rebuild_Expr_Tree(WN *t,ALIAS_MANAGER *alias_manager)
 {
@@ -353,7 +364,8 @@ WN *WN_Simplify_Rebuild_Expr_Tree(WN *t,ALIAS_MANAGER *alias_manager)
 # endif
 
    op = WN_opcode(t);
-   if (!OPCODE_is_expression(op)) return (t);
+   if (!OPCODE_is_expression(op) || DSL_opcode_is_tensor_elementwise(op))
+      return (t);
 
    numkids = WN_kid_count(t);
    opr = OPCODE_operator(op);

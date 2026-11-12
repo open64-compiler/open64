@@ -78,12 +78,17 @@ void Init_Operator_To_Opcode_Table(void)
  *
  * If opc is commutative, return the opcode for whatever operation
  * gives equivalent results. If the operator isn't commutative, return 0.
+ * Whole tensors return 0 until an owner reviews operand and annotation
+ * permutation; ordinary scalar behavior and opcode validity remain unchanged.
  *
  * ====================================================================
  */
 
 OPCODE OPCODE_commutative_op( OPCODE opc )
 {
+   /* Whole tensors need owner-reviewed operand/annotation permutation. In
+    * particular tensor GT must not manufacture an unsupported tensor LT. */
+   if (DSL_opcode_is_tensor_elementwise(opc)) return (OPCODE)0;
    
    OPCODE rop = (OPCODE) 0;
    OPERATOR opr = OPCODE_operator(opc);

@@ -1976,6 +1976,10 @@ DSL_Builder_Add_Image_Node
                 first_attribute_id, attr_count, *result_value_id);
 }
 
+/* Build an owner-PU result assignment and managed semantic rows from preflighted
+ * inputs. Matching elementwise expressions bind ordinary operators to the
+ * result tensor TY; other families retain native logical carriers. Existing
+ * allocation/failure behavior applies; this adds no folding or publication. */
 static DSL_BUILDER_VALUE
 DSL_Builder_Create_Native_Value
         (DSL_OPERATOR dsl_operator,
@@ -2036,6 +2040,11 @@ DSL_Builder_Create_Native_Value
     }
     assignment = WN_CreateStid(OPR_STID, MTYPE_V, MTYPE_M, 0, result_st,
                                result_ty, expression);
+
+    /* Ordinary elementwise operators own the live computation. Their required
+     * tensor TY and existing image attributes survive the frozen wire carrier;
+     * binding does not invoke scalar rules or change broadcast indexing. */
+    DSL_WN_bind_tensor_elementwise(expression, result_ty);
 
     if (!DSL_Builder_Add_Image_Node
              (dsl_operator, version, payload, operand_records, kid_count, attrs,

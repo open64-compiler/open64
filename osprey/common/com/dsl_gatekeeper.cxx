@@ -24,6 +24,7 @@
 #include "../../be/com/dsl_program_interface_internal.h"
 #include "../../be/com/dsl_region.h"
 #include "dsl_shape.h"
+#include "dsl_scalar.h"
 #include "../../be/vho/dsl_shape_analysis.h"
 #include "dsl_tensor_fold.h"
 #include "symtab.h"
@@ -769,7 +770,8 @@ DSL_Gatekeeper_Verify_Memory_Behavior
 }
 
 /* Verify one physical native assignment against its managed logical identity,
- * direct kids, descriptors and typed attributes. No repair or optimization is
+ * ordinary operator/result TY, direct kids, descriptors and typed attributes.
+ * No repair or optimization is
  * permitted here; incomplete reduction contracts fail admission explicitly. */
 static BOOL
 DSL_Gatekeeper_Verify_Native_Node
@@ -808,7 +810,18 @@ DSL_Gatekeeper_Verify_Native_Node
                     "without a selected binary lowering contract",
                     DSL_OPERATOR_name(dsl_operator));
 
-    if (WN_rtype(expression) != MTYPE_M || WN_desc(expression) != MTYPE_V ||
+    BOOL ordinary = DSL_opcode_is_tensor_elementwise(WN_opcode(expression));
+    OPERATOR expected_operator;
+    if (ordinary &&
+        (!DSL_scalar_operator(dsl_operator, logical_opcode.effective_version,
+                               &expected_operator) ||
+         WN_operator(expression) != expected_operator ||
+         WN_ty(expression) != result_ty))
+        valid = DSL_Gatekeeper_Report
+                    (context, "ordinary tensor operator/type differs from its required contract");
+    if (WN_rtype(expression) != MTYPE_M ||
+        WN_desc(expression) != (ordinary && WN_operator(expression) == OPR_GT ?
+                                MTYPE_M : MTYPE_V) ||
         WN_desc(assignment) != MTYPE_M ||
         !DSL_Gatekeeper_ST_Valid(result_st) ||
         ST_class(St_Table[result_st]) != CLASS_VAR ||

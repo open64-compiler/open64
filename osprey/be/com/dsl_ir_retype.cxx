@@ -197,7 +197,8 @@ DSL_IR_Retype_Has_Auxiliary_Relation (TY_IDX old_ty)
  * joins active-PU ownership, monotonic type legality, logical value and
  * producer identity, pure effects, unique local-ST ownership, physical WN
  * def/use closure, logical reference counts, ABI exclusion, and auxiliary
- * image exclusion. Success performs no mutation and records every WN needed
+ * image exclusion, including agreement of an ordinary expression's tensor TY.
+ * Success performs no mutation and records every WN needed
  * later by DSL_IR_Retype_Apply.
  */
 static BOOL
@@ -275,7 +276,9 @@ DSL_IR_Retype_Preflight
     use.valid = TRUE;
     DSL_IR_Retype_Scan_Tree(tree, NULL, value.st, &use);
     if (!use.valid || use.definition_count != 1 || use.definition == NULL ||
-        WN_ty(use.definition) != request.expected_old_ty)
+        WN_ty(use.definition) != request.expected_old_ty ||
+        (DSL_opcode_is_tensor_elementwise(WN_opcode(WN_kid0(use.definition))) &&
+         WN_ty(WN_kid0(use.definition)) != request.expected_old_ty))
         return DSL_IR_Retype_Report
                    (diagnostic, "DSL-SHAPE-RETYPE-005", request.value_id,
                     "physical definition or use is unsupported");
@@ -330,7 +333,8 @@ DSL_IR_Retype_Preflight
 
 /*
  * Apply one already-preflighted journal in either direction. It changes all
- * admitted LDID types, the defining STID type, the result ST type, and the
+ * admitted LDID types, the defining STID and ordinary tensor expression TY,
+ * the result ST type, and the
  * logical DSL value type. The public transaction calls it old-to-refined for
  * commit and refined-to-old in reverse journal order for rollback.
  */
@@ -343,6 +347,9 @@ DSL_IR_Retype_Apply
     for (UINT32 i = 0; i < journal->reads.size(); ++i)
         WN_set_ty(journal->reads[i], to_ty);
     WN_set_ty(journal->definition, to_ty);
+    WN *expression = WN_kid0(journal->definition);
+    if (DSL_opcode_is_tensor_elementwise(WN_opcode(expression)))
+        WN_set_ty(expression, to_ty);
     Set_ST_type(St_Table[journal->value.st], to_ty);
     BOOL changed = DSL_IR_Image_Retype_Value
                        (journal->value.id, from_ty, to_ty);

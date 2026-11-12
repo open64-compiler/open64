@@ -42,7 +42,8 @@ if ! (cd "$repo_root" && \
 fi
 
 for evidence in \
-  'OPR_DSLADD # OPR_DSLADD version=1' \
+  'MADD' \
+  'tensor_contract=elementwise.v1' \
   'FHE Image: version=1 capabilities=0x0000003f' \
   'FHE Compilation Configuration Table:' \
   'scheme=ckks security=1 ring_dimension=65536' \
