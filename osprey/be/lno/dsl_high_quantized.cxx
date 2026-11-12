@@ -267,6 +267,11 @@ public:
             if(!ss.input && _producers[ss.source_root]>ready) ready=_producers[ss.source_root];
             s.scale_pair_ready_group=s.input && ss.input?"entry":"operation:"+number(ready);
         }
+        // Q2 is a detached read-only observation, not an admission gate for Q1.
+        // Unknown/unsupported workload evidence cannot change ordinary lowering.
+        std::string workload_reason;
+        if(!VHO_tensor_infer_workload(_program,NULL,_facts._workload,workload_reason))
+            _facts._workload.reason=workload_reason;
         _facts._native_key=Tree(_entry);Visit(WN_func_body(_entry),false,"body");
         for(unsigned i=0;i<_program.operations.size();++i) if(!_post && _program.operations[i].name!="common.reshape")
             require(_groups.count(i),"q1_missing_operation_group");
@@ -299,6 +304,7 @@ bool LNO_DSL_rebind_quantized_high(WN *entry,const VHO_TENSOR_PROGRAM &p,const D
 /* Owned proof reports are safe after native analysis lifetime expiry. */
 void LNO_DSL_print_quantized_high(FILE *file,const DSL_HIGH_QUANTIZED_FACTS &facts,const char *stage,bool live) {
     if(!file) return;
+    VHO_tensor_print_workload(file,facts.Workload(),stage);
     unsigned indirect=0,unknown=0;
     for(unsigned i=0;i<facts.Accesses().size();++i) {indirect+=facts.Accesses()[i].indirect;unknown+=facts.Accesses()[i].operation==~0U;}
     fprintf(file,"AI_Q1_FACTS 1 %s live=%s post_preopt=%s storages=%lu loops=%lu accesses=%lu indirect=%u unknown_groups=%u search=false legality=not_proved\n",

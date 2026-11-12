@@ -7,6 +7,7 @@
 #define dsl_high_quantized_INCLUDED
 #include "dsl_high_snapshot.h"
 #include "../vho/tensor_kernel_lower.h"
+#include "../vho/tensor_workload.h"
 struct DSL_HIGH_QUANTIZED_ACCESS {
     std::string id,storage,version,group,address_key,encoding;
     unsigned order,operation;
@@ -37,6 +38,7 @@ class DSL_HIGH_QUANTIZED_FACTS {
     std::vector<DSL_HIGH_LOOP> _loops;
     std::vector<DSL_HIGH_QUANTIZED_STORAGE> _storages;
     std::vector<DSL_HIGH_QUANTIZED_ACCESS> _accesses;
+    VHO_TENSOR_WORKLOAD_FACTS _workload;
     friend class DSL_HIGH_QUANTIZED_CAPTURE;
 public:
     /* Empty or refused captures never expose a usable seal. */
@@ -48,6 +50,9 @@ public:
     /* Owned vectors stay readable after native PU/maps/pools are destroyed. */
     const std::vector<DSL_HIGH_QUANTIZED_STORAGE> &Storages() const { return _storages; }
     const std::vector<DSL_HIGH_QUANTIZED_ACCESS> &Accesses() const { return _accesses; }
+    /* Source workload facts share this native snapshot's epoch; serving phase
+     * stays unknown without a separately bound invocation witness. */
+    const VHO_TENSOR_WORKLOAD_FACTS &Workload() const { return _workload; }
     /* Reports distinguish freshly rebound physical sites from source-form facts. */
     bool Post_preopt() const { return _post_preopt; }
     /* Exact keys, not review hashes, establish equality on revalidation. */
