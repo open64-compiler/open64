@@ -102,3 +102,51 @@ Json::Value q1_source_review(PU_Info *pu)
     report["native_state_unchanged"]=true;report["search_invoked"]=false;report["executable_lowering"]=false;
     return report;
 }
+
+/* Q1 handoff is separately versioned: old kernel recipes remain byte-identical
+ * and keep refusing quantized input. No physical candidate or schedule fields
+ * are accepted through this semantic-only route. */
+Json::Value q1_encode(const VHO_TENSOR_PROGRAM &p) {
+    Json::Value j=encode(p);j["schema"]="open64.quantized-common-high.recipe.v1";j.removeMember("recipe_fingerprint");
+    for(unsigned i=0;i<p.values.size();++i) {
+        j["values"][i]["cache_trait"]=p.values[i].cache_trait;
+        j["values"][i]["cache_encoding"]=p.values[i].cache_encoding;
+        j["values"][i]["cache_scale"]=p.values[i].cache_scale;
+        j["values"][i]["cache_evidence"]=p.values[i].cache_evidence;
+    }
+    for(unsigned i=0;i<j["operations"].size();++i) {
+        j["operations"][i].removeMember("kernel");j["operations"][i].removeMember("block_x");j["operations"][i].removeMember("grid_x");
+    }
+    return j;
+}
+/* Parse bounded copied data, then revalidate all schemas before native init. */
+VHO_TENSOR_PROGRAM q1_decode(const Json::Value &j) {
+    need(j["schema"].asString()=="open64.quantized-common-high.recipe.v1" &&
+         j["values"].isArray() && j["values"].size()<=4096 &&
+         j["operations"].isArray() && j["operations"].size()<=4096,"Q1 recipe header");
+    VHO_TENSOR_PROGRAM p;p.source_pu=j["source_pu"].asString();p.source_file=j["source_file"].asString();
+    for(unsigned i=0;i<j["values"].size();++i) {
+        const Json::Value &v=j["values"][i];VHO_TENSOR_VALUE value;
+        need(v.isObject() && v["shape"].isArray() && v["shape"].size()<=16 &&
+             v["role"].isUInt() && v["ordinal"].isUInt() && v["storage"].isUInt(),"Q1 recipe value");
+        value.name=v["name"].asString();value.dtype=v["dtype"].asString();
+        value.role=v["role"].asUInt();value.ordinal=v["ordinal"].asUInt();value.storage=v["storage"].asUInt();
+        value.cache_trait=v["cache_trait"].asString();value.cache_encoding=v["cache_encoding"].asString();
+        value.cache_scale=v["cache_scale"].asString();value.cache_evidence=v["cache_evidence"].asString();
+        for(unsigned d=0;d<v["shape"].size();++d) {need(v["shape"][d].isUInt64(),"Q1 extent type");value.shape.push_back(v["shape"][d].asUInt64());}
+        p.values.push_back(value);
+    }
+    for(unsigned i=0;i<j["operations"].size();++i) {
+        const Json::Value &o=j["operations"][i];VHO_TENSOR_OPERATION op;
+        need(o["version"].isUInt() && o["output"].isUInt() && o["source_node"].isUInt() && o["source_line"].isUInt() &&
+             o["inputs"].isArray() && o["inputs"].size()<=3 && o["attributes"].isObject(),"Q1 recipe operation");
+        op.name=o["name"].asString();op.version=o["version"].asUInt();op.output=o["output"].asUInt();
+        op.source_node=o["source_node"].asUInt();op.source_line=o["source_line"].asUInt();
+        for(unsigned k=0;k<o["inputs"].size();++k) {need(o["inputs"][k].isUInt(),"Q1 operand type");op.inputs.push_back(o["inputs"][k].asUInt());}
+        std::vector<std::string> keys=o["attributes"].getMemberNames();
+        for(unsigned k=0;k<keys.size();++k) {need(o["attributes"][keys[k]].isString(),"Q1 attribute type");op.attributes[keys[k]]=o["attributes"][keys[k]].asString();}
+        p.operations.push_back(op);
+    }
+    need(VHO_tensor_validate_quantized_high(p,stderr),"Q1 recipe preflight failed");
+    need(search_text(q1_encode(p))==search_text(j),"Q1 noncanonical recipe");return p;
+}

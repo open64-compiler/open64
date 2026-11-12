@@ -20,6 +20,7 @@ struct VHO_TENSOR_VALUE {
     std::string name;
     std::string dtype;
     std::string cache_trait;     /* declared role; empty preserves legacy input */
+    std::string cache_encoding, cache_scale, cache_evidence; /* Q1 source joins, not lifetime proof */
     std::vector<UINT64> shape;
     UINT32 role;                 /* 0 temporary, 1 input, 2 result */
     UINT32 ordinal;
@@ -137,6 +138,13 @@ extern BOOL VHO_tensor_materialize_kernel(const VHO_TENSOR_PROGRAM &,UINT32 oper
  * PU. Caller supplies one disjoint buffer per storage; reshape aliases share
  * buffers. No GPU mapping, source-PU switch or runtime call is introduced.
  * Invalid recipe/context/numerical controls fail before native allocation. */
+/* Q1 opt-in, PU-local semantic path; the legacy FP32 recipe/search path is
+ * unchanged. Native gatekeeper and copied-schema preflight precede mutation. */
+extern BOOL VHO_tensor_prepare_quantized_program(struct pu_info *,VHO_TENSOR_PROGRAM *,FILE *);
+/* Complete Q1 source key additionally seals every scale/encoding/evidence join. */
+extern std::string VHO_tensor_quantized_high_key(const VHO_TENSOR_PROGRAM &);
+extern BOOL VHO_tensor_validate_quantized_high(const VHO_TENSOR_PROGRAM &,FILE *);
+extern BOOL VHO_tensor_materialize_quantized_high(const VHO_TENSOR_PROGRAM &,SRCPOS,FILE *);
 extern BOOL VHO_tensor_materialize_high(const VHO_TENSOR_PROGRAM &,SRCPOS source,FILE *diagnostic);
 /* Build one already selected High body using the source ABI. The owning LNO
  * transaction supplies legality/capacity checks and owns every allocation and

@@ -193,6 +193,7 @@ BE_LNOPT_CXX_SRCS = \
   dsl_high_snapshot.cxx \
   dsl_high_snapshot_capture.cxx \
   dsl_high_reuse.cxx \
+  dsl_high_quantized.cxx \
   dsl_high_observer.cxx \
   dsl_high_observer_json.cxx \
   dsl_high_observer_native.cxx \
@@ -347,7 +348,8 @@ tensor_schedule.o: $(BE_DIR)/vho/tensor_schedule.cxx $(BE_DIR)/vho/tensor_kernel
 dsl_high_observer.o dsl_high_observer_json.o dsl_high_observer_native.o \
   dsl_high_apply.o lnopt_main.o tensor_high_lower.o tensor_schedule.o \
   tensor_attention_chunk_select.o tensor_attention_search.o \
-  tensor_attention_search_test.o dsl_high_search_test.o: \
+  tensor_attention_search_test.o dsl_high_search_test.o dsl_high_movement_test.o \
+  dsl_high_reuse.o dsl_high_quantized.o dsl_high_snapshot_capture.o: \
   $(BE_DIR)/vho/tensor_kernel_lower.h $(COMMON_COM_DIR)/dsl_tensor_traits.h
 
 dsl_high_snapshot_capture.o: $(BE_LNOPT_DIR)/tests/dsl_high_snapshot_native_test.inc
@@ -372,7 +374,7 @@ tensor_attention_search.o: $(BE_DIR)/vho/tensor_attention_search.cxx $(BE_DIR)/v
 lnodriver.o lnopt_main.o: $(BE_LNOPT_DIR)/lnoptimizer.h
 
 # Selected-only semantic construction is outside the detached search closure.
-tensor_high_lower.o: $(BE_DIR)/vho/tensor_high_lower.cxx $(BE_DIR)/vho/tensor_high_selected.inc $(BE_DIR)/vho/tensor_kernel_lower.h
+tensor_high_lower.o: $(BE_DIR)/vho/tensor_high_lower.cxx $(BE_DIR)/vho/tensor_high_selected.inc $(BE_DIR)/vho/tensor_high_quantized.inc $(BE_DIR)/vho/tensor_kernel_lower.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_high_apply.o: $(BE_DIR)/vho/tensor_selected_key.h $(BUILD_TOT)/common/com/dsl_native_tree_key.h
@@ -571,3 +573,5 @@ dsl_high_movement_test.o: $(BE_LNOPT_DIR)/tests/dsl_high_movement_test.cxx $(BE_
 
 dsl_high_movement_test: dsl_high_movement_test.o tensor_attention_search_test.o dsl_high_search_hardware.o dsl_high_observer.o dsl_high_observer_json.o dsl_high_snapshot.o dsl_high_reuse.o tensor_schedule.o tensor_attention_chunk_select.o
 	$(link.c++f) -o $@ $^
+
+dsl_high_quantized.o: $(BE_LNOPT_DIR)/dsl_high_quantized.cxx $(BE_LNOPT_DIR)/dsl_high_quantized.h $(COMMON_COM_DIR)/dsl_native_tree_key.h

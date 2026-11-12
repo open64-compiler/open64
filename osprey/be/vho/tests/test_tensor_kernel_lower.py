@@ -178,8 +178,11 @@ class TensorKernelTests(unittest.TestCase):
         self.assertEqual(len(launch['kernels']), expected_count)
         self.assertEqual(sum(k['split_stage'] == '1' for k in launch['kernels']), int(bool(split)))
         self.assertTrue(all(int(x['block_x']) == (128 if level == 3 else 1) for x in launch['kernels']))
-        self.run_tool(self.w2c, '-cuda', '-TARG:abi=n64', '-O0',
+        saved_trace = after.with_suffix('.T').read_bytes()
+        self.assertTrue(saved_trace)
+        self.run_tool(self.w2c, '-cuda', '-TARG:abi=n64', '-O0', '-ft,' + str(self.root / 'w2c.phase.t'),
             '-CLIST:dotc_file=' + str(self.root / 'kernels.cu'), '-CLIST:doth_file=' + str(self.root / 'kernels.h'), after)
+        self.assertEqual(after.with_suffix('.T').read_bytes(), saved_trace)
         stub = self.root / 'cuda_runtime.h'
         stub.write_text('#include <cmath>\n#include <cstring>\n#define __global__\n'
             'struct dim3 {unsigned x=0,y=0,z=0;}; static dim3 threadIdx,blockIdx;\n'

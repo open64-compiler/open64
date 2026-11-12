@@ -217,6 +217,106 @@ UINT64 VHO_tensor_shared_bytes(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERN
     return 4*(((count+quantum-1)/quantum)*quantum+8+(k.mapping==3 && !p.register_latent?128:0));
 }
 
+/* Validate Q1 copied schemas without compiler allocation. Original native
+ * gatekeeper checks are repeated as detached shape/dtype/attribute checks;
+ * guard obligations remain executable checks in the semantic High producer.
+ * This entry never enables an optimization candidate or physical schedule. */
+BOOL VHO_tensor_validate_quantized_high(const VHO_TENSOR_PROGRAM &p,FILE *diagnostic) {
+    try {
+        need(!p.opt_level && p.threads==1 && !p.fuse && !p.split_width && !p.cooperative &&
+             !p.fuse_attention && !p.register_latent && !p.auto_chunks && !p.search_selected,
+             "Q1 High requires unscheduled O0 semantics");
+        need(!p.source_file.empty() && !p.source_pu.empty() && !p.values.empty() &&
+             p.values.size()<=4096 && !p.operations.empty() && p.operations.size()<=4096,"Q1 program bounds");
+        std::set<UINT32> defined;std::set<std::string> names;UINT32 inputs=0,outputs=0;
+        for(UINT32 i=0;i<p.values.size();++i) {
+            const VHO_TENSOR_VALUE &v=p.values[i];
+            need(names.insert(v.name).second,"Q1 duplicate value name");
+            need(v.dtype=="float32" || v.dtype=="bool" || v.dtype=="int8" || v.dtype=="uint8" || v.dtype=="int64","Q1 dtype");
+            need(!v.name.empty() && !v.shape.empty() && v.shape.size()<=16,"Q1 value/rank");
+            UINT64 size=1;for(size_t j=0;j<v.shape.size();++j) {
+                need(v.shape[j] && v.shape[j]<=16777216/size,"Q1 extent");size*=v.shape[j];
+            }
+            need(v.role<=2 && v.storage<=i && (!v.role || v.storage==i),"Q1 storage/role");
+            need(v.dtype==p.values[v.storage].dtype && size==VHO_tensor_elements(p.values[v.storage]),"Q1 storage view");
+            need(v.cache_trait.empty() || DSL_tensor_cache_trait_known(v.cache_trait.c_str()),"Q1 cache role");
+            need(v.cache_encoding.empty() || (v.dtype=="int8" && v.cache_encoding=="s8-token-scaled-f32.v1") ||
+                 (v.dtype=="uint8" && v.cache_encoding=="u4-offset8-f32.v1"),"Q1 encoding");
+            if(v.role==1) {need(v.ordinal==inputs++,"Q1 input ordinal");defined.insert(i);}
+            if(v.role==2) need(v.ordinal==outputs++,"Q1 output ordinal");
+        }
+        need(inputs && outputs,"Q1 interface");
+        for(unsigned i=0;i<p.values.size();++i) {
+            const VHO_TENSOR_VALUE &v=p.values[i];
+            need(v.cache_scale.empty() || names.count(v.cache_scale),"Q1 unresolved scale SSA");
+            need(v.cache_evidence.empty() || v.cache_evidence=="native-source-qdq-use.v1","Q1 evidence version");
+        }
+        for(size_t i=0;i<p.operations.size();++i) {
+            const VHO_TENSOR_OPERATION &op=p.operations[i];
+            need(op.source_line<=2147483647U,"Q1 source position");
+            need(op.output<p.values.size() && !defined.count(op.output) && !op.inputs.empty() && op.inputs.size()<=3,"Q1 definition");
+            for(size_t k=0;k<op.inputs.size();++k) need(defined.count(op.inputs[k]) && p.values[op.inputs[k]].role!=2,"Q1 SSA");
+            const VHO_TENSOR_VALUE &a=p.values[op.inputs[0]],&o=p.values[op.output];
+            std::vector<UINT64> shape=a.shape;std::string dtype=a.dtype;
+            std::map<std::string,std::string> attrs=op.attributes,expected;
+            bool special=true;unsigned arity=1,version=1;
+            if(op.name=="common.abs") {need(a.dtype=="float32","Q1 abs type");}
+            else if(op.name=="common.round_even") {
+                need(a.dtype=="float32","Q1 round type");expected["attr.rounding"]="ties_to_even";
+            } else if(op.name=="common.clamp") {
+                need(a.dtype=="float32","Q1 clamp type");
+                bool any=false;float lo=0,hi=0;
+                const char *sides[]={"min","max"};
+                for(unsigned k=0;k<2;++k) {
+                    std::string has=std::string("attr.has_")+sides[k],bits=std::string("attr.")+sides[k]+"_bits";
+                    need(attrs.count(has) && (attrs[has]=="true" || attrs[has]=="false") && attrs.count(bits),"Q1 clamp fields");
+                    const std::string &b=attrs[bits];need(b.size()==8 && b.find_first_not_of("0123456789abcdef")==std::string::npos,"Q1 clamp bits");
+                    UINT32 raw=strtoul(b.c_str(),NULL,16);need((raw&0x7f800000)!=0x7f800000,"Q1 finite clamp bound");
+                    need(attrs[has]=="true" || b=="00000000","Q1 absent clamp bound");
+                    if(attrs[has]=="true") {any=true;float f;memcpy(&f,&raw,4);if(!k)lo=f;else hi=f;}
+                    expected[has]=attrs[has];expected[bits]=b;
+                }
+                need(any && !(attrs["attr.has_min"]=="true" && attrs["attr.has_max"]=="true" && lo>hi),"Q1 clamp order");
+            } else if(op.name=="common.convert") {
+                dtype=o.dtype;expected["attr.src_dtype"]=a.dtype;expected["attr.dst_dtype"]=dtype;
+                bool encode=a.dtype=="float32" && (dtype=="int8" || dtype=="uint8");
+                bool decode=(a.dtype=="int8" || a.dtype=="uint8") && dtype=="float32";
+                need(encode || decode,"Q1 conversion types");expected["attr.mode"]=encode?"checked_integral":"exact";
+            } else if(op.name=="common.pack_u4" || op.name=="common.unpack_u4") {
+                need(a.dtype=="uint8","Q1 nibble type");
+                expected["attr.axis"]=decimal(shape.size()-1);expected["attr.nibble_order"]="even_low";expected["attr.code_bits"]="4";
+                if(op.name=="common.pack_u4") {need(shape.back()%2==0,"Q1 even nibble axis");shape.back()/=2;}
+                else {need(shape.back()<=8388608,"Q1 nibble extent");shape.back()*=2;}
+            } else if(op.name=="common.gather" || op.name=="common.scatter") {
+                bool scatter=op.name=="common.scatter";arity=scatter?3:2;version=scatter?2:1;
+                need(op.inputs.size()==arity && attrs.count("attr.axis") && (attrs["attr.axis"]=="0" || attrs["attr.axis"]=="1"),"Q1 gather/scatter axis");
+                unsigned axis=attrs["attr.axis"]=="0"?0:1;
+                const VHO_TENSOR_VALUE &idx=p.values[op.inputs[1]];
+                need(axis<shape.size() && (!scatter || axis==0) && idx.dtype=="int64" && idx.shape.size()==1,"Q1 index type/rank");
+                expected["attr.axis"]=decimal(axis);expected["attr.bounds"]="guarded_nonnegative";expected["attr.alias_rule"]="fresh_result";
+                if(scatter) {
+                    expected["attr.conflicts"]="unique_indices";
+                    std::vector<UINT64> updates=shape;updates[axis]=idx.shape[0];
+                    need(p.values[op.inputs[2]].shape==updates && p.values[op.inputs[2]].dtype==dtype,"Q1 update shape");
+                } else shape[axis]=idx.shape[0];
+            } else if(op.name=="common.fill_like" && op.version==2) {
+                version=2;need(a.dtype=="int64" && attrs.count("attr.value_i64"),"Q1 integer fill");
+                const std::string &text=attrs["attr.value_i64"];char *end;errno=0;INT64 n=strtoll(text.c_str(),&end,10);
+                std::ostringstream canonical;canonical<<n;
+                need(!errno && !*end && canonical.str()==text,"Q1 canonical integer literal");expected["attr.value_i64"]=text;
+            } else if(op.version==2 && (op.name=="common.add" || op.name=="common.mul" || op.name=="common.div" || op.name=="common.rem")) {
+                version=2;arity=2;need(op.inputs.size()==2 && a.dtype=="int64" && p.values[op.inputs[1]].dtype=="int64","Q1 index arithmetic");
+                shape=broadcast(a.shape,p.values[op.inputs[1]].shape);
+                expected["attr.broadcast_rule"]="numpy";expected["attr.integer_domain"]="nonnegative_i64_checked";
+                if(op.name=="common.div" || op.name=="common.rem") expected["attr.rounding"]="floor";
+            } else {validate_operation(p,op);special=false;}
+            if(special) need(op.version==version && op.inputs.size()==arity && attrs==expected && o.shape==shape && o.dtype==dtype,"Q1 schema/shape mismatch");
+            need(o.storage==(op.name=="common.reshape"?a.storage:op.output),"Q1 fresh/view storage");defined.insert(op.output);
+        }
+        need(defined.size()==p.values.size(),"Q1 undefined value");return TRUE;
+    } catch(const std::exception &e) {if(diagnostic) fprintf(diagnostic,"Q1 High: %s\n",e.what());return FALSE;}
+}
+
 /* Recheck the detached handoff before allocating any device table entries. */
 BOOL VHO_tensor_validate_program(const VHO_TENSOR_PROGRAM &p,FILE *diagnostic) {
     try {
@@ -309,6 +409,18 @@ std::string VHO_tensor_recipe_key(const VHO_TENSOR_PROGRAM &p) {
         out << "/cache-traits-v1";
         for(size_t i=0;i<p.values.size();++i) if(!p.values[i].cache_trait.empty())
             out << '/' << i << '/' << p.values[i].cache_trait.size() << ':' << p.values[i].cache_trait;
+    }
+    return out.str();
+}
+
+/* Preserve the legacy recipe-key spelling; Q1 uses a separate complete source
+ * binding so changing an alias's scale/evidence cannot retain an old seal. */
+std::string VHO_tensor_quantized_high_key(const VHO_TENSOR_PROGRAM &p) {
+    std::ostringstream out;out<<"quantized-common-high-v1/"<<VHO_tensor_recipe_key(p);
+    for(unsigned i=0;i<p.values.size();++i) {
+        const VHO_TENSOR_VALUE &v=p.values[i];
+        out<<'/'<<i<<'/'<<v.cache_encoding.size()<<':'<<v.cache_encoding
+            <<'/'<<v.cache_scale.size()<<':'<<v.cache_scale<<'/'<<v.cache_evidence.size()<<':'<<v.cache_evidence;
     }
     return out.str();
 }

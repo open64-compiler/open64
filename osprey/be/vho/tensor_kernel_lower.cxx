@@ -134,10 +134,10 @@ class VHO_TENSOR_CAPTURE {
     VHO_TENSOR_PROGRAM _program;
     std::map<ST_IDX,UINT32> _symbols;
     std::set<UINT32> _defined;
-    bool _returned;
+    bool _returned, _quantized;
 public:
     /* Borrow active source scope; capture never creates WN/ST/TY rows. */
-    VHO_TENSOR_CAPTURE(PU_Info *pu,UINT32 level):_pu(pu),_returned(false) {
+    VHO_TENSOR_CAPTURE(PU_Info *pu,UINT32 level,bool quantized=false):_pu(pu),_returned(false),_quantized(quantized) {
         _program.opt_level=level;_program.threads=level==3?128:1;
         _program.source_pu=ST_name(PU_Info_proc_sym(pu));
     }
@@ -153,6 +153,7 @@ public:
             const char *key=NULL,*text=NULL;TY_DSL_BIND_STATE state;
             need(TY_tensor_attribute_at(ty,i,&key,&text,&state),"unreadable tensor descriptor field");bool known=false;
             for(UINT32 k=0;k<sizeof(supported)/sizeof(supported[0]);++k) if(!strcmp(key,TY_tensor_schema_key_name(supported[k]))) known=true;
+            if(_quantized && !strcmp(key,TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_QUANTIZATION))) known=true;
             need(known,"unsupported tensor trait/representation field: "+std::string(key));
             if(!strcmp(key,TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_TRAITS)))
                 need(state==TY_DSL_BIND_BOUND,"unbound tensor cache trait");
@@ -167,6 +168,13 @@ public:
             const char *trait=TY_tensor_attribute(ty,TY_TENSOR_SCHEMA_TRAITS);
             need(DSL_tensor_cache_trait_known(trait),"unsupported tensor trait/representation field: traits");
             value.cache_trait=trait;
+        }
+        if(_quantized) {
+            const char *encoding=TY_tensor_attribute(ty,TY_TENSOR_SCHEMA_QUANTIZATION);
+            const char *scale=ST_tensor_metadata(st,"cache.inference.scale");
+            const char *evidence=ST_tensor_metadata(st,"cache.inference.evidence");
+            value.cache_encoding=encoding?encoding:"";
+            value.cache_scale=scale?scale:"";value.cache_evidence=evidence?evidence:"";
         }
         value.name=ST_name(st);value.role=role;value.ordinal=ordinal;value.storage=_program.values.size();
         UINT32 id=value.storage;_program.values.push_back(value);_symbols[st]=id;return id;
@@ -220,7 +228,7 @@ public:
             UINT32 id=Value(st,role?2:1,role?outputs++:inputs++);if(!role) _defined.insert(id);
         }
         need(inputs && outputs,"missing source tensor interface");Block(WN_func_body(entry));need(_returned,"missing source RETURN");
-        need(VHO_tensor_validate_program(_program,NULL),"invalid captured tensor recipe");return _program;
+        need(_quantized?VHO_tensor_validate_quantized_high(_program,NULL):VHO_tensor_validate_program(_program,NULL),"invalid captured tensor recipe");return _program;
     }
 };
 
@@ -644,6 +652,15 @@ BOOL VHO_tensor_prepare_program(PU_Info *pu,UINT32 level,VHO_TENSOR_PROGRAM *out
        !DSL_Gatekeeper_Verify_PU(pu,diagnostic,NULL)) return FALSE;
     try {VHO_TENSOR_PROGRAM result=VHO_TENSOR_CAPTURE(pu,level).Capture();*output=result;return TRUE;}
     catch(const std::exception &e) {if(diagnostic) fprintf(diagnostic,"tensor lowering: %s\n",e.what());return FALSE;}
+}
+
+/* The driver selects the source PU. This opt-in source gate never admits a
+ * packed cache to the old FP32 optimizer and never mutates native tables. */
+BOOL VHO_tensor_prepare_quantized_program(PU_Info *pu,VHO_TENSOR_PROGRAM *output,FILE *diagnostic) {
+    if(!pu || pu!=Current_PU_Info || !output || PU_Info_child(pu) ||
+       !DSL_Gatekeeper_Verify_PU(pu,diagnostic,NULL)) return FALSE;
+    try { VHO_TENSOR_PROGRAM result=VHO_TENSOR_CAPTURE(pu,0,true).Capture();*output=result;return TRUE; }
+    catch(const std::exception &e) {if(diagnostic) fprintf(diagnostic,"Q1 High: %s\n",e.what());return FALSE;}
 }
 
 /* All recovery checks precede the device-only allocation/commit section. */
