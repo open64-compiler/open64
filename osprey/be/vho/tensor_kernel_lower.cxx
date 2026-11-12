@@ -11,6 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 #include "tensor_kernel_lower.h"
+#include "tensor_kernel_explain.h"
 #include "wn.h"
 #include "wn_util.h"
 #include "stab.h"
@@ -79,6 +80,10 @@ void fingerprint_node(const WN *n,UINT64 &hash,std::set<const WN *> &seen) {
     if(op==OPR_ARRAY) words.push_back(WN_element_size(n));
     if(op==OPR_LDID || op==OPR_STID || op==OPR_ILOAD || op==OPR_ISTORE) words.push_back(WN_field_id(n));
     if(op==OPR_PARM) words.push_back(WN_parm_flag(n));
+    if(op==OPR_COMMENT) {
+        const unsigned char *text=(const unsigned char *)Index_To_Str(WN_GetComment(n));
+        while(*text) words.push_back(*text++);words.push_back(0);
+    }
     if(op==OPR_INTRINSIC_OP) words.push_back(WN_intrinsic(n));
     need(op!=OPR_CALL && op!=OPR_INTRINSIC_CALL && op!=OPR_ASM_STMT,"unexpected device effect");
     for(size_t i=0;i<words.size();++i) for(UINT32 b=0;b<8;++b) hash=(hash^((words[i]>>(8*b))&255))*UINT64(1099511628211ULL);
@@ -649,6 +654,43 @@ BOOL VHO_tensor_verify_kernel(const VHO_TENSOR_PROGRAM &p,UINT32 ordinal,FILE *d
                 decimal(VHO_tensor_elements(storage)*(storage.dtype=="bool"?1:4)),storage.dtype,storage.name};
             for(UINT32 k=0;k<8;++k) {const char *actual=ST_tensor_metadata(st,(std::string("tensor.argument.")+decimal(i)+"."+ak[k]).c_str());need(actual && av[k]==actual,"kernel binding mismatch");}
         }
+        const char *versioned_comments=ST_tensor_metadata(st,"tensor.kernel.explanations_version");
+        if(versioned_comments) {
+            need(!strcmp(versioned_comments,"1"),"unsupported explanation version");
+            std::vector<VHO_TENSOR_EXPLANATION> comments=VHO_tensor_explanations(plan);
+            WN *statement=WN_first(WN_func_body(entry));UINT32 count=0;
+            for(size_t i=0;i<comments.size();++i) if(comments[i].kernel_id==ordinal) {
+                need(statement && WN_operator(statement)==OPR_COMMENT && comments[i].text==Index_To_Str(WN_GetComment(statement)),"missing/changed WHIRL explanation");
+                statement=WN_next(statement);++count;
+            }
+            const char *actual=ST_tensor_metadata(st,"tensor.kernel.explanations_count");
+            need(actual && decimal(count)==actual,"explanation count mismatch");
+        }
         return TRUE;
     } catch(const std::exception &e) {if(diagnostic) fprintf(diagnostic,"tensor kernel audit: %s\n",e.what());return FALSE;}
+}
+
+/* COMMENT is a nonexecuting VH--VL statement backed by CLASS_NAME, as in
+ * WHIRL.pdf p23. Only the active PU is changed, after complete preflight. */
+BOOL VHO_tensor_annotate_kernel(const VHO_TENSOR_PROGRAM &p,UINT32 ordinal,FILE *diagnostic) {
+    if(!Current_PU_Info || !VHO_tensor_verify_kernel(p,ordinal,diagnostic)) return FALSE;
+    ST_IDX function=PU_Info_proc_sym(Current_PU_Info);
+    if(ST_tensor_metadata(function,"tensor.kernel.explanations_version")) return FALSE;
+    VHO_TENSOR_SCHEDULE plan;if(!VHO_tensor_schedule(p,&plan,diagnostic)) return FALSE;
+    std::vector<VHO_TENSOR_EXPLANATION> all=VHO_tensor_explanations(plan),comments;
+    for(size_t i=0;i<all.size();++i) if(all[i].kernel_id==ordinal) {
+        if(all[i].text.find("*/")!=std::string::npos || all[i].text.compare(0,7,"#pragma")==0) return FALSE;
+        comments.push_back(all[i]);
+    }
+    WN *entry=PU_Info_tree_ptr(Current_PU_Info),*body=WN_func_body(entry),*first=WN_first(body);
+    if(comments.empty() || !first) return FALSE;SRCPOS source=WN_Get_Linenum(first);
+    if(!source || !SRCPOS_filenum(source) || SRCPOS_linenum(source)<=0) return FALSE;
+    for(size_t i=0;i<comments.size();++i) {
+        WN *comment=WN_CreateComment(comments[i].text.c_str());WN_Set_Linenum(comment,source);Set_ST_Srcpos(*WN_st(comment),source);
+        WN_INSERT_BlockBefore(body,first,comment);
+    }
+    ST_tensor_bind_metadata(function,"tensor.kernel.explanations_version","1");
+    ST_tensor_bind_metadata(function,"tensor.kernel.explanations_count",decimal(comments.size()).c_str());
+    ST_tensor_bind_metadata(function,"tensor.kernel.body_hash",fingerprint(entry).c_str());
+    return TRUE;
 }

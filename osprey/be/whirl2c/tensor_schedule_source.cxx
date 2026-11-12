@@ -1,6 +1,6 @@
 /* Copyright (C) 2026 Open64 Project */
 /* Read-only tensor-level CUDA presentation of the VHO-selected stage graph.
- * Design: doc/AI-COMPILER-TENSOR-SCHEDULE-SOURCE-v0.1.md. This printer never
+ * Design: doc/AI-COMPILER-TENSOR-SCHEDULE-SOURCE-v0.2.md. This printer never
  * chooses fusion, cuts, chunk widths, GPU mapping, or an attention algorithm. */
 #include <cctype>
 #include <cstdlib>
@@ -43,11 +43,24 @@ class Printer {
     const VHO_TENSOR_PROGRAM &_p;
     std::map<UINT32,UINT32> _producer;
     std::set<UINT32> _bound,_printed;
+    const std::vector<VHO_TENSOR_EXPLANATION> &_comments;
+    UINT32 _stage;
     std::ostringstream _out;
 public:
     /* Borrow detached facts only; no compiler table or live PU is consulted. */
-    explicit Printer(const VHO_TENSOR_SCHEDULE &plan):_plan(plan),_p(plan.bindings) {
+    Printer(const VHO_TENSOR_SCHEDULE &plan,const std::vector<VHO_TENSOR_EXPLANATION> &comments):_plan(plan),_p(plan.bindings),_comments(comments),_stage(0) {
         for(UINT32 i=0;i<_p.operations.size();++i) _producer[_p.operations[i].output]=i;
+    }
+    /* Print the exact shared WHIRL COMMENT text, without reconstructing policy. */
+    void Explain(UINT32 kind,UINT32 value=0) {
+        for(size_t i=0;i<_comments.size();++i) {
+            const VHO_TENSOR_EXPLANATION &record=_comments[i];
+            if(record.kind==kind && record.value==value &&
+               ((kind==VHO_TENSOR_EXPLAIN_OVERVIEW || kind==VHO_TENSOR_EXPLAIN_STORAGE) || record.kernel_id==_stage)) {
+                _out<<"/* "<<record.text<<" */\n";return;
+            }
+        }
+        require(false,"missing selected explanation record");
     }
     /* Show each selected fused producer once as a named nonallocating view. */
     std::string Value(UINT32 id) {
@@ -68,6 +81,7 @@ public:
             for(UINT32 i=0;i<10;++i) if(op.name==operators[i]) call=std::string(spellings[i])+"<"+type(_p.values[id])+">";
         }
         require(!call.empty(),"presentation crossed a selected materialization boundary");
+        Explain(VHO_TENSOR_EXPLAIN_PRODUCER,id);
         _out<<"    // Fused source node "<<op.source_node<<": "<<op.name<<".v"<<op.version<<"\n";
         _out<<"    const auto "<<name(_p,id)<<" = "<<call<<"(";
         for(size_t i=0;i<args.size();++i) {if(i) _out<<", ";_out<<args[i];}
@@ -83,7 +97,9 @@ public:
     void Stage(const VHO_TENSOR_KERNEL &k,UINT32 ordinal) {
         require(k.root<_p.operations.size() && k.output<_p.values.size(),"invalid selected stage");
         const VHO_TENSOR_OPERATION &op=_p.operations[k.root];
+        _stage=k.id;
         _bound.clear();_printed.clear();_bound.insert(k.inputs.begin(),k.inputs.end());
+        Explain(VHO_TENSOR_EXPLAIN_STAGE);
         _out<<"\n  // Stage "<<ordinal+1<<": "<<(k.stage==1?"PARALLEL CHUNK PARTIALS":k.stage==2?"ORDERED CHUNK MERGE":"FUSED OUTPUT")<<"\n";
         _out<<"  // kernel_id="<<k.id<<"; source node="<<op.source_node<<"; "<<op.name<<".v"<<op.version<<"\n";
         _out<<"  // Selected independent work items="<<k.elements;
@@ -109,6 +125,7 @@ public:
     std::string Print(const std::string &seal) {
         require(_p.fuse && !_plan.kernels.empty(),"optimized selected schedule required");
         require(!seal.empty() && seal.find_first_not_of("0123456789")==std::string::npos,"invalid recipe fingerprint");
+        Explain(VHO_TENSOR_EXPLAIN_OVERVIEW);
         _out<<"// Generated selected-schedule review CUDA, BEFORE low-level WHIRL expansion.\n";
         _out<<"// recipe_fingerprint="<<seal<<"; stages="<<_plan.kernels.size()<<"; reassociation="<<(_p.split_width?"allow":"forbid")<<"\n";
         _out<<"// Named views below are lazy and allocate no intermediate tensor.\n";
@@ -127,6 +144,7 @@ public:
         for(size_t k=0;k<_plan.kernels.size();++k) {
             UINT32 i=_plan.kernels[k].output;
             if(_p.values[i].role==0 && allocated.insert(i).second) {
+                Explain(VHO_TENSOR_EXPLAIN_STORAGE,i);
                 _out<<"  "<<type(_p.values[i])<<" "<<pointer(_p,i)<<";\n";
                 _out<<"  const auto "<<name(_p,i)<<" = tensor_view<"<<type(_p.values[i])<<">("<<pointer(_p,i)<<".data);\n";
             }
@@ -139,6 +157,6 @@ public:
 
 /* The driver validates the recipe and obtains the plan from VHO first. This
  * read-only printer consumes those exact cuts and chunk sizes without policy. */
-std::string W2C_tensor_schedule_source(const VHO_TENSOR_SCHEDULE &plan,const std::string &seal) {
-    return Printer(plan).Print(seal);
+std::string W2C_tensor_schedule_source(const VHO_TENSOR_SCHEDULE &plan,const std::vector<VHO_TENSOR_EXPLANATION> &comments,const std::string &seal) {
+    return Printer(plan,comments).Print(seal);
 }

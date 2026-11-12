@@ -72,6 +72,9 @@ extern BOOL VHO_tensor_materialize_kernel(const VHO_TENSOR_PROGRAM &,UINT32 oper
 /* Audit the active reopened kernel against its source recipe, persisted
  * launch/argument bindings and construction fingerprint. No mutation occurs. */
 extern BOOL VHO_tensor_verify_kernel(const VHO_TENSOR_PROGRAM &,UINT32 operation,FILE *);
+/* Add the selected explanation records as ordinary COMMENT statements in the
+ * active verified kernel. Reject repeated annotation before table mutation. */
+extern BOOL VHO_tensor_annotate_kernel(const VHO_TENSOR_PROGRAM &,UINT32 operation,FILE *);
 /* Positive static extents must have been validated before taking the product. */
 extern UINT64 VHO_tensor_elements(const VHO_TENSOR_VALUE &);
 #endif
