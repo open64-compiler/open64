@@ -393,6 +393,25 @@ VPATH += $(COMMON_TARG_INFO_ACCESS_DIR)
 ir_b2a: $(OBJECTS) ir_a2b.o
 	$(link.c++f) -o ir_b2a ir_a2b.o $(OBJECTS) $(LDFLAGS)
 
+# Focused read-only CUDA reference mode reuses the normal mapped-image reader.
+whirl2c_tensor_source: $(OBJECTS) tensor_source.o
+	$(link.c++f) -o $@ tensor_source.o $(OBJECTS) $(LDFLAGS)
+
+tensor_source.o: $(BUILD_TOT)/be/whirl2c/tensor_source.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $< -o $@
+
+whirl2c_reference_main.o: $(BUILD_TOT)/be/whirl2c/whirl2c_main.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) -DSHARED_BUILD $< -o $@
+
+ifeq ($(BUILD_OS), LINUX)
+TENSOR_SOURCE_INCS = -I$(BUILD_TOT)/linux/include
+endif
+
+whirl2c: whirl2c_reference_main.o whirl2c_tensor_source
+	$(link.c++f) -o $@ whirl2c_reference_main.o $(LDFLAGS)
+
+LDIRT += whirl2c whirl2c_tensor_source whirl2c_reference_main.o tensor_source.o
+
 ir_a2b: ir_b2a
 	ln -sf ir_b2a ir_a2b
 
