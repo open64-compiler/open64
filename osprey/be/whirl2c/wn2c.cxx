@@ -6897,6 +6897,69 @@ WN2C_translate_file_scope_defs(CONTEXT context)
 } /* WN2C_translate_file_scope_defs */
 
 
+/* Reconstruct flat scalar views into a one-dimensional byte arena. PREOPT
+ * may propagate a typed pointer into nested ARRAY nodes whose element sizes
+ * differ. Those are additive byte offsets, not nested C array objects. Keep
+ * this bounded to plain scalar byte arenas; leave structured/Fortran/vector
+ * addressing on its established path. No WN mutation or scheduling policy.
+ * Contract: doc/AI-COMPILER-MLA-Q6B-NATIVE-STAGING-v1.0.md. */
+static BOOL
+WN2C_byte_arena_lvalue(TOKEN_BUFFER tokens, const WN *address,
+                       STAB_OFFSET offset, TY_IDX object_ty,
+                       MTYPE dtype, CONTEXT context)
+{
+   const WN *base=address;
+   UINT count=0;
+   while (WN_operator(base)==OPR_ARRAY)
+   {
+      if (WN_num_dim(base)!=1 || WN_element_size(base)<=0) return FALSE;
+      ++count; base=WN_kid0(base);
+   }
+   if (count<2 || WN_operator(base)!=OPR_LDA || WN_field_id(base) || ST_class(WN_st(base))!=CLASS_VAR ||
+       TY_kind(object_ty)!=KIND_SCALAR || TY_mtype(object_ty)!=dtype ||
+       TY_is_volatile(object_ty) || MTYPE_byte_size(dtype)<=0 || MTYPE_byte_size(dtype)>8)
+      return FALSE;
+   TY_IDX arena=ST_type(WN_st(base));
+   if (TY_kind(arena)!=KIND_ARRAY || TY_is_volatile(arena) || ARB_dimension(TY_arb(arena))!=1 ||
+       TY_kind(TY_etype(arena))!=KIND_SCALAR ||
+       TY_is_volatile(TY_etype(arena)) ||
+       (TY_mtype(TY_etype(arena))!=MTYPE_U1 && TY_mtype(TY_etype(arena))!=MTYPE_I1))
+      return FALSE;
+
+   TOKEN_BUFFER result=New_Token_Buffer();
+   CONTEXT_reset_needs_lvalue(context);
+   CONTEXT_reset_array_basetype(context);
+   CONTEXT_reset_top_level_expr(context);
+   STATUS status=WN2C_translate(result,base,context);
+   if (STATUS_is_lvalue(status) && !STATUS_is_array_as_address(status))
+      Prepend_Token_Special(result,'&');
+   WHIRL2C_parenthesize(result);
+   WN2C_prepend_cast(result,Stab_Mtype_To_Ty(MTYPE_U1),TRUE/*pointer_to_type*/);
+   for (const WN *part=address; WN_operator(part)==OPR_ARRAY; part=WN_kid0(part))
+   {
+      Append_Token_String(result," + ((");
+      WN2C_translate(result,WN_array_index(part,0),context);
+      Append_Token_String(result,") * ");
+      Append_Token_String(result,Number_as_String(WN_element_size(part),"%lld"));
+      Append_Token_Special(result,')');
+   }
+   if (offset)
+   {
+      Append_Token_String(result," + (");
+      Append_Token_String(result,Number_as_String(offset,"%lld"));
+      Append_Token_Special(result,')');
+   }
+   WHIRL2C_parenthesize(result);
+   WN2C_prepend_cast(result,object_ty,TRUE/*pointer_to_type*/);
+   WHIRL2C_parenthesize(result);
+   Prepend_Token_Special(result,'*');
+   Append_And_Reclaim_Token_List(tokens,&result);
+   return TRUE;
+}
+
+/* Reconstruct the requested typed memory lvalue. Canonical nested byte-arena
+ * views use exact address arithmetic; all other accesses retain the existing
+ * field/type-resolution path. Source printing does not mutate the input WN. */
 void
 WN2C_memref_lhs(TOKEN_BUFFER tokens,
 		TY_IDX      *memref_typ,
@@ -6912,6 +6975,12 @@ WN2C_memref_lhs(TOKEN_BUFFER tokens,
     */
    TY_IDX  base_ty;
    STATUS  lhs_status;
+
+   if (WN2C_byte_arena_lvalue(tokens,lhs,memref_ofst,memref_object_ty,dtype,context))
+   {
+      *memref_typ=memref_object_ty;
+      return;
+   }
 
    /* Get the type of object being stored and the base-address from
     * which the store occurs.

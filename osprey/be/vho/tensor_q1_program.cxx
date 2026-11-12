@@ -103,6 +103,15 @@ bool VHO_q1_program_read(WN *entry,VHO_TENSOR_PROGRAM &out,std::string &why) {
 }
 /* Explanation restoration is an explicit annotation phase, not fact proof. */
 unsigned VHO_q1_restore_comments(WN *entry,const VHO_TENSOR_PROGRAM &p) {
+    const char *q6=ST_tensor_metadata(WN_st_idx(entry),"tensor.q6.schema");
+    if(q6) {
+        const char *explanation=ST_tensor_metadata(WN_st_idx(entry),"tensor.q6.explanation");
+        if(strcmp(q6,"mla-native-staging-v1") || !explanation || !*explanation)
+            throw std::runtime_error("q6_missing_selected_explanation");
+        WN *comment=WN_CreateComment(explanation);WN_Set_Linenum(comment,WN_Get_Linenum(entry));
+        Set_ST_Srcpos(*WN_st(comment),WN_Get_Linenum(entry));
+        WN_INSERT_BlockBefore(WN_func_body(entry),WN_first(WN_func_body(entry)),comment);return 1;
+    }
     const char *selected=ST_tensor_metadata(WN_st_idx(entry),"tensor.q5.applied");
     if(selected) {
         VHO_Q5_PLAN plan;std::string why;if(VHO_q5_plan_decode(selected,plan,why)) {

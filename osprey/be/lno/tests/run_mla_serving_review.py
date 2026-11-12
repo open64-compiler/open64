@@ -56,7 +56,10 @@ def review(args):
         functions[name] = f
     checks, commands = [], []
     q5 = None
-    if args.q5:
+    if getattr(args, 'q6b', False):
+        from mla_q6b_native_review import Q6B_REVIEW
+        q5 = Q6B_REVIEW(api, args, out)
+    elif args.q5:
         from mla_q5_plan_review import Q5_REVIEW
         q5 = Q5_REVIEW(api, args, out)
     q4 = None
@@ -463,6 +466,8 @@ def review(args):
                   concurrency_actual_callbacks=True, engine_binding='native-host-synchronous',
                   allocator_owned_generations=True, external_initial_import_ready_precondition=True,
                   search_invoked=bool(q4), gpu_execution=False, q4_costing=bool(q4))
+    if getattr(args, 'q6b', False):
+        report.update(search_invoked=True, native_high_staging=True, exploration_native_mutations=0)
     (out/'commands.json').write_text(json.dumps(commands, indent=2)+'\n')
     (out/'report.json').write_text(json.dumps(report, indent=2)+'\n')
     print('PASS Q3 native checks='+str(len(checks)))
@@ -475,4 +480,5 @@ if __name__ == '__main__':
     parser.add_argument('--q4', action='store_true')
     parser.add_argument('--q5', action='store_true')
     parser.add_argument('--q5-long', action='store_true')
+    parser.add_argument('--q6b', action='store_true')
     review(parser.parse_args())

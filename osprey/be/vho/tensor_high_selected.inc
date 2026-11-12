@@ -36,7 +36,13 @@
         Float(0)),VHO_high_load(_den),Float(0x3f800000)); }
     /* Store only to the existing disjoint caller-owned scratch/output ABI. */
     void Write(WN *body, UINT32 value, WN *index, WN *expression) {
-        WN_INSERT_BlockLast(body,WN_Istore(Scalar_type(_program.values[value]),0,ST_type(_buffers[_program.values[value].storage]),
+        TY_IDX address_type=ST_type(_buffers[_program.values[value].storage]);
+#ifdef OPEN64_Q6_NATIVE_STAGE
+        /* Local arena views carry their own pointer qualifiers; an original
+         * disjoint formal's restrict type must not be imposed on that view. */
+        if(_q6_redirect.count(_program.values[value].storage)) address_type=ST_type(_q6_redirect[_program.values[value].storage]);
+#endif
+        WN_INSERT_BlockLast(body,WN_Istore(Scalar_type(_program.values[value]),0,address_type,
             Address(value,index),expression));
     }
     /* Preserve established NaN-propagating max, with no child sharing. */

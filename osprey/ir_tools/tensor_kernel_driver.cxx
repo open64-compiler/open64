@@ -43,6 +43,8 @@
 #include "../be/vho/tensor_workload.h"
 #include "../be/vho/tensor_serving_schema.h"
 #include "../be/vho/tensor_quantized_gpu.h"
+#include "../be/vho/tensor_quantized_stage.h"
+#include "symtab_verify.h"
 #include "dsl_native_tree_key.h"
 #include "tensor_schedule_source.h"
 #ifdef OPEN64_TENSOR_SELECTED_BRIDGE
@@ -354,12 +356,18 @@ bool remove_barrier(WN *n,const char *name="__syncthreads") {
 #include "tensor_serving_json.inc"
 #include "tensor_q5_driver.inc"
 #include "tensor_q6_driver.inc"
+#ifdef OPEN64_TENSOR_SELECTED_BRIDGE
+#include "tensor_q6b_driver.inc"
+#endif
 } // namespace
 
 /* The executable establishes exactly one source PU or fresh device translation
  * unit. The VHO service never expands its compilation scope or writes files. */
 int main(int argc,char **argv) {
     try {
+#ifdef OPEN64_TENSOR_SELECTED_BRIDGE
+        if(argc>=2 && (!strcmp(argv[1],"q6-apply") || !strcmp(argv[1],"q6-audit"))) return q6b_command(argc,argv);
+#endif
         if(argc>=2 && !strcmp(argv[1],"q6-contract")) return q6_command(argc,argv);
         if(argc>=2 && (!strcmp(argv[1],"q5-key") || !strcmp(argv[1],"q5-apply"))) return q5_command(argc,argv);
         if(argc>=2 && !strcmp(argv[1],"q3-schema")) return q3_schema_command(argc,argv);

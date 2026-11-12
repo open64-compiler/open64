@@ -2,8 +2,11 @@
 /* Shared common-High construction: faithful expansion in the driver's empty PU
  * and one already selected algorithm body staged by the owning LNO transaction.
  * Design: doc/AI-COMPILER-SEARCH-M2A-HIGH-ADMISSION-v1.0.md.
- * Produces ordered signed DO_LOOP/ARRAY WHIRL, without GPU mapping, search,
- * runtime calls or a new binary representation. Selected-body contract:
+ * Ordinary Q1/Q5 construction produces ordered signed DO_LOOP/ARRAY WHIRL,
+ * without GPU mapping, search, runtime calls or a new binary representation.
+ * The standalone OPEN64_Q6_NATIVE_STAGE instantiation additionally carries
+ * explicit versioned staging operations; it adds no Q6 dependency to be.so.
+ * Selected-body contract:
  * doc/AI-COMPILER-SEARCH-M4-ATOMIC-HIGH-v1.0.md. Q1 guarded semantic form:
  * doc/AI-COMPILER-MLA-Q1-HIGH-OWNED-FACTS-v1.0.md. The driver owns buffer ABI,
  * source/device contexts and publication; rejected preflight never mutates. */
@@ -14,6 +17,9 @@
 #include "tensor_kernel_lower.h"
 #include "tensor_q1_program.h"
 #include "tensor_quantized_plan.h"
+#ifdef OPEN64_Q6_NATIVE_STAGE
+#include "tensor_quantized_stage.h"
+#endif
 #include "tensor_workload.h"
 #include "tensor_serving_schema.h"
 #include "wn.h"
@@ -57,6 +63,10 @@ class VHO_TENSOR_HIGH {
     std::map<UINT32,WN *> _constants;
     bool _selected, _quantized;
     ST *_status, *_integer, *_scan, *_match, *_rounded;
+#ifdef OPEN64_Q6_NATIVE_STAGE
+    ST *_q6_storage;
+    std::map<UINT32,ST *> _q6_redirect;
+#endif
 public:
     /* Borrow only validated detached facts and the active PU's source mapping. */
     VHO_TENSOR_HIGH(const VHO_TENSOR_PROGRAM &program, SRCPOS source, bool quantized=false)
@@ -108,8 +118,16 @@ public:
         const VHO_TENSOR_VALUE &v = _program.values[value];
         WN *array = WN_Create(OPR_ARRAY, Pointer_Mtype, MTYPE_V, 3);
         WN_element_size(array) = MTYPE_byte_size(Scalar_type(v));
+#ifdef OPEN64_Q6_NATIVE_STAGE
+        if(_q6_redirect.count(v.storage)) {
+            WN_kid0(array)=VHO_high_load(_q6_redirect[v.storage]);
+            WN_kid1(array)=VHO_high_integer(_q5_plan.width*v.shape.back());
+        } else
+#endif
+        {
         WN_kid0(array) = WN_Ldid(Pointer_Mtype, 0, _buffers[v.storage], ST_type(_buffers[v.storage]));
         WN_kid1(array) = VHO_high_integer(VHO_tensor_elements(v));
+        }
         WN_kid2(array) = index;
         return array;
     }
@@ -207,6 +225,9 @@ public:
     }
 #include "tensor_high_selected.inc"
 #include "tensor_high_q5.inc"
+#ifdef OPEN64_Q6_NATIVE_STAGE
+#include "tensor_high_q6.inc"
+#endif
     /* Commit faithful semantic expansion after complete preflight. Buffer
      * formals are disjoint storage allocations; reshape values share a formal. */
     void Materialize() {
@@ -315,6 +336,7 @@ public:
 };
 }
 
+#ifndef OPEN64_Q6_NATIVE_STAGE
 /* Reject physical schedules, unsafe FP controls and nonempty/wrong contexts
  * before allocation. This source-level scalar algorithm is not a candidate
  * transformation: only the driver can request and publish its semantic image. */
@@ -362,3 +384,19 @@ WN *VHO_q5_build_high(const VHO_TENSOR_PROGRAM &p,const VHO_Q5_PLAN &plan,WN *sc
         throw std::runtime_error("q5_selected_source_or_layout");
     return VHO_TENSOR_HIGH(p,WN_Get_Linenum(scope),true).Q5_body(scope,plan,layout);
 }
+
+#else
+/* Compile this existing private builder once more for the standalone selected
+ * staging tool. It shares all Q1/Q5 arithmetic without adding Q6 dependencies
+ * or public symbols to be.so; this is not an alternate algorithm generator. */
+WN *VHO_q6_build_high(const VHO_TENSOR_PROGRAM &p,const VHO_Q5_PLAN &plan,
+    const VHO_Q6_MAPPING &mapping,WN *scope) {
+    VHO_Q5_LAYOUT layout;VHO_Q6_MAPPING expected;std::string why;
+    if(!Current_PU_Info || scope!=PU_Info_tree_ptr(Current_PU_Info) || OPT_Fast_Math ||
+        Roundoff_Level!=ROUNDOFF_NONE || IEEE_Arithmetic!=IEEE_ACCURATE ||
+        !VHO_q5_layout(p,layout,why) || plan.source_key!=layout.schema.source_key ||
+        !VHO_q6_mapping(p,plan,DSL_NATIVE_TREE_KEY().Build(scope),mapping.control,expected,why) || expected.key!=mapping.key)
+        throw std::runtime_error("q6_native_source_or_mapping");
+    return VHO_TENSOR_HIGH(p,WN_Get_Linenum(scope),true).Q6_body(scope,plan,layout,mapping);
+}
+#endif

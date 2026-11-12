@@ -421,7 +421,7 @@ tensor_kernel_lower: q1_high_facts.o q1_high_epoch.o $(OBJECTS) controls.o tenso
 # Standalone consumer of existing be.so lowering; no new dependency/symbol is
 # added to be.so, and the legacy tensor_kernel_lower remains link-independent.
 tensor_selected_bridge: q1_high_facts.o q1_high_epoch.o $(OBJECTS) controls.o tensor_bridge_driver.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o tensor_q1_program.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o
-	$(link.c++f) -o $@ q1_high_facts.o q1_high_epoch.o tensor_bridge_driver.o tensor_quantized_gpu.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o tensor_q1_program.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o dsl_builder.o dsl_contract.o dsl_simp.o controls.o -L$(BUILD_AREA)/be -l:be.so $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
+	$(link.c++f) -o $@ q1_high_facts.o q1_high_epoch.o tensor_bridge_driver.o tensor_quantized_stage.o tensor_quantized_gpu.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o tensor_q1_program.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o dsl_builder.o dsl_contract.o dsl_simp.o controls.o -L$(BUILD_AREA)/be -l:be.so $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
 
 # Keep all consumers of the detached value layout and role constants in sync.
 tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o \
@@ -443,7 +443,7 @@ tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BUILD_BASE
 
 # Native mutations are compiled out of the production executable.
 tensor_selected_bridge_test: tensor_selected_bridge tensor_bridge_test_driver.o
-	$(link.c++f) -o $@ q1_high_facts.o q1_high_epoch.o tensor_bridge_test_driver.o tensor_quantized_gpu.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o tensor_q1_program.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o dsl_builder.o dsl_contract.o dsl_simp.o controls.o -L$(BUILD_AREA)/be -l:be.so $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
+	$(link.c++f) -o $@ q1_high_facts.o q1_high_epoch.o tensor_bridge_test_driver.o tensor_quantized_stage.o tensor_quantized_gpu.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o tensor_q1_program.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o dsl_builder.o dsl_contract.o dsl_simp.o controls.o -L$(BUILD_AREA)/be -l:be.so $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
 
 tensor_bridge_driver.o tensor_selected_bridge.o: $(BE_VHO_DIR)/tensor_selected_key.h
 tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_TOT)/be/lno/dsl_high_binding_keys.h
@@ -1317,3 +1317,12 @@ tensor_quantized_gpu.o: $(BE_VHO_DIR)/tensor_quantized_gpu.cxx $(BE_VHO_DIR)/ten
 LDIRT += tensor_quantized_gpu.o
 tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_q6_driver.inc $(BE_VHO_DIR)/tensor_quantized_gpu.h
 tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_q6_contract_test.inc
+
+# Reuse the same private High builder without exporting Q6 APIs/dependencies in be.so.
+tensor_selected_bridge tensor_selected_bridge_test: tensor_quantized_stage.o
+tensor_quantized_stage.o: $(BE_VHO_DIR)/tensor_high_lower.cxx $(BE_VHO_DIR)/tensor_high_q6.inc $(BE_VHO_DIR)/tensor_high_q5.inc $(BE_VHO_DIR)/tensor_high_selected.inc $(BE_VHO_DIR)/tensor_high_quantized.inc $(BE_VHO_DIR)/tensor_quantized_stage.h $(BE_VHO_DIR)/tensor_quantized_gpu.h
+	$(cxx) -DOPEN64_Q6_NATIVE_STAGE -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_q6b_driver.inc $(BE_VHO_DIR)/tensor_quantized_stage.h
+tensor_quantized_stage.o: $(BE_VHO_DIR)/tensor_kernel_lower.h $(COMMON_COM_DIR)/dsl_tensor_traits.h $(COMMON_COM_DIR)/dsl_native_tree_key.h $(BE_VHO_DIR)/tensor_quantized_plan.h $(BE_VHO_DIR)/tensor_q1_program.h $(BE_VHO_DIR)/tensor_workload.h $(BE_VHO_DIR)/tensor_serving_schema.h
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o: $(COMMON_COM_DIR)/dsl_native_tree_key.h
+LDIRT += tensor_quantized_stage.o
