@@ -1,5 +1,34 @@
 # AI Compiler Optimization Progress
 
+## H1d device/helper and host/serving contracts, 2026-11-12
+
+[H1d v1.0](AI-COMPILER-H1D-DEVICE-HOST-CONTRACTS-v1.0.md) carries owned pinned
+H20 profile bytes through the driver/helper, rechecks the selected High seal,
+binds device evidence into worker High/Mid/Low seals and emits host runtime
+requirements. Optional serving/CUDA overloads check actual owner observations,
+resource/budget identity, reservation capacity and generation before execution
+and publication. Existing Q3 fact/memory layouts, CUDA CODE/HOOKS and legacy
+entry points are preserved; diagnostics use an owned sidecar. Calibration-only
+changes may retain code compatibility while losing performance-evidence reuse.
+
+Acceptance passes: 24 host-contract mismatch cases under fatal ASan/UBSan;
+97 importer and 18 planner fixtures under the same sanitizers; 14 helper-context
+refusals, six worker-seal refusals and ten fallback cases; 132 dense/paged serving
+mismatch cases plus eight host reference executions across both variants;
+570 existing unbound Q3/Q4 checks and both focused CUDA Driver-model overload
+runs (6,060 checks each). Four estimation-only/permission/selected-short-long
+regressions pass. Native B/T, raw diffs, PTX reemit and whirl2c CUDA preserve
+explanations and host parity. Shared dependencies and lw_inline closure pass.
+The serving-schema transitive planner dependency is fixed for incremental builds.
+
+See [plan v1.2](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.2.md)
+and [resource design v0.4](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.4.md).
+This completes H1d software contracts, with synthetic observations and no NVIDIA
+hardware qualification. Automatic serving inventory/engine integration, imported
+quantized Q4/Q5 profile adaptation, measured H20 calibration, H2-H8 and deferred
+AOT selection remain separate work. Earlier status entries record their original
+milestone scope.
+
 ## H1c planner bindings, 2026-11-12
 
 [H1c v1.0](AI-COMPILER-H1C-PLANNER-BINDINGS-v1.0.md) binds immutable evidence

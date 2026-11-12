@@ -9,7 +9,7 @@
 #include "../rapidjson/writer.h"
 #include "../rapidjson/stringbuffer.h"
 #include <cstring>
-struct Q6D_REVIEW_SESSION {VHO_MLA_CUDA *runtime;VHO_MLA_CUDA_CODE approved;std::string error;bool (*hash)(const void *,size_t,unsigned char *);};
+struct Q6D_REVIEW_SESSION {VHO_MLA_CUDA *runtime;VHO_MLA_CUDA_CODE approved;std::string error;bool (*hash)(const void *,size_t,unsigned char *);DSL_GPU_RUNTIME_OBSERVATION gpu;};
 /* Test owner validates fixed program/source and all manifest/digest fields. */
 static bool Q6D_authorize(void *context,const VHO_MLA_CUDA_CODE &code) {
     Q6D_REVIEW_SESSION &s=*(Q6D_REVIEW_SESSION *)context;const VHO_MLA_CUDA_CODE &a=s.approved;
@@ -26,6 +26,10 @@ static VHO_MLA_CUDA_CODE Q6D_decode(const char *wire) {
     for(unsigned i=0;i<32;++i)code.sha256[i]=j["sha256"][i].GetUint();
     for(unsigned i=0;i<3;++i) {code.stage_keys[i]=j["stages"][i]["native_key"].GetString();code.names[i]=j["stages"][i]["function"].GetString();code.grid[i]=j["stages"][i]["grid_x"].GetUint64();code.block[i]=j["stages"][i]["block_x"].GetUint64();code.shared[i]=j["stages"][i]["shared_bytes"].GetUint64();}return code;
 }
+/* Explicit synthetic H1d observer; never hardware attestation/calibration. */
+static bool H1D_cuda_observe(void *context,DSL_GPU_RUNTIME_OBSERVATION &out,std::string &) {
+    out=((Q6D_REVIEW_SESSION *)context)->gpu;return true;
+}
 extern "C" {
 /* Qualification owner supplies actual current context and nondefault streams.
  * Authentication is external to this private fixture decoder. Failed Open
@@ -35,6 +39,31 @@ void *open64_q6d_create_on(const char *wire,const char *approved,const void *ima
     try {s->approved=Q6D_decode(approved);VHO_MLA_CUDA_CODE code=Q6D_decode(wire);VHO_MLA_CUDA_HOOKS hooks={s,Q6D_authorize,Q6D_hash};
         VHO_MLA_CUDA::Open(code,image,bytes,context,producer,execution,hooks,s->runtime,s->error);
     }catch(const std::exception &e){s->error=e.what();}return s;
+}
+/* Opt-in fixture checks the new Open overload with existing CODE/HOOKS ABIs.
+ * The test owner binds requirements to the authenticated fixed code record. */
+void *open64_h1d_q6d_create(const char *wire,const char *approved,const void *image,size_t bytes,bool (*hash)(const void *,size_t,unsigned char *),const char *device) {
+    Q6D_REVIEW_SESSION *s=new Q6D_REVIEW_SESSION;s->runtime=NULL;s->hash=hash;
+    try {
+        s->approved=Q6D_decode(approved);VHO_MLA_CUDA_CODE code=Q6D_decode(wire);
+        VHO_MLA_CUDA_HOOKS hooks={s,Q6D_authorize,Q6D_hash};DSL_GPU_SERVING_BINDING binding;
+        DSL_GPU_HOST_REQUIREMENTS &r=binding.requirements;r.device=device;r.architecture="sm_90";r.partition="fixture-partition";
+        r.toolchain="fixture-toolchain";r.selection_key="fixture-selection";r.resource_key="fixture-resource";
+        r.execution_key="fixture-execution";r.budget_key="fixture-budget";r.imported=true;
+        s->gpu.device=r.device;s->gpu.architecture=r.architecture;s->gpu.partition=r.partition;s->gpu.toolchain=r.toolchain;
+        s->gpu.resource_key=r.resource_key;s->gpu.execution_key=r.execution_key;s->gpu.budget_key=r.budget_key;
+        s->gpu.known=s->gpu.reservation_live=true;s->gpu.context_generation=1;s->gpu.budget_generation=2;
+        s->gpu.reservation_id=3;s->gpu.reserved_bytes=UINT64(1)<<30;binding.context=s;binding.observe=H1D_cuda_observe;
+        VHO_MLA_CUDA::Open(code,image,bytes,(void *)0x101,(void *)0x201,(void *)0x202,hooks,binding,s->runtime,s->error);
+    } catch(const std::exception &e) {s->error=e.what();}return s;
+}
+/* Change observations only in test infrastructure, after actual model events. */
+void open64_h1d_q6d_change(void *object,const char *fault) {
+    Q6D_REVIEW_SESSION *s=(Q6D_REVIEW_SESSION *)object;std::string f=fault;
+    if(f=="device") s->gpu.device="other-device";
+    if(f=="budget") ++s->gpu.budget_generation;
+    if(f=="expired") s->gpu.reservation_live=false;
+    if(f=="calibration") s->gpu.execution_key="other-calibration";
 }
 /* Preserve the existing Q6d model entry and its synthetic handle identities. */
 void *open64_q6d_create(const char *wire,const char *approved,const void *image,size_t bytes,bool (*hash)(const void *,size_t,unsigned char *)) {

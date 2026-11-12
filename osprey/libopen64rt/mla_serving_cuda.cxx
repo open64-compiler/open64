@@ -146,6 +146,11 @@ VHO_MLA_CUDA::~VHO_MLA_CUDA() {delete _impl->_q3;delete _impl;}
 /* Authenticate/copy cubin before loading, establish real context/stream IDs and
  * build a Q3 device registry. A failed open preserves acquired cleanup handles. */
 bool VHO_MLA_CUDA::Open(const VHO_MLA_CUDA_CODE &code,const void *image,size_t bytes,void *context,void *producer,void *execution,const VHO_MLA_CUDA_HOOKS &hooks,VHO_MLA_CUDA *&out,std::string &why) {
+    return Open(code,image,bytes,context,producer,execution,hooks,DSL_GPU_SERVING_BINDING(),out,why);
+}
+/* Explicit H1d owner binds requirements to the authenticated fixed cubin.
+ * Observation gates load and Q3 admission/publication; legacy ABI stays intact. */
+bool VHO_MLA_CUDA::Open(const VHO_MLA_CUDA_CODE &code,const void *image,size_t bytes,void *context,void *producer,void *execution,const VHO_MLA_CUDA_HOOKS &hooks,const DSL_GPU_SERVING_BINDING &gpu,VHO_MLA_CUDA *&out,std::string &why) {
     out=NULL;VHO_MLA_CUDA *object=NULL;
     try {
         Require(context && (uintptr_t)producer>2 && (uintptr_t)execution>2 && hooks.authorize && hooks.sha256,"q6d_explicit_owner_context_streams");
@@ -165,8 +170,13 @@ bool VHO_MLA_CUDA::Open(const VHO_MLA_CUDA_CODE &code,const void *image,size_t b
         int version=0;Require(cuDriverGetVersion(&version)==CUDA_SUCCESS && version>=12080 && cuCtxGetId(p._context,&p._context_id)==CUDA_SUCCESS &&
             cuStreamGetId(p._producer,&p._producer_id)==CUDA_SUCCESS && cuStreamGetId(p._execution,&p._execution_id)==CUDA_SUCCESS && cuCtxGetDevice(&p._device)==CUDA_SUCCESS && p.Current(),"q6d_context_stream_generation");
         Require(cuModuleLoadData(&p._module,&copy[0])==CUDA_SUCCESS && p.Resources(why),why.empty()?"q6d_module_load":why.c_str());
+        if(!gpu.requirements.selection_key.empty()) {
+            DSL_GPU_RUNTIME_OBSERVATION actual;bool reusable=false;
+            bool compatible=gpu.observe && gpu.observe(gpu.context,actual,why) && gpu.requirements.Check(actual,0,reusable,why);
+            Require(compatible,why.empty()?"gpu_runtime_observer":why.c_str());
+        }
         VHO_SERVING_MEMORY memory={1,sizeof(VHO_SERVING_MEMORY),&p,(UINT64)(uintptr_t)p._context,IMPL::Validate,IMPL::Read,IMPL::Write,IMPL::Idle};
-        std::vector<UINT64> legal(1,layout.schema.page_tokens);p._q3=new VHO_TENSOR_SERVING(code.program,legal,&memory,why);Require(p._q3->Valid(),why.c_str());
+        std::vector<UINT64> legal(1,layout.schema.page_tokens);p._q3=new VHO_TENSOR_SERVING(code.program,legal,&memory,gpu,why);Require(p._q3->Valid(),why.c_str());
         p._ready=true;out=object;return true;
     } catch(const std::exception &e) {why=e.what();
         if(object) {if(object->_impl->_module) {out=object;return false;}delete object;}return false;}

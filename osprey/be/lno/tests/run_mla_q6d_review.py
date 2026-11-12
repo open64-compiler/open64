@@ -32,6 +32,12 @@ specs={'create':([C.c_char_p,C.c_char_p,C.c_void_p,C.c_size_t,HASH],C.c_void_p),
  'reader':([C.c_void_p,U,C.POINTER(U),C.POINTER(U),C.POINTER(C.c_uint)],C.c_int),'reader_done':([C.c_void_p,U,C.c_int],C.c_int),'bundle_retire':([C.c_void_p,U],C.c_int),'bundle':([C.c_void_p,U,C.POINTER(U),C.POINTER(C.c_uint)],C.c_int)}
 f={}
 for name,(args,result) in specs.items():x=getattr(api,'open64_q6d_'+name);x.argtypes=args;x.restype=result;f[name]=x
+gpu_device=os.environ.get('OPEN64_Q6D_GPU_DEVICE')
+if gpu_device:
+ assert gpu_device in ('h20_96gb','h20_141gb')
+ create_gpu=api.open64_h1d_q6d_create;create_gpu.argtypes=specs['create'][0]+[C.c_char_p];create_gpu.restype=C.c_void_p
+ f['create']=lambda *args:create_gpu(*args,gpu_device.encode())
+ change_gpu=api.open64_h1d_q6d_change;change_gpu.argtypes=[C.c_void_p,C.c_char_p];change_gpu.restype=None
 api.q6d_mock_configure.argtypes=[C.c_uint,C.c_uint,KERNEL];api.q6d_mock_configure.restype=C.c_int
 api.q6d_mock_fault.argtypes=[C.c_char_p];api.q6d_mock_advance.argtypes=[];api.q6d_mock_stat.argtypes=[C.c_uint];api.q6d_mock_stat.restype=U
 api.q6d_mock_base.argtypes=[C.c_uint];api.q6d_mock_base.restype=U
@@ -70,6 +76,7 @@ class Session:
   check('safe module/event teardown',f['destroy'](self.object));self.object=None
   check('no CUDA mock resource leaks',all(api.q6d_mock_stat(i)==0 for i in range(3)))
 for index,item in enumerate(json.loads((root/'cases.json').read_text())):
+ if gpu_device and (item['case']!='dense_s8_decode' or item['delivery']!=2):continue
  old=root/item['relative'];target=out/(item['case']+'-'+str(item['delivery']));target.mkdir()
  stages=[json.loads((old/(s+'.json')).read_text()) for s in ('prepare','attention','finalize')]
  recipe=stages[0]['recipe'];buffers=stages[0]['buffers'];schema_name='dense_s8_decode' if item['case']=='zero-active' else item['case']
@@ -123,6 +130,24 @@ for index,item in enumerate(json.loads((root/'cases.json').read_text())):
  check('consumer pending retains lease',not f['reader_done'](c.object,reader.value,0));check('bundle pinned until consumer completes',not f['bundle_retire'](c.object,bundle))
  api.q6d_mock_advance();check('consumer completion releases once',f['reader_done'](c.object,reader.value,0));check('duplicate reader completion refuses',not f['reader_done'](c.object,reader.value,0))
  c.close()
+ if gpu_device:
+  for phase in ('admission','submit','completion'):
+   for mismatch in ('device','budget','expired','calibration'):
+    check('H1d model reset',api.q6d_mock_configure(len(payloads),stages[1]['shared_bytes'],kernel));c=Session(descriptor,image,payloads,metadata,schema)
+    if phase=='admission':
+     change_gpu(c.object,mismatch.encode());t=U();ok=bool(f['begin'](c.object,c.array(),len(c.views),c.meta,0,C.byref(t)))
+     # A fresh budget generation is legal at Begin; calibration affects evidence only.
+     check('H1d admission outcome',ok==(mismatch in ('budget','calibration')))
+     if ok:check('H1d prepared cleanup',f['cancel'](c.object,t.value,1))
+    elif phase=='submit':
+     t=c.begin();change_gpu(c.object,mismatch.encode());before=api.q6d_mock_stat(3);ok=bool(f['submit'](c.object,t))
+     check('H1d submit outcome',ok==(mismatch=='calibration'))
+     if ok:api.q6d_mock_advance();c.complete(t,False)
+     else:check('H1d no mismatched launch',api.q6d_mock_stat(3)==before);check('H1d refused cleanup',f['cancel'](c.object,t,1))
+    else:
+     t=c.begin();check('H1d selected submit',f['submit'](c.object,t));change_gpu(c.object,mismatch.encode())
+     api.q6d_mock_advance();c.complete(t,False,mismatch=='calibration');check('H1d completed mismatch expires',not f['live'](c.object,t))
+    c.close()
  # Lifecycle/failure qualification on a fixed small source, separate from search.
  if item['case']=='dense_s8_decode' and item['delivery']==2:
   for mode in ('launch0','launch1','launch2','event_record'):
@@ -167,7 +192,7 @@ for index,item in enumerate(json.loads((root/'cases.json').read_text())):
   c.handles=[];fault('unload');check('unload failure retains cleanup object',not f['destroy'](c.object));fault();check('unload retry succeeds',f['destroy'](c.object));c.object=None
  cases.append(dict(case=item['case'],delivery=item['delivery'],status='PASS',source_outputs=6,ordered_kernels=3))
  (out/'progress.json').write_text(json.dumps(dict(cases=cases,checks=len(checks)),indent=2)+'\n');print('PASS Q6d',item['case'],item['delivery'],flush=True)
-report=dict(status='PASS',checks=checks,staging_products=len(cases),source_outputs=6*len(cases),torch_and_scalar_comparisons=12*len(cases),
+report=dict(status='PASS',gpu_device=gpu_device,checks=checks,staging_products=len(cases),source_outputs=6*len(cases),torch_and_scalar_comparisons=12*len(cases),
  authenticated_Q6c_files=True,unchanged_ir_and_explanations=True,exact_Q3_device_publication=True,opaque_device_addresses=True,explicit_context_stream_event_bindings=True,unknown_drain_keeps_leases=True,
  gpu_execution=False,driver_model_only=True,search_invocations=0,aot_selection='deferred')
 (out/'unchanged-Q6c-artifacts.json').write_text(json.dumps(unchanged,indent=2)+'\n')

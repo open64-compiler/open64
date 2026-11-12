@@ -7,7 +7,7 @@
 #include "tensor_kernel_lower.h"
 /* Construct the fixed algorithm with explicit abstract participant formals,
  * staging loops and typed synchronization. Failure abandons this fresh PU. */
-extern void VHO_tensor_selected_worker(const VHO_TENSOR_PROGRAM &,UINT32,SRCPOS,const std::string &,const std::string &);
+extern void VHO_tensor_selected_worker(const VHO_TENSOR_PROGRAM &,UINT32,SRCPOS,const std::string &,const std::string &,const std::string &device_key="");
 /* Verify the full persisted level key and structural boundary, without mutation.
  * A mismatch throws before downstream lowering or emission. */
 extern void VHO_tensor_verify_bridge(const char *);

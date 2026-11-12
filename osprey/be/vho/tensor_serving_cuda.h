@@ -34,6 +34,10 @@ public:
      * and CUDA >=12.8; owned cubin copy is hashed before load (no PTX/JIT).
      * On failure output may receive a cleanup-only handle; always retain it. */
     static bool Open(const VHO_MLA_CUDA_CODE &,const void *,size_t,void *,void *,void *,const VHO_MLA_CUDA_HOOKS &,VHO_MLA_CUDA *&,std::string &);
+    /* H1d embedding owner authenticates the requirements-to-code association.
+     * The explicit observer retains its budget reservation through completion;
+     * legacy CODE/HOOKS layouts and Open remain unchanged. */
+    static bool Open(const VHO_MLA_CUDA_CODE &,const void *,size_t,void *,void *,void *,const VHO_MLA_CUDA_HOOKS &,const DSL_GPU_SERVING_BINDING &,VHO_MLA_CUDA *&,std::string &);
     /* Refuse live jobs/readers/bundles/allocations. Failed CUDA cleanup retains
      * the object and handles for retry; no implicit context switching. Caller
      * externally excludes all concurrent API use during object destruction. */
