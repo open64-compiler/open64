@@ -336,6 +336,7 @@ void leaves(const VHO_TENSOR_PROGRAM &p,const std::map<UINT32,UINT32> &producer,
  * Chunk ownership gives disjoint writes; the later launch orders all merges. */
 VHO_TENSOR_SCHEDULE schedule(const VHO_TENSOR_PROGRAM &p) {
     VHO_TENSOR_SCHEDULE plan;plan.bindings=p;plan.attention=VHO_tensor_attention(p);
+    if(p.auto_chunks) need(VHO_tensor_select_attention_chunks(p,p.gpu,&plan.chunk_selection,NULL),"automatic source selection failed");
     const VHO_TENSOR_ATTENTION &a=plan.attention;UINT32 chunks=1;
     if(a.enabled) {
         chunks=p.split_width?(a.length+p.split_width-1)/p.split_width:1;
@@ -744,6 +745,7 @@ public:
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.operation",decimal(_kernel.id).c_str());
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.mapping",decimal(_kernel.mapping).c_str());
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.shared_bytes",decimal(VHO_tensor_shared_bytes(_program,_kernel)).c_str());
+        if(_program.auto_chunks) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.chunk_selection",VHO_tensor_chunk_selection_identity(_program).c_str());
         if(_program.register_latent) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_accumulation",_kernel.mapping>=3?"register_4_columns_per_warp":"none");
         if(_program.fuse_attention) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_layout",
             _kernel.mapping<3?"none":_kernel.stage==1?"maximum,denominator,normalized_latent":"latent,lse");
@@ -811,7 +813,13 @@ BOOL VHO_tensor_validate_program(const VHO_TENSOR_PROGRAM &p,FILE *diagnostic) {
             need(out.storage==(op.name=="common.reshape"?p.values[op.inputs[0]].storage:op.output),"incorrect storage alias");defined.insert(op.output);
         }
         need(defined.size()==p.values.size(),"unused/undefined recipe values");
-        if(p.fuse_attention) VHO_tensor_attention(p);return TRUE;
+        if(p.fuse_attention) VHO_tensor_attention(p);
+        if(p.auto_chunks) {
+            need(p.register_latent,"automatic chunks require register attention");
+            VHO_TENSOR_CHUNK_SELECTION choice;
+            need(VHO_tensor_select_attention_chunks(p,p.gpu,&choice,diagnostic) && choice.width==p.split_width,"stale automatic chunk selection");
+        }
+        return TRUE;
     } catch(const std::exception &e) {if(diagnostic) fprintf(diagnostic,"tensor lowering: %s\n",e.what());return FALSE;}
 }
 
@@ -890,6 +898,10 @@ BOOL VHO_tensor_verify_kernel(const VHO_TENSOR_PROGRAM &p,UINT32 ordinal,FILE *d
             const char *layout=ST_tensor_metadata(st,"tensor.kernel.attention_layout");
             std::string expected_layout=kernel.mapping<3?"none":kernel.stage==1?"maximum,denominator,normalized_latent":"latent,lse";
             need(layout && expected_layout==layout,"attention tuple layout mismatch");
+        }
+        if(p.auto_chunks) {
+            const char *selection=ST_tensor_metadata(st,"tensor.kernel.chunk_selection");
+            need(selection && VHO_tensor_chunk_selection_identity(p)==selection,"automatic selection metadata mismatch");
         }
         if(p.register_latent) {
             const char *accumulation=ST_tensor_metadata(st,"tensor.kernel.attention_accumulation");

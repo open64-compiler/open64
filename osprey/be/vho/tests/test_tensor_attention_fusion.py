@@ -79,7 +79,7 @@ class AttentionFusionTests(unittest.TestCase):
         self.run_tool(self.lowerer,'cooperate',fused,coop,'--allow-reassociate')
         return coop
 
-    def execute(self,length,split=0,variant='normal',rename=False,register_width=None,check_previous=False):
+    def execute(self,length,split=0,variant='normal',rename=False,register_width=None,check_previous=False,gpu=None):
         """Run actual mapped WHIRL CUDA on synchronized host workers and compare FP64."""
         previous=self.fixture(length,variant,split=split)
         if rename:
@@ -87,10 +87,16 @@ class AttentionFusionTests(unittest.TestCase):
             previous.write_text(reseal(text))
         recipe=self.root/'attention.json'
         self.run_tool(self.lowerer,'fuse-attention',previous,recipe,'--allow-reassociate')
-        if register_width is not None:
+        if gpu is not None:
+            profile=self.root/'gpu.json';profile.write_text(json.dumps(gpu))
+            selected=self.root/'automatic.json'
+            self.run_tool(self.lowerer,'auto-attention',recipe,selected,'--gpu-profile',profile,'--allow-reassociate')
+            recipe=selected;register_width=json.loads(recipe.read_text())['split_width']
+        elif register_width is not None:
             selected=self.root/'register.json'
             self.run_tool(self.lowerer,'stream-attention',recipe,selected,'--split-width',register_width,'--allow-reassociate')
-            recipe=selected;split=register_width
+            recipe=selected
+        if register_width is not None: split=register_width
         before,after=self.root/'attention.before.B',self.root/'attention.after.B'
         self.run_tool(self.lowerer,'device',recipe,before,after)
         for image in (before,after): self.run_tool(self.reader,'-st','-src',image,image.with_suffix('.T'))
@@ -124,6 +130,12 @@ class AttentionFusionTests(unittest.TestCase):
             self.assertIn('register_4_columns_per_warp',manifest.read_text())
             self.assertNotIn('attention_shared_cache_tile',(self.root/'kernels.cu').read_text())
             self.assertEqual(len(re.findall(r'__syncthreads\s*\(', (self.root/'kernels.cu').read_text())),10 if split and length>split else 5)
+        if gpu is not None:
+            rejected=self.root/'selection-corrupt.json'
+            self.run_tool(self.lowerer,'audit-attention-selection',after,recipe,rejected,success=False)
+            self.assertFalse(rejected.exists())
+            self.assertIn('AUTOMATIC COMPILE-TIME CHUNKS',source.read_text())
+            self.assertEqual(launch['chunk_selection'],json.loads(recipe.read_text())['chunk_selection'])
         if check_previous:
             old=self.root/'previous';old.mkdir()
             old_recipe=self.root/'attention.json'
@@ -139,6 +151,8 @@ class AttentionFusionTests(unittest.TestCase):
             self.assertEqual((old/'host.bin').read_bytes(),(self.root/'host.bin').read_bytes())
         for mode in ('audit-mask' ,'audit-barrier','audit-shared','audit-resource','audit-collective-prototype','audit-comment','audit-comment-missing','audit-attention-layout'):
             out=self.root/(mode+'.json');self.run_tool(self.lowerer,mode,after,recipe,out,success=False);self.assertFalse(out.exists())
+
+        return json.loads(recipe.read_text())
 
     def test_single_token_column_and_batch_tails(self): self.execute(1,rename=True)
     def test_short_fused_attention_unequal_shapes(self): self.execute(65)
