@@ -50,8 +50,9 @@ def expected_cost(p,hw,model,values,provenance):
     return output
 
 
-def audit(text,plan_text,source_text,guard_images):
+def audit(text,plan_text,source_text,guard_images,scenarios=SCENARIOS,source_keys=None):
     """Authenticate source joins and every cost/decision, including no-choice cases."""
+    require(scenarios and len(set(scenarios))==len(scenarios) and set(scenarios)<=set(SCENARIOS),'invalid explicit experiment scope')
     plans=plan_audit(plan_text,source_text);baseline={}
     for p in plans:
         if p['kind'] in ('1','2','3'):baseline.setdefault(tuple(int(p[k]) for k in ('pu','node','result','kind')),p)
@@ -112,14 +113,17 @@ def audit(text,plan_text,source_text,guard_images):
             g=dict(zip(GUARD_FIELDS,integers(words[4:-1])));guard_key=key[:3]+(choice,)
             require(guard_key in guards and g==guards[guard_key],'selected guard not freshly source/plan bound')
         results.append(dict(experiment=name,model=model,hardware=hw,values=values,provenance=provenance,costs=costs,selection=selected))
-    expected={(pu,node,result,scenario) for pu,node,result,_ in baseline for scenario in SCENARIOS}
+    keys={(pu,node,result) for pu,node,result,_ in baseline}
+    if source_keys is not None:
+        require(source_keys and set(source_keys)<=keys,'invalid explicit source scope');keys=set(source_keys)
+    expected={(pu,node,result,scenario) for pu,node,result in keys for scenario in scenarios}
     require(seen==expected,'missing comparison census')
     return results
 
 
-def write_reports(trace,plan,source,guards,output):
+def write_reports(trace,plan,source,guards,output,scenarios=SCENARIOS,source_keys=None):
     """Expose all components, nominal/gated choices and open executable gates."""
-    rows=audit(trace.read_text(),plan.read_text(),source.read_text(),list(guards.glob('*.guard')))
+    rows=audit(trace.read_text(),plan.read_text(),source.read_text(),list(guards.glob('*.guard')),scenarios=scenarios,source_keys=source_keys)
     output.mkdir(parents=True,exist_ok=False)
     cost='# What it summarizes: complete C0/C1/C2 declared-model costs, resources, bounds, nominal ranking and uncertainty-gated analytical selection.\n'
     cost+='COST_COLUMNS '+' '.join(COST)+'\n'

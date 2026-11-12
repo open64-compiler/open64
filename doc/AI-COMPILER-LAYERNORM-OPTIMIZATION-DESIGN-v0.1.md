@@ -1,6 +1,16 @@
 # LayerNorm Optimization Through Common Execution Planning
 
-Version v0.1 | 2026-10-28 | Design proposal for review; no new executable support
+Version v0.1 | 2026-10-28 | Living design; bounded native contracts and device lowering
+
+Executable amendment, 2026-10-28:
+[LN4 selected device WHIRL](AI-COMPILER-LAYERNORM-EXECUTABLE-LOWERING-v0.1.md)
+adds a source-revalidated lowering handoff and driver-active device-PU builder
+for C0/C1/C2. Standard high-level loops, shared arena lifetimes, uniform
+barriers and exact scalar ASM are authoritative WHIRL; existing `whirl2c -cuda`
+prints them. V1 and analysis source images remain unchanged. This explicit
+compiler API is independent of reduction coding; default driver request/profile
+plumbing, production runtime provider and GPU certification remain open. Final
+matrix/sanitizer/immutable-replay acceptance is recorded in the progress ledger.
 
 Arithmetic amendment, 2026-10-28: the separate
 [LN-REF-1 reference binding](AI-COMPILER-LAYERNORM-REFERENCE-ARITHMETIC-v0.1.md)
@@ -53,7 +63,8 @@ independent model bounds/oracle and cost-gated analytical selection. It reuses
 common hardware/evolution/candidate/plan services, not reduction coding. Missing
 built-in div/sqrt/carrier/barrier timing blocks selection; synthetic/envelope
 results remain analysis-only. V1, source WHIRL and runtime obligations remain
-unchanged. Executable LN4 and GPU/native provider verification are still open.
+unchanged. This was the analytical LN3 boundary; the LN4 amendment above now
+adds bounded materialization. GPU/native provider verification remains open.
 
 Runtime-bridge amendment, 2026-10-28:
 [LN2-d guard export/enforcement](AI-COMPILER-LAYERNORM-RUNTIME-GUARDS-v0.1.md)
@@ -65,8 +76,9 @@ No source-v1 promotion, reduction dependency, profitability decision or selected
 executable LayerNorm WHIRL is introduced. LN3 and LN4 remain separate gates.
 
 Design LayerNorm now, concurrently with reduction profitability and executable
-WHIRL lowering. Reuse reduction services rather than cloning their arithmetic
-contracts, target lookup, planning, event checks or trace infrastructure.
+WHIRL lowering. Reuse established common target/IR/printer/runtime boundaries;
+any reduction-specific service integration is a separately reviewed reuse,
+not a dependency of these normalization contracts or lowering services.
 Attention and MoE receive later semantic specializations of this framework;
 they are not prerequisites for this bounded normalization design.
 
@@ -599,7 +611,7 @@ are implemented here; preserve existing AI_NORM FORM/FACT and trace-off checks.
 | LN1 | LN-REF-1 ordered means, exact count/final division, sqrt-then-divide, RNE/gradual/class-only-NaN environment; explicit native v2, carriers and oracle, preserving v1. | Native v2/producer/PREOPT, conditional target binding/carriers, LN1-d oracle and bounded LN1-e integrated evidence implemented. WHIRL-derived primitive CUDA/offline review passes. Complete LayerNorm/GPU execution remains open. |
 | LN2 | Read-only C0/C1/C2 storage/event plans; reject unsupported reformulations under v1 and LN-REF-1. | Native conditional planning and LN2-d host runtime guard bridge implemented. Actual selected-kernel/register/internal-event conformance and expanded mappings/delivery remain open. |
 | LN3 | Complete costs, independent event/model oracle, analytical winner/fallback and trace auditor. | Bounded native service implemented independently of reduction coding; exact model/profile/refusal traces, conservative cost gate, common analysis-only plans and source preservation. Native timing/cache/carrier calibration remains open. |
-| LN4 | Selected high-level WHIRL, guards, CUDA emission and mapped before/after evidence. | Open; reuse reduction lowering; initial non-TMA scope. |
+| LN4 | Selected high-level WHIRL, guards, CUDA emission and mapped before/after evidence. | Bounded C0/C1/C2 materialization API and immutable replay accepted independently of reduction. See the [executable lowering detail](AI-COMPILER-LAYERNORM-EXECUTABLE-LOWERING-v0.1.md). Default driver request/profile integration, runtime provider and GPU gates remain open. |
 | LN5 | Separately authorized parallel statistics, RF retention, Welford or async/TMA refinements. | Deferred until base semantics/executable alternatives are reviewed. |
 | LN6 | Native numerical, spill/resource, PTX/SASS and paired-latency verification/calibration. | GPU gate open, not a blocker to design/compiler-side work. |
 

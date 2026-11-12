@@ -97,6 +97,7 @@ static BOOL LN3_Negatives(WN *scope,WN *value,const char *arch,FILE *trace)
 
 /* Publish actual native cost traces and paired source checkpoints. Selection
  * is analysis-only; no normalization kernel/provider is invoked or emitted. */
+#ifndef DSL_NORMALIZATION_COST_NO_MAIN
 int main(int argc,char **argv)
 {
   if (argc!=5) return 2;
@@ -115,3 +116,4 @@ int main(int argc,char **argv)
   DSL_BUILDER_MAPPED_IMAGE_REQUEST checkpoint={};checkpoint.path=path;
   return LN1c_Source_Checkpoint(&checkpoint)?0:1;
 }
+#endif
