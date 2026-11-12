@@ -1,12 +1,15 @@
 /* Copyright (C) 2026 Open64 Project */
-/* VHO-owned semantic common-algorithm expansion in the driver's empty PU.
+/* Shared common-High construction: faithful expansion in the driver's empty PU
+ * and one already selected algorithm body staged by the owning LNO transaction.
  * Design: doc/AI-COMPILER-SEARCH-M2A-HIGH-ADMISSION-v1.0.md.
  * Produces ordered signed DO_LOOP/ARRAY WHIRL, without GPU mapping, search,
- * runtime calls or a new binary representation. The driver owns buffer ABI,
+ * runtime calls or a new binary representation. Selected-body contract:
+ * doc/AI-COMPILER-SEARCH-M4-ATOMIC-HIGH-v1.0.md. The driver owns buffer ABI,
  * source/device contexts and publication; rejected preflight never mutates. */
 #include <cstdlib>
 #include <sstream>
 #include <set>
+#include <stdexcept>
 #include "tensor_kernel_lower.h"
 #include "wn.h"
 #include "wn_util.h"
@@ -46,10 +49,27 @@ class VHO_TENSOR_HIGH {
     std::map<UINT32, ST *> _buffers;
     std::vector<ST *> _indices;
     ST *_reduction, *_sum, *_next;
+    std::map<UINT32,WN *> _constants;
+    bool _selected;
 public:
     /* Borrow only validated detached facts and the active PU's source mapping. */
     VHO_TENSOR_HIGH(const VHO_TENSOR_PROGRAM &program, SRCPOS source)
-        : _program(program), _source(source) {}
+        : _program(program), _source(source), _selected(false) {}
+    /* Reuse source F32 constants during a transaction; never extend TCON or
+     * global constant-ST caches that cannot be safely truncated on rollback. */
+    WN *Float(UINT32 bits) {
+        if(!_selected) return VHO_high_float(bits);
+        if(!_constants.count(bits)) throw std::runtime_error("missing_source_F32_constant");
+        return WN_COPY_Tree(_constants[bits]);
+    }
+    /* Index immutable source constants before constructing a selected body. */
+    void Constants(WN *node) {
+        if(WN_operator(node)==OPR_CONST && WN_rtype(node)==MTYPE_F4)
+            _constants[TCON_uval(STC_val(WN_st(node)))]=node;
+        if(WN_operator(node)==OPR_BLOCK)
+            for(WN *s=WN_first(node);s;s=WN_next(s)) Constants(s);
+        else for(INT i=0;i<WN_kid_count(node);++i) if(WN_kid(node,i)) Constants(WN_kid(node,i));
+    }
     /* Construct a row-major affine index from fresh coordinate expressions. */
     WN *Index(const std::vector<UINT64> &shape, const std::vector<INT> &axes) {
         WN *index = VHO_high_integer(0);
@@ -106,7 +126,7 @@ public:
         const std::string &name = operation.name;
         if (name == "copy") return Read(input, Output_index(output));
         if (name == "common.fill_like")
-            return VHO_high_float(strtoul(operation.attributes.find("attr.value_bits")->second.c_str(), NULL, 16));
+            return Float(strtoul(operation.attributes.find("attr.value_bits")->second.c_str(), NULL, 16));
         if (name == "common.transpose") {
             const char *text = operation.attributes.find("attr.permutation")->second.c_str();
             std::vector<INT> axes(a.shape.size());
@@ -117,7 +137,7 @@ public:
         }
         if (name == "common.matmul" || name == "common.reduce_sum" || name == "common.reduce_max") {
             bool maximum = name == "common.reduce_max";
-            WN_INSERT_BlockLast(body, VHO_high_store(_sum, VHO_high_float(maximum ? 0xff800000 : 0)));
+            WN_INSERT_BlockLast(body, VHO_high_store(_sum, Float(maximum ? 0xff800000 : 0)));
             WN *fold = WN_CreateBlock(), *term;
             if (name == "common.matmul") {
                 const VHO_TENSOR_VALUE &b = _program.values[operation.inputs[1]];
@@ -128,8 +148,16 @@ public:
                 for (UINT32 i = 0; i + 2 < b.shape.size(); ++i)
                     ba.push_back(b.shape[i] == 1 ? -1 : (INT)(output.shape.size() - b.shape.size() + i));
                 ba.push_back(16); ba.push_back(output.shape.size() - 1);
+                UINT32 right=operation.inputs[1];
+                /* The sealed MLA value projection owns this transpose. Keep
+                 * its static index permutation affine and fuse it into the
+                 * projection instead of reading an unproduced scratch view. */
+                if(_selected && operation.output==_program.operations[37].output) {
+                    right=_program.operations[36].inputs[0];
+                    std::swap(ba[ba.size()-1],ba[ba.size()-2]);
+                }
                 term = WN_Mpy(MTYPE_F4, Read(input, Index(a.shape, aa)),
-                    Read(operation.inputs[1], Index(b.shape, ba)));
+                    Read(right, Index(_program.values[right].shape, ba)));
             } else {
                 term = Read(input, WN_Add(MTYPE_I8,
                     WN_Mpy(MTYPE_I8, Output_index(output), VHO_high_integer(a.shape.back())),
@@ -153,7 +181,7 @@ public:
             return WN_Create_Intrinsic(OPR_INTRINSIC_OP, MTYPE_F4, MTYPE_V,
                 name == "common.exp" ? INTRN_F4EXP : INTRN_F4LOG, 1, &arg);
         }
-        if (name == "common.isfinite") return WN_LE(MTYPE_F4, WN_Abs(MTYPE_F4, args[0]), VHO_high_float(0x7f7fffff));
+        if (name == "common.isfinite") return WN_LE(MTYPE_F4, WN_Abs(MTYPE_F4, args[0]), Float(0x7f7fffff));
         if (name == "common.logical_not") return WN_EQ(MTYPE_U4, args[0], WN_Intconst(MTYPE_U4, 0));
         if (name == "common.select") return WN_Select(MTYPE_F4, args[0], args[1], args[2]);
         if (name == "common.greater") return WN_GT(MTYPE_F4, args[0], args[1]);
@@ -169,6 +197,7 @@ public:
             for (WN *s = WN_first(node); s; s = WN_next(s)) Position(s);
         else for (INT i = 0; i < WN_kid_count(node); ++i) if (WN_kid(node, i)) Position(WN_kid(node, i));
     }
+#include "tensor_high_selected.inc"
     /* Commit faithful semantic expansion after complete preflight. Buffer
      * formals are disjoint storage allocations; reshape values share a formal. */
     void Materialize() {
@@ -247,4 +276,11 @@ BOOL VHO_tensor_materialize_high(const VHO_TENSOR_PROGRAM &program, SRCPOS sourc
         return FALSE;
     VHO_TENSOR_HIGH(program, source).Materialize();
     return TRUE;
+}
+
+/* Stage one selected semantic High body in the active source ABI. Legality and
+ * scratch capacity are checked by the owning LNO transaction before this call;
+ * all allocations belong to its savepoint. No native root is published here. */
+WN *VHO_tensor_build_selected_high(const VHO_TENSOR_PROGRAM &program, WN *scope) {
+    return VHO_TENSOR_HIGH(program,WN_Get_Linenum(scope)).Selected_body(scope);
 }

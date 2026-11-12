@@ -77,6 +77,7 @@
 #include "dsl_high_admission.h"
 #include "dsl_high_snapshot.h"
 #include "dsl_high_observer.h"
+#include "dsl_high_apply.h"
 #include "config_opt.h"
 #include "erbe.h"
 #include "glob.h"		    /* Irb_File_Name, Cur_PU_Name */
@@ -1017,8 +1018,8 @@ static BOOL Skip_Unswitch;
  * epoch expires before subsequent mutation. Refused search leaves ordinary
  * LNO in control and never establishes another PU or REGION context. */
 extern WN * Lnoptimizer(PU_Info* current_pu, 
-			WN *func_nd , DU_MANAGER *du_mgr,
-			ALIAS_MANAGER *alias_mgr)
+			WN *func_nd , DU_MANAGER *&du_mgr,
+			ALIAS_MANAGER *&alias_mgr)
 {
   extern BOOL Run_lno;
   STDOUT = stdout;
@@ -1031,6 +1032,7 @@ extern WN * Lnoptimizer(PU_Info* current_pu,
   DSL_HIGH_SNAPSHOT high_snapshot;
   DSL_HIGH_BINDINGS high_bindings;
   FILE *high_snapshot_trace = NULL;
+  bool high_selected = false;
 
   MEM_POOL_Initialize(&ARA_memory_pool, "ARA_memory_pool", FALSE);
   MEM_POOL_Push(&ARA_memory_pool);
@@ -1389,8 +1391,19 @@ extern WN * Lnoptimizer(PU_Info* current_pu,
           uint64_t capture_us = LNO_DSL_observer_time_us()-capture_begin;
           high_snapshot_trace = high_trace;
           high_snapshot.Print(high_trace, "CAPTURE");
+          DSL_HIGH_SEARCH_INPUT selected_input;
+          DSL_HIGH_SEARCH_REPORT selected_report;
           LNO_DSL_observe_high(func_nd, Du_Mgr, Alias_Mgr, Array_Dependence_Graph,
-              high_epoch, high_bindings, high_snapshot, capture_us, high_trace);
+              high_epoch, high_bindings, high_snapshot, capture_us, high_trace, &selected_input, &selected_report);
+          high_selected = LNO_DSL_apply_selected_high(func_nd, du_mgr, alias_mgr, high_epoch,
+              high_bindings, high_snapshot, selected_input, selected_report, high_trace);
+          if (high_selected) {
+            /* The complete admitted MLA PU is managed. Export CG dependences
+             * and use ordinary cleanup; do not reopen the selected schedule
+             * in reverse/fusion/fission/SNL/scalarization/prefetch passes. */
+            Build_CG_Dependence_Graph(Array_Dependence_Graph);
+            goto return_point;
+          }
         } else if (high_trace) {
           fprintf(high_trace, "AI_HIGH_SNAPSHOT 1 REFUSED reason=%s fallback=ordinary_lno\n", reason.c_str());
         }
@@ -1686,7 +1699,7 @@ return_point:
     // be driver may look at this bit after LNO is run
     // Reset_SYMTAB_mp_needs_lno(Current_Symtab);
   }
-  WN_Simplify_Tree(func_nd);
+  if (!high_selected) WN_Simplify_Tree(func_nd);
 
   if (LNO_Analysis)
     Lisp_Loops(func_nd, LNO_Analysis); 

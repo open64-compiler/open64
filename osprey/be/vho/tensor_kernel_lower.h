@@ -13,6 +13,7 @@
 #include "srcpos.h"
 #include "dsl_hardware_performance.h"
 struct pu_info;
+class WN;
 
 struct VHO_TENSOR_VALUE {
     std::string name;
@@ -135,6 +136,10 @@ extern BOOL VHO_tensor_materialize_kernel(const VHO_TENSOR_PROGRAM &,UINT32 oper
  * buffers. No GPU mapping, source-PU switch or runtime call is introduced.
  * Invalid recipe/context/numerical controls fail before native allocation. */
 extern BOOL VHO_tensor_materialize_high(const VHO_TENSOR_PROGRAM &,SRCPOS source,FILE *diagnostic);
+/* Build one already selected High body using the source ABI. The owning LNO
+ * transaction supplies legality/capacity checks and owns every allocation and
+ * rollback; this service never changes the active root or searches candidates. */
+extern WN *VHO_tensor_build_selected_high(const VHO_TENSOR_PROGRAM &,WN *);
 /* Audit the active reopened kernel against its source recipe, persisted
  * launch/argument bindings and construction fingerprint. No mutation occurs. */
 extern BOOL VHO_tensor_verify_kernel(const VHO_TENSOR_PROGRAM &,UINT32 operation,FILE *);
