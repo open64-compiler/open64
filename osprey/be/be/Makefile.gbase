@@ -194,6 +194,7 @@ BE_LNO_DIR		= $(BE_DIR)/lno
 BE_WHIRL2C_DIR		= $(BE_DIR)/whirl2c
 BE_WHIRL2F_DIR		= $(BE_DIR)/whirl2f
 BE_VHO_DIR		= $(BE_DIR)/vho
+
 IPL_DIR			= $(BUILD_TOT)/ipa/local
 IPA_DIR			= $(BUILD_TOT)/ipa/main/analyze
 IPO_DIR			= $(BUILD_TOT)/ipa/main/optimize
@@ -919,6 +920,8 @@ default:
 	$(MAKE) derived_files
 	$(MAKE) $(TARGETS)
 	$(MAKE) last
+
+driver.o: $(BE_VHO_DIR)/tensor_selected_key.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
 
 #----------------------------------------------------------------------
 #  The commands in this section are done BEFORE any other target is

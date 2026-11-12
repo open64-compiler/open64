@@ -153,6 +153,15 @@ Json::Value encode(const VHO_TENSOR_PROGRAM &p) {
         const VHO_TENSOR_VALUE &v=p.values[i];Json::Value x;x["name"]=v.name;x["dtype"]=v.dtype;x["role"]=v.role;x["ordinal"]=v.ordinal;x["storage"]=v.storage;x["shape"]=Json::Value(Json::arrayValue);
         for(size_t a=0;a<v.shape.size();++a) x["shape"].append(Json::UInt64(v.shape[a]));j["values"].append(x);
     }
+    /* Version the optional semantic extension independently of the unchanged
+     * physical recipe versions. Legacy unannotated JSON stays identical. */
+    Json::Value traits;traits["schema"]="open64.tensor-cache-traits.v1";
+    traits["values"]=Json::Value(Json::arrayValue);
+    for(size_t i=0;i<p.values.size();++i) if(!p.values[i].cache_trait.empty()) {
+        Json::Value value;value["value"]=Json::UInt(i);value["trait"]=p.values[i].cache_trait;
+        traits["values"].append(value);
+    }
+    if(traits["values"].size()) j["tensor_cache_traits"]=traits;
     for(size_t i=0;i<p.operations.size();++i) {
         const VHO_TENSOR_OPERATION &op=p.operations[i];Json::Value x;x["name"]=op.name;x["version"]=op.version;x["source_node"]=op.source_node;x["source_line"]=op.source_line;x["output"]=op.output;
         x["inputs"]=Json::Value(Json::arrayValue);x["attributes"]=Json::Value(Json::objectValue);
@@ -187,7 +196,7 @@ VHO_TENSOR_PROGRAM decode_json(const Json::Value &j) {
     bool attention=registers || j["schema"].asString()=="open64.tensor-kernel.v4";
     bool cooperative=attention || j["schema"].asString()=="open64.tensor-kernel.v3";
     bool optimized=cooperative || j["schema"].asString()=="open64.tensor-kernel.v2";
-    need(j.isObject() && j.size()==((automatic||fixed)?16:registers?15:attention?14:cooperative?12:optimized?11:8) && j["recipe_fingerprint"].isString() && (optimized || j["schema"].asString()=="open64.tensor-kernel.v1") && j["source_pu"].isString() && j["source_file"].isString() &&
+    need(j.isObject() && j.size()==((automatic||fixed)?16:registers?15:attention?14:cooperative?12:optimized?11:8)+j.isMember("tensor_cache_traits") && j["recipe_fingerprint"].isString() && (optimized || j["schema"].asString()=="open64.tensor-kernel.v1") && j["source_pu"].isString() && j["source_file"].isString() &&
         j["opt_level"].isUInt() && j["threads"].isUInt() && j["values"].isArray() && j["operations"].isArray(),"invalid recipe header");
     need(j["values"].size()<=4096 && j["operations"].size()<=4096,"oversized recipe");
     VHO_TENSOR_PROGRAM p;p.source_pu=j["source_pu"].asString();p.source_file=j["source_file"].asString();p.opt_level=j["opt_level"].asUInt();p.threads=j["threads"].asUInt();
@@ -215,6 +224,21 @@ VHO_TENSOR_PROGRAM decode_json(const Json::Value &j) {
         const Json::Value &x=j["values"][i];need(x.isObject() && x.size()==6 && x["name"].isString() && x["dtype"].isString() && x["role"].isUInt() && x["ordinal"].isUInt() && x["storage"].isUInt() && x["shape"].isArray(),"invalid value record");
         VHO_TENSOR_VALUE v;v.name=x["name"].asString();v.dtype=x["dtype"].asString();v.role=x["role"].asUInt();v.ordinal=x["ordinal"].asUInt();v.storage=x["storage"].asUInt();
         for(Json::ArrayIndex a=0;a<x["shape"].size();++a) {need(x["shape"][a].isUInt64(),"invalid extent");v.shape.push_back(x["shape"][a].asUInt64());}p.values.push_back(v);
+    }
+    if(j.isMember("tensor_cache_traits")) {
+        const Json::Value &traits=j["tensor_cache_traits"];
+        need(traits.isObject() && traits.size()==2 && traits["schema"].isString() &&
+            traits["schema"].asString()=="open64.tensor-cache-traits.v1" && traits["values"].isArray() &&
+            traits["values"].size()>0 && traits["values"].size()<=p.values.size(),"invalid cache trait extension");
+        for(Json::ArrayIndex i=0;i<traits["values"].size();++i) {
+            const Json::Value &value=traits["values"][i];
+            need(value.isObject() && value.size()==2 && value["value"].isUInt() &&
+                value["value"].asUInt()<p.values.size() && value["trait"].isString(),"invalid cache trait record");
+            VHO_TENSOR_VALUE &tensor=p.values[value["value"].asUInt()];
+            need(tensor.cache_trait.empty() && DSL_tensor_cache_trait_known(value["trait"].asString().c_str()),
+                "duplicate or unsupported cache trait");
+            tensor.cache_trait=value["trait"].asString();
+        }
     }
     for(Json::ArrayIndex i=0;i<j["operations"].size();++i) {
         const Json::Value &x=j["operations"][i];need(x.isObject() && x.size()==10 && x["name"].isString() && x["version"].isUInt() && x["source_node"].isUInt() && x["source_line"].isUInt() && x["output"].isUInt() && x["inputs"].isArray() && x["attributes"].isObject(),"invalid operation record");

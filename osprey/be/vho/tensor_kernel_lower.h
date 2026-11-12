@@ -12,12 +12,14 @@
 #include "defs.h"
 #include "srcpos.h"
 #include "dsl_hardware_performance.h"
+#include "dsl_tensor_traits.h"
 struct pu_info;
 class WN;
 
 struct VHO_TENSOR_VALUE {
     std::string name;
     std::string dtype;
+    std::string cache_trait;     /* declared role; empty preserves legacy input */
     std::vector<UINT64> shape;
     UINT32 role;                 /* 0 temporary, 1 input, 2 result */
     UINT32 ordinal;

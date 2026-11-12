@@ -86,6 +86,8 @@ bool DSL_observer_native_binding(WN *scope, const DSL_HIGH_SEARCH_INPUT &input, 
     for (unsigned i = 0; i < input.buffers.size(); ++i) {
         const VHO_TENSOR_VALUE &value = input.algorithm.values[input.buffers[i]];
         ST *formal = WN_st(WN_formal(scope,i)); TY_IDX pointer = ST_type(formal);
+        if(DSL_observer_metadata(ST_st_idx(formal),"tensor.cache.trait") != value.cache_trait)
+            return reason = "formal_cache_trait_mismatch", false;
         if (ST_sclass(formal) != SCLASS_FORMAL || !ST_is_value_parm(formal) || TY_kind(pointer) != KIND_POINTER ||
             !TY_is_restrict(pointer) || TY_mtype(TY_pointed(pointer)) != (value.dtype == "bool" ? MTYPE_U1 : MTYPE_F4))
             return reason = "formal_abi_mismatch", false;

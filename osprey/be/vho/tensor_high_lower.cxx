@@ -216,6 +216,10 @@ public:
             ST *formal = New_ST(CURRENT_SYMTAB);
             ST_Init(formal, Save_Str(name.str().c_str()), CLASS_VAR, SCLASS_FORMAL, EXPORT_LOCAL, pointer);
             Set_ST_is_value_parm(formal); Set_ST_Srcpos(*formal, _source);
+            /* Scalar buffer ABI projects the sealed semantic recipe's role;
+             * do not change pointer TY identity or invent a cache lifetime. */
+            if(!value.cache_trait.empty())
+                ST_tensor_bind_metadata(ST_st_idx(formal), "tensor.cache.trait", value.cache_trait.c_str());
             _buffers[i] = formal; formals.push_back(formal); Set_TYLIST_type(New_TYLIST(list), pointer);
         }
         Set_TYLIST_type(New_TYLIST(list), TY_IDX_ZERO); Set_PU_prototype(Pu_Table[ST_pu(function)], type);

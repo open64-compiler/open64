@@ -341,6 +341,16 @@ VPATH    =  $(SRC_DIRS)
 tensor_schedule.o: $(BE_DIR)/vho/tensor_schedule.cxx $(BE_DIR)/vho/tensor_kernel_lower.h $(BE_DIR)/vho/tensor_attention_pattern.inc
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
+# Detached value layout is shared by every observer/application translation
+# unit. Keep incremental builds from mixing incompatible vector element ABIs.
+dsl_high_observer.o dsl_high_observer_json.o dsl_high_observer_native.o \
+  dsl_high_apply.o lnopt_main.o tensor_high_lower.o tensor_schedule.o \
+  tensor_attention_chunk_select.o tensor_attention_search.o \
+  tensor_attention_search_test.o dsl_high_search_test.o: \
+  $(BE_DIR)/vho/tensor_kernel_lower.h $(COMMON_COM_DIR)/dsl_tensor_traits.h
+
+dsl_high_snapshot_capture.o: $(BE_LNOPT_DIR)/tests/dsl_high_snapshot_native_test.inc
+
 tensor_attention_chunk_select.o: $(BE_DIR)/vho/tensor_attention_chunk_select.cxx $(BE_DIR)/vho/tensor_kernel_lower.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 

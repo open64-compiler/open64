@@ -28,6 +28,10 @@ inline std::string VHO_tensor_selected_key(WN *root) {
         if(!*production) throw std::runtime_error("native_selected_empty_production_binding");
         std::string text=production;key<<"production;"<<text.size()<<':'<<text<<';';
     }
+    for(INT i=0;i<WN_num_formals(root);++i) {
+        const char *trait=ST_tensor_metadata(WN_st_idx(WN_formal(root,i)),"tensor.cache.trait");
+        if(trait) { std::string text=trait;key<<"cache-trait-v1;"<<i<<';'<<text.size()<<':'<<text<<';'; }
+    }
     return key.str();
 }
 
@@ -54,6 +58,9 @@ inline std::string VHO_tensor_bridge_key(WN *root) {
             const char *v=ST_tensor_metadata(WN_st_idx(root),name.str().c_str());std::string text=v?v:"";
             s<<(v!=NULL)<<';'<<text.size()<<':'<<text<<';';
         }
+        std::ostringstream name;name<<"tensor.argument."<<i<<".cache_trait";
+        const char *trait=ST_tensor_metadata(WN_st_idx(root),name.str().c_str());
+        if(trait) {std::string text=trait;s<<"cache-trait-v1;"<<i<<';'<<text.size()<<':'<<text<<';';}
     }
     /* Emitters declare every shared object, including an unused object. Bind
      * that complete inventory so resource metadata cannot hide a new array. */

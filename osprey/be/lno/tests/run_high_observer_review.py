@@ -22,6 +22,8 @@ def semantic_algorithm(recipe):
     result = {key: recipe[key] for key in ('source_pu', 'source_file', 'opt_level', 'threads', 'values', 'operations')}
     result = copy.deepcopy(result)
     result['schema'] = 'open64.high-algorithm.v1'
+    if 'tensor_cache_traits' in recipe:
+        result['tensor_cache_traits'] = copy.deepcopy(recipe['tensor_cache_traits'])
     result['operations'] = [{key: op[key] for key in ('name', 'version', 'source_node', 'source_line',
                                                     'inputs', 'output', 'attributes')} for op in recipe['operations']]
     return result

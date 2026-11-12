@@ -99,30 +99,39 @@ class WhirlExportInterpreter:
         example_inputs: Iterable[Any],
     ) -> WhirlModule:
         inputs = list(example_inputs)
+        cache_declarations = getattr(model, "__open64_tensor_traits__", {})
+        if cache_declarations and self._options.pu_mode != "single":
+            raise NotImplementedError("cache traits require single-PU tensor-expression ingestion")
         if self._options.pu_mode == "multiple":
             return self._export_multiple_pu_program(model, inputs)
 
         is_tiny_llama2_prefill = self._is_tiny_llama2_prefill_model(model)
         is_tiny_llama2_decode = self._is_tiny_llama2_decode_model(model)
+        if cache_declarations and (is_tiny_llama2_prefill or is_tiny_llama2_decode):
+            raise NotImplementedError("cache traits require supported tensor-expression ingestion")
         captured_graph = None
         if not is_tiny_llama2_prefill and not is_tiny_llama2_decode:
             captured_graph = self._capture_fx_graph(model)
+            # Cache declarations require the descriptor-preserving expression
+            # lane. A specialized frontend must never silently omit them.
             from .row_sum_ingestion import try_export_row_sum
-            row_sum = try_export_row_sum(self, model, inputs, captured_graph)
+            row_sum = None if cache_declarations else try_export_row_sum(self, model, inputs, captured_graph)
             if row_sum is not None:
                 return row_sum
             from .softmax_ingestion import try_export_stable_softmax
-            softmax = try_export_stable_softmax(self, model, inputs, captured_graph)
+            softmax = None if cache_declarations else try_export_stable_softmax(self, model, inputs, captured_graph)
             if softmax is not None:
                 return softmax
             from .normalization_ingestion import try_export_centered_affine_normalization
-            normalization = try_export_centered_affine_normalization(self, model, inputs, captured_graph)
+            normalization = None if cache_declarations else try_export_centered_affine_normalization(self, model, inputs, captured_graph)
             if normalization is not None:
                 return normalization
             from .tensor_ingestion import try_export_tensor_expressions
             expressions = try_export_tensor_expressions(self, model, inputs, captured_graph)
             if expressions is not None:
                 return expressions
+            if cache_declarations:
+                raise NotImplementedError("cache traits require supported tensor-expression ingestion")
 
         model_name = self._model_name(model)
         entry_name = self._model_class_name(model)

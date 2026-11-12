@@ -151,6 +151,12 @@ VHO_TENSOR_ATTENTION VHO_tensor_attention(const VHO_TENSOR_PROGRAM &p) {
     need((a.scale_bits&0x7f800000)!=0x7f800000,"attention requires a finite scale");
     need(p.split_width || a.length<=4096,"unsplit attention exceeds shared token capacity");
     a.q=p.operations[1].output;a.qr=in[1];a.cache=in[2];a.rope_cache=in[3];a.mask=in[6];
+    /* Explicit declarations must agree with the proved graph roles. Missing
+     * declarations retain the legacy derived, invocation-local recognition. */
+    for(UINT32 i=0;i<7;++i) if(!p.values[in[i]].cache_trait.empty())
+        need((i==2 && p.values[in[i]].cache_trait==DSL_TENSOR_TRAIT_LATENT_KV_CACHE) ||
+             (i==3 && p.values[in[i]].cache_trait==DSL_TENSOR_TRAIT_ROTARY_KEY_CACHE),
+             "declared cache trait contradicts absorbed attention dataflow");
     a.latent=p.operations[33].output;a.lse=p.operations[44].output;
     UINT32 last=0;for(size_t i=0;i<p.operations.size();++i) {
         if(p.operations[i].output>last) last=p.operations[i].output;
