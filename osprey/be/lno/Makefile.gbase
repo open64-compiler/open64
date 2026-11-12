@@ -194,6 +194,7 @@ BE_LNOPT_CXX_SRCS = \
   dsl_high_snapshot.cxx \
   dsl_high_snapshot_capture.cxx \
   dsl_high_reuse.cxx \
+  dsl_high_movement.cxx \
   dsl_high_quantized.cxx \
   dsl_q1_preopt.cxx \
   dsl_high_observer.cxx \
@@ -639,3 +640,19 @@ dsl_high_device_test: tensor_serving_schema.o tensor_workload.o dsl_high_device_
 	$(link.c++f) -o $@ $^
 
 LDIRT += dsl_high_device_test dsl_high_device_test.o dsl_high_device_import_test.o dsl_high_device_sha_test.o
+
+# H2 owned movement source projections; existing phase/library boundaries.
+
+dsl_high_movement.o: $(BE_LNOPT_DIR)/dsl_high_movement.cxx $(BE_LNOPT_DIR)/dsl_high_movement.h $(BE_DIR)/com/dsl_movement_facts.h
+dsl_high_observer.o dsl_high_observer_native.o dsl_high_apply.o dsl_high_device_test.o dsl_high_observer_json.o: $(BE_LNOPT_DIR)/dsl_high_observer.h $(BE_LNOPT_DIR)/dsl_high_movement.h
+
+# H2 reverse generated-header dependency closure.
+dsl_high_apply.o dsl_high_device_test.o dsl_high_movement_test.o dsl_high_observer.o dsl_high_observer_json.o dsl_high_observer_native.o dsl_high_quantized_movement_test.o dsl_high_search_test.o lnopt_main.o: $(BUILD_TOT)/be/lno/dsl_high_observer.h
+
+# H2 reverse generated-header dependency closure.
+dsl_high_apply.o dsl_high_quantized.o dsl_q1_preopt.o: $(BUILD_TOT)/common/com/dsl_native_tree_key.h
+
+# H2 complete owned-record consumer closure, including runtime sidecars.
+dsl_high_apply.o dsl_high_device_test.o dsl_high_movement.o dsl_high_movement_test.o \
+dsl_high_observer.o dsl_high_observer_json.o dsl_high_observer_native.o dsl_high_quantized_movement_test.o \
+dsl_high_search_test.o lnopt_main.o tensor_attention_search.o tensor_attention_search_test.o: $(BUILD_TOT)/be/com/dsl_movement_facts.h

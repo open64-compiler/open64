@@ -245,6 +245,12 @@ bool DSL_apply_preflight(WN *root,DSL_HIGH_EPOCH &epoch,const DSL_HIGH_BINDINGS 
         !LNO_DSL_validate_search_input(snapshot,bindings,input,reason)) return false;
     if(report.reuse.Available() && !report.reuse.Is_current(snapshot,epoch,bindings,input.algorithm))
         return reason="reuse_context_changed",false;
+    if(report.data_movement.Available()) {
+        DSL_MOVEMENT_FACTS fresh;
+        if(!LNO_DSL_capture_movement(snapshot,epoch,bindings,input.algorithm,report.reuse,fresh,reason) ||
+            !report.data_movement.Same_content(fresh) || !report.data_movement.Is_current(fresh.Capture().binding,true))
+            return reason="movement_source_facts_changed",false;
+    }
     if(input.movement_enabled && (!report.movement || !report.reuse.Available() ||
         report.movement_key!=LNO_DSL_movement_binding(input,report.reuse))) return reason="movement_binding_changed",false;
     unsigned free_maps=0;

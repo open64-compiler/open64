@@ -7,6 +7,7 @@
 #define DSL_NORMALIZATION_COST_NO_MAIN
 #include "dsl_normalization_cost_test.cxx"
 #include "opt_dsl_normalization_lower.h"
+#include "opt_dsl_movement.h"
 #include "opt_dsl_reduction_staged.h"
 #include "dsl_gpu_profile.h"
 #include "config_dsl.h"
@@ -45,6 +46,65 @@ static BOOL DSL_gpu_owner_import(const char *device,const char *file,const char 
       DSL_gpu_profile_resolve(target,file,digest,toolchain,owner,stderr);
 }
 
+std::string H2_review_prefix;
+/* Driver-owned COW checkpoint uses the existing mapped writer; it cannot
+ * mutate the source/maps/tables under the following facts-only observation. */
+static BOOL H2_checkpoint(const char *stage) {
+  std::string path=H2_review_prefix+"."+stage+".B";DSL_BUILDER_MAPPED_IMAGE_REQUEST request={};request.path=path.c_str();
+  return LN1c_Source_Checkpoint(&request);
+}
+/* H2 uses the actual native owner APIs. Detached output survives later source
+ * teardown but grants no epoch permission; changed canonical ranges/profile
+ * bindings require a new complete capture even when shape/cost stay equal. */
+static BOOL H2_normalization_facts(WN *scope,WN *value,const WOPT_DSL_NORMALIZATION_COST_REQUEST &request,
+    const DSL_GPU_DEVICE_CONTEXT *context,const DSL_GPU_DEVICE_CONTEXT *changed,FILE *trace)
+{
+  if(!H2_checkpoint("normalization.before")) return FALSE;
+  DSL_MOVEMENT_FACTS source;std::string reason;
+  BOOL captured_source=WOPT_DSL_capture_normalization_movement(scope,value,&request.plans[0],source,reason);
+  if(!captured_source) fprintf(stderr,"H2 normalization capture: %s\n",reason.c_str());
+  if(!Check(captured_source,"H2_normalization_capture")) return FALSE;
+  if(!Check(source.Available() && source.Capture().storages.size()==4 &&
+      !source.Is_current(source.Capture().binding,true) && !source.Capture().ledger.hbm.known && !source.Capture().ledger.spills.known,"H2_normalization_owned_source_unknown_hardware")) return FALSE;
+  source.Print(trace,"NATIVE_TEST");
+  for(UINT32 i=1;i<3;++i) {DSL_MOVEMENT_FACTS other;
+    if(!Check(WOPT_DSL_capture_normalization_movement(scope,value,&request.plans[i],other,reason) && !source.Same_content(other) &&
+        other.Capture().storages.size()==6+i,"H2_normalization_plan_event_binding")) return FALSE;
+    if(i==2 && !Check(other.Capture().storages[4].allocation==other.Capture().storages[5].allocation &&
+        other.Capture().storages[4].version!=other.Capture().storages[5].version,"H2_C2_same_slot_distinct_generations")) return FALSE;
+  }
+  WOPT_DSL_NORMALIZATION_PLAN_REQUEST altered=request.plans[0];altered.ranges[0].allocation_id+=10000;
+  DSL_MOVEMENT_FACTS other;
+  if(!Check(WOPT_DSL_capture_normalization_movement(scope,value,&altered,other,reason) && !source.Same_content(other),"H2_same_shape_other_allocation")) return FALSE;
+  altered=request.plans[0];altered.ranges[0].offset_bytes+=4;altered.ranges[0].allocation_bytes+=4;
+  if(!Check(WOPT_DSL_capture_normalization_movement(scope,value,&altered,other,reason) && !source.Same_content(other),"H2_changed_view_offset")) return FALSE;
+  altered=request.plans[0];altered.before[0]=0;
+  if(!Check(!WOPT_DSL_capture_normalization_movement(scope,value,&altered,other,reason) && !other.Available(),"H2_unknown_event_proof_refused")) return FALSE;
+  VHO_DSL_GPU_Context=changed;
+  BOOL captured=WOPT_DSL_capture_normalization_movement(scope,value,&request.plans[0],other,reason);
+  if(!Check(!captured || !source.Same_content(other),"H2_stale_H20_profile")) return FALSE;
+  VHO_DSL_GPU_Context=context;INT32 previous=Opt_Level;Opt_Level=2;
+  BOOL below=WOPT_DSL_capture_normalization_movement(scope,value,&request.plans[0],other,reason);Opt_Level=previous;
+  return Check(!below && !other.Available(),"H2_O2_no_new_capture") && H2_checkpoint("normalization.after");
+}
+/* R2 binding supplies the one-slot, exact-tail event proof. H2 does not create
+ * a reduction kernel or replace ascending accumulator updates with a tree. */
+static BOOL H2_reduction_facts(WN *scope,WN *value,const WOPT_DSL_REDUCTION_STAGED_REQUEST &request,FILE *trace)
+{
+  if(!H2_checkpoint("reduction.before")) return FALSE;
+  DSL_MOVEMENT_FACTS direct,staged;std::string reason;
+  if(!Check(WOPT_DSL_capture_reduction_movement(scope,value,&request.base,direct,reason),"H2_reduction_capture") ||
+      !Check(WOPT_DSL_capture_staged_movement(scope,value,&request,staged,reason),"H2_staged_capture")) return FALSE;
+  direct.Print(trace,"NATIVE_TEST");staged.Print(trace,"NATIVE_TEST");
+  if(!Check(!direct.Same_content(staged) && staged.Capture().lifetimes.size()>=2 &&
+      !staged.Capture().ledger.transactions.known && !staged.Capture().ledger.hbm.known,"H2_staged_generation_and_unknown_service")) return FALSE;
+  WOPT_DSL_REDUCTION_STAGED_REQUEST altered=request;altered.staging.next[4]=0;
+  if(!Check(!WOPT_DSL_capture_staged_movement(scope,value,&altered,staged,reason) && !staged.Available(),"H2_readers_complete_before_slot_reuse")) return FALSE;
+  altered=request;altered.staging.row_stride++;
+  BOOL available=WOPT_DSL_capture_staged_movement(scope,value,&altered,staged,reason);
+  return Check(!available || !staged.Same_content(direct),"H2_changed_staging_stride") && H2_checkpoint("reduction.after");
+}
+
 /* Query real LayerNorm owners without native mutation. Positive imports prove
  * capacity replacement, separate ns service, stamp equality and stale prepare
  * refusal; deliberately incomplete imports must never produce a selection. */
@@ -75,6 +135,7 @@ static BOOL DSL_gpu_owner_normalization(WN *scope,WN *value,
     if (!Check(!choice.selected_kind && !choice.common_selection.selected_plan_id,
         "gpu_owner_incomplete_normalization_no_selection")) return FALSE;
   } else {
+    if(!H2_normalization_facts(scope,value,request,context,changed,trace)) return FALSE;
     WOPT_DSL_NORMALIZATION_LOWERING plan,marker,saved;
     memset(&marker,0x5a,sizeof(marker));saved=marker;
     if (!Check(choice.selected_kind && choice.gpu_live_bytes &&
@@ -200,6 +261,7 @@ static BOOL DSL_gpu_owner_reduction(const DSL_GPU_DEVICE_CONTEXT *context,
             DSL_gpu_plan_stamp_equal(binding.base.gpu_stamp,gpu.Stamp()) &&
             binding.hardware_budget==std::min(cta_shared,sm_shared) && binding.quantum==quantum,
             "gpu_owner_reduction_imported_limits")) return FALSE;
+    if(!H2_reduction_facts(scope,value,request,trace)) return FALSE;
     OPEN64_REDUCTION_GUARD guard,guard_marker,guard_saved;
     memset(&guard_marker,0x5a,sizeof(guard_marker));guard_saved=guard_marker;
     WOPT_DSL_REDUCTION_STAGED_SLICE slice,marker,saved;
@@ -249,12 +311,13 @@ int main(int argc,char **argv)
         DSL_gpu_plan_stamp_equal(DSL_gpu_plan_stamp(owner.Context()),DSL_gpu_plan_stamp(other.Context()))) return 1;
     changed=other.Context();
   }
+  H2_review_prefix=std::string(argv[1])+".H2";
   char variant[]="default";char *source_args[]={argv[0],argv[1],variant};
   if (LN1b_Source_Producer(3,source_args)) return 1;
   WN *scope=PU_Info_tree_ptr(Current_PU_Info),*value=WN_first(WN_func_body(scope));
   while (value && (WN_operator(value)!=OPR_STID || WN_operator(WN_kid0(value))!=OPR_DSL)) value=WN_next(value);
   if (!value) return 1;
-  OPT_Fast_Math=FALSE;Roundoff_Level=ROUNDOFF_NONE;IEEE_Arithmetic=IEEE_ACCURATE;
+  Opt_Level=3;OPT_Fast_Math=FALSE;Roundoff_Level=ROUNDOFF_NONE;IEEE_Arithmetic=IEEE_ACCURATE;
   FILE *trace=fopen(argv[2],"wx");if (!trace) return 1;
   BOOL ok=DSL_gpu_owner_normalization(scope,value,owner.Context(),changed,expect_pass,trace) &&
       DSL_gpu_owner_reduction(owner.Context(),changed,expect_pass || partial,trace);

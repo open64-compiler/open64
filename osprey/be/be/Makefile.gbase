@@ -313,6 +313,7 @@ BE_REGION_CXX_SRCS = \
   region_util.cxx
 
 BE_VHO_CXX_SRCS = \
+  dsl_movement_gemm.cxx \
   dsl_ckks_expand.cxx \
   dsl_opt_plan.cxx \
   dsl_fusion_candidate.cxx \
@@ -620,6 +621,7 @@ BE_C_SRCS = \
 BE_C_OBJS =  $(BE_C_SRCS:.c=.o)
 
 BE_COM_CXX_SRCS = \
+  dsl_movement_facts.cxx \
   dsl_gpu_profile.cxx \
   dsl_ir_lower.cxx \
   dsl_ir_group_lower.cxx \
@@ -1249,3 +1251,15 @@ driver.o: $(BE_VHO_DIR)/tensor_quantized_device.h $(BE_VHO_DIR)/tensor_quantized
 
 # Serving schema reads VHO_TENSOR_PROGRAM including the owned GPU profile.
 tensor_serving_schema.o: $(BE_VHO_DIR)/tensor_kernel_lower.h $(BUILD_TOT)/be/com/dsl_gpu_plan.h
+
+# H2 owned movement source projections; existing phase/library boundaries.
+
+dsl_movement_facts.o: $(BE_COM_DIR)/dsl_movement_facts.cxx $(BE_COM_DIR)/dsl_movement_facts.h $(BE_VHO_DIR)/fhe_sha256.h
+dsl_movement_gemm.o: $(BE_VHO_DIR)/dsl_movement_gemm.cxx $(BE_VHO_DIR)/dsl_movement_gemm.h $(BE_COM_DIR)/dsl_movement_native.h
+dsl_lower.o dsl_movement_gemm.o dsl_movement_facts.o: $(BE_COM_DIR)/dsl_movement_facts.h $(BE_COM_DIR)/dsl_gpu_plan.h
+
+# H2 reverse generated-header dependency closure.
+driver.o dsl_high_quantized.o dsl_q1_preopt.o: $(BUILD_TOT)/common/com/dsl_native_tree_key.h
+
+# H2 complete owned-record consumer closure, including runtime sidecars.
+driver.o dsl_lower.o dsl_movement_facts.o dsl_movement_gemm.o: $(BUILD_TOT)/be/com/dsl_movement_facts.h

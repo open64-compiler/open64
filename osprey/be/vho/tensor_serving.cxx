@@ -359,6 +359,64 @@ bool VHO_TENSOR_SERVING::Freeze_costing(UINT64 ticket,VHO_Q4_SNAPSHOT &out,std::
         f.key=VHO_q4_snapshot_key(f);out=f;return true;
     } catch(const std::exception &e) {why=e.what();return false;}
 }
+/* Freeze through existing Q3 observation, then copy exact registered offsets,
+ * capacities and versions under the same registry ownership. No native IR or
+ * caller device pointers escape. Q3 pins, not a copied string, retain authority. */
+bool VHO_TENSOR_SERVING::Capture_movement(UINT64 ticket,DSL_MOVEMENT_FACTS &out,std::string &why) {
+    out=DSL_MOVEMENT_FACTS();VHO_Q4_SNAPSHOT snapshot;if(!Freeze_costing(ticket,snapshot,why)) return false;
+    std::lock_guard<std::mutex> lock(_impl->mutex);
+    try {
+        need(_impl->calls.count(ticket) && !_impl->calls[ticket].running,"movement_stale_Q3_ticket");
+        IMPL::CALL &call=_impl->calls[ticket];_impl->Check_GPU(call.gpu,_impl->Backing(call.views,call.metadata),call.gpu.lease_key);
+        DSL_MOVEMENT_CAPTURE c;c.binding.family="MLA-Q3";c.binding.owner="Q3-ticket-"+std::to_string(ticket);
+        c.binding.source_key=snapshot.schema.source_key;c.binding.proof_key=snapshot.key;c.binding.serving_key=snapshot.key;
+        c.binding.device_key=call.gpu.selection_key;c.binding.controls="Q3-registered-ABI; phase="+snapshot.facts.workload.phase;
+        c.work.owner="Q3 whole invocation";c.work.domain="registered payload/scale/page/index views; service unknown";
+        c.work.instances=mul(mul(snapshot.schema.geometry.batch,snapshot.schema.geometry.queries),snapshot.schema.geometry.heads);
+        c.work.width=snapshot.schema.geometry.keys;c.work.active_last=c.work.width;c.work.tail_policy="actual-Q3-valid-lengths-and-pages";
+        c.work.axes.push_back("batch");c.work.extents.push_back(snapshot.schema.geometry.batch);c.work.axes.push_back("query");c.work.extents.push_back(snapshot.schema.geometry.queries);c.work.axes.push_back("head");c.work.extents.push_back(snapshot.schema.geometry.heads);c.work.axes.push_back("logical_key");c.work.extents.push_back(snapshot.schema.geometry.keys);
+        c.work.numerical="source S8/U4 scale/version/update semantics unchanged; no readiness inferred";
+        UINT64 read_bytes=0,write_bytes=0,scale_bytes=0,page_bytes=0,index_bytes=0;
+        for(unsigned i=0;i<call.views.size()+1;++i) {
+            bool metadata=i==call.views.size();const VHO_SERVING_VIEW &view=metadata?call.metadata:call.views[i];
+            IMPL::ALLOCATION &allocation=_impl->Allocation(view.handle);
+            DSL_MOVEMENT_STORAGE value;value.id="view/"+std::to_string(i);value.allocation=std::to_string(view.handle.id);
+            value.version=std::to_string(allocation.generation)+"/"+std::to_string(allocation.version);
+            value.alignment=alignment(add((UINT64)(uintptr_t)allocation.base,view.offset));value.offset=view.offset;value.bytes=view.bytes;value.capacity=allocation.bytes;value.alias_proved=true;value.strides_known=true;
+            bool input=metadata || (i<snapshot.schema.roots.size() && _impl->program.values[snapshot.schema.roots[i]].role==1);
+            if(metadata || i==snapshot.schema.roots.size()) {
+                value.element_bytes=metadata?8:4;value.role=metadata?"invocation-metadata":"status";value.encoding=metadata?"I64":"I32";
+                value.shape.push_back(view.bytes/(metadata?8:4));value.strides.push_back(metadata?8:4);
+            } else {
+                UINT32 root=snapshot.schema.roots[i];const VHO_TENSOR_VALUE &source=_impl->program.values[root];
+                value.element_bytes=scalar(source);value.role=source.cache_trait.empty()?"source-root":source.cache_trait;value.encoding=source.cache_encoding.empty()?source.dtype:source.cache_encoding;
+                value.shape.assign(source.shape.begin(),source.shape.end());value.strides.resize(value.shape.size());UINT64 stride=scalar(source);
+                for(size_t j=value.shape.size();j;--j) {value.strides[j-1]=stride;stride=mul(stride,value.shape[j-1]);}
+                for(unsigned pair=1;pair<4;pair+=2) if((snapshot.schema.incoming[pair]!=~0U && _impl->program.values[snapshot.schema.incoming[pair]].storage==root) || _impl->program.values[snapshot.schema.returned[pair]].storage==root) scale_bytes=add(scale_bytes,view.bytes);
+                if(root==snapshot.schema.table) page_bytes=add(page_bytes,view.bytes);
+                if(root==snapshot.schema.tokens || root==snapshot.schema.slots) index_bytes=add(index_bytes,view.bytes);
+            }
+            value.layout="Q1-disjoint-contiguous-root";value.first_use="Q3-Begin";value.last_use="Q3-proven-completion/publication";c.storages.push_back(value);
+            DSL_MOVEMENT_ACCESS access;access.id=value.id+"/source";access.storage=value.id;access.version=value.version;
+            access.offset=view.offset;access.extent=view.bytes;access.owner=c.work.owner;access.relation="registered-view-only; source dynamic access count unknown";
+            // ABI payload is not a dynamic request count. Individual accesses
+            // keep zero counts without claiming a complete source traffic sum.
+            c.accesses.push_back(access);
+            if(input) read_bytes=add(read_bytes,view.bytes);else write_bytes=add(write_bytes,view.bytes);
+            if(input && value.role!="source-root" && value.role!="status" && value.role!="invocation-metadata")
+                DSL_movement_source_lifetime(c,value.id,value.version,"invocation","Q3-pinned-generation-and-publication-contract");
+        }
+        c.ledger.useful_reads=DSL_MOVEMENT_BYTES(read_bytes);c.ledger.useful_writes=DSL_MOVEMENT_BYTES(write_bytes);
+        c.ledger.scale=DSL_MOVEMENT_BYTES(scale_bytes);c.ledger.page=DSL_MOVEMENT_BYTES(page_bytes);c.ledger.index=DSL_MOVEMENT_BYTES(index_bytes);
+        return DSL_MOVEMENT_FACTS::Create(c,out,why);
+    } catch(const std::exception &e) {why=e.what();return false;}
+}
+/* Copied data never extends a ticket's life; fresh source/page/scale/lease
+ * observation and full-content equality are required before using the facts. */
+bool VHO_TENSOR_SERVING::Revalidate_movement(UINT64 ticket,const DSL_MOVEMENT_FACTS &facts,std::string &why) {
+    DSL_MOVEMENT_FACTS fresh;if(!Capture_movement(ticket,fresh,why)) return false;
+    if(!facts.Same_content(fresh)) {why="movement_Q3_binding_changed";return false;}return true;
+}
 /* Checking the exact rebuilt identity cannot revive an expired snapshot. */
 bool VHO_TENSOR_SERVING::Revalidate_costing(UINT64 ticket,const std::string &key,std::string &why) {
     VHO_Q4_SNAPSHOT fresh;if(!Freeze_costing(ticket,fresh,why)) return false;

@@ -1,5 +1,16 @@
 # Common Execution Planning For AI Building Blocks
 
+H2 implementation update, 2026-11-12:
+[owned movement facts v1.0](AI-COMPILER-H2-OWNED-MOVEMENT-FACTS-v1.0.md)
+projects the existing admitted family owners into detached work/storage/access,
+byte-ledger and lifetime/event records with immutable H20 dependency bindings.
+This is a source/conditional-contract projection, not general four-family
+executable admission. Missing canonical routes and later materializers retain
+the explicit gates in [plan v1.3](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.3.md).
+No candidate mutation, hardware-service claim, new instruction or runtime
+lease is implied. The architecture and future common planning scope below remain.
+
+
 Version v0.1 | 2026-10-27 | Adopted architecture; general implementation pending
 
 ## H1 resolved device context, 2026-11-12

@@ -187,6 +187,9 @@ BE_COM_CXX_SRCS = \
   cxx_template.cxx
 
 BE_OPT_CXX_SRCS = \
+  opt_dsl_movement_normalization.cxx \
+  opt_dsl_movement_reduction.cxx \
+  opt_dsl_movement_staged.cxx \
   opt_alias_class.cxx	\
   opt_base.cxx		\
   opt_bb.cxx		\
@@ -500,3 +503,15 @@ include $(COMMONRULES)
 #----------------------------------------------------------------------
 
 DSONAMEOPT =
+
+# H2 owned movement source projections; existing phase/library boundaries.
+
+opt_dsl_movement_normalization.o opt_dsl_movement_reduction.o opt_dsl_movement_staged.o: $(BE_OPT_DIR)/opt_dsl_movement.h $(BE_OPT_DIR)/opt_dsl_movement_internal.h $(BE_DIR)/com/dsl_movement_native.h
+opt_dsl_movement_normalization.o opt_dsl_movement_reduction.o opt_dsl_movement_staged.o opt_dsl_normalization_cost.o opt_dsl_reduction.o opt_dsl_reduction_staged.o: $(BE_OPT_DIR)/opt_dsl_movement.h $(BE_DIR)/com/dsl_movement_facts.h
+
+
+opt_dsl_movement_normalization.o opt_dsl_movement_reduction.o opt_dsl_movement_staged.o: $(BUILD_TOT)/common/com/dsl_native_tree_key.h
+
+# H2 complete owned-record consumer closure, including runtime sidecars.
+opt_dsl_movement_normalization.o opt_dsl_movement_reduction.o opt_dsl_movement_staged.o opt_dsl_normalization_cost.o \
+opt_dsl_reduction.o opt_dsl_reduction_staged.o: $(BUILD_TOT)/be/com/dsl_movement_facts.h

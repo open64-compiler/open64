@@ -8,6 +8,7 @@
 #include <vector>
 #include <string.h>
 #include "opt_dsl_normalization_cost.h"
+#include "opt_dsl_movement.h"
 #include "pu_info.h"
 #include "config_dsl.h"
 #include "../vho/dsl_gemm_occupancy.h"
@@ -511,6 +512,9 @@ BOOL WOPT_DSL_select_normalization_plan(WN *scope,WN *assignment,
       LN3_Profile(r->profile,hw):WOPT_DSL_NORM_COST_PROFILE_INVALID;
   uint64_t sms = hw.performance.sms;
   BOOL sms_known = !gpu.Bound() || gpu.Resource_limit(DSL_GPU_VISIBLE_SMS, &sms);
+  DSL_MOVEMENT_FACTS movement_source;std::string movement_reason;
+  if ((gpu.Bound() || trace) && WOPT_DSL_capture_normalization_movement(scope,assignment,&r->plans[0],movement_source,movement_reason))
+    movement_source.Print(trace,"BEFORE_SEARCH");
   BOOL incomplete=FALSE;
   for (UINT32 i=0;i<3;++i) {
     WOPT_DSL_NORMALIZATION_COST &c=out.costs[i];c.plan_status=bindings[i].status;
@@ -554,6 +558,10 @@ BOOL WOPT_DSL_select_normalization_plan(WN *scope,WN *assignment,
     }
   }
   if (!gpu.Is_current(VHO_DSL_GPU_Context)) return FALSE;
+  if(movement_source.Available()) {
+    DSL_MOVEMENT_FACTS fresh;
+    if(!WOPT_DSL_capture_normalization_movement(scope,assignment,&r->plans[0],fresh,movement_reason) || !movement_source.Same_content(fresh)) return FALSE;
+  }
   *output=out;
   if (trace) {
     LN3_Trace(*r,out,trace);

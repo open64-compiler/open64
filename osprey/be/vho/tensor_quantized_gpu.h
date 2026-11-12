@@ -5,6 +5,7 @@
 #ifndef tensor_quantized_gpu_INCLUDED
 #define tensor_quantized_gpu_INCLUDED
 #include "tensor_quantized_plan.h"
+#include "../com/dsl_movement_facts.h"
 
 enum VHO_Q6_DELIVERY { VHO_Q6_SYNCHRONOUS=1, VHO_Q6_BULK_TMA=2 };
 struct VHO_Q6_CONTROL {
@@ -83,4 +84,9 @@ extern bool VHO_q6_pipeline(const VHO_Q6_MAPPING &,std::vector<VHO_Q6_ACTION> &,
 /* Independent state-machine validation rejects premature reads/overwrite,
  * missing publication/drain and cross-pass reordering; no native mutation. */
 extern bool VHO_q6_verify_pipeline(const VHO_Q6_MAPPING &,const std::vector<VHO_Q6_ACTION> &,std::string &);
+/* H2 projects an already qualified selected mapping/action trace. Complete
+ * source/Q3/profile bindings are mandatory; representative generation events
+ * supplement the full verified trace identity. No launch/search authority. */
+extern bool VHO_q6_capture_movement(const VHO_Q6_MAPPING &,const std::vector<VHO_Q6_ACTION> &,
+    const DSL_MOVEMENT_BINDING &,DSL_MOVEMENT_FACTS &,std::string &);
 #endif
