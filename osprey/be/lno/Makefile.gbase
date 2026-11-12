@@ -190,6 +190,8 @@ BE_LNOPT_SRCS =
 BE_LNOPT_CXX_SRCS = \
   dsl_partition_axis.cxx \
   dsl_high_admission.cxx \
+  dsl_high_snapshot.cxx \
+  dsl_high_snapshot_capture.cxx \
   lnodriver.cxx			\
   lnopt_main.cxx		\
   lnoutils.cxx			\

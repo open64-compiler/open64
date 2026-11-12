@@ -142,6 +142,9 @@ def review(args):
         assert difference and 'DO_LOOP' in difference and 'ARRAY' in difference and 'COMMENT' in difference
         assert '__open64_dsl_' not in after.with_suffix('.T').read_text()
         enabled, trace = backend(context + '-enabled', after, 'on')
+        if args.require_snapshot:
+            for stage in ('CAPTURE', 'EXPIRE_BEFORE_HOIST', 'OWNED_AFTER_CLEANUP'):
+                assert len(re.findall(r'AI_HIGH_SNAPSHOT 1 ' + stage + r' ', trace)) == 1
         assert re.search(r'AI_HIGH 1 ADMISSION open64_common_high admitted admitted loops=\d+ memory=\d+', trace)
         assert 'Pre_Optimizer phase=' in trace
         for label, flag, tracing in [('off', 'off', 'on'), ('default', None, 'on'), ('trace-off', 'on', 'off')]:
@@ -208,7 +211,8 @@ def review(args):
         assert 'AI_HIGH ' not in trace
     count = sum(len(c['references']) for c in report['contexts'].values())
     report.update(status='PASS', form_cases=statuses, reference_executions=count,
-                  lower_level_fallback=True, no_search_or_snapshot=True, gpu_execution=False,
+                  lower_level_fallback=True, search_executed=False,
+                  owned_snapshot_required=args.require_snapshot, gpu_execution=False,
                   fixture_frontend='cached-image' if args.fixture_image else 'fresh-installed-Open64')
     (out / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
     (out / 'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' +
@@ -222,6 +226,7 @@ def main():
     for name in ('tools', 'lno', 'b2a', 'lowerer', 'w2c', 'previous', 'include', 'cc', 'source', 'output'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--fixture-image', type=Path)
+    parser.add_argument('--require-snapshot', action='store_true')
     review(parser.parse_args())
 
 
