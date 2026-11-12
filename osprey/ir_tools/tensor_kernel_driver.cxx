@@ -35,6 +35,11 @@
 #include "tensor_kernel_lower.h"
 #include "tensor_attention_search.h"
 #include "tensor_schedule_source.h"
+#ifdef OPEN64_TENSOR_SELECTED_BRIDGE
+#include "tensor_selected_bridge.h"
+#include "tensor_selected_key.h"
+#include "be_symtab.h"
+#endif
 
 BOOL Run_vsaopt=FALSE;
 INT8 Debug_Level=0;
@@ -135,6 +140,11 @@ Json::Value encode(const VHO_TENSOR_PROGRAM &p) {
     if(p.register_latent) {j["schema"]="open64.tensor-kernel.v5";j["register_latent"]=true;}
     if(p.auto_chunks) {j["schema"]="open64.tensor-kernel.v6";j["chunk_selection"]=selection_json(p);}
     if(p.search_selected) {j["schema"]="open64.tensor-kernel.v7";j["attention_search"]=search_evidence(p);}
+    /* Fixed physical policy survives the driver handoff without an automatic
+     * selector or search certificate that would reopen candidate exploration. */
+    if(!p.auto_chunks && !p.search_selected && p.register_latent && p.chunk_policy!=1) {
+        j["schema"]="open64.tensor-kernel.v8";j["fixed_chunk_policy"]=p.chunk_policy;
+    }
     for(size_t i=0;i<p.values.size();++i) {
         const VHO_TENSOR_VALUE &v=p.values[i];Json::Value x;x["name"]=v.name;x["dtype"]=v.dtype;x["role"]=v.role;x["ordinal"]=v.ordinal;x["storage"]=v.storage;x["shape"]=Json::Value(Json::arrayValue);
         for(size_t a=0;a<v.shape.size();++a) x["shape"].append(Json::UInt64(v.shape[a]));j["values"].append(x);
@@ -167,12 +177,13 @@ VHO_TENSOR_PROGRAM decode_json(const Json::Value &j) {
         VHO_TENSOR_PROGRAM p=search_admit(j["attention_search"]);
         need(search_text(encode(p))==search_text(j),"stale selected MLA recipe");return p;
     }
+    bool fixed=j["schema"].asString()=="open64.tensor-kernel.v8";
     bool automatic=j["schema"].asString()=="open64.tensor-kernel.v6";
-    bool registers=automatic || j["schema"].asString()=="open64.tensor-kernel.v5";
+    bool registers=fixed || automatic || j["schema"].asString()=="open64.tensor-kernel.v5";
     bool attention=registers || j["schema"].asString()=="open64.tensor-kernel.v4";
     bool cooperative=attention || j["schema"].asString()=="open64.tensor-kernel.v3";
     bool optimized=cooperative || j["schema"].asString()=="open64.tensor-kernel.v2";
-    need(j.isObject() && j.size()==(automatic?16:registers?15:attention?14:cooperative?12:optimized?11:8) && j["recipe_fingerprint"].isString() && (optimized || j["schema"].asString()=="open64.tensor-kernel.v1") && j["source_pu"].isString() && j["source_file"].isString() &&
+    need(j.isObject() && j.size()==((automatic||fixed)?16:registers?15:attention?14:cooperative?12:optimized?11:8) && j["recipe_fingerprint"].isString() && (optimized || j["schema"].asString()=="open64.tensor-kernel.v1") && j["source_pu"].isString() && j["source_file"].isString() &&
         j["opt_level"].isUInt() && j["threads"].isUInt() && j["values"].isArray() && j["operations"].isArray(),"invalid recipe header");
     need(j["values"].size()<=4096 && j["operations"].size()<=4096,"oversized recipe");
     VHO_TENSOR_PROGRAM p;p.source_pu=j["source_pu"].asString();p.source_file=j["source_file"].asString();p.opt_level=j["opt_level"].asUInt();p.threads=j["threads"].asUInt();
@@ -182,6 +193,10 @@ VHO_TENSOR_PROGRAM decode_json(const Json::Value &j) {
         if(cooperative) {need(j["cooperative"].isBool() && j["cooperative"].asBool(),"invalid cooperative policy");p.cooperative=true;}
         if(attention) {need(j["fuse_attention"].isBool() && j["fuse_attention"].asBool() && j["attention_numerics"].isString() && j["attention_numerics"].asString()=="fp32-local-softmax-rescaled-merge","invalid attention numerical policy");p.fuse_attention=true;}
         if(registers) {need(j["register_latent"].isBool() && j["register_latent"].asBool(),"invalid register accumulation policy");p.register_latent=true;}
+        if(fixed) {
+            need(j["fixed_chunk_policy"].isUInt() && j["fixed_chunk_policy"].asUInt()>=2 &&
+                j["fixed_chunk_policy"].asUInt()<=6,"invalid fixed physical policy");p.chunk_policy=j["fixed_chunk_policy"].asUInt();
+        }
         if(automatic) {
             const Json::Value &selection=j["chunk_selection"];
             need(selection.isObject() && selection.size()==6 && selection["schema"].isString() &&
@@ -292,12 +307,19 @@ bool remove_barrier(WN *n,const char *name="__syncthreads") {
     } else for(INT i=0;i<WN_kid_count(n);++i) if(WN_kid(n,i) && remove_barrier(WN_kid(n,i),name)) return true;
     return false;
 }
+#ifdef OPEN64_TENSOR_SELECTED_BRIDGE
+#include "tensor_selected_bridge_driver.inc"
+#endif
 } // namespace
 
 /* The executable establishes exactly one source PU or fresh device translation
  * unit. The VHO service never expands its compilation scope or writes files. */
 int main(int argc,char **argv) {
     try {
+#ifdef OPEN64_TENSOR_SELECTED_BRIDGE
+        if(argc>=2 && (!strcmp(argv[1],"bridge") || !strcmp(argv[1],"bridge-audit") || !strcmp(argv[1],"bridge-ptx") || !strcmp(argv[1],"bridge-code-key")))
+            return selected_bridge_command(argc,argv);
+#endif
         if(argc==6 && !strcmp(argv[1],"high")) {
             need(access(argv[3],F_OK)!=0 && access(argv[4],F_OK)!=0 && access(argv[5],F_OK)!=0,
                 "High checkpoint/manifest destination exists");

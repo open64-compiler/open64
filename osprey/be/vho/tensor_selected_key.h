@@ -1,0 +1,64 @@
+/* Copyright (C) 2026 Open64 Project */
+/* Exact selected-MLA checkpoint bindings shared by owning phases and read-only
+ * emitters. No search or PU switching. Common/com supplies only tree identity.
+ * Contract: doc/AI-COMPILER-SEARCH-M5-DEVICE-BRIDGE-v1.0.md. */
+#ifndef TENSOR_SELECTED_KEY_H
+#define TENSOR_SELECTED_KEY_H
+#include "dsl_native_tree_key.h"
+#include <cstring>
+/* Bind the closed MLA producer witness and all fixed obligations to the actual
+ * accepted source tree. Caller owns the active PU; absent fields fail closed. */
+inline std::string VHO_tensor_selected_key(WN *root) {
+    const char *keys[]={"tensor.high.schema","tensor.high.recipe_key","tensor.high.buffer_contract",
+        "tensor.high.selected.schema","tensor.high.selected.source","tensor.high.selected.facts",
+        "tensor.high.selected.resources","tensor.high.selected.model","tensor.high.selected.controls",
+        "tensor.high.selected.numerical","tensor.high.selected.width","tensor.high.selected.policy",
+        "tensor.high.selected.winner","tensor.high.selected.scratch"};
+    std::ostringstream key;key<<DSL_NATIVE_TREE_KEY().Build(root);
+    for(unsigned i=0;i<sizeof(keys)/sizeof(keys[0]);++i) {
+        const char *v=ST_tensor_metadata(WN_st_idx(root),keys[i]);
+        if(!v || !*v) throw std::runtime_error("native_selected_missing_binding");
+        std::string s=v;key<<s.size()<<':'<<s<<';';
+    }return key.str();
+}
+
+/* Bind the worker level, fixed recipe, launch/storage and protocol facts to
+ * its actual native tree; this read-only key is shared with CUDA admission. */
+inline std::string VHO_tensor_bridge_key(WN *root) {
+    std::ostringstream s;s<<DSL_NATIVE_TREE_KEY().Build(root);
+    const char *fields[]={"tensor.bridge.schema","tensor.bridge.level","tensor.bridge.source_key","tensor.bridge.fixed_recipe",
+        "tensor.kernel.block_x","tensor.kernel.grid_x","tensor.kernel.shared_bytes","tensor.kernel.operation",
+        "tensor.kernel.split_width","tensor.kernel.split_stage","tensor.kernel.mapping",
+        "tensor.kernel.attention_layout","tensor.kernel.attention_accumulation","tensor.kernel.attention_statistics",
+        "tensor.kernel.explanations_count","tensor.kernel.explanations_version","tensor.kernel.body_hash",
+        "tensor.bridge.source_comment_count","tensor.kernel.source_operator","tensor.kernel.source_version",
+        "tensor.kernel.source_node","tensor.kernel.source_pu","tensor.kernel.elements","tensor.kernel.fused",
+        "tensor.kernel.opt_level","tensor.kernel.chunk_selection","tensor.kernel.attention_search"};
+    for(unsigned i=0;i<sizeof(fields)/sizeof(fields[0]);++i) {
+        const char *v=ST_tensor_metadata(WN_st_idx(root),fields[i]);std::string text=v?v:"";
+        s<<(v!=NULL)<<';'<<text.size()<<':'<<text<<';';
+    }
+    for(INT i=0;i<WN_num_formals(root);++i) {
+        const char *fields[]={"value","storage","role","ordinal","elements","bytes","dtype","name"};
+        for(unsigned j=0;j<8;++j) {
+            std::ostringstream name;name<<"tensor.argument."<<i<<'.'<<fields[j];
+            const char *v=ST_tensor_metadata(WN_st_idx(root),name.str().c_str());std::string text=v?v:"";
+            s<<(v!=NULL)<<';'<<text.size()<<':'<<text<<';';
+        }
+    }
+    /* Emitters declare every shared object, including an unused object. Bind
+     * that complete inventory so resource metadata cannot hide a new array. */
+    const ST *shared;ST_IDX idx;unsigned count=0;
+    FOREACH_SYMBOL(CURRENT_SYMTAB,shared,idx) if(ST_device_symbol_kind(*shared)==DEVICE_SYMBOL_SHARED) {
+        std::string text=DSL_NATIVE_TREE_KEY().Declaration(shared);s<<text.size()<<':'<<text<<';';++count;
+    }
+    s<<count<<';';count=0;
+    /* These declarations are dormant while ownership is abstract, but Low
+     * will bind to them. Guard their complete interface before that binding. */
+    FOREACH_SYMBOL(GLOBAL_SYMTAB,shared,idx)
+        if(!strcmp(ST_name(shared),"blockIdx") || !strcmp(ST_name(shared),"threadIdx")) {
+            std::string text=DSL_NATIVE_TREE_KEY().Declaration(shared);s<<text.size()<<':'<<text<<';';++count;
+        }
+    s<<count<<';';return s.str();
+}
+#endif
