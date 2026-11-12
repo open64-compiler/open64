@@ -103,7 +103,8 @@ Json::Value selection_json(const VHO_TENSOR_PROGRAM &p) {
     j["candidates"]=Json::Value(Json::arrayValue);
     for(size_t i=0;i<s.candidates.size();++i) {
         const VHO_TENSOR_CHUNK_CANDIDATE &c=s.candidates[i];Json::Value x;
-        if(p.chunk_policy==3) x["block_x"]=Json::UInt64(c.threads);
+        if(p.chunk_policy>=3) x["block_x"]=Json::UInt64(c.threads);
+        if(p.chunk_policy==4) x["statistics"]=c.width==32?"warp_register_broadcast":"shared";
         x["width"]=Json::UInt64(c.width);x["chunks"]=Json::UInt64(c.chunks);x["ctas"]=Json::UInt64(c.ctas);
         x["local_shared_bytes"]=Json::UInt64(c.local_shared);x["merge_shared_bytes"]=Json::UInt64(c.merge_shared);
         x["scratch_bytes"]=Json::UInt64(c.scratch);x["estimated_resident_ctas"]=Json::UInt64(c.resident);
@@ -176,8 +177,8 @@ VHO_TENSOR_PROGRAM decode(const char *path) {
             const Json::Value &selection=j["chunk_selection"];
             need(selection.isObject() && selection.size()==6 && selection["schema"].isString() &&
                 selection["schema"].asString()=="open64.mla-chunk-selection.v1" && selection["policy"].isString() &&
-                (selection["policy"].asString()=="coverage-v1" || selection["policy"].asString()=="coverage-v2" || selection["policy"].asString()=="coverage-v3"),"invalid automatic chunk schema/policy");
-            p.chunk_policy=selection["policy"].asString()=="coverage-v1"?1:selection["policy"].asString()=="coverage-v2"?2:3;
+                (selection["policy"].asString()=="coverage-v1" || selection["policy"].asString()=="coverage-v2" || selection["policy"].asString()=="coverage-v3" || selection["policy"].asString()=="coverage-v4"),"invalid automatic chunk schema/policy");
+            p.chunk_policy=selection["policy"].asString()=="coverage-v1"?1:selection["policy"].asString()=="coverage-v2"?2:selection["policy"].asString()=="coverage-v3"?3:4;
             p.auto_chunks=true;p.gpu=profile_decode(selection["profile"]);
         }
         need(j["reassociation"].asString()==((p.split_width || p.cooperative)?"allow":"forbid"),"reassociation policy mismatch");
@@ -264,10 +265,10 @@ int main(int argc,char **argv) {
         if((argc==7 || argc==9) && !strcmp(argv[1],"auto-attention")) {
             need(!strcmp(argv[4],"--gpu-profile") && !strcmp(argv[6],"--allow-reassociate"),"automatic attention requires a GPU profile and explicit numerical permission");
             VHO_TENSOR_PROGRAM p=decode(argv[2]);p.auto_chunks=false;p.register_latent=true;
-            p.chunk_policy=3;
+            p.chunk_policy=4;
             if(argc==9) {
-                need(!strcmp(argv[7],"--chunk-policy") && (!strcmp(argv[8],"coverage-v1") || !strcmp(argv[8],"coverage-v2") || !strcmp(argv[8],"coverage-v3")),"unknown automatic chunk policy");
-                p.chunk_policy=!strcmp(argv[8],"coverage-v1")?1:!strcmp(argv[8],"coverage-v2")?2:3;
+                need(!strcmp(argv[7],"--chunk-policy") && (!strcmp(argv[8],"coverage-v1") || !strcmp(argv[8],"coverage-v2") || !strcmp(argv[8],"coverage-v3") || !strcmp(argv[8],"coverage-v4")),"unknown automatic chunk policy");
+                p.chunk_policy=!strcmp(argv[8],"coverage-v1")?1:!strcmp(argv[8],"coverage-v2")?2:!strcmp(argv[8],"coverage-v3")?3:4;
             }
             VHO_TENSOR_GPU_PROFILE gpu=read_profile(argv[5]);VHO_TENSOR_CHUNK_SELECTION choice;
             need(VHO_tensor_select_attention_chunks(p,gpu,&choice,stderr),"no automatic attention plan");
@@ -352,7 +353,7 @@ int main(int argc,char **argv) {
             }
             checkpoint(pus,argv[4]);return 0;
         }
-        if(argc==5 && (!strcmp(argv[1],"audit") || !strcmp(argv[1],"audit-mutate") || !strcmp(argv[1],"audit-binding") || !strcmp(argv[1],"audit-prototype") || !strcmp(argv[1],"audit-policy") || !strcmp(argv[1],"audit-comment") || !strcmp(argv[1],"audit-comment-missing") || !strcmp(argv[1],"audit-mask") || !strcmp(argv[1],"audit-barrier") || !strcmp(argv[1],"audit-resource") || !strcmp(argv[1],"audit-shared") || !strcmp(argv[1],"audit-collective-prototype") || !strcmp(argv[1],"audit-attention-layout") || !strcmp(argv[1],"audit-attention-accumulation") || !strcmp(argv[1],"audit-attention-selection") || !strcmp(argv[1],"audit-attention-block") || !strcmp(argv[1],"audit-warp-mask") || !strcmp(argv[1],"audit-warp-prototype") || !strcmp(argv[1],"audit-warp-barrier"))) {
+        if(argc==5 && (!strcmp(argv[1],"audit") || !strcmp(argv[1],"audit-mutate") || !strcmp(argv[1],"audit-binding") || !strcmp(argv[1],"audit-prototype") || !strcmp(argv[1],"audit-policy") || !strcmp(argv[1],"audit-comment") || !strcmp(argv[1],"audit-comment-missing") || !strcmp(argv[1],"audit-mask") || !strcmp(argv[1],"audit-barrier") || !strcmp(argv[1],"audit-resource") || !strcmp(argv[1],"audit-shared") || !strcmp(argv[1],"audit-collective-prototype") || !strcmp(argv[1],"audit-attention-layout") || !strcmp(argv[1],"audit-attention-accumulation") || !strcmp(argv[1],"audit-attention-selection") || !strcmp(argv[1],"audit-attention-statistics") || !strcmp(argv[1],"audit-broadcast-mask") || !strcmp(argv[1],"audit-broadcast-source") || !strcmp(argv[1],"audit-broadcast-width") || !strcmp(argv[1],"audit-broadcast-prototype") || !strcmp(argv[1],"audit-broadcast-missing") || !strcmp(argv[1],"audit-attention-block") || !strcmp(argv[1],"audit-warp-mask") || !strcmp(argv[1],"audit-warp-prototype") || !strcmp(argv[1],"audit-warp-barrier"))) {
             VHO_TENSOR_PROGRAM p=decode(argv[3]);VHO_TENSOR_SCHEDULE plan;need(VHO_tensor_schedule(p,&plan,stderr),"schedule rejected");
             initialize(false);Open_Input_Info(argv[2]);Initialize_Symbol_Tables(FALSE);New_Scope(GLOBAL_SYMTAB,Malloc_Mem_Pool,FALSE);
             PU_Info *pu=Read_Global_Info(NULL);Json::Value result;result["schema"]="open64.device-tensor-launch.v1";result["kernels"]=Json::Value(Json::arrayValue);
@@ -380,6 +381,14 @@ int main(int argc,char **argv) {
                 if(warp_fence && !strcmp(argv[1],"audit-warp-prototype"))
                     Set_TYLIST_type(Tylist_Table[TY_tylist(ST_pu_type(WN_st(warp_fence)))+1],MTYPE_To_TY(MTYPE_I4));
                 if(warp_fence && !strcmp(argv[1],"audit-warp-barrier")) remove_barrier(PU_Info_tree_ptr(pu),"__syncwarp");
+                if(!strcmp(argv[1],"audit-attention-statistics")) ST_tensor_bind_metadata(st,"tensor.kernel.attention_statistics","stale_statistics");
+                WN *broadcast=find_collective(PU_Info_tree_ptr(pu),"__shfl_sync");
+                if(broadcast && !strcmp(argv[1],"audit-broadcast-mask")) WN_const_val(WN_kid0(WN_kid0(broadcast)))=0xffff;
+                if(broadcast && !strcmp(argv[1],"audit-broadcast-source")) WN_const_val(WN_kid0(WN_kid(broadcast,2)))=1;
+                if(broadcast && !strcmp(argv[1],"audit-broadcast-width")) WN_const_val(WN_kid0(WN_kid(broadcast,3)))=16;
+                if(broadcast && !strcmp(argv[1],"audit-broadcast-prototype"))
+                    Set_TYLIST_type(Tylist_Table[TY_tylist(ST_pu_type(WN_st(broadcast)))+3],MTYPE_To_TY(MTYPE_U4));
+                if(broadcast && !strcmp(argv[1],"audit-broadcast-missing")) remove_barrier(PU_Info_tree_ptr(pu),"__shfl_sync");
                 WN *shuffle=find_collective(PU_Info_tree_ptr(pu),"__shfl_down_sync");
                 if(!strcmp(argv[1],"audit-mask") && shuffle) WN_const_val(WN_kid0(WN_kid0(shuffle)))=0xffff;
                 if(!strcmp(argv[1],"audit-collective-prototype") && shuffle)
@@ -398,6 +407,7 @@ int main(int argc,char **argv) {
                 need(VHO_tensor_verify_kernel(p,i,stderr) && DSL_Gatekeeper_Verify_No_Native_PU(pu,stderr),"reopened kernel rejected");
                 Json::Value kernel;kernel["name"]=ST_name(st);kernel["operation"]=metadata(st,"tensor.kernel.operation");
                 kernel["source_operator"]=metadata(st,"tensor.kernel.source_operator");kernel["source_version"]=metadata(st,"tensor.kernel.source_version");kernel["source_node"]=metadata(st,"tensor.kernel.source_node");
+                if(p.chunk_policy==4) kernel["attention_statistics"]=metadata(st,"tensor.kernel.attention_statistics");
                 kernel["grid_x"]=metadata(st,"tensor.kernel.grid_x");kernel["block_x"]=metadata(st,"tensor.kernel.block_x");kernel["arguments"]=Json::Value(Json::arrayValue);
                 kernel["fused"]=metadata(st,"tensor.kernel.fused");kernel["split_stage"]=metadata(st,"tensor.kernel.split_stage");kernel["split_width"]=metadata(st,"tensor.kernel.split_width");
                 if(p.auto_chunks) kernel["chunk_selection"]=metadata(st,"tensor.kernel.chunk_selection");
@@ -420,6 +430,6 @@ int main(int argc,char **argv) {
             for(std::map<UINT32,Json::Value>::const_iterator i=storages.begin();i!=storages.end();++i) result["storages"].append(i->second);
             write_json(argv[4],result);printf("mapped_device_audit=PASS kernels=%u storages=%u\n",result["kernels"].size(),result["storages"].size());return 0;
         }
-        fprintf(stderr,"usage: tensor_kernel_lower prepare input.B recipe.json --verify level | optimize baseline.json selected.json --fuse [--split-width N --allow-reassociate] | cooperate fused.json cooperative.json --allow-reassociate | fuse-attention cooperative.json fused.json --allow-reassociate | auto-attention fused.json selected.json --gpu-profile profile.json --allow-reassociate [--chunk-policy coverage-v1|coverage-v2|coverage-v3] | stream-attention fused.json register.json --split-width N --allow-reassociate | schedule-source selected.json optimized.cu | device recipe.json device.before.B device.after.B | device-explain recipe.json comments.before.B comments.after.B | audit device.after.B recipe.json launch.json\n");return 2;
+        fprintf(stderr,"usage: tensor_kernel_lower prepare input.B recipe.json --verify level | optimize baseline.json selected.json --fuse [--split-width N --allow-reassociate] | cooperate fused.json cooperative.json --allow-reassociate | fuse-attention cooperative.json fused.json --allow-reassociate | auto-attention fused.json selected.json --gpu-profile profile.json --allow-reassociate [--chunk-policy coverage-v1|coverage-v2|coverage-v3|coverage-v4] | stream-attention fused.json register.json --split-width N --allow-reassociate | schedule-source selected.json optimized.cu | device recipe.json device.before.B device.after.B | device-explain recipe.json comments.before.B comments.after.B | audit device.after.B recipe.json launch.json\n");return 2;
     } catch(const std::exception &e) {fprintf(stderr,"tensor kernel driver: %s\n",e.what());return 1;}
 }

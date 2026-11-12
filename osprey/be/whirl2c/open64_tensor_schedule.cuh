@@ -345,6 +345,16 @@ O64_HD void block_fused_attention_to(float *out,const Q &q,const QR &qr,const Ca
     }
   }
 }
+// Serial emulation of the selected lane-private warp-register schedule.
+// Arrays represent lane registers here, not GPU shared storage. Native WHIRL
+// owns the two broadcasts and the fence-free register lifetime/ownership proof.
+template<uint64_t B,uint64_t H,uint64_t L,uint64_t R,uint64_t DR,uint64_t W,uint64_t C,bool Partial,unsigned Threads,
+         class Q,class QR,class Cache,class Rope,class Mask>
+O64_HD void warp_register_fused_attention_to(float *out,const Q &q,const QR &qr,const Cache &cache,
+                                           const Rope &rope,const Mask &mask,uint32_t scale) {
+    static_assert(Threads==32 && W==32 && Partial && C>1,"one token per lane in split attention");
+    block_fused_attention_to<B,H,L,R,DR,W,C,Partial,Threads>(out,q,qr,cache,rope,mask,scale);
+}
 // Merge normalized local distributions with stable exponential weights.
 // Empty chunks contribute exactly zero before evaluating a rescaling exp.
 template<uint64_t B,uint64_t H,uint64_t L,uint64_t R,uint64_t C,class I>

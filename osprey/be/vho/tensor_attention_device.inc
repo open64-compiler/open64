@@ -4,7 +4,7 @@
  * collectives and return-preg protocol. No CUDA source template is used.
  * Design: doc/AI-COMPILER-FUSED-MLA-v0.1.md. */
     ST *_att_token,*_att_group,*_att_outbase,*_att_dot,*_att_rope,*_att_score;
-    ST *_att_m,*_att_d,*_att_weight,*_att_dc,*_att_state;
+    ST *_att_raw_m,*_att_m,*_att_d,*_att_weight,*_att_dc,*_att_state;
     ST *_att_sums[4];
     UINT64 _att_capacity;
     /* The owning driver already selected finite static loop extents. */
@@ -43,11 +43,17 @@
             WN_LIOR(WN_NE(MTYPE_F4,load(_next),load(_next)),WN_GT(MTYPE_F4,load(_next),load(_sum))),
             load(_next),load(_sum)):WN_Add(MTYPE_F4,load(_sum),load(_next))));
     }
-    /* One full warp publishes directly through a warp fence. Larger blocks
+    /* Register statistics broadcast lane zero without shared publication.
+     * Legacy one-warp statistics publish through a warp fence. Larger blocks
      * publish one partial per warp, then thread zero folds those partials.
      * Barriers are unconditional; state[4,5,6] survives the next fold. */
     void AttCTAReduce(WN *body,bool maximum) {
         WarpTree(body,maximum);
+        if(_kernel.register_statistics) {
+            WarpBroadcast(body,maximum?_att_raw_m:_att_d);
+            if(maximum) WN_INSERT_BlockLast(body,store(_att_m,AttSafeMax(load(_att_raw_m))));
+            return;
+        }
         if(_kernel.threads==32) {
             WN *finish=WN_CreateBlock();
             SharedStore(finish,_att_state,8,integer(maximum?4:6),load(_sum));
@@ -93,12 +99,14 @@
             WN_Add(MTYPE_U8,load(_begin),load(_att_token))));
         WN_INSERT_BlockLast(valid,WN_CreateIf(WN_NE(MTYPE_U4,mask,WN_Intconst(MTYPE_U4,0)),allowed,WN_CreateBlock()));
         WN_INSERT_BlockLast(tokens,WN_CreateIf(WN_LT(MTYPE_U8,WN_Add(MTYPE_U8,load(_begin),load(_att_token)),load(_end)),valid,WN_CreateBlock()));
-        SharedStore(tokens,_shared_a,_att_capacity,load(_att_token),load(_att_score));AttCombine(tokens,load(_att_score),true);
+        if(!_kernel.register_statistics) SharedStore(tokens,_shared_a,_att_capacity,load(_att_token),load(_att_score));
+        AttCombine(tokens,load(_att_score),true);
         WN_INSERT_BlockLast(body,AttLoop(_att_token,load(_tid),integer(_att_capacity),_kernel.threads,tokens));
-        AttCTAReduce(body,true);WN_INSERT_BlockLast(body,store(_att_m,SharedRead(_att_state,8,integer(5))));
+        AttCTAReduce(body,true);if(!_kernel.register_statistics) WN_INSERT_BlockLast(body,store(_att_m,SharedRead(_att_state,8,integer(5))));
         WN_INSERT_BlockLast(body,store(_sum,floating(0)));WN *weights=WN_CreateBlock();
-        WN_INSERT_BlockLast(weights,store(_att_weight,AttMath(false,WN_Sub(MTYPE_F4,SharedRead(_shared_a,_att_capacity,load(_att_token)),load(_att_m)))));
-        SharedStore(weights,_shared_a,_att_capacity,load(_att_token),load(_att_weight));AttCombine(weights,load(_att_weight),false);
+        WN_INSERT_BlockLast(weights,store(_att_weight,AttMath(false,WN_Sub(MTYPE_F4,_kernel.register_statistics?load(_att_score):SharedRead(_shared_a,_att_capacity,load(_att_token)),load(_att_m)))));
+        if(!_kernel.register_statistics) SharedStore(weights,_shared_a,_att_capacity,load(_att_token),load(_att_weight));
+        AttCombine(weights,load(_att_weight),false);
         WN_INSERT_BlockLast(body,AttLoop(_att_token,load(_tid),integer(_att_capacity),_kernel.threads,weights));
         AttCTAReduce(body,false);
     }
@@ -108,27 +116,32 @@
         WN_INSERT_BlockLast(body,store(_sum,floating(0xff800000)));WN *chunks=WN_CreateBlock();
         AttCombine(chunks,Evaluate(_attention.partial,AttPartialIndex(load(_att_token),0)),true);
         WN_INSERT_BlockLast(body,AttLoop(_att_token,load(_tid),integer(_kernel.chunks),128,chunks));
-        AttCTAReduce(body,true);WN_INSERT_BlockLast(body,store(_att_m,SharedRead(_att_state,8,integer(5))));
+        AttCTAReduce(body,true);if(!_kernel.register_statistics) WN_INSERT_BlockLast(body,store(_att_m,SharedRead(_att_state,8,integer(5))));
         WN_INSERT_BlockLast(body,store(_sum,floating(0)));WN *weights=WN_CreateBlock();
         WN_INSERT_BlockLast(weights,store(_att_dc,Evaluate(_attention.partial,AttPartialIndex(load(_att_token),1))));
         WN *scaled=WN_Mpy(MTYPE_F4,load(_att_dc),AttMath(false,WN_Sub(MTYPE_F4,
             AttSafeMax(Evaluate(_attention.partial,AttPartialIndex(load(_att_token),0))),load(_att_m))));
         WN_INSERT_BlockLast(weights,store(_att_weight,WN_Select(MTYPE_F4,WN_EQ(MTYPE_F4,load(_att_dc),floating(0)),floating(0),scaled)));
-        SharedStore(weights,_shared_a,_att_capacity,load(_att_token),load(_att_weight));AttCombine(weights,load(_att_weight),false);
+        if(!_kernel.register_statistics) SharedStore(weights,_shared_a,_att_capacity,load(_att_token),load(_att_weight));
+        AttCombine(weights,load(_att_weight),false);
         WN_INSERT_BlockLast(body,AttLoop(_att_token,load(_tid),integer(_kernel.chunks),_kernel.threads,weights));
         AttCTAReduce(body,false);
     }
-    /* Normalize once in shared memory, then all latent columns reuse exactly
-     * those F32 probabilities (or the merge's normalized chunk weights). */
+    /* Normalize the private one-token probability, or publish the legacy
+     * shared probabilities / merge weights before column accumulation. */
     void AttNormalize(WN *body) {
-        WN_INSERT_BlockLast(body,store(_att_d,SharedRead(_att_state,8,integer(6))));
-        WN *normal=WN_CreateBlock();SharedStore(normal,_shared_a,_att_capacity,load(_att_token),
-            WN_Div(MTYPE_F4,SharedRead(_shared_a,_att_capacity,load(_att_token)),AttSafeDenom()));
-        WN_INSERT_BlockLast(body,AttLoop(_att_token,load(_tid),integer(_kernel.mapping==4?_kernel.chunks:_att_capacity),_kernel.threads,normal));
-        if(_kernel.threads==32) WarpBarrier(body);else Barrier(body);
+        if(_kernel.register_statistics) {
+            WN_INSERT_BlockLast(body,store(_att_weight,WN_Div(MTYPE_F4,load(_att_weight),AttSafeDenom())));
+        } else {
+            WN_INSERT_BlockLast(body,store(_att_d,SharedRead(_att_state,8,integer(6))));
+            WN *normal=WN_CreateBlock();SharedStore(normal,_shared_a,_att_capacity,load(_att_token),
+                WN_Div(MTYPE_F4,SharedRead(_shared_a,_att_capacity,load(_att_token)),AttSafeDenom()));
+            WN_INSERT_BlockLast(body,AttLoop(_att_token,load(_tid),integer(_kernel.mapping==4?_kernel.chunks:_att_capacity),_kernel.threads,normal));
+            if(_kernel.threads==32) WarpBarrier(body);else Barrier(body);
+        }
         WN *meta=WN_CreateBlock();
         if(_kernel.stage==1) {
-            AttOutput(meta,integer(0),SharedRead(_att_state,8,integer(4)));AttOutput(meta,integer(1),load(_att_d));
+            AttOutput(meta,integer(0),_kernel.register_statistics?load(_att_raw_m):SharedRead(_att_state,8,integer(4)));AttOutput(meta,integer(1),load(_att_d));
         } else AttOutput(meta,integer(_attention.rank),AttLSE());
         WN_INSERT_BlockLast(body,WN_CreateIf(WN_EQ(MTYPE_U8,load(_tid),integer(0)),meta,WN_CreateBlock()));
     }
@@ -163,7 +176,7 @@
         WN_INSERT_BlockLast(groups,WN_CreateIf(WN_LAND(WN_LT(MTYPE_U8,load(_column),integer(_attention.rank)),WN_EQ(MTYPE_U8,load(_lane),integer(0))),write,WN_CreateBlock()));
         WN_INSERT_BlockLast(body,AttLoop(_att_group,integer(0),integer((_attention.rank+3)/4),1,groups));
     }
-    /* Shared weights are immutable after AttNormalize's publication barrier.
+    /* Private probability or published shared weights stay immutable.
      * Each lane owns four private sums; no other lane reads them until the
      * existing full-warp shuffle trees. No shared cache tile or tile barrier. */
     void AttRegisterLatent(WN *body) {
@@ -172,7 +185,7 @@
             WN_Mpy(MTYPE_U8,load(_att_group),integer(_kernel.threads/8)),WN_Mpy(MTYPE_U8,load(_warp),integer(4)))));
         for(UINT32 j=0;j<4;++j) WN_INSERT_BlockLast(groups,store(_att_sums[j],floating(0)));
         WN *tokens=WN_CreateBlock();
-        WN_INSERT_BlockLast(tokens,store(_att_weight,SharedRead(_shared_a,_att_capacity,load(_att_token))));
+        if(!_kernel.register_statistics) WN_INSERT_BlockLast(tokens,store(_att_weight,SharedRead(_shared_a,_att_capacity,load(_att_token))));
         for(UINT32 j=0;j<4;++j) {
             WN *col=WN_Add(MTYPE_U8,load(_column),integer(j)),*valid=WN_CreateBlock();
             WN *value=_kernel.mapping==3?
@@ -203,7 +216,11 @@
         _att_rope=local("attention_rope_score",MTYPE_F4,_source);_att_score=local("attention_masked_score",MTYPE_F4,_source);
         _att_m=local("attention_maximum",MTYPE_F4,_source);_att_d=local("attention_denominator",MTYPE_F4,_source);
         _att_weight=local("attention_weight",MTYPE_F4,_source);_att_dc=local("attention_chunk_denominator",MTYPE_F4,_source);
-        _shared_a=Shared("attention_shared_scores_weights",_att_capacity);_att_state=Shared("attention_shared_statistics",8);
+        if(_kernel.register_statistics) {
+            need(_kernel.mapping==3 && _kernel.stage==1 && _kernel.threads==32 && _kernel.split_width==32 && _program.register_latent,
+                "register statistics require one-token-per-lane split attention");
+            _att_raw_m=local("attention_raw_maximum",MTYPE_F4,_source);
+        } else {_shared_a=Shared("attention_shared_scores_weights",_att_capacity);_att_state=Shared("attention_shared_statistics",8);}
         if(_program.register_latent) for(UINT32 j=0;j<4;++j) _att_sums[j]=local((std::string("attention_register_sum_")+decimal(j)).c_str(),MTYPE_F4,_source);
         if(_kernel.mapping==3 && !_program.register_latent) _shared_b=Shared("attention_shared_cache_tile",128);
         WN_INSERT_BlockLast(body,store(_tid,Coord(Coordinate("threadIdx"))));
