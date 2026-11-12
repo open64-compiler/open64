@@ -262,6 +262,7 @@ std::vector<std::string> VHO_search_predicates(const VHO_MLA_SEARCH_CONTROL &con
 }
 
 #include "tensor_quantized_movement.inc"
+#include "tensor_q5_cost.inc"
 
 /* Default full finite search; v2 JSON still requires every field explicitly. */
 VHO_MLA_SEARCH_CONTROL::VHO_MLA_SEARCH_CONTROL() : space("mla-family-width-space-v1"),mode("estimate"),
@@ -274,9 +275,9 @@ VHO_MLA_SEARCH_CONTROL::VHO_MLA_SEARCH_CONTROL() : space("mla-family-width-space
 
 /* Validate hard bounds, unique IDs, provider support and dimensional evidence.
  * A caller cannot disable the safety caps by omitting budget/exhaustion stops. */
-static BOOL VHO_mla_control_valid(const VHO_MLA_SEARCH_CONTROL &control,FILE *diagnostic,bool movement,bool quantized=false) {
-    UINT64 count=quantized?17:movement?36:12;
-    bool valid=control.space==(quantized?VHO_q4_catalog():movement?VHO_mla_movement_catalog():"mla-family-width-space-v1") && control.mode=="estimate" &&
+static BOOL VHO_mla_control_valid(const VHO_MLA_SEARCH_CONTROL &control,FILE *diagnostic,bool movement,bool quantized=false,bool q5=false) {
+    UINT64 count=(quantized || q5)?17:movement?36:12;
+    bool valid=control.space==(q5?VHO_q5_catalog():quantized?VHO_q4_catalog():movement?VHO_mla_movement_catalog():"mla-family-width-space-v1") && control.mode=="estimate" &&
         !control.runs.empty() && control.runs.size()<=16 && !control.stopping.empty() && control.stopping.size()<=6 &&
         control.global_proposals>0 && control.global_proposals<=16*count && control.global_unique>0 && control.global_unique<=count &&
         control.global_time_us<=UINT64(3600000000ULL) && control.patience>0 && control.patience<=count &&
@@ -303,7 +304,7 @@ static BOOL VHO_mla_control_valid(const VHO_MLA_SEARCH_CONTROL &control,FILE *di
             control.conversion_provenance=="estimated" || control.conversion_provenance=="measured-input") &&
             DSL_readiness_mul(control.host_us,control.cycles_per_us,&converted) && converted==control.evaluation_cost;
     } else valid=valid && !control.host_us && !control.cycles_per_us && control.conversion_provenance.empty();
-    if((movement || quantized) && (VHO_search_stop_enabled(control,"relative-gap") || VHO_search_stop_enabled(control,"cost-aware"))) valid=false;
+    if((movement || quantized || q5) && (VHO_search_stop_enabled(control,"relative-gap") || VHO_search_stop_enabled(control,"cost-aware"))) valid=false;
     if(!valid && diagnostic) fprintf(diagnostic,"MLA controlled search: invalid controls or unsupported stopping evidence\n");
     return valid;
 }
@@ -315,7 +316,7 @@ BOOL VHO_mla_movement_control_valid(const VHO_MLA_SEARCH_CONTROL &c,FILE *f) {re
  * This full identity is not a cryptographic signature or a portable time trace. */
 std::string VHO_mla_search_control_key(const VHO_MLA_SEARCH_CONTROL &control) {
     std::ostringstream key;
-    key<<(control.space==VHO_q4_catalog()?"mla-search-controls-q4-v1/":control.space==VHO_mla_movement_catalog()?"mla-search-controls-v3/":"mla-search-controls-v2/")<<control.space<<'/'<<control.mode<<'/'<<control.global_proposals<<'/'<<control.global_unique<<'/'
+    key<<(control.space==VHO_q5_catalog()?"mla-search-controls-q5-v1/":control.space==VHO_q4_catalog()?"mla-search-controls-q4-v1/":control.space==VHO_mla_movement_catalog()?"mla-search-controls-v3/":"mla-search-controls-v2/")<<control.space<<'/'<<control.mode<<'/'<<control.global_proposals<<'/'<<control.global_unique<<'/'
         <<control.global_time_us<<'/'<<control.patience<<'/'<<control.minimum_gain<<'/'<<control.target<<'/'<<control.gap_ppm<<'/'
         <<control.remaining_invocations<<'/'<<control.evaluation_cost<<'/'<<control.economic_conversion<<'/'<<control.host_us<<'/'
         <<control.cycles_per_us<<'/'<<control.conversion_provenance<<"/runs="<<control.runs.size();
@@ -332,14 +333,14 @@ std::string VHO_mla_search_control_key(const VHO_MLA_SEARCH_CONTROL &control) {
  * Caps are checked before every proposal and after every complete estimate;
  * a cache hit consumes only a proposal. No native callback or context exists. */
 static BOOL VHO_mla_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR_GPU_PROFILE &gpu,
-    const VHO_MLA_COST_PROFILE &model,const VHO_MLA_SEARCH_CONTROL &control,VHO_MLA_PRODUCTION_RESULT *output,FILE *diagnostic,const VHO_MLA_MOVEMENT_CONTEXT *movement,const VHO_Q4_PROFILE *q4_profile=NULL,const VHO_Q4_SNAPSHOT *q4_snapshot=NULL) {
+    const VHO_MLA_COST_PROFILE &model,const VHO_MLA_SEARCH_CONTROL &control,VHO_MLA_PRODUCTION_RESULT *output,FILE *diagnostic,const VHO_MLA_MOVEMENT_CONTEXT *movement,const VHO_Q4_PROFILE *q4_profile=NULL,const VHO_Q4_SNAPSHOT *q4_snapshot=NULL,UINT64 q5_log=0) {
     try {
         UINT64 start=VHO_search_clock(),last=start;
         VHO_MLA_SEARCH_OPTIONS legacy_validation;
-        if(!output || !VHO_mla_control_valid(control,diagnostic,movement!=NULL,q4_profile!=NULL) ||
+        if(!output || !VHO_mla_control_valid(control,diagnostic,movement!=NULL,q4_profile!=NULL && !q5_log,q5_log!=0) ||
             (movement && (!VHO_mla_movement_profile_valid(movement->profile,diagnostic) || movement->profile.architecture!=gpu.architecture)) || !VHO_mla_search_inputs_valid(model,legacy_validation,diagnostic) ||
             !VHO_tensor_gpu_profile_valid(gpu,diagnostic) || model.architecture!=gpu.architecture ||
-            (q4_profile?(!q4_snapshot || !Q4_valid(*q4_profile,*q4_snapshot,gpu)):
+            (q4_profile?(!q4_snapshot || !Q4_valid(*q4_profile,*q4_snapshot,gpu) || (q5_log && (q5_log>1000000000 || !VHO_tensor_validate_quantized_high(source,NULL) || q4_snapshot->schema.source_key!=VHO_tensor_quantized_high_key(source)))):
                 (source.opt_level!=3 || !source.fuse_attention || !source.cooperative || !VHO_tensor_validate_program(source,diagnostic))))
             throw std::runtime_error("controlled_search_admission_failed");
         VHO_MLA_PRODUCTION_RESULT result;VHO_MLA_SEARCH_RESULT &search=result.exploration;
@@ -371,7 +372,7 @@ static BOOL VHO_mla_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR
             VHO_MLA_SEARCH_CANDIDATE &candidate=search.candidates[id];bool hit=candidate.evaluated;
             if(!hit) {
                 ++search.evaluations;
-                try {if(q4_profile) Q4_evaluate(candidate,gpu,model,*q4_profile,*q4_snapshot);else if(movement) Movement_evaluate(candidate,source,gpu,model,*movement);else Evaluate(candidate,source,gpu,model);}
+                try {if(q5_log) Q5_evaluate(candidate,source,gpu,model,*q4_profile,*q4_snapshot,q5_log);else if(q4_profile) Q4_evaluate(candidate,gpu,model,*q4_profile,*q4_snapshot);else if(movement) Movement_evaluate(candidate,source,gpu,model,*movement);else Evaluate(candidate,source,gpu,model);}
                 catch(const std::exception &error) {candidate.evaluated=true;candidate.eligible=false;candidate.reason=error.what();candidate.total=0;candidate.stages.clear();candidate.movement=VHO_MLA_MOVEMENT_ESTIMATE();candidate.quantized=VHO_Q4_ESTIMATE();}
             } else ++search.cache_hits;
             ++state.stale;
@@ -423,4 +424,11 @@ BOOL VHO_mla_explore_quantized(const VHO_TENSOR_GPU_PROFILE &g,const VHO_MLA_COS
     const VHO_MLA_SEARCH_CONTROL &c,const VHO_Q4_PROFILE &p,const VHO_Q4_SNAPSHOT &x,
     VHO_MLA_PRODUCTION_RESULT *o,FILE *f) {
     VHO_TENSOR_PROGRAM unused;return VHO_mla_controlled(unused,g,m,c,o,f,NULL,&p,&x);
+}
+
+/* This entry qualifies complete Q5 plans; archived Q4 reports remain studies. */
+BOOL VHO_mla_explore_q5(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_GPU_PROFILE &g,
+    const VHO_MLA_COST_PROFILE &m,const VHO_MLA_SEARCH_CONTROL &c,const VHO_Q4_PROFILE &h,
+    const VHO_Q4_SNAPSHOT &x,UINT64 log_cycles,VHO_MLA_PRODUCTION_RESULT *o,FILE *f) {
+    if(!log_cycles) return FALSE;return VHO_mla_controlled(p,g,m,c,o,f,NULL,&h,&x,log_cycles);
 }

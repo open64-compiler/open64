@@ -3,6 +3,7 @@
  * repository's header-only RapidJSON, never JsonCpp or frontend APIs.
  * Design: doc/AI-COMPILER-MLA-Q1-PRODUCTION-v1.0.md. */
 #include "tensor_q1_program.h"
+#include "tensor_quantized_plan.h"
 #include "tensor_workload.h"
 #include "tensor_serving_schema.h"
 #include "../../rapidjson/document.h"
@@ -102,6 +103,13 @@ bool VHO_q1_program_read(WN *entry,VHO_TENSOR_PROGRAM &out,std::string &why) {
 }
 /* Explanation restoration is an explicit annotation phase, not fact proof. */
 unsigned VHO_q1_restore_comments(WN *entry,const VHO_TENSOR_PROGRAM &p) {
+    const char *selected=ST_tensor_metadata(WN_st_idx(entry),"tensor.q5.applied");
+    if(selected) {
+        VHO_Q5_PLAN plan;std::string why;if(VHO_q5_plan_decode(selected,plan,why)) {
+            WN *body=WN_func_body(entry);WN *comment=WN_CreateComment(VHO_q5_explanation(plan,&p).c_str());
+            WN_Set_Linenum(comment,WN_Get_Linenum(entry));WN_INSERT_BlockBefore(body,WN_first(body),comment);return 1;
+        }
+    }
     std::set<unsigned> ids;operations(entry,p,ids);WN *body=WN_func_body(entry);
     WN *first=WN_first(body);
     WN *serving=WN_CreateComment(VHO_tensor_serving_explanation(p).c_str());
@@ -136,4 +144,53 @@ bool VHO_q1_checkpoint(WN *tree,const char *stage,bool standard) {
         if(link(temp.c_str(),path.c_str())) _exit(1);_exit(unlink(temp.c_str())?1:0);
     }
     int status=0;return waitpid(child,&status,0)==child && WIFEXITED(status) && WEXITSTATUS(status)==0;
+}
+
+/* Q5 persists only one fixed selected descriptor and its full provenance.
+ * Native input identity is checked before selected construction, not search. */
+std::string VHO_q5_plan_key(const VHO_Q5_PLAN &p) {
+    std::ostringstream s;s<<"mla-q5-plan-v1/strict-three-pass/W="<<p.width<<"/G="<<p.group
+        <<'/'<<p.source_key.size()<<':'<<p.source_key<<'/'<<p.selection_key.size()<<':'<<p.selection_key<<'/'<<p.binding_key.size()<<':'<<p.binding_key;
+    return s.str();
+}
+/* Canonical existing-ST metadata, with no new mapped image representation. */
+std::string VHO_q5_plan_encode(const VHO_Q5_PLAN &p) {
+    rapidjson::StringBuffer b;rapidjson::Writer<rapidjson::StringBuffer> w(b);w.StartObject();
+    w.Key("schema");w.String("open64.q5.selected-high.v1");w.Key("width");w.Uint(p.width);w.Key("group");w.Uint(p.group);
+    w.Key("source_key");text(w,p.source_key);w.Key("selection_key");text(w,p.selection_key);w.Key("native_key");text(w,p.native_key);w.Key("binding_key");text(w,p.binding_key);w.EndObject();
+    return std::string(b.GetString(),b.GetSize());
+}
+/* Repeat fixed-descriptor admission; serialized strings are identity, not a
+ * lease, dispatch policy, measured-performance claim or GPU authorization. */
+bool VHO_q5_plan_decode(const std::string &wire,VHO_Q5_PLAN &out,std::string &why) {
+    try {
+        need(wire.size()<=16*1024*1024 && wire.find('\0')==std::string::npos);rapidjson::Document d;
+        d.Parse<rapidjson::kParseValidateEncodingFlag|rapidjson::kParseIterativeFlag>(wire.c_str());
+        const char *names[]={"schema","width","group","source_key","selection_key","native_key","binding_key"};
+        need(!d.HasParseError() && d.IsObject() && d.MemberCount()==7);for(unsigned i=0;i<7;++i) need(d.HasMember(names[i]));
+        need(string(d["schema"])=="open64.q5.selected-high.v1");VHO_Q5_PLAN p;p.width=integer(d["width"]);p.group=integer(d["group"]);
+        need((!p.width && p.group==1) || ((p.width==32 || p.width==64 || p.width==128 || p.width==256) && (p.group==1 || p.group==2 || p.group==4 || p.group==8)));
+        std::string *values[]={&p.source_key,&p.selection_key,&p.native_key,&p.binding_key};
+        for(unsigned i=0;i<4;++i) {
+            const rapidjson::Value &v=d[names[i+3]];need(v.IsString() && v.GetStringLength()<=8*1024*1024);
+            values[i]->assign(v.GetString(),v.GetStringLength());need(values[i]->find('\0')==std::string::npos);
+        }
+        std::ostringstream suffix;suffix<<"/selected-descriptor-v1/W="<<p.width<<"/G="<<p.group;
+        need(p.selection_key.size()>=suffix.str().size() && p.selection_key.compare(p.selection_key.size()-suffix.str().size(),suffix.str().size(),suffix.str())==0);
+        need(!p.source_key.empty() && !p.binding_key.empty() && VHO_q5_plan_encode(p)==wire);out=p;why.clear();return true;
+    } catch(const std::exception &e) {why=e.what();return false;}
+}
+/* Printed from selected WHIRL itself, including after the Q1 PREOPT workaround. */
+std::string VHO_q5_explanation(const VHO_Q5_PLAN &p,const VHO_TENSOR_PROGRAM *program) {
+    std::ostringstream s;s<<"Q5 selected quantized MLA: W="<<p.width<<", G="<<p.group<<". ";
+    if(program) {
+        VHO_TENSOR_SERVING_SCHEMA source;std::string reason;
+        if(VHO_tensor_serving_schema(*program,source,reason)) {
+            const VHO_TENSOR_WORKLOAD_GEOMETRY &g=source.geometry;
+            s<<"B="<<g.batch<<", H="<<g.heads<<", Q="<<g.queries<<", L="<<g.keys<<", latent="<<g.latent<<", rotary="<<g.rotary<<", allocator P="<<source.page_tokens<<". ";
+        }
+    }
+    if(!p.width) s<<"Materialized source baseline; all original operations and guards remain. ";
+    else s<<"Three ordered passes compute global raw maximum, denominator, then normalized weighted latent. Each tile decodes paired S8/U4 payload and F32 scales once per query/head group/pass; all heads in the group reuse that tile. Prefixes of dead decoded scratch buffers hold the tile; no global decoded-cache, score or probability materialization. F32 dot products, maximum/denominator/token folds, per-token normalization, NaN/finite and zero-denominator guards retain source order. Masked tokens still participate in weighted multiplication, preserving nonfinite behavior. Last tiles and head groups guard before loads. Query/value projections, quantization, functional updates, cache/scale result copies and status semantics remain. ";
+    s<<"This is executable synchronous scalar High WHIRL, not a mapped GPU kernel or TMA pipeline. Q3 must validate actual buffers, page/scale generations and publication lifetimes before invocation. Search was estimation-only; only this selected plan was constructed. AOT selection design remains deferred.";return s.str();
 }

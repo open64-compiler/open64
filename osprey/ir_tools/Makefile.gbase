@@ -1301,3 +1301,13 @@ tensor_attention_search.o tensor_serving_runtime.o tensor_serving_review.o: $(BE
 tensor_serving_review.o: $(BUILD_BASE)/tensor_quantized_movement_review.inc
 tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o \
   tensor_bridge_bindings.o: $(BE_VHO_DIR)/tensor_quantized_movement.h
+
+# Q5 strict selected plan qualification/materialization.
+tensor_serving_schema.o: $(BE_VHO_DIR)/tensor_quantized_plan.h $(BE_VHO_DIR)/tensor_quantized_plan.inc
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_quantized_plan.h $(BE_VHO_DIR)/tensor_high_q5.inc
+tensor_q1_program.o dsl_q1_preopt.o: $(BE_VHO_DIR)/tensor_quantized_plan.h
+tensor_attention_search.o: $(BE_VHO_DIR)/tensor_quantized_plan.h $(BE_VHO_DIR)/tensor_q5_cost.inc
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_q5_driver.inc $(BE_VHO_DIR)/tensor_quantized_plan.h
+tensor_serving_review.o: $(BUILD_BASE)/tensor_q5_review.inc $(BE_VHO_DIR)/tensor_quantized_plan.h
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_selected.inc
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_quantized.inc

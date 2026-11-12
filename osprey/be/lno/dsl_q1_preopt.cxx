@@ -31,7 +31,7 @@ void DSL_Q1_PREOPT_SESSION::Before(WN *entry) {
     if(!_active) return;
     FmtAssert(VHO_q1_checkpoint(entry,label(_stage,"before").c_str(),true),("Q1 pre-PREOPT checkpoint failed"));
     std::string why;
-    bool captured=_stage?_facts.Is_live(_epoch):LNO_DSL_capture_quantized_high(entry,_program,_epoch,_facts,why);
+    bool captured=ST_tensor_metadata(WN_st_idx(entry),"tensor.q5.applied")?false:_stage?_facts.Is_live(_epoch):LNO_DSL_capture_quantized_high(entry,_program,_epoch,_facts,why);
     if(trace()) {
         if(captured) LNO_DSL_print_quantized_high(trace(),_facts,"PREOPT_BEFORE",true);
         else fprintf(trace(),"AI_Q1_PREOPT 1 BEFORE_UNKNOWN reason=%s\n",why.c_str());
@@ -49,6 +49,11 @@ void DSL_Q1_PREOPT_SESSION::After(WN *entry,const DSL_HIGH_Q1_RESOLVER &resolver
         _active=false;_epoch.Close();return;
     }
     unsigned annotations=VHO_q1_restore_comments(entry,_program);
+    if(ST_tensor_metadata(WN_st_idx(entry),"tensor.q5.applied")) {
+        _facts=DSL_HIGH_QUANTIZED_FACTS();_epoch.Before_mutation();
+        if(trace()) fprintf(trace(),"AI_Q5_PREOPT 1 SELECTED source_facts_expired=true selected_comments_restored=%u analyses=backend_rebuild search=false\n",annotations);
+        FmtAssert(VHO_q1_checkpoint(entry,label(_stage,"after").c_str(),true),("Q5 post-PREOPT checkpoint failed"));++_stage;return;
+    }
     unsigned types=TY_Table_Size(),symbols=ST_Table_Size(CURRENT_SYMTAB);
     std::string native_key;bool identity_known=true;
     try {native_key=DSL_NATIVE_TREE_KEY().Build(entry);}

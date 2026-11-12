@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include "tensor_kernel_lower.h"
 #include "tensor_q1_program.h"
+#include "tensor_quantized_plan.h"
 #include "tensor_workload.h"
 #include "tensor_serving_schema.h"
 #include "wn.h"
@@ -159,7 +160,7 @@ public:
                 /* The sealed MLA value projection owns this transpose. Keep
                  * its static index permutation affine and fuse it into the
                  * projection instead of reading an unproduced scratch view. */
-                if(_selected && operation.output==_program.operations[37].output) {
+                if(_selected && !_quantized && operation.output==_program.operations[37].output) {
                     right=_program.operations[36].inputs[0];
                     std::swap(ba[ba.size()-1],ba[ba.size()-2]);
                 }
@@ -205,6 +206,7 @@ public:
         else for (INT i = 0; i < WN_kid_count(node); ++i) if (WN_kid(node, i)) Position(WN_kid(node, i));
     }
 #include "tensor_high_selected.inc"
+#include "tensor_high_q5.inc"
     /* Commit faithful semantic expansion after complete preflight. Buffer
      * formals are disjoint storage allocations; reshape values share a formal. */
     void Materialize() {
@@ -350,4 +352,13 @@ BOOL VHO_tensor_materialize_quantized_high(const VHO_TENSOR_PROGRAM &program,SRC
     if(!entry || WN_operator(entry)!=OPR_FUNC_ENTRY || WN_num_formals(entry) || WN_first(WN_func_body(entry)) ||
        ST_device_symbol_kind(St_Table[PU_Info_proc_sym(Current_PU_Info)])!=DEVICE_SYMBOL_NONE) return FALSE;
     VHO_TENSOR_HIGH(program,source,true).Materialize();return TRUE;
+}
+
+/* Native construction follows selected-only detached legality. The caller owns
+ * the entire transaction and must not publish a partial/unchecked body. */
+WN *VHO_q5_build_high(const VHO_TENSOR_PROGRAM &p,const VHO_Q5_PLAN &plan,WN *scope) {
+    VHO_Q5_LAYOUT layout;std::string why;
+    if(!plan.width || !VHO_q5_layout(p,layout,why) || plan.source_key!=layout.schema.source_key)
+        throw std::runtime_error("q5_selected_source_or_layout");
+    return VHO_TENSOR_HIGH(p,WN_Get_Linenum(scope),true).Q5_body(scope,plan,layout);
 }

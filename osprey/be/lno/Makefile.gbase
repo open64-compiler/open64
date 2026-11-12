@@ -610,3 +610,15 @@ dsl_high_movement_test.o dsl_high_quantized_movement_test.o \
   dsl_high_apply.o lnopt_main.o dsl_high_reuse.o dsl_high_search_test.o \
   tensor_attention_search.o tensor_attention_search_test.o: \
   $(BE_DIR)/vho/tensor_quantized_movement.h $(BE_DIR)/vho/tensor_serving.h $(BE_DIR)/vho/tensor_serving_schema.h
+
+# Q5 strict selected plan qualification/materialization.
+tensor_serving_schema.o: $(BE_DIR)/vho/tensor_quantized_plan.h $(BE_DIR)/vho/tensor_quantized_plan.inc
+tensor_high_lower.o: $(BE_DIR)/vho/tensor_quantized_plan.h $(BE_DIR)/vho/tensor_high_q5.inc
+tensor_q1_program.o dsl_q1_preopt.o: $(BE_DIR)/vho/tensor_quantized_plan.h
+tensor_attention_search.o: $(BE_DIR)/vho/tensor_quantized_plan.h $(BE_DIR)/vho/tensor_q5_cost.inc
+tensor_attention_search_test.o: $(BE_DIR)/vho/tensor_q5_cost.inc
+tensor_high_lower.o: $(BE_DIR)/vho/tensor_high_selected.inc
+
+# Complete Q5 source qualification remains detached in standalone cost tests.
+dsl_high_search_control_test dsl_high_movement_test dsl_high_quantized_movement_test: tensor_serving_schema.o tensor_workload.o
+tensor_high_lower.o: $(BE_DIR)/vho/tensor_high_quantized.inc

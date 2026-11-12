@@ -3,6 +3,7 @@
  * Source geometry is not live allocation, mapping or publication evidence.
  * Design: doc/AI-COMPILER-MLA-Q3-SERVING-v1.0.md. */
 #include "tensor_serving_schema.h"
+#include "tensor_quantized_plan.h"
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -130,3 +131,5 @@ std::string VHO_tensor_serving_explanation(const VHO_TENSOR_PROGRAM &p) {
     else out<<"Unsupported serving schema ("<<why<<"); ordinary source route retained. ";
     out<<"A synchronous owner must lease actual buffers, join cache/scale generations, validate page ranges and masks, and publish all four successor buffers only after status=0. Readers pin old bundles until completion; no GPU/TMA, search or dispatch permission is implied. Q4 costing requires a fresh Q3 snapshot; quantized cache-service studies account for packed payload, paired scales, page fragments, dequantization, retained-tile reuse and split tuples. All Q4 candidates remain analysis-only; source capacity work, correctness fallback and deferred AOT selection are preserved.";return out.str();
 }
+
+#include "tensor_quantized_plan.inc"

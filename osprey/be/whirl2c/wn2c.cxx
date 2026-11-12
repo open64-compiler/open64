@@ -3601,12 +3601,12 @@ WN2C_binaryop(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 } /* WN2C_binaryop */
 
 
-/* Print explicit CUDA scalar math without the host-only whirl2c helper ABI;
- * retain normal C spellings and the existing unsigned extraction handler. */
+/* Print CUDA scalar math and exact unsigned extraction in both C and CUDA.
+ * The extraction payload carries offset/size; a unary helper would lose them. */
 static STATUS
 WN2C_unaryop(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 {
-   if (W2C_Cuda_Mode && WN_opcode(wn) == OPC_U4EXTRACT_BITS)
+   if (WN_opcode(wn) == OPC_U4EXTRACT_BITS)
       return WN2C_extract_bits(tokens, wn, context);
    if (W2C_Cuda_Mode && WN_opcode(wn) == OPC_F4ABS) {
       Append_Token_String(tokens, "fabsf(");

@@ -189,6 +189,7 @@ public:
         require(Current_PU_Info && Current_pu==&PU_Info_pu(Current_PU_Info) &&
                 CURRENT_SYMTAB==PU_lexical_level(*Current_pu) && PU_Info_tree_ptr(Current_PU_Info)==_entry &&
                 WN_operator(_entry)==OPR_FUNC_ENTRY && VHO_tensor_validate_quantized_high(_program,NULL),"q1_scope_or_source");
+        require(!ST_tensor_metadata(WN_st_idx(_entry),"tensor.q5.applied"),"q1_source_facts_do_not_describe_selected_q5");
         ST_IDX fn=WN_st_idx(_entry);require(fn==PU_Info_proc_sym(Current_PU_Info),"q1_function_scope");
         require(ST_tensor_metadata(fn,"tensor.high.schema") &&
                 std::string(ST_tensor_metadata(fn,"tensor.high.schema"))=="quantized-common-high-v1" &&

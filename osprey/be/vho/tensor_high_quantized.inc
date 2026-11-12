@@ -134,9 +134,9 @@
         }
         if(name=="common.convert") {
             if(o.dtype=="float32") return WN_Cvt(WN_rtype(x),MTYPE_F4,x);
-            float low=o.dtype=="int8"?-128:0,high=o.dtype=="int8"?127:255;
-            Guard(body,WN_LAND(WN_GE(MTYPE_F4,WN_COPY_Tree(x),WN_Floatconst(MTYPE_F4,low)),
-                WN_LE(MTYPE_F4,WN_COPY_Tree(x),WN_Floatconst(MTYPE_F4,high))));
+            UINT32 low=o.dtype=="int8"?0xc3000000:0,high=o.dtype=="int8"?0x42fe0000:0x437f0000;
+            Guard(body,WN_LAND(WN_GE(MTYPE_F4,WN_COPY_Tree(x),Float(low)),
+                WN_LE(MTYPE_F4,WN_COPY_Tree(x),Float(high))));
             WN *integer=WN_Trunc(MTYPE_F4,MTYPE_I4,WN_COPY_Tree(x));
             Guard(body,WN_EQ(MTYPE_F4,x,WN_Cvt(MTYPE_I4,MTYPE_F4,WN_COPY_Tree(integer))));
             return integer;
