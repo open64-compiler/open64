@@ -74,6 +74,7 @@
 #include "config_lno.h"
 #include "config_dsl.h"
 #include "dsl_partition_axis.h"
+#include "dsl_high_admission.h"
 #include "config_opt.h"
 #include "erbe.h"
 #include "glob.h"		    /* Irb_File_Name, Cur_PU_Name */
@@ -1357,6 +1358,16 @@ extern WN * Lnoptimizer(PU_Info* current_pu,
     } 
   
     LNO_Tlog = Get_Trace ( TP_PTRACE1, TP_PTRACE1_LNO );
+
+    /* Read-only form/coverage admission while full LNO facts still exist.
+     * Refusal leaves all existing transformations/fallback behavior intact.
+     * Design: doc/AI-COMPILER-SEARCH-M2A-HIGH-ADMISSION-v1.0.md. */
+    if (VHO_DSL_Partition_Axis && Opt_Level >= 3 && Run_lno && LNO_enabled && LNO_Opt > 0 &&
+        !LNO_Run_Lego && !Run_autopar && !PU_has_mp(Get_Current_PU()) && !PU_mp(Get_Current_PU())) {
+      FILE *high_trace = VHO_DSL_AI_Opt_Trace &&
+          Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG) ? TFile : NULL;
+      LNO_DSL_admit_common_high(func_nd, Du_Mgr, Alias_Mgr, Array_Dependence_Graph, high_trace);
+    }
   
     Hoist_Varying_Lower_Bounds(func_nd); 
 #ifndef TARG_X8664

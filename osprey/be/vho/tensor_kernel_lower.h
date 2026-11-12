@@ -124,6 +124,11 @@ extern BOOL VHO_tensor_prepare_program(struct pu_info *,UINT32 opt_level,
  * profitability choice, external library dependency or source emission occurs. */
 extern BOOL VHO_tensor_materialize_kernel(const VHO_TENSOR_PROGRAM &,UINT32 operation,
     SRCPOS source,FILE *diagnostic);
+/* Expand the unoptimized common algorithm in the driver's active empty host
+ * PU. Caller supplies one disjoint buffer per storage; reshape aliases share
+ * buffers. No GPU mapping, source-PU switch or runtime call is introduced.
+ * Invalid recipe/context/numerical controls fail before native allocation. */
+extern BOOL VHO_tensor_materialize_high(const VHO_TENSOR_PROGRAM &,SRCPOS source,FILE *diagnostic);
 /* Audit the active reopened kernel against its source recipe, persisted
  * launch/argument bindings and construction fingerprint. No mutation occurs. */
 extern BOOL VHO_tensor_verify_kernel(const VHO_TENSOR_PROGRAM &,UINT32 operation,FILE *);
