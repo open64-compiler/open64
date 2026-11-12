@@ -4,6 +4,21 @@ Version: v0.2, 2026-10-26. Status: implementation and review contract.
 Scope: immutable runtime descriptions; PU-local VHO clients. No binary WHIRL
 layout change, proprietary NVIDIA compiler data, GPU probing or new library.
 
+## H1 device selection requirement, 2026-11-12
+
+[Resource/memory design v0.3](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.3.md)
+and [H20 plan v1.1](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.1.md)
+make exact `-DSL:gpu_device=h20_96gb` and `-DSL:gpu_device=h20_141gb` concrete
+H1 deliverables. gpu_arch remains the ISA selector; device, visible partition
+resources, calibrated execution and workload budget have separate identities.
+Current sm_90 lookup cannot distinguish H20 from H200 and supplies an explicitly
+synthetic envelope, not either board's specification. Preserve generic
+architecture-only behavior and provenance without device-specific tuning or
+qualification claims. Explicit device/profile conflicts diagnose; missing
+facts cannot justify a dependent candidate. Compatible fallback and two-phase
+search remain unchanged. The new device option/import wiring is planned and
+is not implemented by this documentation.
+
 Occupancy follow-on: [resource planning](AI-COMPILER-OPTIMIZATION-OCCUPANCY.md)
 adds runtime-only resource capacities and explicit estimated allocation
 granularities. Current registry revision2 preserves performance values while
