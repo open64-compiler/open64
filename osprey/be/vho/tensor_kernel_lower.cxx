@@ -50,6 +50,18 @@ std::string dimensions(const std::vector<UINT64> &shape) {
 }
 /* Persist small numeric facts as canonical metadata without new image rows. */
 std::string decimal(UINT64 n) {std::ostringstream s;s<<n;return s.str();}
+/* Typed CUDA builtins are the existing ordinary CALL mechanism, not new IR
+ * opcodes. Effects remain conservative; convergence belongs to this schedule. */
+bool collective(const ST *s) {
+    const char *name=ST_name(s);bool shuffle=!strcmp(name,"__shfl_down_sync");
+    if(!shuffle && strcmp(name,"__syncthreads")) return false;
+    if(ST_class(s)!=CLASS_FUNC || ST_sclass(s)!=SCLASS_EXTERN) return false;
+    TY_IDX t=ST_pu_type(s);if(TY_kind(t)!=KIND_FUNCTION || !TY_has_prototype(t)) return false;
+    TYLIST_IDX a=TY_tylist(t);TYPE_ID expected[]={shuffle?MTYPE_F4:MTYPE_V,MTYPE_U4,MTYPE_F4,MTYPE_U4,MTYPE_I4};
+    UINT32 count=shuffle?5:1;
+    for(UINT32 i=0;i<count;++i) {TY_IDX p=TYLIST_type(Tylist_Table[a+i]);if(!p || TY_mtype(p)!=expected[i]) return false;}
+    return TYLIST_type(Tylist_Table[a+count])==TY_IDX_ZERO;
+}
 /* Hash executable scalar structure, rejecting shared trees and native work.
  * This detects stale/mutated products; it is not a security signature. */
 void fingerprint_node(const WN *n,UINT64 &hash,std::set<const WN *> &seen) {
@@ -63,6 +75,15 @@ void fingerprint_node(const WN *n,UINT64 &hash,std::set<const WN *> &seen) {
             TY_IDX ty=ST_type(s);words.push_back(ty);words.push_back(TY_kind(ty));words.push_back(TY_mtype(ty));words.push_back(TY_size(ty));
             words.push_back(TY_align(ty));words.push_back(TY_flags(ty));words.push_back(ST_is_value_parm(s));
             if(TY_kind(ty)==KIND_POINTER) {TY_IDX pointed=TY_pointed(ty);words.push_back(pointed);words.push_back(TY_mtype(pointed));words.push_back(TY_size(pointed));words.push_back(TY_flags(pointed));}
+            if(TY_kind(ty)==KIND_ARRAY) {
+                TY_IDX element=TY_etype(ty);words.push_back(element);words.push_back(TY_mtype(element));words.push_back(TY_size(element));
+                ARB_HANDLE arb=TY_arb(ty);UINT32 rank=ARB_dimension(arb);words.push_back(rank);
+                for(UINT32 i=0;i<rank;++i) {
+                    ARB_HANDLE bound=arb[i];
+                    need(ARB_const_lbnd(bound) && ARB_const_ubnd(bound) && ARB_const_stride(bound),"dynamic shared bounds");
+                    words.push_back(ARB_lbnd_val(bound));words.push_back(ARB_ubnd_val(bound));words.push_back(ARB_stride_val(bound));
+                }
+            }
             if(TY_kind(ty)==KIND_STRUCT) {
                 for(FLD_HANDLE f=TY_fld(ty);!f.Is_Null();f=FLD_next(f)) {
                     words.push_back(FLD_type(f));words.push_back(FLD_ofst(f));words.push_back(FLD_last_field(f));
@@ -85,7 +106,11 @@ void fingerprint_node(const WN *n,UINT64 &hash,std::set<const WN *> &seen) {
         while(*text) words.push_back(*text++);words.push_back(0);
     }
     if(op==OPR_INTRINSIC_OP) words.push_back(WN_intrinsic(n));
-    need(op!=OPR_CALL && op!=OPR_INTRINSIC_CALL && op!=OPR_ASM_STMT,"unexpected device effect");
+    if(op==OPR_CALL) {
+        need(collective(WN_st(n)),"unexpected device call");words.push_back(WN_call_flag(n));
+        const unsigned char *name=(const unsigned char *)ST_name(WN_st(n));while(*name) words.push_back(*name++);words.push_back(0);
+    }
+    need(op!=OPR_INTRINSIC_CALL && op!=OPR_ASM_STMT,"unexpected device effect");
     for(size_t i=0;i<words.size();++i) for(UINT32 b=0;b<8;++b) hash=(hash^((words[i]>>(8*b))&255))*UINT64(1099511628211ULL);
     if(op==OPR_BLOCK) for(WN *s=WN_first(n);s;s=WN_next(s)) fingerprint_node(s,hash,seen);
     else for(INT i=0;i<WN_kid_count(n);++i) if(WN_kid(n,i)) fingerprint_node(WN_kid(n,i),hash,seen);
@@ -314,7 +339,7 @@ VHO_TENSOR_SCHEDULE schedule(const VHO_TENSOR_PROGRAM &p) {
     for(UINT32 i=0;i<p.operations.size();++i) {
         const VHO_TENSOR_OPERATION &op=p.operations[i];
         if(p.fuse ? (!boundary(op) && p.values[op.output].role!=2) : op.name=="common.reshape") continue;
-        VHO_TENSOR_KERNEL k;k.id=k.root=i;k.output=op.output;k.stage=0;k.split_width=0;k.chunks=1;
+        VHO_TENSOR_KERNEL k;k.id=k.root=i;k.output=op.output;k.stage=0;k.split_width=0;k.chunks=1;k.mapping=0;
         k.elements=VHO_tensor_elements(p.values[op.output]);
         if(p.fuse) {
             std::set<UINT32> inputs;UINT32 budget=0;
@@ -326,6 +351,7 @@ VHO_TENSOR_SCHEDULE schedule(const VHO_TENSOR_PROGRAM &p) {
         } else k.inputs=op.inputs;
         UINT64 width=boundary(op)?p.values[op.inputs[0]].shape.back():0;
         if(op.name=="common.matmul") width=p.values[op.inputs[0]].shape.back();
+        if(p.cooperative && boundary(op)) k.mapping=op.name=="common.matmul"?(width>=32?2:0):1;
         if(p.split_width && width>p.split_width) {
             k.split_width=p.split_width;k.chunks=(width+p.split_width-1)/p.split_width;k.stage=1;
             need(k.elements<=16777216/k.chunks,"split scratch exceeds allocation limit");
@@ -334,6 +360,7 @@ VHO_TENSOR_SCHEDULE schedule(const VHO_TENSOR_PROGRAM &p) {
             scratch.role=0;scratch.ordinal=0;scratch.storage=plan.bindings.values.size();
             k.output=scratch.storage;k.elements*=k.chunks;plan.bindings.values.push_back(scratch);plan.kernels.push_back(k);
             k.id=i+4096;k.stage=2;k.inputs.clear();k.inputs.push_back(k.output);k.output=op.output;
+            if(k.mapping) k.mapping=1;
             k.elements=VHO_tensor_elements(p.values[op.output]);
         }
         plan.kernels.push_back(k);
@@ -354,6 +381,7 @@ class VHO_TENSOR_DEVICE {
     std::map<UINT32,UINT32> _producer;
     std::vector<ST *> _formals;
     ST *_flat,*_physical,*_part,*_reduction,*_sum,*_next;
+    ST *_tid,*_lane,*_warp,*_valid,*_base,*_tile,*_begin,*_end,*_column,*_shared_a,*_shared_b;
 public:
     /* Bind only detached numeric facts and the active kernel's source position. */
     VHO_TENSOR_DEVICE(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERNEL &kernel,SRCPOS source):
@@ -415,6 +443,137 @@ public:
     }
     /* Broadcast one input to the selected output element. */
     WN *Element(UINT32 operand) {return Read(operand,broadcast_index(Input(operand),Output(),load(_flat),0));}
+    /* Reuse the scalar lowering's exact batched matrix indices in new mappings. */
+    WN *MatrixA(WN *flat,WN *k) {
+        UINT64 m=Output().shape[Output().shape.size()-2],n=Output().shape.back(),width=Input(0).shape.back();
+        WN *batch=broadcast_index(Input(0),Output(),WN_Div(MTYPE_U8,WN_COPY_Tree(flat),integer(m*n)),2);
+        WN *row=WN_Binary(OPR_REM,MTYPE_U8,WN_Div(MTYPE_U8,flat,integer(n)),integer(m));
+        return WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,batch,integer(m*width)),WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,row,integer(width)),k));
+    }
+    /* The logical output coordinate supplies both broadcast batch and column. */
+    WN *MatrixB(WN *flat,WN *k) {
+        UINT64 m=Output().shape[Output().shape.size()-2],n=Output().shape.back(),width=Input(0).shape.back();
+        WN *batch=broadcast_index(Input(1),Output(),WN_Div(MTYPE_U8,WN_COPY_Tree(flat),integer(m*n)),2);
+        return WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,batch,integer(width*n)),
+            WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,k,integer(n)),WN_Binary(OPR_REM,MTYPE_U8,flat,integer(n))));
+    }
+    /* Construct a standard typed, effectful CUDA builtin declaration once. */
+    ST *Builtin(bool shuffle) {
+        const char *name=shuffle?"__shfl_down_sync":"__syncthreads";const ST *old;ST_IDX index;
+        FOREACH_SYMBOL(GLOBAL_SYMTAB,old,index) if(!strcmp(ST_name(old),name)) {need(collective(old),"incompatible CUDA builtin");return &St_Table[ST_st_idx(old)];}
+        TY_IDX ty;TY &t=New_TY(ty);TY_Init(t,0,KIND_FUNCTION,MTYPE_UNKNOWN,0);Set_TY_has_prototype(ty);
+        TYLIST_IDX a;TYPE_ID types[]={shuffle?MTYPE_F4:MTYPE_V,MTYPE_U4,MTYPE_F4,MTYPE_U4,MTYPE_I4};
+        UINT32 count=shuffle?5:1;
+        for(UINT32 i=0;i<count;++i) {Set_TYLIST_type(New_TYLIST(a),MTYPE_To_TY(types[i]));if(!i) Set_TY_tylist(t,a);}
+        Set_TYLIST_type(New_TYLIST(a),TY_IDX_ZERO);PU_IDX pi;PU &pu=New_PU(pi);PU_Init(pu,ty,GLOBAL_SYMTAB+1);Set_PU_c_lang(pu);
+        ST *s=New_ST(GLOBAL_SYMTAB);ST_Init(s,Save_Str(name),CLASS_FUNC,SCLASS_EXTERN,EXPORT_PREEMPTIBLE,ty);Set_ST_pu(s,pi);
+        Set_ST_device_symbol_kind(*s,DEVICE_SYMBOL_FUNCTION);return s;
+    }
+    /* A full-warp shuffle CALL is immediately followed by its return-preg read. */
+    void WarpTree(WN *body,bool maximum) {
+        for(UINT32 offset=16;offset;offset/=2) {
+            WN *call=WN_Call(MTYPE_F4,MTYPE_V,4,ST_st_idx(Builtin(true)));WN_Set_Call_Default_Flags(call);
+            WN *args[]={WN_Intconst(MTYPE_U4,0xffffffffU),load(_sum),WN_Intconst(MTYPE_U4,offset),WN_Intconst(MTYPE_I4,32)};
+            TYPE_ID types[]={MTYPE_U4,MTYPE_F4,MTYPE_U4,MTYPE_I4};
+            for(UINT32 i=0;i<4;++i) WN_kid(call,i)=WN_CreateParm(types[i],args[i],MTYPE_To_TY(types[i]),WN_PARM_BY_VALUE);
+            WN_INSERT_BlockLast(body,call);
+            WN_INSERT_BlockLast(body,store(_next,WN_Ldid(MTYPE_F4,-1,Return_Val_Preg,MTYPE_To_TY(MTYPE_F4))));
+            WN *combine=WN_CreateBlock();
+            WN *value=maximum?WN_Select(MTYPE_F4,WN_LIOR(WN_NE(MTYPE_F4,load(_next),load(_next)),WN_GT(MTYPE_F4,load(_next),load(_sum))),load(_next),load(_sum)):WN_Add(MTYPE_F4,load(_sum),load(_next));
+            WN_INSERT_BlockLast(combine,store(_sum,value));
+            WN_INSERT_BlockLast(body,WN_CreateIf(WN_LT(MTYPE_U8,load(_lane),integer(32-offset)),combine,WN_CreateBlock()));
+        }
+    }
+    /* Each synchronization point is outside all lane/column/tail predicates. */
+    void Barrier(WN *body) {
+        WN *call=WN_Call(MTYPE_V,MTYPE_V,0,ST_st_idx(Builtin(false)));WN_Set_Call_Default_Flags(call);WN_INSERT_BlockLast(body,call);
+    }
+    /* Shared arrays use the established device-symbol attribute and ARRAY nodes. */
+    ST *Shared(const char *name,UINT64 count) {
+        TY_IDX ty=Make_Array_Type(MTYPE_F4,1,count);Set_TY_align(ty,16);Set_TY_is_user_align(ty);
+        ST *s=New_ST(CURRENT_SYMTAB);ST_Init(s,Save_Str(name),CLASS_VAR,SCLASS_AUTO,EXPORT_LOCAL,ty);
+        Set_ST_device_symbol_kind(*s,DEVICE_SYMBOL_SHARED);Set_ST_Srcpos(*s,_source);return s;
+    }
+    /* A shared allocation is CTA-local in CUDA, with exact selected extent. */
+    WN *SharedAddress(ST *s,UINT64 count,WN *index) {
+        WN *array=WN_Create(OPR_ARRAY,Pointer_Mtype,MTYPE_V,3);WN_element_size(array)=4;
+        WN_kid0(array)=WN_Lda(Pointer_Mtype,0,s);WN_kid1(array)=integer(count);WN_kid2(array)=index;return array;
+    }
+    /* XOR column swizzling distributes each warp's strided K reads over all
+     * 32 F32 banks, while each producer warp still writes distinct banks. */
+    WN *SharedBIndex(WN *k,WN *column) {
+        return WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,WN_COPY_Tree(k),integer(4)),
+            WN_Binary(OPR_BXOR,MTYPE_U8,column,WN_Div(MTYPE_U8,k,integer(8))));
+    }
+    /* Source masks and guards are evaluated before a staged value is published. */
+    void SharedStore(WN *body,ST *s,UINT64 count,WN *index,WN *value) {
+        WN_INSERT_BlockLast(body,WN_Istore(MTYPE_F4,0,Make_Pointer_Type(MTYPE_To_TY(MTYPE_F4)),SharedAddress(s,count,index),value));
+    }
+    /* Read only after the CTA's producer barrier. */
+    WN *SharedRead(ST *s,UINT64 count,WN *index) {return WN_Iload(MTYPE_F4,0,MTYPE_To_TY(MTYPE_F4),SharedAddress(s,count,index));}
+    /* Cooperative row reductions and staged dot products share a complete warp
+     * per result. No lane exits before a shuffle, including invalid outputs. */
+    WN *CooperativeBody() {
+        WN *body=WN_CreateBlock();UINT64 outputs=VHO_tensor_elements(Output());
+        UINT64 width=_kernel.stage==2?_kernel.chunks:Input(0).shape.back();
+        bool maximum=_operation.name=="common.reduce_max";
+        WN_INSERT_BlockLast(body,store(_tid,Coord(Coordinate("threadIdx"))));
+        WN_INSERT_BlockLast(body,store(_lane,WN_Binary(OPR_REM,MTYPE_U8,load(_tid),integer(32))));
+        WN_INSERT_BlockLast(body,store(_warp,WN_Div(MTYPE_U8,load(_tid),integer(32))));
+        if(_kernel.mapping==1) {
+            WN_INSERT_BlockLast(body,store(_physical,WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,Coord(Coordinate("blockIdx")),integer(4)),load(_warp))));
+            WN_INSERT_BlockLast(body,store(_flat,_kernel.stage==1?WN_Binary(OPR_REM,MTYPE_U8,load(_physical),integer(outputs)):load(_physical)));
+            WN_INSERT_BlockLast(body,store(_part,_kernel.stage==1?WN_Div(MTYPE_U8,load(_physical),integer(outputs)):integer(0)));
+            WN_INSERT_BlockLast(body,store(_valid,WN_LT(MTYPE_U8,load(_physical),integer(_kernel.elements))));
+        } else {
+            UINT64 n=Output().shape.back(),tiles=(outputs/n)*((n+3)/4);
+            WN_INSERT_BlockLast(body,store(_part,_kernel.stage==1?WN_Div(MTYPE_U8,Coord(Coordinate("blockIdx")),integer(tiles)):integer(0)));
+            WN_INSERT_BlockLast(body,store(_base,WN_Binary(OPR_REM,MTYPE_U8,Coord(Coordinate("blockIdx")),integer(tiles))));
+            WN_INSERT_BlockLast(body,store(_base,WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,WN_Div(MTYPE_U8,load(_base),integer((n+3)/4)),integer(n)),
+                WN_Mpy(MTYPE_U8,WN_Binary(OPR_REM,MTYPE_U8,load(_base),integer((n+3)/4)),integer(4)))));
+            WN_INSERT_BlockLast(body,store(_flat,WN_Add(MTYPE_U8,load(_base),load(_warp))));
+            WN_INSERT_BlockLast(body,store(_physical,WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,load(_part),integer(outputs)),load(_flat))));
+            WN_INSERT_BlockLast(body,store(_valid,WN_LT(MTYPE_U8,WN_Add(MTYPE_U8,WN_Binary(OPR_REM,MTYPE_U8,load(_base),integer(n)),load(_warp)),integer(n))));
+            _shared_a=Shared("staged_a",32);_shared_b=Shared("staged_b",128);
+        }
+        WN_INSERT_BlockLast(body,store(_begin,_kernel.stage==1?WN_Mpy(MTYPE_U8,load(_part),integer(_kernel.split_width)):integer(0)));
+        WN *limit=WN_Add(MTYPE_U8,load(_begin),integer(_kernel.stage==1?_kernel.split_width:width));
+        WN_INSERT_BlockLast(body,store(_end,WN_Select(MTYPE_U8,WN_LT(MTYPE_U8,WN_COPY_Tree(limit),integer(width)),limit,integer(width))));
+        WN_INSERT_BlockLast(body,store(_sum,floating(maximum?0xff800000:0)));
+        WN *loop=WN_CreateBlock();
+        if(_kernel.mapping==1) {
+            WN *value=_kernel.stage==2?Evaluate(_kernel.inputs[0],WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,load(_reduction),integer(outputs)),load(_flat))):
+                Read(0,WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,load(_flat),integer(width)),load(_reduction)));
+            WN_INSERT_BlockLast(loop,store(_next,value));
+            WN_INSERT_BlockLast(loop,store(_sum,maximum?WN_Select(MTYPE_F4,WN_LIOR(WN_NE(MTYPE_F4,load(_next),load(_next)),WN_GT(MTYPE_F4,load(_next),load(_sum))),load(_next),load(_sum)):WN_Add(MTYPE_F4,load(_sum),load(_next))));
+            WN_INSERT_BlockLast(body,WN_CreateDO(WN_CreateIdname(0,_reduction),store(_reduction,WN_Add(MTYPE_U8,load(_begin),load(_lane))),
+                WN_LAND(load(_valid),WN_LT(MTYPE_U8,load(_reduction),load(_end))),store(_reduction,WN_Add(MTYPE_U8,load(_reduction),integer(32))),loop,NULL));
+        } else {
+            UINT64 n=Output().shape.back();WN *a=WN_CreateBlock(),*avalid=WN_CreateBlock(),*azero=WN_CreateBlock();
+            WN_INSERT_BlockLast(loop,store(_reduction,WN_Add(MTYPE_U8,load(_tile),load(_lane))));
+            SharedStore(avalid,_shared_a,32,load(_lane),Read(0,MatrixA(load(_base),load(_reduction))));SharedStore(azero,_shared_a,32,load(_lane),floating(0));
+            WN_INSERT_BlockLast(a,WN_CreateIf(WN_LT(MTYPE_U8,load(_reduction),load(_end)),avalid,azero));
+            WN_INSERT_BlockLast(loop,WN_CreateIf(WN_LT(MTYPE_U8,load(_tid),integer(32)),a,WN_CreateBlock()));
+            WN_INSERT_BlockLast(loop,store(_column,WN_Add(MTYPE_U8,load(_base),WN_Binary(OPR_REM,MTYPE_U8,load(_tid),integer(4)))));
+            WN_INSERT_BlockLast(loop,store(_reduction,WN_Add(MTYPE_U8,load(_tile),WN_Div(MTYPE_U8,load(_tid),integer(4)))));
+            WN *bvalid=WN_CreateBlock(),*bzero=WN_CreateBlock();
+            SharedStore(bvalid,_shared_b,128,SharedBIndex(WN_Div(MTYPE_U8,load(_tid),integer(4)),WN_Binary(OPR_REM,MTYPE_U8,load(_tid),integer(4))),Read(1,MatrixB(load(_column),load(_reduction))));
+            SharedStore(bzero,_shared_b,128,SharedBIndex(WN_Div(MTYPE_U8,load(_tid),integer(4)),WN_Binary(OPR_REM,MTYPE_U8,load(_tid),integer(4))),floating(0));
+            WN *column_valid=WN_LT(MTYPE_U8,WN_Add(MTYPE_U8,WN_Binary(OPR_REM,MTYPE_U8,load(_base),integer(n)),WN_Binary(OPR_REM,MTYPE_U8,load(_tid),integer(4))),integer(n));
+            WN_INSERT_BlockLast(loop,WN_CreateIf(WN_LAND(column_valid,WN_LT(MTYPE_U8,load(_reduction),load(_end))),bvalid,bzero));
+            Barrier(loop);WN *compute=WN_CreateBlock();
+            WN_INSERT_BlockLast(compute,store(_sum,WN_Add(MTYPE_F4,load(_sum),WN_Mpy(MTYPE_F4,SharedRead(_shared_a,32,load(_lane)),
+                SharedRead(_shared_b,128,SharedBIndex(load(_lane),load(_warp)))))));
+            WN_INSERT_BlockLast(loop,WN_CreateIf(WN_LAND(load(_valid),WN_LT(MTYPE_U8,WN_Add(MTYPE_U8,load(_tile),load(_lane)),load(_end))),compute,WN_CreateBlock()));
+            Barrier(loop);
+            WN_INSERT_BlockLast(body,WN_CreateDO(WN_CreateIdname(0,_tile),store(_tile,load(_begin)),WN_LT(MTYPE_U8,load(_tile),load(_end)),
+                store(_tile,WN_Add(MTYPE_U8,load(_tile),integer(32))),loop,NULL));
+        }
+        WarpTree(body,maximum);WN *write=WN_CreateBlock();
+        WN_INSERT_BlockLast(write,WN_Istore(MTYPE_F4,0,ST_type(_formals.back()),Address(_kernel.inputs.size(),load(_physical)),load(_sum)));
+        WN_INSERT_BlockLast(body,WN_CreateIf(WN_LAND(load(_valid),WN_EQ(MTYPE_U8,load(_lane),integer(0))),write,WN_CreateBlock()));
+        return body;
+    }
     /* A canonical integer counted loop retains serial accumulation order. */
     WN *Loop(ST *iv,UINT64 extent,WN *body) {
         WN *begin=integer(0),*end=integer(extent);
@@ -517,19 +676,28 @@ public:
         _sum=local("accumulator",MTYPE_F4,_source);_next=local("next_value",MTYPE_F4,_source);
         WN *entry=WN_CreateEntry(_formals.size(),function,WN_CreateBlock(),NULL,NULL);
         for(UINT32 i=0;i<_formals.size();++i) WN_kid(entry,i)=WN_CreateIdname(0,_formals[i]);
-        WN *body=WN_CreateBlock(),*element=WN_CreateBlock();
-        /* Chunk-major work keeps neighboring output coordinates together,
-         * including contiguous latent-rank cache accesses in MLA matmul. */
-        WN_INSERT_BlockLast(element,store(_flat,_kernel.stage==1?WN_Binary(OPR_REM,MTYPE_U8,load(_physical),integer(VHO_tensor_elements(Output()))):load(_physical)));
-        if(_kernel.stage==1) WN_INSERT_BlockLast(element,store(_part,WN_Div(MTYPE_U8,load(_physical),integer(VHO_tensor_elements(Output())))));
-        WN *value=Computation(element);
-        TYPE_ID scalar=Output().dtype=="bool"?MTYPE_U1:MTYPE_F4;
-        WN_INSERT_BlockLast(element,WN_Istore(scalar,0,ST_type(_formals.back()),Address(_kernel.inputs.size(),load(_physical)),value));
-        if(_program.opt_level==3) {
-            WN *index=WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,Coord(Coordinate("blockIdx")),integer(_program.threads)),Coord(Coordinate("threadIdx")));
-            WN_INSERT_BlockLast(body,store(_physical,index));
-            WN_INSERT_BlockLast(body,WN_CreateIf(WN_LT(MTYPE_U8,load(_physical),integer(_kernel.elements)),element,WN_CreateBlock()));
-        } else WN_INSERT_BlockLast(body,Loop(_physical,_kernel.elements,element));
+        WN *body;
+        if(_kernel.mapping) {
+            _tid=local("cta_thread",MTYPE_U8,_source);_lane=local("warp_lane",MTYPE_U8,_source);
+            _warp=local("cta_warp",MTYPE_U8,_source);_valid=local("valid_output",MTYPE_I4,_source);
+            _base=local("column_tile",MTYPE_U8,_source);_tile=local("token_tile",MTYPE_U8,_source);
+            _begin=local("token_begin",MTYPE_U8,_source);_end=local("token_end",MTYPE_U8,_source);
+            _column=local("copy_column",MTYPE_U8,_source);body=CooperativeBody();
+        } else {
+            body=WN_CreateBlock();WN *element=WN_CreateBlock();
+            /* Chunk-major work keeps neighboring output coordinates together,
+             * including contiguous latent-rank cache accesses in MLA matmul. */
+            WN_INSERT_BlockLast(element,store(_flat,_kernel.stage==1?WN_Binary(OPR_REM,MTYPE_U8,load(_physical),integer(VHO_tensor_elements(Output()))):load(_physical)));
+            if(_kernel.stage==1) WN_INSERT_BlockLast(element,store(_part,WN_Div(MTYPE_U8,load(_physical),integer(VHO_tensor_elements(Output())))));
+            WN *value=Computation(element);
+            TYPE_ID scalar=Output().dtype=="bool"?MTYPE_U1:MTYPE_F4;
+            WN_INSERT_BlockLast(element,WN_Istore(scalar,0,ST_type(_formals.back()),Address(_kernel.inputs.size(),load(_physical)),value));
+            if(_program.opt_level==3) {
+                WN *index=WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,Coord(Coordinate("blockIdx")),integer(_program.threads)),Coord(Coordinate("threadIdx")));
+                WN_INSERT_BlockLast(body,store(_physical,index));
+                WN_INSERT_BlockLast(body,WN_CreateIf(WN_LT(MTYPE_U8,load(_physical),integer(_kernel.elements)),element,WN_CreateBlock()));
+            } else WN_INSERT_BlockLast(body,Loop(_physical,_kernel.elements,element));
+        }
         WN_INSERT_BlockLast(body,WN_CreateReturn());WN_func_body(entry)=body;Set_PU_Info_tree_ptr(Current_PU_Info,entry);Position(entry);
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.source_operator",_operation.name.c_str());
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.source_version",decimal(_operation.version).c_str());
@@ -537,9 +705,11 @@ public:
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.source_pu",_program.source_pu.c_str());
         std::ostringstream count;count<<_kernel.elements;ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.elements",count.str().c_str());
         std::ostringstream threads;threads<<_program.threads;ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.block_x",threads.str().c_str());
-        std::ostringstream grid;grid<<(_program.opt_level==3?(_kernel.elements+_program.threads-1)/_program.threads:1);
+        std::ostringstream grid;grid<<VHO_tensor_grid(_program,_kernel);
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.grid_x",grid.str().c_str());
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.operation",decimal(_kernel.id).c_str());
+        ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.mapping",decimal(_kernel.mapping).c_str());
+        ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.shared_bytes",_kernel.mapping==2?"640":"0");
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.fused",_program.fuse?"true":"false");
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.split_stage",decimal(_kernel.stage).c_str());
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.split_width",decimal(_kernel.split_width).c_str());
@@ -554,11 +724,22 @@ UINT64 VHO_tensor_elements(const VHO_TENSOR_VALUE &value) {
     UINT64 size=1;for(size_t i=0;i<value.shape.size();++i) size*=value.shape[i];return size;
 }
 
+/* Four complete warps per CTA; staged dots keep four adjacent columns together. */
+UINT64 VHO_tensor_grid(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERNEL &k) {
+    if(k.mapping==1) return (k.elements+3)/4;
+    if(k.mapping==2) {
+        const VHO_TENSOR_VALUE &out=p.values[p.operations[k.root].output];UINT64 n=out.shape.back();
+        return (VHO_tensor_elements(out)/n)*((n+3)/4)*(k.stage==1?k.chunks:1);
+    }
+    return p.opt_level==3?(k.elements+p.threads-1)/p.threads:1;
+}
+
 /* Recheck the detached handoff before allocating any device table entries. */
 BOOL VHO_tensor_validate_program(const VHO_TENSOR_PROGRAM &p,FILE *diagnostic) {
     try {
         need(p.opt_level<=3 && p.threads==(p.opt_level==3?128:1),"invalid level/thread mapping");
         need((!p.fuse && !p.split_width) || p.opt_level==3,"optimization requires O3");
+        need(!p.cooperative || (p.fuse && p.opt_level==3),"cooperative mapping requires fused O3");
         need(!p.split_width || (p.fuse && p.split_width>=2 && p.split_width<=4096),"invalid split width/fusion policy");
         need(p.operations.size()<=4096,"too many operations");
         need(!p.source_pu.empty() && !p.source_file.empty() && !p.values.empty() && !p.operations.empty(),"empty tensor program/source mapping");
@@ -618,6 +799,8 @@ BOOL VHO_tensor_materialize_kernel(const VHO_TENSOR_PROGRAM &p,UINT32 ordinal,SR
         for(UINT32 i=0;i<3;++i) {if(f.Is_Null() || strcmp(FLD_name(f),names[i]) || FLD_ofst(f)!=4*i || FLD_type(f)!=MTYPE_To_TY(MTYPE_U4) ||
             (i==2)!=!!FLD_last_field(f)) return FALSE;if(i!=2) f=FLD_next(f);}
     }
+    FOREACH_SYMBOL(GLOBAL_SYMTAB,symbol,idx) if(!strcmp(ST_name(symbol),"__shfl_down_sync") || !strcmp(ST_name(symbol),"__syncthreads"))
+        if(!collective(symbol)) return FALSE;
     VHO_TENSOR_DEVICE(plan.bindings,selected(plan,ordinal),source).Materialize();return TRUE;
 }
 
@@ -639,7 +822,7 @@ BOOL VHO_tensor_verify_kernel(const VHO_TENSOR_PROGRAM &p,UINT32 ordinal,FILE *d
         need(TYLIST_type(Tylist_Table[signature+kernel.inputs.size()+2])==TY_IDX_ZERO,"kernel prototype terminator mismatch");
         const char *keys[]={"tensor.kernel.source_operator","tensor.kernel.source_pu","tensor.kernel.elements","tensor.kernel.block_x","tensor.kernel.grid_x","tensor.kernel.operation","tensor.kernel.opt_level","tensor.kernel.body_hash"};
         std::string expected[]={op.name,p.source_pu,decimal(kernel.elements),decimal(p.threads),
-            decimal(p.opt_level==3?(kernel.elements+p.threads-1)/p.threads:1),decimal(ordinal),decimal(p.opt_level),fingerprint(entry)};
+            decimal(VHO_tensor_grid(p,kernel)),decimal(ordinal),decimal(p.opt_level),fingerprint(entry)};
         for(UINT32 k=0;k<8;++k) {const char *actual=ST_tensor_metadata(st,keys[k]);need(actual && expected[k]==actual,"stale/mutated device product");}
         const char *version=ST_tensor_metadata(st,"tensor.kernel.source_version"),*node=ST_tensor_metadata(st,"tensor.kernel.source_node");
         need(version && node && decimal(op.version)==version && decimal(op.source_node)==node,"source operation identity mismatch");
@@ -653,6 +836,10 @@ BOOL VHO_tensor_verify_kernel(const VHO_TENSOR_PROGRAM &p,UINT32 ordinal,FILE *d
             std::string av[]={decimal(value),decimal(v.storage),decimal(storage.role),decimal(storage.ordinal),decimal(VHO_tensor_elements(storage)),
                 decimal(VHO_tensor_elements(storage)*(storage.dtype=="bool"?1:4)),storage.dtype,storage.name};
             for(UINT32 k=0;k<8;++k) {const char *actual=ST_tensor_metadata(st,(std::string("tensor.argument.")+decimal(i)+"."+ak[k]).c_str());need(actual && av[k]==actual,"kernel binding mismatch");}
+        }
+        if(p.cooperative) {
+            const char *mapping=ST_tensor_metadata(st,"tensor.kernel.mapping"),*shared=ST_tensor_metadata(st,"tensor.kernel.shared_bytes");
+            need(mapping && decimal(kernel.mapping)==mapping && shared && std::string(kernel.mapping==2?"640":"0")==shared,"cooperative resource mapping mismatch");
         }
         const char *versioned_comments=ST_tensor_metadata(st,"tensor.kernel.explanations_version");
         if(versioned_comments) {

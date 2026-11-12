@@ -100,7 +100,7 @@ public:
         }
         text<<"Fused into this stage: this logical value is a lazy view, not a materialized tensor.\n";
         if(_first_fused_stage.count(id))
-            text<<"Recomputed here; this source value was also expanded in stage "<<_first_fused_stage[id]<<".\nReuse of the expression does not allocate an intermediate or share results across output threads.\n";
+            text<<"Recomputed here; this source value was also expanded in stage "<<_first_fused_stage[id]<<".\nNo global intermediate is allocated; CTA-local sharing follows the selected stage mapping.\n";
         else _first_fused_stage[id]=_stage;
         Explain("FUSED PRODUCER",text.str(),"    ");
     }
@@ -121,15 +121,100 @@ public:
             }
         }
     }
+    /* Explain structural work and costs relative to the prior thread/output
+     * realization of the same selected cuts. Counts are not a latency model. */
+    void ExplainCooperativeComparison(const VHO_TENSOR_KERNEL &k,std::ostringstream &text) {
+        const VHO_TENSOR_OPERATION &op=_p.operations[k.root];
+        UINT64 width=k.stage==2?k.chunks:_p.values[op.inputs[0]].shape.back();
+        UINT64 span=k.stage==1?k.split_width:width;
+        UINT64 outputs=VHO_tensor_elements(_p.values[op.output]);
+        text<<"WALKTHROUGH: lane = thread modulo 32; warp = thread / 32. All four warps are present.\n";
+        if(k.mapping==1) {
+            text<<"Warp work item = block*4 + warp. ";
+            if(k.stage==1) text<<"Decode chunk = work item / "<<outputs<<" and output i = work item modulo "<<outputs<<".\n";
+            else text<<"It is output i; guard i < "<<outputs<<" only for reads/stores, never for shuffle participation.\n";
+        } else {
+            UINT64 n=_p.values[op.output].shape.back(),rows=outputs/n,tiles=(n+3)/4;
+            text<<"A CTA owns one row and columns j0..j0+3; warp w owns column j0+w.\n";
+            text<<"There are "<<rows<<" logical rows and "<<tiles<<" column tiles per row; the column bound is "<<n<<".\n";
+            text<<"For tile base t: thread ids 0..31 stage left[row,t+lane] once per token;\n"
+                <<"all threads stage right[t+thread/4,j0+thread%4], with guarded zero-fill.\n"
+                <<"Every thread reaches the publish barrier. Warp w then accumulates\n"
+                <<"shared_left[lane] * shared_right[4*lane + (w XOR (lane/8))].\n"
+                <<"Every thread reaches the release barrier before the next tile can overwrite shared memory.\n";
+            text<<"Shared-right producer index: 4*(thread/4) + ((thread%4) XOR ((thread/4)/8)).\n"
+                <<"XOR changes physical bank placement only; the logical token/column pairing is unchanged.\n";
+            text<<"A full segment has "<<(span+31)/32<<" token tiles and "<<2*((span+31)/32)
+                <<" CTA barrier calls along each thread's path, plus the final warp tree.\n";
+            text<<"PREVIOUS VERSION COMPARISON: across this root's complete K="<<width<<", the logical left expression\n"
+                <<"was evaluated "<<outputs*width<<" times (once per output/token). Staging evaluates it "<<rows*tiles*width
+                <<" times (once per row/column-tile/token).\n";
+            text<<"Reuse factor for this selected n is n/ceil(n/4) = "<<n<<"/"<<tiles
+                <<"; it is four for complete four-column groups, smaller with a partial column tile.\n";
+            text<<"For attention weights this reduces repeated probability exp/normalization evaluation across latent columns.\n"
+                <<"It does not remove the right-operand products or guarantee the same reduction in HBM traffic:\n"
+                <<"the previous version may already hit cache or receive compiler reuse. Each logical right element\n"
+                <<"is still loaded per output row/column; cache reuse across heads or CTAs is not created here.\n";
+            text<<"Adjacent groups of four load neighboring columns; a whole warp's loads need not form one contiguous transaction.\n";
+        }
+        text<<"Warp reduction example: lane 0 accumulates begin+0, begin+32, ...; lane 1 uses begin+1, begin+33, ... .\n"
+            <<"At each d=16,8,4,2,1 all lanes shuffle; only lanes with lane+d<32 combine the received value.\n"
+            <<"This tree brings every lane's partial into lane zero, without atomics or a shared reduction array.\n";
+        text<<"PREVIOUS VERSION COMPARISON: one thread traversed up to "<<span
+            <<" terms for each output; now a lane traverses at most "<<(span+31)/32
+            <<" terms, followed by five shuffle/combine rounds.\n";
+        text<<"This describes dependency depth, not elapsed cycles, total instruction count, or a 32x speedup.\n";
+        if(k.stage==1) {
+            UINT64 tail=width-UINT64(k.chunks-1)*k.split_width;
+            text<<"The prior candidate already used these same split chunks; compare against "<<k.split_width<<" serial terms, not the complete context.\n";
+            text<<"The final chunk has "<<tail<<" terms: at most "<<(tail+31)/32<<" terms per lane";
+            if(k.mapping==2) text<<", "<<(tail+31)/32<<" shared tiles and "<<2*((tail+31)/32)<<" CTA barriers per thread";
+            text<<". Inactive lanes still carry neutral values through all five shuffles.\n";
+        }
+        if(k.stage==2)
+            text<<"The earlier merge visited chunks in scalar ascending order. This warp merge visits c=lane,lane+32,...\n"
+                <<"before the tree. It combines completed partials, with no additional exponential rescaling or normalization.\n";
+        text<<"Launch comparison for this stage: "<<(k.elements+_p.threads-1)/_p.threads
+            <<" prior blocks -> "<<VHO_tensor_grid(_p,k)<<" selected blocks, each with "<<_p.threads<<" threads.\n";
+        text<<"EXPECTED BENEFIT: shorter serial chains and more independent warps/CTAs can expose additional SM parallelism.\n"
+            <<"Reduction inputs contiguous on the reduced axis can also be read by neighboring lanes; fused source views\n"
+            <<"determine the final addresses. More CTAs do not imply a proportional speedup.\n"
+            <<"COSTS: five shuffles, extra live lane state, more scheduled threads, and (for staged dots) shared loads/stores\n"
+            <<"and CTA barriers. Small reductions and short tails can lose; compare the previous AOT candidate on hardware.\n";
+    }
     /* Render formulas, tails, work ownership and numerical order directly
      * from the supplied plan; these facts do not select a new schedule. */
     void ExplainStage(const VHO_TENSOR_KERNEL &k) {
         const VHO_TENSOR_OPERATION &op=_p.operations[k.root];
         UINT64 outputs=VHO_tensor_elements(_p.values[op.output]);std::ostringstream text;
         text<<"Selected result: "<<name(_p,k.output)<<"; "<<type(_p.values[k.output])<<"; "<<k.elements<<" work items.\n";
-        if(_p.opt_level==3) text<<"Mapped GPU launch: "<<(k.elements+_p.threads-1)/_p.threads<<" blocks of "<<_p.threads<<" threads, with excess work items guarded.\n";
+        if(_p.opt_level==3) text<<"Mapped GPU launch: "<<VHO_tensor_grid(_p,k)<<" blocks of "<<_p.threads<<" threads, with excess work items guarded.\n";
         else text<<"Single-thread semantic lowering: visit outputs in a serial loop.\n";
-        if(k.stage==2) {
+        if(k.stage!=2 && op.name=="common.matmul")
+            text<<"LOGICAL ROOT FORMULA (a partial restricts k to its chunk): "<<name(_p,op.output)<<"[batch,row,col] = sum_k "<<name(_p,op.inputs[0])
+                <<"[broadcast_batch_A,row,k] * "<<name(_p,op.inputs[1])<<"[broadcast_batch_B,k,col].\n";
+        else if(k.stage!=2 && (op.name=="common.reduce_max" || op.name=="common.reduce_sum"))
+            text<<"LOGICAL ROOT FORMULA (a partial restricts k to its chunk): output[i] = "<<(op.name=="common.reduce_max"?"max":"sum")<<"_k "
+                <<name(_p,op.inputs[0])<<"[i*K+k], K="<<_p.values[op.inputs[0]].shape.back()<<".\n";
+        if(k.mapping) {
+            ExplainCooperativeComparison(k,text);
+            UINT64 width=k.stage==2?k.chunks:_p.values[op.inputs[0]].shape.back();
+            text<<"Cooperative mapping: four complete 32-lane warps per CTA; each warp reduces one output.\n";
+            text<<"Each lane accumulates indices begin+lane, begin+lane+32, ... in F32, then all lanes call\n"
+                <<"__shfl_down_sync with full mask 0xffffffff and offsets 16,8,4,2,1. Lane zero owns the result store.\n";
+            text<<"All lanes participate, including neutral padding for invalid outputs and tails; no lane exits before collectives.\n";
+            text<<"The neutral value is "<<(op.name=="common.reduce_max"?"-infinity; maxima propagate NaNs":"+0; sums retain F32 additions")<<".\n";
+            if(k.mapping==2)
+                text<<"Shared staging: 32 left-operand values plus 32x4 right-operand values (640 bytes per CTA).\n"
+                    <<"Shared right-operand index is 4*k + (column XOR (k/8)); producer and consumer warps avoid bank conflicts.\n"
+                    <<"The left expression is evaluated once per token within each tile and reused across four adjacent output columns.\n"
+                    <<"A CTA barrier publishes each tile and a second CTA barrier releases it before overwrite.\n"
+                    <<"Column and token tails are zero-filled. Both barriers are outside every lane/tail predicate.\n";
+            if(k.stage==1) text<<"Chunk c covers [c*"<<k.split_width<<",min((c+1)*"<<k.split_width<<","<<width<<")); final chunk starts at "<<UINT64(k.chunks-1)*k.split_width<<" and contains "<<width-UINT64(k.chunks-1)*k.split_width<<" terms.\n"
+                <<"Scratch remains chunk-major at c*"<<outputs<<"+i; the subsequent merge reads completed partials.\n";
+            if(k.stage==2) text<<"Merge lanes traverse chunk-major partial[c*"<<outputs<<"+i] for c=lane, lane+32, ... .\n";
+            text<<"Only the lane-local accumulation loop remains serial; the warp tree changes F32 grouping and requires explicit reassociation.\n";
+        } else if(k.stage==2) {
             bool maximum=op.name=="common.reduce_max";
             text<<"For each output i in [0,"<<outputs<<"), start at "<<(maximum?"-infinity":"+0")<<" and visit c=0.."<<k.chunks-1<<" in order.\n";
             text<<"out[i] = "<<(maximum?"max":"sum")<<"_c partial[c*"<<outputs<<"+i]. The outer merge remains serial per output.\n";
@@ -180,8 +265,31 @@ public:
         }
         text<<"Selected internal tensor storage: "<<allocations.size()<<" buffers, "<<bytes<<" bytes.\n";
         text<<"This excludes runtime inputs/results, test guards, and the review executor's small view objects.\n";
-        text<<"Split reassociation permission: "<<(_p.split_width?"allow":"forbid")<<". Arithmetic and accumulators retain the selected F32 order.\n";
+        text<<"Reassociation permission: "<<((_p.split_width || _p.cooperative)?"allow":"forbid")<<". Arithmetic follows the selected F32 grouping.\n";
         text<<"Compilation/host checking does not establish GPU execution or speedup; consult the validation receipt.\n";
+        if(_p.cooperative) {
+            text<<"READING GUIDE: this selected plan has "<<_plan.kernels.size()<<" launches, as did the previous\n"
+                <<"fused/split thread-per-output candidate. Cooperative mapping changes work inside those stages;\n"
+                <<"it does not remove launches, materialized score tensors, or split scratch buffers.\n";
+            text<<"Read the formula, work ownership, dependency, previous-version comparison, and expected costs in each stage.\n";
+            for(UINT32 i=0;i<_plan.kernels.size();++i) {
+                const VHO_TENSOR_KERNEL &k=_plan.kernels[i];const VHO_TENSOR_OPERATION &op=_p.operations[k.root];
+                text<<"  Step "<<i+1<<" / kernel "<<k.id<<": "<<op.name
+                    <<(k.stage==1?" partials":k.stage==2?" merge":" direct")<<" -> "<<name(_p,k.output)
+                    <<"; "<<(k.mapping==2?"shared staged dot":k.mapping==1?"warp reduction":"previous scalar mapping retained")<<".\n";
+            }
+            text<<"For attention: query absorption and score contractions precede global max; stable exponential sums\n"
+                <<"depend on that max, normalized weighted-latent products depend on the global sum, and output\n"
+                <<"projection consumes the finalized latent value. The producer/dependency blocks name the actual tensors.\n";
+            text<<"EXPECTED PERFORMANCE, NOT A MEASUREMENT: long reductions have more opportunity to amortize collective\n"
+                <<"overhead; short contexts can be dominated by launch/synchronization cost. Neither outcome is guaranteed.\n"
+                <<"If the modified stages previously occupied fraction f of total time and achieve net stage speedup s,\n"
+                <<"whole-call speedup is 1 / ((1-f) + f/s), assuming other costs stay constant. Include all staging,\n"
+                <<"shuffle and scheduling costs in s; unchanged score/projection/launch costs remain in 1-f.\n"
+                <<"No calibrated f or s is attached to this plan, so no numerical runtime speedup is asserted.\n"
+                <<"A static architecture model could estimate cycles with sufficient latency/resource information;\n"
+                <<"these comments provide operation/ownership counts and do not claim such a calibrated model.\n";
+        }
         Explain("SELECTED ALGORITHM AND INTERFACE",text.str());
     }
     /* Follow exactly the supplied fused cuts in source operand order. */

@@ -100,7 +100,7 @@ public:
         _stage=k.id;
         _bound.clear();_printed.clear();_bound.insert(k.inputs.begin(),k.inputs.end());
         Explain(VHO_TENSOR_EXPLAIN_STAGE);
-        _out<<"\n  // Stage "<<ordinal+1<<": "<<(k.stage==1?"PARALLEL CHUNK PARTIALS":k.stage==2?"ORDERED CHUNK MERGE":"FUSED OUTPUT")<<"\n";
+        _out<<"\n  // Stage "<<ordinal+1<<": "<<(k.stage==1?"PARALLEL CHUNK PARTIALS":k.stage==2?(k.mapping?"WARP CHUNK MERGE":"ORDERED CHUNK MERGE"):"FUSED OUTPUT")<<"\n";
         _out<<"  // kernel_id="<<k.id<<"; source node="<<op.source_node<<"; "<<op.name<<".v"<<op.version<<"\n";
         _out<<"  // Selected independent work items="<<k.elements;
         if(k.stage) _out<<"; chunk_width="<<k.split_width<<"; chunks="<<k.chunks<<"; scratch=chunk_major";
@@ -109,13 +109,13 @@ public:
         if(k.stage==2) args.push_back(name(_p,k.inputs[0]));
         else for(size_t i=0;i<op.inputs.size();++i) args.push_back(Value(op.inputs[i]));
         std::ostringstream call;std::string root_type=type(_p.values[op.output]);
-        if(k.stage==2) call<<"merge_to<"<<root_type<<","<<(op.name=="common.reduce_max"?"true":"false")<<","<<k.chunks<<">";
+        if(k.stage==2) call<<(k.mapping?"warp_merge_to<":"merge_to<")<<root_type<<","<<(op.name=="common.reduce_max"?"true":"false")<<","<<k.chunks<<">";
         else if(op.name=="common.matmul") {
-            call<<(k.stage==1?"split_matmul_to<":"matmul_to<")<<root_type;
-            if(k.stage==1) call<<","<<k.split_width<<","<<k.chunks;call<<">";
+            call<<(k.mapping==2?"staged_matmul_to<":k.stage==1?"split_matmul_to<":"matmul_to<")<<root_type;
+            if(k.stage==1 || k.mapping==2) call<<","<<(k.stage==1?k.split_width:_p.values[op.inputs[0]].shape.back())<<","<<(k.stage==1?k.chunks:1);call<<">";
         } else if(op.name=="common.reduce_max" || op.name=="common.reduce_sum") {
-            call<<(k.stage==1?"split_reduce_to<":"reduce_to<")<<root_type<<","<<(op.name=="common.reduce_max"?"true":"false");
-            if(k.stage==1) call<<","<<k.split_width<<","<<k.chunks;call<<">";
+            call<<(k.mapping?"warp_reduce_to<":k.stage==1?"split_reduce_to<":"reduce_to<")<<root_type<<","<<(op.name=="common.reduce_max"?"true":"false");
+            if(k.stage==1 || k.mapping) call<<","<<(k.stage==1?k.split_width:_p.values[op.inputs[0]].shape.back())<<","<<(k.stage==1?k.chunks:1);call<<">";
         } else {require(op.name=="copy","unsupported selected root");call<<"materialize_to<"<<root_type<<">";}
         _out<<"    "<<call.str()<<"("<<pointer(_p,k.output);
         if(_p.values[k.output].role==0) _out<<".data";

@@ -60,7 +60,11 @@ def runner(manifest, device, reverse=False):
             args.append('(%s*)(%s%d%s+16)' % (ty, 'd' if device else 's', n, '' if device else '.data()'))
         if device:
             lines += ['if(%d>prop.maxGridSize[0] || %d>prop.maxThreadsPerBlock) return 21;' % (grid, block),
+                      'if(%d>prop.sharedMemPerBlock) return 22;' % int(k.get('shared_bytes','0')),
                       '%s<<<%d,%d>>>(%s); CK(cudaGetLastError());' % (k["name"], grid, block, ','.join(args))]
+        elif int(k.get("mapping", "0")):
+            lines += ['open64_host_launch(%d,%d,[&] { %s(%s); },%s);'
+                      % (grid, block, k["name"], ','.join(args), 'true' if reverse else 'false')]
         elif reverse:
             lines += ['for(int bx=%d-1;bx>=0;--bx) for(int tx=%d-1;tx>=0;--tx) { blockIdx.x=bx; threadIdx.x=tx; %s(%s); }'
                       % (grid, block, k["name"], ','.join(args))]
