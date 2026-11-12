@@ -119,6 +119,8 @@
 #include "config_clist.h"        /* for CLIST_cuda */
 #include "config_dsl.h"          /* for the AI trace control */
 #include "normalization_driver.h"
+#include "quantized_driver.h"
+#include "../lno/dsl_q1_preopt.h"
 #include "opt_dsl_normalization_request.h"
 
 #if defined(SHARED_BUILD) && !defined(BUILD_FAST_BIN) && \
@@ -976,14 +978,14 @@ Phase_Init (void)
 	Write_BE_Maps = TRUE;
 	// Output IR after preopt to .P file, and IR after LNO to .N file.
 	if (Run_lno)
-	    ir_output = Open_Output_Info(New_Extension(output_file_name,".N"));
+	    ir_output = BE_DSL_q1_terminal()?Open_Standard_Only_Output_Info(New_Extension(output_file_name,".N"),(PU_Info *)Global_PU_Tree):Open_Output_Info(New_Extension(output_file_name,".N"));
 	else
-	    ir_output = Open_Output_Info(New_Extension(output_file_name,".P"));
+	    ir_output = BE_DSL_q1_terminal()?Open_Standard_Only_Output_Info(New_Extension(output_file_name,".P"),(PU_Info *)Global_PU_Tree):Open_Output_Info(New_Extension(output_file_name,".P"));
     }
     if (!FHE_Checkpoint_Output_Active() && need_wopt_output) {
 	Write_ALIAS_CLASS_Map = TRUE;
 	Write_BE_Maps = TRUE;
-	ir_output = Open_Output_Info(New_Extension(output_file_name,".O"));
+	ir_output = BE_DSL_q1_terminal()?Open_Standard_Only_Output_Info(New_Extension(output_file_name,".O"),(PU_Info *)Global_PU_Tree):Open_Output_Info(New_Extension(output_file_name,".O"));
     }
     if (!FHE_Checkpoint_Output_Active() && need_ipl_output) {
 	Write_BE_Maps = FALSE;
@@ -1322,7 +1324,11 @@ LNO_Processing (PU_Info *current_pu, WN *pu)
 	  RID_set_print(TFile,REGION_get_rid(rwn));
 	}
       } else if (Run_preopt) {
+        DSL_Q1_PREOPT_SESSION q1_session(rwn);
+        q1_session.Before(rwn);
 	rwn = Perform_Preopt_Optimization(pu, rwn);
+        if(q1_session.Active()) Set_PU_Info_tree_ptr(current_pu,rwn);
+        q1_session.After(rwn);q1_session.Invalidate();
 	Check_for_IR_Dump(TP_GLOBOPT, rwn, "PREOPT");
 	if (Get_Trace(TP_REGION,TT_REGION_ALL)) {
 	  fprintf(TFile,"===== After PREOPT (:p), %s %d, stacked=%d\n",
@@ -2136,7 +2142,9 @@ Preprocess_PU (PU_Info *current_pu)
     Current_Map_Tab = PU_Info_maptab(current_pu);
     Current_pu = &PU_Info_pu(current_pu);
     CURRENT_SYMTAB = PU_lexical_level(*Current_pu);
-    if ((PU_is_nested_func(*Current_pu) && PU_mp(*Current_pu)) ||
+    if (BE_DSL_q1_resident(current_pu)) {
+      Restore_Local_Symtab(current_pu);Cur_PU_Feedback=NULL;
+    } else if ((PU_is_nested_func(*Current_pu) && PU_mp(*Current_pu)) ||
         Is_Set_PU_Info_flags(current_pu, PU_IS_DRA_CLONE)) {
       is_mp_nested_pu = TRUE;
       // hack to restore nested PU's symtab
@@ -2283,6 +2291,14 @@ Preprocess_PU (PU_Info *current_pu)
   }
 #endif
 
+  if (BE_DSL_q1_terminal() && BE_DSL_q1_resident(current_pu)) {
+    pu=BE_DSL_q1_route(current_pu,pu,stderr);
+    pu=VHO_Lower_Driver(current_pu,pu);
+    pu=Adjust_Opt_Level(current_pu,pu,ST_name(PU_Info_proc_sym(current_pu)));
+    if(wopt_loaded) Create_Restricted_Map(MEM_pu_nz_pool_ptr);
+    if(!w2c_only) REGION_Initialize(pu,FALSE);
+    return pu;
+  }
   if (need_fhe_runtime_lower_output || need_fhe_materialization_output ||
       FHE_CKKS2C_Checkpoint_Input_Active()) {
     Set_Error_Phase ( "FHE Projected-IR Admission" );
@@ -3078,6 +3094,14 @@ main (INT argc, char **argv)
   Stop_Timer (T_ReadIR_Comp);
 
   Initialize_Special_Global_Symbols ();
+  BE_DSL_q1_prepare_file(pu_tree,!Run_ipl && !Run_ipsaopt && !FILE_INFO_ipa(File_info) &&
+      !FHE_Checkpoint_Enabled() && !VHO_DSL_Normalization_Request && !VHO_DSL_CUDA_Whirl_Output &&
+      !VHO_DSL_Enable_WOPT && !Run_autopar && !Run_Distr_Array && !Instrumentation_Enabled &&
+      !Feedback_Enabled[PROFILE_PHASE_BEFORE_VHO]
+#ifdef KEY
+      && OPT_Cyg_Instrument==0
+#endif
+      ,stderr);
 
   if (defer_components) {
     /* The image, not the option spelling, decides whether this phase owns

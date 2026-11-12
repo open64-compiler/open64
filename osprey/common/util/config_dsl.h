@@ -10,6 +10,9 @@
 #ifndef config_dsl_INCLUDED
 #define config_dsl_INCLUDED
 
+/* Explicit production Q1 buffer ABI; NULL/off preserves ordinary routing. */
+extern char *VHO_DSL_Q1_High;
+extern char *VHO_DSL_Q1_Checkpoint;
 extern BOOL VHO_DSL_Enable_WOPT;
 extern BOOL VHO_DSL_Enable_WOPT_Set;
 extern BOOL VHO_DSL_Enable_Shape_Refinement;

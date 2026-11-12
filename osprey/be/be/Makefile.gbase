@@ -336,6 +336,14 @@ BE_VHO_CXX_SRCS = \
   dsl_shape_refine.cxx \
   dsl_opt.cxx \
   dsl_opt_plan_opt.cxx \
+  tensor_source_capture.cxx \
+  tensor_schedule.cxx \
+  tensor_attention_chunk_select.cxx \
+  tensor_high_lower.cxx \
+  tensor_q1_program.cxx \
+  dsl_high_quantized.cxx \
+  dsl_q1_preopt.cxx \
+  dsl_high_snapshot.cxx \
   dsl_tensor_evolution_opt.cxx \
   dsl_tensor_analysis_opt.cxx \
   dsl_tensor_locality_opt.cxx \
@@ -778,6 +786,7 @@ BE_AS_OBJS = $(COMMON_UTIL_TARG_AS_SRCS:.s=.o)
 
 BE_DRIVER_CXX_SRCS = \
   normalization_driver.cxx \
+  quantized_driver.cxx \
   driver.cxx	        \
   driver_util.cxx	\
   iter.cxx
@@ -1203,3 +1212,13 @@ dsl_tensor_locality.o: $(BE_VHO_DIR)/dsl_tensor_locality_internal.h \
     $(BE_COM_DIR)/dsl_tensor_control_snapshot_internal.h
 # MR2 observer input/report are owned values crossing the driver boundary.
 driver.o: $(BE_DIR)/vho/tensor_attention_search.h $(BE_DIR)/vho/tensor_attention_movement.h
+
+# Q1 native semantic services share the same detached value layout.
+tensor_source_capture.o tensor_schedule.o tensor_attention_chunk_select.o tensor_high_lower.o tensor_q1_program.o dsl_high_quantized.o quantized_driver.o driver.o: $(BE_VHO_DIR)/tensor_kernel_lower.h
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_quantized.inc $(BE_VHO_DIR)/tensor_high_selected.inc
+dsl_high_quantized.o: $(BE_LNO_DIR)/dsl_high_quantized.cxx $(BE_LNO_DIR)/dsl_high_quantized.h
+
+config.o: $(COMMON_UTIL_DIR)/config_dsl.cxx $(COMMON_UTIL_DIR)/config_dsl.h
+
+driver.o dsl_q1_preopt.o: $(BE_LNO_DIR)/dsl_q1_preopt.h $(BE_LNO_DIR)/dsl_high_quantized.h
+quantized_driver.o tensor_q1_program.o tensor_high_lower.o dsl_q1_preopt.o: $(BE_VHO_DIR)/tensor_q1_program.h

@@ -62,6 +62,7 @@
  * ====================================================================
  */
 
+#include "dsl_q1_preopt.h"
 #include <stdint.h>
 #ifdef USE_PCH
 #include "lno_pch.h"
@@ -85,6 +86,7 @@
 #include "stab.h"		    /* for Current_PU */
 #include "region_util.h"	    /* prototype for REGION_new_wn */
 
+#include "opt_du.h"
 #include "optimizer.h"		    /* for DU_Manager and Pre_Optimizer */
 #include "lnoptimizer.h"	    /* for Lnoptimizer() */
 #include "region_main.h"	    /* prototypes for RBI and RAIL */
@@ -216,6 +218,15 @@ Lno_Init (void)
    region_wn: sometimes equal to pu, sometimes smaller (olimit)
    alloca: TRUE means ok to use alloca, FALSE means use malloc
 */
+/* Borrow the phase's complete DU list for one unique scalar definition only. */
+static WN *LNO_q1_definition(void *context,WN *load) {
+    DU_MANAGER *du=(DU_MANAGER *)context;
+    DEF_LIST *defs=du->Ud_Get_Def(load);if(!defs || defs->Incomplete()) return NULL;
+    DEF_LIST_ITER iter(defs);WN *only=NULL;
+    for(DU_NODE *item=iter.First();!iter.Is_Empty();item=iter.Next()) {if(only) return NULL;only=item->Wn();}
+    return only;
+}
+
 WN *
 Perform_Loop_Nest_Optimization (PU_Info* current_pu, WN *pu_wn, 
 			        WN *region_wn, BOOL alloca)
@@ -270,8 +281,13 @@ Perform_Loop_Nest_Optimization (PU_Info* current_pu, WN *pu_wn,
     STACK<WN*> st_after_wn(&MEM_local_pool); 
     STACK<INT> st_after_id(&MEM_local_pool); 
 
+    DSL_Q1_PREOPT_SESSION q1_session(region_wn==pu_wn?region_wn:NULL);
+    q1_session.Before(region_wn);
     region_wn =
       Pre_Optimizer(PREOPT_LNO_PHASE, region_wn, du_mgr, alias_mgr);
+    DSL_HIGH_Q1_RESOLVER q1_resolver;q1_resolver.context=du_mgr;q1_resolver.definition=LNO_q1_definition;
+    if(q1_session.Active()) Set_PU_Info_tree_ptr(current_pu,region_wn);
+    q1_session.After(region_wn,q1_resolver);
     Check_for_IR_Dump(TP_LNOPT3, region_wn, "LNO PREOPT");
 
     RID_level(REGION_get_rid(region_wn)) = RL_LNO_PREOPT;
@@ -279,6 +295,7 @@ Perform_Loop_Nest_Optimization (PU_Info* current_pu, WN *pu_wn,
 
     if (WOPT_Enable_Pro_Loop_Fusion_Trans || WOPT_Enable_Pro_Loop_Interchange_Trans
 	|| WOPT_Enable_Pro_Loop_Ext_Trans) {
+      q1_session.Before(region_wn);
       Delete_Du_Manager(du_mgr, MEM_pu_nz_pool_ptr);
       du_mgr = Create_Du_Manager(MEM_pu_nz_pool_ptr);
       region_wn =
@@ -290,6 +307,9 @@ Perform_Loop_Nest_Optimization (PU_Info* current_pu, WN *pu_wn,
 	Proactive_Optimizer(PREOPT_LNO1_PHASE, region_wn, du_mgr, alias_mgr);
 #endif
 
+      q1_resolver.context=du_mgr;
+      if(q1_session.Active()) Set_PU_Info_tree_ptr(current_pu,region_wn);
+      q1_session.After(region_wn,q1_resolver);
       Check_for_IR_Dump(TP_LNOPT3, region_wn, "LNO1 PREOPT");
       RID_level(REGION_get_rid(region_wn)) = RL_LNO1_PREOPT;
       Is_True(REGION_consistency_check(region_wn),(""));
@@ -300,6 +320,7 @@ Perform_Loop_Nest_Optimization (PU_Info* current_pu, WN *pu_wn,
     Set_Error_Phase ( "Loop Nest Optimizer" );
 
     WB_LNO_Initialize(region_wn, du_mgr, alias_mgr, WBC_DISABLE); 
+    q1_session.Invalidate();
     opt_pu = Lnoptimizer (current_pu, region_wn, du_mgr, alias_mgr);
     REGION_new_wn(opt_pu, region_wn); /*preserve RID <-> WHIRL consistency*/
     RID_level(REGION_get_rid(opt_pu)) = RL_LNO;
