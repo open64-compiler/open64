@@ -125,6 +125,46 @@ VHO_MLA_COST_PROFILE DSL_observer_model(const rapidjson::Value &value) {
         model.values[i] = DSL_observer_uint(DSL_observer_member(parameters,VHO_mla_cost_names[i]),1000000000);
     return model;
 }
+/* Decode the versioned global/per-run/composite controls without borrowing
+ * JSON state. Hard safety caps remain mandatory even if budget is not named. */
+VHO_MLA_SEARCH_CONTROL DSL_observer_controls(const rapidjson::Value &value) {
+    DSL_observer_object(value,15);
+    DSL_observer_require(DSL_observer_string(DSL_observer_member(value,"schema")) == "open64.mla-search-controls.v2");
+    VHO_MLA_SEARCH_CONTROL control;
+    control.space=DSL_observer_string(DSL_observer_member(value,"space"));
+    control.mode=DSL_observer_string(DSL_observer_member(value,"mode"));
+    control.global_proposals=DSL_observer_uint(DSL_observer_member(value,"global_proposal_limit"),192);
+    control.global_unique=DSL_observer_uint(DSL_observer_member(value,"global_unique_limit"),12);
+    control.global_time_us=DSL_observer_uint(DSL_observer_member(value,"global_time_limit_us"),UINT64_C(3600000000));
+    control.patience=DSL_observer_uint(DSL_observer_member(value,"patience"),12);
+    control.minimum_gain=DSL_observer_uint(DSL_observer_member(value,"minimum_gain_cycles"),1000000000);
+    control.target=DSL_observer_uint(DSL_observer_member(value,"target_cycles"),UINT64_C(1000000000000000000));
+    control.gap_ppm=DSL_observer_uint(DSL_observer_member(value,"gap_ppm"),1000000);
+    control.remaining_invocations=DSL_observer_uint(DSL_observer_member(value,"remaining_invocations"),UINT64_C(1000000000000));
+    control.evaluation_cost=DSL_observer_uint(DSL_observer_member(value,"evaluation_cost_cycles"),UINT64_C(1000000000000000000));
+    const rapidjson::Value &runs=DSL_observer_member(value,"runs"),&stopping=DSL_observer_member(value,"stopping");
+    DSL_observer_require(runs.IsArray() && runs.Size()>0 && runs.Size()<=16 && stopping.IsArray() && stopping.Size()>0 && stopping.Size()<=6);
+    control.runs.clear();control.stopping.clear();
+    for(unsigned i=0;i<runs.Size();++i) {
+        const rapidjson::Value &entry=runs[i];DSL_observer_object(entry,4);
+        VHO_MLA_SEARCH_RUN_CONTROL run;
+        run.id=DSL_observer_string(DSL_observer_member(entry,"id"),96);
+        run.strategy=DSL_observer_string(DSL_observer_member(entry,"strategy"),96);
+        run.seed=DSL_observer_uint(DSL_observer_member(entry,"seed"));
+        run.proposal_limit=DSL_observer_uint(DSL_observer_member(entry,"proposal_limit"),12);control.runs.push_back(run);
+    }
+    for(unsigned i=0;i<stopping.Size();++i) control.stopping.push_back(DSL_observer_string(stopping[i],96));
+    const rapidjson::Value &conversion=DSL_observer_member(value,"economic_conversion");
+    if(!conversion.IsNull()) {
+        DSL_observer_object(conversion,4);
+        DSL_observer_require(DSL_observer_string(DSL_observer_member(conversion,"schema"))=="open64.search-cost-conversion.v1");
+        control.economic_conversion=true;
+        control.host_us=DSL_observer_uint(DSL_observer_member(conversion,"host_microseconds"),UINT64_C(1000000000000));
+        control.cycles_per_us=DSL_observer_uint(DSL_observer_member(conversion,"reference_cycles_per_microsecond"),1000000000);
+        control.conversion_provenance=DSL_observer_string(DSL_observer_member(conversion,"provenance"),96);
+    }
+    return control;
+}
 }
 
 /* Parse once into private owned data. Every failure leaves an empty output and
@@ -141,9 +181,14 @@ bool LNO_DSL_read_search_input(const char *path, DSL_HIGH_SEARCH_INPUT &output, 
         rapidjson::Document document;
         document.Parse<rapidjson::kParseValidateEncodingFlag | rapidjson::kParseIterativeFlag>(text.c_str());
         DSL_observer_require(!document.HasParseError());
-        unsigned nodes = 0; DSL_observer_unique(document,0,nodes); DSL_observer_object(document,12);
-        DSL_observer_require(DSL_observer_string(DSL_observer_member(document,"schema")) == "open64.lno-high-search.v1");
+        unsigned nodes = 0; DSL_observer_unique(document,0,nodes);
+        std::string schema=DSL_observer_string(DSL_observer_member(document,"schema"));
+        bool production=schema=="open64.lno-high-search.v2";
+        DSL_observer_require(production || schema=="open64.lno-high-search.v1");
+        DSL_observer_object(document,production?13:12);
         DSL_HIGH_SEARCH_INPUT result;
+        result.production_controls=production;
+        if(production) result.controls=DSL_observer_controls(DSL_observer_member(document,"search_controls"));
         result.unit = DSL_observer_string(DSL_observer_member(document,"unit"));
         result.function = DSL_observer_string(DSL_observer_member(document,"function"));
         result.source_key = DSL_observer_string(DSL_observer_member(document,"source_key"),8*1024*1024);

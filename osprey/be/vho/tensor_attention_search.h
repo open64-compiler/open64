@@ -16,7 +16,7 @@ enum VHO_MLA_COST_FIELD {
 extern const char *const VHO_mla_cost_names[VHO_MLA_COST_FIELDS];
 struct VHO_MLA_COST_PROFILE {
     /* Unknown timings start at zero; admission requires explicit positive values. */
-    VHO_MLA_COST_PROFILE() {memset(values,0,sizeof(values));}
+    inline VHO_MLA_COST_PROFILE() {memset(values,0,sizeof(values));}
     std::string id,architecture,provenance;
     UINT64 values[VHO_MLA_COST_FIELDS];
 };
@@ -69,4 +69,54 @@ extern BOOL VHO_mla_search_inputs_valid(const VHO_MLA_COST_PROFILE &,const VHO_M
  * arithmetic services are used. Output remains unchanged on failure. */
 extern BOOL VHO_mla_explore(const VHO_TENSOR_PROGRAM &,const VHO_TENSOR_GPU_PROFILE &,
     const VHO_MLA_COST_PROFILE &,const VHO_MLA_SEARCH_OPTIONS &,VHO_MLA_SEARCH_RESULT *,FILE *);
+
+/* Version-two controls are separate from the archived per-run v1 contract.
+ * Global means one bound PU search, shared across all its strategy runs.
+ * Design: doc/AI-COMPILER-SEARCH-M3-CONTROLS-v1.0.md. */
+struct VHO_MLA_SEARCH_RUN_CONTROL {
+    std::string id, strategy;
+    UINT64 seed, proposal_limit;
+    /* Deterministic, bounded independent proposal state. */
+    VHO_MLA_SEARCH_RUN_CONTROL() : seed(17), proposal_limit(12) {}
+};
+struct VHO_MLA_SEARCH_CONTROL {
+    std::string space, mode;
+    std::vector<VHO_MLA_SEARCH_RUN_CONTROL> runs;
+    std::vector<std::string> stopping;
+    UINT64 global_proposals, global_unique, global_time_us;
+    UINT64 patience, minimum_gain, target, gap_ppm, remaining_invocations, evaluation_cost;
+    bool economic_conversion;
+    UINT64 host_us, cycles_per_us;
+    std::string conversion_provenance;
+    /* Complete estimation is default; JSON v2 must supply every field. */
+    VHO_MLA_SEARCH_CONTROL();
+};
+struct VHO_MLA_SEARCH_EVENT {
+    UINT64 proposal, unique, run_best, global_best;
+    UINT32 run, candidate;
+    bool cache_hit, eligible;
+};
+struct VHO_MLA_PRODUCTION_RESULT {
+    VHO_MLA_SEARCH_RESULT exploration;
+    UINT64 proposals, elapsed_us;
+    bool has_winner;
+    std::string termination;
+    std::vector<std::string> predicates;
+    std::vector<std::vector<std::string> > run_predicates;
+    std::vector<VHO_MLA_SEARCH_EVENT> events;
+    /* No incumbent is a reportable bounded outcome, never a fake winner. */
+    VHO_MLA_PRODUCTION_RESULT() : proposals(0), elapsed_us(0), has_winner(false) {}
+};
+/* Strict finite controls, including explicit compatible economic conversion.
+ * Unknown providers/certificates are refused before proposal generation. */
+extern BOOL VHO_mla_search_control_valid(const VHO_MLA_SEARCH_CONTROL &,FILE *);
+/* Full framed policy identity; no elapsed time or compact hash substitutes for
+ * source/resource/model/space/control binding at the owning native boundary. */
+extern std::string VHO_mla_search_control_key(const VHO_MLA_SEARCH_CONTROL &);
+/* Fair interleaving with hard global caps and a single lazy estimate cache.
+ * Deadlines are checked cooperatively before/after each atomic proposal; they
+ * do not preempt an in-flight estimate. No native context/callback is accepted.
+ * Invalid input/clock leaves output unchanged; no incumbent publishes counts. */
+extern BOOL VHO_mla_explore_controlled(const VHO_TENSOR_PROGRAM &,const VHO_TENSOR_GPU_PROFILE &,
+    const VHO_MLA_COST_PROFILE &,const VHO_MLA_SEARCH_CONTROL &,VHO_MLA_PRODUCTION_RESULT *,FILE *);
 #endif

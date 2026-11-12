@@ -17,6 +17,8 @@
 #include "stab.h"
 #include "pu_info.h"
 #include "dsl_ir_image.h"
+#include "dsl_image_service.h"
+#include "dsl_ir_rewrite.h"
 #include "dsl_gatekeeper.h"
 #include "config.h"
 #include "config_opt.h"

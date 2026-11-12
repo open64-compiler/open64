@@ -624,7 +624,20 @@ MHD *Current_MHD = &Mhd_Options;
     MHOPT_BOOL_SET ( name "3", NULL, L[2].var, L[2].vset ),	\
     MHOPT_BOOL_SET ( name "4", NULL, L[3].var, L[3].vset )
 
+/* File-scope search controls use existing descriptors, not new LNO_FLAGS
+ * fields, exports or link dependencies. They cannot be changed by a pragma.
+ * Design: doc/AI-COMPILER-SEARCH-M3-CONTROLS-v1.0.md. */
+static char *LNO_High_Search_Mode = NULL;
+static char *LNO_High_Search_Bindings = NULL;
+
 static OPTION_DESC Options_LNO[] = {
+
+  { OVK_NAME, OV_VISIBLE, FALSE, "high_search", "high_search", 0, 0, 0,
+    &LNO_High_Search_Mode, NULL,
+    "on/off: bound estimation-only High search with version-two global controls" },
+  { OVK_NAME, OV_VISIBLE, FALSE, "high_search_bindings", "high_search_bindings", 0, 0, 0,
+    &LNO_High_Search_Bindings, NULL,
+    "Versioned High source/resource/model/search-control binding document" },
 
   LNOPT_BOOL ( "aequiv",		NULL,	Aequiv ),
   LNOPT_U32  ( "ap",			NULL,	1,0,2,	Run_AP ),

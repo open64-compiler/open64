@@ -345,6 +345,20 @@ tensor_attention_chunk_select.o: $(BE_DIR)/vho/tensor_attention_chunk_select.cxx
 tensor_attention_search.o: $(BE_DIR)/vho/tensor_attention_search.cxx $(BE_DIR)/vho/tensor_attention_search.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
+# Standalone tests link only the detached service and read-only hardware records.
+# The scripted clock cannot be selected in the production shared component.
+dsl_high_search_test.o: $(BE_LNOPT_DIR)/tests/dsl_high_search_control_test.cxx $(BE_LNOPT_DIR)/dsl_high_observer.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+tensor_attention_search_test.o: $(BE_DIR)/vho/tensor_attention_search.cxx $(BE_DIR)/vho/tensor_attention_search.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) -DVHO_MLA_SEARCH_TEST_CLOCK $< -o $@
+
+dsl_high_search_hardware.o: $(TARG_INFO_SRC)/access/dsl_memory_hierarchy.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_high_search_control_test: dsl_high_search_test.o tensor_attention_search_test.o dsl_high_search_hardware.o dsl_high_observer.o dsl_high_observer_json.o dsl_high_snapshot.o tensor_schedule.o tensor_attention_chunk_select.o
+	$(link.c++f) -o $@ $^
+
 LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
 LCDEFS = $(HOSTDEFS) $(TARGDEFS)
 LCINCS = $(addprefix -I, $(HEADER_DIRS))

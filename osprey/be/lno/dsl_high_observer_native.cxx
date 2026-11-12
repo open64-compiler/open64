@@ -8,12 +8,34 @@
 #include "config.h"
 #include "config_opt.h"
 #include "dep_graph.h"
+#include "flags.h"
 #include <stddef.h>
 #include <cstdlib>
 #include <sstream>
 #include <time.h>
 
 namespace {
+struct DSL_HIGH_SEARCH_CONFIGURATION {
+    bool specified;
+    std::string mode, path;
+    /* Unspecified preserves the legacy v1 environment adapter. */
+    DSL_HIGH_SEARCH_CONFIGURATION() : specified(false) {}
+};
+/* Reuse the public option descriptor lookup; do not depend on flags.c's
+ * private auxiliary layout or change the binary LNO_FLAGS configuration ABI. */
+DSL_HIGH_SEARCH_CONFIGURATION DSL_observer_configuration() {
+    DSL_HIGH_SEARCH_CONFIGURATION configuration;
+    OPTION_GROUP *group=Get_Command_Line_Group(Common_Option_Groups,"LNO");
+    if(!group) return configuration;
+    for(OPTION_DESC *option=OGROUP_options(group);ODESC_kind(option)!=OVK_COUNT;++option) {
+        if(!ODESC_name(option) || ODESC_kind(option)!=OVK_NAME || !ODESC_variable(option)) continue;
+        const char *value=*(const char **)ODESC_variable(option);
+        if(!strcmp(ODESC_name(option),"high_search") && value) {
+            configuration.specified=true;configuration.mode=value;
+        } else if(!strcmp(ODESC_name(option),"high_search_bindings") && value) configuration.path=value;
+    }
+    return configuration;
+}
 struct DSL_HIGH_NATIVE_STATE {
     std::string tree, tables;
     unsigned nodes, symbols, types;
@@ -71,7 +93,7 @@ bool DSL_observer_native_binding(WN *scope, const DSL_HIGH_SEARCH_INPUT &input, 
     reason = "native_binding_validated"; return true;
 }
 /* Retain the scoped estimated census, not an executable selected-plan handoff. */
-void DSL_observer_print(FILE *trace, const DSL_HIGH_SEARCH_REPORT &report) {
+void DSL_observer_print(FILE *trace, const DSL_HIGH_SEARCH_REPORT &report, const DSL_HIGH_SEARCH_INPUT &input) {
     const VHO_MLA_SEARCH_RESULT &result = report.exploration;
     fprintf(trace,"AI_HIGH_SEARCH 1 BINDINGS manifest=%s\nAI_HIGH_SEARCH 1 RESOURCE_KEY %s\nAI_HIGH_SEARCH 1 MODEL_KEY %s\n",
         report.manifest_key.c_str(),report.resource_key.c_str(),report.model_key.c_str());
@@ -81,10 +103,45 @@ void DSL_observer_print(FILE *trace, const DSL_HIGH_SEARCH_REPORT &report) {
             i,candidate.policy,candidate.width,candidate.evaluated?"true":"false",candidate.eligible?"true":"false",
             (unsigned long long)candidate.total,candidate.reason.c_str());
     }
-    fprintf(trace,"AI_HIGH_SEARCH 1 OBSERVED estimates=%llu cache_hits=%llu runs=%lu complete=%s winner=%u conclusion=%s applied=false schedule_legality=not_proved\n",
+    if(!report.controlled) fprintf(trace,"AI_HIGH_SEARCH 1 OBSERVED estimates=%llu cache_hits=%llu runs=%lu complete=%s winner=%u conclusion=%s applied=false schedule_legality=not_proved\n",
         (unsigned long long)result.evaluations,(unsigned long long)result.cache_hits,(unsigned long)result.runs.size(),
         result.complete?"true":"false",result.winner,result.complete?"best_estimated_in_declared_space":"best_estimated_among_explored");
+    else {
+        const VHO_MLA_PRODUCTION_RESULT &production=report.production;
+        fprintf(trace,"AI_HIGH_SEARCH 2 CONTROL_KEY %s\n",report.control_key.c_str());
+        for(size_t i=0;i<production.events.size();++i) {
+            const VHO_MLA_SEARCH_EVENT &event=production.events[i];
+            fprintf(trace,"AI_HIGH_SEARCH 2 EVENT proposal=%llu unique=%llu run=%u candidate=%u cache_hit=%s eligible=%s run_best=%llu global_best=%llu\n",
+                (unsigned long long)event.proposal,(unsigned long long)event.unique,event.run,event.candidate,event.cache_hit?"true":"false",
+                event.eligible?"true":"false",(unsigned long long)event.run_best,(unsigned long long)event.global_best);
+        }
+        for(size_t i=0;i<result.runs.size();++i) {
+            const VHO_MLA_SEARCH_RUN &run=result.runs[i];
+            std::ostringstream run_winner;if(run.best) run_winner<<run.winner;else run_winner<<"none";
+            fprintf(trace,"AI_HIGH_SEARCH 2 RUN index=%lu id=%s strategy=%s proposals=%lu winner=%s best=%llu first_best_trial=%llu restarts=%llu termination=%s\n",
+                (unsigned long)i,input.controls.runs[i].id.c_str(),run.strategy.c_str(),(unsigned long)run.visited.size(),
+                run_winner.str().c_str(),(unsigned long long)run.best,(unsigned long long)run.first_best_trial,(unsigned long long)run.restarts,run.termination.c_str());
+            for(size_t j=0;j<production.run_predicates[i].size();++j)
+                fprintf(trace,"AI_HIGH_SEARCH 2 RUN_PREDICATE run=%lu name=%s\n",(unsigned long)i,production.run_predicates[i][j].c_str());
+        }
+        for(size_t i=0;i<production.predicates.size();++i) fprintf(trace,"AI_HIGH_SEARCH 2 PREDICATE %s\n",production.predicates[i].c_str());
+        std::ostringstream winner;winner<<(production.has_winner?"":"none");if(production.has_winner) winner<<result.winner;
+        const char *conclusion=production.has_winner?(result.complete?"best_estimated_in_declared_space":"best_estimated_among_explored"):
+            (result.complete?"no_estimated_candidate_in_declared_space":"no_estimated_candidate_among_explored");
+        fprintf(trace,"AI_HIGH_SEARCH 2 OBSERVED proposals=%llu estimates=%llu cache_hits=%llu elapsed_us=%llu runs=%lu complete=%s winner=%s termination=%s conclusion=%s applied=false schedule_legality=not_proved\n",
+            (unsigned long long)production.proposals,(unsigned long long)result.evaluations,(unsigned long long)result.cache_hits,
+            (unsigned long long)production.elapsed_us,(unsigned long)result.runs.size(),result.complete?"true":"false",winner.str().c_str(),
+            production.termination.c_str(),conclusion);
+        if(!production.has_winner) fprintf(trace,"AI_HIGH_SEARCH 2 FALLBACK reason=search_without_eligible_candidate fallback=ordinary_lno\n");
+    }
 }
+}
+
+/* A production request uses its own file-scope opt-in, still gated by the
+ * owning driver's effective O3/LNO/scope checks before any snapshot is made. */
+bool LNO_DSL_production_search_requested() {
+    DSL_HIGH_SEARCH_CONFIGURATION configuration=DSL_observer_configuration();
+    return configuration.specified && configuration.mode!="off";
 }
 
 /* Keep host accounting separate from estimated reference-cycle model units. */
@@ -100,7 +157,13 @@ uint64_t LNO_DSL_observer_time_us() {
 void LNO_DSL_observe_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias, ARRAY_DIRECTED_GRAPH16 *graph,
     const DSL_HIGH_EPOCH &epoch, const DSL_HIGH_BINDINGS &bindings, const DSL_HIGH_SNAPSHOT &snapshot,
     uint64_t snapshot_us, FILE *trace) {
-    const char *path = getenv("OPEN64_HIGH_SEARCH_BINDINGS");
+    DSL_HIGH_SEARCH_CONFIGURATION configuration=DSL_observer_configuration();
+    if(configuration.specified && configuration.mode!="on") {
+        if(trace) fprintf(trace,"AI_HIGH_SEARCH 2 SKIP reason=%s fallback=ordinary_lno\n",
+            configuration.mode=="off"?"search_explicitly_disabled":"invalid_search_mode");
+        return;
+    }
+    const char *path = configuration.specified?configuration.path.c_str():getenv("OPEN64_HIGH_SEARCH_BINDINGS");
     if (!path || !*path) {
         if (trace) fprintf(trace,"AI_HIGH_SEARCH 1 SKIP reason=no_binding_document fallback=ordinary_lno\n");
         return;
@@ -113,8 +176,9 @@ void LNO_DSL_observe_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias, ARRAY
     DSL_HIGH_NATIVE_STATE before = DSL_observer_state(scope);
     DSL_HIGH_SEARCH_INPUT input; DSL_HIGH_SEARCH_REPORT report; std::string reason;
     uint64_t begin = LNO_DSL_observer_time_us();
-    bool valid = LNO_DSL_read_search_input(path,input,reason) &&
-        LNO_DSL_validate_search_input(snapshot,bindings,input,reason) && DSL_observer_native_binding(scope,input,reason);
+    bool valid = LNO_DSL_read_search_input(path,input,reason);
+    if(valid && configuration.specified && !input.production_controls) {valid=false;reason="production_controls_required";}
+    if(valid) valid=LNO_DSL_validate_search_input(snapshot,bindings,input,reason) && DSL_observer_native_binding(scope,input,reason);
     uint64_t validation_us = LNO_DSL_observer_time_us()-begin, exploration_us = 0;
     bool observed = false;
     if (valid) {
@@ -140,7 +204,7 @@ void LNO_DSL_observe_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias, ARRAY
             (unsigned long long)snapshot_us,(unsigned long long)validation_us,(unsigned long long)exploration_us,
             (unsigned long long)(observed?report.exploration.evaluations:0),
             (unsigned long long)(observer_us-validation_us-exploration_us),(unsigned long long)observer_us);
-        if (observed) DSL_observer_print(trace,report);
+        if (observed) DSL_observer_print(trace,report,input);
         else fprintf(trace,"AI_HIGH_SEARCH 1 SKIP reason=%s fallback=ordinary_lno\n",reason.c_str());
     }
 }

@@ -51,6 +51,12 @@ Upcoming features
   More optimizations
 
 
+Experimental compiler feature guides
+
+  Bounded High-WHIRL MLA search: defaults, complete configuration examples,
+  budget controls, diagnostics and ordinary-LNO fallback are documented in
+  doc/AI-COMPILER-HIGH-SEARCH-USER-GUIDE.md.
+
 Installation Information
 
   The Open64 compiler is available in both binary and source-code form
