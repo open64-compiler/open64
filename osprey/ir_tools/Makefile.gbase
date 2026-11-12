@@ -162,6 +162,7 @@ BE_OPT_DIR= $(BUILD_TOT)/be/opt
 
 LDIRT = $(TARGETS)
 LDIRT += dsl_builder_contract_test dsl_builder_contract_test.o
+LDIRT += dsl_scalar_reuse_test dsl_scalar_reuse_test.o
 LDIRT += dsl_pu_transaction_contract_test \
 	dsl_pu_transaction_contract_test.o
 LDIRT += dsl_tensor_evolution_contract_test \
@@ -413,6 +414,15 @@ dsl_builder_contract_test: $(OBJECTS) controls.o dsl_builder_contract_test.o
 
 dsl_builder_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_builder_contract_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+# Real WN-rule reuse and strict-FP admission, with independent mapped evidence.
+dsl_scalar_reuse_test: $(OBJECTS) controls.o dsl_scalar_reuse_test.o
+	$(link.c++f) -o $@ dsl_scalar_reuse_test.o controls.o \
+		$(OBJECTS) $(LDFLAGS)
+
+dsl_scalar_reuse_test.o: $(COMMON_COM_DIR)/tests/dsl_scalar_reuse_test.cxx \
+    $(COMMON_COM_DIR)/dsl_scalar.h $(COMMON_COM_DIR)/dsl_simp.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 # The builder's fresh-program DST initializer is frontend-only, not in be.so.

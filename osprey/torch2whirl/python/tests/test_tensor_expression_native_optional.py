@@ -93,6 +93,44 @@ class TensorExpressionNativeTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.create("common.matmul", [q, w], dict(attrs, **{"attr.batch_rule": "prefix"}), result, 3)
 
+    def test_pointwise_reuse_preserves_broadcast_result_and_checks_all_arms(self):
+        """Scalar reuse never removes tensor expansion or skips an unchosen arm."""
+        narrow, x = self.tensor("float32", (1, 3))
+        _, y = self.tensor("float32", (2, 1))
+        _, mask = self.tensor("bool", (2, 1))
+        result, _ = self.tensor("float32", (2, 3), False)
+        predicate, _ = self.tensor("bool", (2, 3), False)
+        attrs = {"attr.broadcast_rule": "numpy"}
+        for name, kids, ty in (
+            ("common.sub", [x, y], result),
+            ("common.greater", [x, y], predicate),
+            ("common.select", [mask, x, y], result),
+            ("common.select", [mask, x, x], result),
+        ):
+            with self.subTest(name=name):
+                self.assertGreater(self.create(name, kids, attrs, ty), 0)
+        for name, kids in (
+            ("common.sub", [x, y]),
+            ("common.select", [mask, x, x]),
+        ):
+            with self.subTest(name=name), self.assertRaises(RuntimeError):
+                self.create(name, kids, attrs, narrow)
+        _, bad = self.tensor("float32", (2, 4))
+        with self.assertRaises(RuntimeError):
+            self.create("common.select", [mask, x, bad], attrs, result)
+        with self.assertRaises(RuntimeError):
+            self.create("common.greater", [x, y], attrs, result)
+        _, vector = self.tensor("float32", (3,))
+        _, matrix = self.tensor("float32", (2, 3))
+        for name, ty in (("common.sub", result), ("common.greater", predicate)):
+            self.assertGreater(self.create(name, [vector, matrix], attrs, ty), 0)
+        _, wrong_axis = self.tensor("bool", (2, 4))
+        with self.assertRaises(RuntimeError):
+            self.create("common.select", [wrong_axis, x, x], attrs, result)
+        _, bad_vector = self.tensor("float32", (2,))
+        with self.assertRaises(RuntimeError):
+            self.create("common.sub", [matrix, bad_vector], attrs, result)
+
     def test_native_reduction_rejects_axis_and_result_shape(self):
         f, x = self.tensor("float32", (1, 3, 17))
         attrs = {"attr.axis": "2", "attr.keepdim": "true",

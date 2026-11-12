@@ -19,6 +19,7 @@
 
 #include "opcode.h"
 #include "dsl_tensor_fold.h"
+#include "dsl_scalar.h"
 #include "strtab.h"
 #ifdef DSL_TENSOR_FOLD_TEST_STUB
 /* Standalone-test adapter supplies the current scalar/carrier table extent
@@ -1236,7 +1237,9 @@ DSL_Tensor_Fold_Create_Compact_Result
 /* Evaluate a preflighted borrowed compact integral binary candidate. Check
  * exact arity/results, exact descriptor identities/geometry, compact-preservation
  * and result/work budgets, division-by-zero and signed-min/-1. Reuse target
- * Targ_WhirlOp, then intern every compact result before publishing optional output.
+ * Targ_WhirlOp through the shared scalar mapping, retaining the existing
+ * ADD/MUL/DIV/REM/DIVREM admission. Intern every compact result before publishing
+ * optional output.
  * Output remains caller-cleared until all results exist, but a late rejection
  * can retain unreferenced TCON/string entries. Inline/side-file byte budgets are
  * not applied on this compact-only path; phase/master controls remain caller-owned. */
@@ -1300,25 +1303,19 @@ DSL_Tensor_Fold_Compact_Integer_Binary
             candidate->policy->max_evaluator_work)
         return DSL_TENSOR_FOLD_REJECT_WORK_BUDGET;
 
-    switch (candidate->dsl_operator) {
-    case OPR_DSLADD:
-        whirl_operator[0] = OPR_ADD;
-        break;
-    case OPR_DSLMUL:
-        whirl_operator[0] = OPR_MPY;
-        break;
-    case OPR_DSLDIV:
-        whirl_operator[0] = OPR_DIV;
-        break;
-    case OPR_DSLREM:
-        whirl_operator[0] = OPR_REM;
-        break;
-    case OPR_DSLDIVREM:
-        whirl_operator[0] = OPR_DIV;
-        whirl_operator[1] = OPR_REM;
-        break;
-    default:
+    if (candidate->dsl_operator != OPR_DSLADD &&
+        candidate->dsl_operator != OPR_DSLMUL &&
+        candidate->dsl_operator != OPR_DSLDIV &&
+        candidate->dsl_operator != OPR_DSLREM &&
+        candidate->dsl_operator != OPR_DSLDIVREM)
         return DSL_TENSOR_FOLD_REJECT_UNSUPPORTED_EVALUATOR;
+    for (UINT16 index = 0; index < expected_results; ++index) {
+        DSL_OPERATOR logical_operator = candidate->dsl_operator;
+        if (logical_operator == OPR_DSLDIVREM)
+            logical_operator = index == 0 ? OPR_DSLDIV : OPR_DSLREM;
+        if (!DSL_scalar_operator(logical_operator, candidate->version,
+                                  &whirl_operator[index]))
+            return DSL_TENSOR_FOLD_REJECT_UNSUPPORTED_EVALUATOR;
     }
 
     left_scalar = DSL_Tensor_TCON_From_IDX(left_record.scalar_tcon);

@@ -85,6 +85,73 @@ implementation and device costs remain unresolved until their owning phases.
 
 ## Numerical and phase boundaries
 
+### Reuse of ordinary WHIRL element semantics
+
+The logical tensor IDs are compatibility wrappers for whole-tensor contracts,
+not an independent scalar arithmetic hierarchy. `dsl_scalar.h` is the shared
+typed mapping used by the existing integral preparation and target constant
+folder and by the checked element-projection adapter in `dsl_simp.cxx`:
+
+| Tensor wrapper | Existing scalar WHIRL meaning |
+| --- | --- |
+| common.add / sub / mul / div / integer rem | ADD / SUB / MPY / DIV / REM |
+| common.greater | GT with I4 result and operand mtype as descriptor |
+| common.logical_not | I4 LNOT on canonical 0/1 values |
+| common.select | SELECT, with I4 condition and typed value arms |
+| common.exp / log | INTRINSIC_OP with the existing F4EXP/F8EXP or F4LOG/F8LOG intrinsic |
+| common.isfinite | INTRINSIC_OP with existing F4FINITE/F8FINITE, I4 result |
+
+WHIRL has typed EXP/LOG intrinsics rather than core OPR_EXP/OPR_LOG operators.
+Mapping availability does not admit additional tensor dtypes, schemas or
+versions. In particular, scalar integer SUB tests do not extend the FP32-only
+`common.sub.v1` ingestion contract. Bool tensor storage remains U1; ordinary
+GT and LNOT must use supported register predicate opcodes, not invented U1
+scalar predicates. SELECT represents already-evaluated operands; CSELECT's
+short-circuit evaluation would have a different contract.
+
+The retained wrappers are necessary at this boundary because ordinary scalar
+opcodes do not describe trailing-axis broadcasting, tensor descriptors, bool
+storage, per-value result symbols or unresolved source numerical permissions.
+All operands, including an unchosen SELECT arm, must pass native preflight and
+the mapped gatekeeper before lowering. For example, selecting between equal
+arms of shape [1,3] with a condition of shape [2,1] still produces [2,3]. A
+scalar identity cannot replace that result with an unexpanded arm. Public
+logical IDs 40-48, names, schemas and mapped-image contracts remain unchanged.
+
+Reduction, matmul and fill_like remain distinct: they describe an iteration
+domain/accumulation contract, contraction, or tensor shape plus exact literal
+bits. A scalar MAX, MPY or CONST alone cannot express those contracts. No
+parallel DSL subtraction, transcendental or predicate rule engine is added.
+
+The expression-scoped adapter delegates eligible disposable element projections
+to `WN_SimplifyExp1/2/3`, hence the existing `wn_simp_code.h` rules. It does not
+traverse a PU, index a tensor, lower the source graph or publish tensor results.
+The owning caller must preserve all source producer evaluation, broadcast
+indexing, descriptor/effect checks and result metadata. The legacy integral
+ADD/MUL tensor adapter retains its previous admission; this revision does not
+broaden it to unresolved FP source graphs.
+
+The scalar adapter accepts only pure, distinct leaves. Integral DIV/REM remain
+outside this new lane (the existing target folder keeps its divide guards).
+FP arithmetic and ordered comparison are limited to nonvolatile local/formal
+direct loads under IEEE_ACCURATE, ROUNDOFF_NONE, forced IEEE comparisons and
+disabled reassociation, aggressive folding and division splitting. These are
+unchanged engine probes, not permissions for FP identities. Constants, nested
+FP trees and all FP PREG arithmetic/comparison operands are rejected: a backend
+PREG home can expose a constant to unconditional zero/NEG rules. The adapter
+does not change process controls and honors the master `Enable_WN_Simp` switch.
+
+A literal canonical I4 SELECT condition may forward an already-evaluated pure
+FP leaf bit-for-bit. No FP arithmetic, NaN comparison or host conversion is
+used on that path. An unknown condition remains explicit. EXP/LOG's
+`source_unresolved` contract forbids intrinsic simplifier dispatch even for
+constants: the existing target intrinsic folder uses host math, which does
+not bind source/device rounding, exceptions or approximation. ISFINITE's
+intrinsic mapping likewise does not grant exception-sensitive folding here.
+Future executable lowering must review the numerical binding before emitting
+these typed intrinsic operations; ingestion still emits the domain-visible
+tensor wrappers, never early intrinsic-call placeholders.
+
 The composed MLA source retains its stable maximum subtraction, all-masked
 neutral maximum and denominator, zero output, negative-infinity LSE and original
 model scale. exp and log remain explicit nodes; this contract does not replace
@@ -105,8 +172,28 @@ abort/retry, broadcast rank differences and two output formals. Native review
 produces both context images via public APIs, independently reopens them with
 ir_b2a -st -src, and also exercises the standalone driver.
 
+The scalar reuse fixture separately retains ordinary-WHIRL before/after images:
+integer SUB, GT, LNOT and SELECT are simplified by the real engine; strict FP
+SUB/GT and signed-zero/nested-arithmetic counterexamples remain unchanged.
+Exact signed-zero, infinity and NaN SELECT tests verify selected WN identity;
+negative tests cover unresolved intrinsics, backend PREG exclusion, relaxed
+controls, malformed projections and master disable. Native tests independently
+exercise SUB/GT/three-way SELECT broadcasting and rejected result/dead-arm
+shapes. This is infrastructure and ingestion evidence, not compiled MLA or
+GPU execution.
+
+Build the standalone fixture with `make -C <build>/osprey/targdir/ir_tools
+dsl_scalar_reuse_test ir_b2a`, then run
+`OPEN64_BUILD_ROOT=<build>/osprey/targdir OPEN64_DSL_TEST_ARTIFACT_DIR=<host-run>
+bash osprey/common/com/tests/dsl_scalar_reuse_test.sh` in the Linux environment.
+The script retains a fresh before/after/disabled artifact family, matching
+same-stem `-st -src` traces, source, logs and raw diffs. Native broadcasting
+tests remain in `test_tensor_expression_native_optional.py`.
+
 The numerical oracle validates eager and captured source execution; it is
-separate from structural native IR evidence. The repository's WHIRL.pdf was
-not accessible in this checkout or primary checkout during this revision;
-existing common/com view, direct-kid, mapped-image and verifier implementations
-provide the concrete compatibility baseline. No binary format extension is made.
+separate from structural native IR evidence. For the November 12 operation-
+reuse revision, the Open64 WHIRL manual was reviewed through the
+[OpenAD mirror](https://www.mcs.anl.gov/OpenAD/open64A.pdf), sections on
+operators/types, direct kids, SUB, GT, SELECT and INTRINSIC_OP. Concrete current
+opcodes, types, layouts and mapped writer/reader behavior remain authoritative
+for physical compatibility. No binary format extension is made.

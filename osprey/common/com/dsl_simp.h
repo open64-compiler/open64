@@ -3,8 +3,9 @@
  */
 
 /*
- * common/com exposes a process-local bridge from eligible integral DSL binary
- * expressions to the existing WN simplifier. Callers supply disposable scalar
+ * common/com exposes process-local bridges from eligible scalar projections
+ * and integral tensor binary expressions to the existing WN simplifier.
+ * Callers supply disposable scalar
  * projections, compiler table/pool context and any tensor result publication;
  * this interface neither owns a PU nor changes mapped-image representation.
  * Design: doc/WHIRL-DSL-SIMPLIFICATION-PLAN.md, traditional-engine reuse.
@@ -19,8 +20,21 @@
 #include "dsl_opcode.h"
 #include "opcode.h"
 #include "symtab_idx.h"
+#include "dsl_scalar.h"
 
 class WN;
+
+/* Disposable, independently owned scalar leaves for one element of an already
+ * checked tensor operation. The owner supplies broadcast indexing and canonical
+ * I4 predicates; this is not permission to replace an entire broadcast tensor
+ * with a scalar or an unbroadcast operand. No source operand is consumed. */
+typedef struct {
+    DSL_OPERATOR dsl_operator;
+    UINT16 version;
+    TYPE_ID element_mtype;
+    UINT32 kid_count;
+    WN *projected_kid[3];
+} DSL_SIMP_SCALAR_CANDIDATE;
 
 /*
  * Select the scalar projection accepted by this bridge. The historical
@@ -46,6 +60,35 @@ typedef enum {
     DSL_SIMP_REJECT_PROJECTION = 9,
     DSL_SIMP_INVALID = 10
 } DSL_SIMP_STATUS;
+
+/* Caller-owned result. On rewrite, only engine_result is retained from the WN
+ * pool; projected leaves may have been consumed. Rejection and unchanged leave
+ * their ownership with the caller. This record is never mapped into .B. */
+typedef struct {
+    DSL_SIMP_STATUS status;
+    OPCODE projected_opcode;
+    WN *engine_result;
+} DSL_SIMP_SCALAR_RESULT;
+
+/* Reuse WN_SimplifyExp1/2/3 for one checked element, never whole-tensor rules.
+ * Require distinct disposable constants or pure local/formal/PREG loads,
+ * in the caller's WN pool,
+ * initialized compiler context and nonoverlapping candidate/result. Rejection
+ * consumes nothing and clears result first. FP arithmetic/comparisons require
+ * strict compiler controls (including disabled aggressive folding and division
+ * splitting) and nonvolatile local/formal operands; constants,
+ * PREGs (which may have constant homes), and nested FP
+ * expressions remain unresolved, avoiding unsafe zero/NaN/rounding rewrites.
+ * SELECT may forward FP leaves bit-for-bit only with a literal condition and
+ * must not drop source evaluation.
+ * Unbound intrinsic projections are rejected, including EXP/LOG; lookup alone
+ * does not select their source numerical binding. Success can consume leaves;
+ * callers retain only engine_result and own all tensor/metadata publication.
+ * Hidden linkage adds no backend dynamic export or foreign library dependency. */
+extern DSL_SIMP_STATUS DSL_simp_scalar
+                                (const DSL_SIMP_SCALAR_CANDIDATE *candidate,
+                                 DSL_SIMP_SCALAR_RESULT *result)
+    __attribute__((visibility("hidden")));
 
 typedef enum {
     DSL_SIMP_REPLACEMENT_NONE = 0,
