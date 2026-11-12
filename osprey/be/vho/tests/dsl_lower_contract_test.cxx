@@ -1,5 +1,8 @@
 /*
- * Contract test for native DSL lowering before standard VHO lowering.
+ * VHO-owned contract tests for native DSL lowering before standard lowering.
+ * Independent cases own separate builder programs, including managed rows and
+ * DST lifetime; no handle survives a reset. Production lowering and .B contracts
+ * are unchanged. Design: doc/WHIRL-DSL-INFRASTRUCTURE.md.
  */
 
 #include <stdio.h>
@@ -272,9 +275,51 @@ Verify_Lowered_Body
                             "comments=%u", comment_count);
 }
 
+/* Start an independent fixture and check the builder's empty managed census.
+ * Reset invalidates all earlier handles; callers must finish their checks first.
+ * Preparation failures remain visible in release and development builds. */
+static BOOL
+DSL_lower_test_begin_program(void)
+{
+    BOOL begun = DSL_Builder_Begin_Program();
+    BOOL empty = DSL_IR_Image_Executable_Node_Count() == 0;
+    Is_True(begun && empty,
+            ("DSL lowering fixture did not start with fresh program rows"));
+    return begun && empty;
+}
+
+/* Require the intended semantic rejection in an isolated program, with a
+ * matching tree/image census. Capture and print diagnostics for review; an
+ * unrelated count mismatch cannot satisfy a deliberately malformed case. */
+static BOOL
+DSL_lower_test_expect_rejection(PU_Info *pu, UINT32 expected_nodes,
+                                 const char *expected_diagnostic)
+{
+    FILE *diagnostic = tmpfile();
+    if (diagnostic == NULL)
+        return FALSE;
+    DSL_GATEKEEPER_RESULT result;
+    BOOL accepted = DSL_Gatekeeper_Verify_Program(pu, diagnostic, &result);
+    rewind(diagnostic);
+    char text[8192];
+    size_t count = fread(text, 1, sizeof(text) - 1, diagnostic);
+    text[count] = '\0';
+    fclose(diagnostic);
+    fputs(text, stderr);
+    return !accepted && result.error_count == 1 &&
+           result.native_node_count == expected_nodes &&
+           DSL_IR_Image_Executable_Node_Count() == expected_nodes &&
+           strstr(text, expected_diagnostic) != NULL &&
+           strstr(text, "native tree node count") == NULL;
+}
+
+/* Construct the independent legacy-carrier graph for comparison with the
+ * already-recorded native signature. The caller may not use earlier WNs. */
 static DSL_BUILDER_PROGRAM_UNIT
 Create_Compatibility_PU(void)
 {
+    if (!DSL_lower_test_begin_program())
+        return NULL;
     DSL_BUILDER_PROGRAM_UNIT pu =
         DSL_Builder_Create_Minimal_PU("dsl_lower_compatibility");
     if (pu == NULL)
@@ -314,6 +359,30 @@ Create_Compatibility_PU(void)
     return pu;
 }
 
+/* Prepare this fixture's restored values for terminal image admission: seal
+ * their descriptors and attach complete source positions to WN and result ST.
+ * No other program/type is visited; return failure before publication. */
+static BOOL
+DSL_lower_test_prepare_image(PU_Info *pu, DSL_BUILDER_VALUE *values,
+                              UINT32 count, INT32 line)
+{
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    position.line = line;
+    position.column = 1;
+    position.statement_begin = 1;
+    if (position.file_id == 0)
+        return FALSE;
+    for (UINT32 index = 0; index < count; ++index) {
+        if (!TY_tensor_seal(WN_ty(values[index])) ||
+            !DSL_Builder_Set_Value_Source_Position(values[index], &position))
+            return FALSE;
+    }
+    return DSL_Gatekeeper_Verify_Program_Mode
+               (pu, DSL_GATEKEEPER_ADMISSION, stderr, NULL);
+}
+
 static BOOL
 Check_Canonical_Boundary_Rejection(void)
 {
@@ -337,26 +406,36 @@ Check_Canonical_Boundary_Rejection(void)
            remaining == 2;
 }
 
+/* Isolate duplicate-input and external-storage negatives. Verify valid
+ * preparation and restored storage, so only their intended violations reject;
+ * reset between cases and never reuse an invalidated PU/value/type handle. */
 static BOOL
 Check_Value_Source_Gatekeeper_Rejection(void)
 {
+    if (!DSL_lower_test_begin_program())
+        return FALSE;
     DSL_BUILDER_PROGRAM_UNIT duplicate_pu =
         DSL_Builder_Create_Minimal_PU("dsl_duplicate_model_inputs");
     TY_IDX input_ty = Create_Tensor_Type_With_Representation
                           ("dsl_duplicate_input_type", "host", "host");
     DSL_BUILDER_VALUE input0 = DSL_Builder_Create_Model_Input
                                    ("model_input0", input_ty, 0);
+    DSL_GATEKEEPER_RESULT gatekeeper_result;
+    if (duplicate_pu == NULL || input0 == NULL ||
+        !DSL_Builder_Append_PU_Value(duplicate_pu, input0) ||
+        !DSL_Gatekeeper_Verify_Program
+            (duplicate_pu, stderr, &gatekeeper_result))
+        return FALSE;
     DSL_BUILDER_VALUE input1 = DSL_Builder_Create_Model_Input
                                    ("model_input1", input_ty, 0);
-    DSL_GATEKEEPER_RESULT gatekeeper_result;
-    if (duplicate_pu == NULL || input0 == NULL || input1 == NULL ||
-        !DSL_Builder_Append_PU_Value(duplicate_pu, input0) ||
-        !DSL_Builder_Append_PU_Value(duplicate_pu, input1) ||
-        DSL_Gatekeeper_Verify_Program
-            (duplicate_pu, NULL, &gatekeeper_result) ||
-        gatekeeper_result.error_count == 0)
+    if (input1 == NULL || !DSL_Builder_Append_PU_Value(duplicate_pu, input1) ||
+        !DSL_lower_test_expect_rejection
+             (duplicate_pu, 2, "common.model_input ordinal 0 is duplicated"))
         return FALSE;
 
+    /* A fresh program discards the intentionally invalid duplicate ordinal. */
+    if (!DSL_lower_test_begin_program())
+        return FALSE;
     DSL_BUILDER_PROGRAM_UNIT external_pu =
         DSL_Builder_Create_Minimal_PU("dsl_bad_external_reference");
     TY_IDX external_ty = Create_Tensor_Type_With_Representation
@@ -372,18 +451,27 @@ Check_Value_Source_Gatekeeper_Rejection(void)
     DSL_BUILDER_VALUE weight = DSL_Builder_Create_External_Tensor_Constant
                                    ("weight0", external_ty, &reference);
     if (external_pu == NULL || weight == NULL ||
-        !DSL_Builder_Append_PU_Value(external_pu, weight))
+        !DSL_Builder_Append_PU_Value(external_pu, weight) ||
+        !DSL_Gatekeeper_Verify_Program
+             (external_pu, stderr, &gatekeeper_result))
         return FALSE;
     ST_tensor_bind_metadata
         (WN_st_idx(weight), "storage_byte_length", "0");
-    return !DSL_Gatekeeper_Verify_Program
-                (external_pu, NULL, &gatekeeper_result) &&
-           gatekeeper_result.error_count != 0;
+    BOOL rejected = DSL_lower_test_expect_rejection
+        (external_pu, 1, "external tensor storage metadata is invalid");
+    ST_tensor_bind_metadata(WN_st_idx(weight), "storage_byte_length", "16");
+    return rejected && DSL_Gatekeeper_Verify_Program
+                           (external_pu, stderr, &gatekeeper_result);
 }
 
+/* Lower two valid source definitions in a fresh program after the negative
+ * cases. Verify source contracts and ordered runtime calls/captures; no other case's
+ * managed rows or malformed source metadata may participate. */
 static BOOL
 Check_Value_Source_Lowering(void)
 {
+    if (!DSL_lower_test_begin_program())
+        return FALSE;
     DSL_BUILDER_PROGRAM_UNIT pu =
         DSL_Builder_Create_Minimal_PU("dsl_value_source_lowering");
     if (pu == NULL)
@@ -438,7 +526,7 @@ Check_Value_Source_Lowering(void)
         return FALSE;
 
     DSL_GATEKEEPER_RESULT gatekeeper_result;
-    if (!DSL_Gatekeeper_Verify_Program(pu, NULL, &gatekeeper_result) ||
+    if (!DSL_Gatekeeper_Verify_Program(pu, stderr, &gatekeeper_result) ||
         gatekeeper_result.native_node_count != 2 ||
         gatekeeper_result.error_count != 0)
         return FALSE;
@@ -484,9 +572,13 @@ Check_Value_Source_Lowering(void)
     return call_count == 2 && capture_count == 2 && comment_count == 2;
 }
 
+/* Reject residual broadcasting in a standalone program with a valid input
+ * prefix. Require the specific residual-contract diagnostic and exact census. */
 static BOOL
 Check_Simple_ResNet_Gatekeeper_Rejection(void)
 {
+    if (!DSL_lower_test_begin_program())
+        return FALSE;
     DSL_BUILDER_PROGRAM_UNIT pu =
         DSL_Builder_Create_Minimal_PU("dsl_bad_residual_add");
     TY_IDX tensor_ty = Create_Tensor_Type_With_Representation
@@ -507,18 +599,22 @@ Check_Simple_ResNet_Gatekeeper_Rejection(void)
     attrs[2].value = "true";
     DSL_BUILDER_VALUE residual = DSL_Builder_Create_Operator
                                      (residual_id, 2, kids, 2, attrs, 3);
-    DSL_GATEKEEPER_RESULT result;
     return pu != NULL && tensor_ty != TY_IDX_ZERO && input != NULL &&
            residual_id != DSL_OPCODE_INVALID_ID && residual != NULL &&
            DSL_Builder_Append_PU_Value(pu, input) &&
            DSL_Builder_Append_PU_Value(pu, residual) &&
-           !DSL_Gatekeeper_Verify_Program(pu, NULL, &result) &&
-           result.error_count != 0;
+           DSL_lower_test_expect_rejection
+               (pu, 2, "OPR_DSLRESIDUALADD requires exact no-broadcast residual semantics");
 }
 
+/* Build and verify one isolated five-value ResNet slice. Either lower that
+ * case to the runtime ABI or seal/map its image terminally; reset invalidates
+ * prior fixtures only after their assertions and signatures are complete. */
 static BOOL
 Check_Simple_ResNet_Vertical_Slice (BOOL artifact_only)
 {
+    if (!DSL_lower_test_begin_program())
+        return FALSE;
     DSL_BUILDER_PROGRAM_UNIT pu =
         DSL_Builder_Create_Minimal_PU
             (artifact_only ? "dsl_simple_resnet_artifact" :
@@ -642,6 +738,8 @@ Check_Simple_ResNet_Vertical_Slice (BOOL artifact_only)
     }
 
     if (artifact_only) {
+        if (!DSL_lower_test_prepare_image(pu, values, 5, __LINE__))
+            return FALSE;
         const char *retained_artifact =
             getenv("OPEN64_DSL_M2_TEST_ARTIFACT");
         DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
@@ -729,9 +827,14 @@ Create_ResNet_External_Tensor
                (name, tensor_ty, &reference);
 }
 
+/* Own an independent eighteen-value CNN program. Check malformed convolution
+ * shape and restoration, then verify runtime lowering or sealed publication;
+ * model side-file references remain descriptors, not runtime executions. */
 static BOOL
 Check_Complete_ResNet_Vertical_Slice (BOOL artifact_only)
 {
+    if (!DSL_lower_test_begin_program())
+        return FALSE;
     DSL_BUILDER_PROGRAM_UNIT pu = DSL_Builder_Create_Minimal_PU
         (artifact_only ? "dsl_complete_resnet_artifact" :
          "dsl_complete_resnet_lowering");
@@ -986,6 +1089,8 @@ Check_Complete_ResNet_Vertical_Slice (BOOL artifact_only)
         return FALSE;
 
     if (artifact_only) {
+        if (!DSL_lower_test_prepare_image(pu, values, 18, __LINE__))
+            return FALSE;
         const char *retained_artifact =
             getenv("OPEN64_DSL_RESNET_TEST_ARTIFACT");
         DSL_BUILDER_MAPPED_IMAGE_REQUEST request;
@@ -1057,9 +1162,13 @@ Check_Complete_ResNet_Vertical_Slice (BOOL artifact_only)
     return call_count == 18 && capture_count == 18 && comment_count == 18;
 }
 
+/* Verify and lower an isolated prefill expression graph. The fixture owns
+ * its PU/type/value lifetime and retains the existing runtime ABI assertions. */
 static BOOL
 Check_Llama2_Prefill_Expression_Lowering(void)
 {
+    if (!DSL_lower_test_begin_program())
+        return FALSE;
     DSL_BUILDER_PROGRAM_UNIT pu =
         DSL_Builder_Create_Minimal_PU("dsl_llama2_prefill_lowering");
     TY_IDX token_ty = Create_Shaped_Tensor_Type
@@ -1334,9 +1443,13 @@ Check_Llama2_Prefill_Expression_Lowering(void)
     return TRUE;
 }
 
+/* In a fresh program, splice only the managed REGION while preserving the
+ * ordinary REGION and verifying runtime calls plus managed-map invalidation. */
 static BOOL
 Check_Managed_Region_Lowering(void)
 {
+    if (!DSL_lower_test_begin_program())
+        return FALSE;
     DSL_BUILDER_PROGRAM_UNIT pu =
         DSL_Builder_Create_Minimal_PU("dsl_managed_region_lowering");
     TY_IDX tensor_ty = Create_Tensor_Type_With_Representation
@@ -1956,6 +2069,9 @@ Check_VHO_DSL_M4_Canonicalization(void)
     return valid;
 }
 
+/* Run all independent legacy/native lowering cases in one compiler process.
+ * Each program-scoped fixture resets its own managed/DST lifetime; only copied
+ * signatures survive resets. Keep all malformed cases and terminal output. */
 int
 main(void)
 {
@@ -1964,6 +2080,8 @@ main(void)
     memset(&empty_pu, 0, sizeof(empty_pu));
 
     Initialize_Test_Context();
+    if (!DSL_lower_test_begin_program())
+        return 1;
     if (getenv("OPEN64_DSL_VHO_M4_ONLY") != NULL)
         return Check_VHO_DSL_M4_Canonicalization() ? 0 : 1;
     if (getenv("OPEN64_DSL_LLAMA2_DECODE_LOWER_ONLY") != NULL)
@@ -2066,6 +2184,8 @@ main(void)
         return 1;
     }
 
+    if (!DSL_lower_test_begin_program())
+        return 1;
     DSL_BUILDER_PROGRAM_UNIT malformed_pu = DSL_Builder_Create_Minimal_PU
         ("dsl_lower_malformed_compatibility");
     WN *malformed_add = DSL_WN_Create_Opcode_Marker
@@ -2085,6 +2205,8 @@ main(void)
         return 1;
     }
 
+    if (!DSL_lower_test_begin_program())
+        return 1;
     const char *newer_payload =
         "name=newer_tensor;dtype=int32;rank=2;shape=[2,2];"
         "value_kind=splat;value=0";
@@ -2150,5 +2272,6 @@ main(void)
         return 1;
     }
 
+    printf("DSL lowering contract suite passed\n");
     return 0;
 }

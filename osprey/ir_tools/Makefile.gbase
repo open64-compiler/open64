@@ -162,6 +162,7 @@ BE_OPT_DIR= $(BUILD_TOT)/be/opt
 
 LDIRT = $(TARGETS)
 LDIRT += dsl_builder_contract_test dsl_builder_contract_test.o
+LDIRT += dsl_scalar_reuse_test dsl_scalar_reuse_test.o
 LDIRT += dsl_pu_transaction_contract_test \
 	dsl_pu_transaction_contract_test.o
 LDIRT += dsl_tensor_evolution_contract_test \
@@ -415,6 +416,16 @@ dsl_builder_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_builder_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
+# Real WN-rule reuse and strict-FP admission, with independent mapped evidence.
+dsl_scalar_reuse_test: $(OBJECTS) controls.o dsl_scalar_reuse_test.o
+	$(link.c++f) -o $@ dsl_scalar_reuse_test.o controls.o \
+		$(OBJECTS) $(LDFLAGS)
+
+dsl_scalar_reuse_test.o: $(COMMON_COM_DIR)/tests/dsl_scalar_reuse_test.cxx \
+    $(COMMON_COM_DIR)/tests/dsl_tensor_elementwise_fixture.h \
+    $(COMMON_COM_DIR)/dsl_scalar.h $(COMMON_COM_DIR)/dsl_simp.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
 # The builder's fresh-program DST initializer is frontend-only, not in be.so.
 dsl_pu_transaction_contract_test: dsl_builder.o dsl_contract.o dwarf_DST_producer.o \
 		dsl_simp.o controls.o \
@@ -662,10 +673,20 @@ dsl_physical_plan_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_physical_plan_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
+# Standalone lowering validation must link the analysis services used by VHO.
+# These are existing owner objects, not new backend shared-library dependencies.
 dsl_lower_contract_test: $(OBJECTS) controls.o dsl_lower.o \
-		dsl_opt.o dsl_shape_refine.o dsl_lower_contract_test.o
+    dsl_opt.o dsl_shape_refine.o dsl_lower_contract_test.o \
+    $(DSL_FACT_CAPTURE_OPT_OBJS) $(DSL_SELECTION_OPT_OBJS) \
+    dsl_distributed_candidate_opt.o dsl_residency_candidate_opt.o dsl_tile_candidate_opt.o \
+    dsl_fetch_pipeline_opt.o dsl_physical_plan_opt.o dsl_compute_shadow_opt.o \
+    dsl_compute_model.o dsl_compute_realization.o
 	$(link.c++f) -o $@ dsl_lower_contract_test.o controls.o \
-		dsl_lower.o dsl_opt.o dsl_shape_refine.o $(OBJECTS) $(LDFLAGS)
+		dsl_lower.o dsl_opt.o dsl_shape_refine.o \
+		$(DSL_FACT_CAPTURE_OPT_OBJS) $(DSL_SELECTION_OPT_OBJS) \
+		dsl_distributed_candidate_opt.o dsl_residency_candidate_opt.o dsl_tile_candidate_opt.o \
+		dsl_fetch_pipeline_opt.o dsl_physical_plan_opt.o dsl_compute_shadow_opt.o \
+		dsl_compute_model.o dsl_compute_realization.o $(OBJECTS) $(LDFLAGS)
 
 dsl_lower_contract_test.o: \
 	$(BE_VHO_DIR)/tests/dsl_lower_contract_test.cxx

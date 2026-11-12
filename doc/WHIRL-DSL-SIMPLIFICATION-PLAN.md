@@ -52,6 +52,26 @@ line convention.
 
 ### Operand-swap canonicalization
 
+The native tensor-expression extension shares its scalar opcode/intrinsic
+mapping in `osprey/common/com/dsl_scalar.h`. `DSL_simp_scalar` provides an
+expression-scoped, checked disposable-leaf adapter to the traditional WN
+engine; it adds no algebraic rules. Matching live tensor elementwise expressions
+use ordinary operators with mandatory tensor TY/semantic contracts. Raw tensor
+simplifier dispatch remains excluded until checked scalar preparation;
+copy/equality and WOPT import preserve their complete identity. Frozen .B output
+copies retain the legacy representation for previous readers; mapping restores
+ordinary typed operators without numerical optimization.
+The bounded admission and remaining unresolved intrinsic wrappers are specified in
+`doc/AI-COMPILER-NATIVE-TENSOR-EXPRESSION-CONTRACT-v0.1.md`.
+Mapping is separate from numerical admission: unresolved EXP/LOG never enter
+the intrinsic folder, and strict FP arithmetic is only an unchanged probe on
+nonvolatile local/formal leaves with aggressive folding, reassociation and
+division splitting disabled. FP PREGs are excluded because their backend homes
+can reveal constants. Literal-condition SELECT may forward pure FP leaves
+without arithmetic. All tensor indexing, producer evaluation, metadata and
+whole-result broadcast identity remain caller-owned. This adapter is not a
+new PU traversal or source tensor lowering pass.
+
 `OPCODE_commutative_op()` must not be interpreted as a complete algebraic
 property query. Its practical role is to return the equivalent opcode after
 swapping operands:

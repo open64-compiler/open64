@@ -148,7 +148,8 @@ DSL_IR_Image_Find_Definition_Value
  * Replace one native DSL expression while preserving definition,
  * result ST/TY, node/value identity, owner, source position, and operands.
  * Physical/schema preflight precedes replacement allocation and image rewrite;
- * attach the new expression only after the logical rewrite succeeds. FALSE
+ * bind matching ordinary tensor identity and attach the new expression only
+ * after the logical rewrite succeeds. FALSE
  * preserves the original physical definition, not every temporary allocation,
  * shared string or ensured opcode row. Allocation exceptions are not journaled.
  */
@@ -250,6 +251,9 @@ DSL_IR_Rewrite_Native_Value
     if (!DSL_IR_Image_Rewrite_Node(&image_request))
         return FALSE;
 
+    /* Preserve the canonical ordinary operator for matching tensor semantics
+     * after the managed transaction has established its complete result TY. */
+    DSL_WN_bind_tensor_elementwise(replacement, WN_ty(definition));
     WN_kid0(definition) = replacement;
     return TRUE;
 }

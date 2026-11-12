@@ -321,6 +321,35 @@ OPERATOR_is_black_box (OPERATOR op)
 
 /* Compatibility functions */
 
+/* Recognize ordinary elementwise operators on semantic tensor values. These
+ * expression-only signatures require a tensor TY and the native semantic
+ * annotation; they are never scalar operations on an opaque M aggregate.
+ * Inspect encoding bits directly so opcode validity can reuse this predicate
+ * without recursion. Frozen .B images retain the legacy native wire carrier.
+ * Design: doc/AI-COMPILER-NATIVE-TENSOR-EXPRESSION-CONTRACT-v0.1.md. */
+static inline BOOL
+DSL_opcode_is_tensor_elementwise (OPCODE opcode)
+{
+    if (((opcode >> 8) & 0x3f) != MTYPE_M)
+        return FALSE;
+    OPERATOR opr = (OPERATOR)(opcode & 0xff);
+    TYPE_ID desc = (TYPE_ID)((opcode >> 14) & 0x3f);
+    switch (opr) {
+    case OPR_GT:
+        return desc == MTYPE_M;
+    case OPR_ADD:
+    case OPR_SUB:
+    case OPR_MPY:
+    case OPR_DIV:
+    case OPR_REM:
+    case OPR_LNOT:
+    case OPR_SELECT:
+        return desc == MTYPE_V;
+    default:
+        return FALSE;
+    }
+}
+
 #define Is_Valid_Opcode Is_Valid_Opcode_FUNC
 
 #ifdef __cplusplus
@@ -455,11 +484,14 @@ OPCODE_is_comp_unit_if (OPCODE op)
 }
 
 /*REFERENCED*/
+/* Preserve scalar property masks; unlowered tensor expressions require an
+ * owning semantic lowering before executable WHIRL consumers. */
 inline mUINT32
 OPCODE_is_not_executable (OPCODE op)
 {
   Is_True(Is_Valid_Opcode (op), ("Bad opcode %d", op));
-  return (OPERATOR_is_not_executable (OPCODE_operator (op)));
+  return DSL_opcode_is_tensor_elementwise(op) ? OPERATOR_PROPERTY_not_executable :
+         OPERATOR_is_not_executable(OPCODE_operator(op));
 }
 
 /*REFERENCED*/
@@ -503,11 +535,14 @@ OPCODE_has_num_entries (OPCODE op)
 }
 
 /*REFERENCED*/
+/* Report the existing offset slot also used for a tensor semantic record;
+ * this changes live interpretation, never the WN allocation or wire layout. */
 inline mUINT32
 OPCODE_has_offset (OPCODE op)
 {
   Is_True(Is_Valid_Opcode (op), ("Bad opcode %d", op));
-  return (OPERATOR_has_offset (OPCODE_operator (op)));
+  return DSL_opcode_is_tensor_elementwise(op) ? OPERATOR_PROPERTY_offset :
+         OPERATOR_has_offset(OPCODE_operator(op));
 }
 
 /*REFERENCED*/
@@ -567,11 +602,14 @@ OPCODE_has_inumber (OPCODE op)
 }
 
 /*REFERENCED*/
+/* Expose the mandatory live tensor result TY in existing WN storage while
+ * retaining every scalar operator's original property mask. */
 inline mUINT32
 OPCODE_has_1ty (OPCODE op)
 {
   Is_True(Is_Valid_Opcode (op), ("Bad opcode %d", op));
-  return (OPERATOR_has_1ty (OPCODE_operator (op)));
+  return DSL_opcode_is_tensor_elementwise(op) ? OPERATOR_PROPERTY_1ty :
+         OPERATOR_has_1ty(OPCODE_operator(op));
 }
 
 /*REFERENCED*/

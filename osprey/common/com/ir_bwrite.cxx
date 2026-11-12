@@ -573,9 +573,47 @@ WN_write_PU_Infos (PU_Info *pu_list, Output_File *fl)
  * after it is written out.
  */
 
+/* Detect direct tensor signatures in this caller-owned tree, including corrupt
+ * records. No type/string dereference, mutation or PU-context switching. */
+static BOOL
+DSL_writer_has_tensor_ops (const WN *wn)
+{
+    if (wn == NULL)
+        return FALSE;
+    if (DSL_opcode_is_tensor_elementwise(WN_opcode(wn)))
+        return TRUE;
+    if (WN_operator(wn) == OPR_BLOCK) {
+        for (WN *stmt = WN_first(wn); stmt != NULL; stmt = WN_next(stmt))
+            if (DSL_writer_has_tensor_ops(stmt))
+                return TRUE;
+    } else {
+        for (INT index = 0; index < WN_kid_count(wn); ++index)
+            if (DSL_writer_has_tensor_ops(WN_kid(wn, index)))
+                return TRUE;
+    }
+    return FALSE;
+}
+
+/* Preflight live tensor contracts before frozen-wire projection can erase a
+ * contradiction. Generic writer callers receive the same checks as builders;
+ * builds without DSL verification explicitly refuse these unlowered forms. */
+static void
+DSL_writer_verify_tensor_ops (PU_Info *pu, Output_File *file)
+{
+    if (pu == NULL || !DSL_writer_has_tensor_ops(PU_Info_tree_ptr(pu)))
+        return;
+#ifndef OWN_ERROR_PACKAGE
+    if (!DSL_Gatekeeper_Verify_PU_Mode(pu, DSL_GATEKEEPER_ADMISSION, stderr, NULL))
+#endif
+        ErrMsg(EC_IR_Scn_Write, "ordinary tensor contract", file->file_name);
+}
+
+/* Finalize this selected PU's tree into mapped output, after complete tensor
+ * preflight. Saved-copy projection preserves original WNs and off_map keys. */
 void
 WN_write_tree (PU_Info *pu, WN_MAP off_map, Output_File *fl)
 {
+    DSL_writer_verify_tensor_ops(pu, fl);
     static const char *scn_name = "tree";
     UINT padding;
     Elf64_Word this_tree;
@@ -2016,9 +2054,13 @@ WN_close_file (void *this_fl)
  * These routines use the standard compiler error reporting mechanism.
  */
 
+/* Write the active PU's sections only after verifying live tensor contracts;
+ * malformed input follows the normal fatal output diagnostic, before its tree
+ * can be projected onto the backward-compatible mapped representation. */
 void
 Write_PU_Info (PU_Info *pu)
 {
+    DSL_writer_verify_tensor_ops(pu, ir_output);
     Temporary_Error_Phase ephase("Writing WHIRL file");
 
     if (ir_output_standard_only) {

@@ -14,6 +14,17 @@ RESIDUAL_ADD = "common.residual_add"
 RESHAPE = "common.reshape"
 TENSOR_CONST = "common.tensor_const"
 TRANSPOSE = "common.transpose"
+SUB = "common.sub"
+EXP = "common.exp"
+LOG = "common.log"
+REDUCEMAX = "common.reduce_max"
+ISFINITE = "common.isfinite"
+GREATER = "common.greater"
+SELECT = "common.select"
+LOGICALNOT = "common.logical_not"
+FILLLIKE = "common.fill_like"
+MUL = "common.mul"
+DIV = "common.div"
 
 UNARY_OPERATORS = {
     REDUCE_SUM,

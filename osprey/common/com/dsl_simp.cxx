@@ -3,7 +3,7 @@
  */
 
 /*
- * common/com implements integral DSL preparation, traditional WN-engine
+ * common/com implements checked scalar and integral tensor preparation, WN-engine
  * dispatch and pointer-identity result classification for caller-owned scalar
  * projections. No duplicate algebraic rules, tensor publication, PU selection
  * or mapped-image changes live here; caller context and WN ownership remain
@@ -15,6 +15,7 @@
 
 #include "defs.h"
 #include "config.h"
+#include "config_opt.h"
 #include "dsl_simp.h"
 #include "mtypes.h"
 #include "opcode.h"
@@ -57,31 +58,154 @@ DSL_Simp_Set_Status
         status >= DSL_SIMP_REJECT_DISABLED ? status : DSL_SIMP_NOT_APPLICABLE;
 }
 
-/* Map only logical ADD/MUL to their scalar ADD/MPY opcode at caller-supplied
- * mtype. NULL output probes support; unsupported operators return FALSE without
- * changing output. Registry/version/type legality is the preparer's job. */
+/* Preserve the legacy binary adapter's ADD/MUL admission while sharing the
+ * scalar meaning with new element projections. Registry/version/type legality
+ * remains the preparer's job. A miss leaves optional opcode output unchanged. */
 static BOOL
 DSL_Simp_Map_Binary_Operator
         (DSL_OPERATOR dsl_operator,
          TYPE_ID mtype,
          OPCODE *opcode)
 {
-    OPERATOR whirl_operator;
-
-    switch (dsl_operator) {
-    case OPR_DSLADD:
-        whirl_operator = OPR_ADD;
-        break;
-    case OPR_DSLMUL:
-        whirl_operator = OPR_MPY;
-        break;
-    default:
+    DSL_SCALAR_OPERATION operation;
+    if ((dsl_operator != OPR_DSLADD && dsl_operator != OPR_DSLMUL) ||
+        !DSL_scalar_operation(dsl_operator, 1, mtype, &operation))
         return FALSE;
-    }
 
     if (opcode != NULL)
-        *opcode = OPCODE_make_op(whirl_operator, mtype, MTYPE_V);
+        *opcode = operation.opcode;
     return TRUE;
+}
+
+/* Accept independently allocated scalar leaves only: no volatile memory,
+ * effects, nested speculation or shared subtrees may be consumed by the
+ * traditional engine. Local/formal direct loads must be nonvolatile; PREG
+ * identity/type validity is caller-established. FP admission rejects PREGs
+ * separately because BACK_END simplification can expose their constant homes. */
+static BOOL
+DSL_simp_scalar_leaf (WN *wn, TYPE_ID expected_mtype)
+{
+    if (wn == NULL || WN_rtype(wn) != expected_mtype)
+        return FALSE;
+    OPERATOR scalar_operator = WN_operator(wn);
+    if (scalar_operator == OPR_INTCONST)
+        return MTYPE_is_integral(expected_mtype);
+    if (scalar_operator == OPR_CONST)
+        return TRUE;
+    if (scalar_operator != OPR_LDID)
+        return FALSE;
+    ST *symbol = WN_st(wn);
+    if (ST_class(symbol) == CLASS_PREG)
+        return TRUE;
+    return ST_class(symbol) == CLASS_VAR &&
+           (ST_sclass(symbol) == SCLASS_AUTO ||
+            ST_sclass(symbol) == SCLASS_FORMAL) &&
+           !TY_is_volatile(WN_ty(wn)) &&
+           !TY_is_volatile(ST_type(symbol)) && !WN_has_side_effects(wn);
+}
+
+/* Guard the established FP engine without overriding any user control.
+ * Nonconstant local arithmetic excludes its unconditional 0-x and constant-changing
+ * rules; no source FP environment or transcendental binding is invented. */
+static BOOL
+DSL_simp_strict_fp_controls (void)
+{
+    return IEEE_Arithmetic == IEEE_ACCURATE &&
+           Roundoff_Level == ROUNDOFF_NONE &&
+           !Enable_Cfold_Reassociate && !Enable_Cfold_Aggressive &&
+           !Div_Split_Allowed && Force_IEEE_Comparisons;
+}
+
+/* Prepare a disposable WN view, delegate all eligible scalar rewrites to the
+ * existing engine, and retain its pool result only. Tensor indexing, shape,
+ * source evaluation and final WN/ST/image publication remain caller-owned. */
+DSL_SIMP_STATUS
+DSL_simp_scalar (const DSL_SIMP_SCALAR_CANDIDATE *candidate,
+                 DSL_SIMP_SCALAR_RESULT *result)
+{
+    if (result == NULL)
+        return DSL_SIMP_REJECT_MALFORMED;
+    memset(result, 0, sizeof(*result));
+    result->status = DSL_SIMP_REJECT_MALFORMED;
+    if (candidate == NULL)
+        return result->status;
+    if (!Enable_WN_Simp)
+        return result->status = DSL_SIMP_REJECT_DISABLED;
+    if (candidate->element_mtype != MTYPE_I4 &&
+        candidate->element_mtype != MTYPE_I8 &&
+        candidate->element_mtype != MTYPE_U4 &&
+        candidate->element_mtype != MTYPE_U8 &&
+        candidate->element_mtype != MTYPE_F4 &&
+        candidate->element_mtype != MTYPE_F8)
+        return result->status = DSL_SIMP_REJECT_PROJECTION;
+    DSL_SCALAR_OPERATION operation;
+    if (!DSL_scalar_operation(candidate->dsl_operator, candidate->version,
+                               candidate->element_mtype, &operation))
+        return result->status = DSL_SIMP_REJECT_UNSUPPORTED_OPERATOR;
+    if (candidate->kid_count != operation.arity)
+        return result->status;
+    if (operation.requires_fp_binding)
+        return result->status = DSL_SIMP_REJECT_NUMERIC_POLICY;
+    if (MTYPE_is_float(candidate->element_mtype) &&
+        candidate->dsl_operator == OPR_DSLSELECT &&
+        (candidate->projected_kid[0] == NULL ||
+         WN_operator(candidate->projected_kid[0]) != OPR_INTCONST))
+        return result->status = DSL_SIMP_REJECT_NUMERIC_POLICY;
+
+    for (UINT32 index = 0; index < candidate->kid_count; ++index) {
+        TYPE_ID expected = candidate->dsl_operator == OPR_DSLSELECT && index == 0 ?
+            MTYPE_I4 : candidate->element_mtype;
+        WN *kid = candidate->projected_kid[index];
+        if (!DSL_simp_scalar_leaf(kid, expected))
+            return result->status = DSL_SIMP_REJECT_PROJECTION;
+        if ((candidate->dsl_operator == OPR_DSLLOGICALNOT ||
+             (candidate->dsl_operator == OPR_DSLSELECT && index == 0)) &&
+            WN_operator(kid) == OPR_INTCONST &&
+            WN_const_val(kid) != 0 && WN_const_val(kid) != 1)
+            return result->status = DSL_SIMP_REJECT_PROJECTION;
+        for (UINT32 previous = 0; previous < index; ++previous)
+            if (kid == candidate->projected_kid[previous])
+                return result->status = DSL_SIMP_REJECT_PROJECTION;
+        if (MTYPE_is_float(candidate->element_mtype) &&
+            candidate->dsl_operator != OPR_DSLSELECT &&
+            (WN_operator(kid) != OPR_LDID ||
+             ST_class(WN_st(kid)) != CLASS_VAR ||
+             !DSL_simp_strict_fp_controls()))
+            return result->status = DSL_SIMP_REJECT_NUMERIC_POLICY;
+    }
+
+    if ((candidate->dsl_operator == OPR_DSLDIV ||
+         candidate->dsl_operator == OPR_DSLREM) &&
+        MTYPE_is_integral(candidate->element_mtype))
+        return result->status = DSL_SIMP_REJECT_NUMERIC_POLICY;
+
+    WN stack_view;
+    memset(&stack_view, 0, sizeof(stack_view));
+    WN_set_opcode(&stack_view, operation.opcode);
+    WN_set_map_id(&stack_view, -1);
+    result->projected_opcode = operation.opcode;
+    /* A plain stack WN has two kid slots; pass the ternary third separately
+     * rather than writing beyond that unowned view's physical storage. */
+    for (UINT32 index = 0; index < candidate->kid_count && index < 2; ++index)
+        WN_kid(&stack_view, index) = candidate->projected_kid[index];
+
+    switch (operation.arity) {
+    case 1:
+        result->engine_result = WN_SimplifyExp1
+            (WN_opcode(&stack_view), WN_kid0(&stack_view));
+        break;
+    case 2:
+        result->engine_result = WN_SimplifyExp2
+            (WN_opcode(&stack_view), WN_kid0(&stack_view), WN_kid1(&stack_view));
+        break;
+    case 3:
+        result->engine_result = WN_SimplifyExp3
+            (WN_opcode(&stack_view), WN_kid0(&stack_view), WN_kid1(&stack_view),
+             candidate->projected_kid[2]);
+        break;
+    }
+    return result->status = result->engine_result == NULL ?
+        DSL_SIMP_UNCHANGED : DSL_SIMP_ENGINE_REWRITE;
 }
 
 /* Require canonical tensor extensions with equal rank, tensor attributes,

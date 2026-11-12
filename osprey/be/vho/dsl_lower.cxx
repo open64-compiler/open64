@@ -1651,7 +1651,8 @@ static BOOL VHO_DSL_Lower_Definition
                                  VHO_DSL_LOWER_CONTEXT *context);
 
 /* Normalize a legacy DSL carrier into explicit semantic result/operand
- * bindings for this PU; reject unsupported carriers before runtime lowering. */
+ * bindings and matching ordinary tensor identity for this PU; reject
+ * unsupported carriers before runtime lowering. */
 static BOOL
 VHO_DSL_Normalize_Compatibility
         (WN *block,
@@ -1756,6 +1757,7 @@ VHO_DSL_Normalize_Compatibility
         return VHO_DSL_Lower_Report
                    (context, "could not normalize compatibility carrier");
     }
+    DSL_WN_bind_tensor_elementwise(native, result_ty);
     WN *definition = WN_CreateStid
                          (OPR_STID, MTYPE_V, MTYPE_M, 0,
                           result_st, result_ty, native);

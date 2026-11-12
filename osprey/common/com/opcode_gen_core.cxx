@@ -2903,10 +2903,20 @@ breakpoint ()
 {
 }
 
+/* Check structural scalar or bounded tensor opcode signatures, without
+ * certifying required tensor descriptors/annotations or changing encodings. */
 BOOL
 Is_Valid_Opcode_Parts (OPERATOR opr, TYPE_ID rtype, TYPE_ID desc)
 {
   BOOL valid;
+
+  /* Tensor signatures reuse operator/type encodings and WN storage. Their
+   * required semantic contract is checked before any scalar-only consumer. */
+  if (opr >= OPERATOR_FIRST && opr <= OPERATOR_LAST &&
+      rtype == MTYPE_M && (desc == MTYPE_V || desc == MTYPE_M) &&
+      DSL_opcode_is_tensor_elementwise
+          (OPCODE_make_op_MACRO(opr, rtype, desc)))
+    return TRUE;
 
        if (opr   < OPERATOR_FIRST || opr   > OPERATOR_LAST) valid = FALSE;
   else if (rtype < MTYPE_FIRST    || rtype > MTYPE_LAST)    valid = FALSE;

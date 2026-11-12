@@ -319,6 +319,23 @@ def _verify_graph_operators(
             _resolve_operand_type(kid, value_types, produced_types)
             for kid in operator.kids
         ]
+        if operator.metadata.get("source_contract") == "tensor_expression_v1":
+            from .tensor_contract import infer_expression
+            semantic_name = operator.metadata.get("semantic_name")
+            declared = value_types.get(semantic_name)
+            try:
+                if declared is None or any(item is None for item in operand_types):
+                    raise ValueError("missing expression descriptor")
+                result_dtype, result_shape = infer_expression(
+                    operator.name, _operator_version(operator), operator.attrs,
+                    [(item.dtype, _parse_logical_shape(item.logical_shape, operator.name))
+                     for item in operand_types])
+                if (declared.dtype, tuple(_parse_logical_shape(declared.logical_shape, semantic_name))) != (result_dtype, result_shape):
+                    raise ValueError("result descriptor mismatch")
+            except (TypeError, ValueError, KeyError) as error:
+                raise WhirlVerificationError(operator.name + ": " + str(error)) from error
+            produced_types[semantic_name] = declared
+            continue
         _verify_operator_contract(operator, operand_types)
         result_type = _result_type(operator, operand_types)
         produced_types[operator.name] = result_type

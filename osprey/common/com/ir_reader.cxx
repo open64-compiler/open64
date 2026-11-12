@@ -977,7 +977,9 @@ static void ir_put_mu_list(WN* wn, INT indent)
 #endif
 
 /*
- *  Write an WN * in ascii form on an individual line.
+ *  Write a borrowed WN in ASCII on one line without changing it. Ordinary
+ *  tensor expressions expose their real opcode/TY and mandatory annotation;
+ *  legacy carriers retain their logical-name projection.
  */ 
 static void ir_put_wn(WN * wn, INT indent)
 {
@@ -1024,7 +1026,7 @@ static void ir_put_wn(WN * wn, INT indent)
     else
 	fprintf(ir_ofile, "%*s", indent, "");
 
-    if (DSL_WN_Is_Native(wn))
+    if (DSL_WN_Is_Native(wn) && !DSL_opcode_is_tensor_elementwise(opcode))
         fprintf(ir_ofile, "%s", DSL_OPERATOR_name(DSL_WN_operator(wn)));
     else
         fprintf(ir_ofile, "%s", OPCODE_name(opcode) + strlen("OPC_"));
@@ -2574,7 +2576,8 @@ help_image_expr(stringstream &ss, WN * wn, INT indent)
 
 
 /*
- *  Write an WN * in ascii form on an individual line.
+ *  Append one borrowed WN as ASCII without mutation. Preserve actual ordinary
+ *  tensor opcode/TY identity and the legacy logical projection for carriers.
  */ 
 void
 help_image_wn(stringstream &ss, WN *wn, INT indent)
@@ -2620,7 +2623,7 @@ help_image_wn(stringstream &ss, WN *wn, INT indent)
         image_marker(ss,"",indent);
 
 
-    if (DSL_WN_Is_Native(wn))
+    if (DSL_WN_Is_Native(wn) && !DSL_opcode_is_tensor_elementwise(opcode))
         ss << DSL_OPERATOR_name(DSL_WN_operator(wn));
     else
         ss << OPCODE_name(opcode) + strlen("OPC_");

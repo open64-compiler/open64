@@ -1043,7 +1043,8 @@ DSL_Builder_Requires_Exact_Attribute_Schema
         (DSL_OPERATOR dsl_operator,
          UINT16 version)
 {
-    return dsl_operator == OPR_DSLREDUCESUM ||
+    return DSL_tensor_expression_contract(dsl_operator, version) ||
+           dsl_operator == OPR_DSLREDUCESUM ||
            dsl_operator == OPR_DSLSTABLESOFTMAX ||
            dsl_operator == OPR_DSLMEANVARNORM ||
            dsl_operator == OPR_DSLRESHAPE ||
@@ -1975,6 +1976,10 @@ DSL_Builder_Add_Image_Node
                 first_attribute_id, attr_count, *result_value_id);
 }
 
+/* Build an owner-PU result assignment and managed semantic rows from preflighted
+ * inputs. Matching elementwise expressions bind ordinary operators to the
+ * result tensor TY; other families retain native logical carriers. Existing
+ * allocation/failure behavior applies; this adds no folding or publication. */
 static DSL_BUILDER_VALUE
 DSL_Builder_Create_Native_Value
         (DSL_OPERATOR dsl_operator,
@@ -2035,6 +2040,11 @@ DSL_Builder_Create_Native_Value
     }
     assignment = WN_CreateStid(OPR_STID, MTYPE_V, MTYPE_M, 0, result_st,
                                result_ty, expression);
+
+    /* Ordinary elementwise operators own the live computation. Their required
+     * tensor TY and existing image attributes survive the frozen wire carrier;
+     * binding does not invoke scalar rules or change broadcast indexing. */
+    DSL_WN_bind_tensor_elementwise(expression, result_ty);
 
     if (!DSL_Builder_Add_Image_Node
              (dsl_operator, version, payload, operand_records, kid_count, attrs,
@@ -2807,7 +2817,8 @@ DSL_Builder_Create_Operator
     dsl_operator = DSL_Operator_Find(info.name, strlen(info.name), version);
     /* Row contracts require an explicit result descriptor and
      * the no-allocation preflight in Create_Operator_With_Result. */
-    if (dsl_operator == OPR_DSLREDUCESUM || dsl_operator == OPR_DSLSTABLESOFTMAX ||
+    if (DSL_tensor_expression_contract(dsl_operator, version) ||
+        dsl_operator == OPR_DSLREDUCESUM || dsl_operator == OPR_DSLSTABLESOFTMAX ||
         dsl_operator == OPR_DSLMEANVARNORM)
         return NULL;
     if (dsl_operator != OPR_DSLUNKNOWN &&
@@ -3078,6 +3089,30 @@ DSL_Builder_Create_Operator_With_Result
               (&logical_info, attrs, attr_count)))
         return NULL;
 
+    /* Typed expression preflight is PU-local and allocates no WHIRL products.
+     * The mapped gatekeeper reuses this predicate after independent reopening. */
+    if (DSL_tensor_expression_contract(dsl_operator, version)) {
+        std::vector<TY_IDX> types(kid_count);
+        for (UINT32 i = 0; i < kid_count; ++i) {
+            DSL_BUILDER_VALUE_RECORD *source = DSL_Builder_Find_Value_Record(kids[i]);
+            if (source == NULL || source->pu != DSL_Builder_Active_PU) return NULL;
+            types[i] = source->result_ty;
+        }
+        DSL_TENSOR_EXPRESSION_ATTRIBUTES a;
+        memset(&a, 0, sizeof(a));
+        a.axis = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.axis");
+        a.keepdim = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.keepdim");
+        a.broadcast_rule = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.broadcast_rule");
+        a.fp_semantics = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.fp_semantics");
+        a.value_bits = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.value_bits");
+        a.accum_dtype = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.accum_dtype");
+        a.reassociate = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.reassociate");
+        a.batch_rule = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.batch_rule");
+        a.transpose_kid0 = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.transpose_kid0");
+        a.transpose_kid1 = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.transpose_kid1");
+        if (!DSL_tensor_expression_types_valid(dsl_operator, version,
+                types.empty() ? NULL : &types[0], kid_count, result_ty, &a)) return NULL;
+    }
     if (dsl_operator == OPR_DSLMEANVARNORM) {
         DSL_BUILDER_VALUE_RECORD *sources[3];
         for (UINT32 i = 0; i < 3; ++i) {
@@ -3119,7 +3154,7 @@ DSL_Builder_Create_Operator_With_Result
                   DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.exp_semantics")))
             return NULL;
     }
-    if (dsl_operator == OPR_DSLREDUCESUM) {
+    if (dsl_operator == OPR_DSLREDUCESUM && version != 3) {
         if (version == 2 && !DSL_ordered_reduce_sum_binding_valid
                 (DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.order"),
                  DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.identity_bits"),

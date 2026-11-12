@@ -434,7 +434,8 @@ WOPT_DSL_Binary_Payload(
 }
 
 /* Rebuild the typed expression and managed links together, including all three
- * normalization operands. Existing common rewrite services own the mutation;
+ * normalization operands and matching ordinary tensor operator/result TY.
+ * Existing common rewrite services own the mutation;
  * this bridge preserves semantics, never selecting a numerical algorithm. */
 WN *
 WOPT_DSL_emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
@@ -574,8 +575,10 @@ WOPT_DSL_emit_WN(const WOPT_DSL_SEMANTIC_INFO *info,
               DSL_OPERATOR_name(info->logical_operator));
     return NULL;
   }
-  return DSL_WN_Create_Native(info->logical_operator, info->version,
-                              payload, kids, kid_count);
+  WN *expression = DSL_WN_Create_Native(info->logical_operator, info->version,
+                                        payload, kids, kid_count);
+  DSL_WN_bind_tensor_elementwise(expression, info->result_ty);
+  return expression;
 }
 
 /* Derive the v1 recipe from a gatekeeper-verified assignment and managed joins.

@@ -717,6 +717,9 @@ WN_get_SSA (void *handle, PU_Info *pu, MEM_POOL* pool)
 }
 
 /*
+ *  Fix mapped pointers in place and restore typed ordinary tensor identity
+ *  after child fixups. Invalid native records fail through ERROR_VALUE;
+ *  full semantic admission remains the caller's obligation before lowering.
  *  Note: fix_tree is a hot spot for the binary reader, so be very careful
  *  to make everything as fast as possible.
  */
@@ -800,6 +803,19 @@ fix_tree (PU_Info* pu, WN *node, char *base, Elf64_Word size)
 	    CONVERT_OFFSET(WN*, wn);
 	    WN_next(node) = wn;
 	}
+    }
+
+    /* Restore ordinary tensor operator identity only after operand pointers
+     * and the owner's tensor TY are available. The frozen mapped bytes retain
+     * the legacy carrier so previous readers remain compatible. Full schema,
+     * ownership, dtype and broadcast verification still precedes lowering. */
+    if (opcode == OPC_MSTID && WN_kid0(node) != NULL &&
+        WN_operator(WN_kid0(node)) == OPR_DSL) {
+        if (!DSL_WN_Decode_Opcode_Record(WN_kid0(node), NULL)) {
+            errno = EINVAL;
+            return ERROR_VALUE;
+        }
+        DSL_WN_bind_tensor_elementwise(WN_kid0(node), WN_ty(node));
     }
 
     /* keep track of the last map ID in each opcode category */

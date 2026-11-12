@@ -24,6 +24,7 @@
 #include "../../be/com/dsl_program_interface_internal.h"
 #include "../../be/com/dsl_region.h"
 #include "dsl_shape.h"
+#include "dsl_scalar.h"
 #include "../../be/vho/dsl_shape_analysis.h"
 #include "dsl_tensor_fold.h"
 #include "symtab.h"
@@ -697,7 +698,8 @@ DSL_Gatekeeper_Required_Attributes
     }
     DSL_OPERATOR dsl_operator =
         (DSL_OPERATOR)descriptor->logical_operator;
-    BOOL exact_schema = dsl_operator == OPR_DSLREDUCESUM ||
+    BOOL exact_schema = DSL_tensor_expression_contract(dsl_operator, descriptor->version) ||
+                        dsl_operator == OPR_DSLREDUCESUM ||
                         dsl_operator == OPR_DSLSTABLESOFTMAX ||
                         dsl_operator == OPR_DSLMEANVARNORM ||
                         dsl_operator == OPR_DSLRESHAPE ||
@@ -768,7 +770,8 @@ DSL_Gatekeeper_Verify_Memory_Behavior
 }
 
 /* Verify one physical native assignment against its managed logical identity,
- * direct kids, descriptors and typed attributes. No repair or optimization is
+ * ordinary operator/result TY, direct kids, descriptors and typed attributes.
+ * No repair or optimization is
  * permitted here; incomplete reduction contracts fail admission explicitly. */
 static BOOL
 DSL_Gatekeeper_Verify_Native_Node
@@ -807,7 +810,18 @@ DSL_Gatekeeper_Verify_Native_Node
                     "without a selected binary lowering contract",
                     DSL_OPERATOR_name(dsl_operator));
 
-    if (WN_rtype(expression) != MTYPE_M || WN_desc(expression) != MTYPE_V ||
+    BOOL ordinary = DSL_opcode_is_tensor_elementwise(WN_opcode(expression));
+    OPERATOR expected_operator;
+    if (ordinary &&
+        (!DSL_scalar_operator(dsl_operator, logical_opcode.effective_version,
+                               &expected_operator) ||
+         WN_operator(expression) != expected_operator ||
+         WN_ty(expression) != result_ty))
+        valid = DSL_Gatekeeper_Report
+                    (context, "ordinary tensor operator/type differs from its required contract");
+    if (WN_rtype(expression) != MTYPE_M ||
+        WN_desc(expression) != (ordinary && WN_operator(expression) == OPR_GT ?
+                                MTYPE_M : MTYPE_V) ||
         WN_desc(assignment) != MTYPE_M ||
         !DSL_Gatekeeper_ST_Valid(result_st) ||
         ST_class(St_Table[result_st]) != CLASS_VAR ||
@@ -963,7 +977,7 @@ DSL_Gatekeeper_Verify_Native_Node
                 if (i == 1)
                     second_operand_ty = source.ty;
                 if (shape_ready &&
-                    (dsl_operator == OPR_DSLMATMUL ||
+                    ((dsl_operator == OPR_DSLMATMUL && logical_opcode.effective_version < 3) ||
                      dsl_operator == OPR_DSLRESIDUALADD) &&
                     !DSL_Shape_Tensor_Compatible
                           (first_operand_ty, source.ty,
@@ -997,7 +1011,7 @@ DSL_Gatekeeper_Verify_Native_Node
             if (i == 1)
                 second_operand_ty = WN_ty(operand);
             if (shape_ready &&
-                (dsl_operator == OPR_DSLMATMUL ||
+                ((dsl_operator == OPR_DSLMATMUL && logical_opcode.effective_version < 3) ||
                  dsl_operator == OPR_DSLRESIDUALADD) &&
                 !DSL_Shape_Tensor_Compatible
                       (first_operand_ty, WN_ty(operand),
@@ -1009,6 +1023,12 @@ DSL_Gatekeeper_Verify_Native_Node
         }
     }
 
+    if (DSL_tensor_expression_contract(dsl_operator, logical_opcode.effective_version) &&
+        (!shape_ready || !image_valid || !DSL_Gatekeeper_Shape_Valid
+              (dsl_operator, logical_opcode.effective_version,
+               &image_node, operand_types, result_ty)))
+        valid = DSL_Gatekeeper_Report(context, "%s.v%u static tensor expression contract is invalid",
+                    DSL_OPERATOR_name(dsl_operator), logical_opcode.effective_version);
     if (dsl_operator == OPR_DSLMEANVARNORM &&
         (!shape_ready || !image_valid || first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid

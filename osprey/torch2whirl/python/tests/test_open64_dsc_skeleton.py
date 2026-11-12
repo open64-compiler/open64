@@ -461,6 +461,19 @@ class Open64DscSkeletonTest(unittest.TestCase):
             ),
         }
 
+        expected.update({
+            "common.sub": (1, 2, ("attr.broadcast_rule",)),
+            "common.exp": (1, 1, ("attr.fp_semantics",)),
+            "common.log": (1, 1, ("attr.fp_semantics",)),
+            "common.reduce_max": (1, 1, ("attr.axis","attr.keepdim","attr.accum_dtype","attr.reassociate")),
+            "common.isfinite": (1, 1, ()),
+            "common.greater": (1, 2, ("attr.broadcast_rule",)),
+            "common.select": (1, 3, ("attr.broadcast_rule",)),
+            "common.logical_not": (1, 1, ()),
+            "common.fill_like": (1, 1, ("attr.value_bits",)),
+            "common.mul": (1, 2, ("attr.broadcast_rule",)),
+            "common.div": (1, 2, ("attr.broadcast_rule",)),
+        })
         self.assertEqual(set(contracts), set(expected))
         for name, (version, arity, attrs) in expected.items():
             self.assertEqual(contracts[name].version, version)

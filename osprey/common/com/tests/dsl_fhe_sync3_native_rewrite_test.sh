@@ -44,8 +44,9 @@ fi
 for evidence in \
   'fhe_rewrite_first' \
   'fhe_rewrite_second' \
-  'OPR_DSLADD # OPR_DSLADD version=1' \
-  'OPR_DSLMUL # OPR_DSLMUL version=1' \
+  'MADD' \
+  'MMPY' \
+  'tensor_contract=elementwise.v1' \
   'name=shared_result' \
   'dsl_builder_contract_test.cxx'; do
   if ! grep -Fq "$evidence" "$trace"; then
