@@ -36,7 +36,7 @@
         Float(0)),VHO_high_load(_den),Float(0x3f800000)); }
     /* Store only to the existing disjoint caller-owned scratch/output ABI. */
     void Write(WN *body, UINT32 value, WN *index, WN *expression) {
-        WN_INSERT_BlockLast(body,WN_Istore(MTYPE_F4,0,ST_type(_buffers[_program.values[value].storage]),
+        WN_INSERT_BlockLast(body,WN_Istore(Scalar_type(_program.values[value]),0,ST_type(_buffers[_program.values[value].storage]),
             Address(value,index),expression));
     }
     /* Preserve established NaN-propagating max, with no child sharing. */

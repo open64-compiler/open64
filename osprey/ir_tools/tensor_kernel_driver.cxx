@@ -16,6 +16,7 @@
 #include "defs.h"
 #include "mempool.h"
 #include "wn.h"
+#include "wn_simp.h"
 #include "stab.h"
 #include "pu_info.h"
 #include "ir_reader.h"
@@ -350,12 +351,14 @@ bool remove_barrier(WN *n,const char *name="__syncthreads") {
 #include "tensor_q1_rebind_test.inc"
 #include "tensor_workload_json.inc"
 #include "tensor_serving_json.inc"
+#include "tensor_q5_driver.inc"
 } // namespace
 
 /* The executable establishes exactly one source PU or fresh device translation
  * unit. The VHO service never expands its compilation scope or writes files. */
 int main(int argc,char **argv) {
     try {
+        if(argc>=2 && (!strcmp(argv[1],"q5-key") || !strcmp(argv[1],"q5-apply"))) return q5_command(argc,argv);
         if(argc>=2 && !strcmp(argv[1],"q3-schema")) return q3_schema_command(argc,argv);
         if(argc>=2 && !strcmp(argv[1],"q2-workload")) return q2_command(argc,argv);
         if(argc>=2 && !strcmp(argv[1],"q1-rebind-test")) return q1_rebind_test(argc,argv);

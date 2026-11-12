@@ -11,12 +11,14 @@
 #include "../rapidjson/writer.h"
 #include "../rapidjson/stringbuffer.h"
 #include <string>
+#include <sstream>
 #include <vector>
 #include <stdexcept>
 namespace {
 thread_local std::string error,report_text;
 struct SESSION {
     VHO_TENSOR_SERVING *adapter;
+    VHO_TENSOR_PROGRAM program;
     /* A session owns only adapter bookkeeping; buffers remain caller owned. */
     SESSION():adapter(NULL) {}
     /* The public destructor gate has already checked outstanding work/readers. */
@@ -41,7 +43,7 @@ extern "C" {
 void *open64_q3_create(const char *wire,UINT64 page_tokens) {
     SESSION *s=new SESSION;VHO_TENSOR_PROGRAM p;error.clear();
     if(!wire || !VHO_q1_program_decode(wire,p,error)) return s;
-    std::vector<UINT64> legal(1,page_tokens);s->adapter=new VHO_TENSOR_SERVING(p,legal,error);return s;
+    std::vector<UINT64> legal(1,page_tokens);s->program=p;s->adapter=new VHO_TENSOR_SERVING(p,legal,error);return s;
 }
 /* Refuse teardown while any prepared/running invocation or reader is alive. */
 int open64_q3_destroy(void *object) {
@@ -97,3 +99,5 @@ extern "C" int open64_q3_counter_test() {return VHO_tensor_serving_counter_test(
 #endif
 
 #include "tensor_quantized_movement_review.inc"
+
+#include "tensor_q5_review.inc"

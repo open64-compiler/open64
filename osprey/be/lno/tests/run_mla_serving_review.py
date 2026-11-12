@@ -30,6 +30,8 @@ def review(args):
     out.mkdir(parents=True, exist_ok=False)
     sys.path.insert(0, str(args.source / 'osprey/torch2whirl/python/tests'))
     from models.mla_quantized_paged import CASES, make_fixture
+    if args.q5_long:
+        from mla_q5_long_fixture import CASES, make_fixture
     from models.mla_quantized_reference import reference
     api = C.CDLL(str(args.adapter))
     specs = {
@@ -53,6 +55,10 @@ def review(args):
         f.argtypes, f.restype = types, result
         functions[name] = f
     checks, commands = [], []
+    q5 = None
+    if args.q5:
+        from mla_q5_plan_review import Q5_REVIEW
+        q5 = Q5_REVIEW(api, args, out)
     q4 = None
     if args.q4:
         from mla_q4_costing_review import Q4_REVIEW
@@ -224,6 +230,8 @@ def review(args):
         (out/(name+'.facts.json')).write_text(json.dumps(report, indent=2)+'\n')
         if q4:
             q4.Before(c, check)
+        if q5:
+            q5.Before(c, check)
         check(name+' live', functions['live'](c.session, c.ticket))
         byte = C.c_uint8(0)
         check(name+' pinned write refused', not functions['write'](c.session, c.metadata.handle, 0, C.byref(byte), 1))
@@ -254,6 +262,10 @@ def review(args):
         baseline[name] = dict(outputs=6, phase=report['phase'], page_records=len(report['pages']), native_buffer_binding=True)
         c.close()
         print('PASS serving '+name, flush=True)
+
+    if args.q5_long:
+        (out/'report.json').write_text(json.dumps(dict(status='PASS', checks=checks, source_cases=baseline, q5_long=True, q5_costing=True, gpu_execution=False), indent=2)+'\n')
+        return
 
     # Mutations of actual page/control/scale bytes must be rejected before call.
     for name, mutate, expected in (
@@ -439,6 +451,8 @@ def review(args):
     assert report['phase'] == 'unknown'
     if q4:
         q4.Before(c, check, 'zero-active')
+    if q5:
+        q5.Before(c, check, 'zero-active')
     ok, bundle, why = c.run()
     check('zero active queries do not skip source', ok and c.callback_count == 1)
     c.verify()
@@ -459,4 +473,6 @@ if __name__ == '__main__':
     for name in ('source', 'previous', 'lowerer', 'adapter', 'output'):
         parser.add_argument('--'+name, type=Path, required=True)
     parser.add_argument('--q4', action='store_true')
+    parser.add_argument('--q5', action='store_true')
+    parser.add_argument('--q5-long', action='store_true')
     review(parser.parse_args())

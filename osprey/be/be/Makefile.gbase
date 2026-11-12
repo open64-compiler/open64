@@ -1233,3 +1233,10 @@ tensor_serving_schema.o tensor_high_lower.o tensor_q1_program.o: $(BE_VHO_DIR)/t
 
 # Q4 detached report layout is visible through the existing search boundary.
 driver.o: $(BE_VHO_DIR)/tensor_quantized_movement.h $(BE_VHO_DIR)/tensor_serving.h
+
+# Q5 strict selected plan qualification/materialization.
+tensor_serving_schema.o: $(BE_VHO_DIR)/tensor_quantized_plan.h $(BE_VHO_DIR)/tensor_quantized_plan.inc
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_quantized_plan.h $(BE_VHO_DIR)/tensor_high_q5.inc
+tensor_q1_program.o dsl_q1_preopt.o: $(BE_VHO_DIR)/tensor_quantized_plan.h
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_selected.inc
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_quantized.inc

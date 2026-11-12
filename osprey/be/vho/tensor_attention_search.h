@@ -8,6 +8,7 @@
 #include "tensor_kernel_lower.h"
 #include "tensor_attention_movement.h"
 #include "tensor_quantized_movement.h"
+#include "tensor_quantized_plan.h"
 
 enum VHO_MLA_COST_FIELD {
     VHO_MLA_GLOBAL_RATE, VHO_MLA_SCALAR_RATE, VHO_MLA_SHARED_RATE,
@@ -138,4 +139,10 @@ extern BOOL VHO_mla_explore_movement(const VHO_TENSOR_PROGRAM &,const VHO_TENSOR
 extern BOOL VHO_mla_explore_quantized(const VHO_TENSOR_GPU_PROFILE &,const VHO_MLA_COST_PROFILE &,
     const VHO_MLA_SEARCH_CONTROL &,const VHO_Q4_PROFILE &,const VHO_Q4_SNAPSHOT &,
     VHO_MLA_PRODUCTION_RESULT *,FILE *);
+/* Q5 complete-plan costs share the same finite portfolio/global budgets. The
+ * owning runtime freezes/revalidates Q3 outside exploration; only one winner
+ * may later enter native High construction and reference qualification. */
+extern BOOL VHO_mla_explore_q5(const VHO_TENSOR_PROGRAM &,const VHO_TENSOR_GPU_PROFILE &,
+    const VHO_MLA_COST_PROFILE &,const VHO_MLA_SEARCH_CONTROL &,const VHO_Q4_PROFILE &,
+    const VHO_Q4_SNAPSHOT &,UINT64,VHO_MLA_PRODUCTION_RESULT *,FILE *);
 #endif
