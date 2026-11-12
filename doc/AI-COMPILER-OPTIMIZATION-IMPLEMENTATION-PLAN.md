@@ -143,11 +143,11 @@ concurrent reduction coding.
 
 | Gate | Deliverable and required summary | Status |
 | --- | --- | --- |
-| LN0 | Review centered recipe, C0/C1/C2 direct/retention candidates, explicitly unauthorized C3 Welford, aliases/events and complete costs. | Initial design proposed; no new executable support. |
-| LN1 | Define both means, scaling, rsqrt and environment; specify native v2/admission and implement target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | Native v2/producer/PREOPT, LN1-c target binding/carriers, LN1-d oracle and bounded LN1-e integrated source/target/numerical evidence implemented. Complete LayerNorm execution and GPU conformance remain open. |
-| LN2 | Construct conditional legal storage/event plans from bound source. `alternatives.log`, `residency.log` and `fetch-pipeline.log` expose ranges/leases, capacity, banks/tails and generation/reuse constraints. | Native planning plus LN2-d runtime guard export/host bridge implemented. Actual selected-entry/register/internal-event conformance, real CUDA provider and expanded delivery remain open. |
+| LN0 | Review centered recipe, C0/C1/C2 direct/retention candidates, explicitly unauthorized C3 Welford, aliases/events and complete costs. | Bounded centered-reference design carried through LN1-LN4. Welford/reassociation remain separately authorized LN5 work. |
+| LN1 | Define both means, scaling, rsqrt and environment; specify native v2/admission and implement target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | Native v2/producer/PREOPT, LN1-c target binding/carriers, LN1-d oracle and bounded LN1-e integrated source/target/numerical evidence implemented. Selected reference execution is covered by LN4; GPU conformance remains LN6. |
+| LN2 | Construct conditional legal storage/event plans from bound source. `alternatives.log`, `residency.log` and `fetch-pipeline.log` expose ranges/leases, capacity, banks/tails and generation/reuse constraints. | Native planning plus LN2-d runtime guard export/host bridge implemented. LN4 binds selected WHIRL/internal events and offline resources to runtime enforcement; deployed providers and native conformance remain deployment/LN6 obligations. |
 | LN3 | Complete comparable costs with target provenance/uncertainty and independent oracle. `physical-plan.log` explains selected/fallback reason without invented overlap or guaranteed cache hits; `bubble.log` gives critical-path exposure; `roofline.log` gives candidate-specific all-miss service bounds. | Bounded native complete-cost/selection service implemented and retained-path replay accepted independently of reduction coding. Common AIO-1/AIO-2 records and optional hardware extension, explicit unknowns and analysis-only interval gate; no executable transformation or native calibration claim. |
-| LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Bounded lowering, driver/typed-JIT requests, compiled-entry packaging, CUDA adapter and host/service execution consumer implemented. Independent of reduction; v1 preserved. Selected host-PU call emission/driver packaging, reviewed deployment providers, calibrated profiles, general compiler sessions and real GPU certification remain open. |
+| LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Compiler-side bounded checkpoint complete: selected device and optional host WHIRL, driver/typed-JIT requests, relocatable compiled-entry/host-source package, optional runtime SDK and checked consumer handoff. Independent of reduction; v1 preserved. Application-supplied deployment services, general openpy linking/compiler-session management and calibrated/native GPU certification are not claimed by this bounded gate. |
 | LN5 | Separately authorized parallel statistics/Welford, RF retention and async/TMA refinements with numerical legality, lowerability and complete costs. | Deferred, not implied by LN0-LN4. |
 | LN6 | Native numerical/instruction/resource/paired-performance verification and calibration. | GPU gate open; not a blocker to design/compiler work. |
 
@@ -474,7 +474,50 @@ package/guard/raw-trace/report files reproduce byte-for-byte without
 normalization. The progress ledger records immutable primary/replay identities;
 indexes/current links were updated only after successful replay.
 
-LN4 execution-consumer follow-on, 2026-10-29:
+LN4 compiler-side closure, 2026-10-29:
+[Selected host dispatch and modes v0.1](AI-COMPILER-LAYERNORM-HOST-DISPATCH-v0.1.md).
+The explicit request checkpoint supports `normalization_mode=standalone|service`;
+service is its compatibility default, not a change to the proposed eventual
+openpy default. Standalone adds a driver-owned ordinary host PU with two opaque
+pointer formals, selected plan/body constants, an effectful runtime call,
+immediate status capture and return. Service omits the host PU. Both retain
+unchanged source PUs and the same cost-selected device semantics.
+
+Ordinary whirl2c with `normalization_host_entry=<manifest host_dispatch>` admits
+the exact high-level wrapper before return lowering and emits host C. CUDA mode
+continues to emit device PUs only. The compiled-entry packager retains relative
+host C/header/support-header files and their hashes; the optional SDK has an
+explicit install target without changing the legacy runtime installation.
+The checked runtime ABI compares plan/body identities under its operation token
+before reading roots or performing allocation/copies. Mismatch, failed dispatch
+and cleanup propagate to the caller without changing the selected plan.
+
+Acceptance: 36 cases / 792 scenarios per normal and sanitized mode, 30,368
+consumer checks and 10,152 CUDA API mock checks per mode; 144 full independent
+mapped dumps, 108 native host-identity mutation refusals, 40 mode/extraction
+refusals and nine standalone level/ABI/FP/target/v1/publication refusals.
+All 135 focused Python tests pass; installed SDK/public C ABI and shared
+compiler boundaries pass. Service and standalone device sources match except
+the timestamp banner; all 72 PTX/cubin files match the authenticated prior
+numerical producer exactly. Its 288 datasets / 26,240 numerical checks are
+inherited, not rerun as new GPU evidence. Implementation `046b198b` and immutable
+final-path replay are accepted; the progress ledger records both paths.
+Replay repeats all compiler outputs, host/runtime/CUDA builds, sanitizer cases,
+refusals and 135 tests: 864 byte-exact files, 648 controlled-normalized files
+and 216 trace/entry joins. Frozen compiler binaries and primary build proof are
+authenticated, not falsely described as a fresh compiler rebuild. The original
+consumer regressions also preserve 720 prior artifacts exactly in both modes.
+
+`host-dispatch.log` summarizes mode, actual host/device entries, selected
+constants, mapped ABI/refusals, emitted/compiled host C, source preservation and
+device parity. `execution.log`/`provider.log` retain movement and resource events;
+full `optimization.log` includes all phase reports. Summary must distinguish
+compiler-side LN4 completion, mock runtime handoff, inherited numerical evidence,
+application-owned deployment callbacks and the open LN6 native gate. No main,
+performance harness, general compiler session or inference-service policy is
+silently generated. LN5 refinements remain separately authorized.
+
+LN4 execution-consumer follow-on, 2026-10-29 (host integration superseded above):
 [Consumer detail v0.1](AI-COMPILER-LAYERNORM-EXECUTION-CONSUMER-v0.1.md).
 Implemented an optional runtime-only consumer for host roots, borrowed registered
 device roots and mixed placement. It uses the caller's shared registry across

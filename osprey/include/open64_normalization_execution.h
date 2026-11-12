@@ -54,6 +54,16 @@ int open64_normalization_execution_resume(OPEN64_NORMALIZATION_EXECUTION *);
  * obligations; it does not silently discard a partially active invocation. */
 int open64_normalization_execution_run(OPEN64_NORMALIZATION_EXECUTION *,
   const OPEN64_NORMALIZATION_ROOT_REQUEST roots[4]);
+/* Generated host dispatch/service identity gate. Compare selected plan/body
+ * under the operation token before reading roots or starting any work. Mismatch
+ * preserves idle/active invocation state; normal run cleanup rules still apply.
+ * Seals bind compiler products, not cryptographic authorization. This opaque C
+ * ABI uses unsigned long long to match whirl2c's U8 spelling exactly; supported
+ * deployment is n64 with 64-bit unsigned long long. roots points to four native
+ * OPEN64_NORMALIZATION_ROOT_REQUEST values, not a wire representation. */
+int open64_normalization_execution_run_selected(void *execution,
+  unsigned long long plan_seal, unsigned long long tree_seal,
+  void *root_requests);
 /* Join started work, abort/close and clean owned roots only. Failed drain,
  * consumer join, quiesce, retirement or free preserves retryable state. */
 int open64_normalization_execution_cancel(OPEN64_NORMALIZATION_EXECUTION *);

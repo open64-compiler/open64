@@ -2,13 +2,26 @@
 
 Version v0.1 | 2026-10-28 | Living design; bounded native contracts and device lowering
 
+LN4 compiler-side closure, 2026-10-29:
+[Selected host dispatch and mode packaging](AI-COMPILER-LAYERNORM-HOST-DISPATCH-v0.1.md)
+completes the explicit checkpoint with an optional driver-created host PU,
+ordinary WHIRL-to-C extraction, selected plan/body runtime binding and a
+relocatable compiled-entry/host-source package. Service mode omits the host PU;
+the optional runtime SDK is explicitly installable. Actual mapped ABI/refusals,
+offline assembly and emitted-host-to-consumer tests cover all 36 selections.
+Device PTX/cubin remain identical to the accepted numerical producer. This does
+not provide a general openpy linker, deployment callbacks, compiler-session
+manager, performance harness or LN6 GPU certification. v1 and reduction remain
+unchanged; LN5 numerical/parallel/async refinements are separate.
+
 Execution-consumer amendment, 2026-10-29:
 [LN4 host/service consumer](AI-COMPILER-LAYERNORM-EXECUTION-CONSUMER-v0.1.md)
 adds runtime composition for host, mixed and registered-device whole roots.
 It borrows the service's shared registry, acquires leases before guard-sized
 copies and preserves retry/cancel ownership through quiescence, close,
 retirement and release. No new kernel producer, v1 change or reduction import.
-Host-PU call emission, deployment integration and GPU certification remain open.
+Host-PU call emission is completed by the amendment above; deployment integration
+and GPU certification remain outside this runtime-consumer acceptance.
 
 Compiled-entry amendment, 2026-10-29:
 [LN4 compiled-entry/CUDA boundary](AI-COMPILER-LAYERNORM-COMPILED-ENTRY-v0.1.md)

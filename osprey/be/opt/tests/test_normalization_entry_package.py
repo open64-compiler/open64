@@ -61,6 +61,22 @@ class EntryPackageTests(unittest.TestCase):
                 with patch('package_normalization_entry.audit',return_value=record),self.assertRaises(ValueError):package(case,root/'out','synthetic')
                 self.assertFalse((root/'out').exists())
 
+    def test_standalone_mode_package(self):
+        """Package the emitted host source/header only with an exact mode/identity join."""
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);case,record=source(root);path=case/'selected.after.B.manifest.json'
+            m=json.loads(path.read_text());m.update(execution_mode='standalone',host_dispatch='open64_ln_dispatch_11_7_c2')
+            path.write_text(json.dumps(m))
+            with (case/'driver.t').open('a') as f:f.write('AI_NORM_HOST 1 DISPATCH standalone '+m['host_dispatch']+' '+m['kernel']+
+                ' '+str(m['plan_seal'])+' '+str(m['tree_seal'])+' '+str(m['request']['source']['source_line'])+'\n')
+            code=('#include "host.h"\nint '+m['host_dispatch']+'(void*a,void*b) { int dispatch_status = open64_normalization_execution_run_selected(a,'+
+                str(m['plan_seal'])+'ULL,'+str(m['tree_seal'])+'ULL,b); return dispatch_status; }')
+            (case/'host.c').write_text(code);(case/'host.h').write_text('/* synthetic declarations */\n')
+            with patch('package_normalization_entry.audit',return_value=record):result=package(case,root/'out','synthetic')
+            self.assertEqual(result['host_dispatch'],m['host_dispatch'])
+            self.assertEqual((root/'out/host.c').read_text(),code)
+            self.assertEqual(len(result['host_evidence']),3)
+
     def test_foreign_cost_or_kernel(self):
         """A complete cost cannot be borrowed for another selected entry or handoff."""
         for key,value in (('cost',0),('kernel','unsafe"name')):

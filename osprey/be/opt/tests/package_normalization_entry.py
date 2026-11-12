@@ -14,6 +14,7 @@ from normalization_request_trace_report import audit
 from normalization_guard_trace_report import FIELDS
 from normalization_plan_trace_report import require
 from normalization_cost_trace_report import row, COST
+from normalization_host_trace_report import audit as host_audit
 
 
 def sha(path):
@@ -25,7 +26,7 @@ def authenticate(receipt):
     """Require complete accepted primary evidence; any checksum drift refuses."""
     receipt=receipt.resolve()
     metadata=json.loads((receipt/'receipt.json').read_text())
-    require(metadata['schema']=='open64-ln4-driver-request-review-v1' and metadata['source_v1_preserved'] is True and
+    require(metadata['schema'] in ('open64-ln4-driver-request-review-v1','open64-ln4-host-dispatch-review-v1') and metadata['source_v1_preserved'] is True and
             metadata['GPU'] is False,'unsupported producer receipt')
     for line in (receipt/'SHA256SUMS').read_text().splitlines():
         digest,name=line.split('  ',1);path=receipt/name
@@ -68,6 +69,16 @@ def package(case, output, parent):
         evidence={name:sha(case/name) for name in ('driver.t','reopen.t','request.json','selected.after.B.manifest.json',
             'selected.before.B','selected.before.T','selected.after.B','selected.after.T','selected.before-after.diff',
             'kernel.cu','kernel.ptx','kernel.cubin','logs/cubin.stderr')},GPU=False,runtime_authorized=False)
+    host_files={}
+    if 'execution_mode' in manifest:
+        mode=manifest['execution_mode'];host=manifest['host_dispatch']
+        host_audit(trace,manifest,(case/'host.c').read_text() if mode=='standalone' else None)
+        result.update(execution_mode=mode,host_dispatch=host)
+        if mode=='standalone':
+            host_files={name:(case/name).read_bytes() for name in ('host.c','host.h')}
+            require(b'#include "host.h"' in host_files['host.c'],'host source is not a relocatable package')
+            host_files['whirl2c.h']=(Path(__file__).resolve().parents[3]/'include/whirl2c.h').read_bytes()
+            result['host_evidence']={name:hashlib.sha256(data).hexdigest() for name,data in host_files.items()}
     identity={k:result[k] for k in ('guard_words','plan_seal','tree_seal','registers_upper','compiled_registers',
                                   'static_shared','resident_floor','cubin_bytes','cubin_sha256')}
     symbol='open64_norm_entry_'+hashlib.sha256(json.dumps(identity,sort_keys=True).encode()).hexdigest()[:16]
@@ -87,6 +98,7 @@ def package(case, output, parent):
             '  memcpy(p.kernel,"'+kernel+'",sizeof("'+kernel+'"));','  return p;','}']
     output.mkdir(parents=True,exist_ok=False)
     (output/'entry.h').write_text('\n'.join(lines)+'\n');(output/'kernel.cubin').write_bytes(cubin)
+    for name,data in host_files.items():(output/name).write_bytes(data)
     (output/'selected.guard').write_bytes(struct.pack('<83Q',*words))
     result['header_symbol']=symbol
     (output/'entry.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
@@ -106,9 +118,11 @@ def main():
     p.add_argument('--case',required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args()
     receipt=authenticate(a.receipt)
     require(re.fullmatch(r'sm_(?:90|90a|100|100a)-[a-z-]+-[123]',a.case) is not None,'invalid case name')
-    known=json.loads((receipt/'native/audit.json').read_text())['records']
+    metadata=json.loads((receipt/'receipt.json').read_text())
+    producer='review' if metadata['schema']=='open64-ln4-host-dispatch-review-v1' else 'native'
+    known=json.loads((receipt/producer/'audit.json').read_text())['records']
     require(sum(r['case']==a.case for r in known)==1,'case not in accepted producer census')
-    package(receipt/'native'/a.case,a.output,str(receipt))
+    package(receipt/producer/a.case,a.output,str(receipt))
 
 
 if __name__=='__main__':main()

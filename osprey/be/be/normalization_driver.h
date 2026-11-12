@@ -11,4 +11,7 @@ struct WOPT_DSL_NORMALIZATION_DRIVER_API;
  * WOPT callbacks operate only in the established active scope. No host/GPU run. */
 extern BOOL BE_DSL_normalization_checkpoint(PU_Info *program,
     const WOPT_DSL_NORMALIZATION_DRIVER_API *api, WN *(*preopt)(WN *, WN *), FILE *diagnostic);
+/* Read-only ordinary host wrapper validation for explicit whirl2c extraction.
+ * Requires exact call/ABI/capture/return shape, never selects or rewrites a PU. */
+extern BOOL BE_DSL_normalization_host_matches(PU_Info *pu, const char *name);
 #endif

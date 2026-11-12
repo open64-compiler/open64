@@ -112,15 +112,17 @@ static BOOL LN4D_Before(PU_Info *program, const std::string &path)
 
 /* A new ordinary empty PU has no analysis DSL formal-interface metadata.
  * Creation is driver-owned and uses standard ST/PU/WN/scope/map services. */
-static PU_Info *LN4D_Device(const char *name, SRCPOS source)
+static PU_Info *LN4D_Device(const char *name, SRCPOS source, BOOL host = FALSE)
 {
   const ST *existing; ST_IDX idx;
   FOREACH_SYMBOL(GLOBAL_SYMTAB, existing, idx) if (!strcmp(ST_name(existing), name)) return NULL;
-  TY_IDX type = Make_Function_Type(MTYPE_To_TY(MTYPE_V));
+  TY_IDX type = Make_Function_Type(MTYPE_To_TY(host ? MTYPE_I4 : MTYPE_V));
   PU_IDX pi; PU &p = New_PU(pi); PU_Init(p, type, GLOBAL_SYMTAB + 1); Set_PU_c_lang(p); Set_PU_no_inline(p);
   ST *kernel = New_ST(GLOBAL_SYMTAB);
   ST_Init(kernel, Save_Str(name), CLASS_FUNC, SCLASS_TEXT, EXPORT_PREEMPTIBLE, type);
-  Set_ST_pu(kernel, pi); Set_ST_device_symbol_kind(*kernel, DEVICE_SYMBOL_KERNEL); Set_ST_Srcpos(*kernel, source);
+  Set_ST_pu(kernel, pi);
+  if (!host) Set_ST_device_symbol_kind(*kernel, DEVICE_SYMBOL_KERNEL);
+  Set_ST_Srcpos(*kernel, source);
   New_Scope(GLOBAL_SYMTAB + 1, MEM_pu_nz_pool_ptr, TRUE);
   // New_Scope reserves but does not initialize row zero. The mapped writer
   // includes these nonsemantic rows; never publish old allocator contents.
@@ -150,9 +152,9 @@ static PU_Info *LN4D_Device(const char *name, SRCPOS source)
 static BOOL LN4D_Formals(PU_Info *pu)
 {
   WN *entry = PU_Info_tree_ptr(pu);
-  if (WN_num_formals(entry) != 4) return FALSE;
+  if (WN_num_formals(entry) != 4 && WN_num_formals(entry) != 2) return FALSE;
   const std::string owner = std::string("owner_pu=") + ST_name(St_Table[PU_Info_proc_sym(pu)]);
-  for (UINT32 i = 0; i < 4; ++i) {
+  for (UINT32 i = 0; i < WN_num_formals(entry); ++i) {
     ST_IDX st = WN_st_idx(WN_formal(entry, i));
     DSL_IR_VALUE_RECORD value; DSL_IR_Value_Record_Init(&value);
     value.value_kind = DSL_IR_VALUE_SYMBOL; value.st = st; value.ty = ST_type(St_Table[st]);
@@ -164,6 +166,59 @@ static BOOL LN4D_Formals(PU_Info *pu)
   }
   return DSL_IR_Image_Validate(stderr) && DSL_PU_Interface_Image_Validate(stderr) &&
       DSL_PU_Interface_Image_Validate_PU(pu, stderr);
+}
+
+/* Only construct in the driver-selected empty host scope. The body is ordinary
+ * WHIRL, with conservative call effects and an immediate return-preg capture. */
+static BOOL LN4D_Host(PU_Info *pu, UINT64 plan, UINT64 tree, SRCPOS source)
+{
+  TY_IDX pointer = Make_Pointer_Type(MTYPE_To_TY(MTYPE_V));
+  TY_IDX args[] = {pointer, MTYPE_To_TY(MTYPE_U8), MTYPE_To_TY(MTYPE_U8), pointer};
+  const char *runtime = "open64_normalization_execution_run_selected";
+  const ST *old; ST_IDX idx;
+  FOREACH_SYMBOL(GLOBAL_SYMTAB, old, idx)
+    if (!strcmp(ST_name(old), runtime)) return FALSE;
+  TY_IDX type = Make_Function_Type(MTYPE_To_TY(MTYPE_I4));
+  TYLIST_IDX list; Set_TYLIST_type(New_TYLIST(list), MTYPE_To_TY(MTYPE_I4));
+  Set_TY_tylist(Ty_Table[type], list);
+  for (UINT32 i = 0; i < 4; ++i) Set_TYLIST_type(New_TYLIST(list), args[i]);
+  Set_TYLIST_type(New_TYLIST(list), TY_IDX_ZERO);
+  Set_TY_has_prototype(Ty_Table[type]);
+  PU_IDX pi; PU &p = New_PU(pi); PU_Init(p, type, GLOBAL_SYMTAB + 1); Set_PU_c_lang(p);
+  ST *callee = New_ST(GLOBAL_SYMTAB);
+  ST_Init(callee, Save_Str(runtime), CLASS_FUNC, SCLASS_EXTERN, EXPORT_PREEMPTIBLE, type);
+  Set_ST_pu(callee, pi); Set_ST_Srcpos(*callee, source);
+  ST *function = &St_Table[PU_Info_proc_sym(pu)];
+  type = Make_Function_Type(MTYPE_To_TY(MTYPE_I4));
+  Set_TYLIST_type(New_TYLIST(list), MTYPE_To_TY(MTYPE_I4)); Set_TY_tylist(Ty_Table[type], list);
+  for (UINT32 i = 0; i < 2; ++i) Set_TYLIST_type(New_TYLIST(list), pointer);
+  Set_TYLIST_type(New_TYLIST(list), TY_IDX_ZERO); Set_TY_has_prototype(Ty_Table[type]);
+  Set_PU_prototype(Pu_Table[ST_pu(function)], type);
+  ST *formals[2]; const char *names[] = {"execution", "root_requests"};
+  WN *entry = WN_CreateEntry(2, function, WN_CreateBlock(), NULL, NULL);
+  for (UINT32 i = 0; i < 2; ++i) {
+    formals[i] = New_ST(CURRENT_SYMTAB);
+    ST_Init(formals[i], Save_Str(names[i]), CLASS_VAR, SCLASS_FORMAL, EXPORT_LOCAL, pointer);
+    Set_ST_is_value_parm(formals[i]); Set_ST_Srcpos(*formals[i], source);
+    WN_kid(entry, i) = WN_CreateIdname(0, formals[i]);
+  }
+  WN *call = WN_Call(MTYPE_I4, MTYPE_V, 4, ST_st_idx(callee)); WN_Set_Call_Default_Flags(call);
+  WN *values[] = {WN_Ldid(Pointer_Mtype, 0, formals[0], pointer), WN_Intconst(MTYPE_U8, plan),
+      WN_Intconst(MTYPE_U8, tree), WN_Ldid(Pointer_Mtype, 0, formals[1], pointer)};
+  for (UINT32 i = 0; i < 4; ++i) WN_kid(call, i) = WN_CreateParm(MTYPE_U8, values[i], args[i], WN_PARM_BY_VALUE);
+  ST *status = New_ST(CURRENT_SYMTAB);
+  ST_Init(status, Save_Str("dispatch_status"), CLASS_VAR, SCLASS_AUTO, EXPORT_LOCAL, MTYPE_To_TY(MTYPE_I4));
+  Set_ST_Srcpos(*status, source);
+  WN *capture = WN_Stid(MTYPE_I4, 0, status, ST_type(status),
+      WN_Ldid(MTYPE_I4, -1, Return_Val_Preg, ST_type(status)));
+  WN *ret = WN_CreateReturn_Val(OPR_RETURN_VAL, MTYPE_I4, MTYPE_V,
+      WN_Ldid(MTYPE_I4, 0, status, ST_type(status)));
+  WN_INSERT_BlockLast(WN_func_body(entry), call); WN_INSERT_BlockLast(WN_func_body(entry), capture);
+  WN_INSERT_BlockLast(WN_func_body(entry), ret);
+  WN_Set_Linenum(entry, source); WN_Set_Linenum(call, source);
+  WN_Set_Linenum(capture, source); WN_Set_Linenum(ret, source);
+  Set_PU_Info_tree_ptr(pu, entry);
+  return LN4D_Formals(pu) && BE_DSL_normalization_host_matches(pu, ST_name(function));
 }
 
 /* Bound the byte stream before passing it to the shared typed decoder. */
@@ -195,18 +250,63 @@ static std::string LN4D_Path_Token(const std::string &path)
 /* Review-only JSON binds the request to the actual constructed device body;
  * native guard words are explicitly not a portable service/launch ABI. */
 static BOOL LN4D_Manifest(const std::string &path, const std::string &json,
-    const char *kernel, const WOPT_DSL_NORMALIZATION_LOWERING &p, const WOPT_DSL_NORMALIZATION_DEVICE &d)
+    const char *kernel, const char *host, const WOPT_DSL_NORMALIZATION_LOWERING &p, const WOPT_DSL_NORMALIZATION_DEVICE &d)
 {
   FILE *f = fopen(path.c_str(), "wx"); if (!f) return FALSE;
   fprintf(f, "{\"schema\":\"open64.layernorm.driver-review.v1\",\"request\":%s,\"kernel\":\"%s\","
       "\"selected_kind\":%llu,\"cost\":%llu,\"plan_seal\":%llu,\"tree_seal\":%llu,"
       "\"nodes\":%llu,\"loops\":%llu,\"scalar_operations\":%llu,\"barriers\":%llu,"
-      "\"runtime_authorized\":false,\"gpu_verified\":false}\n", json.c_str(), kernel,
+      "\"runtime_authorized\":false,\"gpu_verified\":false,\"host_dispatch\":\"%s\",\"execution_mode\":\"%s\"}\n", json.c_str(), kernel,
       (unsigned long long)p.guard.kind, (unsigned long long)p.cost.total, (unsigned long long)p.seal,
       (unsigned long long)d.tree_seal, (unsigned long long)d.nodes, (unsigned long long)d.loops,
-      (unsigned long long)d.scalar_operations, (unsigned long long)d.barriers);
+      (unsigned long long)d.scalar_operations, (unsigned long long)d.barriers, host, *host ? "standalone" : "service");
   BOOL valid = !ferror(f); return fclose(f) == 0 && valid;
 }
+}
+
+/* Validate the entire generated adapter, not just its name, before extraction.
+ * Compiler-created constants are still checked against the opened runtime entry. */
+BOOL BE_DSL_normalization_host_matches(PU_Info *pu, const char *name)
+{
+  if (!pu || !name || strcmp(ST_name(St_Table[PU_Info_proc_sym(pu)]), name) ||
+      ST_device_symbol_kind(St_Table[PU_Info_proc_sym(pu)]) != DEVICE_SYMBOL_NONE ||
+      !Is_Set_PU_Info_flags(pu, PU_IS_COMPILER_GENERATED)) return FALSE;
+  WN *entry = PU_Info_tree_ptr(pu);
+  if (!entry || WN_num_formals(entry) != 2) return FALSE;
+  TYLIST_IDX host_types = TY_tylist(ST_pu_type(PU_Info_proc_sym(pu)));
+  if (!host_types || TYLIST_type(Tylist_Table[host_types]) != MTYPE_To_TY(MTYPE_I4) ||
+      TYLIST_type(Tylist_Table[host_types + 3])) return FALSE;
+  for (UINT32 i = 0; i < 2; ++i) {
+    ST *formal = WN_st(WN_formal(entry, i));
+    if (ST_sclass(formal) != SCLASS_FORMAL || !ST_is_value_parm(formal) ||
+        TY_kind(ST_type(formal)) != KIND_POINTER || TY_pointed(ST_type(formal)) != MTYPE_To_TY(MTYPE_V) ||
+        ST_type(formal) != TYLIST_type(Tylist_Table[host_types + i + 1])) return FALSE;
+  }
+  WN *call = WN_first(WN_func_body(entry)), *capture = call ? WN_next(call) : NULL;
+  WN *ret = capture ? WN_next(capture) : NULL;
+  if (!call || WN_operator(call) != OPR_CALL || WN_rtype(call) != MTYPE_I4 || WN_kid_count(call) != 4 ||
+      strcmp(ST_name(WN_st(call)), "open64_normalization_execution_run_selected") ||
+      !capture || WN_operator(capture) != OPR_STID || !ret || WN_operator(ret) != OPR_RETURN_VAL || WN_next(ret) ||
+      WN_operator(WN_kid0(capture)) != OPR_LDID || WN_st(WN_kid0(capture)) != Return_Val_Preg ||
+      WN_offset(WN_kid0(capture)) != -1 || WN_operator(WN_kid0(ret)) != OPR_LDID ||
+      WN_st_idx(WN_kid0(ret)) != WN_st_idx(capture)) return FALSE;
+  TYLIST_IDX types = TY_tylist(ST_pu_type(WN_st(call)));
+  if (!types || TYLIST_type(Tylist_Table[types]) != MTYPE_To_TY(MTYPE_I4) ||
+      TYLIST_type(Tylist_Table[types + 5]) || WN_call_flag(call) != WN_CALL_CONSERVATIVE ||
+      WN_desc(capture) != MTYPE_I4 || WN_rtype(WN_kid0(capture)) != MTYPE_I4 ||
+      WN_rtype(ret) != MTYPE_I4 || ST_type(WN_st(capture)) != MTYPE_To_TY(MTYPE_I4)) return FALSE;
+  for (UINT32 i = 0; i < 4; ++i) {
+    WN *parm = WN_kid(call, i);
+    if (!parm || WN_operator(parm) != OPR_PARM || !WN_Parm_By_Value(parm) || WN_rtype(parm) != MTYPE_U8 ||
+        WN_ty(parm) != TYLIST_type(Tylist_Table[types + i + 1])) return FALSE;
+    WN *actual = WN_kid0(parm);
+    if (i == 1 || i == 2) {
+      if (WN_operator(actual) != OPR_INTCONST || !WN_const_val(actual) || WN_rtype(actual) != MTYPE_U8 ||
+          WN_ty(parm) != MTYPE_To_TY(MTYPE_U8)) return FALSE;
+    }
+    else if (WN_operator(actual) != OPR_LDID || WN_st_idx(actual) != WN_st_idx(WN_formal(entry, i ? 1 : 0))) return FALSE;
+  }
+  return TRUE;
 }
 
 /* Driver owns resident program lifetime throughout PREOPT, device construction
@@ -219,6 +319,9 @@ BOOL BE_DSL_normalization_checkpoint(PU_Info *program, const WOPT_DSL_NORMALIZAT
       !VHO_DSL_Normalization_Request || !VHO_DSL_Normalization_Output ||
       !VHO_DSL_GPU_Arch || Opt_Level < 3 || Pointer_Size != 8 || Pointer_Mtype != MTYPE_U8)
     return LN4D_Refuse(diagnostic, "requires request/output/gpu_arch, O3, n64 and strict compiler FP environment");
+  const char *mode = VHO_DSL_Normalization_Mode ? VHO_DSL_Normalization_Mode : "service";
+  if (strcmp(mode, "service") && strcmp(mode, "standalone"))
+    return LN4D_Refuse(diagnostic, "normalization_mode must be service or standalone; performance harness is separate");
   std::string json;
   WOPT_DSL_NORMALIZATION_REQUEST request;
   if (!LN4D_Read(VHO_DSL_Normalization_Request, &json) || !api->decode(json.data(), json.size(), &request, diagnostic))
@@ -264,6 +367,14 @@ BOOL BE_DSL_normalization_checkpoint(PU_Info *program, const WOPT_DSL_NORMALIZAT
   PU_Info *device = LN4D_Device(kernel, source);
   if (!device) return LN4D_Refuse(diagnostic, "device entry name collision");
   PU_Info_next(last) = device;
+  char host_name[100]; host_name[0] = 0; PU_Info *host = NULL;
+  if (!strcmp(mode, "standalone")) {
+    snprintf(host_name, sizeof(host_name), "open64_ln_dispatch_%u_%u_c%llu", request.source.owner_pu,
+        request.source.node_id, (unsigned long long)(plan.guard.kind - 1));
+    host = LN4D_Device(host_name, source, TRUE);
+    if (!host) return LN4D_Refuse(diagnostic, "host entry name collision");
+    PU_Info_next(device) = host;
+  }
   std::vector<char> staging(output.begin(), output.end());
   const char suffix[] = ".tmp.XXXXXX"; staging.insert(staging.end(), suffix, suffix + sizeof(suffix));
   if (!mkdtemp(&staging[0])) return LN4D_Refuse(diagnostic, "could not reserve staging directory");
@@ -278,8 +389,16 @@ BOOL BE_DSL_normalization_checkpoint(PU_Info *program, const WOPT_DSL_NORMALIZAT
     return LN4D_Refuse(diagnostic, "device construction or verification failed");
   Set_PU_Info_symtab_ptr(device, NULL);
   Save_Local_Symtab(CURRENT_SYMTAB, device);
+  if (host) {
+    LN4D_Select(host);
+    if (!LN4D_Host(host, plan.seal, product.tree_seal, source)) return LN4D_Refuse(diagnostic, "host construction failed");
+    Set_PU_Info_symtab_ptr(host, NULL); Save_Local_Symtab(CURRENT_SYMTAB, host);
+  }
+  if (trace) fprintf(trace, "AI_NORM_HOST 1 DISPATCH %s %s %s %llu %llu %u\n", mode,
+      host ? host_name : "none", kernel, (unsigned long long)plan.seal,
+      (unsigned long long)product.tree_seal, request.source.source_line);
   if (!LN4D_Interfaces(program, diagnostic)) return FALSE;
-  if (!LN4D_Write(program, temporary[2]) || !LN4D_Manifest(temporary[1], json, kernel, plan, product))
+  if (!LN4D_Write(program, temporary[2]) || !LN4D_Manifest(temporary[1], json, kernel, host_name, plan, product))
     return LN4D_Refuse(diagnostic, "selected image or binding manifest failed");
   // Hard-link publication is atomic and refuses pre-existing files/symlinks.
   UINT32 published = 0;

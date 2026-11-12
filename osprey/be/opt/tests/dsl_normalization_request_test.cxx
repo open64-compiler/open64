@@ -141,6 +141,43 @@ static BOOL LN4RT_Auxiliary_Image(PU_Info *pu,const char *path)
   int status=0;return waitpid(child,&status,0)==child && WIFEXITED(status) && WEXITSTATUS(status)==0;
 }
 
+/* Independent host ABI oracle inspects the actual mapped body. Test mutations
+ * must refuse before reporting success, independently of the producer verifier. */
+static BOOL LN4RT_Host(PU_Info *host, const rapidjson::Value &manifest)
+{
+  if (!host || WN_num_formals(PU_Info_tree_ptr(host)) != 2 ||
+      ST_device_symbol_kind(St_Table[PU_Info_proc_sym(host)]) != DEVICE_SYMBOL_NONE) return Check(FALSE,"host_formals");
+  WN *entry = PU_Info_tree_ptr(host), *call = WN_first(WN_func_body(entry));
+  WN *capture = call ? WN_next(call) : NULL, *ret = capture ? WN_next(capture) : NULL;
+  if (!call || WN_operator(call) != OPR_CALL || WN_kid_count(call) != 4 || WN_rtype(call) != MTYPE_I4 ||
+      strcmp(ST_name(WN_st(call)), "open64_normalization_execution_run_selected") ||
+      !capture || WN_operator(capture) != OPR_STID || WN_operator(WN_kid0(capture)) != OPR_LDID ||
+      ST_class(WN_st(WN_kid0(capture))) != CLASS_PREG ||
+      strcmp(ST_name(WN_st(WN_kid0(capture))), ".preg_return_val") || WN_offset(WN_kid0(capture)) != -1 ||
+      !ret || WN_operator(ret) != OPR_RETURN_VAL || WN_next(ret) || WN_operator(WN_kid0(ret)) != OPR_LDID ||
+      WN_st_idx(WN_kid0(ret)) != WN_st_idx(capture)) return Check(FALSE,"host_body_shape");
+  const char *mutation = getenv("OPEN64_LN_HOST_MUTATION");
+  if (mutation && !strcmp(mutation, "plan")) WN_const_val(WN_kid0(WN_kid(call, 1))) ^= 1;
+  if (mutation && !strcmp(mutation, "tree")) WN_const_val(WN_kid0(WN_kid(call, 2))) ^= 1;
+  if (mutation && !strcmp(mutation, "root")) WN_st_idx(WN_kid0(WN_kid(call, 3))) = WN_st_idx(WN_formal(entry, 0));
+  TYLIST_IDX types = TY_tylist(ST_pu_type(WN_st(call)));
+  if (!types || TY_mtype(TYLIST_type(Tylist_Table[types])) != MTYPE_I4) return Check(FALSE,"host_callee_return_type");
+  for (UINT32 i = 0; i < 4; ++i) {
+    WN *parm = WN_kid(call, i), *actual = WN_kid0(parm);
+    if (WN_operator(parm) != OPR_PARM || !WN_Parm_By_Value(parm) ||
+        WN_ty(parm) != TYLIST_type(Tylist_Table[types + 1 + i])) return Check(FALSE,"host_parameter_type");
+    if (i == 1 || i == 2) {
+      if (WN_operator(actual) != OPR_INTCONST || (UINT64)WN_const_val(actual) !=
+          manifest[i == 1 ? "plan_seal" : "tree_seal"].GetUint64()) return Check(FALSE,"host_constant_identity");
+    } else {
+      ST_IDX formal = WN_st_idx(WN_formal(entry, i ? 1 : 0));
+      if (WN_operator(actual) != OPR_LDID || WN_st_idx(actual) != formal ||
+          TY_kind(ST_type(St_Table[formal])) != KIND_POINTER || !ST_is_value_parm(St_Table[formal])) return Check(FALSE,"host_actual_identity");
+    }
+  }
+  return TYLIST_type(Tylist_Table[types + 5]) == TY_IDX_ZERO;
+}
+
 /* Independent reader establishes each active scope. Recompute selection from
  * retained request and compare the actual mapped device tree with its product. */
 static int LN4RT_Reopen(char **argv)
@@ -154,7 +191,7 @@ static int LN4RT_Reopen(char **argv)
   WOPT_DSL_NORMALIZATION_REQUEST r;
   if (!WOPT_DSL_normalization_driver_api.decode(json.GetString(),json.GetSize(),&r,stderr) || !Open_Input_Info(argv[2])) return 1;
   Initialize_Symbol_Tables(FALSE); New_Scope(GLOBAL_SYMTAB,Malloc_Mem_Pool,FALSE);
-  PU_Info *program=Read_Global_Info(NULL),*device=NULL; WOPT_DSL_NORMALIZATION_LOWERING plan; BOOL prepared=FALSE;
+  PU_Info *program=Read_Global_Info(NULL),*device=NULL,*host=NULL; WOPT_DSL_NORMALIZATION_LOWERING plan; BOOL prepared=FALSE;
   OPT_Fast_Math=FALSE; Roundoff_Level=ROUNDOFF_NONE; IEEE_Arithmetic=IEEE_ACCURATE;
   for (PU_Info *pu=program;pu;pu=PU_Info_next(pu)) {
     Read_Local_Info(MEM_pu_nz_pool_ptr,pu); Set_PU_Info_symtab_ptr(pu,NULL); Save_Local_Symtab(CURRENT_SYMTAB,pu);
@@ -163,7 +200,14 @@ static int LN4RT_Reopen(char **argv)
       SRCPOS source; prepared=WOPT_DSL_normalization_driver_api.prepare(PU_Info_tree_ptr(pu),&r,3,&plan,&source,stderr,NULL);
     }
     if (!strcmp(ST_name(St_Table[PU_Info_proc_sym(pu)]),m["kernel"].GetString())) device=pu;
+    if (m.HasMember("host_dispatch") && !strcmp(ST_name(St_Table[PU_Info_proc_sym(pu)]),m["host_dispatch"].GetString())) host=pu;
   }
+  if (m.HasMember("host_dispatch") && m["host_dispatch"].GetStringLength()) {
+    if (!host) return 1;
+    Restore_Local_Symtab(host); Current_scope=PU_lexical_level(PU_Info_pu(host));
+    Current_PU_Info=host; Current_pu=&PU_Info_pu(host); Current_Map_Tab=PU_Info_maptab(host);
+    if (!Check(LN4RT_Host(host,m),"mapped_host_call_ABI_identity")) return 1;
+  } else if (host || getenv("OPEN64_LN_HOST_MUTATION")) return 1;
   if (!prepared || !device || plan.seal!=m["plan_seal"].GetUint64()) return 1;
   Restore_Local_Symtab(device); Current_scope=PU_lexical_level(PU_Info_pu(device));
   Current_PU_Info=device; Current_pu=&PU_Info_pu(device); Current_Map_Tab=PU_Info_maptab(device);

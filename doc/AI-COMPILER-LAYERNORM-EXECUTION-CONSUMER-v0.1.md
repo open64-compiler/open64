@@ -120,7 +120,11 @@ stale handles, allocation/transfer/readiness/launch/drain/consumer/quiesce/free
 failures, retries, cancellation and trace-off/reentry. Mock kernels may write a
 sentinel to check movement; this is not LayerNorm numerical or GPU verification.
 
-Next compiler work is selected host-PU call emission and driver/service packaging.
+Selected host-PU call emission and driver/service packaging are now implemented
+by the [LN4 host dispatch follow-on](AI-COMPILER-LAYERNORM-HOST-DISPATCH-v0.1.md).
+Its checked opaque C ABI validates the selected plan/body before reading roots;
+the same operation token spans admission and execution. Mismatch has no
+allocation/transfer side effects and does not discard an existing invocation.
 General compiler-session management and native GPU certification remain separate.
 
 ## Implemented Acceptance

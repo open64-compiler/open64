@@ -56,6 +56,8 @@ char *VHO_DSL_CUDA_Tile_Output = NULL;
 char *VHO_DSL_CUDA_Whirl_Output = NULL;
 char *VHO_DSL_Normalization_Request = NULL;
 char *VHO_DSL_Normalization_Output = NULL;
+char *VHO_DSL_Normalization_Mode = NULL;
+char *VHO_DSL_Normalization_Host_Entry = NULL;
 char *VHO_DSL_GEMM_Plan_Search = NULL;
 char *VHO_DSL_GEMM_Cost_Model = NULL;
 char *VHO_DSL_GPU_Arch = NULL;
@@ -63,6 +65,10 @@ UINT32 VHO_DSL_GEMM_Memory_Latency = 0;
 BOOL VHO_DSL_GEMM_Memory_Latency_Set = FALSE;
 
 static OPTION_DESC Options_DSL[] = {
+  { OVK_NAME, OV_VISIBLE, FALSE, "normalization_mode", "normalization_mode",
+    0, 0, 0, &VHO_DSL_Normalization_Mode, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "normalization_host_entry", "normalization_host_entry",
+    0, 0, 0, &VHO_DSL_Normalization_Host_Entry, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "normalization_request", "normalization_request",
     0, 0, 0, &VHO_DSL_Normalization_Request, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "normalization_output", "normalization_output",

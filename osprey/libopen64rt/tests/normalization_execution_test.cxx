@@ -9,6 +9,20 @@
 #include "open64_normalization_execution.h"
 #include <condition_variable>
 #include <thread>
+#ifdef OPEN64_LN_DISPATCH_FIXTURE
+#include <dlfcn.h>
+static int (*host_dispatch)(void *,void *) = NULL;
+#endif
+
+/* The optional host test runs the entire failure matrix through real emitted C.
+ * The ordinary execution regression continues to use its original entry point. */
+static int run_job(OPEN64_NORMALIZATION_EXECUTION *consumer,const OPEN64_NORMALIZATION_ROOT_REQUEST *requests)
+{
+#ifdef OPEN64_LN_DISPATCH_FIXTURE
+  if(host_dispatch)return host_dispatch(consumer,const_cast<OPEN64_NORMALIZATION_ROOT_REQUEST *>(requests));
+#endif
+  return open64_normalization_execution_run(consumer,requests);
+}
 
 struct EXECUTION_MEMORY {
   OPEN64_TARGET_BUFFER_VIEW view;
@@ -223,7 +237,13 @@ static OPEN64_NORMALIZATION_EXECUTION_CONFIG config(bool quiet=false)
 /* Reuse the actual compiled-entry fixture; no invented producer or GPU claim. */
 int main(int argc,char **argv)
 {
+#ifdef OPEN64_LN_DISPATCH_FIXTURE
+  if(argc!=6)return 2;
+  void *library=dlopen(argv[4],RTLD_NOW|RTLD_LOCAL);if(!library){fprintf(stderr,"%s\n",dlerror());return 2;}
+  host_dispatch=reinterpret_cast<int (*)(void *,void *)>(dlsym(library,argv[5]));if(!host_dispatch)return 2;
+#else
   if(argc!=4)return 2;
+#endif
   unsigned index=static_cast<unsigned>(atoi(argv[1]));
   if(index>=sizeof(entries)/sizeof(entries[0]))return 2;
   manifest=entries[index];
@@ -235,9 +255,18 @@ int main(int argc,char **argv)
   execution_check(runtime!=NULL,"create_shared_registry");OPEN64_NORMALIZATION_EXECUTION_CONFIG c=config();
   execution_check(open64_normalization_execution_open(&manifest,image.data(),image.size(),&c,&state.consumer)==0,"open_execution_consumer");
   launch_observer=execution_launch;drain_observer=execution_drain;
+#ifdef OPEN64_LN_DISPATCH_FIXTURE
+  execution_check(open64_normalization_execution_run_selected(state.consumer,manifest.plan_seal^1,manifest.tree_seal,NULL)==1,
+      "wrong_selected_plan_before_root_reads");
+  execution_check(open64_normalization_execution_run_selected(state.consumer,manifest.plan_seal,manifest.tree_seal^1,NULL)==1,
+      "wrong_selected_tree_before_root_reads");
+  execution_check(host_dispatch(NULL,NULL)==1,"host_propagates_invalid_consumer");
+  execution_check(host_dispatch(state.consumer,NULL)==1 && !state.allocs && !state.h2d && !launches,
+      "host_propagates_invalid_roots_without_side_effects");
+#endif
   for(unsigned mode=0;mode<3;++mode) {
     reset_job();requests(mode==0 ? 0:mode==1 ? 6:15);
-    execution_check(open64_normalization_execution_run(state.consumer,state.requests)==0,"host_mixed_device_dispatch");
+    execution_check(run_job(state.consumer,state.requests)==0,"host_mixed_device_dispatch");
     execution_check(state.h2d==(mode==2 ? 0:mode==1 ? 1:manifest.guard.ranges[1].role==manifest.guard.ranges[2].role ? 2:3),"deduplicated_input_copy_count");
     execution_check(state.d2h==(mode==2 ? 0:1),"output_copy_count");output(true);free_requests();
   }
@@ -280,7 +309,7 @@ int main(int argc,char **argv)
   memcpy(bad,state.requests,sizeof(bad));bad[3].view.address=bad[0].view.address;
   execution_check(open64_normalization_execution_begin(state.consumer,bad)==1 && !state.allocs,"overlapping_host_roles_refused");
   execution_check(open64_normalization_execution_cancel(state.consumer)==3,"preflight_failure_stays_idle");
-  execution_check(open64_normalization_execution_run(state.consumer,state.requests)==0,"valid_dispatch_after_preflight_refusal");output(true);free_requests();
+  execution_check(run_job(state.consumer,state.requests)==0,"valid_dispatch_after_preflight_refusal");output(true);free_requests();
   reset_job();requests(0);unsigned before_cancel_launches=launches;
   execution_check(open64_normalization_execution_begin(state.consumer,state.requests)==0,"admit_before_cancel");
   state.fail_quiesce=true;
@@ -310,7 +339,7 @@ int main(int argc,char **argv)
     if(failure==7)state.fail_d2h=1;
     if(failure==8 || failure==10)state.fail_publish=true;
     if(failure==9)state.fail_release=1;
-    execution_check(open64_normalization_execution_run(state.consumer,state.requests)==5,"execution_failure_retains_state");
+    execution_check(run_job(state.consumer,state.requests)==5,"execution_failure_retains_state");
     execution_check(open64_normalization_execution_destroy(state.consumer)==4,"failed_work_cannot_destroy");
     if(failure==5) {
       execution_check(open64_normalization_execution_resume(state.consumer)==6,"failed_launch_not_reissued");
@@ -330,7 +359,7 @@ int main(int argc,char **argv)
     execution_check(launches==prior_launches+1,"kernel_never_relaunched_on_retry");free_requests();
   }
   reset_job();requests(15);state.pause=true;
-  int worker_status=-1;std::thread worker([&]{worker_status=open64_normalization_execution_run(state.consumer,state.requests);});
+  int worker_status=-1;std::thread worker([&]{worker_status=run_job(state.consumer,state.requests);});
   {std::unique_lock<std::mutex> lock(state.mutex);state.cv.wait(lock,[]{return state.entered;});}
   execution_check(open64_normalization_execution_resume(state.consumer)==4 && open64_normalization_execution_cancel(state.consumer)==4 &&
       open64_normalization_execution_destroy(state.consumer)==4,"concurrent_consumer_busy");
@@ -339,7 +368,7 @@ int main(int argc,char **argv)
   reset_job();requests(15);OPEN64_NORMALIZATION_EXECUTION *normal=state.consumer,*quiet=NULL;
   OPEN64_NORMALIZATION_EXECUTION_CONFIG q=config(true);
   execution_check(open64_normalization_execution_open(&manifest,image.data(),image.size(),&q,&quiet)==0,"open_trace_off_consumer");
-  state.consumer=quiet;execution_check(open64_normalization_execution_run(quiet,state.requests)==0,"trace_off_dispatch_parity");
+  state.consumer=quiet;execution_check(run_job(quiet,state.requests)==0,"trace_off_dispatch_parity");
   execution_check(open64_normalization_execution_destroy(quiet)==0,"trace_off_destroy");state.consumer=normal;output(true);free_requests();
   reset_job();OPEN64_NORMALIZATION_EXECUTION *cleanup=NULL;fault=31;
   execution_check(open64_normalization_execution_open(&manifest,image.data(),image.size(),&c,&cleanup)==5 && cleanup,
@@ -349,6 +378,9 @@ int main(int argc,char **argv)
   execution_check(open64_normalization_execution_destroy(state.consumer)==0,"destroy_idle_consumer");
   for(size_t i=0;i<state.memory.size();++i)execution_check(!state.memory[i].live,"all_owned_and_borrowed_roots_accounted");
   execution_check(open64_normalization_runtime_destroy(runtime)==0,"destroy_shared_registry_last");
+#ifdef OPEN64_LN_DISPATCH_FIXTURE
+  if(dlclose(library))return 2;
+#endif
   fprintf(trace,"AI_NORM_EXEC_TEST 1 SUMMARY %u %u %u host_mock_sentinel_only %llu\n",execution_checks,scenarios,checks,
       (unsigned long long)manifest.guard.source_line);fclose(trace);return 0;
 }
