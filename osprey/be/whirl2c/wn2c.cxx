@@ -6212,7 +6212,18 @@ WN2C_ldid(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
        */
       char buffer[64];
       object_ty = PUinfo_Preg_Type(ST_type(WN_st(wn)), addr_offset);
-      if (addr_offset == -1) { 
+      if (addr_offset == -1 && W2C_Cuda_Mode &&
+          ST_tensor_metadata(PUINFO_FUNC_ST_IDX,"tensor.bridge.level")) {
+         /* Sealed Low retains the typed F32 collective return carrier. Use
+          * exactly the same preg naming/type service as the CALL lhs, without
+          * target-host return lowering or a bare undeclared reg17 spelling.
+          * Contract: doc/AI-COMPILER-SEARCH-M5-DEVICE-BRIDGE-v1.0.md. */
+         FmtAssert(WN_st(wn)==Return_Val_Preg && WN_rtype(wn)==MTYPE_F4 && WN_desc(wn)==MTYPE_F4,
+                   ("selected bridge CUDA supports only typed F32 collective returns"));
+         object_ty=PUinfo_Preg_Type(Stab_Mtype_To_Ty(MTYPE_F4),First_Float_Preg_Return_Offset);
+         ST2C_Use_Preg(expr_tokens,object_ty,First_Float_Preg_Return_Offset,context);
+      }
+      else if (addr_offset == -1) {
          switch (TY_mtype(Ty_Table[WN_ty(wn)])) { 
          case MTYPE_I8:
 	 case MTYPE_U8:

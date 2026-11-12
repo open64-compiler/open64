@@ -353,6 +353,8 @@ lnodriver.o lnopt_main.o: $(BE_LNOPT_DIR)/lnoptimizer.h
 tensor_high_lower.o: $(BE_DIR)/vho/tensor_high_lower.cxx $(BE_DIR)/vho/tensor_high_selected.inc $(BE_DIR)/vho/tensor_kernel_lower.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
+dsl_high_apply.o: $(BE_DIR)/vho/tensor_selected_key.h $(BUILD_TOT)/common/com/dsl_native_tree_key.h
+
 # Standalone tests link only the detached service and read-only hardware records.
 # The scripted clock cannot be selected in the production shared component.
 dsl_high_search_test.o: $(BE_LNOPT_DIR)/tests/dsl_high_search_control_test.cxx $(BE_LNOPT_DIR)/dsl_high_observer.h

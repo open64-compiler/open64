@@ -155,6 +155,7 @@ extern const WOPT_DSL_NORMALIZATION_DRIVER_API *WOPT_DSL_normalization_driver_ap
 #include "fb_whirl.h"		    /* for FEEDBACK */
 #include "eh_region.h"		    /* for EH_Generate_Range_List, etc. */
 #include "vho_lower.h"
+#include "../vho/tensor_selected_key.h"
 #include "dsl_lower.h"
 #include "dsl_shape_refine.h"
 #include "../com/dsl_program_interface_internal.h"
@@ -1784,9 +1785,44 @@ static void Update_EHRegion_Inito (WN *pu) {
   Update_EHRegion_Inito_Used (pu);
 }
 
+/* A sealed Low device product is already executable source-emission input.
+ * Verify it in the driver-owned active PU before any VHO/ABI/address rewrite;
+ * never recertify a changed product inside a source printer. Other inputs
+ * retain their existing pipeline. No new be.so dependency is introduced.
+ * Contract: doc/AI-COMPILER-SEARCH-M5-DEVICE-BRIDGE-v1.0.md. */
+static BOOL
+BE_tensor_selected_cuda_input(WN *pu)
+{
+    if(!pu || WN_operator(pu)!=OPR_FUNC_ENTRY) return FALSE;
+    const char *level=ST_tensor_metadata(WN_st_idx(pu),"tensor.bridge.level");
+    const char *schema=ST_tensor_metadata(WN_st_idx(pu),"tensor.bridge.schema");
+    const char *stamp=ST_tensor_metadata(WN_st_idx(pu),"tensor.bridge.key");
+    if(!level && !schema && !stamp) return FALSE;
+    FmtAssert(schema && !strcmp(schema,"selected-mla-native-v1"),("unsupported selected bridge schema"));
+    FmtAssert(Run_w2c && CLIST_cuda && !Run_lno && !Run_preopt && !Run_wopt &&
+        !Run_vsaopt && !Run_ipsaopt && !Run_cg && !Run_ipl && !VHO_DSL_Enable_WOPT &&
+        !Instrumentation_Enabled && level && !strcmp(level,"low"),
+        ("selected bridge input requires CUDA-only emission of verified Low WHIRL"));
+    try {
+#ifdef KEY
+        FmtAssert(OPT_Cyg_Instrument==0,("selected bridge CUDA does not admit instrumentation"));
+#endif
+        FmtAssert(stamp && VHO_tensor_bridge_key(pu)==stamp,("selected bridge driver rejected stale Low WHIRL"));
+    } catch(const std::exception &error) {
+        FmtAssert(FALSE,("selected bridge driver key: %s",error.what()));
+    }
+    return TRUE;
+}
+
+/* Run ordinary active-PU backend phases, or print an already verified Low
+ * bridge product without introducing another algorithm/ABI transformation. */
 static void
 Backend_Processing (PU_Info *current_pu, WN *pu)
 {
+    if(BE_tensor_selected_cuda_input(pu)) {
+        Post_LNO_Processing(current_pu,pu);
+        return;
+    }
     {
 	/* Always process the first PU for fill-align, since that one contains
 	 * the pragmas for global symbols. And, because of IPA, we cannot
@@ -2188,6 +2224,10 @@ Preprocess_PU (PU_Info *current_pu)
   if ((Run_wopt || (Run_vsaopt || Run_ipsaopt)) || Run_cg) {    /* PU level initialization for lowerer */
     Lowering_Initialize();
   }
+
+  /* Keep fixed native Low expressions and collective return ABI intact. The
+   * ordinary read/context/trace/symbol lifetime setup above still applies. */
+  if(BE_tensor_selected_cuda_input(pu)) return pu;
 
 #ifdef KEY
   if (Early_Goto_Conversion &&

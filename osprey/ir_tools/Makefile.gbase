@@ -418,6 +418,32 @@ LDIRT += whirl2c whirl2c_tensor_source whirl2c_reference_main.o tensor_source.o
 tensor_kernel_lower: $(OBJECTS) controls.o tensor_kernel_driver.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o
 	$(link.c++f) -o $@ tensor_kernel_driver.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o controls.o $(OBJECTS) $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
 
+# Standalone consumer of existing be.so lowering; no new dependency/symbol is
+# added to be.so, and the legacy tensor_kernel_lower remains link-independent.
+tensor_selected_bridge: $(OBJECTS) controls.o tensor_bridge_driver.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o
+	$(link.c++f) -o $@ tensor_bridge_driver.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o dsl_builder.o dsl_contract.o dsl_simp.o controls.o -L$(BUILD_AREA)/be -l:be.so $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
+
+tensor_bridge_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BUILD_BASE)/tensor_selected_bridge_driver.inc $(BE_VHO_DIR)/tensor_selected_bridge.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
+	$(cxx) -DOPEN64_TENSOR_SELECTED_BRIDGE -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BUILD_BASE)/tensor_selected_bridge_driver.inc $(BE_VHO_DIR)/tensor_selected_key.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
+	$(cxx) -DOPEN64_TENSOR_SELECTED_BRIDGE -DOPEN64_TENSOR_BRIDGE_TEST -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+# Native mutations are compiled out of the production executable.
+tensor_selected_bridge_test: tensor_selected_bridge tensor_bridge_test_driver.o
+	$(link.c++f) -o $@ tensor_bridge_test_driver.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o dsl_builder.o dsl_contract.o dsl_simp.o controls.o -L$(BUILD_AREA)/be -l:be.so $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
+
+tensor_bridge_driver.o tensor_selected_bridge.o: $(BE_VHO_DIR)/tensor_selected_key.h
+tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_attention_search_json.inc $(BE_VHO_DIR)/tensor_attention_search.h
+tensor_selected_bridge: $(BUILD_AREA)/be/be.so
+LDIRT += tensor_selected_bridge tensor_selected_bridge_test tensor_bridge_driver.o tensor_bridge_test_driver.o tensor_selected_bridge.o tensor_selected_ptx.o
+
+tensor_selected_bridge.o: $(BE_VHO_DIR)/tensor_selected_bridge.cxx $(BE_VHO_DIR)/tensor_selected_bridge.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_selected_ptx.o: $(BUILD_TOT)/be/cg/NVISA/tensor_selected_ptx.cxx $(BE_VHO_DIR)/tensor_selected_bridge.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
 tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_lower.cxx $(BE_VHO_DIR)/tensor_high_selected.inc $(BE_VHO_DIR)/tensor_kernel_lower.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
 
