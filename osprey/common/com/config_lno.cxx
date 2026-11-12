@@ -631,8 +631,15 @@ static char *LNO_High_Search_Mode = NULL;
 static char *LNO_High_Search_Bindings = NULL;
 static char *LNO_High_Apply = NULL;
 static char *LNO_High_Apply_Checkpoint = NULL;
+static char *LNO_High_Device_Output = NULL;
+static char *LNO_High_Device_Tool = NULL;
 
 static OPTION_DESC Options_LNO[] = {
+
+  { OVK_NAME, OV_VISIBLE, FALSE, "high_device_output", "high_device_output", 0, 0, 0,
+    &LNO_High_Device_Output, NULL, "Fresh directory for selected-only High/Mid/Low/PTX production artifacts" },
+  { OVK_NAME, OV_VISIBLE, FALSE, "high_device_tool", "high_device_tool", 0, 0, 0,
+    &LNO_High_Device_Tool, NULL, "Explicit selected native bridge executable; no shell or PATH lookup" },
 
   { OVK_NAME, OV_VISIBLE, FALSE, "high_apply", "high_apply", 0, 0, 0,
     &LNO_High_Apply, NULL, "on/off: apply only the freshly admitted High search winner" },

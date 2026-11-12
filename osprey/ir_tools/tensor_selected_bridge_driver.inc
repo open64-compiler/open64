@@ -74,7 +74,8 @@ Json::Value bridge_launch_kernel(std::map<UINT32,Json::Value> &storages) {
 
 /* Read one sealed source in a separate compiler process. Parent starts its
  * fresh device context only after this child has validated the entire source. */
-Json::Value selected_admission(const char *image,const VHO_TENSOR_PROGRAM &original) {
+Json::Value selected_admission(const char *image,const VHO_TENSOR_PROGRAM &original,
+    const DSL_HIGH_SEARCH_INPUT *production=NULL) {
     initialize(false);Open_Input_Info(const_cast<char *>(image));Initialize_Symbol_Tables(FALSE);New_Scope(GLOBAL_SYMTAB,Malloc_Mem_Pool,FALSE);
     PU_Info *pu=Read_Global_Info(NULL);need(pu&&!PU_Info_next(pu)&&!PU_Info_child(pu),"bridge requires one selected source PU");
     Read_Local_Info(MEM_pu_nz_pool_ptr,pu);Current_PU_Info=pu;Current_pu=&PU_Info_pu(pu);
@@ -88,6 +89,15 @@ Json::Value selected_admission(const char *image,const VHO_TENSOR_PROGRAM &origi
     UINT32 symbols=ST_Table_Size(CURRENT_SYMTAB),types=TY_Table_Size();
     std::string key=VHO_tensor_selected_key(root);
     need(key==metadata(st,"tensor.high.accepted.key"),"bridge stale selected source/key/COMMENT");
+    if(production) {
+        need(production->production_controls && production->allow_reassociate &&
+            production->function==ST_name(st) && production->unit==original.source_file &&
+            production->algorithm.opt_level==3 &&
+            LNO_DSL_production_input_key(*production)==metadata(st,"tensor.high.production.input"),
+            "bridge production manifest/source/resource/model/control binding changed");
+        need(VHO_tensor_gpu_profile_valid(production->gpu,NULL) &&
+            VHO_mla_search_control_valid(production->controls,NULL),"bridge production resource/control invalid");
+    }
     WN *source_comment=WN_first(WN_func_body(root));
     need(source_comment && WN_operator(source_comment)==OPR_COMMENT,"bridge source explanation missing");
     need(!original.fuse&&!original.auto_chunks&&!original.search_selected &&
@@ -127,6 +137,41 @@ Json::Value selected_admission(const char *image,const VHO_TENSOR_PROGRAM &origi
 /* Driver owns all PU contexts/checkpoints. Every stage consumes the preceding
  * verified native product; failure leaves source and legacy fallback untouched. */
 int selected_bridge_command(int argc,char **argv) {
+#ifdef OPEN64_TENSOR_BRIDGE_TEST
+    /* Observe the actual backend-reader graph, including all surviving WNs
+     * and dependence tuples. Test-only: no mutation, candidate or graph rewrite. */
+    if(argc==4 && !strcmp(argv[1],"bridge-test-graph")) {
+        initialize(false);Open_Input_Info(argv[2]);Initialize_Symbol_Tables(FALSE);New_Scope(GLOBAL_SYMTAB,Malloc_Mem_Pool,FALSE);
+        PU_Info *pu=Read_Global_Info(NULL);need(pu&&!PU_Info_next(pu),"test graph requires one PU");
+        Read_Local_Info(MEM_pu_nz_pool_ptr,pu);Current_PU_Info=pu;Current_pu=&PU_Info_pu(pu);
+        Current_scope=PU_lexical_level(*Current_pu);Current_Map_Tab=PU_Info_maptab(pu);
+        ARRAY_DIRECTED_GRAPH16 *graph=(ARRAY_DIRECTED_GRAPH16 *)C_Dep_Graph();need(graph!=NULL,"test graph unavailable");
+        Json::Value result;result["vertices"]=Json::Value(Json::arrayValue);result["edges"]=Json::Value(Json::arrayValue);
+        for(VINDEX16 v=graph->Get_Vertex();v;v=graph->Get_Next_Vertex(v))
+            result["vertices"].append(DSL_NATIVE_TREE_KEY(false).Build(graph->Get_Wn(v)));
+        for(EINDEX16 e=graph->Get_Edge();e;e=graph->Get_Next_Edge(e)) {
+            Json::Value tuple(Json::arrayValue);tuple.append(graph->Get_Source(e));tuple.append(graph->Get_Sink(e));
+            tuple.append((unsigned)graph->Dep(e));tuple.append((bool)graph->Is_Must(e));result["edges"].append(tuple);
+        }
+        write_json(argv[3],result);return 0;
+    }
+    /* Test producer: two independent host PUs in one mapped input. Only the
+     * named common-High PU matches the binding; the empty PU must stay ordinary.
+     * This command and construction path are absent from production builds. */
+    if(argc==4 && !strcmp(argv[1],"bridge-test-multiple")) {
+        VHO_TENSOR_PROGRAM p=decode(argv[2]);initialize(true);
+        PU_Info *first=DSL_Builder_Create_Minimal_PU("open64_common_high");
+        need(first && DSL_Builder_Select_PU(first),"test common High PU");
+        UINT32 file=DSL_Builder_Register_Source_File(first,p.source_file.c_str());USRCPOS source;USRCPOS_clear(source);
+        USRCPOS_filenum(source)=file;USRCPOS_linenum(source)=p.operations[0].source_line?p.operations[0].source_line:1;
+        need(VHO_tensor_materialize_high(p,USRCPOS_srcpos(source),stderr),"test common High construction");
+        PU_Info *second=DSL_Builder_Create_Minimal_PU("open64_unselected_neighbor");
+        need(second && DSL_Builder_Select_PU(second),"test independent neighbor");
+        DSL_Builder_Register_Source_File(second,p.source_file.c_str());
+        std::vector<PU_Info *> pus;pus.push_back(first);pus.push_back(second);checkpoint(pus,argv[3]);
+        return 0;
+    }
+#endif
     if(!strcmp(argv[1],"bridge-audit") || !strcmp(argv[1],"bridge-ptx") || !strcmp(argv[1],"bridge-code-key")) {
         need(argc>=4,"bridge audit/ptx requires an image and level/output");
         bool emit=!strcmp(argv[1],"bridge-ptx"),code_key=!strcmp(argv[1],"bridge-code-key");const char *level=(emit||code_key)?"low":argv[3];
@@ -161,13 +206,18 @@ int selected_bridge_command(int argc,char **argv) {
 #ifdef OPEN64_TENSOR_BRIDGE_TEST
     if(argc==7 && !strcmp(argv[5],"--test-fault")) {bridge_test_fault=argv[6];argc=5;}
 #endif
-    need(argc==5,"bridge selected-high.B original-recipe.json output-prefix");
+    need(argc==5,"bridge selected-high.B original-recipe.json output-prefix | bridge-production selected-high.B bindings.v2.json output-prefix");
+    bool production=!strcmp(argv[1],"bridge-production");
+    DSL_HIGH_SEARCH_INPUT input;std::string reason;
+    if(production) need(LNO_DSL_read_search_input(argv[3],input,reason),reason.c_str());
     std::string prefix=argv[4],admission=prefix+".admission.json";
-    const char *suffixes[]={".admission.json",".high.B",".mid.B",".low.B",".ptx",".math.cu",".selected.json"};
-    for(unsigned i=0;i<7;++i) need(access((prefix+suffixes[i]).c_str(),F_OK)!=0,"bridge output exists");
-    VHO_TENSOR_PROGRAM original=decode(argv[3]);fflush(NULL);pid_t child=fork();need(child>=0,"bridge admission fork");
+    const char *suffixes[]={".admission.json",".high.B",".mid.B",".low.B",".ptx",".math.cu",".selected.json",
+        ".launch.json",".optimized.cu",".complete.json"};
+    for(unsigned i=0;i<10;++i) need(access((prefix+suffixes[i]).c_str(),F_OK)!=0,"bridge output exists");
+    VHO_TENSOR_PROGRAM original=production?input.algorithm:decode(argv[3]);
+    fflush(NULL);pid_t child=fork();need(child>=0,"bridge admission fork");
     if(!child) {
-        try {write_json(admission.c_str(),selected_admission(argv[2],original));fflush(NULL);_exit(0);}
+        try {write_json(admission.c_str(),selected_admission(argv[2],original,production?&input:NULL));fflush(NULL);_exit(0);}
         catch(const std::exception &e) {fprintf(stderr,"bridge admission: %s\n",e.what());fflush(NULL);_exit(1);}
     }
     int status=0;need(waitpid(child,&status,0)==child&&WIFEXITED(status)&&!WEXITSTATUS(status),"bridge source refused; original fallback retained");
@@ -207,7 +257,8 @@ int selected_bridge_command(int argc,char **argv) {
 #ifdef OPEN64_TENSOR_BRIDGE_TEST
     bridge_test_stage_gate(pus,"low_gate","comment");
 #endif
-    std::string ptx;
+    std::string ptx;Json::Value launch;std::map<UINT32,Json::Value> storages;
+    launch["schema"]="open64.device-tensor-launch.v1";launch["kernels"]=Json::Value(Json::arrayValue);
     for(size_t i=0;i<pus.size();++i) {
         need(DSL_Builder_Select_PU(pus[i]),"bridge select GPU PU");VHO_tensor_selected_gpu();
 #ifdef OPEN64_TENSOR_BRIDGE_TEST
@@ -216,10 +267,23 @@ int selected_bridge_command(int argc,char **argv) {
         std::string entry=CG_tensor_selected_ptx();
         if(i) {size_t pos=entry.find(".visible .entry");need(pos!=std::string::npos,"bridge PTX entry");entry=entry.substr(pos);}
         ptx+=entry;
+        if(production) launch["kernels"].append(bridge_launch_kernel(storages));
     }
     checkpoint(pus,(prefix+".low.B").c_str());
     write_json((prefix+".selected.json").c_str(),encode(p));
     write_source((prefix+".math.cu").c_str(),"// Math ABI only: native PTX owns all MLA arithmetic, memory and scheduling.\n#include <math.h>\nextern \"C\" __device__ __noinline__ float __open64_exp_f32(float x) { return expf(x); }\nextern \"C\" __device__ __noinline__ float __open64_log_f32(float x) { return logf(x); }\n");
     write_source((prefix+".ptx").c_str(),ptx);
+    if(production) {
+        launch["storages"]=Json::Value(Json::arrayValue);
+        for(std::map<UINT32,Json::Value>::const_iterator i=storages.begin();i!=storages.end();++i) launch["storages"].append(i->second);
+        write_json((prefix+".launch.json").c_str(),launch);
+        write_source((prefix+".optimized.cu").c_str(),W2C_tensor_schedule_source(plan,VHO_tensor_explanations(plan),encode(p)["recipe_fingerprint"].asString()));
+        Json::Value complete;complete["schema"]="open64.selected-device-production.v1";
+        complete["status"]="PASS";complete["search_invocations"]=0;
+        complete["kernel_count"]=Json::UInt(plan.kernels.size());
+        complete["source"]=accepted["source_image"];complete["files"]=Json::Value(Json::arrayValue);
+        for(unsigned i=0;i<9;++i) complete["files"].append(std::string("selected")+suffixes[i]);
+        write_json((prefix+".complete.json").c_str(),complete);
+    }
     printf("selected_bridge=PASS kernels=%lu search_invocations=0 source_unchanged=true high=verified mid=native_ARRAY_SCF low=GPU_mapped ptx=native_scalar\n",(unsigned long)pus.size());return 0;
 }

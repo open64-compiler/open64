@@ -4,6 +4,7 @@
  * established journal/string-savepoint and child-checkpoint protocols.
  * Design: doc/AI-COMPILER-SEARCH-M4-ATOMIC-HIGH-v1.0.md. No GPU lowering. */
 #include "dsl_high_apply.h"
+#include "dsl_high_binding_keys.h"
 #include "../vho/tensor_selected_key.h"
 #include "dsl_high_admission.h"
 #include "lnopt_main.h"
@@ -348,6 +349,7 @@ bool LNO_DSL_apply_selected_high(WN *&root,DU_MANAGER *&du,ALIAS_MANAGER *&alias
         ST_tensor_bind_metadata(owner,"tensor.high.selected.policy",policy.str().c_str());
         ST_tensor_bind_metadata(owner,"tensor.high.selected.winner",winner.str().c_str());
         ST_tensor_bind_metadata(owner,"tensor.high.selected.scratch","private-role0-formals; capacity-proved");
+        ST_tensor_bind_metadata(owner,"tensor.high.production.input",LNO_DSL_production_input_key(input).c_str());
         /* The bridge must compare this exact native tree before translating the
          * closed selected algorithm. Analysis keys alone omit COMMENTs and do
          * not certify the physical High exit, which the bridge checks later. */
