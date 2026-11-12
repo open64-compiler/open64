@@ -22,6 +22,8 @@
  * doc/AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.1.md.
  */
 
+#include "../com/dsl_gpu_plan.h"
+#include "dsl_gemm_readiness.h"
 #include <ctype.h>
 #include "../../common/ir_image/dsl_image_service.h"
 #include <fcntl.h>
@@ -50,6 +52,7 @@
 #include "dsl_compute_shadow_opt.h"
 #include "dsl_tile_candidate_opt.h"
 #include "errors.h"
+#include "erglob.h"
 #include "wn.h"
 #include "wn_simp.h"
 #include "wn_map.h"
@@ -3455,6 +3458,7 @@ struct VHO_DSL_CUDA_PENDING_KERNEL {
     DSL_TILE_PLAN_RECORD tile;
     DSL_FETCH_PLAN_RECORD fetch;
     ST_IDX owner;
+    DSL_GPU_PLAN_SNAPSHOT device;
 };
 
 static std::vector<VHO_DSL_CUDA_PENDING_KERNEL> VHO_DSL_CUDA_Pending_Kernels;
@@ -3478,6 +3482,7 @@ VHO_DSL_CUDA_Stage_Selected_Whirl
     pending.tile = tile;
     pending.fetch = fetch;
     pending.owner = PU_Info_proc_sym(pu_info);
+    pending.device = DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
     VHO_DSL_CUDA_Pending_Kernels.push_back(pending);
     return TRUE;
 }
@@ -3492,7 +3497,8 @@ VHO_DSL_CUDA_Program_Kernel_Count(void)
 
 /* Build one staged device PU for the backend driver and return its binding;
  * reject invalid ordinals/outputs before publication. The driver owns the
- * resulting PU lifetime and atomic program-image commit. */
+ * resulting PU lifetime and atomic program-image commit. H1c rechecks the
+ * stored evidence against the current driver context before construction. */
 BOOL
 VHO_DSL_CUDA_Take_Program_Kernel
         (UINT32 ordinal, PU_Info **device_pu, UINT32 *plan_id,
@@ -3508,6 +3514,10 @@ VHO_DSL_CUDA_Take_Program_Kernel
     }
     const VHO_DSL_CUDA_PENDING_KERNEL &pending =
         VHO_DSL_CUDA_Pending_Kernels[ordinal];
+    if (!pending.device.Is_current(VHO_DSL_GPU_Context)) {
+        fprintf(diagnostic,"DSL_GPU_PLAN: stale GEMM device/resource/cost/budget binding\n");
+        return FALSE;
+    }
     if (!VHO_DSL_CUDA_Build_Selected_Whirl
             (pending.tile, pending.fetch, ordinal, device_pu, diagnostic))
         return FALSE;
@@ -3905,6 +3915,28 @@ VHO_DSL_CUDA_Trace_Tensor_Facts
     return !ferror(TFile);
 }
 
+/* Admit the fixed GEMM footprint under imported H1c facts. Canonical A/B/C
+ * distinct storage gives a conservative aggregate; no nominal HBM allowance or
+ * implicit SMEM opt-in is used. Pure checked arithmetic, no native mutation. */
+static BOOL
+VHO_DSL_cuda_device_fit(const DSL_GPU_PLAN_SNAPSHOT &device,
+    const DSL_TILE_PLAN_RECORD &tile, const DSL_FETCH_PLAN_RECORD &fetch,
+    uint64_t *payload_bytes = NULL)
+{
+    if (!device.Bound()) return TRUE;
+    uint64_t a, b, c, live;
+    if (!DSL_readiness_mul(tile.problem_m,tile.problem_k,&a) ||
+        !DSL_readiness_mul(tile.problem_k,tile.problem_n,&b) ||
+        !DSL_readiness_mul(tile.problem_m,tile.problem_n,&c) ||
+        !DSL_readiness_add(a,b,&live) || !DSL_readiness_add(live,c,&live) ||
+        !DSL_readiness_mul(live,4,&live)) return FALSE;
+    if (payload_bytes) *payload_bytes = live;
+    const DSL_FETCH_RESOURCE_RECORD &r = fetch.resources;
+    return r.register_bytes_per_thread % 4 == 0 &&
+        device.Fits_CTA(r.threads_per_cta,r.register_bytes_per_thread/4,r.shared_bytes) &&
+        device.Fits_storage(live);
+}
+
 /* Resolve driver-selected hardware through the common architecture table and
  * clone explicit timing overrides. No global table mutation or PU traversal.
  * See doc/AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md. */
@@ -3927,7 +3959,8 @@ VHO_DSL_cuda_get_hardware(DSL_HARDWARE_DESCRIPTION_RECORD *hardware)
  * Keep the cheapest proven synchronous pair as fallback; trace all examined
  * pairs and movement resources, including rejected staged siblings. P7
  * topology legality does not imply movement feasibility; rebuild only the
- * verified winner. MMA2 records F32 incompatibility/unknown timing only and
+ * verified winner. H1c filters the same detached pairs using owned imported
+ * resource/budget facts; cycle ranking remains a generic scenario. MMA2 records F32 incompatibility/unknown timing only and
  * cannot change the selected SIMT pair. See
  * doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md and
  * doc/AI-COMPILER-MMA2-SHADOW-MODEL.md. */
@@ -3936,7 +3969,9 @@ VHO_DSL_cuda_select_joint_plan
         (PU_Info *pu, DSL_TENSOR_EVOLUTION_GRAPH *graph,
          DSL_TENSOR_LOCALITY_ANALYSIS *locality, DSL_TILE_ANALYSIS *tiles,
          const DSL_TILE_SITE_RECORD &site, const DSL_HARDWARE_DESCRIPTION_RECORD &hardware,
+         const DSL_GPU_PLAN_SNAPSHOT &device,
          DSL_TILE_PLAN_ID *winner,
+         DSL_FETCH_PLAN_RECORD *winner_fetch,
          UINT32 *candidate_count,
          FILE *diagnostic)
 {
@@ -3951,6 +3986,7 @@ VHO_DSL_cuda_select_joint_plan
     const UINT32 source_line = DSL_IR_Image_Get_Value(site.semantic_value_id, &value) &&
         value.st != ST_IDX_ZERO ? ST_Line(St_Table[value.st]) : 0;
     *winner = 0;
+    memset(winner_fetch,0,sizeof(*winner_fetch));
     *candidate_count = 0;
     if (trace)
         fprintf(TFile, "AI_OPT 7 JOINT_MODE joint 48 %u %u %s low model=%u direct=%u\n",
@@ -4079,15 +4115,20 @@ VHO_DSL_cuda_select_joint_plan
                     count, (unsigned long long)sectors[0], (unsigned long long)sectors[1],
                     (unsigned long long)tile.gmem_c_sector_bytes);
             }
-            if (plan.legality != DSL_OPT_LEGALITY_PROVEN || !cost.complete)
+            const BOOL device_fit = VHO_DSL_cuda_device_fit(device,tile,pipeline);
+            if (trace && device.Bound()) fprintf(TFile,
+                "DSL_GPU_CANDIDATE 1 family=GEMM ordinal=%u tile=%u fetch=%u admitted=%u shared=%llu\n",
+                count,tile.id,pipeline.id,unsigned(device_fit),(unsigned long long)pipeline.resources.shared_bytes);
+            if (plan.legality != DSL_OPT_LEGALITY_PROVEN || !cost.complete || !device_fit)
                 continue;
             if (cost.total < best) {
                 best = cost.total;
                 *winner = tile.id;
+                *winner_fetch = pipeline;
                 chosen = count;
             }
             if (pipeline.engine == DSL_MEMORY_MOVEMENT_DEMAND &&
-                (pipeline.flags & DSL_FETCH_PLAN_FLAG_DIRECT) == 0 && cost.total < fallback_cost) {
+                (device.Bound() || (pipeline.flags & DSL_FETCH_PLAN_FLAG_DIRECT) == 0) && cost.total < fallback_cost) {
                 fallback_cost = cost.total;
                 fallback = count;
             }
@@ -4110,7 +4151,9 @@ VHO_DSL_cuda_select_joint_plan
 
 /* Build PU-local analyses, legality/cost-select tile and fetch plans, and
  * copy their completed records to the caller before destroying analyses.
- * Emit legacy source only when requested; device construction is driver-owned. */
+ * Emit legacy source only when requested; device construction is driver-owned.
+ * H1c snapshots precede search and are revalidated before any output; imported
+ * resource/budget refusals never substitute the synthetic architecture row. */
 static BOOL
 VHO_DSL_CUDA_Emit_Selected_Tile
         (PU_Info *pu_info, WN *tree, const char *path,
@@ -4140,10 +4183,12 @@ VHO_DSL_CUDA_Emit_Selected_Tile
     VHO_DSL_TILE_CONTROL control;
     VHO_DSL_FETCH_PIPELINE_CONTROL fetch_control;
     DSL_HARDWARE_DESCRIPTION_RECORD hardware;
+    const DSL_GPU_PLAN_SNAPSHOT device = DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
     BOOL valid = FALSE;
     const BOOL joint = VHO_DSL_GEMM_Plan_Search != NULL &&
                        strcmp(VHO_DSL_GEMM_Plan_Search, "joint") == 0;
     DSL_TILE_PLAN_ID joint_tile = 0;
+    DSL_FETCH_PLAN_RECORD joint_fetch;memset(&joint_fetch,0,sizeof(joint_fetch));
     if (!VHO_DSL_cuda_get_hardware(&hardware)) return FALSE;
     if (emitted_plan_id != NULL)
         *emitted_plan_id = DSL_OPT_PLAN_INVALID_ID;
@@ -4204,7 +4249,7 @@ VHO_DSL_CUDA_Emit_Selected_Tile
     plans = VHO_DSL_Tile_Get_Plan_Context(analysis, site.id);
     if (joint) {
         if (!VHO_DSL_cuda_select_joint_plan(pu_info, graph, locality, analysis,
-                                           site, hardware, &joint_tile, joint_candidate_count, diagnostic) ||
+                                           site, hardware, device, &joint_tile, &joint_fetch, joint_candidate_count, diagnostic) ||
             !VHO_DSL_tile_finalize_joint_selection(analysis, site.id, joint_tile, diagnostic))
             goto done;
         ir = VHO_DSL_Tile_Get_IR(analysis);
@@ -4225,6 +4270,9 @@ VHO_DSL_CUDA_Emit_Selected_Tile
         fetch_control.hardware_arch_id = hardware.arch_id;
         fetch_control.focus_value_id = site.semantic_value_id;
         if (joint) {
+            /* Reconstruct the admitted pair without a second profitability
+             * selection that could revive a resource-rejected sibling. */
+            fetch_control.select_plans = 0;
             fetch_control.joint_cost = 1;
             fetch_control.readiness_cost = VHO_DSL_GEMM_Cost_Model == NULL ||
                 strcmp(VHO_DSL_GEMM_Cost_Model, "readiness") == 0;
@@ -4287,8 +4335,16 @@ VHO_DSL_CUDA_Emit_Selected_Tile
                         candidate.engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC ? "T2" : "S1");
                 fputc('\n', TFile);
             }
-            if (candidate.optimization_plan_id == fetch_site.selected_plan_id)
+            if ((joint && VHO_DSL_fetch_same_specification(candidate,joint_fetch)) ||
+                (!joint && candidate.optimization_plan_id == fetch_site.selected_plan_id)) {
+                if (selected_fetch.id) goto done; /* ambiguous rebuilt specification */
                 selected_fetch = candidate;
+            }
+        }
+        if (joint && selected_fetch.id) {
+            if (!VHO_DSL_fetch_finalize_joint_selection(fetch_analysis,fetch_site.id,selected_fetch.id,diagnostic)) goto done;
+            fetch_ir=VHO_DSL_Fetch_Pipeline_Get_IR(fetch_analysis);
+            if (!DSL_fetch_pipeline_ir_get_site(fetch_ir,1,&fetch_site)) goto done;
         }
         if (selected_fetch.id == 0 ||
             (!joint && VHO_DSL_CUDA_TMA_Prefetch && selected_fetch.engine !=
@@ -4342,6 +4398,16 @@ VHO_DSL_CUDA_Emit_Selected_Tile
             fprintf(diagnostic, "DSL CUDA P8 selected schedule failed legality\n");
             goto done;
         }
+        uint64_t physical_bytes = 0;
+        if (!device.Is_current(VHO_DSL_GPU_Context) ||
+            !VHO_DSL_cuda_device_fit(device,tile,selected_fetch,&physical_bytes)) {
+            fprintf(diagnostic,"DSL_GPU_PLAN: GEMM resources/budget unknown, exceeded or stale\n");
+            goto done;
+        }
+        device.Print(diagnostic,"GEMM-payload",physical_bytes);
+        if (device.Bound()) fprintf(diagnostic,
+            "DSL_GPU_SELECTED_PAIR 1 tile=%u fetch=%u engine=%u shared=%llu\n",
+            tile.id,selected_fetch.id,selected_fetch.engine,(unsigned long long)selected_fetch.resources.shared_bytes);
         const BOOL tma = selected_fetch.engine == DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC;
         valid = path == NULL || VHO_DSL_CUDA_Write_Selected_Tile
                     (path, tile, cost, tma,
@@ -4479,7 +4545,9 @@ VHO_DSL_AI_Is_Standalone_Matmul (WN *tree)
 /* Own the active-PU VHO sequence: validate/refine, select, stage device plans,
  * lower host semantics and emit controlled trace evidence. Device-image
  * construction/publication stays in the backend driver; failed gates abort
- * rather than silently accepting an incomplete optimized program. */
+ * rather than silently accepting an incomplete optimized program. Imported
+ * H1c infeasibility is a user refusal before CUDA image publication, while
+ * internal construction contradictions remain compiler invariants. */
 WN *
 VHO_DSL_Lower_Driver
         (struct pu_info *pu_info,
@@ -4581,6 +4649,8 @@ VHO_DSL_Lower_Driver
                             &emitted_tile,
                             &emitted_fetch,
                             stderr);
+        if (!emitted && VHO_DSL_GPU_Context && VHO_DSL_GPU_Context->Imported())
+            ErrMsg(EC_Misc_User_Abort, "DSL_GPU_PLAN: no compatible GEMM plan under imported resources/budget; no CUDA image published");
         FmtAssert(emitted, ("DSL CUDA tile plan selection failed"));
     }
     if (VHO_DSL_CUDA_Whirl_Output != NULL) {

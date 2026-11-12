@@ -51,12 +51,19 @@ typedef struct {
   UINT32 nominal_kind, selected_kind, fallback_kind, reason;
   DSL_OPT_SELECTION_RESULT common_selection;
   OPEN64_NORMALIZATION_GUARD selected_guard;
+  /* Selection evidence survives unchanged numeric choices; never a runtime ABI. */
+  DSL_GPU_PLAN_STAMP gpu_stamp;
+  UINT64 gpu_live_bytes;
 } WOPT_DSL_NORMALIZATION_COST_RESULT;
 
 /* Fresh active-PU rebinding and strict comparability checks before any output.
  * Invalid scope/member/API or cross-plan mismatch returns FALSE with unchanged
  * output/trace. Valid source-v1/unknown/resource/budget queries return TRUE with
- * refusal/incompleteness and no selection. Records remain read-only/analysis-
+ * refusal/incompleteness and no selection. Imported capacity/SM bounds replace
+ * synthetic resource inputs; instruction costs remain an explicitly separate
+ * reference_cycles scenario. Missing physical requirements cannot win. HBM ns
+ * service is reported separately and is never added to that scenario.
+ * Records remain read-only/analysis-
  * only; export does not discharge runtime or selected-lowering obligations. */
 extern BOOL WOPT_DSL_select_normalization_plan(WN *scope, WN *assignment,
     const WOPT_DSL_NORMALIZATION_COST_REQUEST *request,

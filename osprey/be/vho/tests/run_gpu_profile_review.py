@@ -1,8 +1,8 @@
 """Retain H1b importer/backend parity and early CLI refusals on synthetic inputs.
 
 Requires the configured native builder on PYTHONPATH. Runs no GPU, profiling or
-candidate compilation. H1c consumers are pending, so imported facts cannot be
-claimed as a qualified device-specific selected plan. Design:
+candidate compilation. H1c resource-dependent planning is tested separately;
+these import-only cases use O0 so unknown profiles remain valid imports. Design:
 doc/AI-COMPILER-H1B-GPU-PROFILE-IMPORT-v1.0.md.
 """
 import argparse
@@ -50,7 +50,7 @@ def main():
     baselines = {}
     cases = [('generic-o3', None, None, 3), ('generic-o0', None, None, 0)]
     for device in ['h20_96gb', 'h20_141gb']:
-        cases += [(device + '-' + mode, device, mode, 3) for mode in [
+        cases += [(device + '-' + mode, device, mode, 0) for mode in [
             'estimated', 'resource-only', 'partial', 'unknown', 'mig', 'declared-measured']]
         cases.append((device + '-o0', device, 'estimated', 0))
     for label, device, mode, level in cases:
@@ -79,7 +79,7 @@ def main():
             assert identity['device'] == device and identity['arch'] == 'sm_90'
             assert identity['input_sha256'] == digest and identity['toolchain'] == TOOLCHAIN
             assert identity['planning'] == 'generic-architecture-fallback'
-            assert identity['consumer_bindings'] == 'pending'
+            assert identity['consumer_bindings'] == 'h1c'
             assert int(identity['resource_known']) == (0 if mode == 'unknown' else 13 if mode == 'partial' else 14)
             assert int(identity['execution_known']) == (0 if mode in ['resource-only', 'unknown'] else 14)
         elif lines or 'DSL_GPU_DEVICE 1 ' in text:
@@ -141,7 +141,7 @@ def main():
         refusals.append(label)
     report = dict(schema='open64.h1b-backend-review.v1', status='PASS',
         accepted=accepted, early_refusals=refusals, generic_O0_O3_B_T_byte_identical=True,
-        existing_checkpoint_preserved=True, consumer_bindings='H1c pending', GPU=False)
+        existing_checkpoint_preserved=True, consumer_bindings='H1c; import-only O0 cases', GPU=False)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
     (root / 'SHA256SUMS').write_text(''.join(
         f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(root)}\n'

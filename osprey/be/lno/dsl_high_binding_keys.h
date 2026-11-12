@@ -8,7 +8,8 @@
 #include <sstream>
 
 /* Derive the same exact typed recipe/resource/model identities for the owning
- * observer and the later production consumer; never allocate WHIRL state. */
+ * observer and the later production consumer; H1c keys separate capacity
+ * legality from complete cost/evidence. Never allocate WHIRL state. */
 inline void LNO_DSL_fill_search_keys(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_REPORT &result) {
     result.manifest_key = VHO_tensor_recipe_key(input.algorithm);
     const VHO_TENSOR_GPU_PROFILE &gpu = input.gpu;
@@ -26,6 +27,10 @@ inline void LNO_DSL_fill_search_keys(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIG
     if(input.movement_enabled) {
         model_key<<"/movement;"<<VHO_mla_movement_profile_key(input.movement_profile)
             <<';'<<VHO_mla_movement_catalog()<<';'<<VHO_mla_movement_capabilities();
+    }
+    if (!gpu.device.Cache_key().empty()) {
+        resource_key << ";device;" << gpu.device.Legality_key() << ";high-private-reuse=" << gpu.high_private_reuse;
+        model_key << ";device;" << gpu.device.Cache_key();
     }
     result.resource_key = resource_key.str(); result.model_key = model_key.str();
 }

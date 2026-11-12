@@ -2,6 +2,13 @@
 
 2026-11-12 | H1 exact device selection deliverable
 
+H1c implementation update: [planner bindings v1.0](AI-COMPILER-H1C-PLANNER-BINDINGS-v1.0.md)
+connects driver-owned evidence to four existing phase owners, snapshot/search
+keys and selected-plan revalidation. Imported limits constrain represented
+requirements; physical HBM service is separate from legacy cycle-scenario
+ranking. H1d device-helper/serving transport and GPU qualification remain open.
+Earlier status notes below retain their original scope.
+
 H1b implementation update: [immutable resource/profile import v1.0](AI-COMPILER-H1B-GPU-PROFILE-IMPORT-v1.0.md)
 now resolves pinned external facts for both H20 variants into sealed,
 driver-owned contexts. Strict schema/quantity/provenance/binding checks,

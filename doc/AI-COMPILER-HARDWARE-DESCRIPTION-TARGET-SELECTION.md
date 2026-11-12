@@ -6,6 +6,12 @@ layout change, proprietary NVIDIA compiler data, GPU probing or new library.
 
 ## H1 device selection requirement, 2026-11-12
 
+Implemented H1c slice: [planner bindings v1.0](AI-COMPILER-H1C-PLANNER-BINDINGS-v1.0.md)
+copies the resolved context into existing phase-owned snapshots and compiler-only
+stamps. Resource/budget filters, separate physical service queries, cache keys
+and current-context selected guards are implemented; legacy cycle models remain
+explicit scenarios and H1d runtime qualification remains open.
+
 Implemented H1b slice: [resource/profile import v1.0](AI-COMPILER-H1B-GPU-PROFILE-IMPORT-v1.0.md)
 adds gpu_profile, gpu_profile_sha256 and gpu_profile_toolchain under the shared
 DSL option group. The driver imports exact pinned bytes once, validates

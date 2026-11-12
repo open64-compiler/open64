@@ -9,6 +9,7 @@
 #define opt_dsl_reduction_INCLUDED
 
 #include "opt_dsl.h"
+#include "../com/dsl_gpu_plan.h"
 #include "../../include/open64_reduction_runtime.h"
 
 enum WOPT_DSL_REDUCTION_INSTRUCTION {
@@ -41,7 +42,8 @@ enum WOPT_DSL_REDUCTION_DIRECT_STATUS {
   WOPT_DSL_REDUCE_DIRECT_LEASE_MISSING,
   WOPT_DSL_REDUCE_DIRECT_ALIAS_OVERLAP,
   WOPT_DSL_REDUCE_DIRECT_OWNER_INVALID,
-  WOPT_DSL_REDUCE_DIRECT_EVENTS_INVALID
+  WOPT_DSL_REDUCE_DIRECT_EVENTS_INVALID,
+  WOPT_DSL_REDUCE_DIRECT_RESOURCE_REFUSED
 };
 enum {
   WOPT_DSL_REDUCE_FP_FTZ = 1U << 0,
@@ -108,10 +110,17 @@ typedef struct {
   UINT32 row_mapping;
   UINT64 launched_threads;
   UINT32 before[WOPT_DSL_REDUCE_EVENT_COUNT];
+  /* Compiler-only imported evidence and distinct global backing footprint.
+   * These POD fields do not extend OPEN64_REDUCTION_GUARD or native WHIRL. */
+  DSL_GPU_PLAN_STAMP gpu_stamp;
+  UINT64 live_bytes;
 } WOPT_DSL_REDUCTION_DIRECT_BINDING;
 
 /* Invalid scope/member/null arguments leave output unchanged. A well-formed
  * native source with a refused request returns TRUE and an explicit status.
+ * Imported contexts filter exact ISA and distinct declared backing capacity;
+ * unknown budget/capacity refuses. CTA/RF demands absent from this direct
+ * request remain runtime/code-generation obligations, not inferred estimates.
  * Whole active PU only; no tree/table mutation, selection or cost model.
  * Caller controls trace through existing AI trace policy when integrated. */
 extern BOOL WOPT_DSL_bind_reduction_direct
@@ -119,7 +128,8 @@ extern BOOL WOPT_DSL_bind_reduction_direct
      WOPT_DSL_REDUCTION_DIRECT_BINDING *output, FILE *diagnostic, FILE *trace);
 
 /* Revalidate the owned binding against current native WHIRL, then export an
- * additive runtime guard. Failure leaves output untouched. Does not select a
+ * additive runtime guard. Rebinding requires the original current imported
+ * stamp before any new guard is admitted. Failure leaves output untouched. Does not select a
  * kernel or discharge runtime obligations. No runtime linkage in the compiler.
  * Design: doc/AI-COMPILER-REDUCTION-RUNTIME-GUARDS-v0.1.md. */
 extern BOOL WOPT_DSL_export_reduction_direct_guard

@@ -13,6 +13,7 @@
  * Analytical timing: doc/AI-COMPILER-OPTIMIZATION-ANALYTICAL-READINESS.md.
  * Table resolution: doc/AI-COMPILER-HARDWARE-DESCRIPTION-TARGET-SELECTION.md.
  * Residency rounds: doc/AI-COMPILER-OPTIMIZATION-OCCUPANCY.md.
+ * Fixed pair binding: doc/AI-COMPILER-H1C-PLANNER-BINDINGS-v1.0.md.
  */
 
 #include <algorithm>
@@ -1206,6 +1207,38 @@ VHO_DSL_Fetch_Pipeline_Build
     analysis->built = TRUE;
     return DSL_Fetch_Pipeline_Materialize_IR(analysis, diagnostic) &&
            VHO_DSL_Fetch_Pipeline_Verify(analysis, diagnostic);
+}
+
+/* Commit only the already admitted rebuilt fetch, preserving the common
+ * census and runtime IR/site consistency. No alternative is estimated here.
+ * Failure is local to disposable analysis; executable WHIRL stays untouched. */
+BOOL VHO_DSL_fetch_finalize_joint_selection(DSL_FETCH_PIPELINE_ANALYSIS *analysis,
+    DSL_FETCH_SITE_ID site_id, DSL_FETCH_PLAN_ID fetch_id, FILE *diagnostic)
+{
+    if (!DSL_Fetch_Pipeline_Active(analysis) || !analysis->built ||
+        analysis->control.select_plans || !site_id || site_id>analysis->sites.size()) return FALSE;
+    DSL_FETCH_SITE_RECORD &site=analysis->sites[site_id-1];
+    DSL_OPT_PLAN_CONTEXT *context=analysis->plan_contexts[site_id-1];
+    DSL_OPT_SELECTION_RESULT selection;memset(&selection,0,sizeof(selection));
+    selection.target_profile_id=analysis->control.target_profile_id;
+    for (UINT32 i=0;i<site.pipeline_plan_count;++i) {
+        const DSL_FETCH_PLAN_RECORD &fetch=analysis->plans[site.first_pipeline_plan_id-1+i];
+        DSL_OPT_PLAN_RECORD plan;DSL_OPT_COST_RECORD cost;
+        if (!DSL_opt_plan_get_plan(context,fetch.optimization_plan_id,&plan) ||
+            !DSL_opt_plan_get_cost(context,plan.cost_id,&cost)) return FALSE;
+        if (plan.legality!=DSL_OPT_LEGALITY_PROVEN) {++selection.rejected_plan_count;continue;}
+        ++selection.legal_plan_count;
+        if (cost.target_profile_id!=selection.target_profile_id) ++selection.target_mismatch_count;
+        else if (!cost.complete) ++selection.incomplete_cost_count;
+        else {
+            ++selection.complete_cost_count;
+            if (fetch.id==fetch_id) selection.selected_plan_id=fetch.optimization_plan_id;
+        }
+    }
+    if (!selection.selected_plan_id || !DSL_opt_plan_record_selection(context,&selection,diagnostic)) return FALSE;
+    site.selected_plan_id=selection.selected_plan_id;
+    return DSL_Fetch_Pipeline_Materialize_IR(analysis,diagnostic) &&
+        VHO_DSL_Fetch_Pipeline_Verify(analysis,diagnostic);
 }
 
 /* Revalidate active-PU records and graph/plan lineage without mutation. Joint

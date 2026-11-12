@@ -30,7 +30,8 @@ bool better(const VHO_TENSOR_CHUNK_CANDIDATE &a,const VHO_TENSOR_CHUNK_CANDIDATE
 }
 
 /* The schema deliberately labels this envelope estimated. Actual native
- * allocation and runtime occupancy still require backend/device evidence. */
+ * allocation and runtime occupancy still require backend/device evidence.
+ * H1c rejects detached envelopes that overstate imported visible resources. */
 BOOL VHO_tensor_gpu_profile_valid(const VHO_TENSOR_GPU_PROFILE &g,FILE *f) {
     try {
         DSL_HARDWARE_DESCRIPTION_RECORD arch;
@@ -47,6 +48,28 @@ BOOL VHO_tensor_gpu_profile_valid(const VHO_TENSOR_GPU_PROFILE &g,FILE *f) {
         require(r.max_blocks<=1024 && r.max_warps<=65536 && r.max_threads<=1048576 &&
             r.max_threads_per_cta<=r.max_threads && r.shared_reserved<r.shared_budget &&
             r.max_registers_per_thread<=255,"inconsistent MLA GPU resources");
+        require(g.device.Cache_key().empty() || g.architecture == g.device.Architecture(), "MLA selected device ISA mismatch");
+        if (g.device.Bound()) {
+            uint64_t sms, limit;
+            require(g.architecture == g.device.Architecture() &&
+                g.device.Resource_limit(DSL_GPU_VISIBLE_SMS, &sms) && g.sms == sms,
+                "imported MLA visible SM binding mismatch/unknown");
+            const DSL_GPU_RESOURCE_FIELD fields[] = {DSL_GPU_MAX_BLOCKS_PER_SM,
+                DSL_GPU_MAX_THREADS_PER_SM, DSL_GPU_MAX_THREADS_PER_CTA,
+                DSL_GPU_REGISTERS_PER_SM, DSL_GPU_SHARED_BYTES_PER_SM,
+                DSL_GPU_SHARED_BYTES_PER_CTA_DEFAULT};
+            const uint64_t declared[] = {r.max_blocks,r.max_threads,r.max_threads_per_cta,
+                r.registers_per_sm,r.shared_capacity,r.shared_budget};
+            for (unsigned i = 0; i < 6; ++i)
+                require(g.device.Resource_limit(fields[i], &limit) && declared[i] <= limit,
+                    "imported MLA resource envelope mismatch/unknown");
+            require(g.device.Resource_limit(DSL_GPU_MAX_THREADS_PER_SM,&limit) && r.max_warps <= limit/32,
+                "imported MLA warp capacity mismatch");
+            require(r.register_warp_quantum == 4 &&
+                g.device.Resource_limit(DSL_GPU_REGISTER_QUANTUM,&limit) && r.register_quantum == limit &&
+                g.device.Resource_limit(DSL_GPU_SHARED_QUANTUM,&limit) && r.shared_quantum == limit,
+                "imported MLA allocation quantum mismatch/unknown");
+        }
         return TRUE;
     } catch(const std::exception &e) {if(f) fprintf(f,"MLA GPU profile: %s\n",e.what());return FALSE;}
 }
@@ -83,7 +106,8 @@ BOOL VHO_tensor_select_attention_chunks(const VHO_TENSOR_PROGRAM &input,
                     c.reason="resource_fit";bool fits=true;
                     for(size_t k=0;k<plan.kernels.size();++k) {
                         DSL_GEMM_OCCUPANCY_RESULT occupancy;
-                        if(!DSL_gemm_occupancy(g.resources,32,g.sms,plan.kernels[k].threads,4*g.registers_per_thread,
+                        if(!g.device.Fits_CTA(plan.kernels[k].threads,g.registers_per_thread,VHO_tensor_shared_bytes(candidate,plan.kernels[k])) ||
+                            !DSL_gemm_occupancy(g.resources,32,g.sms,plan.kernels[k].threads,4*g.registers_per_thread,
                             VHO_tensor_shared_bytes(candidate,plan.kernels[k]),VHO_tensor_grid(candidate,plan.kernels[k]),&occupancy) ||
                             !occupancy.resident) {fits=false;break;}
                         if(plan.kernels[k].mapping==3) c.resident=occupancy.resident;
@@ -121,10 +145,12 @@ const char *VHO_tensor_chunk_policy_name(const VHO_TENSOR_PROGRAM &p) {
 }
 
 /* Full profile and candidate ledger are sealed by the recipe fingerprint.
- * This concise identity is additionally persisted on each native kernel. */
+ * This concise identity is additionally persisted on each native kernel;
+ * imported H1c evidence extends it without changing architecture-only keys. */
 std::string VHO_tensor_chunk_selection_identity(const VHO_TENSOR_PROGRAM &p) {
     std::ostringstream s;s<<VHO_tensor_chunk_policy_name(p)<<":"<<p.gpu.id<<":"<<p.gpu.architecture<<":sms="<<p.gpu.sms
         <<":regs_est="<<p.gpu.registers_per_thread<<":target="<<p.gpu.target_ctas_per_sm
         <<":scratch="<<p.gpu.scratch_budget<<":width="<<p.split_width;
+    if (!p.gpu.device.Cache_key().empty()) s << ";" << p.gpu.device.Cache_key();
     return s.str();
 }

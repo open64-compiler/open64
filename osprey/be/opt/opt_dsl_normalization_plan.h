@@ -6,6 +6,7 @@
 #ifndef opt_dsl_normalization_plan_INCLUDED
 #define opt_dsl_normalization_plan_INCLUDED
 #include "opt_dsl_normalization_target.h"
+#include "../com/dsl_gpu_plan.h"
 #include "../../include/open64_normalization_runtime.h"
 
 enum WOPT_DSL_NORMALIZATION_PLAN_KIND { WOPT_DSL_NORM_C0 = 1, WOPT_DSL_NORM_C1, WOPT_DSL_NORM_C2 };
@@ -69,11 +70,18 @@ typedef struct {
   UINT32 status, stages, runtime_obligations;
   UINT64 bytes[4], row_bytes, required_shared, reserved_shared, shared_limit, shared_quantum;
   UINT32 required_barriers, bank_count, bank_word_bytes, warp_lanes, bank_conflict_max;
+  /* Imported compiler evidence only; zero preserves architecture-only queries.
+   * live_bytes counts distinct declared global backing allocations, not traffic. */
+  DSL_GPU_PLAN_STAMP gpu_stamp;
+  UINT64 live_bytes;
 } WOPT_DSL_NORMALIZATION_PLAN_BINDING;
 
 /* Rebind exact active-PU source and target before checking any plan. Invalid
  * scope/member/null leaves output/trace untouched and returns FALSE. Valid
  * refused requests return TRUE with status and no runtime obligation grant.
+ * Imported device facts constrain declared backing storage, CTA threads and
+ * retained shared storage; unknown required limits refuse. RF demand remains
+ * a later cost/lowering obligation. No-import records retain legacy values.
  * Read-only; optional trace uses the caller's existing AI trace control. */
 extern BOOL WOPT_DSL_bind_normalization_plan(WN *scope, WN *assignment,
     const WOPT_DSL_NORMALIZATION_PLAN_REQUEST *request,
@@ -82,7 +90,9 @@ extern BOOL WOPT_DSL_bind_normalization_plan(WN *scope, WN *assignment,
 /* Fresh source/target/plan rebinding; export only a conditional bound v2 plan.
  * Failure leaves output unchanged. Invalid API/scope emits no trace; valid
  * refused plans emit REFUSE only under caller trace control. No selection,
- * runtime authority, IR mutation, or executable kernel is created. */
+ * runtime authority, IR mutation, or executable kernel is created. Imported
+ * context must still match the freshly bound POD stamp before export; the
+ * runtime guard ABI carries no compiler profile object or digest extension. */
 extern BOOL WOPT_DSL_export_normalization_guard(WN *scope, WN *assignment,
     const WOPT_DSL_NORMALIZATION_PLAN_REQUEST *request,
     OPEN64_NORMALIZATION_GUARD *output, FILE *diagnostic, FILE *trace);

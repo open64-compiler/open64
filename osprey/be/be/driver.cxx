@@ -119,6 +119,7 @@
 #include "config_clist.h"        /* for CLIST_cuda */
 #include "config_dsl.h"          /* for the AI trace control */
 #include "dsl_memory_hierarchy.h" /* exact H1a device/ISA admission */
+#include "dsl_gpu_plan.h"
 #include "dsl_gpu_profile.h"      /* sealed driver-owned H1b context */
 #include "normalization_driver.h"
 #include "quantized_driver.h"
@@ -2993,8 +2994,9 @@ extern "C" {
  * Omission is a strict no-op. The borrowed baseline ISA fills only an absent
  * gpu_arch so existing consumers (including LN4) see a validated effective ISA.
  * H1b optionally imports pinned, owned facts before publishing the context.
- * Missing input preserves the exact H1a report. Imported facts do not alter
- * search/materialization policy until H1c; report that generic fallback.
+ * Missing input preserves the exact H1a report.
+ * H1c phase owners copy facts for resource guards and dependency keys; the
+ * old cycle model remains a generic scenario, not physical calibration.
  * Design: doc/AI-COMPILER-H1B-GPU-PROFILE-IMPORT-v1.0.md. */
 static BOOL BE_select_gpu_device(
     DSL_GPU_DEVICE_CONTEXT_OWNER *context)
@@ -3011,6 +3013,7 @@ static BOOL BE_select_gpu_device(
                                    &selected, stderr)) return FALSE;
   if (!DSL_gpu_profile_resolve(selected, VHO_DSL_GPU_Profile,
       VHO_DSL_GPU_Profile_SHA256, VHO_DSL_GPU_Profile_Toolchain, context, stderr)) return FALSE;
+  VHO_DSL_GPU_Context = context->Context();
   if (VHO_DSL_GPU_Arch == NULL)
     VHO_DSL_GPU_Arch = const_cast<char *>(selected.architecture);
   if (context->Context()->Imported()) {
@@ -3020,7 +3023,7 @@ static BOOL BE_select_gpu_device(
         "execution=%s execution_revision=%u model=%s budget=%s budget_revision=%u "
         "resource_known=%u execution_known=%u budget_bounds_proved=%u "
         "input_sha256=%s resource_sha256=%s execution_sha256=%s budget_sha256=%s "
-        "context_sha256=%s planning=generic-architecture-fallback consumer_bindings=pending\n",
+        "context_sha256=%s planning=generic-architecture-fallback consumer_bindings=h1c\n",
         context->Context()->Device().c_str(), context->Context()->Architecture().c_str(),
         context->Context()->Resource_id().c_str(), context->Context()->Resource_revision(),
         context->Context()->Partition_id().c_str(), context->Context()->Partition_kind().c_str(),
@@ -3555,6 +3558,7 @@ main (INT argc, char **argv)
   }
  
   /* No phase borrows the process context beyond normal driver cleanup. */
+  VHO_DSL_GPU_Context = NULL;
   gpu_device_context.Reset();
   if ( ecount > 0 ) {
     Terminate(Had_Internal_Error() ? RC_INTERNAL_ERROR : RC_NORECOVER_USER_ERROR) ;

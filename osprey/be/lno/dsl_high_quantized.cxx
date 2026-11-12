@@ -9,6 +9,7 @@
 #include "stab.h"
 #include "pu_info.h"
 #include "config.h"
+#include "config_dsl.h"
 #include "config_opt.h"
 #include "targ_const.h"
 #include "dsl_native_tree_key.h"
@@ -182,6 +183,7 @@ public:
     DSL_HIGH_QUANTIZED_CAPTURE(WN *entry,const VHO_TENSOR_PROGRAM &p,bool post=false,const DSL_HIGH_Q1_RESOLVER &resolver=DSL_HIGH_Q1_RESOLVER())
         : _entry(entry),_program(p),_operation(~0U),_post(post),_resolver(resolver) {}
     /* Capture formals, real memory nodes and paired local scale versions.
+     * H1c evidence is copied once for fresh-context revalidation.
      * No allocator generation, inter-call lifetime or no-alias fact beyond
      * this explicit disjoint-buffer ABI is inferred. */
     DSL_HIGH_QUANTIZED_FACTS Capture(const DSL_HIGH_EPOCH &epoch) {
@@ -195,6 +197,7 @@ public:
                 std::string(ST_tensor_metadata(fn,"tensor.high.schema"))=="quantized-common-high-v1" &&
                 ST_tensor_metadata(fn,"tensor.high.buffer_contract") &&
                 std::string(ST_tensor_metadata(fn,"tensor.high.buffer_contract"))=="disjoint-storage-formals","q1_producer_contract");
+        _facts._device_key=DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context).Cache_key();
         _facts._source_key=VHO_tensor_quantized_high_key(_program);
         require(ST_tensor_metadata(fn,"tensor.high.recipe_key") &&
             _facts._source_key==ST_tensor_metadata(fn,"tensor.high.recipe_key"),"q1_producer_source_binding");

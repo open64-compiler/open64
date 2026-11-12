@@ -33,8 +33,11 @@ struct VHO_MLA_SEARCH_OPTIONS {
 /* Counts are per CTA, costs cover the entire stage including grid rounds. */
 struct VHO_MLA_STAGE_ESTIMATE {
     VHO_MLA_MOVEMENT_STAGE movement;
+    /* Physical HBM service component only, kept outside legacy cycle totals. */
+    bool physical_hbm_known;
+    double physical_hbm_lower_ns,physical_hbm_upper_ns;
     /* Zero detached counts and costs without allocating compiler state. */
-    VHO_MLA_STAGE_ESTIMATE():operation(0),ctas(0),threads(0),shared(0),resident(0),scalar_ops(0),global_bytes(0),shared_bytes(0),
+    VHO_MLA_STAGE_ESTIMATE():physical_hbm_known(false),physical_hbm_lower_ns(0),physical_hbm_upper_ns(0),operation(0),ctas(0),threads(0),shared(0),resident(0),scalar_ops(0),global_bytes(0),shared_bytes(0),
         shuffles(0),exps(0),divs(0),barriers(0),fences(0),dependency(0),rounds(0),compute(0),memory(0),special(0),local(0),sync(0),launch(0),total(0) {}
     UINT64 operation,ctas,threads,shared,resident,scalar_ops,global_bytes,shared_bytes,shuffles,exps,divs,barriers,fences,dependency;
     UINT64 rounds,compute,memory,special,local,sync,launch,total;

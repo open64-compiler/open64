@@ -13,6 +13,10 @@ bool LNO_DSL_validate_search_input(const DSL_HIGH_SNAPSHOT &snapshot, const DSL_
     if (input.unit != bindings.unit || input.numeric != bindings.numeric || input.host_target != bindings.target ||
         input.source_key != snapshot.Source_key() || input.facts_key != snapshot.Facts_key())
         return reason = "source_or_context_mismatch", false;
+    if (input.gpu.device.Cache_key() != bindings.device.Cache_key())
+        return reason = "device_snapshot_mismatch", false;
+    if (input.gpu.device.Bound() && !input.gpu.high_private_reuse)
+        return reason = "source_backing_accounting_required", false;
     if (!input.allow_reassociate) return reason = "manifest_numerical_permission_required", false;
     const VHO_TENSOR_PROGRAM &program = input.algorithm;
     if (program.source_file != input.unit || program.opt_level != 3 || program.threads != 128 ||
