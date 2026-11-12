@@ -39,6 +39,8 @@
 #include "tensor_attention_search.h"
 #include "../be/lno/dsl_high_quantized.h"
 #include "../be/vho/tensor_q1_program.h"
+#include "../be/vho/tensor_workload.h"
+#include "dsl_native_tree_key.h"
 #include "tensor_schedule_source.h"
 #ifdef OPEN64_TENSOR_SELECTED_BRIDGE
 #include "tensor_selected_bridge.h"
@@ -345,12 +347,14 @@ bool remove_barrier(WN *n,const char *name="__syncthreads") {
 #endif
 #include "tensor_quantized_review.inc"
 #include "tensor_q1_rebind_test.inc"
+#include "tensor_workload_json.inc"
 } // namespace
 
 /* The executable establishes exactly one source PU or fresh device translation
  * unit. The VHO service never expands its compilation scope or writes files. */
 int main(int argc,char **argv) {
     try {
+        if(argc>=2 && !strcmp(argv[1],"q2-workload")) return q2_command(argc,argv);
         if(argc>=2 && !strcmp(argv[1],"q1-rebind-test")) return q1_rebind_test(argc,argv);
         if(argc==4 && !strcmp(argv[1],"q1-production-manifest")) {
             need(access(argv[3],F_OK)!=0,"Q1 manifest output exists");initialize(false);

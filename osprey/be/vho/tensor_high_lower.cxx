@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include "tensor_kernel_lower.h"
 #include "tensor_q1_program.h"
+#include "tensor_workload.h"
 #include "wn.h"
 #include "wn_util.h"
 #include "stab.h"
@@ -290,6 +291,12 @@ public:
                 WN *outer = WN_CreateBlock(); WN_INSERT_BlockLast(outer, Loop(_indices[axis], output.shape[axis], work)); work = outer;
             }
             Position(work); WN_INSERT_BlockLast(body, work);
+        }
+        if(_quantized) {
+            // COMMENT owns a NAME ST. Allocate it after executable declarations
+            // so adding an explanation does not renumber prior loop symbols.
+            WN *explanation=WN_CreateComment(VHO_tensor_workload_explanation(_program).c_str());
+            WN_Set_Linenum(explanation,_source);WN_INSERT_BlockBefore(body,WN_first(body),explanation);
         }
         WN_INSERT_BlockLast(body, WN_Create(OPR_RETURN, MTYPE_V, MTYPE_V, 0));
         WN *entry = WN_CreateEntry(formals.size(), function, body, WN_CreateBlock(), WN_CreateBlock());
