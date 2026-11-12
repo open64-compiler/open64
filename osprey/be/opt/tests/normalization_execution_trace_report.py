@@ -45,9 +45,13 @@ def audit(text, expected, scenarios=22):
             owner,sequence=int(w[3]),int(w[4]);action=w[5];status,a,b=map(int,w[6:9])
             require(action in {'open','begin','preflight','import','allocate','allocation_quarantined','register','owned_root',
                 'borrowed_root','admit','binding','input_join','h2d','d2h','consumer_join','quiesce','advance','close','retire',
-                'release','idle','resume','cancel','abort','destroy'},'unknown execution action')
-            p=owners.setdefault(owner,dict(seq=0,active=False,ticket=0,owned=set(),registered=set(),quiesce=False,destroyed=False))
+                'release','idle','resume','cancel','abort','destroy','selected'},'unknown execution action')
+            p=owners.setdefault(owner,dict(seq=0,active=False,ticket=0,owned=set(),registered=set(),quiesce=False,destroyed=False,ready=False))
             require(owner>0 and sequence==p['seq']+1 and not p['destroyed'],'execution sequence/lifetime drift');p['seq']=sequence
+            if action=='open':p['ready']=status==0
+            if action=='selected':
+                matched=p['ready'] and a==expected['plan_seal'] and b==expected['tree_seal']
+                require(status==(0 if matched else 1),'selected identity gate disagrees with compiled entry')
             if action=='allocate':
                 require(a in range(4) and b==g[f'range{a}_capacity'],'allocation extent changed')
                 p['active']=True;p['owned'].add(a)

@@ -60,6 +60,8 @@ extern char *VHO_DSL_CUDA_Tile_Output;
 extern char *VHO_DSL_CUDA_Whirl_Output;
 extern char *VHO_DSL_Normalization_Request;
 extern char *VHO_DSL_Normalization_Output;
+extern char *VHO_DSL_Normalization_Mode;
+extern char *VHO_DSL_Normalization_Host_Entry;
 
 /* Reserved TP_WOPT2 bit for versioned AI optimization decisions. */
 #define AI_OPT_TRACE_FLAG 0x00800000

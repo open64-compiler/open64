@@ -464,6 +464,8 @@ static BOOL need_fhe_checkpoint_output = FALSE;
 static BOOL need_fhe_materialization_output = FALSE;
 static BOOL need_fhe_runtime_lower_output = FALSE;
 static UINT32 cuda_emitted_pu_count = 0;
+static UINT32 normalization_host_emitted_pu_count = 0;
+static BOOL normalization_host_selected = FALSE;
 static Output_File *ir_output = 0;
 static char *fhe_checkpoint_temp_name = NULL;
 static char *dsl_pu_checkpoint_temp_name = NULL;
@@ -761,6 +763,10 @@ load_components (INT argc, char **argv)
 
     const BOOL normalization_checkpoint = VHO_DSL_Normalization_Request != NULL ||
                                           VHO_DSL_Normalization_Output != NULL;
+    FmtAssert(!VHO_DSL_Normalization_Mode || normalization_checkpoint,
+              ("normalization_mode requires the LN4 request checkpoint"));
+    FmtAssert(!VHO_DSL_Normalization_Host_Entry || (Run_w2c && !CLIST_cuda && !Run_w2fc_early && !normalization_checkpoint),
+              ("normalization_host_entry requires ordinary whirl2c extraction"));
     if (normalization_checkpoint) {
       FmtAssert(VHO_DSL_Normalization_Request != NULL && VHO_DSL_Normalization_Output != NULL &&
                 VHO_DSL_GPU_Arch != NULL && Opt_Level >= 3 &&
@@ -920,6 +926,7 @@ Phase_Init (void)
         FmtAssert(!CLIST_cuda || !Run_w2fc_early,
                   ("whirl2c -cuda does not support early source emission"));
         cuda_emitted_pu_count = 0;
+        normalization_host_emitted_pu_count = 0;
 	W2C_Outfile_Init (!CLIST_cuda/*emit_global_decls*/);
     }
     if (Run_w2f)
@@ -1011,6 +1018,8 @@ Phase_Fini (void)
 	W2C_Outfile_Fini (!CLIST_cuda/*emit_global_decls*/);
         FmtAssert(!CLIST_cuda || cuda_emitted_pu_count != 0,
                   ("whirl2c -cuda found no device-attributed PU"));
+        FmtAssert(!VHO_DSL_Normalization_Host_Entry || normalization_host_emitted_pu_count == 1,
+                  ("LN4 host extraction requires exactly one verified dispatch PU"));
     }
     if (Run_w2f)
 	W2F_Outfile_Fini ();
@@ -1371,7 +1380,9 @@ Post_LNO_Processing (PU_Info *current_pu, WN *pu)
      */
     if (Run_w2c && !Run_w2fc_early) {
         if (CLIST_cuda ? is_cuda_device_pu :
-            (W2C_Should_Emit_Nested_PUs() || is_user_visible_pu)) {
+            (VHO_DSL_Normalization_Host_Entry ?
+             normalization_host_selected :
+             (W2C_Should_Emit_Nested_PUs() || is_user_visible_pu))) {
             VHO_FHE_UNLOWERED_GATE_RESULT gate_result;
             FmtAssert(VHO_FHE_Unlowered_Gate_Program_Unit
                           (current_pu, pu, stderr, &gate_result),
@@ -1381,6 +1392,8 @@ Post_LNO_Processing (PU_Info *current_pu, WN *pu)
             W2C_Outfile_Translate_Pu(pu, !CLIST_cuda/*emit_global_decls*/);
             if (CLIST_cuda)
                 ++cuda_emitted_pu_count;
+            if (VHO_DSL_Normalization_Host_Entry)
+                ++normalization_host_emitted_pu_count;
         }
     }
     if (Run_w2f && !Run_w2fc_early) {
@@ -2006,6 +2019,8 @@ BOOL Walk_And_Insert_Init_Buf(WN* wn, WN* block)
 }
 #endif
 
+/* Driver establishes one active PU. Explicit LN4 host extraction validates its
+ * high-level ABI here, before ordinary return lowering; no cross-PU inference. */
 static WN *
 Preprocess_PU (PU_Info *current_pu)
 {
@@ -2110,6 +2125,16 @@ Preprocess_PU (PU_Info *current_pu)
    * (WN *) is calculated by Read_Local_Info().
    */
   pu = PU_Info_tree_ptr(current_pu);
+
+  // Validate high-level call/capture/return before ordinary return lowering
+  // replaces negative return pregs and RETURN_VAL with ABI-specific forms.
+  normalization_host_selected = FALSE;
+  if (VHO_DSL_Normalization_Host_Entry &&
+      !strcmp(ST_name(St_Table[PU_Info_proc_sym(current_pu)]), VHO_DSL_Normalization_Host_Entry)) {
+    FmtAssert(BE_DSL_normalization_host_matches(current_pu, VHO_DSL_Normalization_Host_Entry),
+              ("LN4 host extraction rejected a malformed dispatch PU"));
+    normalization_host_selected = TRUE;
+  }
 
   /* store original pu name */
   Orig_PU_Name = Get_Orig_PU_Name(current_pu);

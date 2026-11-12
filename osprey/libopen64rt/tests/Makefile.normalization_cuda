@@ -5,10 +5,19 @@ CC ?= cc
 AR ?= ar
 SOURCE ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 CUDA_HOME ?= /usr/local/cuda
+PREFIX ?= /usr/local
 CPPFLAGS += -I$(SOURCE)/include -I$(CUDA_HOME)/include
 CXXFLAGS += -std=c++11 -Wall -Wextra -Werror -pthread
 
 all: libopen64_normalization_cuda.a
+
+.PHONY: all install
+
+# Explicit optional SDK installation; never modify the legacy runtime targets.
+install: libopen64_normalization_cuda.a
+	install -d $(DESTDIR)$(PREFIX)/lib $(DESTDIR)$(PREFIX)/include
+	install -m 644 $< $(DESTDIR)$(PREFIX)/lib/
+	install -m 644 $(SOURCE)/include/open64_normalization_execution.h $(SOURCE)/include/open64_normalization_cuda.h $(SOURCE)/include/open64_normalization_runtime.h $(SOURCE)/include/open64_target_buffer_service.h $(SOURCE)/include/whirl2c.h $(DESTDIR)$(PREFIX)/include/
 
 normalization_cuda.o: $(SOURCE)/libopen64rt/normalization_cuda.cxx \
                       $(SOURCE)/include/open64_normalization_cuda.h \

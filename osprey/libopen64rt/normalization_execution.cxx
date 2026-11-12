@@ -313,6 +313,23 @@ int open64_normalization_execution_run(OPEN64_NORMALIZATION_EXECUTION *p,const O
   int status=begin(p,roots);return status ? status:resume(p);
 }
 
+/* Compiler-emitted constants and the opened exact-entry descriptor must agree
+ * before root reads/side effects. Hold one operation token through execution. */
+int open64_normalization_execution_run_selected(void *execution,
+    unsigned long long plan_seal,unsigned long long tree_seal,void *root_requests)
+{
+  OPEN64_NORMALIZATION_EXECUTION *p=static_cast<OPEN64_NORMALIZATION_EXECUTION *>(execution);
+  const OPEN64_NORMALIZATION_ROOT_REQUEST *roots=static_cast<const OPEN64_NORMALIZATION_ROOT_REQUEST *>(root_requests);
+  if(!p)return OPEN64_NORM_INVALID;
+  OPEN64_NORMALIZATION_EXECUTION_CALL call(p);
+  if(!call.Entered())return OPEN64_NORM_BUSY;
+  int status=p->_ready && plan_seal && tree_seal && plan_seal==p->_manifest.plan_seal &&
+      tree_seal==p->_manifest.tree_seal ? 0:OPEN64_NORM_INVALID;
+  report(p,"selected",status,plan_seal,tree_seal);
+  if(status)return status;
+  status=begin(p,roots);return status ? status:resume(p);
+}
+
 /* Cancel joins every started phase, including ambiguous copy operations, before
  * dropping leases or storage. Once cancellation starts, resume cannot restart it. */
 int open64_normalization_execution_cancel(OPEN64_NORMALIZATION_EXECUTION *p)

@@ -8,6 +8,57 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-29 LN4 bounded compiler-side closure accepted, implementation `046b198b`:
+[Host dispatch and mode detail v0.1](AI-COMPILER-LAYERNORM-HOST-DISPATCH-v0.1.md).
+Standalone mode creates the program-specific host PU in WHIRL; ordinary
+whirl2c emits it, while CUDA mode emits only the selected device PU. Service
+mode omits the host wrapper. The checked runtime entry binds both selected
+identities before root reads/movement and preserves the consumer's cleanup
+contract. Packages preserve relocatable host C/headers; the optional runtime
+SDK has an explicit install target. No duplicate kernel/source-template path,
+v1 migration, reduction edit or new compiler runtime linkage is introduced.
+
+All 36 Hopper/Blackwell selections pass 792 scenarios per normal/sanitized
+mode, 30,368 consumer and 10,152 API mock checks per mode. All 144 mapped
+boundaries are independently dumped with source; 108 native host mutations,
+40 mode/extraction refusals and nine standalone scope/ABI/FP/v1/publication
+refusals pass. All 135 focused tests and installed SDK/public C ABI/shared
+library checks pass. Mode variants preserve source PUs and device code;
+72 PTX/cubin files are identical to the authenticated prior producer.
+Its 288 numerical datasets / 26,240 oracle checks are inherited evidence,
+not new execution. Runtime tests use CUDA API/sentinel mocks, not a GPU.
+
+Compiler-side LN4 is complete for the explicit checkpoint, not a claim of a
+general openpy `a.out` linking driver or deployed inference service. Deployment
+still supplies context/stream, registry, buffers, real SHA-256 and producer/
+consumer/quiescence hooks. General compiler sessions and native calibration
+remain separate; numerical/statistics/async refinements stay in LN5 and GPU
+certification in LN6.
+
+Accepted immutable package:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-host/sha256-6795f8abe579890512e833022cd6a6f7a9e935521bf93f5b437b0de03b98b795/`.
+Accepted final-path replay:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-host/replay/sha256-97ab80aafdea8632550eb099f47419584abbc8ed07eac7af99c326356bc38d13/`.
+Replay authenticates the package and request/CUDA dependencies, reuses the
+frozen compiler binaries and rebuilds host/runtime and offline CUDA artifacts.
+Compiler rebuild/shared-boundary proof is authenticated primary evidence,
+not a claimed new compiler rebuild. All 36 cases, both sanitizer modes, 135
+focused tests and nine standalone refusal cases pass again. Comparisons cover
+864 byte-exact files, 648 files with only documented banner/review-root
+normalization, and 216 compact-trace/entry-identity joins. Every new evidence
+hash is checked against its actual input; raw streams and full dumps remain.
+The original source bundle omitted unchanged `whirl2c.h` from its include tree,
+although each compiled-entry package contained it. Its receipt remains untouched
+and unindexed. The accepted corrected package explicitly includes that header
+and failed-replay diagnostics. Review indexes/current links advanced only after
+successful replay. Representative evidence is under
+`review/sm_90-single-row-2/`: `host.c`, `kernel.cu`, full mapped pairs/diff,
+`host-dispatch.log`, `normal.execution.t` and `optimization.log`.
+
+Backward compatibility also passes the original consumer/adapter/base-runtime
+suites in normal and sanitized modes: 720 prior package/trace/report files
+match the accepted execution receipt exactly. No GPU verification is inferred.
+
 2026-10-29 LN4 host/service execution consumer accepted, implementation
 `e72d3f4c`:
 [Consumer detail v0.1](AI-COMPILER-LAYERNORM-EXECUTION-CONSUMER-v0.1.md).
