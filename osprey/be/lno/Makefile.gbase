@@ -201,6 +201,7 @@ BE_LNOPT_CXX_SRCS = \
   dsl_high_apply.cxx \
   tensor_high_lower.cxx \
   tensor_workload.cxx \
+  tensor_serving_schema.cxx \
   tensor_q1_program.cxx \
   tensor_schedule.cxx \
   tensor_attention_chunk_select.cxx \
@@ -589,3 +590,7 @@ dsl_q1_preopt.o dsl_high_quantized.o: $(BE_LNOPT_DIR)/dsl_high_quantized.h $(BE_
 tensor_workload.o: $(BE_DIR)/vho/tensor_workload.cxx $(BE_DIR)/vho/tensor_workload.h $(BE_DIR)/vho/tensor_kernel_lower.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 tensor_high_lower.o tensor_q1_program.o dsl_high_quantized.o dsl_q1_preopt.o lnodriver.o: $(BE_DIR)/vho/tensor_workload.h
+
+tensor_serving_schema.o: $(BE_DIR)/vho/tensor_serving_schema.cxx $(BE_DIR)/vho/tensor_serving_schema.h $(BE_DIR)/vho/tensor_workload.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+tensor_high_lower.o tensor_q1_program.o: $(BE_DIR)/vho/tensor_serving_schema.h

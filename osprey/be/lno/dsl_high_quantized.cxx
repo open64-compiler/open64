@@ -305,6 +305,7 @@ bool LNO_DSL_rebind_quantized_high(WN *entry,const VHO_TENSOR_PROGRAM &p,const D
 void LNO_DSL_print_quantized_high(FILE *file,const DSL_HIGH_QUANTIZED_FACTS &facts,const char *stage,bool live) {
     if(!file) return;
     VHO_tensor_print_workload(file,facts.Workload(),stage);
+    fprintf(file,"AI_Q3_SERVING 1 %s binding=unknown cache_scale_generations=unbound publication=unbound search=false dispatch=false\n",stage);
     unsigned indirect=0,unknown=0;
     for(unsigned i=0;i<facts.Accesses().size();++i) {indirect+=facts.Accesses()[i].indirect;unknown+=facts.Accesses()[i].operation==~0U;}
     fprintf(file,"AI_Q1_FACTS 1 %s live=%s post_preopt=%s storages=%lu loops=%lu accesses=%lu indirect=%u unknown_groups=%u search=false legality=not_proved\n",

@@ -4,6 +4,7 @@
  * Design: doc/AI-COMPILER-MLA-Q1-PRODUCTION-v1.0.md. */
 #include "tensor_q1_program.h"
 #include "tensor_workload.h"
+#include "tensor_serving_schema.h"
 #include "../../rapidjson/document.h"
 #include "../../rapidjson/writer.h"
 #include "../../rapidjson/stringbuffer.h"
@@ -103,6 +104,8 @@ bool VHO_q1_program_read(WN *entry,VHO_TENSOR_PROGRAM &out,std::string &why) {
 unsigned VHO_q1_restore_comments(WN *entry,const VHO_TENSOR_PROGRAM &p) {
     std::set<unsigned> ids;operations(entry,p,ids);WN *body=WN_func_body(entry);
     WN *first=WN_first(body);
+    WN *serving=WN_CreateComment(VHO_tensor_serving_explanation(p).c_str());
+    WN_Set_Linenum(serving,WN_Get_Linenum(entry));WN_INSERT_BlockBefore(body,first,serving);
     WN *workload=WN_CreateComment(VHO_tensor_workload_explanation(p).c_str());
     WN_Set_Linenum(workload,WN_Get_Linenum(entry));WN_INSERT_BlockBefore(body,first,workload);
     WN *contract=WN_CreateComment("Q1 semantic contract after PREOPT: exact byte sign/zero extension and promoted arithmetic; ordered F32 reductions. Gather bounds, checked index arithmetic, integral byte conversion and unique fresh updates guard unsafe operations. Status 0 succeeds, 1 refuses; discard partial scratch/results on refusal. Reshape aliases caller storage. Cache/scale versions and lifetimes are invocation-local; no serving publication, cross-head reuse or GPU permission is inferred.");
