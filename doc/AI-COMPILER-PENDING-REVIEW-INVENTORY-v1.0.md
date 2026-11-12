@@ -1,5 +1,10 @@
 # AI compiler pending-review inventory v1.0
 
+Publication update: this historical inventory is now mapped to the focused PRs in
+[AI-COMPILER-REVIEW-SERIES-v1.0.md](AI-COMPILER-REVIEW-SERIES-v1.0.md).
+Publication does not certify draft milestones; pre-existing uncommitted document
+edits remain preserved outside the series.
+
 Inventory source: local `codex/ai-layernorm-profitability` at
 `2ba92036c3f58e0b4725f600a3f5a7f1bce0710d`. Testing/service review base:
 `d69db73f298ac0ffb99b5da40f4965bd614412c6` (develop). The original branch has
