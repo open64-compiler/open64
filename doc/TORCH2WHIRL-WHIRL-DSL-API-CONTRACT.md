@@ -9,6 +9,11 @@ The goal is consistency: Python discovers source-language semantics and passes
 opaque handles; common/com owns WHIRL table construction, DSL image records,
 verification, mapped-image finalization, and durable IR representation.
 
+The [native tensor expression contract](AI-COMPILER-NATIVE-TENSOR-EXPRESSION-CONTRACT-v0.1.md)
+adds bounded static view/composition support for absorbed MLA. It reuses the
+existing explicit-result operator, formal/result and return APIs; no new bridge
+API or binary image layout is introduced.
+
 ## Layering
 
 ```text

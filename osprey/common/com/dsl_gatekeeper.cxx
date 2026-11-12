@@ -697,7 +697,8 @@ DSL_Gatekeeper_Required_Attributes
     }
     DSL_OPERATOR dsl_operator =
         (DSL_OPERATOR)descriptor->logical_operator;
-    BOOL exact_schema = dsl_operator == OPR_DSLREDUCESUM ||
+    BOOL exact_schema = DSL_tensor_expression_contract(dsl_operator, descriptor->version) ||
+                        dsl_operator == OPR_DSLREDUCESUM ||
                         dsl_operator == OPR_DSLSTABLESOFTMAX ||
                         dsl_operator == OPR_DSLMEANVARNORM ||
                         dsl_operator == OPR_DSLRESHAPE ||
@@ -963,7 +964,7 @@ DSL_Gatekeeper_Verify_Native_Node
                 if (i == 1)
                     second_operand_ty = source.ty;
                 if (shape_ready &&
-                    (dsl_operator == OPR_DSLMATMUL ||
+                    ((dsl_operator == OPR_DSLMATMUL && logical_opcode.effective_version < 3) ||
                      dsl_operator == OPR_DSLRESIDUALADD) &&
                     !DSL_Shape_Tensor_Compatible
                           (first_operand_ty, source.ty,
@@ -997,7 +998,7 @@ DSL_Gatekeeper_Verify_Native_Node
             if (i == 1)
                 second_operand_ty = WN_ty(operand);
             if (shape_ready &&
-                (dsl_operator == OPR_DSLMATMUL ||
+                ((dsl_operator == OPR_DSLMATMUL && logical_opcode.effective_version < 3) ||
                  dsl_operator == OPR_DSLRESIDUALADD) &&
                 !DSL_Shape_Tensor_Compatible
                       (first_operand_ty, WN_ty(operand),
@@ -1009,6 +1010,12 @@ DSL_Gatekeeper_Verify_Native_Node
         }
     }
 
+    if (DSL_tensor_expression_contract(dsl_operator, logical_opcode.effective_version) &&
+        (!shape_ready || !image_valid || !DSL_Gatekeeper_Shape_Valid
+              (dsl_operator, logical_opcode.effective_version,
+               &image_node, operand_types, result_ty)))
+        valid = DSL_Gatekeeper_Report(context, "%s.v%u static tensor expression contract is invalid",
+                    DSL_OPERATOR_name(dsl_operator), logical_opcode.effective_version);
     if (dsl_operator == OPR_DSLMEANVARNORM &&
         (!shape_ready || !image_valid || first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid

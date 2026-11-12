@@ -1932,7 +1932,152 @@ DSL_mean_variance_norm_result
          a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
 }
 
+/* Identify the additive static source contracts without broadening old versions. */
+BOOL
+DSL_tensor_expression_contract(DSL_OPERATOR op, UINT16 version)
+{
+    return (op >= OPR_DSLSUB && op <= OPR_DSLFILLLIKE && version == 1) ||
+           ((op == OPR_DSLMATMUL || op == OPR_DSLREDUCESUM) && version == 3);
+}
+
+/* Check both semantic dtype and its physical scalar carrier, without mutation. */
+static BOOL
+DSL_tensor_expression_dtype(TY_IDX ty, BOOL predicate)
+{
+    return DSL_Shape_Tensor_Core_Complete(ty) &&
+           strcmp(TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_DTYPE),
+                  predicate ? "bool" : "float32") == 0 &&
+           DSL_Shape_TY_Valid(TY_tensor_element_ty(ty)) &&
+           TY_mtype(TY_tensor_element_ty(ty)) == (predicate ? MTYPE_U1 : MTYPE_F4);
+}
+
+/* Merge trailing dimensions using NumPy broadcast rules; contradictions fail. */
+static BOOL
+DSL_tensor_expression_broadcast(std::vector<UINT64> *shape,
+                                const std::vector<UINT64> &other)
+{
+    UINT32 rank = std::max(shape->size(), other.size());
+    std::vector<UINT64> merged(rank, 1);
+    for (UINT32 offset = 0; offset < rank; ++offset) {
+        UINT64 left = offset < shape->size() ? (*shape)[shape->size()-1-offset] : 1;
+        UINT64 right = offset < other.size() ? other[other.size()-1-offset] : 1;
+        if (left != right && left != 1 && right != 1) return FALSE;
+        merged[rank-1-offset] = left == 1 ? right : left;
+    }
+    *shape = merged;
+    return TRUE;
+}
+
+/* Validate pure bounded FP32/predicate expressions before native result allocation.
+ * Contract: doc/AI-COMPILER-NATIVE-TENSOR-EXPRESSION-CONTRACT-v0.1.md.
+ * Declared dimensions are checked against operands, never trusted as inference. */
+BOOL
+DSL_tensor_expression_types_valid
+    (DSL_OPERATOR op, UINT16 version, const TY_IDX *operands, UINT32 count,
+     TY_IDX result_ty, const DSL_TENSOR_EXPRESSION_ATTRIBUTES *a)
+{
+    DSL_OPERATOR_INFO info;
+    if (!DSL_tensor_expression_contract(op, version) || a == NULL ||
+        operands == NULL || !DSL_Operator_Get_Info_Version(op, version, &info) ||
+        count != (UINT32)info.nkids) return FALSE;
+    std::vector< std::vector<UINT64> > shapes(count);
+    for (UINT32 i = 0; i < count; ++i) {
+        BOOL predicate = op == OPR_DSLLOGICALNOT || (op == OPR_DSLSELECT && i == 0);
+        if (!DSL_tensor_expression_dtype(operands[i], predicate) ||
+            !DSL_Shape_Static_Dimensions(operands[i], &shapes[i]) ||
+            shapes[i].empty() || shapes[i].size() > DSL_SHAPE_MAX_RANK) return FALSE;
+    }
+    BOOL predicate_result = op == OPR_DSLISFINITE || op == OPR_DSLGREATER ||
+                            op == OPR_DSLLOGICALNOT;
+    std::vector<UINT64> result;
+    if (!DSL_tensor_expression_dtype(result_ty, predicate_result) ||
+        !DSL_Shape_Static_Dimensions(result_ty, &result) ||
+        result.empty() || result.size() > DSL_SHAPE_MAX_RANK) return FALSE;
+    std::vector<UINT64> expected = shapes[0];
+    if (op == OPR_DSLSUB || op == OPR_DSLGREATER || op == OPR_DSLSELECT) {
+        if (a->broadcast_rule == NULL || strcmp(a->broadcast_rule, "numpy") != 0)
+            return FALSE;
+        for (UINT32 i = 1; i < count; ++i)
+            if (!DSL_tensor_expression_broadcast(&expected, shapes[i])) return FALSE;
+    } else if (op == OPR_DSLEXP || op == OPR_DSLLOG) {
+        if (a->fp_semantics == NULL || strcmp(a->fp_semantics, "source_unresolved") != 0)
+            return FALSE;
+    } else if (op == OPR_DSLFILLLIKE) {
+        if (a->value_bits == NULL || strlen(a->value_bits) != 8) return FALSE;
+        UINT32 bits = 0;
+        for (UINT32 i = 0; i < 8; ++i) {
+            char c = a->value_bits[i];
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return FALSE;
+            bits = (bits << 4) | (c <= '9' ? c - '0' : c - 'a' + 10);
+        }
+        if ((bits & 0x7f800000U) == 0x7f800000U && (bits & 0x007fffffU) != 0)
+            return FALSE;  /* NaN payload literals are outside this contract. */
+    } else if (op == OPR_DSLREDUCEMAX || op == OPR_DSLREDUCESUM) {
+        INT32 axis;
+        if (!DSL_Shape_Parse_Signed(a->axis, &axis) ||
+            axis != (INT32)expected.size() - 1 || a->keepdim == NULL ||
+            a->accum_dtype == NULL || strcmp(a->accum_dtype, "float32") != 0 ||
+            a->reassociate == NULL || strcmp(a->reassociate, "false") != 0) return FALSE;
+        if (strcmp(a->keepdim, "true") == 0) expected[axis] = 1;
+        else if (strcmp(a->keepdim, "false") == 0) expected.pop_back();
+        else return FALSE;
+    } else if (op == OPR_DSLMATMUL) {
+        if (a->batch_rule == NULL || strcmp(a->batch_rule, "numpy") != 0 ||
+            a->accum_dtype == NULL || strcmp(a->accum_dtype, "float32") != 0 ||
+            a->transpose_kid0 == NULL || strcmp(a->transpose_kid0, "false") != 0 ||
+            a->transpose_kid1 == NULL || strcmp(a->transpose_kid1, "false") != 0 ||
+            shapes[0].size() < 2 || shapes[1].size() < 2) return FALSE;
+        std::vector<UINT64> right = shapes[1];
+        UINT64 m = expected[expected.size()-2], k = expected.back(), n = right.back();
+        if (k != right[right.size()-2]) return FALSE;
+        expected.resize(expected.size()-2);
+        right.resize(right.size()-2);
+        if (!DSL_tensor_expression_broadcast(&expected, right)) return FALSE;
+        expected.push_back(m);
+        expected.push_back(n);
+    }
+    return DSL_Shape_Dimensions_Equal(expected, result);
+}
+
+/* Adapt mapped attributes to the identical preflight predicate after reopening. */
+static BOOL
+DSL_tensor_expression_result
+    (const DSL_IR_NODE_RECORD *node, const std::vector<TY_IDX> &operands,
+     TY_IDX result_ty, UINT16 version)
+{
+    if (node == NULL || operands.empty()) return FALSE;
+    DSL_TENSOR_EXPRESSION_ATTRIBUTES a;
+    memset(&a, 0, sizeof(a));
+    DSL_Shape_Node_Attribute(node, "attr.axis", &a.axis);
+    DSL_Shape_Node_Attribute(node, "attr.keepdim", &a.keepdim);
+    DSL_Shape_Node_Attribute(node, "attr.broadcast_rule", &a.broadcast_rule);
+    DSL_Shape_Node_Attribute(node, "attr.fp_semantics", &a.fp_semantics);
+    DSL_Shape_Node_Attribute(node, "attr.value_bits", &a.value_bits);
+    DSL_Shape_Node_Attribute(node, "attr.accum_dtype", &a.accum_dtype);
+    DSL_Shape_Node_Attribute(node, "attr.reassociate", &a.reassociate);
+    DSL_Shape_Node_Attribute(node, "attr.batch_rule", &a.batch_rule);
+    DSL_Shape_Node_Attribute(node, "attr.transpose_kid0", &a.transpose_kid0);
+    DSL_Shape_Node_Attribute(node, "attr.transpose_kid1", &a.transpose_kid1);
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
+    if (!DSL_IR_Image_Get_Opcode_Descriptor(node->opcode_descriptor_id, &descriptor))
+        return FALSE;
+    return DSL_tensor_expression_types_valid
+        ((DSL_OPERATOR)descriptor.logical_operator, version, &operands[0],
+         operands.size(), result_ty, &a);
+}
+
 static const DSL_SHAPE_RULE_ENTRY DSL_shape_rules[] = {
+    { OPR_DSLSUB, 1, DSL_tensor_expression_result },
+    { OPR_DSLEXP, 1, DSL_tensor_expression_result },
+    { OPR_DSLLOG, 1, DSL_tensor_expression_result },
+    { OPR_DSLREDUCEMAX, 1, DSL_tensor_expression_result },
+    { OPR_DSLISFINITE, 1, DSL_tensor_expression_result },
+    { OPR_DSLGREATER, 1, DSL_tensor_expression_result },
+    { OPR_DSLSELECT, 1, DSL_tensor_expression_result },
+    { OPR_DSLLOGICALNOT, 1, DSL_tensor_expression_result },
+    { OPR_DSLFILLLIKE, 1, DSL_tensor_expression_result },
+    { OPR_DSLMATMUL, 3, DSL_tensor_expression_result },
+    { OPR_DSLREDUCESUM, 3, DSL_tensor_expression_result },
     { OPR_DSLMEANVARNORM, 1, DSL_mean_variance_norm_result },
     { OPR_DSLMEANVARNORM, 2, DSL_mean_variance_norm_result },
     { OPR_DSLSTABLESOFTMAX, 1, DSL_Shape_Stable_Softmax_Result },
@@ -3253,6 +3398,16 @@ DSL_Shape_Infer_Operator
     /* These local propagation rules can derive a candidate shape before full
      * legality is known; the owning caller must still run structural admission. */
     BOOL valid = FALSE;
+    if (DSL_tensor_expression_contract(input->dsl_operator, input->version)) {
+        std::vector<TY_IDX> operands(input->operand_types,
+                                    input->operand_types + input->operand_count);
+        valid = DSL_tensor_expression_result(input->node, operands,
+                                             input->result_ty, input->version) &&
+                DSL_Shape_Fact_From_Type(input->result_ty, result);
+        if (!valid)
+            result->state = DSL_SHAPE_FACT_CONTRADICTION;
+        return valid ? DSL_SHAPE_INFERENCE_COMPLETE : DSL_SHAPE_INFERENCE_CONTRADICTION;
+    }
     switch (input->dsl_operator) {
     case OPR_DSLMEANVARNORM: {
         std::vector<TY_IDX> operands(input->operand_types,

@@ -2,6 +2,10 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/* Standalone frontend orchestration only; Python owns model/sample factories.
+ * See osprey/torch2whirl/MLA-INGESTION-PLAN.md. No backend coupling or WHIRL
+ * table construction is introduced by the factory-input handoff. */
+
 //-*-c++-*-
 
 #include "torch2whirl_driver.h"
@@ -147,6 +151,9 @@ T2W_DRIVER::Parse_Options (int argc, char **argv)
     return options;
 }
 
+/* Check driver-owned paths, then let the Python frontend resolve and validate
+ * either CLI sample descriptors or the module's open64_sample_inputs factory.
+ * This method creates no IR and propagates frontend failure without a product. */
 T2W_EXIT_CODE
 T2W_DRIVER::Run_Conversion (const OPTIONS &options)
 {
@@ -157,11 +164,6 @@ T2W_DRIVER::Run_Conversion (const OPTIONS &options)
 
     if (options.output_path.empty()) {
         _err << "torch2whirl: missing output WHIRL path\n";
-        return T2W_EXIT_CODE::USAGE_ERROR;
-    }
-
-    if (options.sample_inputs.empty()) {
-        _err << "torch2whirl: missing --sample-input\n";
         return T2W_EXIT_CODE::USAGE_ERROR;
     }
 
@@ -273,13 +275,14 @@ T2W_DRIVER::Build_Pythonpath () const
     return pythonpath;
 }
 
+/* Describe the driver syntax; sample operands may instead come from the module. */
 void
 T2W_DRIVER::Print_Usage (std::ostream &stream) const
 {
     stream << "usage: torch2whirl [--help] [--version] "
            << "[--entry <name>] [--model-factory <name>] "
            << "[--single-pu|--multiple-pu] "
-           << "[--backend mock|native] --sample-input shape:<dims> "
+           << "[--backend mock|native] [--sample-input shape:<dims>] "
            << "-o|--output <output.whirl> <input.py>\n";
 }
 

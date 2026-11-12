@@ -119,6 +119,10 @@ class WhirlExportInterpreter:
             normalization = try_export_centered_affine_normalization(self, model, inputs, captured_graph)
             if normalization is not None:
                 return normalization
+            from .tensor_ingestion import try_export_tensor_expressions
+            expressions = try_export_tensor_expressions(self, model, inputs, captured_graph)
+            if expressions is not None:
+                return expressions
 
         model_name = self._model_name(model)
         entry_name = self._model_class_name(model)

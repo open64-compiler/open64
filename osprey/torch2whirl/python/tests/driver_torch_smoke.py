@@ -294,6 +294,25 @@ def _check_invalid_graph_rejected(driver: Path, tmpdir: Path) -> None:
         raise AssertionError("verifier-invalid driver run wrote an artifact")
 
 
+def _check_module_sample_inputs(driver: Path, tmpdir: Path) -> None:
+    """A module factory supplies samples; otherwise Python rejects no-sample runs."""
+    model = tmpdir / "factory_inputs.py"
+    output = tmpdir / "factory_inputs.B"
+    _write_model(model)
+    missing = _run_driver(driver, model, output, ())
+    if missing.returncode == 0 or output.exists():
+        raise AssertionError("driver accepted a model without any sample provider")
+    if "sample input is required" not in missing.stderr:
+        raise AssertionError("missing-input failure was not delegated to Python")
+    with model.open("a") as stream:
+        stream.write("\n\ndef open64_sample_inputs():\n"
+                     "    return (torch.ones(1, 3),)\n")
+    provided = _run_driver(driver, model, output, ())
+    if provided.returncode:
+        raise AssertionError(provided.stderr)
+    _check_artifact(output)
+
+
 def main() -> int:
     _require_torch()
 
@@ -319,6 +338,7 @@ def main() -> int:
             return completed.returncode
 
         _check_artifact(output_path)
+        _check_module_sample_inputs(driver, tmpdir)
         _check_invalid_graph_rejected(driver, tmpdir)
 
         resnet_path = tmpdir / "resnet.py"
