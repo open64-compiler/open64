@@ -83,6 +83,10 @@
 #include <string>
 #include <vector>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+#include <errno.h>
 #ifndef __MINGW32__
 #include <libgen.h>
 #endif
@@ -1790,6 +1794,8 @@ static void Update_EHRegion_Inito (WN *pu) {
  * never recertify a changed product inside a source printer. Other inputs
  * retain their existing pipeline. No new be.so dependency is introduced.
  * Contract: doc/AI-COMPILER-SEARCH-M5-DEVICE-BRIDGE-v1.0.md. */
+#include "selected_device_driver.inc"
+
 static BOOL
 BE_tensor_selected_cuda_input(WN *pu)
 {
@@ -1922,6 +1928,7 @@ Backend_Processing (PU_Info *current_pu, WN *pu)
     }
 
     /* First round output (.N file, w2c, w2f, etc.) */
+    BE_DSL_selected_device(current_pu,pu);
     Set_Error_Phase ( "Post LNO Processing" );
     Post_LNO_Processing (current_pu, pu);
     if (!(Run_wopt || (Run_vsaopt || Run_ipsaopt)) && !Run_cg) return;

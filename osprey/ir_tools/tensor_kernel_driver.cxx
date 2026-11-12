@@ -37,6 +37,10 @@
 #include "tensor_schedule_source.h"
 #ifdef OPEN64_TENSOR_SELECTED_BRIDGE
 #include "tensor_selected_bridge.h"
+#include "../be/lno/dsl_high_binding_keys.h"
+#ifdef OPEN64_TENSOR_BRIDGE_TEST
+#include "dep_graph.h"
+#endif
 #include "tensor_selected_key.h"
 #include "be_symtab.h"
 #endif
@@ -317,7 +321,10 @@ bool remove_barrier(WN *n,const char *name="__syncthreads") {
 int main(int argc,char **argv) {
     try {
 #ifdef OPEN64_TENSOR_SELECTED_BRIDGE
-        if(argc>=2 && (!strcmp(argv[1],"bridge") || !strcmp(argv[1],"bridge-audit") || !strcmp(argv[1],"bridge-ptx") || !strcmp(argv[1],"bridge-code-key")))
+#ifdef OPEN64_TENSOR_BRIDGE_TEST
+        if(argc>=2 && (!strcmp(argv[1],"bridge-test-multiple") || !strcmp(argv[1],"bridge-test-graph"))) return selected_bridge_command(argc,argv);
+#endif
+        if(argc>=2 && (!strcmp(argv[1],"bridge") || !strcmp(argv[1],"bridge-production") || !strcmp(argv[1],"bridge-audit") || !strcmp(argv[1],"bridge-ptx") || !strcmp(argv[1],"bridge-code-key")))
             return selected_bridge_command(argc,argv);
 #endif
         if(argc==6 && !strcmp(argv[1],"high")) {

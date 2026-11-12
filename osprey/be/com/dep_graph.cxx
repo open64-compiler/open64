@@ -434,6 +434,11 @@ void ARRAY_DIRECTED_GRAPH16::Print(FILE *fp, INT)
 
 }
 
+/* Finalize the existing mapped dependence image against the tree just written.
+ * An LNO graph can retain a vertex after its WN was removed. Only WNs present
+ * in that tree have a nonzero offset in the fresh writer map. Compact those
+ * vertices and their incident edges together; preserve the existing image ABI.
+ * Contract: doc/AI-COMPILER-SEARCH-M6-PRODUCTION-ROUTE-v1.0.md. */
 extern "C" void
 Depgraph_Write (void *depgraph, Output_File *fl, WN_MAP off_map)
 {
@@ -454,7 +459,8 @@ Depgraph_Write (void *depgraph, Output_File *fl, WN_MAP off_map)
   x = 1;
   for (v = 1; v <= vmax; v++) {
     // vertex is still in graph and there is some wn associated with this vertex
-    if (g->Vertex_Is_In_Graph(v) && g->Get_Wn(v) != NULL) {
+    if (g->Vertex_Is_In_Graph(v) && g->Get_Wn(v) != NULL &&
+        WN_MAP32_Get(off_map, g->Get_Wn(v)) != 0) {
       vertex_map[v] = x;
       x += 1;
     } else {
@@ -515,6 +521,12 @@ Depgraph_Write (void *depgraph, Output_File *fl, WN_MAP off_map)
 
 #define WORD_ALIGNED(sz)	(((sz) % 4) == 0 ? (sz) : (sz)+(4-((sz)%4)))
 
+/* Read the unchanged dependence layout, compacting only legacy zero-offset
+ * vertices from the former writer bug. Such a vertex has no executable WN;
+ * remove its incident edges through the same remapping as the corrected
+ * writer. Never rewrite the input or discard the surviving graph. Bounds
+ * failures return NULL before an unavailable tuple is dereferenced.
+ * Contract: doc/AI-COMPILER-SEARCH-M6-PRODUCTION-ROUTE-v1.0.md. */
 extern "C" void *
 Depgraph_Read (char *cur_addr, char *end_addr, char *wn_base)
 {
@@ -524,6 +536,11 @@ Depgraph_Read (char *cur_addr, char *end_addr, char *wn_base)
   Elf64_Word node_offset;
   DEP_STRUCT dep;
   WN *node;
+  VINDEX16 *vertex_map;
+
+  if (end_addr < cur_addr ||
+      end_addr - cur_addr < sizeof(VINDEX16) + sizeof(EINDEX16))
+    return 0;
 
   /* get the numbers of vertices and edges */
   vmax = *(VINDEX16 *)cur_addr;
@@ -531,45 +548,63 @@ Depgraph_Read (char *cur_addr, char *end_addr, char *wn_base)
   emax = *(EINDEX16 *)cur_addr;
   cur_addr += (sizeof(EINDEX16));
 
+  cur_addr = (char*) WORD_ALIGNED((INTPTR)cur_addr);
+  if (cur_addr > end_addr ||
+      (size_t)(end_addr - cur_addr) < (size_t)vmax * sizeof(Elf64_Word))
+    return 0;
+
   g = CXX_NEW(ARRAY_DIRECTED_GRAPH16(vmax+1, emax+1, WN_MAP_DEPGRAPH,
 				     DEP_ARRAY_GRAPH), Malloc_Mem_Pool);
+  vertex_map = CXX_NEW_ARRAY(VINDEX16, vmax + 1, Malloc_Mem_Pool);
+  vertex_map[0] = 0;
 
   /* create the vertices */
-  cur_addr = (char*) WORD_ALIGNED((INTPTR)cur_addr);
   for (v = 1; v <= vmax; v++) {
 
     node_offset = *(Elf64_Word *)cur_addr;
     cur_addr += (sizeof(Elf64_Word));
 
+    if (node_offset == 0) {
+      vertex_map[v] = 0;
+      continue;
+    }
     node = (WN *)(wn_base + node_offset);
-    BOOL result = g->Add_Vertex(node);
-    Is_True((result == v), ("New vertex not in order\n"));
+    vertex_map[v] = g->Add_Vertex(node);
+    Is_True((vertex_map[v] != 0), ("Unable to restore dependence vertex\n"));
   }
 
   /* read the edges */
   for (v = 1; v <= vmax; v++) {
 
     while (1) {
+      if (cur_addr > end_addr || end_addr - cur_addr < sizeof(VINDEX16)) {
+        CXX_DELETE_ARRAY(vertex_map, Malloc_Mem_Pool);
+        CXX_DELETE(g, Malloc_Mem_Pool);
+        return 0;
+      }
       ve = *(VINDEX16 *)cur_addr;
       cur_addr += (sizeof(VINDEX16));
       if (ve == 0) break;
 
       cur_addr = (char *)WORD_ALIGNED((INTPTR)cur_addr);
 
+      if (ve > vmax || cur_addr > end_addr ||
+          end_addr - cur_addr < sizeof(DEP_STRUCT)) {
+        CXX_DELETE_ARRAY(vertex_map, Malloc_Mem_Pool);
+        CXX_DELETE(g, Malloc_Mem_Pool);
+        return 0;
+      }
+
       dep = *(DEP_STRUCT *)cur_addr;
       cur_addr += (sizeof(DEP_STRUCT));
 
 
-      /* check for errors */
-      if ((ve > vmax) || (cur_addr > end_addr)) {
-	CXX_DELETE(g, Malloc_Mem_Pool);
-	return 0;
-      }
-
-      g->Add_Edge(v, ve, dep.Dep,dep.Is_Must);
+      if (vertex_map[v] && vertex_map[ve])
+        g->Add_Edge(vertex_map[v], vertex_map[ve], dep.Dep,dep.Is_Must);
     }
   }
 
+  CXX_DELETE_ARRAY(vertex_map, Malloc_Mem_Pool);
   return (void *)g;
 }
 

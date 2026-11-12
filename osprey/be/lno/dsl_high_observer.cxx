@@ -3,6 +3,7 @@
  * compiler context headers or allocation services are linked from this object.
  * Design: doc/AI-COMPILER-SEARCH-M2C-OBSERVER-v1.0.md. */
 #include "dsl_high_observer.h"
+#include "dsl_high_binding_keys.h"
 #include <sstream>
 
 /* Check full source/fact/context joins, complete ABI storage census, and typed
@@ -58,18 +59,5 @@ bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_
  * No estimates, native allocation or mutation occurs; application compares all
  * fields against the sealed observer result before any selected construction. */
 void LNO_DSL_search_report_keys(const DSL_HIGH_SEARCH_INPUT &input,DSL_HIGH_SEARCH_REPORT &result) {
-    result.manifest_key = VHO_tensor_recipe_key(input.algorithm);
-    const VHO_TENSOR_GPU_PROFILE &gpu = input.gpu;
-    const DSL_HARDWARE_RESOURCE_RECORD &resources = gpu.resources;
-    std::ostringstream resource_key, model_key;
-    resource_key << gpu.id.size() << ':' << gpu.id << '/' << gpu.architecture << '/' << gpu.sms << '/'
-        << gpu.registers_per_thread << '/' << gpu.target_ctas_per_sm << '/' << gpu.scratch_budget;
-    const uint64_t values[] = {resources.max_blocks,resources.max_warps,resources.max_threads,resources.max_threads_per_cta,
-        resources.registers_per_sm,resources.max_registers_per_thread,resources.register_quantum,resources.register_warp_quantum,
-        resources.shared_capacity,resources.shared_budget,resources.shared_quantum,resources.shared_reserved};
-    for (unsigned i = 0; i < 12; ++i) resource_key << '/' << values[i];
-    model_key << "mla-additive-waves-v1/" << input.model.id.size() << ':' << input.model.id << '/'
-        << input.model.architecture << '/' << input.model.provenance << "/reference_cycles";
-    for (unsigned i = 0; i < VHO_MLA_COST_FIELDS; ++i) model_key << '/' << input.model.values[i];
-    result.resource_key = resource_key.str(); result.model_key = model_key.str();
+    LNO_DSL_fill_search_keys(input,result);
 }

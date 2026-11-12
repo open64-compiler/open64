@@ -19,7 +19,16 @@ inline std::string VHO_tensor_selected_key(WN *root) {
         const char *v=ST_tensor_metadata(WN_st_idx(root),keys[i]);
         if(!v || !*v) throw std::runtime_error("native_selected_missing_binding");
         std::string s=v;key<<s.size()<<':'<<s<<';';
-    }return key.str();
+    }
+    /* Optional extension preserves legacy M5 seal spelling. When present it
+     * binds the original manifest after M4 replaces source/analysis identities;
+     * deleting or changing it invalidates the complete accepted key. */
+    const char *production=ST_tensor_metadata(WN_st_idx(root),"tensor.high.production.input");
+    if(production) {
+        if(!*production) throw std::runtime_error("native_selected_empty_production_binding");
+        std::string text=production;key<<"production;"<<text.size()<<':'<<text<<';';
+    }
+    return key.str();
 }
 
 /* Bind the worker level, fixed recipe, launch/storage and protocol facts to
