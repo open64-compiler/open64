@@ -113,9 +113,10 @@ public:
         _out<<"\n  {\n";
         if(k.mapping>=3) {
             const VHO_TENSOR_ATTENTION &a=_plan.attention;
-            _out<<"    "<<(_p.register_latent?"register_":"")<<(k.mapping==3?"fused_attention_to<":"merge_attention_to<")<<a.batch<<","<<a.heads<<","<<a.length<<","<<a.rank;
+            _out<<"    "<<(k.threads<128?"block_":_p.register_latent?"register_":"")<<(k.mapping==3?"fused_attention_to<":"merge_attention_to<")<<a.batch<<","<<a.heads<<","<<a.length<<","<<a.rank;
             if(k.mapping==3) _out<<","<<a.rope<<","<<k.split_width<<","<<k.chunks<<","<<(k.stage==1?"true":"false");
             else _out<<","<<k.chunks;
+            if(k.threads<128) _out<<","<<k.threads;
             _out<<">("<<pointer(_p,k.output)<<".data";
             if(k.mapping==3) {
                 UINT32 ids[]={a.q,a.qr,a.cache,a.rope_cache,a.mask};

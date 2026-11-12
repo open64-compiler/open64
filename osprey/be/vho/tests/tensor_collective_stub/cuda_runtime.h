@@ -25,6 +25,7 @@ class OPEN64_HOST_BARRIER {
     unsigned _waiting=0,_epoch=0,_participants;
 public:
     explicit OPEN64_HOST_BARRIER(unsigned count):_participants(count) {}
+    void Reset(unsigned count) {std::lock_guard<std::mutex> lock(_lock);if(_waiting) std::abort();_participants=count;}
     void Wait() {
         std::unique_lock<std::mutex> lock(_lock);unsigned epoch=_epoch;
         if(++_waiting==_participants) {_waiting=0;++_epoch;_changed.notify_all();return;}
@@ -46,11 +47,12 @@ static float __shfl_down_sync(unsigned mask,float value,unsigned delta,int width
     open64_warps[tid/32]->Wait();return result;
 }
 static void __syncthreads() {open64_cta.Wait();}
+static void __syncwarp(unsigned mask) {if(mask!=0xffffffffU) std::abort();open64_warps[threadIdx.x/32]->Wait();}
 /* Persistent workers execute all blocks; the final barrier isolates CTAs. */
 template<class FUNCTION> static void open64_host_launch(unsigned grid,unsigned block,FUNCTION function,bool reverse=false) {
-    if(block!=128) std::abort();std::vector<std::thread> workers;
-    for(unsigned worker=0;worker<128;++worker) workers.emplace_back([&,worker] {
-        threadIdx.x=reverse?127-worker:worker;
+    if(block!=32 && block!=64 && block!=128) std::abort();open64_cta.Reset(block);std::vector<std::thread> workers;
+    for(unsigned worker=0;worker<block;++worker) workers.emplace_back([&,worker] {
+        threadIdx.x=reverse?block-1-worker:worker;
         for(unsigned i=0;i<grid;++i) {
             blockIdx.x=reverse?grid-1-i:i;function();open64_cta.Wait();
         }

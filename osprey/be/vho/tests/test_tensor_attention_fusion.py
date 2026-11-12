@@ -129,8 +129,17 @@ class AttentionFusionTests(unittest.TestCase):
             self.assertFalse(rejected.exists())
             self.assertIn('register_4_columns_per_warp',manifest.read_text())
             self.assertNotIn('attention_shared_cache_tile',(self.root/'kernels.cu').read_text())
-            self.assertEqual(len(re.findall(r'__syncthreads\s*\(', (self.root/'kernels.cu').read_text())),10 if split and length>split else 5)
+            local=next(k for k in launch['kernels'] if int(k['operation'])==33)
+            block=int(local['block_x'])
+            self.assertEqual(block,split if gpu is not None and split in (32,64) else 128)
+            self.assertEqual(len(re.findall(r'__syncthreads\s*\(', (self.root/'kernels.cu').read_text())),
+                             (0 if block==32 else 5)+(5 if split and length>split else 0))
+            self.assertEqual(len(re.findall(r'(?m)^\s*__syncwarp\s*\(', (self.root/'kernels.cu').read_text())),3 if block==32 else 0)
         if gpu is not None:
+            for mode in ['audit-attention-block']+(['audit-warp-mask','audit-warp-prototype','audit-warp-barrier'] if block==32 else []):
+                rejected=self.root/(mode+'.json')
+                self.run_tool(self.lowerer,mode,after,recipe,rejected,success=False)
+                self.assertFalse(rejected.exists())
             rejected=self.root/'selection-corrupt.json'
             self.run_tool(self.lowerer,'audit-attention-selection',after,recipe,rejected,success=False)
             self.assertFalse(rejected.exists())

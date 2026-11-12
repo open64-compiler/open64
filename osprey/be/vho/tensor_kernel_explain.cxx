@@ -202,7 +202,8 @@ public:
             }
         }
         UINT64 rows=a.batch*a.heads,span=_p.split_width && a.length>_p.split_width?_p.split_width:a.length;
-        UINT64 chunks=(a.length+span-1)/span,capacity=((span+127)/128)*128;
+        UINT64 quantum=_p.chunk_policy==3 && _p.split_width && span<=64?span:128;
+        UINT64 chunks=(a.length+span-1)/span,capacity=((span+quantum-1)/quantum)*quantum;
         UINT64 old_probability_groups=a.length>=32?(a.rank+3)/4:a.rank;
         text<<"PERFORMANCE COMPARISON BASELINE: the same captured DAG with the previous cooperative score-buffer cuts.\n";
         text<<"Total launches "<<old_launches<<" -> "<<_plan.kernels.size()<<"; global internal allocation bytes "<<old_bytes<<" -> "<<selected_bytes<<".\n";
@@ -228,7 +229,84 @@ public:
     }
     /* Describe the fused score/softmax/latent stage and its tuple merge from
      * the owning phase's selected facts, never from CUDA spelling heuristics. */
+    /* Narrow physical ownership is a versioned VHO decision. Keep legacy
+     * descriptions exact so already sealed v1/v2 recipes remain reproducible. */
+    void ExplainNarrowBlockStage(const VHO_TENSOR_KERNEL &k) {
+        const VHO_TENSOR_ATTENTION &a=_plan.attention;std::ostringstream text;
+        UINT64 rows=a.batch*a.heads,warps=k.threads/32,columns=warps*4;
+        text<<"FUSED ATTENTION: chunk-local attention; NARROW BLOCK OWNERSHIP.\n"
+            <<"Launch "<<VHO_tensor_grid(_p,k)<<" CTAs of "<<k.threads<<" threads ("<<warps
+            <<" full warp(s)); selected shared storage "<<VHO_tensor_shared_bytes(_p,k)<<" bytes per CTA.\n"
+            <<"CTA row = block modulo "<<rows<<"; chunk = block / "<<rows<<". Chunk interval [c*"
+            <<k.split_width<<",min((c+1)*"<<k.split_width<<","<<a.length<<")).\n"
+            <<"Each thread scores local token tid; full chunks have no block-padding tokens. Tail reads are guarded.\n"
+            <<"score = scale*(dot(projected_query,latent_cache[token])+dot(rope_query,rope_cache[token])).\n"
+            <<"Both dots keep ascending F32 K order. Mask-false and tail slots store -infinity without source reads.\n"
+            <<"Shared score capacity "<<k.split_width<<" is overwritten with exp(score-safe_max), then normalized probabilities.\n"
+            <<"Max and denominator use full-mask shuffle-down trees at offsets 16,8,4,2,1; every lane participates.\n";
+        if(warps==1) text<<"ONE-WARP STATISTICS: lane zero directly publishes maximum/safe maximum or denominator.\n"
+            <<"__syncwarp(0xffffffff) publishes each statistic before other lanes read it. A third warp fence publishes normalized weights.\n"
+            <<"Three unconditional warp publication barriers, zero CTA barriers; no cross-warp partial array fold is needed.\n"
+            <<"Explicit memory ordering is required under independent thread scheduling; lockstep is not assumed.\n";
+        else text<<"TWO-WARP STATISTICS: lane zero of each warp publishes one summary. A CTA barrier publishes both;\n"
+            <<"thread zero folds exactly two summaries in ascending warp order and publishes the statistic with a second CTA barrier.\n"
+            <<"Max and denominator require four CTA barriers; normalized-weight publication adds the fifth.\n"
+            <<"Barrier count remains five, but only 64 threads participate and neutral scoring warps disappear.\n";
+        text<<"TOKEN OWNERSHIP WALKTHROUGH: tid=32*warp+lane. Scoring uses tid, whereas each latent-column warp visits lane,lane+32,... .\n";
+        if(warps==2) text<<"For a full width-64 chunk, warp 0 scores tokens 0..31 and warp 1 scores tokens 32..63.\n"
+            <<"During latent accumulation both warps read probabilities for tokens 0..63, but they own different columns.\n"
+            <<"Lane 0 in either warp visits tokens 0,32; lane 31 visits 31,63. Token duplication across column warps computes different outputs.\n"
+            <<"CTA PHASES: (1) publish two warp maxima; (2) publish thread zero's raw/safe maximum;\n"
+            <<"(3) publish two warp denominator sums; (4) publish thread zero's denominator; (5) publish normalized probabilities.\n";
+        else text<<"For a full width-32 chunk, tid=lane scores token lane. Each column group revisits those same 32 probabilities.\n"
+            <<"WARP PHASES: (1) publish lane zero's raw/safe maximum; (2) publish lane zero's denominator;\n"
+            <<"(3) publish normalized probabilities. All 32 lanes reach each full-mask fence, even for a masked or one-token chunk.\n"
+            <<"The third fence preserves the canonical immutable-probability publication contract; no claim of minimal possible synchronization is made.\n";
+        text<<"The statistics allocation contains eight F32 slots: raw maximum [4], safe maximum [5], denominator [6].\n"
+            <<"A two-warp block also uses [0] and [1] for warp summaries; a one-warp block skips that cross-warp fold.\n"
+            <<"Selected local storage = 4*("<<k.split_width<<" score/weight slots + 8 statistics slots) = "
+            <<VHO_tensor_shared_bytes(_p,k)<<" bytes. Backend allocation can shrink unused statistics slots.\n";
+        text<<"REGISTER ACCUMULATION: warp w owns columns group*"<<columns<<"+w*4+j, j=0..3.\n"
+            <<"For R="<<a.rank<<", there are ceil(R/"<<columns<<")="<<(a.rank+columns-1)/columns<<" column groups.\n"
+            <<"Lane l visits tokens l,l+32,... within the actual chunk, reusing each probability for four lane-private F32 sums.\n"
+            <<"No shared cache tile or latent-accumulation barrier exists. Every lane executes all five shuffle rounds for all four sums;\n"
+            <<"lane zero writes valid columns. Column-tail predicates guard reads/stores, never collective participation.\n"
+            <<"A width-64 lane visits l and l+32; a width-32 lane visits l once on a full chunk.\n"
+            <<"Only tuple [m_c,d_c,z_c[0..R-1]] is written at (c*"<<rows<<"+row)*(R+2). z_c is locally normalized.\n"
+            <<"Finite-max fallback is zero and nonpositive denominator fallback is one; empty chunks have d_c=0,z_c=0.\n"
+            <<"The separate 128-thread merge computes m=max m_c, t_c=d_c*exp(m_c-m) for nonempty chunks, D=sum t_c,\n"
+            <<"z=sum (t_c/D)*z_c and LSE=m+log(D). Select zero mass before exp for empty chunks to avoid 0*infinity.\n"
+            <<"All-empty rows return zero latent and -infinity LSE. Query/value projection and output stages are retained.\n"
+            <<"COST TRADEOFF: fewer padding exp/shared slots and fewer participating threads; at 32, cross-warp folds disappear.\n"
+            <<"Fewer warps also mean more column groups (R=16: two groups at 64, four at 32, versus one at 128).\n"
+            <<"Tuple traffic, chunk count and merge work are unchanged at a fixed width. Less local parallelism can offset the savings.\n"
+            <<"This AOT policy permits F32 regrouping; verify against the reference. No measured GPU speedup is asserted.\n";
+        text<<"COLUMN-GROUP WALKTHROUGH: zero the four lane-private sums at the start of each group, traverse its tokens,\n"
+            <<"reduce each sum to lane zero, store the four valid columns, then advance the group. Shared probabilities stay immutable.\n";
+        if(a.rank==16) {
+            if(warps==2) text<<"R=16, block=64: group 0 gives warp 0 columns 0..3 and warp 1 columns 4..7;\n"
+                <<"group 1 gives warp 0 columns 8..11 and warp 1 columns 12..15. Both warps participate in both groups.\n";
+            else text<<"R=16, block=32: warp 0 handles group 0 columns 0..3, group 1 columns 4..7,\n"
+                <<"group 2 columns 8..11, and group 3 columns 12..15, in sequence.\n";
+            text<<"Each group has four five-round warp trees: 20 shuffle calls per warp/group.\n"
+                <<"R=16 latent work per block is 4 warps*1 group*20 = 2 warps*2 groups*20 = 1 warp*4 groups*20 = 80 warp-level shuffle calls.\n"
+                <<"Only the distribution changes: each warp executes 20, 40 or 80 such calls at block sizes 128,64 or32.\n"
+                <<"This count excludes max/denominator trees and is not a cycle count. Fewer resident work warps can lengthen the critical path.\n";
+        }
+        UINT64 tail=a.length-UINT64(k.chunks-1)*k.split_width;
+        text<<"TAIL WALKTHROUGH: final chunk begins at "<<UINT64(k.chunks-1)*k.split_width<<", contains "<<tail
+            <<" real token(s), and has "<<k.split_width-tail<<" neutral score slots per row.\n"
+            <<"Neutral lanes skip source reads but remain in every shuffle/fence. Column tails similarly guard memory/stores without changing participation.\n";
+        if(tail==1) text<<"For an allowed finite one-token tail, local d_c=1 and z_c=that cache vector; the global merge weight still depends on its score.\n"
+            <<"If that token is masked, d_c=0 and z_c=0. A one-token chunk still executes the full synchronization and column-group structure.\n";
+        text<<"PARALLELISM TRADEOFF: the selected chunk count and CTA grid do not grow merely because the block shrinks.\n"
+            <<"At the same fixed width there are fewer launched warps, more sequential column groups, and the same compact tuple/merge traffic.\n"
+            <<"A supplied four-warp register allocation quantum may keep allocated registers per CTA unchanged for one/two-warp blocks.\n"
+            <<"CTA-goal coverage is not achieved warp occupancy. Compare complete-call GPU time with the retained 128-thread candidate.\n";
+        ExplainDependencies(k,text);Explain("STAGE SEMANTICS",text.str());
+    }
     void ExplainAttentionStage(const VHO_TENSOR_KERNEL &k) {
+        if(k.threads<128) {ExplainNarrowBlockStage(k);return;}
         const VHO_TENSOR_ATTENTION &a=_plan.attention;std::ostringstream text;
         UINT64 rows=a.batch*a.heads,capacity=(((k.mapping==3?k.split_width:k.chunks)+127)/128)*128;
         text<<"FUSED ATTENTION: "<<(k.mapping==3?(k.stage==1?"chunk-local attention":"complete short-context attention"):"stable rescaled chunk merge")<<".\n";
@@ -441,6 +519,32 @@ public:
     }
     /* Explain source-level work from the already selected ledger; no search. */
     void ExplainNarrowCosts(std::ostringstream &text,const VHO_TENSOR_CHUNK_CANDIDATE &winner) {
+        if(_p.chunk_policy==3 && (winner.width==32 || winner.width==64)) {
+            const VHO_TENSOR_ATTENTION &a=_plan.attention;UINT64 real=a.batch*a.heads*a.length;
+            text<<"NARROW-KERNEL COST WALKTHROUGH: selected width "<<winner.width<<", block "<<winner.threads<<" threads.\n";
+            for(size_t i=0;i<_plan.chunk_selection.candidates.size();++i) {
+                const VHO_TENSOR_CHUNK_CANDIDATE &c=_plan.chunk_selection.candidates[i];
+                if(!c.width || c.width>128) continue;
+                UINT64 slots=c.ctas*((c.width+c.threads-1)/c.threads)*c.threads;
+                text<<"LOCAL COST width="<<c.width<<" block_x="<<c.threads<<" chunks="<<c.chunks<<" CTAs="<<c.ctas
+                    <<" shared_exp_slots="<<slots<<" padding_slots="<<slots-real<<" local_shared_bytes="<<c.local_shared
+                    <<" local_CTA_barrier_phases="<<(c.threads==32?0:5*c.ctas)
+                    <<" local_warp_barrier_phases="<<(c.threads==32?3*c.ctas:0)
+                    <<" partial_bytes="<<c.scratch<<" merge_shared_bytes="<<c.merge_shared<<" status="<<c.reason<<".\n";
+                if(c.width==32 || c.width==64) {
+                    UINT64 old_slots=c.ctas*128;
+                    text<<"PADDING COMPARISON at fixed width="<<c.width<<": old 128-thread capacity visited "<<old_slots
+                        <<" exp slots with "<<old_slots-real<<" geometric padding slots; selected block visits "<<slots
+                        <<" with "<<slots-real<<" padding slots. Useful row/token positions remain "<<real<<".\n";
+                }
+            }
+            text<<"These are selected source-loop slots. Mask-false tokens are separate from geometric padding; compiler folding/predication can change executed cost.\n";
+            text<<"Only geometric tail padding remains at widths 32/64; masked positions are separate. Counts describe source work, not time.\n"
+                <<"The 128-thread merge still visits every real tuple and ignores unwritten allocation padding.\n"
+                <<"Coverage ranking still prefers fewer chunks after coverage ties. Smaller blocks do not remove scratch/merge costs.\n"
+                <<"Fewer warps require more four-column groups; profile actual occupancy and whole-call latency before claiming a speedup.\n";
+            return;
+        }
         if(_p.chunk_policy!=2 || (winner.width!=32 && winner.width!=64)) return;
         const VHO_TENSOR_ATTENTION &a=_plan.attention;UINT64 rows=a.batch*a.heads;
         UINT64 capacity=((winner.width+127)/128)*128;
@@ -489,7 +593,7 @@ public:
             <<"Each candidate must pass native admission, all-stage resource fit and the partial-scratch budget, including the merge.\n"
             <<"Coverage goal = SMs * min(requested CTAs/SM, estimated resident local CTAs/SM).\n"
             <<"Rank by min(local CTAs,goal)/goal, then fewer chunks to limit scratch, merge and fixed CTA work.\n"
-            <<"If a direct plan fits and L<=256, keep it to avoid short-row split/merge overhead. Candidate split widths are "<<(_p.chunk_policy==2?"32":"128")<<"..4096 powers of two.\n";
+            <<"If a direct plan fits and L<=256, keep it to avoid short-row split/merge overhead. Candidate split widths are "<<(_p.chunk_policy>=2?"32":"128")<<"..4096 powers of two.\n";
         text<<"Selected width "<<s.width<<(s.width?"":" (zero means direct whole row)")
             <<"; short-direct rule "<<(s.short_direct?"applied":"not applied")<<". No runtime device query or JIT is required.\n";
         for(size_t i=0;i<s.candidates.size();++i) {
@@ -522,9 +626,9 @@ public:
             text<<"WHY SHORT STAYS DIRECT: L="<<a.length<<" is within the <=256 short-row rule and direct attention fits.\n"
                 <<"Selected width=0 is a sentinel for span L="<<a.length<<", not a zero-length chunk. One CTA owns each of "
                 <<a.batch*a.heads<<" rows; there is no partial scratch or merge launch.\n";
-            UINT64 minimum=_p.chunk_policy==2?32:128;
+            UINT64 minimum=_p.chunk_policy>=2?32:128;
             if(a.length<=minimum) text<<"All split widths in this policy are >="<<minimum<<" and >=this L; duplicate whole-row split plans are omitted.\n";
-            else if(_p.chunk_policy==2) text<<"Widths 32/64 can now form short-row split plans, but the legal direct plan still has priority under the short-row rule.\n";
+            else if(_p.chunk_policy>=2) text<<"Widths 32/64 can now form short-row split plans, but the legal direct plan still has priority under the short-row rule.\n";
             if(winner->coverage<winner->goal) text<<"The small grid intentionally remains below its "<<winner->goal
                 <<"-CTA target to avoid short-row splitting/merging overhead. This rule is heuristic, not a timing measurement.\n";
             else text<<"The direct plan already reaches the requested coverage without short-row splitting/merging overhead.\n";
@@ -537,7 +641,7 @@ public:
             if(winner->coverage<winner->goal)
                 text<<"WHY THIS WIDTH WINS: no enumerated feasible candidate reaches full coverage. The selected "
                     <<winner->coverage<<"/"<<winner->goal<<" is the greatest available fraction.\n"
-                    <<"Width "<<(_p.chunk_policy==2?32:128)<<" is the smallest split candidate in "<<VHO_tensor_chunk_policy_name(_p)<<"; narrower widths are outside this search, so no optimum over them is claimed.\n";
+                    <<"Width "<<(_p.chunk_policy>=2?32:128)<<" is the smallest split candidate in "<<VHO_tensor_chunk_policy_name(_p)<<"; narrower widths are outside this search, so no optimum over them is claimed.\n";
             else text<<"WHY THIS WIDTH WINS: selected coverage is "<<winner->coverage<<"/"<<winner->goal
                     <<". Extra CTAs beyond the goal receive no further coverage credit; fewer chunks then reduce scratch and merge/fixed work.\n";
             text<<"Each chunk writes R+2="<<a.rank+2<<" F32 scalars per row. Total partial scratch = "
@@ -565,6 +669,11 @@ public:
             <<"Once coverage ties, fewer chunks retain priority. Width 32 therefore does not automatically beat width 64.\n"
             <<"Merge shared storage follows the rounded chunk count, including counts above 128/256; reject a candidate if its merge no longer fits.\n"
             <<"Legacy v1 recipes remain bound to their old candidate set; --chunk-policy coverage-v1 explicitly reproduces that policy.\n";
+        if(_p.chunk_policy==3) text<<"SMALL-BLOCK EXTENSION: coverage-v3 keeps the expanded width set and selects 64/32 threads for split local width 64/32.\n"
+            <<"Other local kernels, the merge and projections retain 128-thread blocks. Score capacity rounds to the selected local block size.\n"
+            <<"Resource admission uses each kernel's actual thread count; profile register/shared allocation quanta remain authoritative.\n"
+            <<"A one-warp local kernel uses three full-mask warp fences, while a two-warp local kernel retains five CTA barriers.\n"
+            <<"Legacy coverage-v1/v2 recipes keep 128-thread geometry; the policy and candidate block_x ledger seal the new choice.\n";
         ExplainNarrowCosts(text,*winner);
         text<<"The profiles describe an offline planning envelope. Architecture sm_90 alone never supplies an enabled SM count.\n"
             <<"Changing SM count changes the coverage target even when per-SM resources, register estimates and numerical semantics are unchanged.\n";
