@@ -447,6 +447,9 @@ tensor_selected_bridge_test: tensor_selected_bridge tensor_bridge_test_driver.o
 
 tensor_bridge_driver.o tensor_selected_bridge.o: $(BE_VHO_DIR)/tensor_selected_key.h
 tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_TOT)/be/lno/dsl_high_binding_keys.h
+tensor_bridge_driver.o tensor_bridge_test_driver.o tensor_bridge_bindings.o: \
+  $(BUILD_TOT)/be/lno/dsl_high_snapshot.h $(BUILD_TOT)/be/lno/dsl_high_reuse.h \
+  $(BUILD_TOT)/be/lno/dsl_high_observer.h
 tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_attention_search_json.inc $(BE_VHO_DIR)/tensor_attention_search.h
 tensor_selected_bridge: $(BUILD_AREA)/be/be.so
 LDIRT += tensor_selected_bridge tensor_selected_bridge_test tensor_bridge_driver.o tensor_bridge_test_driver.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o

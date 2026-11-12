@@ -1026,6 +1026,7 @@ extern WN * Lnoptimizer(PU_Info* current_pu,
    * Design: doc/AI-COMPILER-SEARCH-M2B-OWNED-SNAPSHOT-v1.0.md. */
   DSL_HIGH_EPOCH high_epoch(Cur_PU_Name ? Cur_PU_Name : "active-pu");
   DSL_HIGH_SNAPSHOT high_snapshot;
+  DSL_HIGH_REUSE_FACTS high_reuse;
   DSL_HIGH_BINDINGS high_bindings;
   FILE *high_snapshot_trace = NULL;
   bool high_selected = false;
@@ -1391,6 +1392,7 @@ extern WN * Lnoptimizer(PU_Info* current_pu,
           DSL_HIGH_SEARCH_REPORT selected_report;
           LNO_DSL_observe_high(func_nd, Du_Mgr, Alias_Mgr, Array_Dependence_Graph,
               high_epoch, high_bindings, high_snapshot, capture_us, high_trace, &selected_input, &selected_report);
+          high_reuse=selected_report.reuse;
           high_selected = LNO_DSL_apply_selected_high(func_nd, du_mgr, alias_mgr, high_epoch,
               high_bindings, high_snapshot, selected_input, selected_report, high_trace);
           if (high_selected) {
@@ -1414,6 +1416,7 @@ extern WN * Lnoptimizer(PU_Info* current_pu,
         (unsigned long long)high_epoch.Stamp().activation, (unsigned long long)high_epoch.Stamp().mutation,
         high_snapshot.Is_current(high_epoch, high_bindings) ? "true" : "false");
     high_snapshot.Print(high_snapshot_trace, "EXPIRE_BEFORE_HOIST");
+    high_reuse.Print(high_snapshot_trace,"EXPIRE_BEFORE_HOIST",high_reuse.Is_live(high_epoch));
     Hoist_Varying_Lower_Bounds(func_nd); 
 #ifndef TARG_X8664
     // Move If_MinMax() after Array_Substutution() so that
@@ -1741,6 +1744,7 @@ return_point:
   LNO_Restore_Configs();
   high_epoch.Close();
   high_snapshot.Print(high_snapshot_trace, "OWNED_AFTER_CLEANUP");
+  high_reuse.Print(high_snapshot_trace,"OWNED_AFTER_CLEANUP",high_reuse.Is_live(high_epoch));
   return func_nd;
 }
 

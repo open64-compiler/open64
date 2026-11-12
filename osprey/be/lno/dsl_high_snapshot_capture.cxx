@@ -21,6 +21,8 @@
 #include <algorithm>
 #include <map>
 #include <sstream>
+#include <set>
+#include <cstdlib>
 
 #ifdef LNO_DSL_HIGH_SNAPSHOT_TEST
 /* Test-build callback only; the production component has no mutation hook. */
@@ -57,6 +59,8 @@ class DSL_HIGH_CAPTURE {
     DSL_HIGH_SNAPSHOT _result;
     std::map<WN *, std::string> _paths;
     std::vector<WN *> _nodes, _memory;
+    std::map<ST *, unsigned> _formals;
+    std::set<WN *> _array_bases;
     std::map<ST *, unsigned> _symbols;
     DU_MANAGER *_du;
     ALIAS_MANAGER *_alias;
@@ -109,7 +113,8 @@ class DSL_HIGH_CAPTURE {
     }
     /* Index executable semantic paths and serialize source fields. Unsupported
      * payloads fail closed; source positions and native map IDs are excluded. */
-    bool Walk(WN *node, const std::string &path, const std::string &parent_loop, unsigned depth) {
+    bool Walk(WN *node, const std::string &path, const std::string &parent_loop, unsigned depth,
+              bool conditional = false) {
         if (DSL_high_ignored(node)) return true;
         if (depth > 256 || _nodes.size() >= 200000) return Refuse("source_budget");
         _paths[node] = "N@" + path; _nodes.push_back(node);
@@ -150,6 +155,25 @@ class DSL_HIGH_CAPTURE {
             record.write = op == OPR_ISTORE;
             WN *array = record.write ? WN_kid1(node) : WN_kid0(node);
             record.element_bytes = WN_element_size(array); record.element_type = Type(WN_ty(node));
+            record.element_encoding=MTYPE_name(WN_desc(node));
+            record.byte_offset = WN_offset(node); record.conditional = conditional;
+            std::string group = path.substr(0,path.find('.',5));
+            record.execution_group = "N@" + group;
+            record.execution_order = (unsigned)strtoul(group.c_str()+6,NULL,10);
+            WN *base = WN_kid0(array); _array_bases.insert(base);
+            record.direct_formal = WN_operator(base)==OPR_LDID && !WN_offset(base) && _formals.count(WN_st(base));
+            if(record.direct_formal) record.storage = "F/" + DSL_high_number(_formals[WN_st(base)]);
+            if(WN_kid_count(array)==3 && WN_operator(WN_kid1(array))==OPR_INTCONST)
+                record.array_extent = WN_const_val(WN_kid1(array));
+            std::string owner=parent_loop;
+            while(owner!="none") {
+                bool found=false;
+                for(size_t k=0;k<_result._loops.size();++k) if(_result._loops[k].id==owner) {
+                    record.loop_ids.insert(record.loop_ids.begin(),owner);
+                    owner=_result._loops[k].parent;found=true;break;
+                }
+                if(!found) return Refuse("unrepresented_loop_owner");
+            }
             /* Base expression is joined to its copied source subtree. */
             record.base = "N@" + path + (record.write ? ".1.0" : ".0.0");
             ACCESS_ARRAY *access = (ACCESS_ARRAY *)WN_MAP_Get(LNO_Info_Map, array);
@@ -180,10 +204,11 @@ class DSL_HIGH_CAPTURE {
             unsigned ordinal = 0;
             for (WN *statement = WN_first(node); statement; statement = WN_next(statement)) {
                 if (DSL_high_ignored(statement)) continue;
-                if (!Walk(statement, path + ".s" + DSL_high_number(ordinal++), loop, depth + 1)) return false;
+                if (!Walk(statement, path + ".s" + DSL_high_number(ordinal++), loop, depth + 1,conditional)) return false;
             }
         } else for (INT i = 0; i < WN_kid_count(node); ++i)
-            if (WN_kid(node, i) && !Walk(WN_kid(node, i), path + "." + DSL_high_number(i), loop, depth + 1)) return false;
+            if (WN_kid(node, i) && !Walk(WN_kid(node, i), path + "." + DSL_high_number(i), loop, depth + 1,
+                conditional || op==OPR_IF || op==OPR_SELECT || op==OPR_CSELECT || op==OPR_CAND || op==OPR_CIOR)) return false;
         return _reason.empty();
     }
     /* External/missing DU endpoints remain explicit unknowns, never independence. */
@@ -295,9 +320,66 @@ class DSL_HIGH_CAPTURE {
             DSL_HIGH_ALIAS record;
             record.first = _result._accesses[i].id; record.second = _result._accesses[j].id;
             record.result = Aliased(_alias, _memory[i], _memory[j]);
+            record.disjoint = record.result==NOT_ALIASED;
             DSL_high_field(_result._facts_key, record.first + "/" + record.second + "/alias=" + DSL_high_number(record.result));
             _result._aliases.push_back(record);
         }
+    }
+    /* Copy formal identity and pointer uses without retaining ST/WN addresses.
+     * This extension is independently sealed; no legacy binding key changes. */
+    void Copy_storage_facts(WN *scope) {
+        const char *recipe=ST_tensor_metadata(WN_st_idx(scope),"tensor.high.recipe_key");
+        const char *schema=ST_tensor_metadata(WN_st_idx(scope),"tensor.high.schema");
+        const char *contract=ST_tensor_metadata(WN_st_idx(scope),"tensor.high.buffer_contract");
+        _result._producer_recipe=recipe?recipe:"";_result._producer_schema=schema?schema:"";
+        _result._buffer_contract=contract?contract:"";
+        DSL_high_field(_result._owned_memory_key,_result._producer_recipe);
+        DSL_high_field(_result._owned_memory_key,_result._producer_schema);
+        DSL_high_field(_result._owned_memory_key,_result._buffer_contract);
+        for(size_t i=0;i<_memory.size();++i) if(_result._accesses[i].write) {
+            WN *rhs=WN_kid0(_memory[i]);
+            if(WN_operator(rhs)==OPR_ILOAD && _paths.count(rhs))
+                _result._accesses[i].copied_from_access="A@"+_paths[rhs].substr(2);
+        }
+        for(INT i=0;i<WN_num_formals(scope);++i) {
+            ST *formal=WN_st(WN_formal(scope,i));TY_IDX ty=ST_type(formal);
+            DSL_HIGH_STORAGE record;record.id="F/"+DSL_high_number(i);record.formal=i;
+            record.symbol=Symbol(formal);
+            record.pointer_formal=TY_kind(ty)==KIND_POINTER && ST_is_value_parm(formal);
+            record.restrict_qualified=record.pointer_formal && TY_is_restrict(ty);
+            if(record.pointer_formal) {
+                record.element_type=Type(TY_pointed(ty));record.element_bytes=TY_size(TY_pointed(ty));
+                record.element_encoding=MTYPE_name(TY_mtype(TY_pointed(ty)));
+            }
+            const char *trait=ST_tensor_metadata(ST_st_idx(formal),"tensor.cache.trait");
+            record.cache_trait=trait?trait:"";
+            for(size_t j=0;j<_nodes.size();++j) {
+                WN *node=_nodes[j];OPERATOR op=WN_operator(node);
+                if((op==OPR_STID || op==OPR_LDID) && WN_st(node)==formal) {
+                    if(op==OPR_STID) record.base_stable=false;
+                    else if(!_array_bases.count(node)) record.uses_only_as_array_base=false;
+                }
+            }
+            _result._storages.push_back(record);
+            std::string key=record.id+"/"+record.element_type+"/"+DSL_high_number(record.element_bytes)+"/"+
+                DSL_high_number(record.pointer_formal)+"/"+DSL_high_number(record.restrict_qualified)+"/"+
+                DSL_high_number(record.base_stable)+"/"+DSL_high_number(record.uses_only_as_array_base);
+            DSL_high_field(key,record.symbol);DSL_high_field(key,record.cache_trait);
+            DSL_high_field(key,record.element_encoding);
+            DSL_high_field(_result._owned_memory_key,key);
+        }
+        for(size_t i=0;i<_result._accesses.size();++i) {
+            const DSL_HIGH_ACCESS &a=_result._accesses[i];
+            std::string key=a.id+"/"+a.storage+"/"+a.execution_group+"/"+DSL_high_number(a.execution_order)+"/"+
+                DSL_high_number(a.array_extent)+"/"+DSL_high_number(a.byte_offset)+"/"+
+                DSL_high_number(a.direct_formal)+"/"+DSL_high_number(a.conditional);
+            for(size_t j=0;j<a.loop_ids.size();++j) DSL_high_field(key,a.loop_ids[j]);
+            DSL_high_field(key,a.copied_from_access);
+            DSL_high_field(key,a.element_encoding);
+            DSL_high_field(_result._owned_memory_key,key);
+        }
+        for(size_t i=0;i<_result._aliases.size();++i)
+            DSL_high_field(_result._owned_memory_key,DSL_high_number(_result._aliases[i].disjoint));
     }
 public:
     /* Borrow native services only until Build returns; result owns all data. */
@@ -318,10 +400,12 @@ public:
         DSL_high_field(_result._source_key, ST_name(WN_st(scope)));
         /* Formals in ABI order matter even if a buffer is not used in the body. */
         for (INT i = 0; i < WN_num_formals(scope); ++i)
-            DSL_high_field(_result._source_key, Symbol(WN_st(WN_formal(scope, i))));
+            { _formals[WN_st(WN_formal(scope,i))]=i;
+              DSL_high_field(_result._source_key, Symbol(WN_st(WN_formal(scope, i)))); }
         if (!Walk(WN_func_body(scope), "body", "none", 0) || !_reason.empty() || !Graph())
             return reason = _reason, false;
         Copy_DU(); Copy_memory_facts();
+        Copy_storage_facts(scope);
         _result._identity = "high-v1/" + DSL_high_digest(_result._source_key);
         _result._valid = true; output = _result; reason = "captured"; return true;
     }

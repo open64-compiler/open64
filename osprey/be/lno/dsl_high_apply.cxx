@@ -238,6 +238,8 @@ bool DSL_apply_preflight(WN *root,DSL_HIGH_EPOCH &epoch,const DSL_HIGH_BINDINGS 
     if(!report.controlled || !report.production.has_winner) return reason="no_selected_incumbent",false;
     if(!LNO_DSL_revalidate_high(root,Du_Mgr,Alias_Mgr,Array_Dependence_Graph,epoch,bindings,snapshot,reason) ||
         !LNO_DSL_validate_search_input(snapshot,bindings,input,reason)) return false;
+    if(report.reuse.Available() && !report.reuse.Is_current(snapshot,epoch,bindings,input.algorithm))
+        return reason="reuse_context_changed",false;
     unsigned free_maps=0;
     for(unsigned i=0;i<WN_MAP_MAX;++i) if(!Current_Map_Tab->_is_used[i]) ++free_maps;
     if(free_maps<48) return reason="analysis_map_capacity",false;

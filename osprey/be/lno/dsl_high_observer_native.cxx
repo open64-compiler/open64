@@ -139,6 +139,10 @@ void DSL_observer_print(FILE *trace, const DSL_HIGH_SEARCH_REPORT &report, const
 }
 }
 
+#ifdef LNO_DSL_HIGH_REUSE_TEST
+#include "tests/dsl_high_reuse_native_test.inc"
+#endif
+
 /* A production request uses its own file-scope opt-in, still gated by the
  * owning driver's effective O3/LNO/scope checks before any snapshot is made. */
 bool LNO_DSL_production_search_requested() {
@@ -183,6 +187,15 @@ void LNO_DSL_observe_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias, ARRAY
     bool valid = LNO_DSL_read_search_input(path,input,reason);
     if(valid && configuration.specified && !input.production_controls) {valid=false;reason="production_controls_required";}
     if(valid) valid=LNO_DSL_validate_search_input(snapshot,bindings,input,reason) && DSL_observer_native_binding(scope,input,reason);
+    DSL_HIGH_REUSE_FACTS reuse;std::string reuse_reason="source_not_validated";
+    if(valid) LNO_DSL_derive_cache_reuse(snapshot,epoch,bindings,input.algorithm,reuse,reuse_reason);
+#ifdef LNO_DSL_HIGH_REUSE_TEST
+    if(valid) {
+        DSL_high_reuse_test(snapshot,epoch,bindings,input.algorithm,reuse,reuse_reason,trace);
+        const char *fault=getenv("OPEN64_HIGH_REUSE_TEST");
+        if(fault && !strcmp(fault,"decline")) {reuse=DSL_HIGH_REUSE_FACTS();reuse_reason="test_unproved_reuse";}
+    }
+#endif
     uint64_t validation_us = LNO_DSL_observer_time_us()-begin, exploration_us = 0;
     bool observed = false;
     if (valid) {
@@ -198,10 +211,13 @@ void LNO_DSL_observe_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias, ARRAY
     uint64_t observer_us = LNO_DSL_observer_time_us()-boundary_begin;
     FmtAssert(unchanged,("read-only High observer changed native source/tables/analyses"));
     if(observed) {
+        report.reuse=reuse;
         if(selected_input) *selected_input=input;
         if(selected_report) *selected_report=report;
     }
     if (trace) {
+        if(reuse.Available()) reuse.Print(trace,"COLLECTED",reuse.Is_current(snapshot,epoch,bindings,input.algorithm));
+        else if(valid) fprintf(trace,"AI_HIGH_REUSE 1 UNAVAILABLE reason=%s fallback=existing_G1_search\n",reuse_reason.c_str());
         fprintf(trace,"AI_HIGH_SEARCH 1 IMAGE_ABI dep_bytes=%lu must_offset=%lu bool_bytes=%lu vertex_bytes=%lu edge_bytes=%lu word_bytes=%lu pu_field_bytes=%lu\n",
             (unsigned long)sizeof(DEP_STRUCT),(unsigned long)offsetof(DEP_STRUCT,Is_Must),(unsigned long)sizeof(mBOOL),
             (unsigned long)sizeof(VINDEX16),(unsigned long)sizeof(EINDEX16),(unsigned long)sizeof(Elf64_Word),

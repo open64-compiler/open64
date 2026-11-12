@@ -7,6 +7,7 @@
 #define dsl_high_observer_INCLUDED
 #include "dsl_high_snapshot.h"
 #include "../vho/tensor_attention_search.h"
+#include "dsl_high_reuse.h"
 
 struct DSL_HIGH_SEARCH_INPUT {
     std::string unit, function, source_key, facts_key, numeric, host_target;
@@ -21,6 +22,7 @@ struct DSL_HIGH_SEARCH_INPUT {
     DSL_HIGH_SEARCH_INPUT() : allow_reassociate(false), production_controls(false) {}
 };
 struct DSL_HIGH_SEARCH_REPORT {
+    DSL_HIGH_REUSE_FACTS reuse;
     VHO_MLA_SEARCH_RESULT exploration;
     std::string resource_key, model_key, manifest_key;
     bool controlled;
