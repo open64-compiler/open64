@@ -101,6 +101,12 @@ struct VHO_TENSOR_SCHEDULE {
     VHO_TENSOR_CHUNK_SELECTION chunk_selection; /* source-scope choice, before physical bindings */
     std::vector<VHO_TENSOR_KERNEL> kernels;
 };
+/* Source contractions/reductions form the same boundary in planning and native
+ * realization. Pure classification, with no compiler-context dependency. */
+extern BOOL VHO_tensor_is_boundary(const VHO_TENSOR_OPERATION &);
+/* Complete deterministic semantic recipe key for producer/manifest binding.
+ * Caller validates first; no table index, native node or JSON spelling enters. */
+extern std::string VHO_tensor_recipe_key(const VHO_TENSOR_PROGRAM &);
 /* Select O3 producer fusion, cooperative mapping and proved attention fusion.
  * Flags carry the explicit numerical permissions sealed by the driver. */
 extern BOOL VHO_tensor_schedule(const VHO_TENSOR_PROGRAM &,VHO_TENSOR_SCHEDULE *,FILE *);

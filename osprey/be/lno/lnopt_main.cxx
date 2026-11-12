@@ -76,6 +76,7 @@
 #include "dsl_partition_axis.h"
 #include "dsl_high_admission.h"
 #include "dsl_high_snapshot.h"
+#include "dsl_high_observer.h"
 #include "config_opt.h"
 #include "erbe.h"
 #include "glob.h"		    /* Irb_File_Name, Cur_PU_Name */
@@ -1378,10 +1379,14 @@ extern WN * Lnoptimizer(PU_Info* current_pu,
       if (LNO_DSL_admit_common_high(func_nd, Du_Mgr, Alias_Mgr, Array_Dependence_Graph, high_trace)) {
         high_bindings = LNO_DSL_high_bindings(Src_File_Name);
         std::string reason;
+        uint64_t capture_begin = LNO_DSL_observer_time_us();
         if (LNO_DSL_capture_high(func_nd, Du_Mgr, Alias_Mgr, Array_Dependence_Graph,
             high_epoch, high_bindings, high_snapshot, reason)) {
+          uint64_t capture_us = LNO_DSL_observer_time_us()-capture_begin;
           high_snapshot_trace = high_trace;
           high_snapshot.Print(high_trace, "CAPTURE");
+          LNO_DSL_observe_high(func_nd, Du_Mgr, Alias_Mgr, Array_Dependence_Graph,
+              high_epoch, high_bindings, high_snapshot, capture_us, high_trace);
         } else if (high_trace) {
           fprintf(high_trace, "AI_HIGH_SNAPSHOT 1 REFUSED reason=%s fallback=ordinary_lno\n", reason.c_str());
         }
