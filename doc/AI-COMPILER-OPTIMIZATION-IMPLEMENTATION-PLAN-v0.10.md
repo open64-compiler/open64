@@ -1,5 +1,12 @@
 # AI compiler optimization implementation plan v0.10
 
+2026-11-12 architecture terminology correction:
+[native WHIRL contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs opcode properties, tensor traits, phase legality and scheduling
+services. Embedded earlier revisions include these editorial corrections;
+historical implementation status and acceptance evidence retain their original
+scope.
+
 November 7, 2026 | M2b owned High snapshot and mutation lifetime
 
 Adopt [snapshot contract v1.0](AI-COMPILER-SEARCH-M2B-OWNED-SNAPSHOT-v1.0.md)
@@ -161,7 +168,9 @@ Define typed contracts for admitting a profile snapshot, querying region/variant
 
 Profile import preflights the full schema and all identity joins before publication. No partial valid snapshot appears after failure. Stable external keys must rebind after mapped-image reopen without WN pointers or raw process-local indices. Frequency-count propagation follows current FEEDBACK semantics; observations of kernel latency, traffic, frequency and power remain attached to the measured code/context. Predictions for new code have a distinct origin and model snapshot.
 
-Schedule application consumes the complete selected plan, architecture/device/profile/model IDs and IR generation; preflights lowerability, performs an atomic High WHIRL rewrite, returns correspondence for replacement loops/accesses/buffers and declares preserved/invalidated feedback. Destination-level legality is checked independently of profitability. No MLIR operation traits/interfaces or new scheduling language is required.
+Schedule application consumes the complete selected plan, architecture/device/profile/model IDs and IR generation; preflights lowerability, performs an atomic High WHIRL rewrite, returns correspondence for replacement loops/accesses/buffers and declares preserved/invalidated feedback. Destination-level legality is checked independently of profitability. WHIRL opcode/version contracts, tensor descriptors and tensor traits define
+the semantic inputs to phase-owned legality checks. Scheduling uses owned
+Open64 snapshot and selected-plan records.
 
 ## Data collection deliverables
 
@@ -1461,8 +1470,8 @@ Actions:
 
 Future scalable-fusion actions:
 
-1. Define versioned operator fusibility traits for iteration-space class,
-   operand indexing, broadcast and reduction behavior, descriptor/layout
+1. Define fusibility properties keyed by exact opcode/version for iteration-space
+   class, operand indexing, broadcast and reduction behavior, descriptor/layout
    requirements, effects, ownership, multi-use handling, recomputation,
    numerical constraints, and REGION boundaries.
 2. Add generic producer-consumer edge discovery over the logical DSL graph.
@@ -1481,7 +1490,7 @@ Future scalable-fusion actions:
 
 Initial scalable-fusion slice completed on 2026-09-24:
 
-- versioned iteration-space/indexing fusibility traits and semantic-only flags;
+- opcode/version iteration-space/indexing properties and semantic-only flags;
 - deterministic, bounded producer-consumer cluster growth;
 - conservative stops for fan-out/diamonds, unsupported operators, REGION and
   effect boundaries, and unsupported result structure;
@@ -2156,7 +2165,7 @@ artifact.
    patterns.
 10. [x] Execute `AIO-6`: introduce immutable logical-layout alternatives and
     layout-compatibility evidence.
-11. [x] Generalize AIO-5 with operator fusibility traits, generic
+11. [x] Generalize AIO-5 with opcode/version fusibility properties, generic
     producer-consumer edge discovery, and deterministic cluster growth.
 12. [x] Execute the first `AIO-7` vertical slice: define common distributed
     ownership alternatives and derive logical communication intent without

@@ -1,5 +1,12 @@
 # AI compiler optimization design v0.6
 
+2026-11-12 architecture terminology correction:
+[native WHIRL contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs opcode properties, tensor traits, phase legality and scheduling
+services. Embedded earlier revisions include these editorial corrections;
+historical implementation status and acceptance evidence retain their original
+scope.
+
 November 6, 2026. Adopt the [two-phase MLA search contract](AI-COMPILER-MLA-TWO-PHASE-SEARCH-v0.1.md): estimation-only exploration and strategy/convergence portfolios precede fixed-plan WHIRL transformation; materialize and correctness-test only the selected best estimated configuration. Existing algorithms and numerical contracts remain unchanged. Detailed scope, cost inputs, evidence and implementation gates are in the linked document. This is a new version preserving the complete preceding v0.5 material below. The standalone implementation does not certify integrated be_driver or native GPU performance.
 
 The earlier freeze-as-convergence claim is withdrawn. Report best estimated among explored candidates or within the completely enumerated declared space; calibrated probabilistic and hardware-global optimality claims require additional evidence. Broader runtime/performance-framework work remains deferred beyond this explicitly requested offline search slice.
@@ -1484,7 +1491,7 @@ The DSC direction should combine the strongest parts:
 
 - From CUDA/CUTLASS: explicit hierarchical tiling that matches hardware execution levels and resource constraints.
 
-- From Triton: tile choices as first-class compile-time parameters, MLIR-style staged lowering, backend-specific layout/pipeline passes, and empirical autotuning when analytical cost confidence is insufficient.
+- Tile and pipeline design: expose tile choices as first-class compile-time parameters and lower them through native High, Mid and Low WHIRL with target-specific layout/pipeline passes. Triton supplies an external example of keeping tile parameters visible. Empirical tuning when analytical cost confidence is insufficient remains outside estimation-only candidate search and uses a separately declared qualification experiment.
 
 This comparison upgrades the design requirement: tiling decisions should be represented as CommonTilePlanIR alternatives inside OptimizationCandidateIR and selected only through OptimizationPlanIR cost evaluation, with backend-specific hardware extensions supplying the NVIDIA, AMD, CPU, or accelerator constraints. CommonTilePlanIR should be able to record both search-generated alternatives and rule-generated alternatives, while CandidateCostIR records whether the evidence came from analytical modeling, learned prediction, hardware measurement, deterministic rule confidence, or runtime telemetry.
 
@@ -1762,7 +1769,7 @@ At program setup, the driver selects the architecture and device-resource snapsh
 
 If finalized register/SMEM/target information contradicts the selected estimate, the driver may request a bounded replan at the owning High stage. Identify the invalidated plan, restore a valid High checkpoint, rerun affected analyses and selection, then repeat the exit gates. Set a deterministic attempt/candidate budget and retain the certified fallback. This is controlled recompilation from a checkpoint, not arbitrary pass reordering or a backend silently changing a selected tile.
 
-Schedule application should consume the selected plan plus architecture/device/profile snapshot IDs and current IR generation. It returns new loop/access/buffer correspondence, updated analysis bindings and a record of preserved/invalidated feedback. The lowering legality contract checks destination representation and target support independently of profile profitability. No MLIR opcode-interface/trait layer is needed; WHIRL opcode contracts and tensor descriptors remain the representation authority.
+Schedule application should consume the selected plan plus architecture/device/profile snapshot IDs and current IR generation. It returns new loop/access/buffer correspondence, updated analysis bindings and a record of preserved/invalidated feedback. The lowering legality contract checks destination representation and target support independently of profile profitability. WHIRL opcode/version contracts define operations; tensor descriptors and tensor traits carry semantic tensor properties. Phase-owned Open64 analyses and verifiers check transformation legality, while derived scheduling and resource facts retain their own validity epochs.
 
 ## PN9 Runtime selection safety and reproducibility
 

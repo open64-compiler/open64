@@ -1,5 +1,12 @@
 # AI compiler optimization design v0.9
 
+2026-11-12 clarification: the
+[native opcode and tensor-trait contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs representation, phase legality and scheduling APIs across this design
+and its predecessors. See the
+[documentation audit](AI-COMPILER-WHIRL-ARCHITECTURE-AUDIT-v1.0.md) for corrected
+files and retained historical originals.
+
 2026-11-12 | H20 96 GB memory-hierarchy design phase
 
 Status: proposed implementation architecture and qualification plan. The user

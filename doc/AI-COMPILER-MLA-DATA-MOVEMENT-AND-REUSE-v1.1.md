@@ -1,5 +1,12 @@
 # MLA data movement and reuse design v1.1
 
+2026-11-12 architecture terminology correction:
+[native WHIRL contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs opcode properties, tensor traits, phase legality and scheduling
+services. Embedded earlier revisions include these editorial corrections;
+historical implementation status and acceptance evidence retain their original
+scope.
+
 November 9, 2026 | MR1/MR2 baseline retained; quantized/paged/TMA extension specified
 
 ## 1. Authority, baseline and objective
@@ -203,8 +210,9 @@ Reuse the existing LNO access/dependence/snapshot/epoch services, detached VHO
 schedule and resource/occupancy helpers, memory-readiness/lifetime planning,
 M4 selected transaction, M5 native bridge and M6 capture/publication boundary.
 Common/com may carry policy-free facts/contracts; it must not acquire schedule
-selection policy. Keep WHIRL opcode/type/tensor predicates for legality; no MLIR
-operation interfaces/traits or backend library dependencies are introduced here.
+selection policy. Use WHIRL opcode/version contracts, tensor descriptors and
+tensor traits for semantic checks, with phase-owned analyses and verifiers for transformation
+legality. Preserve the existing backend library dependencies.
 
 ## 6. Two-phase search, eligibility and convergence
 

@@ -1,5 +1,12 @@
 # AIO-5 High-Level Fusion Candidate Contract
 
+2026-11-12 architecture terminology correction:
+[native WHIRL contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs opcode properties, tensor traits, phase legality and scheduling
+services. Embedded earlier revisions include these editorial corrections;
+historical implementation status and acceptance evidence retain their original
+scope.
+
 ## Status
 
 Completed on 2026-09-24 and generalized in the following focused milestone.
@@ -52,11 +59,17 @@ supporting code reflects that reusable skeleton; it does not mean that the
 long-term fusion strategy is to hand-code every operator sequence.
 
 The scalable follow-up implements the first hybrid slice. Static, versioned
-operator traits record iteration-space class, operand-indexing class,
+opcode/version properties record iteration-space class, operand-indexing class,
 producer/consumer eligibility, cluster anchors, exact-descriptor requirements,
 single-result structure, and semantic-pattern requirements. They are queried
 by logical operator and version, so a later version does not silently inherit
 an earlier operator's fusion contract.
+
+These are native `DSL_FUSIBILITY_INFO` properties looked up by exact logical
+opcode/version. Tensor-specific shape/layout/semantic properties remain in
+TensorDescriptorIR and tensor traits; actual fusion legality also needs
+phase-owned site, use, alias, effect and numerical facts. A property lookup
+alone cannot authorize fusion.
 
 Generic discovery walks producer-consumer edges backward from a maximal
 eligible sink in deterministic value-ID order. Growth stops at a contraction
@@ -67,8 +80,9 @@ same-block, REGION, size, and resource proof used by explicit patterns.
 
 This first slice intentionally rejects or stops before fan-out, diamonds,
 multiple results, reductions, views, recomputation, and REGION crossings.
-Those cases require additional trait fields and profitability policy; they are
-not inferred from a shape-rule name. Explicit patterns remain for semantic
+Those cases require additional opcode property fields and phase-owned
+profitability policy; they are not inferred from a shape-rule name. Explicit
+patterns remain for semantic
 compounds, stronger legality, and provider or library alternatives. Both paths
 publish through the same AIO-2 candidate, plan, cost, fallback, and selection
 services.

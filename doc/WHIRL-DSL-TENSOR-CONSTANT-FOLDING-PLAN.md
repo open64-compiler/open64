@@ -1,5 +1,12 @@
 # WHIRL DSL Tensor Constant Folding Plan
 
+2026-11-12 architecture terminology correction:
+[native WHIRL contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs opcode properties, tensor traits, phase legality and scheduling
+services. Embedded earlier revisions include these editorial corrections;
+historical implementation status and acceptance evidence retain their original
+scope.
+
 ## Purpose
 
 This project defines compile-time evaluation of DSL tensor operations whose
@@ -515,8 +522,8 @@ This matrix incorporates the useful comparison scenarios:
   policy, and parent revisiting;
 - OpenXLA-style typed literal, shape/layout sensitivity, ZERO/ONE recognition,
   and bounded diagnostic printing; and
-- ONNX/MLIR-style external resource, alignment, checksum, and compact splat
-  storage.
+- explicit external resource, alignment, checksum and compact splat storage
+  contracts represented by native typed records.
 
 ## Synchronized Milestones And Pull Requests
 

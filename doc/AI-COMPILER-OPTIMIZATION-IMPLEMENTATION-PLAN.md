@@ -1,5 +1,12 @@
 # AI Compiler Optimization Implementation Plan
 
+2026-11-12 architecture clarification:
+[native opcode and tensor-trait contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+defines representation and phase-owned legality/scheduling services for new
+work and the interpretation of earlier plans. The
+[documentation audit](AI-COMPILER-WHIRL-ARCHITECTURE-AUDIT-v1.0.md) records exact
+coverage and corrections without changing historical milestone acceptance.
+
 ## H20 next design phase, 2026-11-12
 
 The user has confirmed H20 96 GB servers. Start the proposed
@@ -1375,8 +1382,8 @@ Actions:
 
 Future scalable-fusion actions:
 
-1. Define versioned operator fusibility traits for iteration-space class,
-   operand indexing, broadcast and reduction behavior, descriptor/layout
+1. Define fusibility properties keyed by exact opcode/version for iteration-space
+   class, operand indexing, broadcast and reduction behavior, descriptor/layout
    requirements, effects, ownership, multi-use handling, recomputation,
    numerical constraints, and REGION boundaries.
 2. Add generic producer-consumer edge discovery over the logical DSL graph.
@@ -1395,7 +1402,7 @@ Future scalable-fusion actions:
 
 Initial scalable-fusion slice completed on 2026-09-24:
 
-- versioned iteration-space/indexing fusibility traits and semantic-only flags;
+- opcode/version iteration-space/indexing properties and semantic-only flags;
 - deterministic, bounded producer-consumer cluster growth;
 - conservative stops for fan-out/diamonds, unsupported operators, REGION and
   effect boundaries, and unsupported result structure;
@@ -2070,7 +2077,7 @@ artifact.
    patterns.
 10. [x] Execute `AIO-6`: introduce immutable logical-layout alternatives and
     layout-compatibility evidence.
-11. [x] Generalize AIO-5 with operator fusibility traits, generic
+11. [x] Generalize AIO-5 with opcode/version fusibility properties, generic
     producer-consumer edge discovery, and deterministic cluster growth.
 12. [x] Execute the first `AIO-7` vertical slice: define common distributed
     ownership alternatives and derive logical communication intent without

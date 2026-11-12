@@ -1,5 +1,12 @@
 # AI compiler optimization search methodology v1.0
 
+2026-11-12 architecture terminology correction:
+[native WHIRL contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs opcode properties, tensor traits, phase legality and scheduling
+services. Embedded earlier revisions include these editorial corrections;
+historical implementation status and acceptance evidence retain their original
+scope.
+
 November 7, 2026 | Adopted design; production extensions remain planned
 
 This document defines how Open64 concludes optimization search, compares search
@@ -266,10 +273,11 @@ The scheduling interface consumes stable loop/access IDs, canonical bounds,
 dependence/alias facts and their generation, numerical permissions, storage
 obligations and target/model snapshots. It returns detached plans with complete
 costs, legality reasons and a selected application recipe. Only the owning phase
-applies that recipe. A conversion-target-style verifier checks allowed logical
-operators, forms, types and dynamic legality at each exit using WHIRL opcode,
-tensor-type and explicit contract predicates; it requires no MLIR operation
-interfaces or duplicate traits system.
+applies that recipe. A phase exit verifier checks allowed logical operators,
+forms, types and conditional legality using WHIRL opcode/version contracts,
+tensor descriptors, tensor traits and explicit contract predicates. The owning
+Open64 phase checks dependence, alias, numerical and target obligations; an
+unknown obligation requires a verified guard/fallback or refusal.
 
 The High exit verifier requires explicit loop bounds/tails and tensor indexing;
 legal selected dependence order; explicit storage/address-space obligations;
