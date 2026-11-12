@@ -1,6 +1,6 @@
 # Absorbed MLA Standalone Ingestion Test
 
-Version v0.3 dated November 5 2026. This fixture extracts the absorbed single
+Version v0.4 dated November 5 2026. This fixture extracts the absorbed single
 query MLA algorithm into a deterministic read-only tensor program. Short and
 long contexts execute the same source. CPU FP32 eager and genuine FX execution
 are checked against an independently expanded scalar FP64 reference.
@@ -11,8 +11,9 @@ The [building block ingestion plan](BUILDING-BLOCK-INGESTION-PLAN.md) supplies
 the existing source capture conventions. Native MLA ingestion now emits real
 typed WHIRL through both the public API and standalone driver, with independent
 mapped-image reopening. Compilable WHIRL-derived reference CUDA can now be
-emitted before lowering. Executable optimized lowering and GPU execution
-validation remain open.
+emitted before lowering. A VHO-owned primitive lowering also generates ordinary
+device WHIRL and executable CUDA kernels for both contexts. Optimized fused or
+split attention and GPU execution validation remain open.
 The source graph consumes the published
 [native tensor expression contract](../../doc/AI-COMPILER-NATIVE-TENSOR-EXPRESSION-CONTRACT-v0.1.md).
 
@@ -259,3 +260,44 @@ the original short/long cases is 8.36e-9 / 9.84e-9; maximum finite LSE error is
 and FTZ disabled. Independent `.T` and `.B` remain unchanged. Additional
 standalone C++ checks pass on macOS and Linux. GPU execution and performance
 remain NOT_RUN.
+
+## Executable device WHIRL v0.4
+
+The [native tensor kernel lowering specification](../../doc/AI-COMPILER-TENSOR-KERNEL-LOWERING-v0.1.md)
+controls the new PU-local VHO service and focused native driver. It consumes
+the existing source `.B` and builds ordinary scalar device WHIRL. For either
+context, 46 source operations plus two result copies become 34 executable
+kernels and 14 shape views. The source image remains preserved as provenance.
+
+```sh
+tensor_kernel_lower prepare mla.B recipe.json --verify 3
+tensor_kernel_lower device recipe.json device.before.B device.after.B
+tensor_kernel_lower audit device.after.B recipe.json launch.json
+whirl2c -cuda -TARG:abi=n64 -O0 \
+  -CLIST:dotc_file=kernels.cu -CLIST:doth_file=kernels.h device.after.B
+```
+
+O0/O1/O2 retain serial output loops; O3 explicitly maps independent output
+elements to 128-thread blocks. Contractions and reductions retain serial
+ascending accumulation. The launch manifest is derived from independently
+reopened device metadata and checked against the prepared source recipe.
+Owning-kernel/argument-ordinal keys avoid local symbol-ID collisions across PUs.
+
+The `mla_kernel_review.py` harness in be/vho/tests retains source and device
+images, independent `ir_b2a -st -src` dumps, raw transformation differences,
+CUDA source, launchers, cubins, numerical results and diagnostics. Short/long
+and O0/O3 pass 12 host numerical cases against the same expanded FP64 oracle,
+including all-masked rows and allocation canaries. Scoped compiler/host
+sanitizer checks pass. Thirteen native boundary/semantic tests and portable
+oracle-checker controls cover malformed/stale handoffs and generic operations.
+
+The generated source compiles to sm_90 CUDA kernels and linked test launchers.
+The local CUDA runtime reports no usable device (probe error 35), so actual
+GPU execution and timing remain open. `validate_mla_gpu.py` can execute the
+retained launchers and portable saved oracles on a GPU host without PyTorch.
+
+This is an AOT executable baseline with 34 launches and explicit intermediate
+traffic. Automatic be_driver integration, short-path fusion, long-context
+split/merge attention, tiling/staging, production runtime dispatch and measured
+performance acceptance remain later milestones. Existing source and reference
+CUDA lanes remain available; no new MLIR interfaces or tensor traits are added.

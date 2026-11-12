@@ -411,6 +411,18 @@ whirl2c: whirl2c_reference_main.o whirl2c_tensor_source
 
 LDIRT += whirl2c whirl2c_tensor_source whirl2c_reference_main.o tensor_source.o
 
+# PU-local VHO lowering service; the standalone driver alone owns frontend APIs.
+tensor_kernel_lower: $(OBJECTS) controls.o tensor_kernel_driver.o tensor_kernel_lower.o
+	$(link.c++f) -o $@ tensor_kernel_driver.o tensor_kernel_lower.o controls.o $(OBJECTS) $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
+
+tensor_kernel_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_kernel_lower.o: $(BE_VHO_DIR)/tensor_kernel_lower.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+LDIRT += tensor_kernel_lower tensor_kernel_driver.o tensor_kernel_lower.o
+
 ir_a2b: ir_b2a
 	ln -sf ir_b2a ir_a2b
 
