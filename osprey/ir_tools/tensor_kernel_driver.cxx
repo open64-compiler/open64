@@ -298,6 +298,40 @@ bool remove_barrier(WN *n,const char *name="__syncthreads") {
  * unit. The VHO service never expands its compilation scope or writes files. */
 int main(int argc,char **argv) {
     try {
+        if(argc==6 && !strcmp(argv[1],"high")) {
+            need(access(argv[3],F_OK)!=0 && access(argv[4],F_OK)!=0 && access(argv[5],F_OK)!=0,
+                "High checkpoint/manifest destination exists");
+            VHO_TENSOR_PROGRAM p=decode(argv[2]);
+            need(!p.fuse && !p.cooperative && !p.split_width && !p.search_selected && !p.auto_chunks,
+                "High algorithm requires the unoptimized semantic recipe");
+            initialize(true);
+            PU_Info *pu=DSL_Builder_Create_Minimal_PU("open64_common_high");
+            need(pu && DSL_Builder_Select_PU(pu),"cannot create High algorithm PU");
+            std::vector<PU_Info *> pus(1,pu);
+            UINT32 file=DSL_Builder_Register_Source_File(pu,p.source_file.c_str());
+            USRCPOS source;USRCPOS_clear(source);USRCPOS_filenum(source)=file;
+            USRCPOS_linenum(source)=p.operations[0].source_line?p.operations[0].source_line:1;
+            UINT32 types=TY_Table_Size(),symbols=ST_Table_Size(CURRENT_SYMTAB);
+            need(!VHO_tensor_materialize_high(p,0,NULL) && types==TY_Table_Size() && symbols==ST_Table_Size(CURRENT_SYMTAB),
+                "rejected High preflight changed tables");
+            OPT_Fast_Math=TRUE;BOOL unsafe_high=VHO_tensor_materialize_high(p,USRCPOS_srcpos(source),NULL);OPT_Fast_Math=FALSE;
+            need(!unsafe_high && types==TY_Table_Size() && symbols==ST_Table_Size(CURRENT_SYMTAB),
+                "unsafe High preflight changed tables");
+            checkpoint(pus,argv[3]);
+            need(VHO_tensor_materialize_high(p,USRCPOS_srcpos(source),stderr),"High algorithm admission failed");
+            types=TY_Table_Size();symbols=ST_Table_Size(CURRENT_SYMTAB);
+            need(!VHO_tensor_materialize_high(p,USRCPOS_srcpos(source),NULL) && types==TY_Table_Size() && symbols==ST_Table_Size(CURRENT_SYMTAB),
+                "nonempty High target accepted or mutated");
+            need(DSL_Gatekeeper_Verify_No_Native_PU(pu,stderr),"unlowered common tensor remains");
+            checkpoint(pus,argv[4]);
+            Json::Value manifest;manifest["schema"]="open64.common-high.v1";
+            manifest["function"]="open64_common_high";manifest["buffer_contract"]="disjoint-storage-formals";
+            manifest["recipe"]=encode(p);manifest["buffers"]=Json::Value(Json::arrayValue);
+            for(UINT32 i=0;i<p.values.size();++i) if(p.values[i].storage==i) manifest["buffers"].append(i);
+            write_json(argv[5],manifest);
+            printf("common_high=PASS operations=%lu buffers=%u runtime_calls=0 gpu_mapping=false\n",
+                (unsigned long)p.operations.size(),manifest["buffers"].size());return 0;
+        }
         if((argc==9 || argc==11) && !strcmp(argv[1],"explore-attention")) {
             need(!strcmp(argv[4],"--gpu-profile") && !strcmp(argv[6],"--cost-profile") && !strcmp(argv[8],"--allow-reassociate"),"exploration requires target, explicit costs and numerical permission");
             VHO_TENSOR_PROGRAM p=decode(argv[2]);p.auto_chunks=false;p.search_selected=false;p.search_evidence.clear();p.search_identity.clear();
@@ -488,6 +522,6 @@ int main(int argc,char **argv) {
             for(std::map<UINT32,Json::Value>::const_iterator i=storages.begin();i!=storages.end();++i) result["storages"].append(i->second);
             write_json(argv[4],result);printf("mapped_device_audit=PASS kernels=%u storages=%u\n",result["kernels"].size(),result["storages"].size());return 0;
         }
-        fprintf(stderr,"usage: tensor_kernel_lower explore-attention input.json search.json --gpu-profile gpu.json --cost-profile costs.json --allow-reassociate [--search-options options.json] | select-attention search.json selected.json | prepare input.B recipe.json --verify level | optimize baseline.json selected.json --fuse [--split-width N --allow-reassociate] | cooperate fused.json cooperative.json --allow-reassociate | fuse-attention cooperative.json fused.json --allow-reassociate | auto-attention fused.json selected.json --gpu-profile profile.json --allow-reassociate [--chunk-policy coverage-v1|coverage-v2|coverage-v3|coverage-v4|coverage-v5|coverage-v6] | stream-attention fused.json register.json --split-width N --allow-reassociate | schedule-source selected.json optimized.cu | device recipe.json device.before.B device.after.B | device-explain recipe.json comments.before.B comments.after.B | audit device.after.B recipe.json launch.json\n");return 2;
+        fprintf(stderr,"usage: tensor_kernel_lower explore-attention input.json search.json --gpu-profile gpu.json --cost-profile costs.json --allow-reassociate [--search-options options.json] | select-attention search.json selected.json | prepare input.B recipe.json --verify level | high recipe.json high.before.B high.after.B buffers.json | optimize baseline.json selected.json --fuse [--split-width N --allow-reassociate] | cooperate fused.json cooperative.json --allow-reassociate | fuse-attention cooperative.json fused.json --allow-reassociate | auto-attention fused.json selected.json --gpu-profile profile.json --allow-reassociate [--chunk-policy coverage-v1|coverage-v2|coverage-v3|coverage-v4|coverage-v5|coverage-v6] | stream-attention fused.json register.json --split-width N --allow-reassociate | schedule-source selected.json optimized.cu | device recipe.json device.before.B device.after.B | device-explain recipe.json comments.before.B comments.after.B | audit device.after.B recipe.json launch.json\n");return 2;
     } catch(const std::exception &e) {fprintf(stderr,"tensor kernel driver: %s\n",e.what());return 1;}
 }
