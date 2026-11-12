@@ -2,12 +2,12 @@
 
 The 403 committed compiler/design backlog paths inventoried after the testing/service extraction are now represented in focused review slices. Five paths follow the merged owner relocations. Publication is separate from milestone acceptance.
 
-The complete testing/service stack reaches develop through [#218](https://github.com/open64-compiler/open64/pull/218). The compiler slices start on that exact reviewed stack. Only LN3 has fresh per-slice native qualification and completed manual compliance review. Later milestones remain drafts pending their own current-base build, native before/after evidence, fallback/rollback checks and complete file review.
+The complete testing/service stack reached develop through merged [#218](https://github.com/open64-compiler/open64/pull/218). The compiler slices start on that exact reviewed stack. Only LN3 has fresh per-slice native qualification and completed manual compliance review. Later milestones remain drafts pending their own current-base build, native before/after evidence, fallback/rollback checks and complete file review.
 
 ## Merge procedure
 
-1. Merge #218 into develop.
-2. Retarget #219 to develop and merge after review.
+1. #218 is merged into develop.
+2. #219 now targets develop directly; merge it after review.
 3. For each later slice, finish its listed acceptance gates, retarget it to develop after its predecessor has merged into develop, then mark it ready and merge.
 4. Do not merge a slice into its preceding stack branch and assume it has reached develop. A stack-branch merge requires a later promotion; this caused the #207–#217 integration gap.
 

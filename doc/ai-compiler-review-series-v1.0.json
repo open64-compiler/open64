@@ -13,7 +13,7 @@
         "e0a1c9d5"
       ],
       "branch": "codex/ai-01-ln3-cost",
-      "base": "codex/gpu-12-remote-client",
+      "base": "develop",
       "head": "d50ffff9bf826bc177564e03fe8bbbf2426ad085",
       "validation": "PASS: fresh LN3 native/current-source qualification and manual compliance; NVIDIA execution not claimed",
       "files": [
@@ -1488,5 +1488,6 @@
       "implementation_head": "d4158695afbffd70e3e594952710c427116e1e96",
       "head_scope": "implementation commit before this index-only documentation update"
     }
-  ]
+  ],
+  "testing_promotion_status": "MERGED"
 }
