@@ -16,6 +16,70 @@
 
 #include "dsl_memory_hierarchy.h"
 
+/* Stable variant identities, not HBM byte counts or calibrated SKU profiles.
+ * Only the generic baseline is admitted until separate device qualification.
+ * Design: doc/AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.1.md. */
+static const DSL_HARDWARE_DEVICE_RECORD DSL_hardware_devices[] = {
+    { DSL_HARDWARE_DEVICE_H20_96GB, 1, DSL_HARDWARE_ARCH_SM_90,
+      "h20_96gb" },
+    { DSL_HARDWARE_DEVICE_H20_141GB, 1, DSL_HARDWARE_ARCH_SM_90,
+      "h20_141gb" }
+};
+
+/* Exact structural lookup with borrowed names and no caller-output mutation
+ * on failure. Do not infer a variant from capacity or an architecture label. */
+BOOL DSL_hardware_device_find(const char *name,
+    DSL_HARDWARE_DEVICE_RECORD *device)
+{
+    if (!name || !device) return FALSE;
+    for (UINT32 i = 0; i < sizeof(DSL_hardware_devices) /
+                            sizeof(DSL_hardware_devices[0]); ++i) {
+        if (strcmp(name, DSL_hardware_devices[i].name) == 0) {
+            *device = DSL_hardware_devices[i];
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+/* Validate the whole request before publishing identity data. This checks
+ * static name/ISA admission only; resources, calibration and optimization
+ * eligibility remain later owning-phase obligations. */
+BOOL DSL_hardware_target_resolve(const char *architecture, const char *device,
+    DSL_HARDWARE_TARGET_SELECTION *selection, FILE *diagnostics)
+{
+    if (!selection) return FALSE;
+    DSL_HARDWARE_TARGET_SELECTION resolved;
+    memset(&resolved, 0, sizeof(resolved));
+    resolved.revision = 1;
+    resolved.device.name = "unspecified";
+    if (device && !DSL_hardware_device_find(device, &resolved.device)) {
+        if (diagnostics) fprintf(diagnostics,
+            "DSL_GPU_DEVICE-001: unsupported gpu_device='%s'; "
+            "expected h20_96gb or h20_141gb\n", device);
+        return FALSE;
+    }
+    DSL_HARDWARE_DESCRIPTION_RECORD arch;
+    const char *name = architecture ? architecture : "sm_90";
+    if (!DSL_hardware_description_find_arch(name, &arch)) {
+        if (diagnostics) fprintf(diagnostics,
+            "DSL_GPU_DEVICE-002: unsupported exact gpu_arch='%s'\n", name);
+        return FALSE;
+    }
+    if (device && arch.arch_id != resolved.device.baseline_arch_id) {
+        if (diagnostics) fprintf(diagnostics,
+            "DSL_GPU_DEVICE-003: gpu_arch='%s' is not admitted for "
+            "gpu_device='%s'; H1a permits sm_90 only; "
+            "architecture-specific device qualification is pending\n",
+            name, device);
+        return FALSE;
+    }
+    resolved.arch_id = arch.arch_id;
+    resolved.architecture = arch.architecture;
+    *selection = resolved;
+    return TRUE;
+}
+
 /* Independent table rows selected by exact sm_* names. These quantitative
  * values preserve the initial synthetic envelope, NOT NVIDIA specifications.
  * No SKU/clock/measurement is implied; replacing estimates changes revision.

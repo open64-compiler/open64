@@ -2,6 +2,14 @@
 
 2026-11-12 | H1 exact device selection deliverable
 
+H1a implementation update: [exact option/identity admission](AI-COMPILER-H1A-GPU-DEVICE-SELECTION-v1.0.md)
+now implements both H20 device keys, baseline sm_90 compatibility, device-only
+effective ISA, early refusals and generic-path reporting. Focused native and
+backend parity checks pass. H1b-H1d remain open; this is not resource/profile
+import, device-specific planner integration or GPU qualification. H1a's explicit
+device/ISA admission is conservatively sm_90-only pending separate sm_90a
+qualification; architecture-only behavior is preserved.
+
 This revision replaces the H1 section of
 [plan v1.0](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.0.md)
 under [resource/memory design v0.3](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.3.md).

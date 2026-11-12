@@ -63,6 +63,7 @@ char *VHO_DSL_Normalization_Host_Entry = NULL;
 char *VHO_DSL_GEMM_Plan_Search = NULL;
 char *VHO_DSL_GEMM_Cost_Model = NULL;
 char *VHO_DSL_GPU_Arch = NULL;
+char *VHO_DSL_GPU_Device = NULL;
 UINT32 VHO_DSL_GEMM_Memory_Latency = 0;
 BOOL VHO_DSL_GEMM_Memory_Latency_Set = FALSE;
 
@@ -83,6 +84,8 @@ static OPTION_DESC Options_DSL[] = {
     0, 0, 0, &VHO_DSL_Normalization_Output, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "gpu_arch", "gpu_arch",
     0, 0, 0, &VHO_DSL_GPU_Arch, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "gpu_device", "gpu_device",
+    0, 0, 0, &VHO_DSL_GPU_Device, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "gemm_cost_model", "gemm_cost_model",
     0, 0, 0, &VHO_DSL_GEMM_Cost_Model, NULL },
   { OVK_UINT32, OV_VISIBLE, FALSE, "gemm_memory_latency", "gemm_memory_latency",

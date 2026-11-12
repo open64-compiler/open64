@@ -1,5 +1,18 @@
 # AI Compiler Optimization Progress
 
+## H1a option and registry implementation, 2026-11-12
+
+[GPU device selection v1.0](AI-COMPILER-H1A-GPU-DEVICE-SELECTION-v1.0.md)
+implements exact gpu_device=h20_96gb/h20_141gb selection and sm_90 baseline
+admission before input/optimizer/output activity. Omitted-device behavior is
+unchanged; explicit selection reports an identity-only generic fallback with
+device resources/calibration unbound. H1a's sm_90a device admission is deferred;
+the existing architecture-only sm_90a path remains available.
+Seventy-two registry checks, seven accepted backend cases, three byte-identical
+O0 fallback cases, fourteen early refusals, pre-change generic B/T parity,
+two estimation-only/permission regressions and shared-library closure pass.
+H1b-H1d and H0/H7 hardware qualification remain open. No GPU result is claimed.
+
 ## H1 device selection design refinement, 2026-11-12
 
 [Design v0.10](AI_compiler_optimization_design_v0.10.md),

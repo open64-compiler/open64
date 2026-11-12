@@ -67,6 +67,44 @@ extern BOOL DSL_hardware_description_find_arch
 extern BOOL DSL_hardware_description_get_arch
     (UINT32 arch_id, DSL_HARDWARE_DESCRIPTION_RECORD *description);
 
+/* H1a identity records are independent of the old quantitative descriptions.
+ * They carry no capacity, timing, mechanism qualification or persisted data.
+ * Design: doc/AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.1.md. */
+typedef enum {
+    DSL_HARDWARE_DEVICE_UNSPECIFIED = 0,
+    DSL_HARDWARE_DEVICE_H20_96GB = 1,
+    DSL_HARDWARE_DEVICE_H20_141GB = 2
+} DSL_HARDWARE_DEVICE_KIND;
+
+typedef struct {
+    UINT32 device_id;
+    UINT32 revision;
+    UINT32 baseline_arch_id;
+    const char *name;
+} DSL_HARDWARE_DEVICE_RECORD;
+
+typedef struct {
+    UINT32 revision;
+    UINT32 arch_id;
+    const char *architecture;
+    DSL_HARDWARE_DEVICE_RECORD device;
+} DSL_HARDWARE_TARGET_SELECTION;
+
+/* Copy an exact immutable device identity; names stay borrowed. Null/unknown
+ * input preserves output. This lookup supplies no physical resource facts. */
+extern BOOL DSL_hardware_device_find
+    (const char *name, DSL_HARDWARE_DEVICE_RECORD *device);
+
+/* Resolve optional exact names into caller-owned identity data. Missing arch
+ * uses the device baseline or the legacy sm_90 default; missing device stays
+ * unspecified. H1a admits only baseline sm_90 for explicit H20 keys; sm_90a
+ * device qualification is pending. Architecture-only lookup is unchanged.
+ * Failure preserves output and optionally explains malformed/unsupported
+ * input to diagnostics. No option mutation, probing, selection or WN access. */
+extern BOOL DSL_hardware_target_resolve
+    (const char *architecture, const char *device,
+     DSL_HARDWARE_TARGET_SELECTION *selection, FILE *diagnostics);
+
 /* Return an explicitly incomplete scalar extension for the exact built-in
  * description. No div/sqrt/cache/barrier timings are guessed from sm_*.
  * Caller may supply separately identified versioned envelopes; policy belongs

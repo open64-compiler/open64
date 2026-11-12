@@ -6,6 +6,14 @@ layout change, proprietary NVIDIA compiler data, GPU probing or new library.
 
 ## H1 device selection requirement, 2026-11-12
 
+Implemented H1a slice: [GPU device selection v1.0](AI-COMPILER-H1A-GPU-DEVICE-SELECTION-v1.0.md)
+registers exact h20_96gb/h20_141gb identities and validates baseline sm_90
+before source loading. Device-only selection supplies the effective baseline
+ISA. It reports resources/calibration unbound and retains the generic route;
+H1b/H1c/H1d resource import, planning bindings and qualification remain open.
+The initial proposal below records the full H1 requirement; its previously
+planned option registration is now implemented within this bounded slice.
+
 [Resource/memory design v0.3](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.3.md)
 and [H20 plan v1.1](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.1.md)
 make exact `-DSL:gpu_device=h20_96gb` and `-DSL:gpu_device=h20_141gb` concrete
