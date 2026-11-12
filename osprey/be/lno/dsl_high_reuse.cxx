@@ -470,3 +470,13 @@ void DSL_HIGH_REUSE_FACTS::Print(FILE *f,const char *stage,bool live) const {
             (unsigned long long)c.materialized_copy_bytes,c.first_use.c_str(),c.last_use.c_str());
     }
 }
+
+/* Full owned identity for model/cache/selected binding; epoch is invocation-local. */
+std::string DSL_HIGH_REUSE_FACTS::Binding_key() const {
+    if(!_valid) return "";
+    std::string key="mla-reuse-binding-v1;";field(key,_stamp.owner);
+    field(key,number(_stamp.activation));field(key,number(_stamp.mutation));
+    field(key,_source);field(key,_facts);field(key,_memory);field(key,_manifest);
+    field(key,_bindings.unit);field(key,_bindings.numeric);field(key,_bindings.target);
+    field(key,_bindings.manifest);field(key,_bindings.model);field(key,_summary.key);return key;
+}

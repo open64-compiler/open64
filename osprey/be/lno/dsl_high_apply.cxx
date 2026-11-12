@@ -75,6 +75,10 @@ void DSL_apply_test_input(DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_REPORT &
             report.exploration.winner=report.production.exploration.winner=i;break;
         }
     if(DSL_apply_fault(18)) ++report.exploration.candidates[report.exploration.winner].policy;
+    if(DSL_apply_fault(19)) ++input.movement_profile.scenarios[0].cache_hit_ppm;
+    if(DSL_apply_fault(20)) report.reuse=DSL_HIGH_REUSE_FACTS();
+    if(DSL_apply_fault(21)) report.exploration.candidates[report.exploration.winner].descriptor.group=2;
+    if(DSL_apply_fault(22)) ++report.exploration.candidates[report.exploration.winner].descriptor.column;
 #endif
 }
 /* Copy an ordinary High image in a child: the existing writer consumes native
@@ -240,6 +244,8 @@ bool DSL_apply_preflight(WN *root,DSL_HIGH_EPOCH &epoch,const DSL_HIGH_BINDINGS 
         !LNO_DSL_validate_search_input(snapshot,bindings,input,reason)) return false;
     if(report.reuse.Available() && !report.reuse.Is_current(snapshot,epoch,bindings,input.algorithm))
         return reason="reuse_context_changed",false;
+    if(input.movement_enabled && (!report.movement || !report.reuse.Available() ||
+        report.movement_key!=LNO_DSL_movement_binding(input,report.reuse))) return reason="movement_binding_changed",false;
     unsigned free_maps=0;
     for(unsigned i=0;i<WN_MAP_MAX;++i) if(!Current_Map_Tab->_is_used[i]) ++free_maps;
     if(free_maps<48) return reason="analysis_map_capacity",false;
@@ -258,6 +264,9 @@ bool DSL_apply_preflight(WN *root,DSL_HIGH_EPOCH &epoch,const DSL_HIGH_BINDINGS 
     const VHO_MLA_SEARCH_CANDIDATE &sealed=report.production.exploration.candidates[winner];
     if(candidate.policy!=sealed.policy || candidate.width!=sealed.width || candidate.scratch!=sealed.scratch || candidate.total!=sealed.total)
         return reason="selected_candidate_changed",false;
+    if(input.movement_enabled && (candidate.descriptor.group!=1 || !candidate.movement.modeled ||
+        candidate.movement.descriptor_key!=VHO_mla_movement_descriptor_key(candidate) ||
+        candidate.movement.descriptor_key!=sealed.movement.descriptor_key)) return reason="movement_candidate_unimplemented_or_changed",false;
     if(!candidate.evaluated || !candidate.eligible) return reason="selected_candidate_ineligible",false;
     for(unsigned i=0;i<report.exploration.candidates.size();++i) {
         const VHO_MLA_SEARCH_CANDIDATE &other=report.exploration.candidates[i];
@@ -313,6 +322,7 @@ bool LNO_DSL_apply_selected_high(WN *&root,DU_MANAGER *&du,ALIAS_MANAGER *&alias
     try {
         WN *body=VHO_tensor_build_selected_high(selected,root);
         std::string explanation=Index_To_Str(WN_GetComment(WN_first(body)));
+        if(report.movement) explanation+=" MR2 selected an implemented G=1 plan under the explicit hierarchy/reuse profile; grouped-head candidates are analysis-only. Cache/HBM traffic and cycle costs are scenario estimates, not GPU measurements. The normalized per-head partial tuple and stable merge remain unchanged.";
         staged=WN_COPY_Tree(root);WN_func_body(staged)=body;
         if(DSL_apply_fault(1)) throw std::runtime_error("test_after_construction");
         previous.Stage(staged);staged_analyses=true;
@@ -338,7 +348,12 @@ bool LNO_DSL_apply_selected_high(WN *&root,DU_MANAGER *&du,ALIAS_MANAGER *&alias
          * existing metadata image. Future lowering verifies these obligations;
          * it must not infer a different width/policy or reopen search. */
         ST_IDX owner=WN_st_idx(staged);
-        ST_tensor_bind_metadata(owner,"tensor.high.selected.schema","lno-selected-mla-v1");
+        ST_tensor_bind_metadata(owner,"tensor.high.selected.schema",report.movement?"lno-selected-mla-v2":"lno-selected-mla-v1");
+        if(report.movement) {
+            ST_tensor_bind_metadata(owner,"tensor.high.selected.head_group","1");
+            std::string seal="mla-movement-selected-v1;"+report.exploration.candidates[report.exploration.winner].movement.descriptor_key+";"+report.movement_key;
+            ST_tensor_bind_metadata(owner,"tensor.high.selected.movement",seal.c_str());
+        }
         ST_tensor_bind_metadata(owner,"tensor.high.selected.source",rebuilt.Source_key().c_str());
         ST_tensor_bind_metadata(owner,"tensor.high.selected.facts",rebuilt.Facts_key().c_str());
         ST_tensor_bind_metadata(owner,"tensor.high.selected.resources",report.resource_key.c_str());

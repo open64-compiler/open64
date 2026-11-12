@@ -73,6 +73,7 @@ class DSL_HIGH_REUSE_FACTS {
 public:
     DSL_HIGH_REUSE_FACTS() : _valid(false) {}
     bool Available() const { return _valid; }
+    std::string Binding_key() const;
     /* Token-only diagnostic; application additionally needs Is_current and
      * the owner's native snapshot recapture before any transformation. */
     bool Is_live(const DSL_HIGH_EPOCH &epoch) const { return _valid && epoch.Matches(_stamp); }

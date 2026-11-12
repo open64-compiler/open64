@@ -1251,3 +1251,9 @@ dsl_tensor_locality.o: $(BE_VHO_DIR)/dsl_tensor_locality_internal.h \
 
 dsl_contract.o: $(COMMON_IR_IMAGE_DIR)/dsl_contract.cxx \
     $(COMMON_IR_IMAGE_DIR)/dsl_contract.h
+# MR2 detached profile/candidate layout and included model implementation.
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o \
+  tensor_bridge_bindings.o tensor_attention_search.o: \
+  $(BE_VHO_DIR)/tensor_attention_search.h $(BE_VHO_DIR)/tensor_attention_movement.h
+
+tensor_attention_search.o: $(BE_VHO_DIR)/tensor_attention_movement.inc

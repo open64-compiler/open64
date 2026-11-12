@@ -6,6 +6,7 @@
 #ifndef tensor_attention_search_INCLUDED
 #define tensor_attention_search_INCLUDED
 #include "tensor_kernel_lower.h"
+#include "tensor_attention_movement.h"
 
 enum VHO_MLA_COST_FIELD {
     VHO_MLA_GLOBAL_RATE, VHO_MLA_SCALAR_RATE, VHO_MLA_SHARED_RATE,
@@ -29,6 +30,7 @@ struct VHO_MLA_SEARCH_OPTIONS {
 };
 /* Counts are per CTA, costs cover the entire stage including grid rounds. */
 struct VHO_MLA_STAGE_ESTIMATE {
+    VHO_MLA_MOVEMENT_STAGE movement;
     /* Zero detached counts and costs without allocating compiler state. */
     VHO_MLA_STAGE_ESTIMATE():operation(0),ctas(0),threads(0),shared(0),resident(0),scalar_ops(0),global_bytes(0),shared_bytes(0),
         shuffles(0),exps(0),divs(0),barriers(0),fences(0),dependency(0),rounds(0),compute(0),memory(0),special(0),local(0),sync(0),launch(0),total(0) {}
@@ -36,6 +38,8 @@ struct VHO_MLA_STAGE_ESTIMATE {
     UINT64 rounds,compute,memory,special,local,sync,launch,total;
 };
 struct VHO_MLA_SEARCH_CANDIDATE {
+    VHO_MLA_MOVEMENT_DESCRIPTOR descriptor;
+    VHO_MLA_MOVEMENT_ESTIMATE movement;
     /* A specification is ineligible until its own estimate/preflight completes. */
     VHO_MLA_SEARCH_CANDIDATE():policy(6),width(0),evaluated(false),eligible(false),scratch(0),total(0),reason("not_evaluated") {}
     UINT32 policy,width;
@@ -119,4 +123,11 @@ extern std::string VHO_mla_search_control_key(const VHO_MLA_SEARCH_CONTROL &);
  * Invalid input/clock leaves output unchanged; no incumbent publishes counts. */
 extern BOOL VHO_mla_explore_controlled(const VHO_TENSOR_PROGRAM &,const VHO_TENSOR_GPU_PROFILE &,
     const VHO_MLA_COST_PROFILE &,const VHO_MLA_SEARCH_CONTROL &,VHO_MLA_PRODUCTION_RESULT *,FILE *);
+/* V3 reuses the same portfolio/cache/global budgets with a separately bound
+ * model/catalog. Only proved executable G1 entries may become incumbents. */
+extern std::string VHO_mla_movement_descriptor_key(const VHO_MLA_SEARCH_CANDIDATE &);
+extern BOOL VHO_mla_movement_control_valid(const VHO_MLA_SEARCH_CONTROL &,FILE *);
+extern BOOL VHO_mla_explore_movement(const VHO_TENSOR_PROGRAM &,const VHO_TENSOR_GPU_PROFILE &,
+    const VHO_MLA_COST_PROFILE &,const VHO_MLA_SEARCH_CONTROL &,const VHO_MLA_MOVEMENT_CONTEXT &,
+    VHO_MLA_PRODUCTION_RESULT *,FILE *);
 #endif
