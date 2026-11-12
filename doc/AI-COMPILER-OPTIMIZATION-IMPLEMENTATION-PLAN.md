@@ -147,7 +147,7 @@ concurrent reduction coding.
 | LN1 | Define both means, scaling, rsqrt and environment; specify native v2/admission and implement target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | Native v2/producer/PREOPT, LN1-c target binding/carriers, LN1-d oracle and bounded LN1-e integrated source/target/numerical evidence implemented. Complete LayerNorm execution and GPU conformance remain open. |
 | LN2 | Construct conditional legal storage/event plans from bound source. `alternatives.log`, `residency.log` and `fetch-pipeline.log` expose ranges/leases, capacity, banks/tails and generation/reuse constraints. | Native planning plus LN2-d runtime guard export/host bridge implemented. Actual selected-entry/register/internal-event conformance, real CUDA provider and expanded delivery remain open. |
 | LN3 | Complete comparable costs with target provenance/uncertainty and independent oracle. `physical-plan.log` explains selected/fallback reason without invented overlap or guaranteed cache hits; `bubble.log` gives critical-path exposure; `roofline.log` gives candidate-specific all-miss service bounds. | Bounded native complete-cost/selection service implemented and retained-path replay accepted independently of reduction coding. Common AIO-1/AIO-2 records and optional hardware extension, explicit unknowns and analysis-only interval gate; no executable transformation or native calibration claim. |
-| LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Bounded device lowering and explicit driver/typed-JIT request-profile plumbing implemented. Source-revalidated C0/C1/C2 materialization, exact scalar carriers and CUDA emission are independent of reduction. Automatic calibrated-profile provisioning, service-session lifecycle and production runtime adapter remain open. |
+| LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Bounded lowering, explicit driver/typed-JIT requests, compiled-entry review packaging and optional CUDA Driver adapter implemented. Independent of reduction; v1 preserved. Deployment service/hash/buffer hooks, automatic calibrated-profile provisioning, general compiler-session lifecycle and real GPU/provider certification remain open. |
 | LN5 | Separately authorized parallel statistics/Welford, RF retention and async/TMA refinements with numerical legality, lowerability and complete costs. | Deferred, not implied by LN0-LN4. |
 | LN6 | Native numerical/instruction/resource/paired-performance verification and calibration. | GPU gate open; not a blocker to design/compiler work. |
 
@@ -442,10 +442,42 @@ baseline-isolation evidence is authenticated from the primary package rather
 than rerun. Preserve the original comparator failure and corrected exact-byte
 handling of the deliberately malformed UTF-8 input.
 
-Next LN4 package: package and enforce the exact compiled entry manifest for
-the production runtime provider; service-session lifecycle/concurrency and
-automatic calibrated-profile provisioning remain separately designed. Keep
-v1 and incomplete timing ineligible.
+LN4 compiled-entry follow-on, 2026-10-29:
+[Compiled-entry detail v0.1](AI-COMPILER-LAYERNORM-COMPILED-ENTRY-v0.1.md).
+Implemented a derived review packager for exact guard/entry/body/resource/image
+identity and a separate optional CUDA Driver adapter. Copy/hash cubin before
+module loading; query actual context/device, registers/static shared, four
+pointer parameters, no mandatory cluster and selected occupancy floor. Refuse
+mismatch for explicit recost rather than substituting a plan. Launch exact
+subrange pointers at selected geometry with zero dynamic shared. Existing
+runtime guards retain canonical leases and failure-safe readiness/drain/consumer
+ordering; private ticket associations pin the module through wrapper close.
+Failed rollback unload returns a cleanup-only handle rather than losing ownership.
+
+Required tools: `compiled-entry.log` reports source/entry/seals, parent/image
+hashes, RF/shared reservations and resident floor. `provider.log` reports actual
+resource observations, admit/launch/drain failures, module pins and unload.
+Both keep the first-line description and source-line-last compact trace rows.
+Collect full successful phase content in `optimization.log`; summary must
+separate unchanged compiler/mapped evidence, mock API enforcement, deployment
+integration and real GPU certification. No new compiler option or mapped layout.
+
+Compiler-side acceptance: 36 packages/adapter cases, 19,860 adapter checks,
+11,392 independent base-runtime checks and 124 focused Python tests. Scoped
+ASan/UBSan with leak checking passes the same runtime matrix; 288 generated
+package/guard/raw-trace/report files have exact normal/sanitized parity.
+The authenticated request producer retains 193 full mapped inspections; its
+compiler sources/images remain unchanged and are reused, not regenerated.
+Implementation `50335e35` is accepted with final-path source rebuild/replay of
+the normal and sanitized matrices plus 124 focused tests. All 576 derived
+package/guard/raw-trace/report files reproduce byte-for-byte without
+normalization. The progress ledger records immutable primary/replay identities;
+indexes/current links were updated only after successful replay.
+
+Next LN4 package: consume the optional compiled entry in host-dispatch/service
+integration with reviewed hash, buffer/root and readiness/consumer hooks.
+General service-session lifecycle/concurrency and automatic calibrated-profile
+provisioning remain separately designed. Keep v1 and incomplete timing ineligible.
 Actual allocation leases, entry resolution, static/dynamic shared admission,
 register/launch limits and device completion must be enforced by the production
 adapter. No ordinary source compilation or GPU execution is implied by the

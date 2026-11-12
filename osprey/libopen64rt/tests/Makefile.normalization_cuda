@@ -1,0 +1,21 @@
+# Optional LN4 CUDA Driver adapter; no compiler/reduction or legacy runtime changes.
+# Design: doc/AI-COMPILER-LAYERNORM-COMPILED-ENTRY-v0.1.md.
+CXX ?= c++
+AR ?= ar
+SOURCE ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
+CUDA_HOME ?= /usr/local/cuda
+CPPFLAGS += -I$(SOURCE)/include -I$(CUDA_HOME)/include
+CXXFLAGS += -std=c++11 -Wall -Wextra -Werror -pthread
+
+all: libopen64_normalization_cuda.a
+
+normalization_cuda.o: $(SOURCE)/libopen64rt/normalization_cuda.cxx \
+                      $(SOURCE)/include/open64_normalization_cuda.h
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
+normalization_runtime.o: $(SOURCE)/libopen64rt/normalization_runtime.cxx \
+                         $(SOURCE)/include/open64_normalization_runtime.h
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
+libopen64_normalization_cuda.a: normalization_cuda.o normalization_runtime.o
+	$(AR) rcs $@ $^

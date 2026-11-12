@@ -2,6 +2,13 @@
 
 Version v0.1 | 2026-10-28 | Explicit compiler checkpoint, not runtime launch
 
+Follow-on, 2026-10-29:
+[Compiled-entry/CUDA provider binding](AI-COMPILER-LAYERNORM-COMPILED-ENTRY-v0.1.md)
+adds a derived review package and optional runtime adapter without changing
+this driver schema or compiler producer. It joins selected guard/body/assembly
+evidence and checks loaded-entry resources. Deployment services and real GPU
+verification remain separate from compiler checkpoint acceptance.
+
 ## Boundary And Ownership
 
 This integrates the [LN4 selected-device contract](AI-COMPILER-LAYERNORM-EXECUTABLE-LOWERING-v0.1.md)
