@@ -192,6 +192,7 @@ BE_LNOPT_CXX_SRCS = \
   dsl_high_admission.cxx \
   dsl_high_snapshot.cxx \
   dsl_high_snapshot_capture.cxx \
+  dsl_high_reuse.cxx \
   dsl_high_observer.cxx \
   dsl_high_observer_json.cxx \
   dsl_high_observer_native.cxx \
@@ -350,6 +351,17 @@ dsl_high_observer.o dsl_high_observer_json.o dsl_high_observer_native.o \
   $(BE_DIR)/vho/tensor_kernel_lower.h $(COMMON_COM_DIR)/dsl_tensor_traits.h
 
 dsl_high_snapshot_capture.o: $(BE_LNOPT_DIR)/tests/dsl_high_snapshot_native_test.inc
+dsl_high_observer_native.o: $(BE_LNOPT_DIR)/tests/dsl_high_reuse_native_test.inc
+
+# Owned snapshot/report layout crosses the native/observer boundary. Rebuild
+# every consumer together; these records never enter a WHIRL image.
+dsl_high_snapshot.o dsl_high_snapshot_capture.o dsl_high_reuse.o \
+  dsl_high_observer.o dsl_high_observer_json.o dsl_high_observer_native.o \
+  dsl_high_apply.o lnopt_main.o dsl_high_search_test.o: \
+  $(BE_LNOPT_DIR)/dsl_high_snapshot.h $(BE_LNOPT_DIR)/dsl_high_reuse.h \
+  $(BE_LNOPT_DIR)/dsl_high_observer.h
+
+dsl_high_reuse.o: $(BE_LNOPT_DIR)/dsl_high_reuse.cxx $(BE_DIR)/vho/dsl_gemm_readiness.h
 
 tensor_attention_chunk_select.o: $(BE_DIR)/vho/tensor_attention_chunk_select.cxx $(BE_DIR)/vho/tensor_kernel_lower.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@

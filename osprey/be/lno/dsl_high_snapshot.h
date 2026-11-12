@@ -56,6 +56,22 @@ struct DSL_HIGH_ACCESS {
     bool write;
     int64_t element_bytes;
     std::vector<DSL_HIGH_DIM> dimensions;
+    /* MR1 owned projection; does not alter legacy source/fact key spelling. */
+    std::string storage, execution_group, copied_from_access, element_encoding;
+    unsigned execution_order;
+    int64_t array_extent, byte_offset;
+    bool direct_formal, conditional;
+    std::vector<std::string> loop_ids;
+    DSL_HIGH_ACCESS() : write(false), element_bytes(0), execution_order(0),
+        array_extent(0), byte_offset(0), direct_formal(false), conditional(false) {}
+};
+struct DSL_HIGH_STORAGE {
+    std::string id, symbol, element_type, element_encoding, cache_trait;
+    unsigned formal;
+    int64_t element_bytes;
+    bool pointer_formal, restrict_qualified, base_stable, uses_only_as_array_base;
+    DSL_HIGH_STORAGE() : formal(0), element_bytes(0), pointer_formal(false),
+        restrict_qualified(false), base_stable(true), uses_only_as_array_base(true) {}
 };
 struct DSL_HIGH_DEP_COMPONENT {
     bool is_distance;
@@ -75,6 +91,8 @@ struct DSL_HIGH_DU {
 struct DSL_HIGH_ALIAS {
     std::string first, second;
     int result;
+    bool disjoint;
+    DSL_HIGH_ALIAS() : result(0), disjoint(false) {}
 };
 
 class DSL_HIGH_CAPTURE;
@@ -83,7 +101,9 @@ class DSL_HIGH_SNAPSHOT {
     bool _valid;
     DSL_HIGH_STAMP _stamp;
     DSL_HIGH_BINDINGS _bindings;
-    std::string _identity, _source_key, _facts_key;
+    std::string _identity, _source_key, _facts_key, _owned_memory_key;
+    std::string _producer_recipe, _producer_schema, _buffer_contract;
+    std::vector<DSL_HIGH_STORAGE> _storages;
     std::vector<DSL_HIGH_LOOP> _loops;
     std::vector<DSL_HIGH_ACCESS> _accesses;
     std::vector<DSL_HIGH_DEPENDENCE> _dependences;
@@ -102,6 +122,14 @@ public:
     const std::string &Source_key() const { return _source_key; }
     /* Return the complete copied fact key, including uncertainty. */
     const std::string &Facts_key() const { return _facts_key; }
+    /* New projections have a separate key so existing v1/v2 joins stay valid. */
+    const std::string &Owned_memory_key() const { return _owned_memory_key; }
+    const std::vector<DSL_HIGH_STORAGE> &Storages() const { return _storages; }
+    const std::string &Producer_recipe() const { return _producer_recipe; }
+    const std::string &Producer_schema() const { return _producer_schema; }
+    const std::string &Buffer_contract() const { return _buffer_contract; }
+    /* Return an owned token for a separately derived analysis lifetime. */
+    DSL_HIGH_STAMP Stamp() const { return _stamp; }
     /* Return immutable loop records in semantic tree order. */
     const std::vector<DSL_HIGH_LOOP> &Loops() const { return _loops; }
     /* Return immutable affine memory records. */

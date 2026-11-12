@@ -40,6 +40,25 @@ static void DSL_high_native_test(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias
     DSL_high_test_nodes(WN_func_body(scope), loop, memory, use, du);
     DSL_high_test_require(loop && memory && use, "live_test_coverage");
 
+    /* Function metadata was deliberately absent from legacy source/fact keys.
+     * MR1's owned-memory key must detect an unannounced producer-witness edit. */
+    for(UINT32 i=0;i<St_tensor_metadata.Size();++i) {
+        ST_TENSOR_METADATA_STORE &store=St_tensor_metadata[i];
+        if(store.st!=WN_st_idx(scope)) continue;
+        for(UINT32 row=store.metadata_head;row;row=Tensor_dsl_kv_table[row-1].next) {
+            TY_DSL_KV &kv=Tensor_dsl_kv_table[row-1];
+            if(strcmp(Index_To_Str(kv.key),"tensor.high.recipe_key")) continue;
+            STR_IDX saved=kv.value;kv.value=kv.key;
+            DSL_HIGH_SNAPSHOT changed;std::string why;
+            bool captured=LNO_DSL_capture_high(scope,du,alias,graph,epoch,bindings,changed,why);
+            bool rejected=!LNO_DSL_revalidate_high(scope,du,alias,graph,epoch,bindings,snapshot,why);
+            kv.value=saved;
+            DSL_high_test_require(captured && rejected && snapshot.Source_key()==changed.Source_key() &&
+                snapshot.Facts_key()==changed.Facts_key() && snapshot.Owned_memory_key()!=changed.Owned_memory_key(),
+                "unannounced_producer_binding_edit");
+        }
+    }
+
     /* Perturb only an existing value index and restore it without allocating
      * strings/metadata rows. A missed epoch bump must still be detected. */
     for(UINT32 i=0;i<St_tensor_metadata.Size();++i) {
