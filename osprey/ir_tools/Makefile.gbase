@@ -219,6 +219,7 @@ LDIRT += dsl_normalization_target_test dsl_normalization_target_test.o opt_dsl_n
 LDIRT += dsl_normalization_evidence_test dsl_normalization_evidence_test.o
 LDIRT += dsl_normalization_plan_test dsl_normalization_plan_test.o opt_dsl_normalization_plan_test.o
 LDIRT += dsl_normalization_guard_test dsl_normalization_guard_test.o
+LDIRT += dsl_normalization_cost_test dsl_normalization_cost_test.o opt_dsl_normalization_cost_test.o
 LDIRT += dsl_softmax_contract_test dsl_softmax_contract_test.o
 LDIRT += dsl_normalization_contract_test dsl_normalization_contract_test.o
 LDIRT += dsl_normalization_ref_test dsl_normalization_ref_test.o
@@ -926,6 +927,23 @@ dsl_normalization_guard_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_guard_test
                 $(BE_OPT_DIR)/tests/dsl_normalization_plan_test.cxx $(BE_OPT_DIR)/tests/dsl_normalization_target_test.cxx \
                 $(BE_OPT_DIR)/tests/dsl_normalization_ref_test.cxx $(BE_OPT_DIR)/opt_dsl_normalization_plan.h \
                 $(BE_OPT_DIR)/../../include/open64_normalization_runtime.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_normalization_cost_test: $(OBJECTS) controls.o dsl_normalization_cost_test.o \
+		opt_dsl_normalization_cost_test.o opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_normalization_cost_test.o opt_dsl_normalization_cost_test.o opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o \
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+opt_dsl_normalization_cost_test.o: $(BE_OPT_DIR)/opt_dsl_normalization_cost.cxx $(BE_OPT_DIR)/opt_dsl_normalization_cost.h \
+                $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_hardware_performance.h $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_memory_hierarchy.h \
+                $(BE_VHO_DIR)/dsl_gemm_occupancy.h $(BE_VHO_DIR)/dsl_gemm_readiness.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_memory_hierarchy.o: $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_hardware_performance.h $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_memory_hierarchy.h
+
+dsl_normalization_cost_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_cost_test.cxx \
+                $(BE_OPT_DIR)/tests/dsl_normalization_plan_test.cxx $(BE_OPT_DIR)/tests/dsl_normalization_target_test.cxx \
+                $(BE_OPT_DIR)/tests/dsl_normalization_ref_test.cxx $(BE_OPT_DIR)/opt_dsl_normalization_cost.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_softmax_contract_test: $(OBJECTS) controls.o dsl_softmax_contract_test.o \

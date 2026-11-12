@@ -69,6 +69,18 @@ BOOL DSL_hardware_description_find_arch(const char *architecture,
     return FALSE;
 }
 
+/* Missing scalar-path information is not zero latency or a borrowed GEMM rate.
+ * This runtime-only extension preserves every existing description and image. */
+BOOL DSL_hardware_scalar_execution_profile_get_arch(UINT32 arch_id,
+    DSL_SCALAR_EXECUTION_PROFILE *profile)
+{
+    DSL_HARDWARE_DESCRIPTION_RECORD hw;
+    if (!profile || !DSL_hardware_description_get_arch(arch_id,&hw)) return FALSE;
+    DSL_SCALAR_EXECUTION_PROFILE p;
+    memset(&p,0,sizeof(p));p.version=1;p.arch_id=arch_id;p.description_revision=hw.revision;p.model_id=1;
+    *profile=p;return TRUE;
+}
+
 static const char *DSL_target_profile_name_table[] = {
     "unknown", "cpu_baseline", "nvidia_hopper", "nvidia_blackwell"
 };

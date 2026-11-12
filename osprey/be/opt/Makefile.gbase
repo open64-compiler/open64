@@ -225,6 +225,7 @@ BE_OPT_CXX_SRCS = \
   opt_dsl.cxx		\
   opt_dsl_normalization_target.cxx \
   opt_dsl_normalization_plan.cxx \
+  opt_dsl_normalization_cost.cxx \
   opt_dsl_reduction.cxx \
   opt_dsl_reduction_staged.cxx \
   opt_dsl_locality.cxx	\

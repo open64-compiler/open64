@@ -67,6 +67,13 @@ extern BOOL DSL_hardware_description_find_arch
 extern BOOL DSL_hardware_description_get_arch
     (UINT32 arch_id, DSL_HARDWARE_DESCRIPTION_RECORD *description);
 
+/* Return an explicitly incomplete scalar extension for the exact built-in
+ * description. No div/sqrt/cache/barrier timings are guessed from sm_*.
+ * Caller may supply separately identified versioned envelopes; policy belongs
+ * to the owning phase. Invalid ID/output leaves the output unchanged. */
+extern BOOL DSL_hardware_scalar_execution_profile_get_arch
+    (UINT32 arch_id, DSL_SCALAR_EXECUTION_PROFILE *profile);
+
 typedef enum {
     DSL_MEMORY_TIER_UNKNOWN = 0,
     DSL_MEMORY_TIER_SYSTEM = 1,

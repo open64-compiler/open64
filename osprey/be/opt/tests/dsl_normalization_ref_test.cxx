@@ -23,7 +23,7 @@
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
 #include "dsl_gatekeeper.h"
-#include "dsl_ir_image.h"
+#include "dsl_image_service.h"
 #include "dsl_shape.h"
 #include "opt_dsl.h"
 
@@ -181,12 +181,12 @@ int main(int argc, char **argv)
   if (argc < 2 || argc > 3) return 2;
   const char *variant = argc == 3 ? argv[2] : "default";
   const char *variants[] = { "default", "unit", "wide", "epsilon2", "subnormal",
-                            "count-limit", "mixed", "shared-affine", "cross-pu" };
+                            "count-limit", "mixed", "shared-affine", "cross-pu", "single-row", "many-rows" };
   BOOL known = FALSE;
   for (UINT32 i = 0; i < sizeof(variants)/sizeof(variants[0]); ++i)
     known = known || strcmp(variant, variants[i]) == 0;
   if (!known) return 2;
-  UINT64 rows = 3, width = 17;
+  UINT64 rows = strcmp(variant,"single-row")==0 ? 1 : strcmp(variant,"many-rows")==0 ? 129 : 3, width = strcmp(variant,"many-rows")==0 ? 1 : 17;
   if (strcmp(variant, "unit") == 0) rows = width = 1;
   if (strcmp(variant, "wide") == 0) { rows = 7; width = 65; }
   if (strcmp(variant, "count-limit") == 0) { rows = 1; width = 16777216ULL; }
