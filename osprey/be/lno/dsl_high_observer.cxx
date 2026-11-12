@@ -26,6 +26,8 @@ bool LNO_DSL_validate_search_input(const DSL_HIGH_SNAPSHOT &snapshot, const DSL_
     if (!VHO_tensor_gpu_profile_valid(input.gpu, NULL)) return reason = "gpu_resources_invalid", false;
     if (input.model.architecture != input.gpu.architecture || !VHO_mla_search_inputs_valid(input.model, options, NULL))
         return reason = "model_binding_invalid", false;
+    if (input.production_controls && !VHO_mla_search_control_valid(input.controls,NULL))
+        return reason = "search_controls_invalid", false;
     reason = "validated"; return true;
 }
 
@@ -41,7 +43,12 @@ bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_
     program.split_width = 128;
     VHO_MLA_SEARCH_OPTIONS options;
     DSL_HIGH_SEARCH_REPORT result;
-    if (!VHO_mla_explore(program, input.gpu, input.model, options, &result.exploration, NULL))
+    if (input.production_controls) {
+        if (!VHO_mla_explore_controlled(program,input.gpu,input.model,input.controls,&result.production,NULL))
+            return reason = "controlled_search_failed", false;
+        result.controlled = true; result.exploration = result.production.exploration;
+        result.control_key = VHO_mla_search_control_key(input.controls);
+    } else if (!VHO_mla_explore(program, input.gpu, input.model, options, &result.exploration, NULL))
         return reason = "no_estimated_candidate", false;
     result.manifest_key = VHO_tensor_recipe_key(input.algorithm);
     const VHO_TENSOR_GPU_PROFILE &gpu = input.gpu;

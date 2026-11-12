@@ -1372,7 +1372,7 @@ extern WN * Lnoptimizer(PU_Info* current_pu,
     /* Read-only form/coverage admission while full LNO facts still exist.
      * Refusal leaves all existing transformations/fallback behavior intact.
      * Design: doc/AI-COMPILER-SEARCH-M2A-HIGH-ADMISSION-v1.0.md. */
-    if (VHO_DSL_Partition_Axis && Opt_Level >= 3 && Run_lno && LNO_enabled && LNO_Opt > 0 &&
+    if ((VHO_DSL_Partition_Axis || LNO_DSL_production_search_requested()) && Opt_Level >= 3 && Run_lno && LNO_enabled && LNO_Opt > 0 &&
         !LNO_Run_Lego && !Run_autopar && !PU_has_mp(Get_Current_PU()) && !PU_mp(Get_Current_PU())) {
       FILE *high_trace = VHO_DSL_AI_Opt_Trace &&
           Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG) ? TFile : NULL;

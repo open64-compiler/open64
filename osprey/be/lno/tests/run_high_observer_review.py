@@ -49,7 +49,7 @@ def audit_objects(objects, output):
     names = ('dsl_high_observer', 'dsl_high_observer_json', 'tensor_schedule',
              'tensor_attention_chunk_select', 'tensor_attention_search')
     forbidden = re.compile(r'\b(WN_|New_ST|New_TY|ST_tensor|TY_tensor|Current_|MEM_POOL|Scope_tab|Ty_Table|St_Table|PU_Info|'
-                           r'DSL_Builder|DSL_IR|DSL_WN|Save_Str|New_PREG|LNO_DSL_observe_high|LNO_DSL_capture|LNO_DSL_revalidate|LNO_DSL_high_bindings|VHO_tensor_materialize|VHO_tensor_prepare|VHO_tensor_annotate|Write_Global|Write_PU|system\(|fork\(|execv)')
+                           r'DSL_Builder|DSL_IR|DSL_WN|Save_Str|New_PREG|Common_Option_Groups|Get_Command_Line_Group|VHO_mla_search_test_clock_us|LNO_DSL_observe_high|LNO_DSL_capture|LNO_DSL_revalidate|LNO_DSL_high_bindings|VHO_tensor_materialize|VHO_tensor_prepare|VHO_tensor_annotate|Write_Global|Write_PU|system\(|fork\(|execv)')
     for name in names:
         result = subprocess.run(['nm', '-uC', str(objects / (name + '.o'))], capture_output=True, text=True, check=True)
         (output / (name + '.undefined.txt')).write_text(result.stdout)

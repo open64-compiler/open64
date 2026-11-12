@@ -14,12 +14,19 @@ struct DSL_HIGH_SEARCH_INPUT {
     VHO_MLA_COST_PROFILE model;
     std::vector<unsigned> buffers;
     bool allow_reassociate;
+    bool production_controls;
+    VHO_MLA_SEARCH_CONTROL controls;
     /* Missing permission never defaults to authorization. */
-    DSL_HIGH_SEARCH_INPUT() : allow_reassociate(false) {}
+    DSL_HIGH_SEARCH_INPUT() : allow_reassociate(false), production_controls(false) {}
 };
 struct DSL_HIGH_SEARCH_REPORT {
     VHO_MLA_SEARCH_RESULT exploration;
     std::string resource_key, model_key, manifest_key;
+    bool controlled;
+    VHO_MLA_PRODUCTION_RESULT production;
+    std::string control_key;
+    /* V1 reporting remains the archival default until v2 controls are bound. */
+    DSL_HIGH_SEARCH_REPORT() : controlled(false) {}
 };
 
 /* Strict, bounded JSON adapter into owned records. Reject duplicate/unknown
@@ -39,4 +46,7 @@ extern void LNO_DSL_observe_high(WN *, DU_MANAGER *, ALIAS_MANAGER *, ARRAY_DIRE
     const DSL_HIGH_EPOCH &, const DSL_HIGH_BINDINGS &, const DSL_HIGH_SNAPSHOT &, uint64_t, FILE *);
 /* Monotonic host collection/validation/exploration accounting, never GPU time. */
 extern uint64_t LNO_DSL_observer_time_us();
+/* Query the existing read-only option descriptor service. This file-scope
+ * production opt-in can open snapshot capture without the legacy DSL flag. */
+extern bool LNO_DSL_production_search_requested();
 #endif
