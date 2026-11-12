@@ -1,6 +1,6 @@
 # Absorbed MLA Standalone Ingestion Test
 
-Version v0.6 dated November 5 2026. This fixture extracts the absorbed single
+Version v0.8 dated November 5 2026. This fixture extracts the absorbed single
 query MLA algorithm into a deterministic read-only tensor program. Short and
 long contexts execute the same source. CPU FP32 eager and genuine FX execution
 are checked against an independently expanded scalar FP64 reference.
@@ -374,3 +374,27 @@ and stale-policy rejection are covered. No source/device IR, schedule policy,
 binary layout, normal emitter behavior, or GPU validation status changes.
 There is no separate optimized tensor `.B` at this boundary in the current
 focused pipeline; the readable source projects the selected detached schedule.
+
+## Automatic WHIRL and CUDA explanations v0.8
+
+The [v0.2 source explanation contract](../../doc/AI-COMPILER-TENSOR-SCHEDULE-SOURCE-v0.2.md)
+makes comments part of the default generation pipeline. VHO derives one ordered
+explanation set from the selected graph and schedule. Kernel materialization
+then adds those records as ordinary WHIRL COMMENT nodes; normal whirl2c emits
+their text as CUDA comments. The readable tensor-level view consumes the same
+records. There is no separate handwritten MLA template or emitter-side
+optimization policy.
+
+Generated explanations cover logical names/shapes, materialized storage,
+fused/lazy producers, recomputation, exact constants/guards, serial loop order,
+chunk/tail ownership, scratch and merges, global normalization dependencies,
+and numerical permission. The 9/12-stage executable algorithms remain unchanged.
+Short/long products carry 84/90 explanation COMMENT nodes. Auditing detects
+changed or missing text; legacy unannotated images remain readable/auditable.
+
+`device` generates annotated output by default. `device-explain` additionally
+retains executable WHIRL immediately before and after adding only comments,
+with independent -st -src traces and a raw diff. Validation joins exact comment
+payloads through the native mapped image and normal whirl2c, proves unchanged
+executable source, and reruns reference/host parity and CUDA compilation.
+Actual GPU execution and performance acceptance remain open.

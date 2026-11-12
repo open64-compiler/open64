@@ -127,6 +127,34 @@ only when the current task needs detail.
    retire each duplicate path only after source, compile, and behavior checks
    establish parity. Do not treat the baseline as a second authoritative IR.
 
+## Explanations In Generated Optimized Source
+
+1. Generate explanatory comments by default in optimized source files,
+   including `.cu` files and other emitted source languages. Put the algorithm
+   walkthrough in the generated file itself; a companion log or design
+   document may supplement these comments but does not replace them.
+2. Explain the selected algorithm, tensor dimensions and important value
+   names, stage order, fused operations, remaining materialization boundaries,
+   and memory layout where applicable. State which expressions are lazy views
+   and which buffers are actually allocated. Explain intentional recomputation
+   so repeated expressions are not mistaken for additional allocations.
+3. For parallel or split reductions, explain work ownership, chunk bounds and
+   tails, partial-result computation, scratch indexing, merge operations and
+   ordering, normalization dependencies, and numerical guards. Identify any
+   serial inner loops and required floating-point reassociation permission.
+4. Keep comments synchronized with the selected WHIRL or optimization plan.
+   Prefer emitting them through the generator so regeneration preserves the
+   explanation. Comments must describe existing decisions, not introduce new
+   optimization policy or infer missing execution semantics in the emitter.
+5. Distinguish executable algorithm-review functions from mapped device kernels
+   and identify the actual validation status. Report launch counts, storage,
+   and resource facts accurately; do not describe unimplemented fusion,
+   synchronization, pipelines, or unmeasured speedups as completed work.
+6. When adding explanations to existing generated artifacts, preserve their
+   executable semantics and verify that the changes are comments only. Publish
+   versioned annotated copies when originals belong to a retained evidence
+   bundle; follow the existing immutable review-artifact retention policy.
+
 ## Open64 Design Continuity
 
 1. When new DSL infrastructure overlaps an established Open64 service, first

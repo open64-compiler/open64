@@ -6,6 +6,7 @@ optimization and does not claim GPU execution from host or NVCC checks.
 """
 import argparse
 import ctypes
+import difflib
 import hashlib
 import json
 from pathlib import Path
@@ -14,6 +15,25 @@ import shutil
 import subprocess
 
 from validate_mla_gpu import check_output
+from mla_kernel_review import runner
+
+
+def explanation_blocks(text):
+    """Compare COMMENT payloads across view and normal whirl2c formatting."""
+    return ['\n'.join(line.strip() for line in block.splitlines()).strip()
+            for block in re.findall(r'/\*\s*(OPEN64 GENERATED EXPLANATION:[\s\S]*?)\*/', text)]
+
+
+def without_generated_explanations(text):
+    """Recover the former readable file exactly by removing only new blocks."""
+    return re.sub(r'(?m)^/\* OPEN64 GENERATED EXPLANATION:[\s\S]*? \*/\n', '', text)
+
+
+def executable_tokens(text):
+    """Ignore comments/spacing while retaining quoted strings and C++ tokens."""
+    pattern = r'//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|\x27(?:\\.|[^\x27\\])*\x27'
+    text = re.sub(pattern, lambda m: ' ' if m.group().startswith(('//','/*')) else m.group(), text)
+    return re.findall(r'"(?:\\.|[^"\\])*"|\x27(?:\\.|[^\x27\\])*\x27|[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[^\s]', text)
 
 
 def digest(path):
@@ -94,6 +114,11 @@ def review(args):
         assert cuda.read_bytes() == (case / 'deterministic.cu').read_bytes()
         assert before == digest(case / 'recipe.json')
         text = cuda.read_text()
+        blocks = explanation_blocks(text)
+        assert blocks and any('FUSED PRODUCER' in b for b in blocks)
+        if args.previous_readable:
+            prior = args.previous_readable / ('mla_' + context + '_optimized.cu')
+            assert without_generated_explanations(text) == prior.read_text()
         stages = list(map(int, re.findall(r'kernel_id=(\d+);', text)))
         assert stages == [int(k['operation']) for k in launch['kernels']]
         assert 'threadIdx' not in text and 'blockIdx' not in text and '__global__' not in text
@@ -101,10 +126,47 @@ def review(args):
         lib = case / 'optimized.so'
         run(context + '-host-compile', [args.cxx, '-x', 'c++', '-std=c++17', '-O1', '-fPIC', '-shared',
             '-ffp-contract=off', '-fno-fast-math', '-I' + str(root), cuda, '-o', lib])
+        mapped = None
+        if args.whirl2c:
+            assert args.ir_b2a
+            run(context + '-comments-produce', [args.lowerer, 'device-explain', case / 'recipe.json',
+                case / 'comments.before.B', case / 'comments.after.B'])
+            for boundary in ('before','after'):
+                run(context + '-comments-' + boundary, [args.ir_b2a, '-st', '-src', case / ('comments.' + boundary + '.B'), case / ('comments.' + boundary + '.T')])
+            (case / 'comments.before-after.diff').write_text(''.join(difflib.unified_diff(
+                (case / 'comments.before.T').read_text().splitlines(True),
+                (case / 'comments.after.T').read_text().splitlines(True),
+                fromfile='comments.before.T',tofile='comments.after.T')))
+            run(context + '-comments-audit', [args.lowerer, 'audit', case / 'comments.after.B', case / 'recipe.json', case / 'comments.launch.json'])
+            annotated_launch = json.loads((case / 'comments.launch.json').read_text())
+            assert annotated_launch == launch
+            mapped = case / 'mapped'; mapped.mkdir()
+            for boundary, output in [('before',case / 'mapped.before.cu'),('after',mapped / 'kernels.cu')]:
+                run(context + '-mapped-' + boundary, [args.whirl2c, '-cuda', '-TARG:abi=n64', '-O0',
+                    '-CLIST:dotc_file=' + str(output), '-CLIST:doth_file=' + str(output.with_suffix('.h')),
+                    case / ('comments.' + boundary + '.B')])
+            emitted = (mapped / 'kernels.cu').read_text()
+            assert explanation_blocks(emitted) == blocks
+            assert executable_tokens(emitted) == executable_tokens((case / 'mapped.before.cu').read_text())
+            assert len(re.findall(r'^\s*COMMENT\b',(case / 'comments.after.T').read_text(),re.M)) == len(blocks)
+            for mode in ('audit-comment','audit-comment-missing'):
+                rejected = case / (mode + '.json')
+                run(context + '-' + mode, [args.lowerer, mode, case / 'comments.after.B', case / 'recipe.json', rejected], (1,))
+                assert not rejected.exists()
+            stub = mapped / 'include'; stub.mkdir()
+            (stub / 'cuda_runtime.h').write_text('#include <cmath>\n#include <cstring>\n#define __global__\n'
+                'struct dim3 {unsigned x=0,y=0,z=0;}; static dim3 threadIdx,blockIdx;\n'
+                'static float __uint_as_float(unsigned x) {float f; memcpy(&f,&x,4); return f;}\n')
+            (mapped / 'runner.cxx').write_text(runner(annotated_launch,False))
+            run(context + '-mapped-host-compile', [args.cxx, '-std=c++17','-O1','-ffp-contract=off','-fno-fast-math',
+                '-I' + str(stub),mapped / 'runner.cxx','-o',mapped / 'runner'])
         if args.nvcc:
             run(context + '-cuda-compile', [args.nvcc, '-std=c++17', '-arch=sm_90', '--fmad=false',
                 '--ftz=false', '--prec-div=true', '--prec-sqrt=true', '-dc', '-I' + str(root), cuda,
                 '-o', case / 'optimized.cuda.o'])
+            if mapped:
+                run(context + '-mapped-cubin', [args.nvcc,'-std=c++17','-arch=sm_90','--fmad=false','--ftz=false',
+                    '--prec-div=true','--prec-sqrt=true','-cubin',mapped / 'kernels.cu','-o',mapped / 'kernels.cubin'])
         checks = {}
         for oracle in sorted(source.glob('*.reference.json')):
             variant = oracle.name[:-len('.reference.json')]
@@ -116,6 +178,10 @@ def review(args):
             check = check_output(case / (variant + '.reference.json'), output)
             lowered = source / 'O3' / (variant + '.host.bin')
             assert raw == lowered.read_bytes(), context + ': source/lowered difference: ' + variant
+            if mapped:
+                mapped_output = mapped / (variant + '.outputs.bin')
+                run(context + '-mapped-' + variant,[mapped / 'runner',case / (variant + '.inputs.bin'),mapped_output])
+                assert raw == mapped_output.read_bytes()
             check.update(lowered_host_bitwise_parity='PASS', buffer_canaries='PASS', inputs_unchanged='PASS')
             checks[variant] = check
         assert digest(case / 'device.after.B') == digest(source / 'O3/device.after.B')
@@ -123,9 +189,11 @@ def review(args):
         cases[context] = dict(stages=len(stages), function=function, recipe_sha256=before,
             device_image_sha256=digest(case / 'device.after.B'), source_sha256=digest(cuda),
             host_execution=checks, cuda_compilation='PASS' if args.nvcc else 'NOT_RUN', gpu_execution='NOT_RUN')
+        cases[context].update(explanation_blocks=len(blocks),whirl_comment_emission='PASS' if mapped else 'NOT_RUN',
+            previous_readable_code_unchanged=bool(args.previous_readable))
     report = dict(status='PASS', schema='open64.tensor-schedule-source-review.v1', cases=cases,
         lowerer_sha256=digest(args.lowerer), optimization_selected_by_printer=False,
-        low_level_whirl_changed=False, gpu_execution='NOT_RUN')
+        low_level_whirl_changed=bool(args.whirl2c), executable_code_changed=False, gpu_execution='NOT_RUN')
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
     (root / 'SHA256SUMS').write_text(''.join(digest(p) + '  ' + str(p.relative_to(root)) + '\n'
         for p in sorted(root.rglob('*')) if p.is_file()))
@@ -139,6 +207,9 @@ def main():
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--cxx', default='g++')
     parser.add_argument('--nvcc', type=Path)
+    parser.add_argument('--whirl2c', type=Path)
+    parser.add_argument('--ir-b2a', type=Path)
+    parser.add_argument('--previous-readable', type=Path)
     review(parser.parse_args())
 
 

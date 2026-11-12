@@ -169,7 +169,7 @@ int main(int argc,char **argv) {
         if(argc==4 && !strcmp(argv[1],"schedule-source")) {
             VHO_TENSOR_PROGRAM p=decode(argv[2]);VHO_TENSOR_SCHEDULE plan;
             need(VHO_tensor_schedule(p,&plan,stderr),"schedule rejected");
-            write_source(argv[3],W2C_tensor_schedule_source(plan,encode(p)["recipe_fingerprint"].asString()));
+            write_source(argv[3],W2C_tensor_schedule_source(plan,VHO_tensor_explanations(plan),encode(p)["recipe_fingerprint"].asString()));
             printf("schedule_source=PASS stages=%lu\n",(unsigned long)plan.kernels.size());return 0;
         }
         if((argc==5 || argc==8) && !strcmp(argv[1],"optimize")) {
@@ -195,7 +195,8 @@ int main(int argc,char **argv) {
             printf("source_pu=%s operations=%lu values=%lu opt=%u source_unchanged=true\n",p.source_pu.c_str(),(unsigned long)p.operations.size(),(unsigned long)p.values.size(),p.opt_level);
             return 0;
         }
-        if(argc==5 && !strcmp(argv[1],"device")) {
+        if(argc==5 && (!strcmp(argv[1],"device") || !strcmp(argv[1],"device-explain"))) {
+            bool explain_checkpoint=!strcmp(argv[1],"device-explain");
             need(access(argv[3],F_OK)!=0 && access(argv[4],F_OK)!=0,"checkpoint destination exists");
             VHO_TENSOR_PROGRAM p=decode(argv[2]);VHO_TENSOR_SCHEDULE plan;need(VHO_tensor_schedule(p,&plan,stderr),"schedule rejected");
             initialize(true);std::vector<PU_Info *> pus;std::vector<UINT32> operations;
@@ -203,7 +204,7 @@ int main(int argc,char **argv) {
                 PU_Info *pu=DSL_Builder_Create_Minimal_PU(kernel_symbol(p,i).c_str());need(pu && DSL_Builder_Select_PU(pu),"cannot create device PU");
                 ST &function=St_Table[PU_Info_proc_sym(pu)];Set_ST_device_symbol_kind(function,DEVICE_SYMBOL_KERNEL);Set_ST_export(function,EXPORT_PREEMPTIBLE);pus.push_back(pu);operations.push_back(i);
             }
-            need(!pus.empty(),"no executable kernels");checkpoint(pus,argv[3]);
+            need(!pus.empty(),"no executable kernels");if(!explain_checkpoint) checkpoint(pus,argv[3]);
             for(size_t i=0;i<pus.size();++i) {
                 need(DSL_Builder_Select_PU(pus[i]),"cannot select device PU");UINT32 file=DSL_Builder_Register_Source_File(pus[i],p.source_file.c_str());
                 const VHO_TENSOR_OPERATION &op=p.operations[plan.kernels[i].root];
@@ -217,9 +218,16 @@ int main(int argc,char **argv) {
                 need(DSL_Gatekeeper_Verify_No_Native_PU(pus[i],stderr),"unlowered tensor remains");
                 printf("kernel=%s operation=%s elements=%llu threads=%u stage=%u\n",kernel_symbol(p,operations[i]).c_str(),op.name.c_str(),(unsigned long long)plan.kernels[i].elements,p.threads,plan.kernels[i].stage);
             }
+            if(explain_checkpoint) checkpoint(pus,argv[3]);
+            for(size_t i=0;i<pus.size();++i) {
+                need(DSL_Builder_Select_PU(pus[i]),"cannot select annotation PU");
+                need(VHO_tensor_annotate_kernel(p,operations[i],stderr) && VHO_tensor_verify_kernel(p,operations[i],stderr),"WHIRL explanation failed");
+                UINT32 types=TY_Table_Size(),symbols=ST_Table_Size(CURRENT_SYMTAB);
+                need(!VHO_tensor_annotate_kernel(p,operations[i],NULL) && types==TY_Table_Size() && symbols==ST_Table_Size(CURRENT_SYMTAB),"repeated annotation mutated tables");
+            }
             checkpoint(pus,argv[4]);return 0;
         }
-        if(argc==5 && (!strcmp(argv[1],"audit") || !strcmp(argv[1],"audit-mutate") || !strcmp(argv[1],"audit-binding") || !strcmp(argv[1],"audit-prototype") || !strcmp(argv[1],"audit-policy"))) {
+        if(argc==5 && (!strcmp(argv[1],"audit") || !strcmp(argv[1],"audit-mutate") || !strcmp(argv[1],"audit-binding") || !strcmp(argv[1],"audit-prototype") || !strcmp(argv[1],"audit-policy") || !strcmp(argv[1],"audit-comment") || !strcmp(argv[1],"audit-comment-missing"))) {
             VHO_TENSOR_PROGRAM p=decode(argv[3]);VHO_TENSOR_SCHEDULE plan;need(VHO_tensor_schedule(p,&plan,stderr),"schedule rejected");
             initialize(false);Open_Input_Info(argv[2]);Initialize_Symbol_Tables(FALSE);New_Scope(GLOBAL_SYMTAB,Malloc_Mem_Pool,FALSE);
             PU_Info *pu=Read_Global_Info(NULL);Json::Value result;result["schema"]="open64.device-tensor-launch.v1";result["kernels"]=Json::Value(Json::arrayValue);
@@ -231,6 +239,11 @@ int main(int argc,char **argv) {
                 if(!strcmp(argv[1],"audit-mutate")) {WN *loop=find_loop(PU_Info_tree_ptr(pu));need(loop,"missing mutation target");WN_const_val(WN_kid1(WN_end(loop)))+=1;}
                 if(!strcmp(argv[1],"audit-binding")) ST_tensor_bind_metadata(st,"tensor.kernel.block_x","64");
                 if(!strcmp(argv[1],"audit-policy")) ST_tensor_bind_metadata(st,"tensor.kernel.split_width","1");
+                if(!strcmp(argv[1],"audit-comment") || !strcmp(argv[1],"audit-comment-missing")) {
+                    WN *body=WN_func_body(PU_Info_tree_ptr(pu)),*comment=WN_first(body);need(comment && WN_operator(comment)==OPR_COMMENT,"missing comment mutation target");
+                    if(!strcmp(argv[1],"audit-comment")) Set_ST_name(*WN_st(comment),Save_Str("changed explanation"));
+                    else WN_EXTRACT_FromBlock(body,comment);
+                }
                 if(!strcmp(argv[1],"audit-prototype")) {
                     TY_IDX wrong=TY_pointed(ST_type(WN_st(WN_formal(PU_Info_tree_ptr(pu),0))));
                     Set_TYLIST_type(Tylist_Table[TY_tylist(ST_pu_type(&St_Table[st]))],wrong);
@@ -255,6 +268,6 @@ int main(int argc,char **argv) {
             for(std::map<UINT32,Json::Value>::const_iterator i=storages.begin();i!=storages.end();++i) result["storages"].append(i->second);
             write_json(argv[4],result);printf("mapped_device_audit=PASS kernels=%u storages=%u\n",result["kernels"].size(),result["storages"].size());return 0;
         }
-        fprintf(stderr,"usage: tensor_kernel_lower prepare input.B recipe.json --verify level | optimize baseline.json selected.json --fuse [--split-width N --allow-reassociate] | schedule-source selected.json optimized.cu | device recipe.json device.before.B device.after.B | audit device.after.B recipe.json launch.json\n");return 2;
+        fprintf(stderr,"usage: tensor_kernel_lower prepare input.B recipe.json --verify level | optimize baseline.json selected.json --fuse [--split-width N --allow-reassociate] | schedule-source selected.json optimized.cu | device recipe.json device.before.B device.after.B | device-explain recipe.json comments.before.B comments.after.B | audit device.after.B recipe.json launch.json\n");return 2;
     } catch(const std::exception &e) {fprintf(stderr,"tensor kernel driver: %s\n",e.what());return 1;}
 }

@@ -211,6 +211,14 @@ class TensorKernelTests(unittest.TestCase):
             from tensor_schedule_review import execute_source
             source = self.root / 'optimized.cu'
             self.run_tool(self.lowerer, 'schedule-source', recipe, source)
+            from tensor_schedule_review import explanation_blocks
+            self.assertEqual(explanation_blocks(source.read_text()), explanation_blocks((self.root / 'kernels.cu').read_text()))
+            self.assertTrue(explanation_blocks(source.read_text()))
+            if split:
+                width = 5 if kind == 'batch-matmul' else 3
+                chunks = (width + split - 1) // split
+                self.assertIn('final chunk starts at %d and contains %d terms' %
+                              ((chunks - 1) * split, width - (chunks - 1) * split), source.read_text())
             function = re.search(r'void (open64_optimized_[A-Za-z0-9_]+)\(', source.read_text()).group(1)
             header = Path(__file__).resolve().parents[2] / 'whirl2c'
             library = self.root / 'optimized.so'
@@ -218,6 +226,10 @@ class TensorKernelTests(unittest.TestCase):
                           '-fno-fast-math', '-I' + str(header), source, '-o', library)
             got = execute_source(library, function, json.loads(recipe.read_text()), data)
             self.assertEqual(got, (self.root / 'output.bin').read_bytes())
+            for mode in ('audit-comment','audit-comment-missing'):
+                rejected = self.root / (mode + '.json')
+                self.run_tool(self.lowerer, mode, after, recipe, rejected, success=False)
+                self.assertFalse(rejected.exists())
         old = after.read_bytes()
         self.run_tool(self.lowerer, 'device', recipe, before, after, success=False)
         self.assertEqual(after.read_bytes(), old)
