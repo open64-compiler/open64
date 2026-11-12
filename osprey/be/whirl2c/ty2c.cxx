@@ -339,7 +339,7 @@ TY2C_prepend_qualifiers(TOKEN_BUFFER decl_tokens, TY_IDX ty, CONTEXT context)
       if (TY_is_volatile(ty))
 	Prepend_Token_String(decl_tokens, "volatile");
       if (TY_is_restrict(ty)) {
-	Prepend_Token_String(decl_tokens, "restrict");
+	Prepend_Token_String(decl_tokens, W2C_Cuda_Mode ? "__restrict__" : "restrict");
       }
     }
 } /* TY2C_prepend_qualifiers */

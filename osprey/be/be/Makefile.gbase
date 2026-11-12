@@ -1240,3 +1240,5 @@ tensor_high_lower.o: $(BE_VHO_DIR)/tensor_quantized_plan.h $(BE_VHO_DIR)/tensor_
 tensor_q1_program.o dsl_q1_preopt.o: $(BE_VHO_DIR)/tensor_quantized_plan.h
 tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_selected.inc
 tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_quantized.inc
+# Read-only Q6c sealed-Low admission; no new backend linkage service.
+driver.o: $(BE_VHO_DIR)/tensor_quantized_device.h $(BE_VHO_DIR)/tensor_quantized_stage.h $(BE_VHO_DIR)/tensor_quantized_gpu.h

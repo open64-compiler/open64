@@ -86,6 +86,7 @@ static char *rcs_id = "$Source: /proj/osprey/CVS/open64/osprey1.0/be/whirl2c/w2c
 #include "wn2c.h"
 #include "w2c_driver.h"
 #include "../vho/tensor_selected_key.h"
+#include "../vho/tensor_quantized_device.h"
 
 #include "../whirl2c/init.cxx"      /* force include of W2C_Initializer */
 
@@ -661,6 +662,10 @@ W2C_Push_PU(const WN *pu, WN *body_part_of_interest)
    Is_True(WN_opcode(pu) == OPC_FUNC_ENTRY, 
 	   ("Invalid opcode for W2C_Push_PU()"));
    if (W2C_Cuda_Mode) {
+      if(ST_tensor_metadata(WN_st_idx(pu),"tensor.q6c.schema")) {
+         try {VHO_q6c_check_key(const_cast<WN *>(pu),"low");}
+         catch(const std::exception &e) {FmtAssert(FALSE,("Q6c CUDA admission: %s",e.what()));}
+      }
       const char *level=ST_tensor_metadata(WN_st_idx(pu),"tensor.bridge.level");
       const char *schema=ST_tensor_metadata(WN_st_idx(pu),"tensor.bridge.schema");
       const char *stamp=ST_tensor_metadata(WN_st_idx(pu),"tensor.bridge.key");
@@ -1088,6 +1093,14 @@ W2C_Outfile_Init(BOOL emit_global_decls)
                          "#include <open64_cuda_pipeline.cuh>\n\n");
             break;
          }
+      }
+   }
+
+   if (W2C_Cuda_Mode) {
+      const ST *st;ST_IDX idx;
+      FOREACH_SYMBOL(GLOBAL_SYMTAB,st,idx) if(ST_class(st)==CLASS_FUNC &&
+          ST_tensor_metadata(ST_st_idx(st),"tensor.q6c.schema")) {
+         Write_String(W2C_File[W2C_DOTC_FILE],NULL,"#include <open64_mla_staging.cuh>\n\n");break;
       }
    }
 

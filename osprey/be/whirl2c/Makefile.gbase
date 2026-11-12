@@ -369,3 +369,5 @@ install:: whirl2c_tensor_source
 #SKIP 	$(CCF) -xansi -c $<
 
 
+# Q6c emission only verifies the selected native Low identity.
+w2c_driver.o: $(BE_DIR)/vho/tensor_quantized_device.h $(BE_DIR)/vho/tensor_quantized_stage.h $(BE_DIR)/vho/tensor_quantized_gpu.h

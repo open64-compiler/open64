@@ -56,7 +56,10 @@ def review(args):
         functions[name] = f
     checks, commands = [], []
     q5 = None
-    if getattr(args, 'q6b', False):
+    if getattr(args, 'q6c', False):
+        from mla_q6c_device_review import Q6C_REVIEW
+        q5 = Q6C_REVIEW(api, args, out)
+    elif getattr(args, 'q6b', False):
         from mla_q6b_native_review import Q6B_REVIEW
         q5 = Q6B_REVIEW(api, args, out)
     elif args.q5:
@@ -481,4 +484,6 @@ if __name__ == '__main__':
     parser.add_argument('--q5', action='store_true')
     parser.add_argument('--q5-long', action='store_true')
     parser.add_argument('--q6b', action='store_true')
+    parser.add_argument('--q6c', action='store_true')
+    parser.add_argument('--cuda', type=Path)
     review(parser.parse_args())
