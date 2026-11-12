@@ -776,6 +776,7 @@ BE_AS_OBJS = $(COMMON_UTIL_TARG_AS_SRCS:.s=.o)
 #
 
 BE_DRIVER_CXX_SRCS = \
+  normalization_driver.cxx \
   driver.cxx	        \
   driver_util.cxx	\
   iter.cxx

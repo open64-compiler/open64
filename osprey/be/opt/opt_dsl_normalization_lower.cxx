@@ -5,6 +5,10 @@
  * Analysis stays source-PU-local; materialization uses a driver-selected empty
  * device PU. CUDA emission consumes the resulting ordinary WHIRL only. */
 #include <limits.h>
+#include <fenv.h>
+#if defined(__SSE__)
+#include <xmmintrin.h>
+#endif
 #include <stddef.h>
 #include <set>
 #include <string.h>
@@ -74,7 +78,7 @@ static BOOL LN4_Active()
 /* Scalar primitive preflight uses precisely these established FP controls. */
 static BOOL LN4_Strict()
 {
-  return !OPT_Fast_Math && Roundoff_Level==ROUNDOFF_NONE && IEEE_Arithmetic==IEEE_ACCURATE;
+  return WOPT_DSL_normalization_compiler_environment_ready();
 }
 
 /* Existing declarations with builtin names must carry the canonical ABI;
@@ -380,6 +384,19 @@ static void LN4_Trace(const char *action,const WOPT_DSL_NORMALIZATION_LOWERING &
       (unsigned long long)d.loops,(unsigned long long)d.scalar_operations,(unsigned long long)d.barriers,
       (unsigned long long)p.guard.reserved_shared,(unsigned long long)p.guard.threads,(unsigned long long)p.guard.source_line);
 }
+}
+
+/* Constant construction and 64-bit pointer ASM require a strict compiler
+ * session, independently of the numerical environment promised to the GPU. */
+BOOL WOPT_DSL_normalization_compiler_environment_ready()
+{
+  if (Pointer_Size!=8 || Pointer_Mtype!=MTYPE_U8 || OPT_Fast_Math ||
+      Roundoff_Level!=ROUNDOFF_NONE || IEEE_Arithmetic!=IEEE_ACCURATE || fegetround()!=FE_TONEAREST) return FALSE;
+#if defined(__SSE__)
+  UINT32 control=_mm_getcsr();
+  if ((control & ((1U<<15) | (1U<<6) | 0x6000U)) || (control & 0x1f80U)!=0x1f80U) return FALSE;
+#endif
+  return TRUE;
 }
 
 /* Expected analytical results cannot be edited into a different selection:

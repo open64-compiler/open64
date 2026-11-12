@@ -167,10 +167,12 @@ DSL_Gatekeeper_Is_Projected_Input_Copy (const WN *load, const WN *store)
     return FALSE;
 }
 
-/* Only tensor or registered source/projected formals have DSL tensor-use
+/* Only tensor or registered tensor-source/projected formals have DSL tensor-use
  * restrictions. Canonical raw-buffer kernels must retain ordinary WHIRL
- * pointer loads. Keep every managed/projection admission check intact.
- * Design: doc/AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md. */
+ * pointer loads even when a mixed image records their complete physical ABI.
+ * Keep every tensor/projection admission check intact.
+ * Design: doc/AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md and
+ * doc/AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md. */
 static BOOL
 DSL_gatekeeper_managed_formal(WN *formal, UINT32 ordinal, DSL_GATEKEEPER_CONTEXT *context)
 {
@@ -178,7 +180,10 @@ DSL_gatekeeper_managed_formal(WN *formal, UINT32 ordinal, DSL_GATEKEEPER_CONTEXT
         return TRUE;
     DSL_PU_FORMAL_RECORD source;
     DSL_RUNTIME_INPUT_BINDING_RECORD runtime;
-    return DSL_PU_Interface_Image_Find_Formal(context->owner_pu_st, ordinal, &source) ||
+    DSL_IR_VALUE_RECORD value;
+    return (DSL_PU_Interface_Image_Find_Formal(context->owner_pu_st, ordinal, &source) &&
+            DSL_IR_Image_Get_Value(source.formal_value_id, &value) &&
+            (value.tensor_descriptor_id != 0 || TY_is_tensor_extension(source.formal_ty))) ||
         DSL_Program_Interface_Image_Find_Runtime_Binding(context->owner_pu_st, ordinal, &runtime);
 }
 

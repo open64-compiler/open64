@@ -34,7 +34,9 @@ unselected v2 normalization rather than silently choosing a kernel. LN3 is an
 explicit planning API, not a new default driver transformation or option.
 [LN4's explicit lowering API](AI-COMPILER-LAYERNORM-EXECUTABLE-LOWERING-v0.1.md)
 now revalidates approved selection and materializes authoritative device WHIRL;
-default request/profile plumbing and a production runtime provider remain open.
+[explicit driver/JIT request-profile binding](AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md)
+now supplies the same complete query through the backend checkpoint. Automatic
+calibrated-profile provisioning and a production runtime provider remain open.
 
 ## 2. Terms And Comparison Boundary
 

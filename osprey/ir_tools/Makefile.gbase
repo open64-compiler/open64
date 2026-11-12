@@ -221,6 +221,7 @@ LDIRT += dsl_normalization_plan_test dsl_normalization_plan_test.o opt_dsl_norma
 LDIRT += dsl_normalization_guard_test dsl_normalization_guard_test.o
 LDIRT += dsl_normalization_cost_test dsl_normalization_cost_test.o opt_dsl_normalization_cost_test.o
 LDIRT += dsl_normalization_lower_test dsl_normalization_lower_test.o opt_dsl_normalization_lower_test.o
+LDIRT += dsl_normalization_request_test dsl_normalization_request_test.o opt_dsl_normalization_request_test.o
 LDIRT += dsl_softmax_contract_test dsl_softmax_contract_test.o
 LDIRT += dsl_normalization_contract_test dsl_normalization_contract_test.o
 LDIRT += dsl_normalization_ref_test dsl_normalization_ref_test.o
@@ -953,6 +954,19 @@ dsl_normalization_lower_test: $(OBJECTS) controls.o dsl_normalization_lower_test
 	$(link.c++f) -o $@ dsl_normalization_lower_test.o opt_dsl_normalization_lower_test.o opt_dsl_normalization_cost_test.o \
                 opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o \
                 opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_normalization_request_test: $(OBJECTS) controls.o dsl_normalization_request_test.o \
+                opt_dsl_normalization_request_test.o opt_dsl_normalization_lower_test.o opt_dsl_normalization_cost_test.o \
+                opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_normalization_request_test.o opt_dsl_normalization_request_test.o opt_dsl_normalization_lower_test.o \
+                opt_dsl_normalization_cost_test.o opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o \
+                opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+opt_dsl_normalization_request_test.o: $(BE_OPT_DIR)/opt_dsl_normalization_request.cxx $(BE_OPT_DIR)/opt_dsl_normalization_request.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_normalization_request_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_request_test.cxx $(BE_OPT_DIR)/opt_dsl_normalization_request.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 opt_dsl_normalization_lower_test.o: $(BE_OPT_DIR)/opt_dsl_normalization_lower.cxx $(BE_OPT_DIR)/opt_dsl_normalization_lower.h \
                 $(BE_OPT_DIR)/opt_dsl_normalization_cost.h $(BE_OPT_DIR)/opt_dsl_normalization_plan.h

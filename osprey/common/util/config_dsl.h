@@ -58,6 +58,8 @@ extern BOOL VHO_DSL_CUDA_Legacy_Emit_Set;
 extern char *VHO_DSL_PU_Specialization_Checkpoint_Output;
 extern char *VHO_DSL_CUDA_Tile_Output;
 extern char *VHO_DSL_CUDA_Whirl_Output;
+extern char *VHO_DSL_Normalization_Request;
+extern char *VHO_DSL_Normalization_Output;
 
 /* Reserved TP_WOPT2 bit for versioned AI optimization decisions. */
 #define AI_OPT_TRACE_FLAG 0x00800000

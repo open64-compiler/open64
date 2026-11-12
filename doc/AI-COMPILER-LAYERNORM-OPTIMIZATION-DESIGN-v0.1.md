@@ -2,14 +2,22 @@
 
 Version v0.1 | 2026-10-28 | Living design; bounded native contracts and device lowering
 
+Request/profile amendment, 2026-10-28:
+[LN4 driver/JIT request boundary](AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md)
+adds an opt-in backend checkpoint and a shared typed preparation API. Explicit
+source/target/profile binding now reaches cost-gated device construction and
+mapped publication through the actual driver. Automatic calibrated-profile
+provisioning, a general service-session manager and a production runtime
+provider remain open; this does not upgrade v1 or authorize a GPU launch.
+
 Executable amendment, 2026-10-28:
 [LN4 selected device WHIRL](AI-COMPILER-LAYERNORM-EXECUTABLE-LOWERING-v0.1.md)
 adds a source-revalidated lowering handoff and driver-active device-PU builder
 for C0/C1/C2. Standard high-level loops, shared arena lifetimes, uniform
 barriers and exact scalar ASM are authoritative WHIRL; existing `whirl2c -cuda`
 prints them. V1 and analysis source images remain unchanged. This explicit
-compiler API is independent of reduction coding; default driver request/profile
-plumbing, production runtime provider and GPU certification remain open. Final
+compiler API is independent of reduction coding; automatic calibrated-profile
+provisioning, production runtime provider and GPU certification remain open. Final
 matrix/sanitizer/immutable-replay acceptance is recorded in the progress ledger.
 
 Arithmetic amendment, 2026-10-28: the separate
@@ -611,7 +619,7 @@ are implemented here; preserve existing AI_NORM FORM/FACT and trace-off checks.
 | LN1 | LN-REF-1 ordered means, exact count/final division, sqrt-then-divide, RNE/gradual/class-only-NaN environment; explicit native v2, carriers and oracle, preserving v1. | Native v2/producer/PREOPT, conditional target binding/carriers, LN1-d oracle and bounded LN1-e integrated evidence implemented. WHIRL-derived primitive CUDA/offline review passes. Complete LayerNorm/GPU execution remains open. |
 | LN2 | Read-only C0/C1/C2 storage/event plans; reject unsupported reformulations under v1 and LN-REF-1. | Native conditional planning and LN2-d host runtime guard bridge implemented. Actual selected-kernel/register/internal-event conformance and expanded mappings/delivery remain open. |
 | LN3 | Complete costs, independent event/model oracle, analytical winner/fallback and trace auditor. | Bounded native service implemented independently of reduction coding; exact model/profile/refusal traces, conservative cost gate, common analysis-only plans and source preservation. Native timing/cache/carrier calibration remains open. |
-| LN4 | Selected high-level WHIRL, guards, CUDA emission and mapped before/after evidence. | Bounded C0/C1/C2 materialization API and immutable replay accepted independently of reduction. See the [executable lowering detail](AI-COMPILER-LAYERNORM-EXECUTABLE-LOWERING-v0.1.md). Default driver request/profile integration, runtime provider and GPU gates remain open. |
+| LN4 | Selected high-level WHIRL, guards, CUDA emission and mapped before/after evidence. | Bounded C0/C1/C2 API plus explicit driver/typed-JIT request-profile integration implemented independently of reduction. See [lowering](AI-COMPILER-LAYERNORM-EXECUTABLE-LOWERING-v0.1.md) and [request binding](AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md). Automatic calibrated-profile provisioning, general service-session lifecycle, production runtime provider and GPU gates remain open. |
 | LN5 | Separately authorized parallel statistics, RF retention, Welford or async/TMA refinements. | Deferred until base semantics/executable alternatives are reviewed. |
 | LN6 | Native numerical, spill/resource, PTX/SASS and paired-latency verification/calibration. | GPU gate open, not a blocker to design/compiler-side work. |
 
@@ -672,6 +680,13 @@ receipts. No compiler artifact is fabricated for this design-only increment.
    packing without pretending the allocator already exists?
 
 ## 11. Research Provenance And Design Proposals
+
+The explicit native integration now has a separate
+[LN4 driver/JIT request-profile contract](AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md):
+owned source snapshots and timing provenance, active-PU PREOPT/rebinding,
+cost-gated preparation, driver-created device PUs and whole-image checkpoints.
+It does not authorize v1, install synthetic timing as hardware truth, or provide
+a CUDA runtime/service-session implementation.
 
 Primary sources checked 2026-10-28. Local implemented contracts govern Open64;
 external equations or examples do not grant numerical permission.

@@ -147,15 +147,16 @@ concurrent reduction coding.
 | LN1 | Define both means, scaling, rsqrt and environment; specify native v2/admission and implement target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | Native v2/producer/PREOPT, LN1-c target binding/carriers, LN1-d oracle and bounded LN1-e integrated source/target/numerical evidence implemented. Complete LayerNorm execution and GPU conformance remain open. |
 | LN2 | Construct conditional legal storage/event plans from bound source. `alternatives.log`, `residency.log` and `fetch-pipeline.log` expose ranges/leases, capacity, banks/tails and generation/reuse constraints. | Native planning plus LN2-d runtime guard export/host bridge implemented. Actual selected-entry/register/internal-event conformance, real CUDA provider and expanded delivery remain open. |
 | LN3 | Complete comparable costs with target provenance/uncertainty and independent oracle. `physical-plan.log` explains selected/fallback reason without invented overlap or guaranteed cache hits; `bubble.log` gives critical-path exposure; `roofline.log` gives candidate-specific all-miss service bounds. | Bounded native complete-cost/selection service implemented and retained-path replay accepted independently of reduction coding. Common AIO-1/AIO-2 records and optional hardware extension, explicit unknowns and analysis-only interval gate; no executable transformation or native calibration claim. |
-| LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Bounded explicit device lowering API accepted with immutable replay. Source-revalidated C0/C1/C2 materialization, exact scalar carriers and CUDA emission are independent of reduction. Default driver request/profile plumbing and production runtime adapter remain open. |
+| LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Bounded device lowering and explicit driver/typed-JIT request-profile plumbing implemented. Source-revalidated C0/C1/C2 materialization, exact scalar carriers and CUDA emission are independent of reduction. Automatic calibrated-profile provisioning, service-session lifecycle and production runtime adapter remain open. |
 | LN5 | Separately authorized parallel statistics/Welford, RF retention and async/TMA refinements with numerical legality, lowerability and complete costs. | Deferred, not implied by LN0-LN4. |
 | LN6 | Native numerical/instruction/resource/paired-performance verification and calibration. | GPU gate open; not a blocker to design/compiler work. |
 
 All logs retain their `# What it summarizes:` first line; compact versioned
 `.t` records preserve source-line-last, phase coverage and trace-off parity.
 The summary distinguishes design, conditional binding, analytical choice,
-actual WHIRL rewrite, assembler checks and GPU certification. No new compiler
-option or binary schema is registered by this queue. Attention and MoE semantic
+actual WHIRL rewrite, assembler checks and GPU certification. LN4 adds explicit
+request/output checkpoint options and a review-request JSON schema, not a new
+binary WHIRL layout or default dispatch policy. Attention and MoE semantic
 design may proceed here independently of the reduction implementation.
 
 LN1 arithmetic decision, 2026-10-28:
@@ -395,10 +396,56 @@ regressions pass. Immutable replay reproduces all images/traces/reports/guards/
 PTX/cubins and repeats validation. See the
 [progress ledger](AI-COMPILER-OPTIMIZATION-PROGRESS.md) for retained identities.
 
-Next LN4 integration package: establish real driver/JIT request/profile and
-target configuration, prepare/revalidate the handoff at final analysis, create
-the device PU under driver ownership, and package the exact compiled entry
-manifest for the runtime provider. Keep v1 and incomplete timing ineligible.
+LN4 driver/JIT request-profile integration, 2026-10-28:
+[Request boundary v0.1](AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md).
+Paired `-DSL:normalization_request=<JSON>:normalization_output=<fresh.B>` plus
+explicit `gpu_arch` enables a terminal backend checkpoint at O3/n64/strict FP.
+WOPT decodes a bounded closed schema, binds exact native source/target/profile,
+derives fixed C0/C1/C2 storage/events and prepares the complete cost-gated choice
+after PREOPT. The driver owns resident PU lifetime, context/BE-scope registration,
+empty device creation, before/after standard mapped writing and no-replace
+publication. Preserve source PU/interface metadata; add the pointer kernel's
+owner-qualified physical-formal records. Ordinary pointer formals are not
+tensor-managed merely because mixed-image ABI coverage records them.
+
+Typed JIT calls use the same owned request/preparation contract. Reject unknown
+or stale timing, v1, unsupported levels/layouts and unsafe compiler/host FP;
+do not set FTZ/DAZ or rounding on behalf of the calling service. The CLI before
+checkpoint is isolated because standard SSA writing consumes its manager; the
+typed API neither forks nor creates a general compiler service session.
+
+Required tool summaries: `request.log` reports source/target/profile/provenance,
+request gates and publication; `physical-plan.log` records complete candidates,
+costs and reason; `lowering.log` actual WHIRL actions/mapped identity;
+`compile.log` offline assembly/resources; `numerical.log` emitted-code host
+oracle checks. Collect all successful phase content in `optimization.log` and
+state enabled/refused/selected/materialized/GPU-unverified coverage in
+`optimization-summary.log`. Keep full `.t`, request JSON, before/after `.B` and
+`-st -src` `.T`/raw diff and WHIRL-derived `.cu`.
+
+Compiler-side acceptance: 36 selected kernels (C0 4 / C1 4 / C2 28), 66
+refusals, 193 full mapped inspections, 117 focused tests, offline PTX/cubin and
+RF/shared checks, 288 emitted-code host datasets / 26,240 output checks.
+Scoped sanitizers pass 36 native requests, 36 real backend-driver executions,
+36 reopens, 49 decoder inputs and 36 host kernels, with byte-identical image
+and binding parity. Five shared regressions pass. Two broader fixture failures
+are independently reproduced with the pre-change gatekeeper and remain
+baseline issues, not passing tests. SSE exception-unmask writes are ignored
+by this emulator and reported UNSUPPORTED; independent SSE rounding and the
+remaining host/compiler FP gates are tested. No GPU verification is claimed.
+
+Implementation `236f52eb` and immutable final-path replay are accepted; see the
+[progress ledger](AI-COMPILER-OPTIMIZATION-PROGRESS.md) for primary/replay
+identities and exact normalization/correction rules. Replay repeats the core
+driver, mapped, offline-CUDA, host-oracle and focused-test checks. Sanitizer and
+baseline-isolation evidence is authenticated from the primary package rather
+than rerun. Preserve the original comparator failure and corrected exact-byte
+handling of the deliberately malformed UTF-8 input.
+
+Next LN4 package: package and enforce the exact compiled entry manifest for
+the production runtime provider; service-session lifecycle/concurrency and
+automatic calibrated-profile provisioning remain separately designed. Keep
+v1 and incomplete timing ineligible.
 Actual allocation leases, entry resolution, static/dynamic shared admission,
 register/launch limits and device completion must be enforced by the production
 adapter. No ordinary source compilation or GPU execution is implied by the
