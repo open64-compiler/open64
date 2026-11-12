@@ -5,6 +5,7 @@
  * Design: doc/AI-COMPILER-FUSED-MLA-v0.1.md. */
     ST *_att_token,*_att_group,*_att_outbase,*_att_dot,*_att_rope,*_att_score;
     ST *_att_m,*_att_d,*_att_weight,*_att_dc,*_att_state;
+    ST *_att_sums[4];
     UINT64 _att_capacity;
     /* The owning driver already selected finite static loop extents. */
     WN *AttLoop(ST *iv,WN *begin,WN *end,UINT64 step,WN *body) {
@@ -153,6 +154,35 @@
         WN_INSERT_BlockLast(groups,WN_CreateIf(WN_LAND(WN_LT(MTYPE_U8,load(_column),integer(_attention.rank)),WN_EQ(MTYPE_U8,load(_lane),integer(0))),write,WN_CreateBlock()));
         WN_INSERT_BlockLast(body,AttLoop(_att_group,integer(0),integer((_attention.rank+3)/4),1,groups));
     }
+    /* Shared weights are immutable after AttNormalize's publication barrier.
+     * Each lane owns four private sums; no other lane reads them until the
+     * existing full-warp shuffle trees. No shared cache tile or tile barrier. */
+    void AttRegisterLatent(WN *body) {
+        WN *groups=WN_CreateBlock();
+        WN_INSERT_BlockLast(groups,store(_column,WN_Add(MTYPE_U8,
+            WN_Mpy(MTYPE_U8,load(_att_group),integer(16)),WN_Mpy(MTYPE_U8,load(_warp),integer(4)))));
+        for(UINT32 j=0;j<4;++j) WN_INSERT_BlockLast(groups,store(_att_sums[j],floating(0)));
+        WN *tokens=WN_CreateBlock();
+        WN_INSERT_BlockLast(tokens,store(_att_weight,SharedRead(_shared_a,_att_capacity,load(_att_token))));
+        for(UINT32 j=0;j<4;++j) {
+            WN *col=WN_Add(MTYPE_U8,load(_column),integer(j)),*valid=WN_CreateBlock();
+            WN *value=_kernel.mapping==3?
+                Evaluate(_attention.cache,AttCacheIndex(WN_Add(MTYPE_U8,load(_begin),load(_att_token)),WN_COPY_Tree(col),_attention.rank)):
+                Evaluate(_attention.partial,WN_Add(MTYPE_U8,AttPartialIndex(load(_att_token),2),WN_COPY_Tree(col)));
+            WN_INSERT_BlockLast(valid,store(_att_sums[j],WN_Add(MTYPE_F4,load(_att_sums[j]),WN_Mpy(MTYPE_F4,load(_att_weight),value))));
+            WN_INSERT_BlockLast(tokens,WN_CreateIf(WN_LT(MTYPE_U8,col,integer(_attention.rank)),valid,WN_CreateBlock()));
+        }
+        WN *count=_kernel.mapping==3?WN_Sub(MTYPE_U8,load(_end),load(_begin)):integer(_kernel.chunks);
+        WN_INSERT_BlockLast(groups,AttLoop(_att_token,load(_lane),count,32,tokens));
+        for(UINT32 j=0;j<4;++j) {
+            WN_INSERT_BlockLast(groups,store(_sum,load(_att_sums[j])));WarpTree(groups,false);
+            WN *write=WN_CreateBlock(),*col=WN_Add(MTYPE_U8,load(_column),integer(j));
+            AttOutput(write,WN_Add(MTYPE_U8,WN_COPY_Tree(col),integer(_kernel.stage==1?2:0)),load(_sum));
+            WN_INSERT_BlockLast(groups,WN_CreateIf(WN_LAND(WN_LT(MTYPE_U8,col,integer(_attention.rank)),
+                WN_EQ(MTYPE_U8,load(_lane),integer(0))),write,WN_CreateBlock()));
+        }
+        WN_INSERT_BlockLast(body,AttLoop(_att_group,integer(0),integer((_attention.rank+15)/16),1,groups));
+    }
     /* One CTA per head/chunk (or head for merge/direct); all intermediates of
      * score, softmax and weighted latent stay in this CTA until final stores. */
     WN *AttentionBody() {
@@ -164,7 +194,8 @@
         _att_m=local("attention_maximum",MTYPE_F4,_source);_att_d=local("attention_denominator",MTYPE_F4,_source);
         _att_weight=local("attention_weight",MTYPE_F4,_source);_att_dc=local("attention_chunk_denominator",MTYPE_F4,_source);
         _shared_a=Shared("attention_shared_scores_weights",_att_capacity);_att_state=Shared("attention_shared_statistics",8);
-        if(_kernel.mapping==3) _shared_b=Shared("attention_shared_cache_tile",128);
+        if(_program.register_latent) for(UINT32 j=0;j<4;++j) _att_sums[j]=local((std::string("attention_register_sum_")+decimal(j)).c_str(),MTYPE_F4,_source);
+        if(_kernel.mapping==3 && !_program.register_latent) _shared_b=Shared("attention_shared_cache_tile",128);
         WN_INSERT_BlockLast(body,store(_tid,Coord(Coordinate("threadIdx"))));
         WN_INSERT_BlockLast(body,store(_lane,WN_Binary(OPR_REM,MTYPE_U8,load(_tid),integer(32))));
         WN_INSERT_BlockLast(body,store(_warp,WN_Div(MTYPE_U8,load(_tid),integer(32))));
@@ -175,5 +206,5 @@
         WN_INSERT_BlockLast(body,store(_end,WN_Select(MTYPE_U8,WN_LT(MTYPE_U8,WN_COPY_Tree(limit),integer(_attention.length)),limit,integer(_attention.length))));
         WN_INSERT_BlockLast(body,store(_att_outbase,_kernel.stage==1?AttPartialIndex(load(_part),0):WN_Mpy(MTYPE_U8,load(_flat),integer(_attention.rank+1))));
         if(_kernel.mapping==3) AttScores(body);else AttMergeWeights(body);
-        AttNormalize(body);AttLatent(body);return body;
+        AttNormalize(body);if(_program.register_latent) AttRegisterLatent(body);else AttLatent(body);return body;
     }

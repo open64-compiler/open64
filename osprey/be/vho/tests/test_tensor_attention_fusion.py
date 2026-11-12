@@ -28,7 +28,7 @@ def produce(path,length,variant):
     from models.absorbed_mla import AbsorbedMLA,validate_inputs
     from models.mla_reference import expanded_reference
     path.mkdir(exist_ok=False)
-    b,h,dn,dr,r,dv=2,2,3,2,5,4
+    b,h,dn,dr,r,dv=2,2,3,2,21 if variant=="wide" else 5,4
     shapes=[(b,h,dn),(b,h,dr),(b,length,r),(b,length,dr),(h,dn,r),(h,dv,r)]
     generator=torch.Generator().manual_seed(27182)
     inputs=[torch.randn(shape,generator=generator,dtype=torch.float32)*0.15 for shape in shapes]
@@ -79,7 +79,7 @@ class AttentionFusionTests(unittest.TestCase):
         self.run_tool(self.lowerer,'cooperate',fused,coop,'--allow-reassociate')
         return coop
 
-    def execute(self,length,split=0,variant='normal',rename=False):
+    def execute(self,length,split=0,variant='normal',rename=False,register_width=None,check_previous=False):
         """Run actual mapped WHIRL CUDA on synchronized host workers and compare FP64."""
         previous=self.fixture(length,variant,split=split)
         if rename:
@@ -87,6 +87,10 @@ class AttentionFusionTests(unittest.TestCase):
             previous.write_text(reseal(text))
         recipe=self.root/'attention.json'
         self.run_tool(self.lowerer,'fuse-attention',previous,recipe,'--allow-reassociate')
+        if register_width is not None:
+            selected=self.root/'register.json'
+            self.run_tool(self.lowerer,'stream-attention',recipe,selected,'--split-width',register_width,'--allow-reassociate')
+            recipe=selected;split=register_width
         before,after=self.root/'attention.before.B',self.root/'attention.after.B'
         self.run_tool(self.lowerer,'device',recipe,before,after)
         for image in (before,after): self.run_tool(self.reader,'-st','-src',image,image.with_suffix('.T'))
@@ -113,7 +117,27 @@ class AttentionFusionTests(unittest.TestCase):
                       '-I'+str(header),source,'-o',self.root/'optimized.so')
         got=execute_source(self.root/'optimized.so',function,json.loads(recipe.read_text()),(self.root/'native/input.bin').read_bytes())
         self.assertEqual(got,(self.root/'host.bin').read_bytes())
-        for mode in ('audit-mask','audit-barrier','audit-shared','audit-resource','audit-collective-prototype','audit-comment','audit-comment-missing','audit-attention-layout'):
+        if register_width is not None:
+            rejected=self.root/'ownership-corrupt.json'
+            self.run_tool(self.lowerer,'audit-attention-accumulation',after,recipe,rejected,success=False)
+            self.assertFalse(rejected.exists())
+            self.assertIn('register_4_columns_per_warp',manifest.read_text())
+            self.assertNotIn('attention_shared_cache_tile',(self.root/'kernels.cu').read_text())
+            self.assertEqual(len(re.findall(r'__syncthreads\s*\(', (self.root/'kernels.cu').read_text())),10 if split and length>split else 5)
+        if check_previous:
+            old=self.root/'previous';old.mkdir()
+            old_recipe=self.root/'attention.json'
+            self.run_tool(self.lowerer,'device',old_recipe,old/'before.B',old/'after.B')
+            self.run_tool(self.lowerer,'audit',old/'after.B',old_recipe,old/'launch.json')
+            self.run_tool(self.w2c,'-cuda','-TARG:abi=n64','-O0','-CLIST:dotc_file='+str(old/'kernels.cu'),
+                          '-CLIST:doth_file='+str(old/'kernels.h'),old/'after.B')
+            old_launch=json.loads((old/'launch.json').read_text())
+            (old/'host.cxx').write_text(runner(old_launch,False))
+            self.run_tool('g++','-std=c++17','-O1','-pthread','-ffp-contract=off','-fno-fast-math','-I'+str(self.root),
+                          old/'host.cxx','-o',old/'host')
+            self.run_tool(old/'host',self.root/'native/input.bin',old/'host.bin')
+            self.assertEqual((old/'host.bin').read_bytes(),(self.root/'host.bin').read_bytes())
+        for mode in ('audit-mask' ,'audit-barrier','audit-shared','audit-resource','audit-collective-prototype','audit-comment','audit-comment-missing','audit-attention-layout'):
             out=self.root/(mode+'.json');self.run_tool(self.lowerer,mode,after,recipe,out,success=False);self.assertFalse(out.exists())
 
     def test_single_token_column_and_batch_tails(self): self.execute(1,rename=True)
@@ -121,6 +145,25 @@ class AttentionFusionTests(unittest.TestCase):
     def test_split_fused_attention_uneven_chunks(self): self.execute(129,split=33)
     def test_empty_chunks_with_very_negative_scores(self): self.execute(65,split=33,variant='empty-negative')
     def test_local_normalization_avoids_large_unnormalized_vectors(self): self.execute(65,split=33,variant='large-values')
+
+    def test_register_single_token_renamed(self): self.execute(1,rename=True,register_width=0)
+    def test_register_short_column_tails(self): self.execute(65,register_width=0)
+    def test_register_more_chunks_and_token_tails(self): self.execute(129,split=33,register_width=16)
+    def test_register_empty_negative_chunks(self): self.execute(65,split=33,variant='empty-negative',register_width=16)
+    def test_register_large_values(self): self.execute(65,split=33,variant='large-values',register_width=16)
+
+    def test_register_multiple_column_groups(self): self.execute(65,variant='wide',register_width=0)
+    def test_register_same_partition_native_parity(self): self.execute(65,split=33,register_width=33,check_previous=True)
+
+    def test_register_policy_guards(self):
+        previous=self.fixture()
+        fused=self.root/'attention.json'
+        self.run_tool(self.lowerer,'fuse-attention',previous,fused,'--allow-reassociate')
+        for i,(source,width,permission) in enumerate([(previous,128,'--allow-reassociate'),(fused,1,'--allow-reassociate'),
+                (fused,4097,'--allow-reassociate'),(fused,128,'--deny-reassociate'),(fused,'128x','--allow-reassociate')]):
+            out=self.root/('reject-register%d.json'%i)
+            self.run_tool(self.lowerer,'stream-attention',source,out,'--split-width',width,permission,success=False)
+            self.assertFalse(out.exists())
 
     def test_permission_topology_and_numerical_guards(self):
         previous=self.fixture()

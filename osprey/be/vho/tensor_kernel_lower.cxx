@@ -744,6 +744,7 @@ public:
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.operation",decimal(_kernel.id).c_str());
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.mapping",decimal(_kernel.mapping).c_str());
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.shared_bytes",decimal(VHO_tensor_shared_bytes(_program,_kernel)).c_str());
+        if(_program.register_latent) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_accumulation",_kernel.mapping>=3?"register_4_columns_per_warp":"none");
         if(_program.fuse_attention) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_layout",
             _kernel.mapping<3?"none":_kernel.stage==1?"maximum,denominator,normalized_latent":"latent,lse");
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.fused",_program.fuse?"true":"false");
@@ -777,7 +778,7 @@ UINT64 VHO_tensor_grid(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERNEL &k) {
 UINT64 VHO_tensor_shared_bytes(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERNEL &k) {
     if(k.mapping<3) return k.mapping==2?640:0;
     UINT64 count=k.mapping==3?k.split_width:k.chunks;
-    return 4*(((count+127)/128)*128+8+(k.mapping==3?128:0));
+    return 4*(((count+127)/128)*128+8+(k.mapping==3 && !p.register_latent?128:0));
 }
 
 /* Recheck the detached handoff before allocating any device table entries. */
@@ -785,6 +786,7 @@ BOOL VHO_tensor_validate_program(const VHO_TENSOR_PROGRAM &p,FILE *diagnostic) {
     try {
         need(p.opt_level<=3 && p.threads==(p.opt_level==3?128:1),"invalid level/thread mapping");
         need((!p.fuse && !p.split_width) || p.opt_level==3,"optimization requires O3");
+        need(!p.register_latent || p.fuse_attention,"register accumulation requires fused attention");
         need(!p.cooperative || (p.fuse && p.opt_level==3),"cooperative mapping requires fused O3");
         need(!p.split_width || (p.fuse && p.split_width>=2 && p.split_width<=4096),"invalid split width/fusion policy");
         need(p.operations.size()<=4096,"too many operations");
@@ -888,6 +890,10 @@ BOOL VHO_tensor_verify_kernel(const VHO_TENSOR_PROGRAM &p,UINT32 ordinal,FILE *d
             const char *layout=ST_tensor_metadata(st,"tensor.kernel.attention_layout");
             std::string expected_layout=kernel.mapping<3?"none":kernel.stage==1?"maximum,denominator,normalized_latent":"latent,lse";
             need(layout && expected_layout==layout,"attention tuple layout mismatch");
+        }
+        if(p.register_latent) {
+            const char *accumulation=ST_tensor_metadata(st,"tensor.kernel.attention_accumulation");
+            need(accumulation && !strcmp(accumulation,kernel.mapping>=3?"register_4_columns_per_warp":"none"),"attention accumulation mismatch");
         }
         if(p.cooperative) {
             const char *mapping=ST_tensor_metadata(st,"tensor.kernel.mapping"),*shared=ST_tensor_metadata(st,"tensor.kernel.shared_bytes");
