@@ -2,6 +2,9 @@
 
 November 7, 2026 | Implemented bounded MLA estimation service
 
+For compiler invocation, complete configuration generation, defaults and
+troubleshooting, see the [compiler user guide](AI-COMPILER-HIGH-SEARCH-USER-GUIDE.md).
+
 ## 1. Authority and scope
 
 This contract extends [M2c](AI-COMPILER-SEARCH-M2C-OBSERVER-v1.0.md) and adopts

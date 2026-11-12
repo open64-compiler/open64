@@ -1,0 +1,21 @@
+{
+  "schema": "open64.mla-search-controls.v2",
+  "space": "mla-family-width-space-v1",
+  "mode": "estimate",
+  "global_proposal_limit": 36,
+  "global_unique_limit": 12,
+  "global_time_limit_us": 0,
+  "runs": [
+    {"id": "local", "strategy": "local", "seed": 17, "proposal_limit": 12},
+    {"id": "random", "strategy": "random", "seed": 17, "proposal_limit": 12},
+    {"id": "exhaustive", "strategy": "exhaustive", "seed": 17, "proposal_limit": 12}
+  ],
+  "stopping": ["exhausted", "budget"],
+  "patience": 12,
+  "minimum_gain_cycles": 0,
+  "target_cycles": 0,
+  "gap_ppm": 10000,
+  "remaining_invocations": 0,
+  "evaluation_cost_cycles": 0,
+  "economic_conversion": null
+}
