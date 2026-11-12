@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "workload_id": "gemm.dense.bf16-fp32.bf16.v1",
+  "suite_id": "gemm.geometry.v1",
+  "target_sm": 80,
+  "build": {"flags": ["-O3", "-std=c++17"], "libraries": ["cudart"]},
+  "baseline": {"source": "baseline.cu"}
+}
