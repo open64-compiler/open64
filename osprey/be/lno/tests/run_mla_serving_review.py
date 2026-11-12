@@ -53,6 +53,10 @@ def review(args):
         f.argtypes, f.restype = types, result
         functions[name] = f
     checks, commands = [], []
+    q4 = None
+    if args.q4:
+        from mla_q4_costing_review import Q4_REVIEW
+        q4 = Q4_REVIEW(api, out)
     digests = dict((name, sha) for sha, name in
                    (line.split('  ', 1) for line in (args.previous / 'SHA256SUMS').read_text().splitlines()))
 
@@ -218,6 +222,8 @@ def review(args):
         report = json.loads(functions['report'](c.session))
         assert report['bound'] and report['phase'] == c.meta['phase']
         (out/(name+'.facts.json')).write_text(json.dumps(report, indent=2)+'\n')
+        if q4:
+            q4.Before(c, check)
         check(name+' live', functions['live'](c.session, c.ticket))
         byte = C.c_uint8(0)
         check(name+' pinned write refused', not functions['write'](c.session, c.metadata.handle, 0, C.byref(byte), 1))
@@ -233,6 +239,8 @@ def review(args):
         assert published['valid_lengths'] == [c.schema['geometry']['L']]*c.schema['geometry']['B']
         if c.parent:
             check(name+' stale predecessor refused', not c.begin(parent=c.parent))
+        if q4:
+            q4.Expired(c, check)
         check(name+' expired', not functions['live'](c.session, c.ticket))
         check(name+' rerun refused', not c.run()[0])
         reader = U()
@@ -429,6 +437,8 @@ def review(args):
     assert c.begin()
     report = json.loads(functions['report'](c.session))
     assert report['phase'] == 'unknown'
+    if q4:
+        q4.Before(c, check, 'zero-active')
     ok, bundle, why = c.run()
     check('zero active queries do not skip source', ok and c.callback_count == 1)
     c.verify()
@@ -438,7 +448,7 @@ def review(args):
     report = dict(status='PASS', checks=checks, source_cases=baseline, compiled_outputs=60,
                   concurrency_actual_callbacks=True, engine_binding='native-host-synchronous',
                   allocator_owned_generations=True, external_initial_import_ready_precondition=True,
-                  search_invoked=False, gpu_execution=False)
+                  search_invoked=bool(q4), gpu_execution=False, q4_costing=bool(q4))
     (out/'commands.json').write_text(json.dumps(commands, indent=2)+'\n')
     (out/'report.json').write_text(json.dumps(report, indent=2)+'\n')
     print('PASS Q3 native checks='+str(len(checks)))
@@ -448,4 +458,5 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('source', 'previous', 'lowerer', 'adapter', 'output'):
         parser.add_argument('--'+name, type=Path, required=True)
+    parser.add_argument('--q4', action='store_true')
     review(parser.parse_args())

@@ -1291,6 +1291,13 @@ tensor_serving_runtime.o: $(BE_VHO_DIR)/tensor_serving.cxx $(BE_VHO_DIR)/tensor_
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) -std=c++11 -fPIC -pthread -DOPEN64_SERVING_TEST $< -o $@
 tensor_serving_review.o: $(BUILD_BASE)/tensor_serving_review.cxx $(BE_VHO_DIR)/tensor_serving.h $(BE_VHO_DIR)/tensor_q1_program.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) -std=c++11 -fPIC -pthread -DOPEN64_SERVING_TEST $< -o $@
-libmla_serving_review.so: tensor_serving_runtime.o tensor_serving_review.o $(BUILD_AREA)/be/be.so
-	$(link.c++f) -shared -pthread -o $@ tensor_serving_runtime.o tensor_serving_review.o -L$(BUILD_AREA)/be -l:be.so
+libmla_serving_review.so: tensor_serving_runtime.o tensor_serving_review.o tensor_attention_search.o $(BUILD_AREA)/be/be.so
+	$(link.c++f) -shared -pthread -o $@ tensor_serving_runtime.o tensor_serving_review.o tensor_attention_search.o -L$(BUILD_AREA)/be -l:be.so
 LDIRT += tensor_serving_schema.o tensor_serving_runtime.o tensor_serving_review.o libmla_serving_review.so
+
+# Q4 detached model and live-export adapter dependencies.
+tensor_attention_search.o tensor_serving_runtime.o tensor_serving_review.o: $(BE_VHO_DIR)/tensor_quantized_movement.h $(BE_VHO_DIR)/tensor_quantized_movement.inc $(BE_VHO_DIR)/tensor_serving.h
+
+tensor_serving_review.o: $(BUILD_BASE)/tensor_quantized_movement_review.inc
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o \
+  tensor_bridge_bindings.o: $(BE_VHO_DIR)/tensor_quantized_movement.h

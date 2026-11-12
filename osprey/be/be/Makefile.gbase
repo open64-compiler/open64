@@ -1230,3 +1230,6 @@ tensor_workload.o tensor_high_lower.o tensor_q1_program.o dsl_high_quantized.o d
 tensor_workload.o: $(BE_VHO_DIR)/tensor_kernel_lower.h
 
 tensor_serving_schema.o tensor_high_lower.o tensor_q1_program.o: $(BE_VHO_DIR)/tensor_serving_schema.h
+
+# Q4 detached report layout is visible through the existing search boundary.
+driver.o: $(BE_VHO_DIR)/tensor_quantized_movement.h $(BE_VHO_DIR)/tensor_serving.h

@@ -5,6 +5,9 @@
  * Design: doc/AI-COMPILER-MLA-Q3-SERVING-v1.0.md. */
 #include "../be/vho/tensor_serving.h"
 #include "../be/vho/tensor_q1_program.h"
+#include "../be/vho/tensor_attention_search.h"
+#include "../rapidjson/document.h"
+#include <set>
 #include "../rapidjson/writer.h"
 #include "../rapidjson/stringbuffer.h"
 #include <string>
@@ -92,3 +95,5 @@ const char *open64_q3_report(void *object) {(void)object;return report_text.c_st
 extern bool VHO_tensor_serving_counter_test();
 extern "C" int open64_q3_counter_test() {return VHO_tensor_serving_counter_test();}
 #endif
+
+#include "tensor_quantized_movement_review.inc"

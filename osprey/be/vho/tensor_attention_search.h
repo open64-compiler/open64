@@ -7,6 +7,7 @@
 #define tensor_attention_search_INCLUDED
 #include "tensor_kernel_lower.h"
 #include "tensor_attention_movement.h"
+#include "tensor_quantized_movement.h"
 
 enum VHO_MLA_COST_FIELD {
     VHO_MLA_GLOBAL_RATE, VHO_MLA_SCALAR_RATE, VHO_MLA_SHARED_RATE,
@@ -40,6 +41,7 @@ struct VHO_MLA_STAGE_ESTIMATE {
 struct VHO_MLA_SEARCH_CANDIDATE {
     VHO_MLA_MOVEMENT_DESCRIPTOR descriptor;
     VHO_MLA_MOVEMENT_ESTIMATE movement;
+    VHO_Q4_ESTIMATE quantized;
     /* A specification is ineligible until its own estimate/preflight completes. */
     VHO_MLA_SEARCH_CANDIDATE():policy(6),width(0),evaluated(false),eligible(false),scratch(0),total(0),reason("not_evaluated") {}
     UINT32 policy,width;
@@ -129,5 +131,11 @@ extern std::string VHO_mla_movement_descriptor_key(const VHO_MLA_SEARCH_CANDIDAT
 extern BOOL VHO_mla_movement_control_valid(const VHO_MLA_SEARCH_CONTROL &,FILE *);
 extern BOOL VHO_mla_explore_movement(const VHO_TENSOR_PROGRAM &,const VHO_TENSOR_GPU_PROFILE &,
     const VHO_MLA_COST_PROFILE &,const VHO_MLA_SEARCH_CONTROL &,const VHO_MLA_MOVEMENT_CONTEXT &,
+    VHO_MLA_PRODUCTION_RESULT *,FILE *);
+/* Q4 comparison only. Eligibility means model/resource admissibility within
+ * this separate space; all entries are analysis-only, including its incumbent.
+ * Caller freezes/revalidates outside search. Output unchanged on admission error. */
+extern BOOL VHO_mla_explore_quantized(const VHO_TENSOR_GPU_PROFILE &,const VHO_MLA_COST_PROFILE &,
+    const VHO_MLA_SEARCH_CONTROL &,const VHO_Q4_PROFILE &,const VHO_Q4_SNAPSHOT &,
     VHO_MLA_PRODUCTION_RESULT *,FILE *);
 #endif

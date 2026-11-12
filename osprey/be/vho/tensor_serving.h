@@ -36,6 +36,7 @@ struct VHO_SERVING_BUNDLE_FACTS {
     /* A missing/retired publication yields no usable record. */
     VHO_SERVING_BUNDLE_FACTS():bundle(0) {}
 };
+struct VHO_Q4_SNAPSHOT;
 class VHO_TENSOR_SERVING {
     struct IMPL;
     IMPL *_impl;
@@ -64,6 +65,12 @@ public:
     /* Acquire shared input and exclusive output/scratch/status leases. Facts are
      * rebuilt from actual host controls. A stale parent/refusal changes no bytes. */
     bool Begin(const std::vector<VHO_SERVING_VIEW> &,const VHO_SERVING_VIEW &,UINT64,VHO_SERVING_FACTS &,std::string &);
+    /* Freeze normalized cache facts from a prepared, reobserved Q3 ticket.
+     * No kernel, reference test, search or compiler mutation occurs here. */
+    bool Freeze_costing(UINT64,VHO_Q4_SNAPSHOT &,std::string &);
+    /* Reobserve before a consumer uses a study; expiration/stale controls refuse.
+     * This does not turn a model winner into an executable plan. */
+    bool Revalidate_costing(UINT64,const std::string &,std::string &);
     /* Run one qualified synchronous entry; completion/status/control/parent CAS
      * gates atomic publication. Failure expires ticket and publishes nothing. */
     bool Run(UINT64,bool (*)(void *,void **,UINT32),void *,UINT64 &,std::string &);

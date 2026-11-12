@@ -4,6 +4,7 @@
  * shared with VHO; registry state is neither a compiler epoch nor search input.
  * Design: doc/AI-COMPILER-MLA-Q3-SERVING-v1.0.md. */
 #include "tensor_serving.h"
+#include "tensor_quantized_movement.h"
 #include <atomic>
 #include <mutex>
 #include <set>
@@ -28,6 +29,8 @@ UINT64 issue_counter(std::atomic<UINT64> &counter) {
 }
 /* Pointer arithmetic is checked before a host address is formed. */
 UINT64 add(UINT64 a,UINT64 b) {need(a<=std::numeric_limits<UINT64>::max()-b,"q3_address_overflow");return a+b;}
+/* Checked products keep maintenance byte estimates from wrapping before add. */
+UINT64 mul(UINT64 a,UINT64 b) {need(!b || a<=std::numeric_limits<UINT64>::max()/b,"q4_extent_overflow");return a*b;}
 /* Actual address alignment is advisory; it is not a device/TMA guarantee. */
 UINT64 alignment(UINT64 a) {if(!a) return 0;UINT64 n=1;while(n<4096 && a%(n*2)==0) n*=2;return n;}
 /* Q1 uses exact byte descriptors and explicit I64/F32 sizes. */
@@ -254,6 +257,47 @@ bool VHO_TENSOR_SERVING::Begin(const std::vector<VHO_SERVING_VIEW> &v,const VHO_
         c.facts.allocation_ids.push_back(m.handle.id);c.facts.allocation_generations.push_back(metadata_allocation.generation);c.facts.content_versions.push_back(metadata_allocation.version);
         out=c.facts;_impl->calls.emplace(c.facts.ticket,c);_impl->Pin(_impl->calls[c.facts.ticket]);if(parent) ++_impl->bundles[parent].pending;return true;
     }catch(const std::exception &e) {out=VHO_SERVING_FACTS();why=e.what();return false;}
+}
+/* Freeze under the same mutex as Q3 publication. Re-read controls/scales and
+ * parent, then copy generation facts. No borrowed pointer survives the call. */
+bool VHO_TENSOR_SERVING::Freeze_costing(UINT64 ticket,VHO_Q4_SNAPSHOT &out,std::string &why) {
+    why.clear();if(!_impl) {why="q3_invalid_session";return false;}
+    std::lock_guard<std::mutex> lock(_impl->mutex);
+    try {
+        need(_impl->calls.count(ticket) && !_impl->calls[ticket].running,"q4_stale_or_running_ticket");
+        IMPL::CALL &c=_impl->calls[ticket];VHO_SERVING_FACTS fresh;std::string controls;
+        _impl->Observe(c.views,c.metadata,fresh,controls);_impl->Parent(c.views,c.facts.parent_bundle,fresh);
+        need(controls==c.controls,"q4_controls_changed");
+        for(unsigned i=0;i<c.views.size()+1;++i) {
+            IMPL::ALLOCATION &a=_impl->Allocation(i<c.views.size()?c.views[i].handle:c.metadata.handle);
+            need(a.generation==c.facts.allocation_generations[i] && a.version==c.facts.content_versions[i],"q4_version_changed");
+        }
+        VHO_Q4_SNAPSHOT f;f.schema=_impl->schema;f.facts=c.facts;
+        // Charge source cache maintenance once, irrespective of head grouping.
+        // Unique operand sweeps are a model, not generated load instructions.
+        std::set<UINT32> needed;
+        for(unsigned i=0;i<4;++i) needed.insert(f.schema.returned[i]);
+        const VHO_TENSOR_PROGRAM &p=_impl->program;
+        for(unsigned rev=p.operations.size();rev;--rev) {
+            const VHO_TENSOR_OPERATION &op=p.operations[rev-1];if(!needed.count(op.output)) continue;
+            for(unsigned i=0;i<op.inputs.size();++i) needed.insert(op.inputs[i]);
+            if(op.name=="common.reshape" || op.name=="common.transpose" || op.name=="common.unsqueeze") continue;
+            UINT64 n=VHO_tensor_elements(p.values[op.output]);
+            need(n<=UINT64(1073741824),"q4_source_extent");
+            f.maintenance_ops=add(f.maintenance_ops,n);
+            f.maintenance_bytes=add(f.maintenance_bytes,mul(n,scalar(p.values[op.output])));
+            for(unsigned i=0;i<op.inputs.size();++i) {
+                const VHO_TENSOR_VALUE &v=p.values[op.inputs[i]];
+                f.maintenance_bytes=add(f.maintenance_bytes,mul(VHO_tensor_elements(v),scalar(v)));
+            }
+        }
+        f.key=VHO_q4_snapshot_key(f);out=f;return true;
+    } catch(const std::exception &e) {why=e.what();return false;}
+}
+/* Checking the exact rebuilt identity cannot revive an expired snapshot. */
+bool VHO_TENSOR_SERVING::Revalidate_costing(UINT64 ticket,const std::string &key,std::string &why) {
+    VHO_Q4_SNAPSHOT fresh;if(!Freeze_costing(ticket,fresh,why)) return false;
+    if(fresh.key!=key) {why="q4_snapshot_changed";return false;}return true;
 }
 /* The callback is synchronous and runs outside the registry mutex. Publication
  * is a parent-version CAS after status/control/scale validation. */

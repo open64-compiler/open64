@@ -261,6 +261,8 @@ std::vector<std::string> VHO_search_predicates(const VHO_MLA_SEARCH_CONTROL &con
 }
 }
 
+#include "tensor_quantized_movement.inc"
+
 /* Default full finite search; v2 JSON still requires every field explicitly. */
 VHO_MLA_SEARCH_CONTROL::VHO_MLA_SEARCH_CONTROL() : space("mla-family-width-space-v1"),mode("estimate"),
     global_proposals(36),global_unique(12),global_time_us(0),patience(12),minimum_gain(0),target(0),gap_ppm(10000),
@@ -272,9 +274,9 @@ VHO_MLA_SEARCH_CONTROL::VHO_MLA_SEARCH_CONTROL() : space("mla-family-width-space
 
 /* Validate hard bounds, unique IDs, provider support and dimensional evidence.
  * A caller cannot disable the safety caps by omitting budget/exhaustion stops. */
-static BOOL VHO_mla_control_valid(const VHO_MLA_SEARCH_CONTROL &control,FILE *diagnostic,bool movement) {
-    UINT64 count=movement?36:12;
-    bool valid=control.space==(movement?VHO_mla_movement_catalog():"mla-family-width-space-v1") && control.mode=="estimate" &&
+static BOOL VHO_mla_control_valid(const VHO_MLA_SEARCH_CONTROL &control,FILE *diagnostic,bool movement,bool quantized=false) {
+    UINT64 count=quantized?17:movement?36:12;
+    bool valid=control.space==(quantized?VHO_q4_catalog():movement?VHO_mla_movement_catalog():"mla-family-width-space-v1") && control.mode=="estimate" &&
         !control.runs.empty() && control.runs.size()<=16 && !control.stopping.empty() && control.stopping.size()<=6 &&
         control.global_proposals>0 && control.global_proposals<=16*count && control.global_unique>0 && control.global_unique<=count &&
         control.global_time_us<=UINT64(3600000000ULL) && control.patience>0 && control.patience<=count &&
@@ -301,7 +303,7 @@ static BOOL VHO_mla_control_valid(const VHO_MLA_SEARCH_CONTROL &control,FILE *di
             control.conversion_provenance=="estimated" || control.conversion_provenance=="measured-input") &&
             DSL_readiness_mul(control.host_us,control.cycles_per_us,&converted) && converted==control.evaluation_cost;
     } else valid=valid && !control.host_us && !control.cycles_per_us && control.conversion_provenance.empty();
-    if(movement && (VHO_search_stop_enabled(control,"relative-gap") || VHO_search_stop_enabled(control,"cost-aware"))) valid=false;
+    if((movement || quantized) && (VHO_search_stop_enabled(control,"relative-gap") || VHO_search_stop_enabled(control,"cost-aware"))) valid=false;
     if(!valid && diagnostic) fprintf(diagnostic,"MLA controlled search: invalid controls or unsupported stopping evidence\n");
     return valid;
 }
@@ -313,7 +315,7 @@ BOOL VHO_mla_movement_control_valid(const VHO_MLA_SEARCH_CONTROL &c,FILE *f) {re
  * This full identity is not a cryptographic signature or a portable time trace. */
 std::string VHO_mla_search_control_key(const VHO_MLA_SEARCH_CONTROL &control) {
     std::ostringstream key;
-    key<<(control.space==VHO_mla_movement_catalog()?"mla-search-controls-v3/":"mla-search-controls-v2/")<<control.space<<'/'<<control.mode<<'/'<<control.global_proposals<<'/'<<control.global_unique<<'/'
+    key<<(control.space==VHO_q4_catalog()?"mla-search-controls-q4-v1/":control.space==VHO_mla_movement_catalog()?"mla-search-controls-v3/":"mla-search-controls-v2/")<<control.space<<'/'<<control.mode<<'/'<<control.global_proposals<<'/'<<control.global_unique<<'/'
         <<control.global_time_us<<'/'<<control.patience<<'/'<<control.minimum_gain<<'/'<<control.target<<'/'<<control.gap_ppm<<'/'
         <<control.remaining_invocations<<'/'<<control.evaluation_cost<<'/'<<control.economic_conversion<<'/'<<control.host_us<<'/'
         <<control.cycles_per_us<<'/'<<control.conversion_provenance<<"/runs="<<control.runs.size();
@@ -330,17 +332,19 @@ std::string VHO_mla_search_control_key(const VHO_MLA_SEARCH_CONTROL &control) {
  * Caps are checked before every proposal and after every complete estimate;
  * a cache hit consumes only a proposal. No native callback or context exists. */
 static BOOL VHO_mla_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR_GPU_PROFILE &gpu,
-    const VHO_MLA_COST_PROFILE &model,const VHO_MLA_SEARCH_CONTROL &control,VHO_MLA_PRODUCTION_RESULT *output,FILE *diagnostic,const VHO_MLA_MOVEMENT_CONTEXT *movement) {
+    const VHO_MLA_COST_PROFILE &model,const VHO_MLA_SEARCH_CONTROL &control,VHO_MLA_PRODUCTION_RESULT *output,FILE *diagnostic,const VHO_MLA_MOVEMENT_CONTEXT *movement,const VHO_Q4_PROFILE *q4_profile=NULL,const VHO_Q4_SNAPSHOT *q4_snapshot=NULL) {
     try {
         UINT64 start=VHO_search_clock(),last=start;
         VHO_MLA_SEARCH_OPTIONS legacy_validation;
-        if(!output || !VHO_mla_control_valid(control,diagnostic,movement!=NULL) ||
+        if(!output || !VHO_mla_control_valid(control,diagnostic,movement!=NULL,q4_profile!=NULL) ||
             (movement && (!VHO_mla_movement_profile_valid(movement->profile,diagnostic) || movement->profile.architecture!=gpu.architecture)) || !VHO_mla_search_inputs_valid(model,legacy_validation,diagnostic) ||
             !VHO_tensor_gpu_profile_valid(gpu,diagnostic) || model.architecture!=gpu.architecture ||
-            source.opt_level!=3 || !source.fuse_attention || !source.cooperative || !VHO_tensor_validate_program(source,diagnostic))
+            (q4_profile?(!q4_snapshot || !Q4_valid(*q4_profile,*q4_snapshot,gpu)):
+                (source.opt_level!=3 || !source.fuse_attention || !source.cooperative || !VHO_tensor_validate_program(source,diagnostic))))
             throw std::runtime_error("controlled_search_admission_failed");
         VHO_MLA_PRODUCTION_RESULT result;VHO_MLA_SEARCH_RESULT &search=result.exploration;
-        if(movement) {search.lower_bound=0;Movement_catalog(search,VHO_tensor_attention(source));}
+        if(q4_profile) {search.lower_bound=0;Q4_catalog(search);}
+        else if(movement) {search.lower_bound=0;Movement_catalog(search,VHO_tensor_attention(source));}
         else {search.lower_bound=mul(5,model.values[VHO_MLA_LAUNCH]);VHO_search_catalog(search);}
         unsigned count=search.candidates.size();
         std::vector<VHO_MLA_RUN_STATE> states;
@@ -359,6 +363,7 @@ static BOOL VHO_mla_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR
             VHO_MLA_RUN_STATE &state=states[current];VHO_MLA_SEARCH_RUN &run=search.runs[current];
             bool restart=false;UINT32 id=VHO_search_propose(run.strategy,state.visited,state.anchor,search.candidates,state.random,restart);
             /* Charge a compatible G1 seed as the first ordinary proposal. */
+            if(q4_profile && !result.proposals) id=0;
             if(movement && !result.proposals) id=VHO_tensor_attention(source).length<=4096?0:3;
             if(id==count) throw std::runtime_error("controlled_proposal_state_inconsistent");
             if(restart && run.strategy=="local") ++run.restarts;
@@ -366,8 +371,8 @@ static BOOL VHO_mla_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR
             VHO_MLA_SEARCH_CANDIDATE &candidate=search.candidates[id];bool hit=candidate.evaluated;
             if(!hit) {
                 ++search.evaluations;
-                try {if(movement) Movement_evaluate(candidate,source,gpu,model,*movement);else Evaluate(candidate,source,gpu,model);}
-                catch(const std::exception &error) {candidate.evaluated=true;candidate.eligible=false;candidate.reason=error.what();candidate.total=0;candidate.stages.clear();candidate.movement=VHO_MLA_MOVEMENT_ESTIMATE();}
+                try {if(q4_profile) Q4_evaluate(candidate,gpu,model,*q4_profile,*q4_snapshot);else if(movement) Movement_evaluate(candidate,source,gpu,model,*movement);else Evaluate(candidate,source,gpu,model);}
+                catch(const std::exception &error) {candidate.evaluated=true;candidate.eligible=false;candidate.reason=error.what();candidate.total=0;candidate.stages.clear();candidate.movement=VHO_MLA_MOVEMENT_ESTIMATE();candidate.quantized=VHO_Q4_ESTIMATE();}
             } else ++search.cache_hits;
             ++state.stale;
             if(candidate.eligible && (!state.found || candidate.total<run.best || (candidate.total==run.best && id<run.winner))) {
@@ -411,3 +416,11 @@ BOOL VHO_mla_explore_controlled(const VHO_TENSOR_PROGRAM &s,const VHO_TENSOR_GPU
 BOOL VHO_mla_explore_movement(const VHO_TENSOR_PROGRAM &s,const VHO_TENSOR_GPU_PROFILE &g,
     const VHO_MLA_COST_PROFILE &m,const VHO_MLA_SEARCH_CONTROL &c,const VHO_MLA_MOVEMENT_CONTEXT &x,
     VHO_MLA_PRODUCTION_RESULT *o,FILE *f) {return VHO_mla_controlled(s,g,m,c,o,f,&x);}
+
+/* A separate entry prevents these analysis-only incumbents from entering the
+ * archived FP32 materializer/selected-plan route. Shared portfolio only. */
+BOOL VHO_mla_explore_quantized(const VHO_TENSOR_GPU_PROFILE &g,const VHO_MLA_COST_PROFILE &m,
+    const VHO_MLA_SEARCH_CONTROL &c,const VHO_Q4_PROFILE &p,const VHO_Q4_SNAPSHOT &x,
+    VHO_MLA_PRODUCTION_RESULT *o,FILE *f) {
+    VHO_TENSOR_PROGRAM unused;return VHO_mla_controlled(unused,g,m,c,o,f,NULL,&p,&x);
+}
