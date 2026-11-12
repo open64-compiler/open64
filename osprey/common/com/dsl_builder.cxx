@@ -3101,6 +3101,21 @@ DSL_Builder_Create_Operator_With_Result
         a.batch_rule = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.batch_rule");
         a.transpose_kid0 = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.transpose_kid0");
         a.transpose_kid1 = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.transpose_kid1");
+        a.rounding = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.rounding");
+        a.has_min = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.has_min");
+        a.min_bits = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.min_bits");
+        a.has_max = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.has_max");
+        a.max_bits = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.max_bits");
+        a.src_dtype = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.src_dtype");
+        a.dst_dtype = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.dst_dtype");
+        a.mode = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.mode");
+        a.nibble_order = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.nibble_order");
+        a.code_bits = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.code_bits");
+        a.bounds = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.bounds");
+        a.alias_rule = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.alias_rule");
+        a.conflicts = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.conflicts");
+        a.integer_domain = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.integer_domain");
+        a.value_i64 = DSL_Builder_Find_Operator_Attribute(attrs, attr_count, "attr.value_i64");
         if (!DSL_tensor_expression_types_valid(dsl_operator, version,
                 types.empty() ? NULL : &types[0], kid_count, result_ty, &a)) return NULL;
     }

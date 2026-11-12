@@ -25,6 +25,8 @@ class WhirlVerificationError(ValueError):
 
 
 _SUPPORTED_DTYPES = {
+    "int8",
+    "uint8",
     "bool",
     "float32",
     "float64",

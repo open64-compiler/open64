@@ -261,6 +261,21 @@ typedef struct {
     const char *batch_rule;
     const char *transpose_kid0;
     const char *transpose_kid1;
+    const char *rounding;
+    const char *has_min;
+    const char *min_bits;
+    const char *has_max;
+    const char *max_bits;
+    const char *src_dtype;
+    const char *dst_dtype;
+    const char *mode;
+    const char *nibble_order;
+    const char *code_bits;
+    const char *bounds;
+    const char *alias_rule;
+    const char *conflicts;
+    const char *integer_domain;
+    const char *value_i64;
 } DSL_TENSOR_EXPRESSION_ATTRIBUTES;
 
 /* Identify only the append-only elementary and explicit v3 contracts. */

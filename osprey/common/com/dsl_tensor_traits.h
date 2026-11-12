@@ -9,6 +9,11 @@
 
 #define DSL_TENSOR_TRAIT_LATENT_KV_CACHE "attention.latent_kv_cache.v1"
 #define DSL_TENSOR_TRAIT_ROTARY_KEY_CACHE "attention.rotary_key_cache.v1"
+/* Decoder facts do not assert an external producer's rounding algorithm.
+ * Dynamic scale/value identities are compiler metadata, not type keys. */
+#define DSL_TENSOR_ENCODING_S8_SCALED_F32 "s8-token-scaled-f32.v1"
+#define DSL_TENSOR_ENCODING_U4_OFFSET8_F32 "u4-offset8-f32.v1"
+#define DSL_TENSOR_FAKE_QUANT_S8_F32 "fake-s8-float32.v1"
 
 /* Recognize only the two published single-role contracts; unknown combinations
  * remain unsupported at the current tensor-expression lowering boundary. */

@@ -40,16 +40,26 @@ def try_export_tensor_expressions(interpreter, model, inputs, captured):
         torch.ones_like: "ones_like", torch.zeros_like: "zeros_like",
         torch.unsqueeze: "unsqueeze", torch.squeeze: "squeeze",
         torch.transpose: "transpose",
+        torch.abs: "abs", torch.round: "round_even", torch.clamp: "clamp",
+        torch.index_select: "gather", torch.index_copy: "scatter",
+        torch.remainder: "rem",
     }
-    methods = {"unsqueeze", "squeeze", "transpose", "masked_fill"}
-    triggers = methods | {"exp", "log", "isfinite", "select", "logical_not",
-                          "full_like", "ones_like", "zeros_like"}
+    methods = {"unsqueeze", "squeeze", "transpose", "masked_fill", "reshape", "to"}
+    legacy_methods = methods - {"reshape", "to"}
+    triggers = legacy_methods | {"exp", "log", "isfinite", "select", "logical_not",
+                          "full_like", "ones_like", "zeros_like", "abs", "round_even",
+                          "clamp", "gather", "scatter", "rem"}
     nodes = list(graph.nodes)
-    if not any((node.op == "call_method" and node.target in methods) or
+    from .quantized_patterns import u4_patterns
+    replacements, skipped = u4_patterns(nodes)
+    pure_boundary = not any(node.op in ("call_module", "get_attr") for node in nodes)
+    if not any((node.op == "call_method" and
+                (node.target in legacy_methods or (pure_boundary and node.target in methods))) or
                (node.op == "call_function" and functions.get(node.target) in triggers)
                for node in nodes):
         return None
     types, plans, placeholders = {}, [], []
+    definitions = {}
     output_names = None
     literal = 0
 
@@ -59,6 +69,8 @@ def try_export_tensor_expressions(interpreter, model, inputs, captured):
 
     # Classify the whole graph before descriptor propagation or native products.
     for node in nodes:
+        if node in replacements or node in skipped:
+            continue
         if (node.op in ("placeholder", "output") or
                 (node.op == "call_method" and node.target in methods) or
                 (node.op == "call_function" and node.target in functions)):
@@ -73,13 +85,15 @@ def try_export_tensor_expressions(interpreter, model, inputs, captured):
             raise ValueError("axis out of range")
         return value % limit
 
-    def emit(name, opcode, sources, attrs, node):
-        version = VERSIONS[opcode]
+    def emit(name, opcode, sources, attrs, node, version=None):
+        if version is None:
+            version = VERSIONS.get(opcode, 1)
         if name in types:
             raise ValueError("duplicate graph value")
         descriptor = infer_expression(opcode, version, attrs, [types[item] for item in sources])
         types[name] = descriptor
         plans.append((name, opcode, version, sources, attrs, node))
+        definitions[name] = (opcode, sources, attrs)
         return name
 
     def ref(value, like, node):
@@ -91,12 +105,19 @@ def try_export_tensor_expressions(interpreter, model, inputs, captured):
         if type(value) not in (float, int) or like is None:
             raise ValueError("tensor or numeric scalar required")
         literal += 1
+        if types[like][0] == "int64":
+            if type(value) is not int:
+                raise ValueError("integer index literal required")
+            return emit("__literal_%d" % literal, "common.fill_like", [like],
+                        {"attr.value_i64": str(value)}, node, 2)
         bits = struct.pack(">f", float(value)).hex()
         return emit("__literal_%d" % literal, "common.fill_like", [like],
                     {"attr.value_bits": bits}, node)
 
     try:
         for node in nodes:
+            if node in skipped:
+                continue
             if node.op == "placeholder":
                 index = len(placeholders)
                 if index >= len(inputs) or type(inputs[index]) is not torch.Tensor:
@@ -105,7 +126,7 @@ def try_export_tensor_expressions(interpreter, model, inputs, captured):
                 shape = tuple(tensor.shape)
                 dtype = str(tensor.dtype).replace("torch.", "")
                 if (tensor.device.type != "cpu" or not tensor.is_contiguous() or
-                        dtype not in ("float32", "bool") or not 1 <= len(shape) <= 16 or
+                        dtype not in ("float32", "bool", "int8", "uint8", "int64") or not 1 <= len(shape) <= 16 or
                         any(type(n) is not int or n <= 0 for n in shape)):
                     raise ValueError("positive contiguous static CPU FP32/bool inputs required")
                 types[node.name] = dtype, shape
@@ -119,6 +140,21 @@ def try_export_tensor_expressions(interpreter, model, inputs, captured):
                     raise ValueError("flat tensor result tuple required")
                 output_names = [item.name for item in outputs]
                 continue
+            if node in replacements:
+                opcode, source_node = replacements[node]
+                source = ref(source_node, None, node)
+                if opcode == "common.pack_u4":
+                    conversion = definitions.get(source)
+                    if not conversion or conversion[0] != "common.convert" or conversion[2].get("attr.dst_dtype") != "uint8":
+                        raise ValueError("pack requires proven nibble codes")
+                    clamp = definitions.get(conversion[1][0])
+                    if not clamp or clamp[0] != "common.clamp" or clamp[2] != {
+                            "attr.has_min": "true", "attr.min_bits": "00000000",
+                            "attr.has_max": "true", "attr.max_bits": "41700000"}:
+                        raise ValueError("pack requires proven nibble bounds")
+                emit(node.name, opcode, [source], {"attr.axis": str(len(types[source][1])-1),
+                     "attr.nibble_order": "even_low", "attr.code_bits": "4"}, node)
+                continue
             kind = (node.target if node.op == "call_method" and node.target in methods else
                     functions.get(node.target) if node.op == "call_function" else None)
             if kind is None:
@@ -129,7 +165,74 @@ def try_export_tensor_expressions(interpreter, model, inputs, captured):
                 raise ValueError("first argument must be a tensor")
             source = ref(args[0], None, node)
             rank = len(types[source][1])
-            if kind in ("unsqueeze", "squeeze", "transpose"):
+            if kind == "reshape":
+                if kwargs or len(args) < 2:
+                    raise ValueError("static reshape required")
+                shape = tuple(args[1]) if len(args) == 2 and isinstance(args[1], (tuple, list)) else tuple(args[1:])
+                if any(type(n) is not int or n == 0 or n < -1 for n in shape) or shape.count(-1) > 1:
+                    raise ValueError("invalid reshape extents")
+                import math
+                total, known = math.prod(types[source][1]), math.prod(n for n in shape if n != -1)
+                if -1 in shape:
+                    if total % known:
+                        raise ValueError("inexact inferred reshape")
+                    shape = tuple(total//known if n == -1 else n for n in shape)
+                emit(node.name, "common.reshape", [source], {"attr.target_shape": ",".join(map(str, shape))}, node)
+            elif kind == "to":
+                if kwargs or len(args) != 2 or args[1] not in (torch.float32, torch.int8, torch.uint8):
+                    raise ValueError("explicit byte/F32 dtype conversion required")
+                src, dst = types[source][0], str(args[1]).replace("torch.", "")
+                if src == "float32":
+                    # A general torch cast truncates/wraps. checked_integral is
+                    # equivalent only after a bounded integral producer.
+                    clamp = definitions.get(source)
+                    low, high = (-128,127) if dst == "int8" else (0,255)
+                    if (not clamp or clamp[0] != "common.clamp" or
+                            clamp[2].get("attr.has_min") != "true" or clamp[2].get("attr.has_max") != "true" or
+                            not low <= struct.unpack(">f",bytes.fromhex(clamp[2]["attr.min_bits"]))[0] <= high or
+                            not low <= struct.unpack(">f",bytes.fromhex(clamp[2]["attr.max_bits"]))[0] <= high):
+                        raise ValueError("byte conversion requires integral clamp/range proof")
+                    rounded = definitions.get(clamp[1][0])
+                    if rounded and rounded[0] == "common.add":
+                        literal_def = definitions.get(rounded[1][1])
+                        if not literal_def or literal_def[0] != "common.fill_like":
+                            raise ValueError("integral offset proof")
+                        offset = struct.unpack(">f",bytes.fromhex(literal_def[2]["attr.value_bits"]))[0]
+                        if not offset.is_integer():
+                            raise ValueError("integral offset proof")
+                        rounded = definitions.get(rounded[1][0])
+                    if not rounded or rounded[0] != "common.round_even":
+                        raise ValueError("byte conversion requires rounded integral producer")
+                emit(node.name, "common.convert", [source], {"attr.src_dtype": src, "attr.dst_dtype": dst,
+                     "attr.mode": "checked_integral" if src == "float32" else "exact"}, node)
+            elif kind in ("abs", "round_even", "clamp"):
+                attrs = {}
+                if kind == "round_even":
+                    attrs["attr.rounding"] = "ties_to_even"
+                if kind == "clamp":
+                    if len(args) > 3 or set(kwargs)-{"min", "max"} or (len(args)>1 and "min" in kwargs) or (len(args)>2 and "max" in kwargs):
+                        raise ValueError("clamp bounds")
+                    lo = args[1] if len(args)>1 else kwargs.get("min")
+                    hi = args[2] if len(args)>2 else kwargs.get("max")
+                    for name, value in (("min", lo), ("max", hi)):
+                        if value is not None and type(value) not in (float, int):
+                            raise ValueError("static clamp bounds required")
+                        attrs["attr.has_"+name] = str(value is not None).lower()
+                        attrs["attr."+name+"_bits"] = struct.pack(">f", 0.0 if value is None else float(value)).hex()
+                elif kwargs or len(args) != 1:
+                    raise ValueError("unary quantization attributes")
+                emit(node.name, "common."+kind, [source], attrs, node)
+            elif kind in ("gather", "scatter"):
+                if kwargs or len(args) != (3 if kind == "gather" else 4):
+                    raise ValueError("indexed operation arity")
+                attrs = {"attr.axis": str(axis(args[1], rank)), "attr.bounds": "guarded_nonnegative",
+                         "attr.alias_rule": "fresh_result"}
+                sources = [source, ref(args[2], None, node)]
+                if kind == "scatter":
+                    attrs["attr.conflicts"] = "unique_indices"
+                    sources.append(ref(args[3], None, node))
+                emit(node.name, "common."+kind, sources, attrs, node, 2 if kind == "scatter" else 1)
+            elif kind in ("unsqueeze", "squeeze", "transpose"):
                 allowed = {"dim0", "dim1"} if kind == "transpose" else {"dim"}
                 if set(kwargs) - allowed:
                     raise ValueError("unsupported view keyword")
@@ -197,12 +300,18 @@ def try_export_tensor_expressions(interpreter, model, inputs, captured):
                 attrs = {"attr.fp_semantics": "source_unresolved"} if kind in ("exp", "log") else {}
                 emit(node.name, "common." + kind, [source], attrs, node)
             else:
-                if kwargs or len(args) != 2: raise ValueError("binary expression arity")
+                integer = types[source][0] == "int64" and kind in ("add", "mul", "div", "rem")
+                if (kwargs != ({"rounding_mode": "floor"} if integer and kind == "div" else {}) or len(args) != 2):
+                    raise ValueError("binary expression attributes/arity")
                 rhs = ref(args[1], source, node)
                 attrs = ({"attr.transpose_kid0": "false", "attr.transpose_kid1": "false",
                           "attr.batch_rule": "numpy", "attr.accum_dtype": "float32"}
                          if kind == "matmul" else {"attr.broadcast_rule": "numpy"})
-                emit(node.name, "common." + kind, [source, rhs], attrs, node)
+                if integer:
+                    attrs["attr.integer_domain"] = "nonnegative_i64_checked"
+                    if kind in ("div", "rem"):
+                        attrs["attr.rounding"] = "floor"
+                emit(node.name, "common." + kind, [source, rhs], attrs, node, 2 if integer else None)
         if len(placeholders) != len(inputs) or output_names is None:
             raise ValueError("input/output boundary mismatch")
     except (ValueError, TypeError, KeyError, OverflowError, struct.error) as error:
@@ -211,15 +320,24 @@ def try_export_tensor_expressions(interpreter, model, inputs, captured):
     # Explicit content roles belong to tensor descriptors. Only storage-aliasing
     # reshapes inherit them; materialized transpose/arithmetic results do not
     # acquire a persistent-cache role from their input's purpose.
+    builder = interpreter.builder()
+    records = [dict(name=name, opcode="formal", version=0, dtype=types[name][0],
+                    shape=list(types[name][1]), operands=[], attrs={}) for name in placeholders]
+    records += [dict(name=name, opcode=opcode, version=version, dtype=types[name][0],
+                     shape=list(types[name][1]), operands=list(sources), attrs=dict(attrs))
+                for name, opcode, version, sources, attrs, _ in plans]
+    quantized_source = any(opcode in ("common.convert", "common.pack_u4", "common.unpack_u4", "common.round_even")
+                           for _, opcode, _, _, _, _ in plans)
+    inferred = builder.infer_quantized_cache_traits(records) if quantized_source else {}
     from .tensor_traits import declared_cache_traits
     cache_traits = declared_cache_traits(
-        model, [node for node in nodes if node.op == "placeholder"], types)
+        model, [node for node in nodes if node.op == "placeholder"], types, inferred)
+    cache_traits.update({name: fact["role"] for name, fact in inferred.items()})
     for name, opcode, _, sources, _, _ in plans:
         if opcode == "common.reshape" and sources[0] in cache_traits:
             cache_traits[name] = cache_traits[sources[0]]
 
     # All source nodes and descriptors are admitted before the first PU product.
-    builder = interpreter.builder()
     entry = interpreter._model_class_name(model)
     pu = builder.minimal_program_unit(entry)
     path = inspect.getsourcefile(model.forward)
@@ -237,6 +355,8 @@ def try_export_tensor_expressions(interpreter, model, inputs, captured):
                           logical_shape=logical, layout="logical")
         if name in cache_traits:
             descriptor["traits"] = cache_traits[name]
+        if name in inferred and inferred[name]["encoding"] and dtype in ("int8", "uint8"):
+            descriptor["quantization"] = inferred[name]["encoding"]
         ty = builder.tensor_type(name + "_type", dtype, len(shape), logical, descriptor)
         type_records.append(WhirlTensorTypeRecord(name + "_type", ty.value, dtype,
                                                   len(shape), logical, descriptor))
@@ -247,6 +367,8 @@ def try_export_tensor_expressions(interpreter, model, inputs, captured):
         ty = tensor_type(name)
         handle = builder.declare_pu_formal(pu, name, ordinal, ty, file_id, line)
         handles[name] = handle
+        if name in inferred:
+            builder.attach_value_metadata(handle, {"cache.inference."+k: v for k, v in inferred[name].items()})
         values.append(WhirlValueRecord(name, handle.value, name + "_type", "formal",
                                       builder.value_result_symbol(handle).value))
     for name, opcode, version, sources, attrs, node in plans:
@@ -257,6 +379,8 @@ def try_export_tensor_expressions(interpreter, model, inputs, captured):
         interpreter._bind_fx_source_position(pu, node, handle)
         builder.append_program_unit_value(pu, handle)
         handles[name] = handle
+        if name in inferred:
+            builder.attach_value_metadata(handle, {"cache.inference."+k: v for k, v in inferred[name].items()})
         values.append(WhirlValueRecord(name, handle.value, name + "_type", "operator_result",
                                       builder.value_result_symbol(handle).value))
         metadata = dict(interpreter._fx_node_metadata(node, opcode))

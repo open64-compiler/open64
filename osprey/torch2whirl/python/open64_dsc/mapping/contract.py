@@ -281,6 +281,15 @@ _VERSIONED_CONTRACTS = {
 }
 
 
+# Q0-published additive source schemas; old defaults retain their versions.
+from ..quantized_contract import SCHEMAS as _QUANTIZED_SCHEMAS
+for (_name, _version), (_arity, _attrs) in _QUANTIZED_SCHEMAS.items():
+    _contract = OperatorContract(_name, _version, _arity, tuple("attr."+a for a in _attrs))
+    _VERSIONED_CONTRACTS[_name, _version] = _contract
+    if _name not in _CONTRACTS:
+        _CONTRACTS[_name] = _contract
+
+
 def all_operator_contracts() -> Mapping[str, OperatorContract]:
     return dict(_CONTRACTS)
 

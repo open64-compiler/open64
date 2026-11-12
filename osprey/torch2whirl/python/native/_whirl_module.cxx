@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "open64_dsc_native_bridge.h"
+#include "quantized_cache_python.inc"
 
 static PyObject *
 Open64_DSC_Handle_Result(Open64_DSC_Handle handle, const char *action)
@@ -1554,6 +1555,8 @@ static PyMethodDef Open64_DSC_Methods[] = {
         METH_NOARGS,
         "Return the backend name."
     },
+    {"infer_quantized_cache_traits", Open64_Q1_Infer, METH_VARARGS,
+     "Infer source QDQ/cache roles from copied logical dataflow without native mutation."},
     {
         "create_tensor_type",
         Open64_DSC_Create_Tensor_Type,
