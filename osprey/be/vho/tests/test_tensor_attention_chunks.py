@@ -44,7 +44,7 @@ class AutoChunkTests(unittest.TestCase):
 
     def test_auto_short_resource_limit_forces_legal_split(self):
         j=self.execute(256,gpu=gpu_profile(sms=16,shared=1024))
-        self.assertEqual(j['split_width'],64);self.assertFalse(j['chunk_selection']['short_direct'])
+        self.assertEqual(j['split_width'],32);self.assertFalse(j['chunk_selection']['short_direct'])
 
     def test_auto_long_native_reference(self):
         j=self.execute(513,gpu=gpu_profile(sms=16))
@@ -53,7 +53,7 @@ class AutoChunkTests(unittest.TestCase):
     def test_auto_width32_native_reference(self):
         j=self.execute(513,gpu=gpu_profile())
         self.assertEqual(j['split_width'],32)
-        self.assertEqual(j['chunk_selection']['policy'],'coverage-v2')
+        self.assertEqual(j['chunk_selection']['policy'],'coverage-v3')
 
     def test_legacy_policy_remains_selectable_and_stable(self):
         source=self.attention()
@@ -65,6 +65,10 @@ class AutoChunkTests(unittest.TestCase):
         self.assertEqual([x['width'] for x in new['chunk_selection']['candidates']],[32,64,128,256,512,1024,2048,4096])
         self.assertEqual(old,self.select(source,gpu_profile(),'legacy-again',policy='coverage-v1'))
         self.select(source,gpu_profile(),'unknown-policy',success=False,policy='coverage-v999')
+        v2=self.select(source,gpu_profile(),'expanded-legacy',policy='coverage-v2')
+        self.assertEqual(v2['split_width'],64)
+        self.assertNotIn('block_x',v2['chunk_selection']['candidates'][0])
+        self.assertEqual(v2,self.select(source,gpu_profile(),'expanded-legacy-again',policy='coverage-v2'))
         selected=next(x for x in new['chunk_selection']['candidates'] if x['width']==64)
         narrower=next(x for x in new['chunk_selection']['candidates'] if x['width']==32)
         self.assertEqual(selected['coverage_ctas'],selected['target_ctas'])
@@ -120,13 +124,26 @@ class AutoChunkTests(unittest.TestCase):
         source=self.attention();self.select(source,gpu_profile(),'selected')
         text=(self.root/'selected.json').read_text()
         changes=[('"split_width" : 64','"split_width" : 128'),
-                 ('"policy" : "coverage-v2"','"policy" : "unknown"'),
-                 ('"ctas" : 260','"ctas" : 261')]
+                 ('"policy" : "coverage-v3"','"policy" : "unknown"'),
+                 ('"ctas" : 260','"ctas" : 261'),
+                 ('"block_x" : 32','"block_x" : 64')]
         for i,(old,new) in enumerate(changes):
             self.assertIn(old,text)
             bad=self.root/('stale%d.json'%i);bad.write_text(fusion.reseal(text.replace(old,new,1)))
             out=self.root/('stale%d.cu'%i)
             self.run_tool(self.lowerer,'schedule-source',bad,out,success=False);self.assertFalse(out.exists())
+
+    def test_width32_wide_column_tail(self):
+        j=self.execute(513,variant='wide',gpu=gpu_profile())
+        self.assertEqual(j['split_width'],32)
+
+    def test_width64_empty_negative_chunks(self):
+        j=self.execute(513,variant='empty-negative',gpu=gpu_profile(sms=16))
+        self.assertEqual(j['split_width'],64)
+
+    def test_width32_large_finite_values(self):
+        j=self.execute(513,variant='large-values',gpu=gpu_profile())
+        self.assertEqual(j['split_width'],32)
 
     def test_lower_optimization_level_rejects_automatic_selection(self):
         source=self.fixture(level=0)

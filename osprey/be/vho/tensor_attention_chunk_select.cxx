@@ -57,7 +57,7 @@ BOOL VHO_tensor_select_attention_chunks(const VHO_TENSOR_PROGRAM &input,
     const VHO_TENSOR_GPU_PROFILE &g,VHO_TENSOR_CHUNK_SELECTION *output,FILE *f) {
     try {
         require(output && VHO_tensor_gpu_profile_valid(g,f),"invalid automatic chunk output/profile");
-        require(input.chunk_policy==1 || input.chunk_policy==2,"unknown automatic chunk policy");
+        require(input.chunk_policy==1 || input.chunk_policy==2 || input.chunk_policy==3,"unknown automatic chunk policy");
         VHO_TENSOR_PROGRAM base=input;base.auto_chunks=false;
         require(base.register_latent && VHO_tensor_validate_program(base,f),"automatic chunks require admitted register attention");
         VHO_TENSOR_ATTENTION a=VHO_tensor_attention(base);require(a.enabled,"automatic chunks require absorbed attention");
@@ -71,7 +71,8 @@ BOOL VHO_tensor_select_attention_chunks(const VHO_TENSOR_PROGRAM &input,
             VHO_TENSOR_CHUNK_CANDIDATE c;c.width=width;
             UINT64 span=width?width:a.length;c.chunks=(a.length+span-1)/span;
             c.ctas=a.batch*a.heads*c.chunks;
-            c.local_shared=4*(((span+127)/128)*128+8);
+            c.threads=input.chunk_policy==3 && width && width<=64?width:128;
+            c.local_shared=4*(((span+c.threads-1)/c.threads)*c.threads+8);
             c.merge_shared=c.chunks>1?4*(((c.chunks+127)/128)*128+8):0;
             c.scratch=c.chunks>1?4*a.batch*a.heads*c.chunks*(a.rank+2):0;
             c.reason="native_capacity";
@@ -82,7 +83,7 @@ BOOL VHO_tensor_select_attention_chunks(const VHO_TENSOR_PROGRAM &input,
                     c.reason="resource_fit";bool fits=true;
                     for(size_t k=0;k<plan.kernels.size();++k) {
                         DSL_GEMM_OCCUPANCY_RESULT occupancy;
-                        if(!DSL_gemm_occupancy(g.resources,32,g.sms,128,4*g.registers_per_thread,
+                        if(!DSL_gemm_occupancy(g.resources,32,g.sms,plan.kernels[k].threads,4*g.registers_per_thread,
                             VHO_tensor_shared_bytes(candidate,plan.kernels[k]),VHO_tensor_grid(candidate,plan.kernels[k]),&occupancy) ||
                             !occupancy.resident) {fits=false;break;}
                         if(plan.kernels[k].mapping==3) c.resident=occupancy.resident;
@@ -112,6 +113,7 @@ BOOL VHO_tensor_select_attention_chunks(const VHO_TENSOR_PROGRAM &input,
 const char *VHO_tensor_chunk_policy_name(const VHO_TENSOR_PROGRAM &p) {
     if(p.chunk_policy==1) return "coverage-v1";
     if(p.chunk_policy==2) return "coverage-v2";
+    if(p.chunk_policy==3) return "coverage-v3";
     throw std::runtime_error("unknown automatic chunk policy");
 }
 

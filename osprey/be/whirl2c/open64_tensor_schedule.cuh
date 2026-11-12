@@ -282,6 +282,69 @@ O64_HD void fused_attention_to(float *out,const Q &q,const QR &qr,const Cache &c
     }
   }
 }
+// Serial counterpart of the selected one/two/four-warp native reduction.
+// A one-warp block publishes its tree result directly; larger blocks fold
+// precisely their participating warp summaries in ascending warp order.
+template<bool Max,unsigned Threads> O64_HD float attention_block_reduce(float (&values)[Threads]) {
+  static_assert(Threads==32 || Threads==64 || Threads==128,"selected block size");
+  float result=neutral<Max>();
+  for(unsigned warp=0;warp<Threads/32;++warp) {
+    float lanes[32];for(unsigned lane=0;lane<32;++lane) lanes[lane]=values[warp*32+lane];
+    float value=warp_tree<Max>(lanes);
+    if constexpr(Threads==32) return value;
+    result=accumulate<Max>(result,value);
+  }
+  return result;
+}
+// Serial review of the selected fused CTA. The mapped WHIRL owns all actual
+// shared storage, masks, barriers and launch geometry; no policy is chosen here.
+template<uint64_t B,uint64_t H,uint64_t L,uint64_t R,uint64_t Dr,uint64_t W,uint64_t C,bool Partial,unsigned Threads,
+         class Q,class QR,class Cache,class Rope,class Mask>
+O64_HD void block_fused_attention_to(float *out,const Q &q,const QR &qr,const Cache &cache,
+                              const Rope &rope,const Mask &mask,uint32_t scale_bits) {
+  static_assert(W>0 && C==(L+W-1)/W,"selected attention chunks");
+  const uint64_t capacity=((W+Threads-1)/Threads)*Threads,rows=B*H;
+  const float scale=open64_reference::bits_float(scale_bits);
+  for(uint64_t chunk=0;chunk<C;++chunk) for(uint64_t row=0;row<rows;++row) {
+    const uint64_t begin=chunk*W,end=(chunk+1)*W<L?(chunk+1)*W:L;
+    float weights[capacity],partials[Threads];
+    for(unsigned tid=0;tid<Threads;++tid) {
+      partials[tid]=neutral<true>();
+      for(uint64_t t=tid;t<capacity;t+=Threads) {
+        float score=neutral<true>();
+        if(begin+t<end && mask.at(row*L+begin+t)) {
+          float latent=0.0f,position=0.0f;
+          for(uint64_t k=0;k<R;++k) latent=latent+q.at(row*R+k)*cache.at(((row/H)*L+begin+t)*R+k);
+          for(uint64_t k=0;k<Dr;++k) position=position+qr.at(row*Dr+k)*rope.at(((row/H)*L+begin+t)*Dr+k);
+          score=(latent+position)*scale;
+        }
+        weights[t]=score;partials[tid]=accumulate<true>(partials[tid],score);
+      }
+    }
+    const float maximum=attention_block_reduce<true,Threads>(partials);
+    const float safe_max=open64_reference::finite(maximum)?maximum:0.0f;
+    for(unsigned tid=0;tid<Threads;++tid) {
+      partials[tid]=0.0f;
+      for(uint64_t t=tid;t<capacity;t+=Threads) {
+        weights[t]=::expf(weights[t]-safe_max);partials[tid]=partials[tid]+weights[t];
+      }
+    }
+    const float denominator=attention_block_reduce<false,Threads>(partials),safe_d=denominator>0.0f?denominator:1.0f;
+    for(uint64_t t=0;t<capacity;++t) weights[t]=weights[t]/safe_d;
+    const uint64_t base=Partial?(chunk*rows+row)*(R+2):row*(R+1);
+    if constexpr(Partial) {out[base]=maximum;out[base+1]=denominator;}
+    else out[base+R]=denominator>0.0f?safe_max+::logf(safe_d):neutral<true>();
+    for(uint64_t column=0;column<R;++column) {
+      float lanes[32];
+      for(unsigned lane=0;lane<32;++lane) {
+        lanes[lane]=0.0f;
+        for(uint64_t t=lane;t<end-begin;t+=32)
+          lanes[lane]=lanes[lane]+weights[t]*cache.at(((row/H)*L+begin+t)*R+column);
+      }
+      out[base+(Partial?2:0)+column]=warp_tree<false>(lanes);
+    }
+  }
+}
 // Merge normalized local distributions with stable exponential weights.
 // Empty chunks contribute exactly zero before evaluating a rescaling exp.
 template<uint64_t B,uint64_t H,uint64_t L,uint64_t R,uint64_t C,class I>

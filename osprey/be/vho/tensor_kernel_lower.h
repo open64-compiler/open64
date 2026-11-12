@@ -42,9 +42,9 @@ struct VHO_TENSOR_GPU_PROFILE {
     DSL_HARDWARE_RESOURCE_RECORD resources;
 };
 struct VHO_TENSOR_CHUNK_CANDIDATE {
-    VHO_TENSOR_CHUNK_CANDIDATE():width(0),chunks(0),ctas(0),local_shared(0),merge_shared(0),
+    VHO_TENSOR_CHUNK_CANDIDATE():width(0),threads(128),chunks(0),ctas(0),local_shared(0),merge_shared(0),
         scratch(0),resident(0),goal(0),coverage(0),eligible(false) {}
-    UINT64 width,chunks,ctas,local_shared,merge_shared,scratch,resident,goal,coverage;
+    UINT64 width,threads,chunks,ctas,local_shared,merge_shared,scratch,resident,goal,coverage;
     bool eligible;
     std::string reason;
 };
@@ -66,7 +66,7 @@ struct VHO_TENSOR_PROGRAM {
     bool fuse_attention;        /* explicit stable local softmax / rescaled merge */
     bool register_latent;       /* four lane-private columns per warp, v5 */
     bool auto_chunks;           /* sealed resource-aware v6 selection */
-    UINT32 chunk_policy;        /* 1 legacy 128+, 2 expanded 32+ search */
+    UINT32 chunk_policy;        /* 1 legacy 128+, 2 expanded 32+ search, 3 narrow blocks */
     VHO_TENSOR_GPU_PROFILE gpu;
     std::vector<VHO_TENSOR_VALUE> values;
     std::vector<VHO_TENSOR_OPERATION> operations;
@@ -75,7 +75,7 @@ struct VHO_TENSOR_PROGRAM {
 /* Deterministic PU-local launch plan. Synthetic scratch is detached storage,
  * never a new logical opcode or binary WHIRL record. IDs >=4096 are merges. */
 struct VHO_TENSOR_KERNEL {
-    UINT32 id,root,output;
+    UINT32 id,root,output,threads; /* selected launch size, owned by VHO */
     UINT32 split_width,chunks,stage; /* 0 direct, 1 partial, 2 merge */
     UINT64 elements;
     UINT32 mapping;             /* 0 thread, 1 warp, 2 staged dot, 3 attention CTA, 4 tuple merge */
