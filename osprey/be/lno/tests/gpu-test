@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+"""Installed GS2 client entry point; uses the adjacent trusted client module."""
+from gpu_test_client import main
+
+raise SystemExit(main())
