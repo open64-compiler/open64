@@ -1,12 +1,50 @@
 # AI Compiler Optimization Progress
 
-Snapshot: 2026-10-28, integrated against `develop` at `ecbb857f` (merged PR #202)
+Snapshot: 2026-10-29, integrated against `develop` at `ecbb857f` (merged PR #202)
 Scope: Open64 AI optimization, with standalone rank-2 F32 GEMM as the first
 generated-kernel case. This is a running status ledger, not a replacement for
 the [implementation plan](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md) or
 the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
+
+2026-10-29 LN4 compiled-entry/package and optional CUDA Driver adapter
+accepted, implementation `50335e35`:
+[Compiled-entry detail v0.1](AI-COMPILER-LAYERNORM-COMPILED-ENTRY-v0.1.md).
+The review issuer joins retained source/selection/body/assembly evidence and
+exact cubin SHA-256. The adapter copies/hashes before load, queries actual
+entry/device/resource/parameter/occupancy facts, and launches only the selected
+geometry and subrange pointers. Existing runtime leases and host events remain
+authoritative; private ticket pins prevent unload through failed launch/drain
+or unfinished consumption. Failed rollback retains an explicit cleanup handle.
+
+All 36 inherited selections pass: 19,860 adapter checks, 11,392 independently
+audited base-runtime checks and 124 focused Python tests. ASan/UBSan with leak
+checking passes the same runtime matrix; 288 package/guard/trace/report files
+match normal execution exactly. Trace-off and callback reentry pass. Compiler
+and mapped producer are unchanged; all 193 mapped images/full dumps remain in
+the authenticated parent request receipt. No new v1, reduction or WHIRL change.
+
+This is real adapter code with deterministic CUDA API mocks, not GPU execution.
+The optional library does not enter `be.so` or the legacy runtime installation.
+Deployment must supply reviewed hash, buffer/root and readiness/consumer
+services; compiler-service lifecycle, native module/launch certification and
+GPU numerical/performance calibration remain open.
+
+Accepted derived immutable package:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-entry/sha256-99c0720550108c8e3aa60ee8a778784955228458393fccfbf96a8a557d7e5df1/`.
+Accepted final-path rebuild/replay:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-entry/replay/sha256-ec34751e3881b6994f041477c9cfbec111b3d12a62023058319cd396eb25524b/`.
+Replay authenticates the primary, request producer and CUDA dependency before
+rebuilding normal and sanitized runtime tests. It repeats all 36 cases in both
+modes plus 124 focused tests; 576 package/guard/raw-trace/report comparisons
+are byte-exact without normalization. Review indexes/current links were updated
+only after replay passed. `normal/optimization-summary.log`, complete
+`normal/optimization.log`, and per-case `compiled-entry.log`, `provider.t`,
+`provider.log`, `entry.h`/`entry.json` expose the selected contract and actual
+mock observations. Original `.cu`, mapped pairs/diffs and numerical evidence
+remain in the authenticated parent receipt. Next: explicit host-dispatch/service
+consumption with reviewed deployment hooks, independently of native GPU testing.
 
 2026-10-28 LN4 explicit driver/JIT request-profile plumbing accepted,
 implementation `236f52eb`:

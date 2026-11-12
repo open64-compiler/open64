@@ -2,6 +2,15 @@
 
 Version v0.1 | 2026-10-28 | Living design; bounded native contracts and device lowering
 
+Compiled-entry amendment, 2026-10-29:
+[LN4 compiled-entry/CUDA boundary](AI-COMPILER-LAYERNORM-COMPILED-ENTRY-v0.1.md)
+binds an audited selected WHIRL entry to exact cubin bytes and a native runtime
+descriptor. The optional adapter validates live context/device/entry resources,
+four pointer formals and occupancy, then uses existing range leases and host
+events for launch/drain/consumer completion. Module pins prevent early unload.
+Source v1, compiler mapped images and reduction code are unchanged. Native GPU
+certification and deployment service/hooks remain open.
+
 Request/profile amendment, 2026-10-28:
 [LN4 driver/JIT request boundary](AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md)
 adds an opt-in backend checkpoint and a shared typed preparation API. Explicit
