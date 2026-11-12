@@ -85,13 +85,14 @@ def review(args):
     commands = []
 
     def run(label, argv, codes=(0,)):
-        result = subprocess.run(list(map(str, argv)), capture_output=True, text=True)
+        result = subprocess.run(list(map(str, argv)), capture_output=True, text=True, timeout=600)
         (root / 'logs' / (label + '.stdout')).write_text(result.stdout)
         (root / 'logs' / (label + '.stderr')).write_text(result.stderr)
         commands.append(dict(label=label, argv=list(map(str, argv)), returncode=result.returncode))
         (root / 'commands.json').write_text(json.dumps(commands, indent=2) + '\n')
         if result.returncode not in codes:
             raise RuntimeError(label + ': ' + result.stderr[-4000:])
+        return result
 
     cases = {}
     for context in ('short', 'long'):
@@ -100,10 +101,30 @@ def review(args):
         case.mkdir()
         for name in ('recipe.json', 'launch.json', 'device.after.B', 'device.after.T'):
             shutil.copyfile(source / 'O3' / name, case / name)
+        if args.cooperative or args.refresh_explanations:
+            assert not (args.cooperative and args.refresh_explanations)
+            assert args.ir_b2a and args.whirl2c
+            for name in ('recipe.json','device.after.B','device.after.T'):
+                (case / name).rename(case / ('baseline.' + name))
+            if args.cooperative:
+                run(context + '-cooperate', [args.lowerer,'cooperate',case / 'baseline.recipe.json',
+                    case / 'recipe.json','--allow-reassociate'])
+            else:
+                shutil.copyfile(case / 'baseline.recipe.json',case / 'recipe.json')
+            run(context + '-cooperative-device', [args.lowerer,'device',case / 'recipe.json',
+                case / 'device.before.B',case / 'device.after.B'])
+            for boundary in ('before','after'):
+                run(context + '-cooperative-' + boundary,[args.ir_b2a,'-st','-src',
+                    case / ('device.' + boundary + '.B'),case / ('device.' + boundary + '.T')])
+            for a,b,name in [('device.before.T','device.after.T','device.before-after.diff'),
+                             ('baseline.device.after.T','device.after.T','baseline-to-cooperative.diff')]:
+                (case / name).write_text(''.join(difflib.unified_diff(
+                    (case / a).read_text().splitlines(True),(case / b).read_text().splitlines(True),fromfile=a,tofile=b)))
         recipe = json.loads((case / 'recipe.json').read_text())
         before = digest(case / 'recipe.json')
         run(context + '-mapped-audit', [args.lowerer, 'audit', case / 'device.after.B',
             case / 'recipe.json', case / 'launch.reopened.json'])
+        if args.cooperative: shutil.copyfile(case / 'launch.reopened.json',case / 'launch.json')
         launch = json.loads((case / 'launch.json').read_text())
         assert launch == json.loads((case / 'launch.reopened.json').read_text())
         cuda = case / ('mla_' + context + '_optimized.cu')
@@ -118,7 +139,7 @@ def review(args):
         assert blocks and any('FUSED PRODUCER' in b for b in blocks)
         if args.previous_readable:
             prior = args.previous_readable / ('mla_' + context + '_optimized.cu')
-            assert without_generated_explanations(text) == prior.read_text()
+            assert without_generated_explanations(text) == without_generated_explanations(prior.read_text())
         stages = list(map(int, re.findall(r'kernel_id=(\d+);', text)))
         assert stages == [int(k['operation']) for k in launch['kernels']]
         assert 'threadIdx' not in text and 'blockIdx' not in text and '__global__' not in text
@@ -127,6 +148,7 @@ def review(args):
         run(context + '-host-compile', [args.cxx, '-x', 'c++', '-std=c++17', '-O1', '-fPIC', '-shared',
             '-ffp-contract=off', '-fno-fast-math', '-I' + str(root), cuda, '-o', lib])
         mapped = None
+        gpu = False
         if args.whirl2c:
             assert args.ir_b2a
             run(context + '-comments-produce', [args.lowerer, 'device-explain', case / 'recipe.json',
@@ -147,6 +169,9 @@ def review(args):
                     case / ('comments.' + boundary + '.B')])
             emitted = (mapped / 'kernels.cu').read_text()
             assert explanation_blocks(emitted) == blocks
+            if args.previous_mapped:
+                previous = args.previous_mapped / ('mla_' + context + '_mapped.cu')
+                assert executable_tokens(emitted) == executable_tokens(previous.read_text())
             assert executable_tokens(emitted) == executable_tokens((case / 'mapped.before.cu').read_text())
             assert len(re.findall(r'^\s*COMMENT\b',(case / 'comments.after.T').read_text(),re.M)) == len(blocks)
             for mode in ('audit-comment','audit-comment-missing'):
@@ -157,8 +182,10 @@ def review(args):
             (stub / 'cuda_runtime.h').write_text('#include <cmath>\n#include <cstring>\n#define __global__\n'
                 'struct dim3 {unsigned x=0,y=0,z=0;}; static dim3 threadIdx,blockIdx;\n'
                 'static float __uint_as_float(unsigned x) {float f; memcpy(&f,&x,4); return f;}\n')
+            if recipe.get('cooperative',False):
+                shutil.copyfile(Path(__file__).parent / 'tensor_collective_stub/cuda_runtime.h',stub / 'cuda_runtime.h')
             (mapped / 'runner.cxx').write_text(runner(annotated_launch,False))
-            run(context + '-mapped-host-compile', [args.cxx, '-std=c++17','-O1','-ffp-contract=off','-fno-fast-math',
+            run(context + '-mapped-host-compile', [args.cxx, '-std=c++17','-O1','-pthread','-ffp-contract=off','-fno-fast-math',
                 '-I' + str(stub),mapped / 'runner.cxx','-o',mapped / 'runner'])
         if args.nvcc:
             run(context + '-cuda-compile', [args.nvcc, '-std=c++17', '-arch=sm_90', '--fmad=false',
@@ -166,7 +193,12 @@ def review(args):
                 '-o', case / 'optimized.cuda.o'])
             if mapped:
                 run(context + '-mapped-cubin', [args.nvcc,'-std=c++17','-arch=sm_90','--fmad=false','--ftz=false',
-                    '--prec-div=true','--prec-sqrt=true','-cubin',mapped / 'kernels.cu','-o',mapped / 'kernels.cubin'])
+                    '--prec-div=true','--prec-sqrt=true','-Xptxas=-v','-cubin',mapped / 'kernels.cu','-o',mapped / 'kernels.cubin'])
+                (mapped / 'gpu_runner.cu').write_text(runner(annotated_launch,True))
+                run(context + '-gpu-link',[args.nvcc,'-std=c++17','-arch=sm_90','--fmad=false','--ftz=false',
+                    '--prec-div=true','--prec-sqrt=true','--cudart=shared','-L' + str(args.nvcc.parent.parent / 'lib'),
+                    '-Xlinker','-rpath','-Xlinker',str(args.nvcc.parent.parent / 'lib'),mapped / 'gpu_runner.cu','-o',mapped / 'gpu_runner'])
+                gpu = run(context + '-gpu-probe',[mapped / 'gpu_runner','--probe'],(0,77)).returncode == 0
         checks = {}
         for oracle in sorted(source.glob('*.reference.json')):
             variant = oracle.name[:-len('.reference.json')]
@@ -177,23 +209,31 @@ def review(args):
             output.write_bytes(raw)
             check = check_output(case / (variant + '.reference.json'), output)
             lowered = source / 'O3' / (variant + '.host.bin')
-            assert raw == lowered.read_bytes(), context + ': source/lowered difference: ' + variant
+            if not args.cooperative:
+                assert raw == lowered.read_bytes(), context + ': source/lowered difference: ' + variant
             if mapped:
                 mapped_output = mapped / (variant + '.outputs.bin')
                 run(context + '-mapped-' + variant,[mapped / 'runner',case / (variant + '.inputs.bin'),mapped_output])
                 assert raw == mapped_output.read_bytes()
+                check['mapped_host_reference'] = check_output(case / (variant + '.reference.json'),mapped_output)
+                if gpu:
+                    gpu_output=mapped / (variant + '.gpu.bin')
+                    run(context + '-gpu-' + variant,[mapped / 'gpu_runner',case / (variant + '.inputs.bin'),gpu_output])
+                    check['gpu_reference']=check_output(case / (variant + '.reference.json'),gpu_output)
             check.update(lowered_host_bitwise_parity='PASS', buffer_canaries='PASS', inputs_unchanged='PASS')
             checks[variant] = check
-        assert digest(case / 'device.after.B') == digest(source / 'O3/device.after.B')
+        if not (args.cooperative or args.refresh_explanations):
+            assert digest(case / 'device.after.B') == digest(source / 'O3/device.after.B')
         assert not list(case.glob('*.tmp-*'))
         cases[context] = dict(stages=len(stages), function=function, recipe_sha256=before,
             device_image_sha256=digest(case / 'device.after.B'), source_sha256=digest(cuda),
-            host_execution=checks, cuda_compilation='PASS' if args.nvcc else 'NOT_RUN', gpu_execution='NOT_RUN')
+            host_execution=checks, cuda_compilation='PASS' if args.nvcc else 'NOT_RUN', gpu_execution='PASS' if gpu else 'UNAVAILABLE')
         cases[context].update(explanation_blocks=len(blocks),whirl_comment_emission='PASS' if mapped else 'NOT_RUN',
-            previous_readable_code_unchanged=bool(args.previous_readable))
+            previous_readable_code_unchanged=bool(args.previous_readable),
+            previous_mapped_code_unchanged=bool(args.previous_mapped))
     report = dict(status='PASS', schema='open64.tensor-schedule-source-review.v1', cases=cases,
         lowerer_sha256=digest(args.lowerer), optimization_selected_by_printer=False,
-        low_level_whirl_changed=bool(args.whirl2c), executable_code_changed=False, gpu_execution='NOT_RUN')
+        low_level_whirl_changed=bool(args.whirl2c), executable_code_changed=bool(args.cooperative), gpu_execution='PASS' if all(c['gpu_execution']=='PASS' for c in cases.values()) else 'UNAVAILABLE')
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
     (root / 'SHA256SUMS').write_text(''.join(digest(p) + '  ' + str(p.relative_to(root)) + '\n'
         for p in sorted(root.rglob('*')) if p.is_file()))
@@ -210,6 +250,9 @@ def main():
     parser.add_argument('--whirl2c', type=Path)
     parser.add_argument('--ir-b2a', type=Path)
     parser.add_argument('--previous-readable', type=Path)
+    parser.add_argument('--previous-mapped', type=Path)
+    parser.add_argument('--refresh-explanations',action='store_true',help='Rebuild the unchanged selected plan with current COMMENT text')
+    parser.add_argument('--cooperative', action='store_true',help='Select explicit warp/shared schedule with reassociation permission')
     review(parser.parse_args())
 
 

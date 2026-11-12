@@ -165,5 +165,54 @@ template<class O,bool Max,uint64_t C,class I> O64_HD void merge_to(float *out,co
     out[i]=total;
   }
 }
+// Match the five full-warp shuffle steps; each lane retains an F32 boundary.
+template<bool Max> O64_HD float warp_tree(float (&lanes)[32]) {
+  for(unsigned delta=16;delta;delta/=2)
+    for(unsigned lane=0;lane+delta<32;++lane) lanes[lane]=accumulate<Max>(lanes[lane],lanes[lane+delta]);
+  return lanes[0];
+}
+// This serial review executor reproduces lane-strided accumulation and tree
+// grouping. The selected GPU mapping gives one complete warp to each output.
+template<class O,bool Max,uint64_t W,uint64_t C,class I> O64_HD void warp_reduce_to(float *out,const I &x) {
+  static_assert(W>0 && C==(I::dim(I::rank-1)+W-1)/W,"warp reduction chunks");
+  const uint64_t width=I::dim(I::rank-1);
+  for(uint64_t c=0;c<C;++c) for(uint64_t i=0;i<O::size;++i) {
+    float lanes[32];
+    for(unsigned lane=0;lane<32;++lane) {
+      lanes[lane]=neutral<Max>();
+      for(uint64_t k=c*W+lane;k<(c+1)*W && k<width;k+=32)
+        lanes[lane]=accumulate<Max>(lanes[lane],x.at(i*width+k));
+    }
+    out[c*O::size+i]=warp_tree<Max>(lanes);
+  }
+}
+// Merges retain the selected chunk-major layout but reduce chunks across lanes.
+template<class O,bool Max,uint64_t C,class I> O64_HD void warp_merge_to(float *out,const I &partial) {
+  for(uint64_t i=0;i<O::size;++i) {
+    float lanes[32];
+    for(unsigned lane=0;lane<32;++lane) {
+      lanes[lane]=neutral<Max>();
+      for(uint64_t c=lane;c<C;c+=32) lanes[lane]=accumulate<Max>(lanes[lane],partial.at(c*O::size+i));
+    }
+    out[i]=warp_tree<Max>(lanes);
+  }
+}
+// Reproduce the staged GPU dot's lane arithmetic. Actual shared publication
+// and four-column reuse are explicit WHIRL in the mapped implementation.
+template<class O,uint64_t W,uint64_t C,class A,class B> O64_HD void staged_matmul_to(float *out,const A &a,const B &b) {
+  static_assert(W>0 && C==(A::dim(A::rank-1)+W-1)/W,"staged matmul chunks");
+  const uint64_t m=O::dim(O::rank-2),n=O::dim(O::rank-1),width=A::dim(A::rank-1);
+  for(uint64_t c=0;c<C;++c) for(uint64_t i=0;i<O::size;++i) {
+    uint64_t batch=i/(m*n),row=(i/n)%m,column=i%n;
+    uint64_t ai=open64_reference::matrix_batch<A,O>(batch),bi=open64_reference::matrix_batch<B,O>(batch);
+    float lanes[32];
+    for(unsigned lane=0;lane<32;++lane) {
+      lanes[lane]=0.0f;
+      for(uint64_t k=c*W+lane;k<(c+1)*W && k<width;k+=32)
+        lanes[lane]=lanes[lane]+a.at(ai+row*width+k)*b.at(bi+k*n+column);
+    }
+    out[c*O::size+i]=warp_tree<false>(lanes);
+  }
+}
 } // namespace open64_schedule
 #endif

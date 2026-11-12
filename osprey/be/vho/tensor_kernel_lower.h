@@ -30,13 +30,14 @@ struct VHO_TENSOR_OPERATION {
     std::map<std::string,std::string> attributes;
 };
 struct VHO_TENSOR_PROGRAM {
-    VHO_TENSOR_PROGRAM():opt_level(0),threads(1),fuse(false),split_width(0) {}
+    VHO_TENSOR_PROGRAM():opt_level(0),threads(1),fuse(false),split_width(0),cooperative(false) {}
     std::string source_pu;
     std::string source_file;
     UINT32 opt_level;
     UINT32 threads;
     bool fuse;                  /* explicit O3 producer inlining */
     UINT32 split_width;          /* 0 ordered, otherwise explicit reassociation */
+    bool cooperative;           /* explicit warp trees and staged dot products */
     std::vector<VHO_TENSOR_VALUE> values;
     std::vector<VHO_TENSOR_OPERATION> operations;
 };
@@ -47,6 +48,7 @@ struct VHO_TENSOR_KERNEL {
     UINT32 id,root,output;
     UINT32 split_width,chunks,stage; /* 0 direct, 1 partial, 2 merge */
     UINT64 elements;
+    UINT32 mapping;             /* 0 thread/output, 1 warp/output, 2 staged 4-column CTA */
     std::vector<UINT32> inputs;
 };
 struct VHO_TENSOR_SCHEDULE {
@@ -77,4 +79,6 @@ extern BOOL VHO_tensor_verify_kernel(const VHO_TENSOR_PROGRAM &,UINT32 operation
 extern BOOL VHO_tensor_annotate_kernel(const VHO_TENSOR_PROGRAM &,UINT32 operation,FILE *);
 /* Positive static extents must have been validated before taking the product. */
 extern UINT64 VHO_tensor_elements(const VHO_TENSOR_VALUE &);
+/* Launch geometry is selected before emission and shared with native audit. */
+extern UINT64 VHO_tensor_grid(const VHO_TENSOR_PROGRAM &,const VHO_TENSOR_KERNEL &);
 #endif

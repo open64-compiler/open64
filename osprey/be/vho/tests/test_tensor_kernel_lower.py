@@ -23,22 +23,22 @@ def produce(kind, path):
     pu = b.minimal_program_unit('independent_tensor_program')
     file = b.register_source_file(pu, __file__)
     dtype = 'bool' if kind == 'boolean' else 'float32'
-    shape = (2, 1, 3, 5) if kind == 'batch-matmul' else (2, 3)
+    shape = (2, 1, 3, 65) if kind == 'staged-matmul' else (5, 33) if kind.startswith('warp-') else (2, 1, 3, 5) if kind == 'batch-matmul' else (2, 3)
     descriptor = {'layout': 'column_major' if kind == 'strided' else 'logical'}
     if kind == 'annotated': descriptor['traits'] = 'test.requires_extra_semantics'
     ty = b.tensor_type('input_type', dtype, len(shape), '[' + ','.join(map(str, shape)) + ']', descriptor)
     x = b.declare_pu_formal(pu, 'input', 0, ty, file, 1)
-    if kind == 'batch-matmul':
-        other = b.tensor_type('weight_type', 'float32', 3, '[4,5,2]', {'layout': 'logical'})
+    if kind in ('batch-matmul','staged-matmul'):
+        other = b.tensor_type('weight_type', 'float32', 3, '[4,65,5]' if kind == 'staged-matmul' else '[4,5,2]', {'layout': 'logical'})
         y = b.declare_pu_formal(pu, 'weight', 1, other, file, 1)
-        out = b.tensor_type('result_type', 'float32', 4, '[2,4,3,2]', {'layout': 'logical'})
+        out = b.tensor_type('result_type', 'float32', 4, '[2,4,3,5]' if kind == 'staged-matmul' else '[2,4,3,2]', {'layout': 'logical'})
         op = b.operator('common.matmul', 3, [x, y], {'attr.transpose_kid0': 'false', 'attr.transpose_kid1': 'false',
             'attr.batch_rule': 'numpy', 'attr.accum_dtype': 'float32'}, 'product', out)
     elif kind == 'unsupported':
         op, out = b.common_relu(x), ty
-    elif kind == 'maximum':
-        out = b.tensor_type('maximum_type', 'float32', 2, '[2,1]', {'layout': 'logical'})
-        op = b.operator('common.reduce_max', 1, [x], {'attr.axis': '1', 'attr.keepdim': 'true',
+    elif kind in ('maximum','warp-maximum','warp-sum'):
+        out = b.tensor_type('maximum_type', 'float32', 2, '[5,1]' if kind.startswith('warp-') else '[2,1]', {'layout': 'logical'})
+        op = b.operator('common.reduce_sum' if kind == 'warp-sum' else 'common.reduce_max', 3 if kind == 'warp-sum' else 1, [x], {'attr.axis': '1', 'attr.keepdim': 'true',
             'attr.accum_dtype': 'float32', 'attr.reassociate': 'false'}, 'maximum', out)
     elif kind == 'boolean':
         op, out = b.operator('common.logical_not', 1, [x], {}, 'inverse', ty), ty
@@ -152,7 +152,7 @@ class TensorKernelTests(unittest.TestCase):
         self.assertIn('unsupported tensor trait/representation field', result.stderr)
         self.assertFalse((self.root / 'no.json').exists())
 
-    def execute_generic(self, kind, level, fuse=False, split=0):
+    def execute_generic(self, kind, level, fuse=False, split=0, cooperative=False):
         import difflib
         import torch
         _, recipe = self.fixture(kind, level)
@@ -161,6 +161,10 @@ class TensorKernelTests(unittest.TestCase):
             options = ['--split-width', split, '--allow-reassociate'] if split else []
             self.run_tool(self.lowerer, 'optimize', recipe, optimized, '--fuse', *options)
             recipe = optimized
+        if cooperative:
+            selected=self.root / 'cooperative.json'
+            self.run_tool(self.lowerer,'cooperate',recipe,selected,'--allow-reassociate')
+            recipe=selected
         before, after = self.root / 'device.before.B', self.root / 'device.after.B'
         self.run_tool(self.lowerer, 'device', recipe, before, after)
         for image in (before, after):
@@ -180,8 +184,10 @@ class TensorKernelTests(unittest.TestCase):
         stub.write_text('#include <cmath>\n#include <cstring>\n#define __global__\n'
             'struct dim3 {unsigned x=0,y=0,z=0;}; static dim3 threadIdx,blockIdx;\n'
             'static float __uint_as_float(unsigned x) {float f; memcpy(&f,&x,4); return f;}\n')
+        if cooperative:
+            shutil.copyfile(Path(__file__).parent / 'tensor_collective_stub/cuda_runtime.h',stub)
         (self.root / 'host.cxx').write_text(runner(launch, False))
-        self.run_tool('g++', '-std=c++17', '-O1', '-ffp-contract=off', '-I' + str(self.root),
+        self.run_tool('g++', '-std=c++17', '-O1', '-pthread', '-ffp-contract=off', '-I' + str(self.root),
                       self.root / 'host.cxx', '-o', self.root / 'host')
         if kind == 'boolean':
             data = bytes((0, 1, 1, 0, 0, 1))
@@ -191,6 +197,16 @@ class TensorKernelTests(unittest.TestCase):
             b = (torch.arange(40).remainder(5) - 2).float().reshape(4, 5, 2)
             data = a.numpy().tobytes() + b.numpy().tobytes()
             expected = torch.matmul(a, b).numpy().tobytes()
+        elif kind == 'staged-matmul':
+            a=(torch.arange(390).remainder(7)-3).float().reshape(2,1,3,65)
+            b=(torch.arange(1300).remainder(5)-2).float().reshape(4,65,5)
+            data=a.numpy().tobytes()+b.numpy().tobytes()
+            expected=torch.matmul(a,b).numpy().tobytes()
+        elif kind.startswith('warp-'):
+            a=(torch.arange(165).remainder(11)-5).float().reshape(5,33)
+            if kind == 'warp-maximum': a[0,1]=float('nan')
+            data=a.numpy().tobytes()
+            expected=(a.sum(-1,keepdim=True) if kind == 'warp-sum' else a.max(-1,keepdim=True).values).numpy().tobytes()
         elif kind == 'maximum':
             data = struct.pack('<6f', 1, float('nan'), 3, float('-inf'), -5, -2)
             expected = None
@@ -205,7 +221,12 @@ class TensorKernelTests(unittest.TestCase):
             self.assertTrue(math.isnan(a))
             self.assertEqual(b, -2.)
         else:
-            self.assertEqual((self.root / 'output.bin').read_bytes(), expected)
+            got=(self.root / 'output.bin').read_bytes()
+            if kind == 'warp-maximum':
+                import math
+                self.assertTrue(math.isnan(struct.unpack('<f',got[:4])[0]))
+                self.assertEqual(got[4:],expected[4:])
+            else: self.assertEqual(got, expected)
         if fuse:
             import re
             from tensor_schedule_review import execute_source
@@ -215,7 +236,7 @@ class TensorKernelTests(unittest.TestCase):
             self.assertEqual(explanation_blocks(source.read_text()), explanation_blocks((self.root / 'kernels.cu').read_text()))
             self.assertTrue(explanation_blocks(source.read_text()))
             if split:
-                width = 5 if kind == 'batch-matmul' else 3
+                width = 65 if kind == 'staged-matmul' else 33 if kind.startswith('warp-') else 5 if kind == 'batch-matmul' else 3
                 chunks = (width + split - 1) // split
                 self.assertIn('final chunk starts at %d and contains %d terms' %
                               ((chunks - 1) * split, width - (chunks - 1) * split), source.read_text())
@@ -226,13 +247,40 @@ class TensorKernelTests(unittest.TestCase):
                           '-fno-fast-math', '-I' + str(header), source, '-o', library)
             got = execute_source(library, function, json.loads(recipe.read_text()), data)
             self.assertEqual(got, (self.root / 'output.bin').read_bytes())
-            for mode in ('audit-comment','audit-comment-missing'):
+            for mode in (('audit-comment','audit-comment-missing','audit-mask','audit-collective-prototype','audit-resource','audit-shared','audit-barrier') if kind=='staged-matmul' else ('audit-comment','audit-comment-missing')):
                 rejected = self.root / (mode + '.json')
                 self.run_tool(self.lowerer, mode, after, recipe, rejected, success=False)
                 self.assertFalse(rejected.exists())
+        if cooperative:
+            (self.root / 'reverse.cxx').write_text(runner(launch,False,reverse=True))
+            self.run_tool('g++','-std=c++17','-O1','-pthread','-ffp-contract=off','-I'+str(self.root),
+                          self.root / 'reverse.cxx','-o',self.root / 'reverse')
+            self.run_tool(self.root / 'reverse',self.root / 'input.bin',self.root / 'reverse.bin')
+            self.assertEqual((self.root / 'reverse.bin').read_bytes(),(self.root / 'output.bin').read_bytes())
         old = after.read_bytes()
         self.run_tool(self.lowerer, 'device', recipe, before, after, success=False)
         self.assertEqual(after.read_bytes(), old)
+
+    def test_warp_sum_with_tail_and_inactive_warps(self): self.execute_generic('warp-sum',3,fuse=True,cooperative=True)
+    def test_warp_maximum_preserves_nan(self): self.execute_generic('warp-maximum',3,fuse=True,cooperative=True)
+    def test_staged_broadcast_k_and_column_tails(self): self.execute_generic('staged-matmul',3,fuse=True,cooperative=True)
+    def test_staged_split_and_merge_tails(self): self.execute_generic('staged-matmul',3,fuse=True,split=33,cooperative=True)
+
+    def test_cooperative_permission_and_level_boundaries(self):
+        for level in (0,1,2,3):
+            _,recipe=self.fixture('cooperative-level%d' % level,level)
+            out=self.root / ('cooperative%d.json' % level)
+            self.run_tool(self.lowerer,'cooperate',recipe,out,'--allow-reassociate',success=False)
+            self.assertFalse(out.exists())
+        selected=self.root / 'fused.json'
+        self.run_tool(self.lowerer,'optimize',recipe,selected,'--fuse')
+        self.run_tool(self.lowerer,'cooperate',selected,out,'--deny-reassociate',success=False)
+        self.assertFalse(out.exists())
+        self.run_tool(self.lowerer,'cooperate',selected,out,'--allow-reassociate')
+        stale=json.loads(out.read_text());stale['cooperative']=False
+        bad=self.root / 'stale-cooperative.json';bad.write_text(json.dumps(stale))
+        self.run_tool(self.lowerer,'device',bad,self.root / 'stale.before.B',self.root / 'stale.after.B',success=False)
+        self.assertFalse((self.root / 'stale.before.B').exists())
 
     def test_non_mla_program_executes_serial(self): self.execute_generic('valid', 0)
     def test_non_mla_program_executes_parallel(self): self.execute_generic('valid', 3)
