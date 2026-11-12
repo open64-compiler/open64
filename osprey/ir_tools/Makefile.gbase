@@ -421,7 +421,7 @@ tensor_kernel_lower: $(OBJECTS) controls.o tensor_kernel_driver.o tensor_kernel_
 tensor_kernel_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
 
-tensor_kernel_lower.o: $(BE_VHO_DIR)/tensor_kernel_lower.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h
+tensor_kernel_lower.o: $(BE_VHO_DIR)/tensor_kernel_lower.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h $(BE_VHO_DIR)/tensor_attention_pattern.inc $(BE_VHO_DIR)/tensor_attention_device.inc
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
 
 tensor_schedule_source.o: $(BUILD_TOT)/be/whirl2c/tensor_schedule_source.cxx $(BUILD_TOT)/be/whirl2c/tensor_schedule_source.h

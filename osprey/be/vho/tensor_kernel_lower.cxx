@@ -324,26 +324,51 @@ bool boundary(const VHO_TENSOR_OPERATION &op) {
 }
 /* Bound expression expansion before allocating device symbols or WN trees. */
 void leaves(const VHO_TENSOR_PROGRAM &p,const std::map<UINT32,UINT32> &producer,
-    UINT32 value,std::set<UINT32> &inputs,UINT32 &budget) {
+    UINT32 value,std::set<UINT32> &inputs,UINT32 &budget,const VHO_TENSOR_ATTENTION &a) {
     need(budget++<4096,"fusion expression expansion limit");
+    if(a.enabled && (value==a.latent || value==a.lse)) {inputs.insert(a.bundle);return;}
     std::map<UINT32,UINT32>::const_iterator found=producer.find(value);
     if(found==producer.end() || boundary(p.operations[found->second])) {inputs.insert(value);return;}
     const VHO_TENSOR_OPERATION &op=p.operations[found->second];
-    if(op.name!="common.fill_like") for(size_t i=0;i<op.inputs.size();++i) leaves(p,producer,op.inputs[i],inputs,budget);
+    if(op.name!="common.fill_like") for(size_t i=0;i<op.inputs.size();++i) leaves(p,producer,op.inputs[i],inputs,budget,a);
 }
 /* Plan selection consumes the admitted source graph, not names or CUDA text.
  * Chunk ownership gives disjoint writes; the later launch orders all merges. */
 VHO_TENSOR_SCHEDULE schedule(const VHO_TENSOR_PROGRAM &p) {
-    VHO_TENSOR_SCHEDULE plan;plan.bindings=p;std::map<UINT32,UINT32> producer;
+    VHO_TENSOR_SCHEDULE plan;plan.bindings=p;plan.attention=VHO_tensor_attention(p);
+    const VHO_TENSOR_ATTENTION &a=plan.attention;UINT32 chunks=1;
+    if(a.enabled) {
+        chunks=p.split_width?(a.length+p.split_width-1)/p.split_width:1;
+        VHO_TENSOR_VALUE packed;packed.name="attention_latent_lse";packed.dtype="float32";packed.role=0;packed.ordinal=0;
+        UINT64 final_shape[]={a.batch,a.heads,a.rank+1};packed.shape.assign(final_shape,final_shape+3);packed.storage=a.bundle;
+        need(VHO_tensor_elements(packed)<=16777216,"attention final allocation exceeds limit");plan.bindings.values.push_back(packed);
+        if(chunks>1) {
+            packed.name="attention_partial_max_sum_latent";UINT64 partial_shape[]={chunks,a.batch,a.heads,a.rank+2};packed.shape.assign(partial_shape,partial_shape+4);packed.storage=a.partial;
+            need(VHO_tensor_elements(packed)<=16777216,"attention partial allocation exceeds limit");plan.bindings.values.push_back(packed);
+        }
+    }
+    std::map<UINT32,UINT32> producer;
     for(UINT32 i=0;i<p.operations.size();++i) producer[p.operations[i].output]=i;
     for(UINT32 i=0;i<p.operations.size();++i) {
         const VHO_TENSOR_OPERATION &op=p.operations[i];
+        if(a.enabled && i!=1 && i!=33 && i!=37 && i!=46 && i!=47) continue;
+        if(a.enabled && i==33) {
+            VHO_TENSOR_KERNEL k;k.id=k.root=i;k.output=chunks>1?a.partial:a.bundle;k.stage=chunks>1?1:0;
+            k.mapping=3;k.chunks=chunks;k.split_width=chunks>1?p.split_width:a.length;
+            UINT32 ids[]={a.q,a.qr,a.cache,a.rope_cache,a.mask};k.inputs.assign(ids,ids+5);k.elements=VHO_tensor_elements(plan.bindings.values[k.output]);
+            plan.kernels.push_back(k);
+            if(chunks>1) {
+                k.id=i+4096;k.mapping=4;k.stage=2;k.output=a.bundle;k.inputs.clear();k.inputs.push_back(a.partial);
+                k.elements=VHO_tensor_elements(plan.bindings.values[k.output]);plan.kernels.push_back(k);
+            }
+            continue;
+        }
         if(p.fuse ? (!boundary(op) && p.values[op.output].role!=2) : op.name=="common.reshape") continue;
         VHO_TENSOR_KERNEL k;k.id=k.root=i;k.output=op.output;k.stage=0;k.split_width=0;k.chunks=1;k.mapping=0;
         k.elements=VHO_tensor_elements(p.values[op.output]);
         if(p.fuse) {
             std::set<UINT32> inputs;UINT32 budget=0;
-            for(size_t a=0;a<op.inputs.size();++a) leaves(p,producer,op.inputs[a],inputs,budget);
+            for(size_t a=0;a<op.inputs.size();++a) leaves(p,producer,op.inputs[a],inputs,budget,plan.attention);
             /* Pin unused entry inputs on the first launch so producer inlining
              * cannot silently change the source program's packed input ABI. */
             if(plan.kernels.empty()) for(UINT32 v=0;v<p.values.size();++v) if(p.values[v].role==1) inputs.insert(v);
@@ -352,7 +377,7 @@ VHO_TENSOR_SCHEDULE schedule(const VHO_TENSOR_PROGRAM &p) {
         UINT64 width=boundary(op)?p.values[op.inputs[0]].shape.back():0;
         if(op.name=="common.matmul") width=p.values[op.inputs[0]].shape.back();
         if(p.cooperative && boundary(op)) k.mapping=op.name=="common.matmul"?(width>=32?2:0):1;
-        if(p.split_width && width>p.split_width) {
+        if(!p.fuse_attention && p.split_width && width>p.split_width) {
             k.split_width=p.split_width;k.chunks=(width+p.split_width-1)/p.split_width;k.stage=1;
             need(k.elements<=16777216/k.chunks,"split scratch exceeds allocation limit");
             VHO_TENSOR_VALUE scratch=p.values[op.output];scratch.name="split_"+decimal(i);
@@ -378,6 +403,7 @@ class VHO_TENSOR_DEVICE {
     const VHO_TENSOR_OPERATION &_operation;
     SRCPOS _source;
     VHO_TENSOR_KERNEL _kernel;
+    VHO_TENSOR_ATTENTION _attention;
     std::map<UINT32,UINT32> _producer;
     std::vector<ST *> _formals;
     ST *_flat,*_physical,*_part,*_reduction,*_sum,*_next;
@@ -385,7 +411,7 @@ class VHO_TENSOR_DEVICE {
 public:
     /* Bind only detached numeric facts and the active kernel's source position. */
     VHO_TENSOR_DEVICE(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERNEL &kernel,SRCPOS source):
-        _program(p),_operation(p.operations[kernel.root]),_source(source),_kernel(kernel) {
+        _program(p),_operation(p.operations[kernel.root]),_source(source),_kernel(kernel),_attention(VHO_tensor_attention(p)) {
         for(UINT32 i=0;i<p.operations.size();++i) _producer[p.operations[i].output]=i;
     }
     /* Return output facts; the preflight guarantees the table index is valid. */
@@ -405,6 +431,13 @@ public:
     /* Inline only the pure indexing/elementwise region admitted by the plan.
      * Each returned expression is fresh; no WN subtree gains two parents. */
     WN *Evaluate(UINT32 value,WN *index) {
+        if(_attention.enabled && (value==_attention.latent || value==_attention.lse)) {
+            WN *offset;
+            if(value==_attention.lse) offset=WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,index,integer(_attention.rank+1)),integer(_attention.rank));
+            else offset=WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,WN_Div(MTYPE_U8,WN_COPY_Tree(index),integer(_attention.rank)),integer(_attention.rank+1)),
+                WN_Binary(OPR_REM,MTYPE_U8,index,integer(_attention.rank)));
+            return Evaluate(_attention.bundle,offset);
+        }
         for(UINT32 i=0;i<_kernel.inputs.size();++i) if(_kernel.inputs[i]==value) {
             TYPE_ID type=_program.values[value].dtype=="bool"?MTYPE_U1:MTYPE_F4;
             return WN_Iload(type,0,MTYPE_To_TY(type),Address(i,index));
@@ -574,6 +607,7 @@ public:
         WN_INSERT_BlockLast(body,WN_CreateIf(WN_LAND(load(_valid),WN_EQ(MTYPE_U8,load(_lane),integer(0))),write,WN_CreateBlock()));
         return body;
     }
+    #include "tensor_attention_device.inc"
     /* A canonical integer counted loop retains serial accumulation order. */
     WN *Loop(ST *iv,UINT64 extent,WN *body) {
         WN *begin=integer(0),*end=integer(extent);
@@ -682,7 +716,7 @@ public:
             _warp=local("cta_warp",MTYPE_U8,_source);_valid=local("valid_output",MTYPE_I4,_source);
             _base=local("column_tile",MTYPE_U8,_source);_tile=local("token_tile",MTYPE_U8,_source);
             _begin=local("token_begin",MTYPE_U8,_source);_end=local("token_end",MTYPE_U8,_source);
-            _column=local("copy_column",MTYPE_U8,_source);body=CooperativeBody();
+            _column=local("copy_column",MTYPE_U8,_source);body=_kernel.mapping>=3?AttentionBody():CooperativeBody();
         } else {
             body=WN_CreateBlock();WN *element=WN_CreateBlock();
             /* Chunk-major work keeps neighboring output coordinates together,
@@ -709,7 +743,9 @@ public:
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.grid_x",grid.str().c_str());
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.operation",decimal(_kernel.id).c_str());
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.mapping",decimal(_kernel.mapping).c_str());
-        ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.shared_bytes",_kernel.mapping==2?"640":"0");
+        ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.shared_bytes",decimal(VHO_tensor_shared_bytes(_program,_kernel)).c_str());
+        if(_program.fuse_attention) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_layout",
+            _kernel.mapping<3?"none":_kernel.stage==1?"maximum,denominator,normalized_latent":"latent,lse");
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.fused",_program.fuse?"true":"false");
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.split_stage",decimal(_kernel.stage).c_str());
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.split_width",decimal(_kernel.split_width).c_str());
@@ -719,6 +755,8 @@ public:
 };
 } // namespace
 
+#include "tensor_attention_pattern.inc"
+
 /* Extents are bounded by validation, so the flat logical size cannot overflow. */
 UINT64 VHO_tensor_elements(const VHO_TENSOR_VALUE &value) {
     UINT64 size=1;for(size_t i=0;i<value.shape.size();++i) size*=value.shape[i];return size;
@@ -726,12 +764,20 @@ UINT64 VHO_tensor_elements(const VHO_TENSOR_VALUE &value) {
 
 /* Four complete warps per CTA; staged dots keep four adjacent columns together. */
 UINT64 VHO_tensor_grid(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERNEL &k) {
+    if(k.mapping>=3) {VHO_TENSOR_ATTENTION a=VHO_tensor_attention(p);return a.batch*a.heads*(k.mapping==3?k.chunks:1);}
     if(k.mapping==1) return (k.elements+3)/4;
     if(k.mapping==2) {
         const VHO_TENSOR_VALUE &out=p.values[p.operations[k.root].output];UINT64 n=out.shape.back();
         return (VHO_tensor_elements(out)/n)*((n+3)/4)*(k.stage==1?k.chunks:1);
     }
     return p.opt_level==3?(k.elements+p.threads-1)/p.threads:1;
+}
+
+/* Shared storage is selected explicitly and checked against mapped metadata. */
+UINT64 VHO_tensor_shared_bytes(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERNEL &k) {
+    if(k.mapping<3) return k.mapping==2?640:0;
+    UINT64 count=k.mapping==3?k.split_width:k.chunks;
+    return 4*(((count+127)/128)*128+8+(k.mapping==3?128:0));
 }
 
 /* Recheck the detached handoff before allocating any device table entries. */
@@ -762,7 +808,8 @@ BOOL VHO_tensor_validate_program(const VHO_TENSOR_PROGRAM &p,FILE *diagnostic) {
             validate_operation(p,op);const VHO_TENSOR_VALUE &out=p.values[op.output];
             need(out.storage==(op.name=="common.reshape"?p.values[op.inputs[0]].storage:op.output),"incorrect storage alias");defined.insert(op.output);
         }
-        need(defined.size()==p.values.size(),"unused/undefined recipe values");return TRUE;
+        need(defined.size()==p.values.size(),"unused/undefined recipe values");
+        if(p.fuse_attention) VHO_tensor_attention(p);return TRUE;
     } catch(const std::exception &e) {if(diagnostic) fprintf(diagnostic,"tensor lowering: %s\n",e.what());return FALSE;}
 }
 
@@ -837,9 +884,14 @@ BOOL VHO_tensor_verify_kernel(const VHO_TENSOR_PROGRAM &p,UINT32 ordinal,FILE *d
                 decimal(VHO_tensor_elements(storage)*(storage.dtype=="bool"?1:4)),storage.dtype,storage.name};
             for(UINT32 k=0;k<8;++k) {const char *actual=ST_tensor_metadata(st,(std::string("tensor.argument.")+decimal(i)+"."+ak[k]).c_str());need(actual && av[k]==actual,"kernel binding mismatch");}
         }
+        if(p.fuse_attention) {
+            const char *layout=ST_tensor_metadata(st,"tensor.kernel.attention_layout");
+            std::string expected_layout=kernel.mapping<3?"none":kernel.stage==1?"maximum,denominator,normalized_latent":"latent,lse";
+            need(layout && expected_layout==layout,"attention tuple layout mismatch");
+        }
         if(p.cooperative) {
             const char *mapping=ST_tensor_metadata(st,"tensor.kernel.mapping"),*shared=ST_tensor_metadata(st,"tensor.kernel.shared_bytes");
-            need(mapping && decimal(kernel.mapping)==mapping && shared && std::string(kernel.mapping==2?"640":"0")==shared,"cooperative resource mapping mismatch");
+            need(mapping && decimal(kernel.mapping)==mapping && shared && decimal(VHO_tensor_shared_bytes(p,kernel))==shared,"cooperative resource mapping mismatch");
         }
         const char *versioned_comments=ST_tensor_metadata(st,"tensor.kernel.explanations_version");
         if(versioned_comments) {

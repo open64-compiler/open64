@@ -65,6 +65,12 @@ public:
     /* Show each selected fused producer once as a named nonallocating view. */
     std::string Value(UINT32 id) {
         if(_bound.count(id) || _printed.count(id)) return name(_p,id);
+        if(_plan.attention.enabled && (id==_plan.attention.latent || id==_plan.attention.lse)) {
+            Explain(VHO_TENSOR_EXPLAIN_PRODUCER,id);
+            _out<<"    const auto "<<name(_p,id)<<" = attention_bundle_view<"<<type(_p.values[id])<<","<<_plan.attention.rank
+                <<","<<(id==_plan.attention.lse?"true":"false")<<">("<<name(_p,_plan.attention.bundle)<<");\n";
+            _printed.insert(id);return name(_p,id);
+        }
         require(_producer.count(id),"missing selected producer");
         const VHO_TENSOR_OPERATION &op=_p.operations[_producer[id]];std::vector<std::string> args;
         if(op.name!="common.fill_like") for(size_t i=0;i<op.inputs.size();++i) args.push_back(Value(op.inputs[i]));
@@ -102,9 +108,22 @@ public:
         Explain(VHO_TENSOR_EXPLAIN_STAGE);
         _out<<"\n  // Stage "<<ordinal+1<<": "<<(k.stage==1?"PARALLEL CHUNK PARTIALS":k.stage==2?(k.mapping?"WARP CHUNK MERGE":"ORDERED CHUNK MERGE"):"FUSED OUTPUT")<<"\n";
         _out<<"  // kernel_id="<<k.id<<"; source node="<<op.source_node<<"; "<<op.name<<".v"<<op.version<<"\n";
-        _out<<"  // Selected independent work items="<<k.elements;
+        _out<<"  // Selected "<<(k.mapping>=3?"bundle scalar slots=":"independent work items=")<<k.elements;
         if(k.stage) _out<<"; chunk_width="<<k.split_width<<"; chunks="<<k.chunks<<"; scratch=chunk_major";
         _out<<"\n  {\n";
+        if(k.mapping>=3) {
+            const VHO_TENSOR_ATTENTION &a=_plan.attention;
+            _out<<"    "<<(k.mapping==3?"fused_attention_to<":"merge_attention_to<")<<a.batch<<","<<a.heads<<","<<a.length<<","<<a.rank;
+            if(k.mapping==3) _out<<","<<a.rope<<","<<k.split_width<<","<<k.chunks<<","<<(k.stage==1?"true":"false");
+            else _out<<","<<k.chunks;
+            _out<<">("<<pointer(_p,k.output)<<".data";
+            if(k.mapping==3) {
+                UINT32 ids[]={a.q,a.qr,a.cache,a.rope_cache,a.mask};
+                for(UINT32 i=0;i<5;++i) _out<<", "<<name(_p,ids[i]);
+                _out<<", 0x"<<std::hex<<a.scale_bits<<std::dec<<"u";
+            } else _out<<", "<<name(_p,a.partial);
+            _out<<");\n  }\n";return;
+        }
         std::vector<std::string> args;
         if(k.stage==2) args.push_back(name(_p,k.inputs[0]));
         else for(size_t i=0;i<op.inputs.size();++i) args.push_back(Value(op.inputs[i]));
@@ -127,7 +146,7 @@ public:
         require(!seal.empty() && seal.find_first_not_of("0123456789")==std::string::npos,"invalid recipe fingerprint");
         Explain(VHO_TENSOR_EXPLAIN_OVERVIEW);
         _out<<"// Generated selected-schedule review CUDA, BEFORE low-level WHIRL expansion.\n";
-        _out<<"// recipe_fingerprint="<<seal<<"; stages="<<_plan.kernels.size()<<"; reassociation="<<(_p.split_width?"allow":"forbid")<<"\n";
+        _out<<"// recipe_fingerprint="<<seal<<"; stages="<<_plan.kernels.size()<<"; reassociation="<<((_p.split_width || _p.cooperative)?"allow":"forbid")<<"\n";
         _out<<"// Named views below are lazy and allocate no intermediate tensor.\n";
         _out<<"// Helpers execute stages serially for checking; actual GPU kernels use the same selected plan.\n";
         _out<<"#include \"open64_tensor_schedule.cuh\"\nusing namespace open64_schedule;\n\n";

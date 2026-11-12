@@ -62,6 +62,7 @@ Json::Value encode(const VHO_TENSOR_PROGRAM &p) {
         j["schema"]="open64.tensor-kernel.v2";j["fuse"]=true;j["split_width"]=p.split_width;
         j["reassociation"]=(p.split_width || p.cooperative)?"allow":"forbid";
         if(p.cooperative) {j["schema"]="open64.tensor-kernel.v3";j["cooperative"]=true;}
+        if(p.fuse_attention) {j["schema"]="open64.tensor-kernel.v4";j["fuse_attention"]=true;j["attention_numerics"]="fp32-local-softmax-rescaled-merge";}
     }
     for(size_t i=0;i<p.values.size();++i) {
         const VHO_TENSOR_VALUE &v=p.values[i];Json::Value x;x["name"]=v.name;x["dtype"]=v.dtype;x["role"]=v.role;x["ordinal"]=v.ordinal;x["storage"]=v.storage;x["shape"]=Json::Value(Json::arrayValue);
@@ -95,9 +96,10 @@ VHO_TENSOR_PROGRAM decode(const char *path) {
     reader["allowComments"]=false;reader["collectComments"]=false;reader["strictRoot"]=true;
     reader["failIfExtra"]=true;reader["rejectDupKeys"]=true;
     need(in.good() && Json::parseFromStream(reader,in,&j,&errors),"invalid recipe JSON");
-    bool cooperative=j["schema"].asString()=="open64.tensor-kernel.v3";
+    bool attention=j["schema"].asString()=="open64.tensor-kernel.v4";
+    bool cooperative=attention || j["schema"].asString()=="open64.tensor-kernel.v3";
     bool optimized=cooperative || j["schema"].asString()=="open64.tensor-kernel.v2";
-    need(j.isObject() && j.size()==(cooperative?12:optimized?11:8) && j["recipe_fingerprint"].isString() && (optimized || j["schema"].asString()=="open64.tensor-kernel.v1") && j["source_pu"].isString() && j["source_file"].isString() &&
+    need(j.isObject() && j.size()==(attention?14:cooperative?12:optimized?11:8) && j["recipe_fingerprint"].isString() && (optimized || j["schema"].asString()=="open64.tensor-kernel.v1") && j["source_pu"].isString() && j["source_file"].isString() &&
         j["opt_level"].isUInt() && j["threads"].isUInt() && j["values"].isArray() && j["operations"].isArray(),"invalid recipe header");
     need(j["values"].size()<=4096 && j["operations"].size()<=4096,"oversized recipe");
     VHO_TENSOR_PROGRAM p;p.source_pu=j["source_pu"].asString();p.source_file=j["source_file"].asString();p.opt_level=j["opt_level"].asUInt();p.threads=j["threads"].asUInt();
@@ -105,6 +107,7 @@ VHO_TENSOR_PROGRAM decode(const char *path) {
         need(j["fuse"].isBool() && j["fuse"].asBool() && j["split_width"].isUInt() && j["reassociation"].isString(),"invalid optimization policy");
         p.fuse=true;p.split_width=j["split_width"].asUInt();
         if(cooperative) {need(j["cooperative"].isBool() && j["cooperative"].asBool(),"invalid cooperative policy");p.cooperative=true;}
+        if(attention) {need(j["fuse_attention"].isBool() && j["fuse_attention"].asBool() && j["attention_numerics"].isString() && j["attention_numerics"].asString()=="fp32-local-softmax-rescaled-merge","invalid attention numerical policy");p.fuse_attention=true;}
         need(j["reassociation"].asString()==((p.split_width || p.cooperative)?"allow":"forbid"),"reassociation policy mismatch");
     }
     for(Json::ArrayIndex i=0;i<j["values"].size();++i) {
@@ -186,6 +189,11 @@ bool remove_barrier(WN *n) {
  * unit. The VHO service never expands its compilation scope or writes files. */
 int main(int argc,char **argv) {
     try {
+        if(argc==5 && !strcmp(argv[1],"fuse-attention")) {
+            need(!strcmp(argv[4],"--allow-reassociate"),"attention fusion requires explicit numerical permission");
+            VHO_TENSOR_PROGRAM p=decode(argv[2]);p.fuse_attention=true;VHO_TENSOR_SCHEDULE plan;
+            need(VHO_tensor_schedule(p,&plan,stderr),"attention fusion rejected");write_json(argv[3],encode(p));return 0;
+        }
         if(argc==5 && !strcmp(argv[1],"cooperate")) {
             need(!strcmp(argv[4],"--allow-reassociate"),"cooperative trees require explicit reassociation permission");
             VHO_TENSOR_PROGRAM p=decode(argv[2]);p.cooperative=true;VHO_TENSOR_SCHEDULE plan;
@@ -252,7 +260,7 @@ int main(int argc,char **argv) {
             }
             checkpoint(pus,argv[4]);return 0;
         }
-        if(argc==5 && (!strcmp(argv[1],"audit") || !strcmp(argv[1],"audit-mutate") || !strcmp(argv[1],"audit-binding") || !strcmp(argv[1],"audit-prototype") || !strcmp(argv[1],"audit-policy") || !strcmp(argv[1],"audit-comment") || !strcmp(argv[1],"audit-comment-missing") || !strcmp(argv[1],"audit-mask") || !strcmp(argv[1],"audit-barrier") || !strcmp(argv[1],"audit-resource") || !strcmp(argv[1],"audit-shared") || !strcmp(argv[1],"audit-collective-prototype"))) {
+        if(argc==5 && (!strcmp(argv[1],"audit") || !strcmp(argv[1],"audit-mutate") || !strcmp(argv[1],"audit-binding") || !strcmp(argv[1],"audit-prototype") || !strcmp(argv[1],"audit-policy") || !strcmp(argv[1],"audit-comment") || !strcmp(argv[1],"audit-comment-missing") || !strcmp(argv[1],"audit-mask") || !strcmp(argv[1],"audit-barrier") || !strcmp(argv[1],"audit-resource") || !strcmp(argv[1],"audit-shared") || !strcmp(argv[1],"audit-collective-prototype") || !strcmp(argv[1],"audit-attention-layout"))) {
             VHO_TENSOR_PROGRAM p=decode(argv[3]);VHO_TENSOR_SCHEDULE plan;need(VHO_tensor_schedule(p,&plan,stderr),"schedule rejected");
             initialize(false);Open_Input_Info(argv[2]);Initialize_Symbol_Tables(FALSE);New_Scope(GLOBAL_SYMTAB,Malloc_Mem_Pool,FALSE);
             PU_Info *pu=Read_Global_Info(NULL);Json::Value result;result["schema"]="open64.device-tensor-launch.v1";result["kernels"]=Json::Value(Json::arrayValue);
@@ -278,6 +286,7 @@ int main(int argc,char **argv) {
                 if(!strcmp(argv[1],"audit-collective-prototype") && shuffle)
                     Set_TYLIST_type(Tylist_Table[TY_tylist(ST_pu_type(WN_st(shuffle)))+1],MTYPE_To_TY(MTYPE_I4));
                 if(!strcmp(argv[1],"audit-barrier")) remove_barrier(PU_Info_tree_ptr(pu));
+                if(!strcmp(argv[1],"audit-attention-layout")) ST_tensor_bind_metadata(st,"tensor.kernel.attention_layout","incorrect_tuple");
                 if(!strcmp(argv[1],"audit-resource")) ST_tensor_bind_metadata(st,"tensor.kernel.shared_bytes","128");
                 if(!strcmp(argv[1],"audit-shared")) {
                     const ST *local;ST_IDX local_index;
@@ -290,6 +299,7 @@ int main(int argc,char **argv) {
                 kernel["source_operator"]=metadata(st,"tensor.kernel.source_operator");kernel["source_version"]=metadata(st,"tensor.kernel.source_version");kernel["source_node"]=metadata(st,"tensor.kernel.source_node");
                 kernel["grid_x"]=metadata(st,"tensor.kernel.grid_x");kernel["block_x"]=metadata(st,"tensor.kernel.block_x");kernel["arguments"]=Json::Value(Json::arrayValue);
                 kernel["fused"]=metadata(st,"tensor.kernel.fused");kernel["split_stage"]=metadata(st,"tensor.kernel.split_stage");kernel["split_width"]=metadata(st,"tensor.kernel.split_width");
+                if(p.fuse_attention) kernel["attention_layout"]=metadata(st,"tensor.kernel.attention_layout");
                 if(p.cooperative) {kernel["mapping"]=metadata(st,"tensor.kernel.mapping");kernel["shared_bytes"]=metadata(st,"tensor.kernel.shared_bytes");}
                 WN *entry=PU_Info_tree_ptr(pu);
                 for(INT a=0;a<WN_num_formals(entry);++a) {
@@ -306,6 +316,6 @@ int main(int argc,char **argv) {
             for(std::map<UINT32,Json::Value>::const_iterator i=storages.begin();i!=storages.end();++i) result["storages"].append(i->second);
             write_json(argv[4],result);printf("mapped_device_audit=PASS kernels=%u storages=%u\n",result["kernels"].size(),result["storages"].size());return 0;
         }
-        fprintf(stderr,"usage: tensor_kernel_lower prepare input.B recipe.json --verify level | optimize baseline.json selected.json --fuse [--split-width N --allow-reassociate] | cooperate fused.json cooperative.json --allow-reassociate | schedule-source selected.json optimized.cu | device recipe.json device.before.B device.after.B | device-explain recipe.json comments.before.B comments.after.B | audit device.after.B recipe.json launch.json\n");return 2;
+        fprintf(stderr,"usage: tensor_kernel_lower prepare input.B recipe.json --verify level | optimize baseline.json selected.json --fuse [--split-width N --allow-reassociate] | cooperate fused.json cooperative.json --allow-reassociate | fuse-attention cooperative.json fused.json --allow-reassociate | schedule-source selected.json optimized.cu | device recipe.json device.before.B device.after.B | device-explain recipe.json comments.before.B comments.after.B | audit device.after.B recipe.json launch.json\n");return 2;
     } catch(const std::exception &e) {fprintf(stderr,"tensor kernel driver: %s\n",e.what());return 1;}
 }

@@ -113,7 +113,9 @@ public:
             else {
                 UINT32 owner=_owners[value];const VHO_TENSOR_KERNEL &producer=_plan.kernels[owner];
                 text<<", produced by stage "<<owner+1<<".\n";
-                if(producer.stage==2) {
+                if(producer.mapping>=3) {
+                    text<<"  This is the completed fused latent/LSE bundle; no global score buffer is read.\n";
+                } else if(producer.stage==2) {
                     const std::string &operation=_p.operations[producer.root].name;
                     text<<"  This is a completed global "<<(operation=="common.reduce_max"?"maximum":"sum")<<" from all "<<producer.chunks<<" chunks.\n";
                     if(k.stage==1) text<<"  Every current chunk uses this same finalized value; no chunk-local replacement is used.\n";
@@ -182,9 +184,125 @@ public:
             <<"COSTS: five shuffles, extra live lane state, more scheduled threads, and (for staged dots) shared loads/stores\n"
             <<"and CTA barriers. Small reductions and short tails can lose; compare the previous AOT candidate on hardware.\n";
     }
+    /* Compare structural work with the preceding cooperative score-buffer
+     * cuts. These counts describe source/selected facts, not a timing model. */
+    void ExplainAttentionPerformance(std::ostringstream &text,UINT64 selected_bytes) {
+        const VHO_TENSOR_ATTENTION &a=_plan.attention;
+        UINT64 old_bytes=0,old_launches=0;
+        for(size_t i=0;i<_p.operations.size();++i) {
+            const VHO_TENSOR_OPERATION &op=_p.operations[i];const VHO_TENSOR_VALUE &v=_p.values[op.output];
+            bool boundary=op.name=="common.matmul" || op.name=="common.reduce_max" || op.name=="common.reduce_sum";
+            if(!boundary && v.role!=2) continue;
+            ++old_launches;
+            if(v.role==0) old_bytes+=4*VHO_tensor_elements(v);
+            UINT64 width=boundary?_p.values[op.inputs[0]].shape.back():0;
+            if(_p.split_width && width>_p.split_width) {
+                ++old_launches;old_bytes+=4*VHO_tensor_elements(v)*((width+_p.split_width-1)/_p.split_width);
+            }
+        }
+        UINT64 rows=a.batch*a.heads,span=_p.split_width && a.length>_p.split_width?_p.split_width:a.length;
+        UINT64 chunks=(a.length+span-1)/span,capacity=((span+127)/128)*128;
+        UINT64 old_probability_groups=a.length>=32?(a.rank+3)/4:a.rank;
+        text<<"PERFORMANCE COMPARISON BASELINE: the same captured DAG with the previous cooperative score-buffer cuts.\n";
+        text<<"Total launches "<<old_launches<<" -> "<<_plan.kernels.size()<<"; global internal allocation bytes "<<old_bytes<<" -> "<<selected_bytes<<".\n";
+        text<<"The two score allocations account for "<<8*rows*a.length<<" bytes before fusion and zero afterward.\n"
+            <<"Allocation footprint is not total HBM traffic: fusion also removes their stores/reloads, whose cache behavior is workload dependent.\n";
+        text<<"Previous nominal token exp evaluations: "<<(1+old_probability_groups)*rows*a.length
+            <<" = rows*L*(one denominator pass + "<<old_probability_groups<<" weighted-latent column groups).\n";
+        text<<"Fused valid-token exp evaluations: "<<rows*a.length<<". The selected loops actually visit "<<rows*chunks*capacity
+            <<" shared exp slots including padding";
+        if(chunks>1) text<<", plus at most "<<rows*chunks<<" chunk-rescale exps (empty chunks take zero)";
+        text<<".\nThis is source-level work accounting; compiler folding/predication and instruction throughput can change executed cost.\n";
+        UINT64 prior_weighted_ctas=a.length>=32?rows*((a.rank+3)/4)*chunks:(rows*a.rank*chunks+127)/128;
+        text<<"The previous weighted-latent launch had "<<prior_weighted_ctas<<" CTAs; the fused local-attention launch has "<<rows*chunks
+            <<" CTAs, now also doing scoring and softmax. This can reduce parallelism even while eliminating work and traffic.\n";
+        text<<"The source score dots are evaluated once per allowed row/token; false masks can skip those dots, but irregular masks can diverge.\n"
+            <<"Query absorption and value projection still execute. Cache values are still read for scoring and weighted accumulation.\n"
+            <<"Fewer launches can matter most for launch-dominated short contexts; reduced score traffic and repeated exponentials\n"
+            <<"can matter more with longer contexts. More shared work or fewer independent CTAs can offset those benefits.\n"
+            <<"If the changed portion occupied old-time fraction f and achieves net speedup s including all new overhead,\n"
+            <<"whole-call speedup is 1/((1-f)+f/s), assuming other costs stay constant. For illustration only, f=1/2 and s=2\n"
+            <<"would mean 4/3 total speedup, not 2. Neither f nor s is calibrated or measured for this plan.\n"
+            <<"A static architecture latency/resource model can estimate costs; these comments report structural counts, not calibrated cycles.\n";
+    }
+    /* Describe the fused score/softmax/latent stage and its tuple merge from
+     * the owning phase's selected facts, never from CUDA spelling heuristics. */
+    void ExplainAttentionStage(const VHO_TENSOR_KERNEL &k) {
+        const VHO_TENSOR_ATTENTION &a=_plan.attention;std::ostringstream text;
+        UINT64 rows=a.batch*a.heads,capacity=(((k.mapping==3?k.split_width:k.chunks)+127)/128)*128;
+        text<<"FUSED ATTENTION: "<<(k.mapping==3?(k.stage==1?"chunk-local attention":"complete short-context attention"):"stable rescaled chunk merge")<<".\n";
+        text<<"Launch "<<VHO_tensor_grid(_p,k)<<" CTAs of 128 threads; selected shared storage "<<VHO_tensor_shared_bytes(_p,k)<<" bytes per CTA.\n";
+        text<<"Rows = B*H = "<<rows<<", tokens L="<<a.length<<", latent R="<<a.rank<<", RoPE width="<<a.rope<<".\n";
+        if(k.mapping==3) {
+            text<<"CTA row = block modulo "<<rows<<"; chunk = block / "<<rows<<". Each thread visits local token tid,tid+128,... .\n";
+            text<<"For every allowed token, compute score = scale * (dot(projected_query,latent_cache[token])\n"
+                <<"+ dot(rope_query,rope_cache[token])). Both contractions retain ascending F32 inner loops.\n"
+                <<"Mask-false tokens and padding use -infinity, with guarded source reads. Source scale bits are 0x"<<std::hex<<a.scale_bits<<std::dec<<".\n";
+            text<<"Chunk interval is [c*"<<k.split_width<<",min((c+1)*"<<k.split_width<<","<<a.length<<")); "<<k.chunks<<" chunk(s).\n";
+            UINT64 groups=(a.rank+3)/4,full_barriers=5+2*groups*((k.split_width+31)/32);
+            text<<"CTA WALKTHROUGH: four warps first cooperate across TOKENS for the max and denominator.\n"
+                <<"Each warp uses shuffle offsets 16,8,4,2,1; lane zero publishes its partial, then thread zero folds four warp partials.\n"
+                <<"After normalization, ownership changes: a complete warp reduces TOKENS for one latent COLUMN.\n"
+                <<"The two max-fold barriers, two denominator-fold barriers and probability-publication barrier contribute five CTA barriers.\n";
+            text<<"With "<<groups<<" column groups, a full segment adds 2*"<<groups<<"*ceil("<<k.split_width
+                <<"/32) cache-tile barriers, for "<<full_barriers<<" CTA barrier calls along each thread's path.\n";
+            if(k.stage==1) {
+                UINT64 tail=a.length-UINT64(k.chunks-1)*k.split_width;
+                text<<"The final chunk starts at "<<UINT64(k.chunks-1)*k.split_width<<" and has "<<tail<<" real token(s), but still uses capacity "<<capacity
+                    <<" and all collectives; its actual CTA barrier count is "<<5+2*groups*((tail+31)/32)<<".\n";
+            } else text<<"This direct CTA covers the whole row, so its local softmax is already the global softmax; no rescaling merge follows.\n";
+            text<<"Score storage is shared["<<capacity<<"], overwritten in place with stable exponentials, then normalized local probabilities.\n"
+                <<"Four full-warp max trees publish four shared partials; thread zero folds those four and publishes the maximum.\n"
+                <<"The same CTA reduction computes d_c=sum exp(score-m_c). Normalize probabilities once in shared memory.\n"
+                <<"A nonfinite maximum uses the source zero fallback; a nonpositive denominator uses one. Fully masked rows produce zero latent and LSE -infinity.\n"
+                <<"Warp w owns latent columns group*4+w. Stage 32x4 cache tiles using the selected XOR bank layout;\n"
+                <<"barriers publish each cache tile and release it before reuse. Multiply the shared local probabilities\n"
+                <<"by staged cache values, then use five shuffle-down rounds to obtain each column's local latent value.\n";
+            if(k.stage==1) text<<"Only tuple [m_c,d_c,z_c[0..R-1]] is written globally at (c*"<<rows<<"+row)*(R+2).\n"
+                <<"z_c is already normalized by d_c; it is not an unnormalized numerator. The merge must rescale this local distribution.\n";
+            else text<<"Write only [z[0..R-1],LSE] at row*(R+1). No attention partial scratch is needed.\n";
+            text<<"EXPECTED BENEFIT: latent/RoPE score contractions, mask, softmax and weighted latent share one CTA.\n"
+                <<"Each score and exponential is evaluated once per row/token, and its probability is reused across all R columns.\n"
+                <<"The two global score tensors and separate max/denominator launches are eliminated. Cache values are read\n"
+                <<"for score and weighted accumulation; this does not eliminate all cache traffic or projection work.\n";
+        } else {
+            text<<"MERGE WALKTHROUGH: each z_c is a local expectation, not a raw weighted sum or one global probability.\n"
+                <<"For finite nonempty chunks, d_c=sum_{t in c} exp(s_t-m_c) and\n"
+                <<"z_c=(1/d_c)*sum_{t in c} exp(s_t-m_c)*cache[t]. d_c is not generally the token count.\n"
+                <<"Changing the exponential origin from m_c to m multiplies every unnormalized weight in chunk c by exp(m_c-m).\n"
+                <<"Its mass on that common scale is t_c=d_c*exp(m_c-m); D=sum_c t_c. Therefore\n"
+                <<"sum_t exp(s_t-m)*cache[t] = sum_c t_c*z_c, and dividing by D gives z=sum_c (t_c/D)*z_c.\n"
+                <<"The unshifted partition is exp(m)*D, so its log is m+log(D), without ever evaluating exp(m).\n"
+                <<"NUMERICAL EXAMPLE ONLY: two scalar chunks (m0=0,d0=1,z0=2) and (m1=log(2),d1=1,z1=8)\n"
+                <<"give m=log(2), t0=1/2, t1=1, D=3/2, alpha0=1/3, alpha1=2/3, z=6 and LSE=log(3).\n"
+                <<"A plain sum gives 10 and an unweighted average gives 5; neither reconstructs the global softmax.\n";
+            text<<"For max and D, thread tid owns chunks tid,tid+128,...; four warp summaries are folded by thread zero.\n";
+            if(k.chunks==33) text<<"Here tids 0..32 each begin with one chunk; other threads are neutral for those CTA folds.\n"
+                <<"For each latent-column warp, lane zero instead accumulates chunks 0 and 32; lanes 1..31 take their own chunk before the tree.\n";
+            text<<"The normalized alpha weights occupy shared["<<capacity<<"]. Five uniform CTA barriers publish max, D and alpha;\n"
+                <<"the column-wise chunk trees need register shuffles but no additional CTA barriers.\n";
+            text<<"An allowed finite one-token tail has d_c=1 and z_c=that token's cache vector, yet its global alpha\n"
+                <<"depends on its score relative to all other chunks; it is not automatically 1/chunk_count.\n"
+                <<"An empty chunk has d_c=0 and z_c=0; select t_c=0 before forming the exponential product.\n"
+                <<"This matters when m is very negative: using its safe local m_c=0 could otherwise form 0*exp(0-m)=0*infinity.\n";
+            text<<"Read only compact chunk-major [m_c,d_c,z_c] tuples; no query, score or probability tensor is read.\n"
+                <<"Compute m=max_c m_c; D=sum_c d_c*exp(m_c-m). For empty chunks d_c=0, take zero before exp.\n"
+                <<"Then alpha_c=d_c*exp(m_c-m)/D and z=sum_c alpha_c*z_c; LSE=m+log(D).\n"
+                <<"Use the source safe maximum and denominator fallbacks; all-empty chunks give zero output and LSE -infinity.\n"
+                <<"The rescaling is essential because each z_c used its own chunk-local softmax. A plain sum or average is incorrect.\n"
+                <<"CTA reductions combine maxima and D; shared normalized alpha weights are reused by all latent columns.\n"
+                <<"One full warp per latent column reduces chunk contributions with offsets 16,8,4,2,1.\n"
+                <<"Write only [z[0..R-1],LSE] at row*(R+1), consumed by the retained value projection and output stores.\n";
+        }
+        text<<"All CTA barriers and shuffle rounds are uniform across the full 128-thread block, including token/column tails.\n"
+            <<"This explicit AOT option permits F32 regrouping and chunk-local normalization; compare with the FP64 oracle, not old F32 bytes.\n"
+            <<"Shared-memory use, barriers, register pressure, small grids and score dot work can limit speed; no measured GPU speedup is asserted.\n";
+        ExplainDependencies(k,text);Explain("STAGE SEMANTICS",text.str());
+    }
     /* Render formulas, tails, work ownership and numerical order directly
      * from the supplied plan; these facts do not select a new schedule. */
     void ExplainStage(const VHO_TENSOR_KERNEL &k) {
+        if(k.mapping>=3) {ExplainAttentionStage(k);return;}
         const VHO_TENSOR_OPERATION &op=_p.operations[k.root];
         UINT64 outputs=VHO_tensor_elements(_p.values[op.output]);std::ostringstream text;
         text<<"Selected result: "<<name(_p,k.output)<<"; "<<type(_p.values[k.output])<<"; "<<k.elements<<" work items.\n";
@@ -255,7 +373,7 @@ public:
         text<<"Fusion, materialization cuts, chunk sizes, and numerical policy were selected before printing.\n";
         text<<"Read stages in order. Fusion enabled: "<<(_p.fuse?"true":"false")<<". With fusion, logical producers are lazy views and may be recomputed.\n";
         text<<"Reshape/transpose views allocate no copied/transposed tensor; exp and pointwise views allocate no result array.\n";
-        text<<"Matmuls and reductions retain their selected materialization boundaries.\n";
+        text<<(_p.fuse_attention?"Score, softmax and latent accumulation share one fused boundary; query/value projections remain materialized.\n":"Matmuls and reductions retain their selected materialization boundaries.\n");
         for(UINT32 i=0;i<_p.values.size();++i) if(_p.values[i].role)
             text<<(_p.values[i].role==1?"Input ":"Output ")<<pointer(_p,i)<<" => "<<name(_p,i)<<", "<<type(_p.values[i])<<".\n";
         for(size_t i=0;i<_plan.kernels.size();++i) {
@@ -267,7 +385,21 @@ public:
         text<<"This excludes runtime inputs/results, test guards, and the review executor's small view objects.\n";
         text<<"Reassociation permission: "<<((_p.split_width || _p.cooperative)?"allow":"forbid")<<". Arithmetic follows the selected F32 grouping.\n";
         text<<"Compilation/host checking does not establish GPU execution or speedup; consult the validation receipt.\n";
-        if(_p.cooperative) {
+        if(_p.fuse_attention) {
+            const VHO_TENSOR_ATTENTION &a=_plan.attention;
+            text<<"FUSED SCORE/SOFTMAX/LATENT PLAN: "<<_plan.kernels.size()<<" launches; no global latent-score, RoPE-score or probability buffer.\n";
+            text<<"Query absorption stays separate, followed by "<<(a.length>_p.split_width && _p.split_width?"chunk-local fused attention and stable tuple merge":"one fused attention stage")
+                <<", value projection, output store and LSE store.\n";
+            text<<"The shared score array is CTA-local and reused for exponentials and probabilities. Only compact final/partial tuples cross launches.\n";
+            text<<"The numerical policy is explicit FP32 local softmax and rescaled merge. New walkthrough wording alone does not change this selected algorithm.\n";
+            for(UINT32 i=0;i<_plan.kernels.size();++i) {
+                const VHO_TENSOR_KERNEL &k=_plan.kernels[i];
+                text<<"  Step "<<i+1<<" / kernel "<<k.id<<": "
+                    <<(k.mapping==3?(k.stage==1?"fused chunk attention":"fused complete-row attention"):k.mapping==4?"stable rescaling merge":_p.operations[k.root].name.c_str())
+                    <<" -> "<<name(_p,k.output)<<".\n";
+            }
+            ExplainAttentionPerformance(text,bytes);
+        } else if(_p.cooperative) {
             text<<"READING GUIDE: this selected plan has "<<_plan.kernels.size()<<" launches, as did the previous\n"
                 <<"fused/split thread-per-output candidate. Cooperative mapping changes work inside those stages;\n"
                 <<"it does not remove launches, materialized score tensors, or split scratch buffers.\n";
@@ -295,6 +427,12 @@ public:
     /* Follow exactly the supplied fused cuts in source operand order. */
     void Collect(UINT32 value) {
         if(_bound.count(value) || _printed.count(value)) return;
+        if(_plan.attention.enabled && (value==_plan.attention.latent || value==_plan.attention.lse)) {
+            _kind=VHO_TENSOR_EXPLAIN_PRODUCER;_value=value;std::ostringstream text;
+            text<<name(_p,value)<<" is a logical view of the finalized fused bundle "<<name(_p,_plan.attention.bundle)<<".\n";
+            text<<(value==_plan.attention.latent?"Read the first R columns in each row; no latent copy is allocated.":"Read component R (LSE) from each row; do not recompute scores or softmax.")<<"\n";
+            Explain("FUSED PRODUCER",text.str());_printed.insert(value);return;
+        }
         require(_p.fuse && _producer.count(value),"missing explanation producer");
         const VHO_TENSOR_OPERATION &op=_p.operations[_producer[value]];
         if(op.name!="common.fill_like") for(size_t i=0;i<op.inputs.size();++i) Collect(op.inputs[i]);
@@ -311,7 +449,8 @@ public:
             if(_p.values[value].role==0 && allocated.insert(value).second) {
                 std::ostringstream text;text<<name(_p,value)<<" is materialized by stage "<<k+1<<": "<<type(_p.values[value])<<"; "
                     <<number(VHO_tensor_elements(_p.values[value])*(_p.values[value].dtype=="bool"?1:4))<<" bytes.\n";
-                if(_plan.kernels[k].stage==1) text<<"Chunk-major partials: [chunk, flattened root output], indexed c*N+i. The next merge reads this buffer.\n";
+                if(_plan.kernels[k].mapping==3 && _plan.kernels[k].stage==1) text<<"Chunk-major [maximum,denominator,normalized latent] tuples; no score buffer.\n";
+                else if(_plan.kernels[k].stage==1) text<<"Chunk-major partials: [chunk, flattened root output], indexed c*N+i. The next merge reads this buffer.\n";
                 else text<<"This allocation is a retained boundary result; subsequent lazy views only reference it.\n";
                 _kind=VHO_TENSOR_EXPLAIN_STORAGE;_value=value;Explain("MATERIALIZED STORAGE",text.str());
             }
@@ -320,7 +459,7 @@ public:
             const VHO_TENSOR_KERNEL &kernel=_plan.kernels[k];_kernel=kernel.id;_stage=k+1;_value=0;
             _kind=VHO_TENSOR_EXPLAIN_STAGE;ExplainStage(kernel);
             _bound.clear();_printed.clear();_bound.insert(kernel.inputs.begin(),kernel.inputs.end());
-            if(kernel.stage!=2 && _p.fuse) {
+            if(kernel.mapping<3 && kernel.stage!=2 && _p.fuse) {
                 const VHO_TENSOR_OPERATION &op=_p.operations[kernel.root];
                 for(size_t i=0;i<op.inputs.size();++i) Collect(op.inputs[i]);
             }

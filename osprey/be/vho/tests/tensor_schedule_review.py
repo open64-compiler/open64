@@ -101,12 +101,15 @@ def review(args):
         case.mkdir()
         for name in ('recipe.json', 'launch.json', 'device.after.B', 'device.after.T'):
             shutil.copyfile(source / 'O3' / name, case / name)
-        if args.cooperative or args.refresh_explanations:
-            assert not (args.cooperative and args.refresh_explanations)
+        if args.cooperative or args.refresh_explanations or args.fuse_attention:
+            assert sum(map(bool,(args.cooperative,args.refresh_explanations,args.fuse_attention)))==1
             assert args.ir_b2a and args.whirl2c
             for name in ('recipe.json','device.after.B','device.after.T'):
                 (case / name).rename(case / ('baseline.' + name))
-            if args.cooperative:
+            if args.fuse_attention:
+                run(context + '-fuse-attention',[args.lowerer,'fuse-attention',case / 'baseline.recipe.json',
+                    case / 'recipe.json','--allow-reassociate'])
+            elif args.cooperative:
                 run(context + '-cooperate', [args.lowerer,'cooperate',case / 'baseline.recipe.json',
                     case / 'recipe.json','--allow-reassociate'])
             else:
@@ -117,14 +120,14 @@ def review(args):
                 run(context + '-cooperative-' + boundary,[args.ir_b2a,'-st','-src',
                     case / ('device.' + boundary + '.B'),case / ('device.' + boundary + '.T')])
             for a,b,name in [('device.before.T','device.after.T','device.before-after.diff'),
-                             ('baseline.device.after.T','device.after.T','baseline-to-cooperative.diff')]:
+                             ('baseline.device.after.T','device.after.T','baseline-to-fused-attention.diff' if args.fuse_attention else 'baseline-to-cooperative.diff')]:
                 (case / name).write_text(''.join(difflib.unified_diff(
                     (case / a).read_text().splitlines(True),(case / b).read_text().splitlines(True),fromfile=a,tofile=b)))
         recipe = json.loads((case / 'recipe.json').read_text())
         before = digest(case / 'recipe.json')
         run(context + '-mapped-audit', [args.lowerer, 'audit', case / 'device.after.B',
             case / 'recipe.json', case / 'launch.reopened.json'])
-        if args.cooperative: shutil.copyfile(case / 'launch.reopened.json',case / 'launch.json')
+        if args.cooperative or args.fuse_attention: shutil.copyfile(case / 'launch.reopened.json',case / 'launch.json')
         launch = json.loads((case / 'launch.json').read_text())
         assert launch == json.loads((case / 'launch.reopened.json').read_text())
         cuda = case / ('mla_' + context + '_optimized.cu')
@@ -209,7 +212,7 @@ def review(args):
             output.write_bytes(raw)
             check = check_output(case / (variant + '.reference.json'), output)
             lowered = source / 'O3' / (variant + '.host.bin')
-            if not args.cooperative:
+            if not (args.cooperative or args.fuse_attention):
                 assert raw == lowered.read_bytes(), context + ': source/lowered difference: ' + variant
             if mapped:
                 mapped_output = mapped / (variant + '.outputs.bin')
@@ -222,18 +225,22 @@ def review(args):
                     check['gpu_reference']=check_output(case / (variant + '.reference.json'),gpu_output)
             check.update(lowered_host_bitwise_parity='PASS', buffer_canaries='PASS', inputs_unchanged='PASS')
             checks[variant] = check
-        if not (args.cooperative or args.refresh_explanations):
+        if not (args.cooperative or args.refresh_explanations or args.fuse_attention):
             assert digest(case / 'device.after.B') == digest(source / 'O3/device.after.B')
         assert not list(case.glob('*.tmp-*'))
+        if recipe.get('fuse_attention',False):
+            assert len(stages)==(6 if int(recipe['split_width']) and int(recipe['values'][2]['shape'][1])>int(recipe['split_width']) else 5)
+            assert not set(stages).intersection({6,11,19,25,4115,4121})
+            assert not {15,20}.intersection(int(s['storage']) for s in launch['storages'])
         cases[context] = dict(stages=len(stages), function=function, recipe_sha256=before,
             device_image_sha256=digest(case / 'device.after.B'), source_sha256=digest(cuda),
             host_execution=checks, cuda_compilation='PASS' if args.nvcc else 'NOT_RUN', gpu_execution='PASS' if gpu else 'UNAVAILABLE')
-        cases[context].update(explanation_blocks=len(blocks),whirl_comment_emission='PASS' if mapped else 'NOT_RUN',
+        cases[context].update(internal_temporary_bytes=sum(int(s['bytes']) for s in launch['storages'] if s['role']=='0'),explanation_blocks=len(blocks),whirl_comment_emission='PASS' if mapped else 'NOT_RUN',
             previous_readable_code_unchanged=bool(args.previous_readable),
             previous_mapped_code_unchanged=bool(args.previous_mapped))
     report = dict(status='PASS', schema='open64.tensor-schedule-source-review.v1', cases=cases,
         lowerer_sha256=digest(args.lowerer), optimization_selected_by_printer=False,
-        low_level_whirl_changed=bool(args.whirl2c), executable_code_changed=bool(args.cooperative), gpu_execution='PASS' if all(c['gpu_execution']=='PASS' for c in cases.values()) else 'UNAVAILABLE')
+        low_level_whirl_changed=bool(args.whirl2c), executable_code_changed=bool(args.cooperative or args.fuse_attention), gpu_execution='PASS' if all(c['gpu_execution']=='PASS' for c in cases.values()) else 'UNAVAILABLE')
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
     (root / 'SHA256SUMS').write_text(''.join(digest(p) + '  ' + str(p.relative_to(root)) + '\n'
         for p in sorted(root.rglob('*')) if p.is_file()))
@@ -252,6 +259,7 @@ def main():
     parser.add_argument('--previous-readable', type=Path)
     parser.add_argument('--previous-mapped', type=Path)
     parser.add_argument('--refresh-explanations',action='store_true',help='Rebuild the unchanged selected plan with current COMMENT text')
+    parser.add_argument('--fuse-attention',action='store_true',help='Select fused score/softmax/latent with stable rescaled chunk merge')
     parser.add_argument('--cooperative', action='store_true',help='Select explicit warp/shared schedule with reassociation permission')
     review(parser.parse_args())
 
