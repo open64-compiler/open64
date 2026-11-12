@@ -193,6 +193,16 @@ int open64_normalization_retire(OPEN64_NORMALIZATION_RUNTIME *r,uint64_t id)
   a->id=0;return report(r,0,"retire",OPEN64_NORM_OK);
 }
 
+/* Snapshot a registered root without lending ownership or a use lease. The
+ * execution consumer must still admit before any movement/compute accesses. */
+int open64_normalization_root_view(OPEN64_NORMALIZATION_RUNTIME *r,uint64_t id,OPEN64_TARGET_BUFFER_VIEW *out)
+{
+  if (!r || !out) return OPEN64_NORM_INVALID;
+  std::lock_guard<std::mutex> lock(r->mutex);OPEN64_NORMALIZATION_ALLOCATION *a=allocation(r,id);
+  if (!a) return report(r,0,"root_view",OPEN64_NORM_INVALID);
+  *out=a->view;return report(r,0,"root_view",OPEN64_NORM_OK);
+}
+
 /* Validate immutable snapshots before atomically acquiring every range lease.
  * Canonical-role equality must match root equality in BOTH directions. */
 int open64_normalization_admit(OPEN64_NORMALIZATION_RUNTIME *r,const OPEN64_NORMALIZATION_GUARD *guard,

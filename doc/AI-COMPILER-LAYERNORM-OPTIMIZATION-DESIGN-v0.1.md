@@ -2,6 +2,14 @@
 
 Version v0.1 | 2026-10-28 | Living design; bounded native contracts and device lowering
 
+Execution-consumer amendment, 2026-10-29:
+[LN4 host/service consumer](AI-COMPILER-LAYERNORM-EXECUTION-CONSUMER-v0.1.md)
+adds runtime composition for host, mixed and registered-device whole roots.
+It borrows the service's shared registry, acquires leases before guard-sized
+copies and preserves retry/cancel ownership through quiescence, close,
+retirement and release. No new kernel producer, v1 change or reduction import.
+Host-PU call emission, deployment integration and GPU certification remain open.
+
 Compiled-entry amendment, 2026-10-29:
 [LN4 compiled-entry/CUDA boundary](AI-COMPILER-LAYERNORM-COMPILED-ENTRY-v0.1.md)
 binds an audited selected WHIRL entry to exact cubin bytes and a native runtime

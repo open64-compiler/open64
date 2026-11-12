@@ -1,5 +1,12 @@
 # OpenPy Compilation and Execution Modes Design
 
+Implementation note, 2026-10-29: the
+[LN4 host/service consumer](AI-COMPILER-LAYERNORM-EXECUTION-CONSUMER-v0.1.md)
+provides a runtime-only selected-entry handoff for host and imported-device
+roots using the shared lease registry. Standalone host-PU call emission and
+driver packaging remain separate compiler work; service JIT callers may invoke
+the consumer without a host PU. Performance harnesses remain explicitly opt-in.
+
 Version: v0.1
 Status: cross-domain design proposal; option spellings and most packaging/runtime paths are not implemented
 Date: 2026-10-23

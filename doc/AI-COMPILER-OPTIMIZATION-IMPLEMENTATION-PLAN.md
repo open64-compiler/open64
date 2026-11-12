@@ -147,7 +147,7 @@ concurrent reduction coding.
 | LN1 | Define both means, scaling, rsqrt and environment; specify native v2/admission and implement target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | Native v2/producer/PREOPT, LN1-c target binding/carriers, LN1-d oracle and bounded LN1-e integrated source/target/numerical evidence implemented. Complete LayerNorm execution and GPU conformance remain open. |
 | LN2 | Construct conditional legal storage/event plans from bound source. `alternatives.log`, `residency.log` and `fetch-pipeline.log` expose ranges/leases, capacity, banks/tails and generation/reuse constraints. | Native planning plus LN2-d runtime guard export/host bridge implemented. Actual selected-entry/register/internal-event conformance, real CUDA provider and expanded delivery remain open. |
 | LN3 | Complete comparable costs with target provenance/uncertainty and independent oracle. `physical-plan.log` explains selected/fallback reason without invented overlap or guaranteed cache hits; `bubble.log` gives critical-path exposure; `roofline.log` gives candidate-specific all-miss service bounds. | Bounded native complete-cost/selection service implemented and retained-path replay accepted independently of reduction coding. Common AIO-1/AIO-2 records and optional hardware extension, explicit unknowns and analysis-only interval gate; no executable transformation or native calibration claim. |
-| LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Bounded lowering, explicit driver/typed-JIT requests, compiled-entry review packaging and optional CUDA Driver adapter implemented. Independent of reduction; v1 preserved. Deployment service/hash/buffer hooks, automatic calibrated-profile provisioning, general compiler-session lifecycle and real GPU/provider certification remain open. |
+| LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Bounded lowering, driver/typed-JIT requests, compiled-entry packaging, CUDA adapter and host/service execution consumer implemented. Independent of reduction; v1 preserved. Selected host-PU call emission/driver packaging, reviewed deployment providers, calibrated profiles, general compiler sessions and real GPU certification remain open. |
 | LN5 | Separately authorized parallel statistics/Welford, RF retention and async/TMA refinements with numerical legality, lowerability and complete costs. | Deferred, not implied by LN0-LN4. |
 | LN6 | Native numerical/instruction/resource/paired-performance verification and calibration. | GPU gate open; not a blocker to design/compiler work. |
 
@@ -474,10 +474,46 @@ package/guard/raw-trace/report files reproduce byte-for-byte without
 normalization. The progress ledger records immutable primary/replay identities;
 indexes/current links were updated only after successful replay.
 
-Next LN4 package: consume the optional compiled entry in host-dispatch/service
-integration with reviewed hash, buffer/root and readiness/consumer hooks.
-General service-session lifecycle/concurrency and automatic calibrated-profile
-provisioning remain separately designed. Keep v1 and incomplete timing ineligible.
+LN4 execution-consumer follow-on, 2026-10-29:
+[Consumer detail v0.1](AI-COMPILER-LAYERNORM-EXECUTION-CONSUMER-v0.1.md).
+Implemented an optional runtime-only consumer for host roots, borrowed registered
+device roots and mixed placement. It uses the caller's shared registry across
+consumers, groups canonical roles, acquires leases before input movement, and
+copies only guard-sized subranges. READY/PUBLISH compose caller joins with H2D/
+D2H work; failed work pins storage/host loans through quiescence and retry/cancel.
+Partial allocations remain owned, imported roots are never retired/freed, and
+completed chunks/copyback are not repeated. Atomic operation admission rejects
+callback/concurrent reentry without relocking a nonrecursive mutex.
+
+`execution.log` must summarize ownership, host/mixed/device mode, copy extents,
+shared-lease conflicts, failed/retried phases, quiescence and retirement/free.
+Extract `provider.log` from the same raw trace; collect it and inherited
+`compiled-entry.log` with execution content in `optimization.log`. All logs keep
+the first-line description and source-line-last records. Summary distinguishes
+sentinel movement tests, inherited numerical/mapped evidence and real GPU gates.
+
+Acceptance: 36 entries / 792 scenarios, 30,224 consumer checks, 10,152 mock API
+checks and 129 focused Python tests. Existing adapter/base-runtime checks pass
+19,860 / 11,392, with 72 raw regression traces identical to the prior receipt.
+Leak-checked ASan/UBSan passes the same matrix; 360 files have exact normal/
+sanitized parity. Additive snapshot declaration leaves the guard ABI unchanged;
+its seven BE/WOPT object consumers rebuild byte-identically and gain no runtime
+symbol dependency. Reuse the authenticated compiler producer and 193 full
+mapped inspections; no new transformation or GPU numerical execution is claimed.
+
+Implementation `e72d3f4c` is accepted with immutable final-path source rebuild
+and replay. Both normal and sanitized matrices and all 129 focused tests pass;
+720 package/guard/raw-trace/report comparisons are byte-exact without
+normalization. Header reverse-compile compatibility is authenticated primary
+evidence, not repeated by the runtime replay. The
+[progress ledger](AI-COMPILER-OPTIMIZATION-PROGRESS.md) records both immutable
+receipts and directly reviewable execution/provider evidence.
+
+Next LN4 compiler package: selected host-PU call emission and driver/service
+packaging that invokes this consumer without inventing a second device producer.
+Reviewed deployment hash/buffer/producer/consumer/quiescence services, general
+compiler-session lifecycle and calibrated profiles remain separate. Keep v1 and
+incomplete timing ineligible; performance harness generation stays opt-in.
 Actual allocation leases, entry resolution, static/dynamic shared admission,
 register/launch limits and device completion must be enforced by the production
 adapter. No ordinary source compilation or GPU execution is implied by the

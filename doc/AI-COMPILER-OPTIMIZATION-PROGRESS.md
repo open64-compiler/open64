@@ -8,6 +8,46 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-29 LN4 host/service execution consumer accepted, implementation
+`e72d3f4c`:
+[Consumer detail v0.1](AI-COMPILER-LAYERNORM-EXECUTION-CONSUMER-v0.1.md).
+The runtime composes selected entry, shared canonical roots/leases, target
+buffer callbacks and input/consumer/quiescence joins. Host/mixed/device modes
+allocate once per role, copy guard subranges only after admission, preserve
+partial failures and retire owned roots before free. Imported roots remain
+caller-owned. Atomic operation admission rejects concurrent/callback reentry.
+
+All 36 entries pass 22 scenarios each (792 total): 30,224 consumer checks and
+10,152 mock API checks, plus 129 focused Python tests. Existing adapter and
+base-runtime suites pass 19,860 / 11,392 checks with 72 exact prior raw traces.
+Leak-checked ASan/UBSan passes the same matrix; 360 package/guard/trace/report
+files match normal execution exactly. Seven BE/WOPT consumers of the additive
+snapshot declaration rebuild byte-identically; guard ABI and compiler runtime
+dependencies remain unchanged. Parent compiler binaries/images and 193 full
+mapped inspections are authenticated and reused, not regenerated.
+
+CUDA calls and sentinel writes are mocked, not numerical/GPU certification.
+No v1, reduction or WHIRL transformation change. Next: selected host-PU call
+emission and driver/service packaging. Deployment providers,
+compiler-session lifecycle and GPU calibration
+remain open; no standalone performance harness is silently introduced.
+
+Accepted immutable execution package:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-execution/sha256-371350ccb49c3daafee40735e771a7d67414e3657480b3855798147624c79629/`.
+Accepted final-path source rebuild/replay:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-execution/replay/sha256-c4bb5291eb90317f88e2f0c10adcdb7d2256a925260731cff981429e0a9251d4/`.
+Replay authenticates the execution, parent entry and CUDA dependency receipts,
+rebuilds normal and sanitized runtime suites from the retained source snapshot,
+and repeats all 36 entries / 792 scenarios per mode plus 129 focused tests.
+All 720 package/guard/raw-trace/report comparisons are byte-exact without
+normalization. The seven-object header compatibility proof is authenticated
+primary evidence, not rerun during this runtime replay. Review indexes/current
+links were updated only after accepted replay. See `normal/optimization-summary.log`,
+complete `normal/optimization.log` and per-case `execution.t`, `execution.log`
+and `provider.log`; source-line-last events show lease admission before H2D,
+drain before copyback, and close/retire/release ordering. No new device kernel
+or numerical execution is implied by the sentinel tests.
+
 2026-10-29 LN4 compiled-entry/package and optional CUDA Driver adapter
 accepted, implementation `50335e35`:
 [Compiled-entry detail v0.1](AI-COMPILER-LAYERNORM-COMPILED-ENTRY-v0.1.md).
