@@ -100,10 +100,25 @@ def prepare(args):
         print('PREPARED',label,flush=True)
     shutil.copytree(root/'source', out/'source')
     scripts = Path(__file__).parent
-    for name in ('mla_q7_common.py','run_mla_q7.py','prepare_mla_q7.py','build_mla_q7.py','test_mla_q7.py'):
+    for name in ('mla_q7_common.py','run_mla_q7.py','prepare_mla_q7.py','build_mla_q7.py','test_mla_q7.py',
+                 'package_mla_q7_results.py','test_mla_q7_results.py','RUN_COMMANDS.sh',
+                 'run_mla_q7_workflow.py','test_mla_q7_workflow.py','validate_mla_q7_results.py',
+                 'test_mla_q7_validation.py'):
         copy(scripts/name,out/name); copy(scripts/name,out/'source/osprey/be/lno/tests'/name)
+    for name in ('mla_q7_profile.py','profile_mla_q7.py','test_mla_q7_profiling.py','RETURN_RESULTS.sh'):
+        copy(scripts/name,out/name); copy(scripts/name,out/'source/osprey/be/lno/tests'/name)
+    for name in ('gpu_test_results.py','validate_gpu_results.py'):
+        copy(scripts/name,out/name);copy(scripts/name,out/'source/osprey/be/lno/tests'/name)
+    for name in ('GPU-TEST-SHARED-RESULTS-v1.0.md','AI-COMPILER-OPTIMIZATION-SEARCH-IMPLEMENTATION-PLAN-v1.27.md'):
+        copy(repo/'doc'/name,out/'source/doc'/name)
+    copy(repo/'doc/AI-COMPILER-MLA-Q7-PROFILING-v1.0.md',out/'source/doc/AI-COMPILER-MLA-Q7-PROFILING-v1.0.md')
+    copy(repo/'doc/AI-COMPILER-OPTIMIZATION-SEARCH-IMPLEMENTATION-PLAN-v1.26.md',out/'source/doc/AI-COMPILER-OPTIMIZATION-SEARCH-IMPLEMENTATION-PLAN-v1.26.md')
+    copy(repo/'doc/MLA-Q7-PROFILING-RELEASE-NOTES-v1.0.md',out/'source/doc/MLA-Q7-PROFILING-RELEASE-NOTES-v1.0.md')
     for name in ('osprey/ir_tools/tensor_serving_cuda_review.cxx','osprey/ir_tools/Makefile.gbase',
-                 'doc/AI-COMPILER-MLA-Q7-QUALIFICATION-v1.0.md','doc/AI-COMPILER-OPTIMIZATION-SEARCH-IMPLEMENTATION-PLAN-v1.25.md'):
+                 'doc/AI-COMPILER-MLA-Q7-QUALIFICATION-v1.0.md','doc/AI-COMPILER-OPTIMIZATION-SEARCH-IMPLEMENTATION-PLAN-v1.25.md',
+                 'doc/AI-COMPILER-MLA-Q7-RESULTS-RETURN-v1.0.md','doc/AI-COMPILER-MLA-Q7-RESULTS-RETURN-v1.1.md',
+                 'doc/AI-COMPILER-MLA-Q7-RESULTS-VALIDATION-v1.0.md',
+                 'doc/MLA-Q7-VALIDATOR-README.md','doc/MLA-Q7-VALIDATOR-RELEASE-NOTES-v1.0.md'):
         copy(repo/name,out/'source'/name)
     copy(repo/'osprey/include/open64_mla_staging.cuh',out/'source/osprey/include/open64_mla_staging.cuh')
     copy(args.tools/'ir_tools/libmla_serving_cuda_q7.so',out/'runtime/ir_tools/libmla_serving_cuda_q7.so')
@@ -121,6 +136,8 @@ def prepare(args):
                   authenticated_upstream_files=verified,cases=cases,source_outputs=84,portable_oracle_comparisons=252,
                   architecture='sm_90',ptx_isa='8.6',cuda_toolchain='12.8.1',gpu_execution=False,
                   search_invocations=0,aot_selection='deferred',personnel_roles='TBD')
+    packet['profiling_contract']='open64.mla-q7.profiling.v1'
+    packet['shared_results_contract']='open64.gpu-test.results.v1'
     (out/'packet.json').write_text(json.dumps(packet,indent=2)+'\n')
     return packet
 
