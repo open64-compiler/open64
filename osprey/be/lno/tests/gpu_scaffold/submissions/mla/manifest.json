@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "workload_id": "mla.decode.paged.bf16-fp32.v1",
+  "suite_id": "mla.decode.context.v1",
+  "target_sm": 80,
+  "build": {"flags": ["-O3", "-std=c++17"], "libraries": ["cudart"]},
+  "baseline": {"source": "baseline.cu"}
+}

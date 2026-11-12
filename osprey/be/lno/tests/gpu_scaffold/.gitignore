@@ -1,0 +1,5 @@
+/data/
+/runs/
+/.build/
+__pycache__/
+*.pyc
