@@ -192,6 +192,12 @@ BE_LNOPT_CXX_SRCS = \
   dsl_high_admission.cxx \
   dsl_high_snapshot.cxx \
   dsl_high_snapshot_capture.cxx \
+  dsl_high_observer.cxx \
+  dsl_high_observer_json.cxx \
+  dsl_high_observer_native.cxx \
+  tensor_schedule.cxx \
+  tensor_attention_chunk_select.cxx \
+  tensor_attention_search.cxx \
   lnodriver.cxx			\
   lnopt_main.cxx		\
   lnoutils.cxx			\
@@ -328,6 +334,16 @@ LNOPT_DSOS = $(WOPT_SO) $(BE_SO) $(IPL_SO)
 LDIRT = ii_files *.pch
 
 VPATH    =  $(SRC_DIRS)
+
+# Share only detached VHO planning, never native materialization, with LNO.
+tensor_schedule.o: $(BE_DIR)/vho/tensor_schedule.cxx $(BE_DIR)/vho/tensor_kernel_lower.h $(BE_DIR)/vho/tensor_attention_pattern.inc
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+tensor_attention_chunk_select.o: $(BE_DIR)/vho/tensor_attention_chunk_select.cxx $(BE_DIR)/vho/tensor_kernel_lower.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+tensor_attention_search.o: $(BE_DIR)/vho/tensor_attention_search.cxx $(BE_DIR)/vho/tensor_attention_search.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
 LCDEFS = $(HOSTDEFS) $(TARGDEFS)

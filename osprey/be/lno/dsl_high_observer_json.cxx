@@ -1,0 +1,163 @@
+/* Copyright (C) 2026 Open64 Project */
+/* Bounded read-only JSON input adapter for LNO-owned detached search records.
+ * Uses repository RapidJSON headers; adds no library dependency to be.so.
+ * Design: doc/AI-COMPILER-SEARCH-M2C-OBSERVER-v1.0.md. */
+#include "dsl_high_observer.h"
+#include "../../rapidjson/document.h"
+#include <fstream>
+#include <set>
+#include <stdexcept>
+
+namespace {
+/* Propagate stable input refusals; no native state exists in this adapter. */
+void DSL_observer_require(bool valid) {
+    if (!valid) throw std::runtime_error("binding_document_invalid");
+}
+/* Reject duplicates recursively before member lookup; bound nesting and nodes
+ * even for unknown subtrees. RapidJSON validates UTF-8 during parsing. */
+void DSL_observer_unique(const rapidjson::Value &value, unsigned depth, unsigned &nodes) {
+    DSL_observer_require(depth <= 48 && ++nodes <= 200000);
+    if (value.IsObject()) {
+        std::set<std::string> names;
+        for (rapidjson::Value::ConstMemberIterator i = value.MemberBegin(); i != value.MemberEnd(); ++i) {
+            std::string name(i->name.GetString(), i->name.GetStringLength());
+            DSL_observer_require(names.insert(name).second);
+            DSL_observer_unique(i->value, depth + 1, nodes);
+        }
+    } else if (value.IsArray()) for (rapidjson::SizeType i = 0; i < value.Size(); ++i)
+        DSL_observer_unique(value[i], depth + 1, nodes);
+}
+/* Exact object field sets prevent ignored policy or version extensions. */
+void DSL_observer_object(const rapidjson::Value &value, unsigned fields) {
+    DSL_observer_require(value.IsObject() && value.MemberCount() == fields);
+}
+/* Lookup without operator[] assertions on a missing untrusted field. */
+const rapidjson::Value &DSL_observer_member(const rapidjson::Value &value, const char *name) {
+    DSL_observer_require(value.IsObject() && value.HasMember(name)); return value[name];
+}
+/* Strings are bounded and NUL-free before any native metadata comparison. */
+std::string DSL_observer_string(const rapidjson::Value &value, unsigned limit = 4096) {
+    DSL_observer_require(value.IsString() && value.GetStringLength() > 0 && value.GetStringLength() <= limit);
+    std::string text(value.GetString(), value.GetStringLength());
+    DSL_observer_require(text.find('\0') == std::string::npos); return text;
+}
+/* Numeric fields never coerce strings, negative values, fractions or booleans. */
+uint64_t DSL_observer_uint(const rapidjson::Value &value, uint64_t limit = UINT64_C(0xffffffff)) {
+    DSL_observer_require(value.IsUint64() && value.GetUint64() <= limit); return value.GetUint64();
+}
+/* Decode the semantic source schema, excluding derived launch/kernel fields.
+ * The producer's complete typed recipe key is the authoritative native join. */
+VHO_TENSOR_PROGRAM DSL_observer_algorithm(const rapidjson::Value &value) {
+    DSL_observer_object(value, 7);
+    DSL_observer_require(DSL_observer_string(DSL_observer_member(value,"schema")) == "open64.high-algorithm.v1");
+    VHO_TENSOR_PROGRAM program;
+    program.source_pu = DSL_observer_string(DSL_observer_member(value,"source_pu"));
+    program.source_file = DSL_observer_string(DSL_observer_member(value,"source_file"));
+    program.opt_level = DSL_observer_uint(DSL_observer_member(value,"opt_level"));
+    program.threads = DSL_observer_uint(DSL_observer_member(value,"threads"));
+    const rapidjson::Value &values = DSL_observer_member(value,"values"), &operations = DSL_observer_member(value,"operations");
+    DSL_observer_require(values.IsArray() && values.Size() > 0 && values.Size() <= 4096 &&
+        operations.IsArray() && operations.Size() > 0 && operations.Size() <= 4096);
+    for (unsigned i = 0; i < values.Size(); ++i) {
+        const rapidjson::Value &entry = values[i]; DSL_observer_object(entry,6);
+        VHO_TENSOR_VALUE tensor;
+        tensor.name = DSL_observer_string(DSL_observer_member(entry,"name"));
+        tensor.dtype = DSL_observer_string(DSL_observer_member(entry,"dtype"));
+        tensor.role = DSL_observer_uint(DSL_observer_member(entry,"role"));
+        tensor.ordinal = DSL_observer_uint(DSL_observer_member(entry,"ordinal"));
+        tensor.storage = DSL_observer_uint(DSL_observer_member(entry,"storage"));
+        const rapidjson::Value &shape = DSL_observer_member(entry,"shape");
+        DSL_observer_require(shape.IsArray() && shape.Size() > 0 && shape.Size() <= 16);
+        for (unsigned j = 0; j < shape.Size(); ++j) tensor.shape.push_back(DSL_observer_uint(shape[j],16777216));
+        program.values.push_back(tensor);
+    }
+    for (unsigned i = 0; i < operations.Size(); ++i) {
+        const rapidjson::Value &entry = operations[i]; DSL_observer_object(entry,7);
+        VHO_TENSOR_OPERATION operation;
+        operation.name = DSL_observer_string(DSL_observer_member(entry,"name"));
+        operation.version = DSL_observer_uint(DSL_observer_member(entry,"version"));
+        operation.source_node = DSL_observer_uint(DSL_observer_member(entry,"source_node"));
+        operation.source_line = DSL_observer_uint(DSL_observer_member(entry,"source_line"));
+        operation.output = DSL_observer_uint(DSL_observer_member(entry,"output"));
+        const rapidjson::Value &inputs = DSL_observer_member(entry,"inputs"), &attributes = DSL_observer_member(entry,"attributes");
+        DSL_observer_require(inputs.IsArray() && inputs.Size() > 0 && inputs.Size() <= 3 &&
+            attributes.IsObject() && attributes.MemberCount() <= 16);
+        for (unsigned j = 0; j < inputs.Size(); ++j) operation.inputs.push_back(DSL_observer_uint(inputs[j]));
+        for (rapidjson::Value::ConstMemberIterator j = attributes.MemberBegin(); j != attributes.MemberEnd(); ++j)
+            operation.attributes[DSL_observer_string(j->name)] = DSL_observer_string(j->value);
+        program.operations.push_back(operation);
+    }
+    return program;
+}
+/* Reuse existing resource schema and validators, with explicit provenance. */
+VHO_TENSOR_GPU_PROFILE DSL_observer_gpu(const rapidjson::Value &value) {
+    DSL_observer_object(value,9);
+    DSL_observer_require(DSL_observer_string(DSL_observer_member(value,"schema")) == "open64.mla-gpu-profile.v1" &&
+        DSL_observer_string(DSL_observer_member(value,"provenance")) == "provided-capacities-estimated-registers");
+    VHO_TENSOR_GPU_PROFILE gpu;
+    gpu.id = DSL_observer_string(DSL_observer_member(value,"id"));
+    gpu.architecture = DSL_observer_string(DSL_observer_member(value,"architecture"));
+    gpu.sms = DSL_observer_uint(DSL_observer_member(value,"sms"));
+    gpu.registers_per_thread = DSL_observer_uint(DSL_observer_member(value,"registers_per_thread_estimate"));
+    gpu.target_ctas_per_sm = DSL_observer_uint(DSL_observer_member(value,"target_ctas_per_sm"));
+    gpu.scratch_budget = DSL_observer_uint(DSL_observer_member(value,"scratch_budget_bytes"),UINT64_C(1)<<32);
+    const rapidjson::Value &resources = DSL_observer_member(value,"resources"); DSL_observer_object(resources,12);
+    const char *names[] = {"max_blocks","max_warps","max_threads","max_threads_per_cta","registers_per_sm",
+        "max_registers_per_thread","register_quantum","register_warp_quantum","shared_capacity","shared_budget","shared_quantum","shared_reserved"};
+    DSL_HARDWARE_RESOURCE_RECORD &record = gpu.resources;
+    uint64_t *fields[] = {&record.max_blocks,&record.max_warps,&record.max_threads,&record.max_threads_per_cta,&record.registers_per_sm,
+        &record.max_registers_per_thread,&record.register_quantum,&record.register_warp_quantum,&record.shared_capacity,
+        &record.shared_budget,&record.shared_quantum,&record.shared_reserved};
+    for (unsigned i = 0; i < 12; ++i) *fields[i] = DSL_observer_uint(DSL_observer_member(resources,names[i]),UINT64_C(1)<<32);
+    return gpu;
+}
+/* The exact model version/unit and every positive timing are explicit. */
+VHO_MLA_COST_PROFILE DSL_observer_model(const rapidjson::Value &value) {
+    DSL_observer_object(value,6);
+    DSL_observer_require(DSL_observer_string(DSL_observer_member(value,"schema")) == "open64.mla-cost-profile.v1" &&
+        DSL_observer_string(DSL_observer_member(value,"unit")) == "reference_cycles");
+    VHO_MLA_COST_PROFILE model;
+    model.id = DSL_observer_string(DSL_observer_member(value,"id"));
+    model.architecture = DSL_observer_string(DSL_observer_member(value,"architecture"));
+    model.provenance = DSL_observer_string(DSL_observer_member(value,"provenance"));
+    const rapidjson::Value &parameters = DSL_observer_member(value,"parameters"); DSL_observer_object(parameters,VHO_MLA_COST_FIELDS);
+    for (unsigned i = 0; i < VHO_MLA_COST_FIELDS; ++i)
+        model.values[i] = DSL_observer_uint(DSL_observer_member(parameters,VHO_mla_cost_names[i]),1000000000);
+    return model;
+}
+}
+
+/* Parse once into private owned data. Every failure leaves an empty output and
+ * an ordinary-LNO skip reason; no candidate receives document or native handles. */
+bool LNO_DSL_read_search_input(const char *path, DSL_HIGH_SEARCH_INPUT &output, std::string &reason) {
+    output = DSL_HIGH_SEARCH_INPUT();
+    try {
+        std::ifstream input(path,std::ios::binary);
+        if (!input.good()) return reason = "binding_document_unavailable", false;
+        input.seekg(0,std::ios::end); std::streamoff size = input.tellg();
+        DSL_observer_require(size > 0 && size <= 16*1024*1024); input.seekg(0);
+        std::string text((size_t)size,'\0'); input.read(&text[0],size); DSL_observer_require(input.good());
+        DSL_observer_require(text.find('\0') == std::string::npos);
+        rapidjson::Document document;
+        document.Parse<rapidjson::kParseValidateEncodingFlag | rapidjson::kParseIterativeFlag>(text.c_str());
+        DSL_observer_require(!document.HasParseError());
+        unsigned nodes = 0; DSL_observer_unique(document,0,nodes); DSL_observer_object(document,12);
+        DSL_observer_require(DSL_observer_string(DSL_observer_member(document,"schema")) == "open64.lno-high-search.v1");
+        DSL_HIGH_SEARCH_INPUT result;
+        result.unit = DSL_observer_string(DSL_observer_member(document,"unit"));
+        result.function = DSL_observer_string(DSL_observer_member(document,"function"));
+        result.source_key = DSL_observer_string(DSL_observer_member(document,"source_key"),8*1024*1024);
+        result.facts_key = DSL_observer_string(DSL_observer_member(document,"facts_key"),8*1024*1024);
+        result.numeric = DSL_observer_string(DSL_observer_member(document,"numeric"));
+        result.host_target = DSL_observer_string(DSL_observer_member(document,"host_target"));
+        const rapidjson::Value &permission = DSL_observer_member(document,"allow_reassociate");
+        DSL_observer_require(permission.IsBool()); result.allow_reassociate = permission.GetBool();
+        result.algorithm = DSL_observer_algorithm(DSL_observer_member(document,"algorithm"));
+        result.gpu = DSL_observer_gpu(DSL_observer_member(document,"gpu"));
+        result.model = DSL_observer_model(DSL_observer_member(document,"model"));
+        const rapidjson::Value &buffers = DSL_observer_member(document,"buffers");
+        DSL_observer_require(buffers.IsArray() && buffers.Size() > 0 && buffers.Size() <= 4096);
+        for (unsigned i = 0; i < buffers.Size(); ++i) result.buffers.push_back(DSL_observer_uint(buffers[i]));
+        output = result; reason = "decoded"; return true;
+    } catch (const std::exception &error) { reason = error.what(); return false; }
+}

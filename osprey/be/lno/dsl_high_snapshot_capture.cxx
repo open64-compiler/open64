@@ -16,6 +16,7 @@
 #include "opt_alias_mgr.h"
 #include "targ_const.h"
 #include "config.h"
+#include "config_opt.h"
 #include "config_targ.h"
 #include <algorithm>
 #include <map>
@@ -329,7 +330,8 @@ public:
 DSL_HIGH_BINDINGS LNO_DSL_high_bindings(const char *unit) {
     DSL_HIGH_BINDINGS bindings;
     bindings.unit = unit ? unit : "";
-    bindings.numeric = "ieee=" + DSL_high_number(IEEE_Arithmetic) + "/roundoff=" + DSL_high_number(Roundoff_Level);
+    bindings.numeric = "ieee=" + DSL_high_number(IEEE_Arithmetic) + "/roundoff=" + DSL_high_number(Roundoff_Level) +
+        "/fast_math=" + DSL_high_number(OPT_Fast_Math);
     bindings.target = "abi=" + DSL_high_number(Target_ABI) + "/isa=" + DSL_high_number(Target_ISA) + "/gpu_resources=unbound";
     bindings.manifest = "unbound"; bindings.model = "unbound";
     return bindings;

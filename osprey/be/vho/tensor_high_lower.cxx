@@ -224,6 +224,7 @@ public:
         WN *entry = WN_CreateEntry(formals.size(), function, body, WN_CreateBlock(), WN_CreateBlock());
         for (UINT32 i = 0; i < formals.size(); ++i) WN_formal(entry, i) = WN_CreateIdname(0, formals[i]);
         WN_Set_Linenum(entry, _source); Set_PU_Info_tree_ptr(Current_PU_Info, entry);
+        ST_tensor_bind_metadata(ST_st_idx(function), "tensor.high.recipe_key", VHO_tensor_recipe_key(_program).c_str());
         ST_tensor_bind_metadata(ST_st_idx(function), "tensor.high.schema", "common-high-v1");
         ST_tensor_bind_metadata(ST_st_idx(function), "tensor.high.buffer_contract", "disjoint-storage-formals");
     }
