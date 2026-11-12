@@ -1,0 +1,13 @@
+{
+  "schema": "open64.mla-search-options.v1",
+  "strategy": "portfolio",
+  "stop": "exhausted",
+  "max_evaluations": 12,
+  "seed": 17,
+  "patience": 12,
+  "minimum_gain_cycles": 0,
+  "target_cycles": 0,
+  "gap_ppm": 10000,
+  "remaining_invocations": 0,
+  "evaluation_cost_cycles": 0
+}

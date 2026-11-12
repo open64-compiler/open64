@@ -83,7 +83,7 @@ class AttentionFusionTests(unittest.TestCase):
         self.run_tool(self.lowerer,'cooperate',fused,coop,'--allow-reassociate')
         return coop
 
-    def execute(self,length,split=0,variant='normal',rename=False,register_width=None,check_previous=False,gpu=None,chunk_policy=None):
+    def execute(self,length,split=0,variant='normal',rename=False,register_width=None,check_previous=False,gpu=None,chunk_policy=None,search_cost=None):
         """Run actual mapped WHIRL CUDA on synchronized host workers and compare FP64."""
         previous=self.fixture(length,variant,split=split)
         if rename:
@@ -94,8 +94,13 @@ class AttentionFusionTests(unittest.TestCase):
         if gpu is not None:
             profile=self.root/'gpu.json';profile.write_text(json.dumps(gpu))
             selected=self.root/'automatic.json'
-            self.run_tool(self.lowerer,'auto-attention',recipe,selected,'--gpu-profile',profile,'--allow-reassociate',
-                          *(['--chunk-policy',chunk_policy] if chunk_policy else []))
+            if search_cost is not None:
+                costs=self.root/'costs.json';costs.write_text(json.dumps(search_cost));report=self.root/'exploration.json'
+                self.run_tool(self.lowerer,'explore-attention',recipe,report,'--gpu-profile',profile,'--cost-profile',costs,'--allow-reassociate')
+                self.run_tool(self.lowerer,'select-attention',report,selected)
+            else:
+                self.run_tool(self.lowerer,'auto-attention',recipe,selected,'--gpu-profile',profile,'--allow-reassociate',
+                              *(['--chunk-policy',chunk_policy] if chunk_policy else []))
             recipe=selected;register_width=json.loads(recipe.read_text())['split_width']
         elif register_width is not None:
             selected=self.root/'register.json'
@@ -137,7 +142,13 @@ class AttentionFusionTests(unittest.TestCase):
             local=next(k for k in launch['kernels'] if int(k['operation'])==33)
             block=int(local['block_x'])
             self.assertEqual(block,split if gpu is not None and split in (32,64) else 128)
-            policy=json.loads(recipe.read_text()).get('chunk_selection',{}).get('policy')
+            selected_json=json.loads(recipe.read_text())
+            policy=selected_json.get('chunk_selection',{}).get('policy')
+            if search_cost is not None:
+                evidence=selected_json['attention_search'];winner=evidence['candidates'][evidence['winner']]
+                policy='coverage-v'+str(winner['policy'])
+                self.assertEqual(winner['width'],split)
+                self.assertEqual(evidence['materialized_kernels'],0)
             register_statistics=(policy in ('coverage-v4','coverage-v5','coverage-v6') and block==32)
             two_warp_statistics=(policy=='coverage-v5' and block==64)
             warp_owned_partials=(policy=='coverage-v6' and block==64)
@@ -195,8 +206,12 @@ class AttentionFusionTests(unittest.TestCase):
             rejected=self.root/'selection-corrupt.json'
             self.run_tool(self.lowerer,'audit-attention-selection',after,recipe,rejected,success=False)
             self.assertFalse(rejected.exists())
-            self.assertIn('AUTOMATIC COMPILE-TIME CHUNKS',source.read_text())
-            self.assertEqual(launch['chunk_selection'],json.loads(recipe.read_text())['chunk_selection'])
+            if search_cost is not None:
+                self.assertIn('TWO-PHASE ESTIMATION',source.read_text())
+                self.assertEqual(launch['attention_search'],json.loads(recipe.read_text())['attention_search'])
+            else:
+                self.assertIn('AUTOMATIC COMPILE-TIME CHUNKS',source.read_text())
+                self.assertEqual(launch['chunk_selection'],json.loads(recipe.read_text())['chunk_selection'])
         if check_previous:
             old=self.root/'previous';old.mkdir()
             old_recipe=self.root/'attention.json'

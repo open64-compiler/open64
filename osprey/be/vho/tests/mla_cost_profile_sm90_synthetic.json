@@ -1,0 +1,21 @@
+{
+  "schema": "open64.mla-cost-profile.v1",
+  "id": "sm90-synthetic-v1",
+  "architecture": "sm_90",
+  "provenance": "synthetic",
+  "unit": "reference_cycles",
+  "parameters": {
+    "global_bytes_per_cycle": 128,
+    "scalar_lanes_per_cycle": 128,
+    "shared_bytes_per_cycle": 128,
+    "dependent_scalar_cycles": 4,
+    "exp_warp_cycles": 16,
+    "div_warp_cycles": 16,
+    "shuffle_warp_cycles": 4,
+    "cta_barrier_cycles": 32,
+    "warp_fence_cycles": 4,
+    "launch_cycles": 1000,
+    "load_latency_cycles": 100,
+    "latency_hiding_warps": 16
+  }
+}

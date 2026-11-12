@@ -33,6 +33,7 @@
 #include "dsl_builder.h"
 #include "dsl_gatekeeper.h"
 #include "tensor_kernel_lower.h"
+#include "tensor_attention_search.h"
 #include "tensor_schedule_source.h"
 
 BOOL Run_vsaopt=FALSE;
@@ -43,10 +44,12 @@ void Signal_Cleanup(INT) {}
 const char *Host_Format_Parm(INT,MEM_PTR) {return "tensor-kernel";}
 
 namespace {
+UINT64 native_initializations=0,materialized_kernels=0;
 /* Reject malformed handoffs/options before publishing any artifact. */
 void need(bool ok,const char *message) {if(!ok) throw std::runtime_error(message);}
 /* Initialize the established n64 compiler context for source or device mode. */
 void initialize(bool device) {
+    ++native_initializations;
     MEM_Initialize();Set_Error_Tables(Phases,host_errlist);Init_Error_Handler(10);Set_Error_File(NULL);Set_Error_Line(ERROR_LINE_UNKNOWN);
     Preconfigure();Init_Controls_Tbl();ABI_Name="n64";Configure();IR_reader_init();WHIRL_Mldid_Mstid_On=TRUE;
     OPT_Fast_Math=FALSE;Roundoff_Level=ROUNDOFF_NONE;IEEE_Arithmetic=IEEE_ACCURATE;
@@ -114,6 +117,11 @@ Json::Value selection_json(const VHO_TENSOR_PROGRAM &p) {
     return j;
 }
 
+/* JSON remains standalone-driver-owned; the VHO estimator has typed inputs. */
+Json::Value encode(const VHO_TENSOR_PROGRAM &);
+VHO_TENSOR_PROGRAM decode_json(const Json::Value &);
+#include "tensor_attention_search_json.inc"
+
 /* Serialize copied recipe facts only; generated arithmetic remains native WHIRL. */
 Json::Value encode(const VHO_TENSOR_PROGRAM &p) {
     Json::Value j;j["schema"]="open64.tensor-kernel.v1";j["source_pu"]=p.source_pu;j["source_file"]=p.source_file;
@@ -126,6 +134,7 @@ Json::Value encode(const VHO_TENSOR_PROGRAM &p) {
     }
     if(p.register_latent) {j["schema"]="open64.tensor-kernel.v5";j["register_latent"]=true;}
     if(p.auto_chunks) {j["schema"]="open64.tensor-kernel.v6";j["chunk_selection"]=selection_json(p);}
+    if(p.search_selected) {j["schema"]="open64.tensor-kernel.v7";j["attention_search"]=search_evidence(p);}
     for(size_t i=0;i<p.values.size();++i) {
         const VHO_TENSOR_VALUE &v=p.values[i];Json::Value x;x["name"]=v.name;x["dtype"]=v.dtype;x["role"]=v.role;x["ordinal"]=v.ordinal;x["storage"]=v.storage;x["shape"]=Json::Value(Json::arrayValue);
         for(size_t a=0;a<v.shape.size();++a) x["shape"].append(Json::UInt64(v.shape[a]));j["values"].append(x);
@@ -153,11 +162,11 @@ std::string kernel_symbol(const VHO_TENSOR_PROGRAM &p,size_t ordinal) {
     std::ostringstream s;s<<"tensor_"<<encode(p)["recipe_fingerprint"].asString()<<"_op_"<<ordinal;return s.str();
 }
 /* Read only the explicit bounded JSON recipe schema; no coercion of fields. */
-VHO_TENSOR_PROGRAM decode(const char *path) {
-    std::ifstream in(path);Json::Value j;Json::CharReaderBuilder reader;std::string errors;
-    reader["allowComments"]=false;reader["collectComments"]=false;reader["strictRoot"]=true;
-    reader["failIfExtra"]=true;reader["rejectDupKeys"]=true;
-    need(in.good() && Json::parseFromStream(reader,in,&j,&errors),"invalid recipe JSON");
+VHO_TENSOR_PROGRAM decode_json(const Json::Value &j) {
+    if(j["schema"].isString() && j["schema"].asString()=="open64.tensor-kernel.v7") {
+        VHO_TENSOR_PROGRAM p=search_admit(j["attention_search"]);
+        need(search_text(encode(p))==search_text(j),"stale selected MLA recipe");return p;
+    }
     bool automatic=j["schema"].asString()=="open64.tensor-kernel.v6";
     bool registers=automatic || j["schema"].asString()=="open64.tensor-kernel.v5";
     bool attention=registers || j["schema"].asString()=="open64.tensor-kernel.v4";
@@ -201,6 +210,8 @@ VHO_TENSOR_PROGRAM decode(const char *path) {
     Json::StyledWriter canonical;
     need(canonical.write(encode(p))==canonical.write(j),"noncanonical or stale launch recipe");return p;
 }
+/* Parse recipe files with the shared strict standalone document reader. */
+VHO_TENSOR_PROGRAM decode(const char *path) {return decode_json(search_read(path));}
 /* Publish a fresh JSON handoff; failed writes do not masquerade as valid plans. */
 void write_json(const char *path,const Json::Value &j) {
     int fd=open(path,O_WRONLY|O_CREAT|O_EXCL,0600);need(fd>=0,"recipe output already exists or is unavailable");
@@ -287,9 +298,23 @@ bool remove_barrier(WN *n,const char *name="__syncthreads") {
  * unit. The VHO service never expands its compilation scope or writes files. */
 int main(int argc,char **argv) {
     try {
+        if((argc==9 || argc==11) && !strcmp(argv[1],"explore-attention")) {
+            need(!strcmp(argv[4],"--gpu-profile") && !strcmp(argv[6],"--cost-profile") && !strcmp(argv[8],"--allow-reassociate"),"exploration requires target, explicit costs and numerical permission");
+            VHO_TENSOR_PROGRAM p=decode(argv[2]);p.auto_chunks=false;p.search_selected=false;p.search_evidence.clear();p.search_identity.clear();
+            p.register_latent=true;p.chunk_policy=1;p.gpu=VHO_TENSOR_GPU_PROFILE();
+            VHO_MLA_SEARCH_OPTIONS options;
+            if(argc==11) {need(!strcmp(argv[9],"--search-options"),"invalid search control option");options=search_options_decode(search_read(argv[10]));}
+            Json::Value report=search_report(p,read_profile(argv[5]),search_cost_decode(search_read(argv[7])),options);
+            need(native_initializations==0 && materialized_kernels==0,"exploration crossed native mutation boundary");
+            write_json(argv[3],report);printf("estimation_only=true candidate_estimates=%s native_initializations=0 materialized_kernels=0\n",report["candidate_estimates"].asString().c_str());return 0;
+        }
+        if(argc==4 && !strcmp(argv[1],"select-attention")) {
+            VHO_TENSOR_PROGRAM p=search_admit(search_read(argv[2]));
+            write_json(argv[3],encode(p));printf("selected_only=true policy=%u width=%u materialized_kernels=0\n",p.chunk_policy,p.split_width);return 0;
+        }
         if((argc==7 || argc==9) && !strcmp(argv[1],"auto-attention")) {
             need(!strcmp(argv[4],"--gpu-profile") && !strcmp(argv[6],"--allow-reassociate"),"automatic attention requires a GPU profile and explicit numerical permission");
-            VHO_TENSOR_PROGRAM p=decode(argv[2]);p.auto_chunks=false;p.register_latent=true;
+            VHO_TENSOR_PROGRAM p=decode(argv[2]);p.auto_chunks=false;p.search_selected=false;p.search_evidence.clear();p.search_identity.clear();p.register_latent=true;
             p.chunk_policy=6;
             if(argc==9) {
                 need(!strcmp(argv[7],"--chunk-policy") && (!strcmp(argv[8],"coverage-v1") || !strcmp(argv[8],"coverage-v2") || !strcmp(argv[8],"coverage-v3") || !strcmp(argv[8],"coverage-v4") || !strcmp(argv[8],"coverage-v5") || !strcmp(argv[8],"coverage-v6")),"unknown automatic chunk policy");
@@ -304,17 +329,17 @@ int main(int argc,char **argv) {
             need(!strcmp(argv[4],"--split-width") && !strcmp(argv[6],"--allow-reassociate"),"register attention requires explicit split width and numerical permission");
             std::string width=argv[5];need(!width.empty() && width.find_first_not_of("0123456789")==std::string::npos && width.size()<=4,"invalid attention split width");
             VHO_TENSOR_PROGRAM p=decode(argv[2]);need(p.fuse_attention,"register accumulation requires fused attention");
-            p.auto_chunks=false;p.chunk_policy=1;p.gpu=VHO_TENSOR_GPU_PROFILE();p.register_latent=true;p.split_width=strtoul(argv[5],NULL,10);VHO_TENSOR_SCHEDULE plan;
+            p.auto_chunks=false;p.search_selected=false;p.search_evidence.clear();p.search_identity.clear();p.chunk_policy=1;p.gpu=VHO_TENSOR_GPU_PROFILE();p.register_latent=true;p.split_width=strtoul(argv[5],NULL,10);VHO_TENSOR_SCHEDULE plan;
             need(VHO_tensor_schedule(p,&plan,stderr),"register attention rejected");write_json(argv[3],encode(p));return 0;
         }
         if(argc==5 && !strcmp(argv[1],"fuse-attention")) {
             need(!strcmp(argv[4],"--allow-reassociate"),"attention fusion requires explicit numerical permission");
-            VHO_TENSOR_PROGRAM p=decode(argv[2]);p.fuse_attention=true;VHO_TENSOR_SCHEDULE plan;
+            VHO_TENSOR_PROGRAM p=decode(argv[2]);need(!p.search_selected,"invalidate fixed search selection before refusion");p.fuse_attention=true;VHO_TENSOR_SCHEDULE plan;
             need(VHO_tensor_schedule(p,&plan,stderr),"attention fusion rejected");write_json(argv[3],encode(p));return 0;
         }
         if(argc==5 && !strcmp(argv[1],"cooperate")) {
             need(!strcmp(argv[4],"--allow-reassociate"),"cooperative trees require explicit reassociation permission");
-            VHO_TENSOR_PROGRAM p=decode(argv[2]);p.cooperative=true;VHO_TENSOR_SCHEDULE plan;
+            VHO_TENSOR_PROGRAM p=decode(argv[2]);need(!p.search_selected,"invalidate fixed search selection before remapping");p.cooperative=true;VHO_TENSOR_SCHEDULE plan;
             need(VHO_tensor_schedule(p,&plan,stderr),"cooperative schedule rejected");write_json(argv[3],encode(p));return 0;
         }
         if(argc==4 && !strcmp(argv[1],"schedule-source")) {
@@ -324,7 +349,7 @@ int main(int argc,char **argv) {
             printf("schedule_source=PASS stages=%lu\n",(unsigned long)plan.kernels.size());return 0;
         }
         if((argc==5 || argc==8) && !strcmp(argv[1],"optimize")) {
-            need(!strcmp(argv[4],"--fuse"),"expected --fuse");VHO_TENSOR_PROGRAM p=decode(argv[2]);p.fuse=true;
+            need(!strcmp(argv[4],"--fuse"),"expected --fuse");VHO_TENSOR_PROGRAM p=decode(argv[2]);need(!p.search_selected,"invalidate fixed search selection before optimization");p.fuse=true;
             if(argc==8) {
                 need(!strcmp(argv[5],"--split-width") && !strcmp(argv[7],"--allow-reassociate"),"split reductions require explicit reassociation permission");
                 char *end=NULL;unsigned long width=strtoul(argv[6],&end,10);
@@ -364,7 +389,7 @@ int main(int argc,char **argv) {
                 need(!VHO_tensor_materialize_kernel(p,operations[i],0,NULL),"zero source accepted");
                 OPT_Fast_Math=TRUE;BOOL unsafe=VHO_tensor_materialize_kernel(p,operations[i],USRCPOS_srcpos(source),NULL);OPT_Fast_Math=FALSE;
                 need(!unsafe && types==TY_Table_Size() && symbols==ST_Table_Size(CURRENT_SYMTAB),"failed preflight mutated tables");
-                need(VHO_tensor_materialize_kernel(p,operations[i],USRCPOS_srcpos(source),stderr),"kernel materialization failed");
+                ++materialized_kernels;need(VHO_tensor_materialize_kernel(p,operations[i],USRCPOS_srcpos(source),stderr),"kernel materialization failed");
                 need(VHO_tensor_verify_kernel(p,operations[i],stderr) && !VHO_tensor_materialize_kernel(p,operations[i],USRCPOS_srcpos(source),NULL),"device verification/nonempty admission failed");
                 need(DSL_Gatekeeper_Verify_No_Native_PU(pus[i],stderr),"unlowered tensor remains");
                 printf("kernel=%s operation=%s elements=%llu threads=%u stage=%u\n",kernel_symbol(p,operations[i]).c_str(),op.name.c_str(),(unsigned long long)plan.kernels[i].elements,plan.kernels[i].threads,plan.kernels[i].stage);
@@ -376,7 +401,7 @@ int main(int argc,char **argv) {
                 UINT32 types=TY_Table_Size(),symbols=ST_Table_Size(CURRENT_SYMTAB);
                 need(!VHO_tensor_annotate_kernel(p,operations[i],NULL) && types==TY_Table_Size() && symbols==ST_Table_Size(CURRENT_SYMTAB),"repeated annotation mutated tables");
             }
-            checkpoint(pus,argv[4]);return 0;
+            checkpoint(pus,argv[4]);if(p.search_selected) printf("selected_only=true native_initializations=%llu materialized_kernels=%llu\n",(unsigned long long)native_initializations,(unsigned long long)materialized_kernels);return 0;
         }
         if(argc==5 && (!strcmp(argv[1],"audit") || !strcmp(argv[1],"audit-mutate") || !strcmp(argv[1],"audit-binding") || !strcmp(argv[1],"audit-prototype") || !strcmp(argv[1],"audit-policy") || !strcmp(argv[1],"audit-comment") || !strcmp(argv[1],"audit-comment-missing") || !strcmp(argv[1],"audit-mask") || !strcmp(argv[1],"audit-barrier") || !strcmp(argv[1],"audit-resource") || !strcmp(argv[1],"audit-shared") || !strcmp(argv[1],"audit-collective-prototype") || !strcmp(argv[1],"audit-attention-layout") || !strcmp(argv[1],"audit-attention-accumulation") || !strcmp(argv[1],"audit-attention-selection") || !strcmp(argv[1],"audit-attention-statistics") || !strcmp(argv[1],"audit-two-warp-summary-alias") || !strcmp(argv[1],"audit-warp-partial-alias") || !strcmp(argv[1],"audit-warp-partial-barrier") || !strcmp(argv[1],"audit-broadcast-mask") || !strcmp(argv[1],"audit-broadcast-source") || !strcmp(argv[1],"audit-broadcast-width") || !strcmp(argv[1],"audit-broadcast-prototype") || !strcmp(argv[1],"audit-broadcast-missing") || !strcmp(argv[1],"audit-attention-block") || !strcmp(argv[1],"audit-warp-mask") || !strcmp(argv[1],"audit-warp-prototype") || !strcmp(argv[1],"audit-warp-barrier"))) {
             VHO_TENSOR_PROGRAM p=decode(argv[3]);VHO_TENSOR_SCHEDULE plan;need(VHO_tensor_schedule(p,&plan,stderr),"schedule rejected");
@@ -425,7 +450,7 @@ int main(int argc,char **argv) {
                 if(!strcmp(argv[1],"audit-collective-prototype") && shuffle)
                     Set_TYLIST_type(Tylist_Table[TY_tylist(ST_pu_type(WN_st(shuffle)))+1],MTYPE_To_TY(MTYPE_I4));
                 if(!strcmp(argv[1],"audit-barrier")) remove_barrier(PU_Info_tree_ptr(pu));
-                if(!strcmp(argv[1],"audit-attention-selection")) ST_tensor_bind_metadata(st,"tensor.kernel.chunk_selection","stale_choice");
+                if(!strcmp(argv[1],"audit-attention-selection")) ST_tensor_bind_metadata(st,p.search_selected?"tensor.kernel.attention_search":"tensor.kernel.chunk_selection","stale_choice");
                 if(!strcmp(argv[1],"audit-attention-accumulation")) ST_tensor_bind_metadata(st,"tensor.kernel.attention_accumulation","incorrect_ownership");
                 if(!strcmp(argv[1],"audit-attention-layout")) ST_tensor_bind_metadata(st,"tensor.kernel.attention_layout","incorrect_tuple");
                 if(!strcmp(argv[1],"audit-resource")) ST_tensor_bind_metadata(st,"tensor.kernel.shared_bytes","128");
@@ -441,6 +466,7 @@ int main(int argc,char **argv) {
                 if(p.chunk_policy>=4) kernel["attention_statistics"]=metadata(st,"tensor.kernel.attention_statistics");
                 kernel["grid_x"]=metadata(st,"tensor.kernel.grid_x");kernel["block_x"]=metadata(st,"tensor.kernel.block_x");kernel["arguments"]=Json::Value(Json::arrayValue);
                 kernel["fused"]=metadata(st,"tensor.kernel.fused");kernel["split_stage"]=metadata(st,"tensor.kernel.split_stage");kernel["split_width"]=metadata(st,"tensor.kernel.split_width");
+                if(p.search_selected) kernel["attention_search"]=metadata(st,"tensor.kernel.attention_search");
                 if(p.auto_chunks) kernel["chunk_selection"]=metadata(st,"tensor.kernel.chunk_selection");
                 if(p.register_latent) kernel["attention_accumulation"]=metadata(st,"tensor.kernel.attention_accumulation");
                 if(p.fuse_attention) kernel["attention_layout"]=metadata(st,"tensor.kernel.attention_layout");
@@ -457,10 +483,11 @@ int main(int argc,char **argv) {
                 result["kernels"].append(kernel);pu=PU_Info_next(pu);
             }
             need(!pu,"unexpected extra device PU");result["storages"]=Json::Value(Json::arrayValue);
+            if(p.search_selected) result["attention_search"]=search_evidence(p);
             if(p.auto_chunks) result["chunk_selection"]=selection_json(p);
             for(std::map<UINT32,Json::Value>::const_iterator i=storages.begin();i!=storages.end();++i) result["storages"].append(i->second);
             write_json(argv[4],result);printf("mapped_device_audit=PASS kernels=%u storages=%u\n",result["kernels"].size(),result["storages"].size());return 0;
         }
-        fprintf(stderr,"usage: tensor_kernel_lower prepare input.B recipe.json --verify level | optimize baseline.json selected.json --fuse [--split-width N --allow-reassociate] | cooperate fused.json cooperative.json --allow-reassociate | fuse-attention cooperative.json fused.json --allow-reassociate | auto-attention fused.json selected.json --gpu-profile profile.json --allow-reassociate [--chunk-policy coverage-v1|coverage-v2|coverage-v3|coverage-v4|coverage-v5|coverage-v6] | stream-attention fused.json register.json --split-width N --allow-reassociate | schedule-source selected.json optimized.cu | device recipe.json device.before.B device.after.B | device-explain recipe.json comments.before.B comments.after.B | audit device.after.B recipe.json launch.json\n");return 2;
+        fprintf(stderr,"usage: tensor_kernel_lower explore-attention input.json search.json --gpu-profile gpu.json --cost-profile costs.json --allow-reassociate [--search-options options.json] | select-attention search.json selected.json | prepare input.B recipe.json --verify level | optimize baseline.json selected.json --fuse [--split-width N --allow-reassociate] | cooperate fused.json cooperative.json --allow-reassociate | fuse-attention cooperative.json fused.json --allow-reassociate | auto-attention fused.json selected.json --gpu-profile profile.json --allow-reassociate [--chunk-policy coverage-v1|coverage-v2|coverage-v3|coverage-v4|coverage-v5|coverage-v6] | stream-attention fused.json register.json --split-width N --allow-reassociate | schedule-source selected.json optimized.cu | device recipe.json device.before.B device.after.B | device-explain recipe.json comments.before.B comments.after.B | audit device.after.B recipe.json launch.json\n");return 2;
     } catch(const std::exception &e) {fprintf(stderr,"tensor kernel driver: %s\n",e.what());return 1;}
 }

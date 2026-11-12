@@ -769,6 +769,7 @@ public:
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.shared_bytes",decimal(VHO_tensor_shared_bytes(_program,_kernel)).c_str());
         if(_program.chunk_policy>=4) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_statistics",
             _kernel.warp_owned_partials?"warp_owned_partials":_kernel.register_statistics?"warp_register_broadcast":_kernel.two_warp_statistics?"two_warp_register_broadcast":_kernel.mapping>=3?"shared":"none");
+        if(_program.search_selected) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_search",_program.search_identity.c_str());
         if(_program.auto_chunks) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.chunk_selection",VHO_tensor_chunk_selection_identity(_program).c_str());
         if(_program.register_latent) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_accumulation",_kernel.mapping>=3?"register_4_columns_per_warp":"none");
         if(_program.fuse_attention) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_layout",
@@ -819,6 +820,8 @@ BOOL VHO_tensor_validate_program(const VHO_TENSOR_PROGRAM &p,FILE *diagnostic) {
         need(!p.register_latent || p.fuse_attention,"register accumulation requires fused attention");
         need(!p.cooperative || (p.fuse && p.opt_level==3),"cooperative mapping requires fused O3");
         need(!p.split_width || (p.fuse && p.split_width>=2 && p.split_width<=4096),"invalid split width/fusion policy");
+        need(!p.search_selected || (!p.auto_chunks && p.register_latent && p.cooperative && p.opt_level==3 &&
+            !p.search_evidence.empty() && !p.search_identity.empty() && (p.chunk_policy==3 || p.chunk_policy==5 || p.chunk_policy==6)),"invalid fixed MLA selection");
         need(p.operations.size()<=4096,"too many operations");
         need(!p.source_pu.empty() && !p.source_file.empty() && !p.values.empty() && !p.operations.empty(),"empty tensor program/source mapping");
         std::set<UINT32> defined;UINT32 inputs=0,outputs=0;
@@ -930,6 +933,10 @@ BOOL VHO_tensor_verify_kernel(const VHO_TENSOR_PROGRAM &p,UINT32 ordinal,FILE *d
         if(p.auto_chunks) {
             const char *selection=ST_tensor_metadata(st,"tensor.kernel.chunk_selection");
             need(selection && VHO_tensor_chunk_selection_identity(p)==selection,"automatic selection metadata mismatch");
+        }
+        if(p.search_selected) {
+            const char *identity=ST_tensor_metadata(st,"tensor.kernel.attention_search");
+            need(identity && p.search_identity==identity,"selected MLA search identity mismatch");
         }
         if(p.chunk_policy>=4) {
             const char *statistics=ST_tensor_metadata(st,"tensor.kernel.attention_statistics");

@@ -77,6 +77,7 @@ def execute_source(library, function, recipe, raw):
 
 def review(args):
     """Compare both selected views to FP64 oracles and the actual lowered path."""
+    assert not (args.auto_attention and args.explore_attention)
     root = args.artifact_dir.resolve()
     root.mkdir(parents=True, exist_ok=False)
     (root / 'logs').mkdir()
@@ -101,12 +102,21 @@ def review(args):
         case.mkdir()
         for name in ('recipe.json', 'launch.json', 'device.after.B', 'device.after.T'):
             shutil.copyfile(source / 'O3' / name, case / name)
-        if args.cooperative or args.refresh_explanations or args.fuse_attention or args.stream_attention or args.auto_attention:
-            assert sum(map(bool,(args.cooperative,args.refresh_explanations,args.fuse_attention,args.stream_attention,args.auto_attention)))==1
+        if args.cooperative or args.refresh_explanations or args.fuse_attention or args.stream_attention or (args.auto_attention or args.explore_attention):
+            assert sum(map(bool,(args.cooperative,args.refresh_explanations,args.fuse_attention,args.stream_attention,(args.auto_attention or args.explore_attention))))==1
             assert args.ir_b2a and args.whirl2c
             for name in ('recipe.json','device.after.B','device.after.T'):
                 (case / name).rename(case / ('baseline.' + name))
-            if args.auto_attention:
+            if args.explore_attention:
+                assert args.gpu_profile and args.cost_profile
+                options=['--search-options',args.search_options] if args.search_options else []
+                result=run(context+'-estimation-only',[args.lowerer,'explore-attention',case/'baseline.recipe.json',
+                    case/'exploration.json','--gpu-profile',args.gpu_profile,'--cost-profile',args.cost_profile,'--allow-reassociate',*options])
+                exploration=json.loads((case/'exploration.json').read_text())
+                assert exploration['native_initializations']==exploration['materialized_kernels']==0
+                assert not (case/'device.before.B').exists() and not (case/'device.after.B').exists()
+                run(context+'-select-winner',[args.lowerer,'select-attention',case/'exploration.json',case/'recipe.json'])
+            elif args.auto_attention:
                 assert args.gpu_profile
                 run(context+'-auto-attention',[args.lowerer,'auto-attention',case/'baseline.recipe.json',
                     case/'recipe.json','--gpu-profile',args.gpu_profile,'--allow-reassociate'])
@@ -134,7 +144,7 @@ def review(args):
         before = digest(case / 'recipe.json')
         run(context + '-mapped-audit', [args.lowerer, 'audit', case / 'device.after.B',
             case / 'recipe.json', case / 'launch.reopened.json'])
-        if args.cooperative or args.fuse_attention or args.stream_attention or args.auto_attention: shutil.copyfile(case / 'launch.reopened.json',case / 'launch.json')
+        if args.cooperative or args.fuse_attention or args.stream_attention or (args.auto_attention or args.explore_attention): shutil.copyfile(case / 'launch.reopened.json',case / 'launch.json')
         launch = json.loads((case / 'launch.json').read_text())
         assert launch == json.loads((case / 'launch.reopened.json').read_text())
         cuda = case / ('mla_' + context + '_optimized.cu')
@@ -219,7 +229,7 @@ def review(args):
             output.write_bytes(raw)
             check = check_output(case / (variant + '.reference.json'), output)
             lowered = source / 'O3' / (variant + '.host.bin')
-            if not (args.cooperative or args.fuse_attention or args.stream_attention or args.auto_attention):
+            if not (args.cooperative or args.fuse_attention or args.stream_attention or (args.auto_attention or args.explore_attention)):
                 assert raw == lowered.read_bytes(), context + ': source/lowered difference: ' + variant
             if mapped:
                 mapped_output = mapped / (variant + '.outputs.bin')
@@ -232,7 +242,7 @@ def review(args):
                     check['gpu_reference']=check_output(case / (variant + '.reference.json'),gpu_output)
             check.update(lowered_host_bitwise_parity='PASS', buffer_canaries='PASS', inputs_unchanged='PASS')
             checks[variant] = check
-        if not (args.cooperative or args.refresh_explanations or args.fuse_attention or args.stream_attention or args.auto_attention):
+        if not (args.cooperative or args.refresh_explanations or args.fuse_attention or args.stream_attention or (args.auto_attention or args.explore_attention)):
             assert digest(case / 'device.after.B') == digest(source / 'O3/device.after.B')
         assert not list(case.glob('*.tmp-*'))
         if recipe.get('fuse_attention',False):
@@ -242,12 +252,16 @@ def review(args):
         cases[context] = dict(stages=len(stages), function=function, recipe_sha256=before,
             device_image_sha256=digest(case / 'device.after.B'), source_sha256=digest(cuda),
             host_execution=checks, cuda_compilation='PASS' if args.nvcc else 'NOT_RUN', gpu_execution='PASS' if gpu else 'UNAVAILABLE')
+        if args.explore_attention:
+            cases[context].update(candidate_estimates=exploration['candidate_estimates'],strategy_runs=len(exploration['runs']),
+                search_native_initializations=0,search_materialized_kernels=0,selected_configurations_materialized=1,
+                selected_policy=recipe['attention_search']['candidates'][recipe['attention_search']['winner']]['policy'],selected_width=recipe['split_width'])
         cases[context].update(internal_temporary_bytes=sum(int(s['bytes']) for s in launch['storages'] if s['role']=='0'),explanation_blocks=len(blocks),whirl_comment_emission='PASS' if mapped else 'NOT_RUN',
             previous_readable_code_unchanged=bool(args.previous_readable),
             previous_mapped_code_unchanged=bool(args.previous_mapped))
     report = dict(status='PASS', schema='open64.tensor-schedule-source-review.v1', cases=cases,
         lowerer_sha256=digest(args.lowerer), optimization_selected_by_printer=False,
-        low_level_whirl_changed=bool(args.whirl2c), executable_code_changed=bool(args.cooperative or args.fuse_attention or args.stream_attention or args.auto_attention), gpu_execution='PASS' if all(c['gpu_execution']=='PASS' for c in cases.values()) else 'UNAVAILABLE')
+        low_level_whirl_changed=bool(args.whirl2c), executable_code_changed=bool(args.cooperative or args.fuse_attention or args.stream_attention or (args.auto_attention or args.explore_attention)), gpu_execution='PASS' if all(c['gpu_execution']=='PASS' for c in cases.values()) else 'UNAVAILABLE')
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
     (root / 'SHA256SUMS').write_text(''.join(digest(p) + '  ' + str(p.relative_to(root)) + '\n'
         for p in sorted(root.rglob('*')) if p.is_file()))
@@ -269,6 +283,9 @@ def main():
     parser.add_argument('--fuse-attention',action='store_true',help='Select fused score/softmax/latent with stable rescaled chunk merge')
     parser.add_argument('--auto-attention',action='store_true',help='Select attention chunks using an explicit offline GPU resource profile')
     parser.add_argument('--gpu-profile',type=Path)
+    parser.add_argument('--explore-attention',action='store_true',help='Estimate detached MLA candidates, then lower/test only the winner')
+    parser.add_argument('--cost-profile',type=Path)
+    parser.add_argument('--search-options',type=Path)
     parser.add_argument('--stream-attention',action='store_true',help='Select register latent accumulation and explicit long chunk width')
     parser.add_argument('--attention-split-width',type=int,default=128)
     parser.add_argument('--cooperative', action='store_true',help='Select explicit warp/shared schedule with reassociation permission')
