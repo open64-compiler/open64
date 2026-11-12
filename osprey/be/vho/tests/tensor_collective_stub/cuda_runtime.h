@@ -46,6 +46,13 @@ static float __shfl_down_sync(unsigned mask,float value,unsigned delta,int width
     float result=open64_exchange[tid+(lane+delta<32?delta:0)];
     open64_warps[tid/32]->Wait();return result;
 }
+/* Broadcast reads the selected lane in the same full warp. This models
+ * register exchange only; the two barriers protect the simulator's scratch. */
+static float __shfl_sync(unsigned mask,float value,int source,int width) {
+    if(mask!=0xffffffffU || width!=32 || source<0 || source>=32) std::abort();
+    unsigned tid=threadIdx.x;open64_exchange[tid]=value;open64_warps[tid/32]->Wait();
+    float result=open64_exchange[(tid/32)*32+source];open64_warps[tid/32]->Wait();return result;
+}
 static void __syncthreads() {open64_cta.Wait();}
 static void __syncwarp(unsigned mask) {if(mask!=0xffffffffU) std::abort();open64_warps[threadIdx.x/32]->Wait();}
 /* Persistent workers execute all blocks; the final barrier isolates CTAs. */

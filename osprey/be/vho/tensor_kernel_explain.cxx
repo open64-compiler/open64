@@ -202,7 +202,7 @@ public:
             }
         }
         UINT64 rows=a.batch*a.heads,span=_p.split_width && a.length>_p.split_width?_p.split_width:a.length;
-        UINT64 quantum=_p.chunk_policy==3 && _p.split_width && span<=64?span:128;
+        UINT64 quantum=_p.chunk_policy>=3 && _p.split_width && span<=64?span:128;
         UINT64 chunks=(a.length+span-1)/span,capacity=((span+quantum-1)/quantum)*quantum;
         UINT64 old_probability_groups=a.length>=32?(a.rank+3)/4:a.rank;
         text<<"PERFORMANCE COMPARISON BASELINE: the same captured DAG with the previous cooperative score-buffer cuts.\n";
@@ -212,7 +212,7 @@ public:
         text<<"Previous nominal token exp evaluations: "<<(1+old_probability_groups)*rows*a.length
             <<" = rows*L*(one denominator pass + "<<old_probability_groups<<" weighted-latent column groups).\n";
         text<<"Fused valid-token exp evaluations: "<<rows*a.length<<". The selected loops actually visit "<<rows*chunks*capacity
-            <<" shared exp slots including padding";
+            <<(_p.chunk_policy==4 && span==32?" lane exponential positions including neutral tails":" shared exp slots including padding");
         if(chunks>1) text<<", plus at most "<<rows*chunks<<" chunk-rescale exps (empty chunks take zero)";
         text<<".\nThis is source-level work accounting; compiler folding/predication and instruction throughput can change executed cost.\n";
         UINT64 prior_weighted_ctas=a.length>=32?rows*((a.rank+3)/4)*chunks:(rows*a.rank*chunks+127)/128;
@@ -231,7 +231,66 @@ public:
      * the owning phase's selected facts, never from CUDA spelling heuristics. */
     /* Narrow physical ownership is a versioned VHO decision. Keep legacy
      * descriptions exact so already sealed v1/v2 recipes remain reproducible. */
+    /* Lane-private one-token ownership is selected by VHO; no shared-memory
+     * ordering assumption is delegated to the CUDA printer. */
+    void ExplainWarpRegisterStage(const VHO_TENSOR_KERNEL &k) {
+        const VHO_TENSOR_ATTENTION &a=_plan.attention;std::ostringstream text;
+        UINT64 rows=a.batch*a.heads,tail=a.length-UINT64(k.chunks-1)*32;
+        text<<"FUSED ATTENTION: SINGLE-WARP REGISTER STATISTICS; 32 threads, zero shared bytes.\n"
+            <<"Launch "<<VHO_tensor_grid(_p,k)<<" CTAs: row=block modulo "<<rows<<", chunk=block / "<<rows<<". Each lane owns token chunk*32+lane.\n"
+            <<"PHASE 1: compute scale*(dot(projected_query,latent_cache)+dot(rope_query,rope_cache)) in ascending F32 K order.\n"
+            <<"Keep score in a lane-private register; false masks and tail lanes keep -infinity without source reads.\n"
+            <<"PHASE 2: all lanes execute the full-mask shuffle-down max tree at offsets 16,8,4,2,1.\n"
+            <<"__shfl_sync(0xffffffff,warp_maximum,0,32) broadcasts lane zero's raw maximum into every lane's register.\n"
+            <<"Keep raw maximum for the partial tuple, and derive the finite-safe maximum (zero fallback) in registers.\n"
+            <<"PHASE 3: compute exp(score-safe_max) once per lane, retain it in a register, and execute the F32 sum tree.\n"
+            <<"A second full-mask __shfl_sync from lane zero broadcasts the denominator to every lane.\n"
+            <<"PHASE 4: normalize the lane-private exponential by denominator>0?denominator:1, retaining the probability register.\n"
+            <<"ZERO MEMORY FENCES: no __syncwarp or CTA barrier, no shared score/probability/statistics array.\n"
+            <<"Shuffle collectives still rendezvous the complete warp and exchange registers; they are not general shared-memory fences.\n"
+            <<"WHY THE THIRD FENCE DISAPPEARS: width=threads=32 gives exactly one token per lane. Every column group reads only its owning lane's probability.\n"
+            <<"No lane reads another lane's shared write; the probability register is immutable across all column groups.\n"
+            <<"This proof requires one full warp, local split width32 and register latent accumulation. It does not apply to width64, wider spans or the merge.\n"
+            <<"PHASE 5: warp0 owns columns group*4+j (j=0..3), with ceil(R/4)="<<(a.rank+3)/4<<" groups for R="<<a.rank<<".\n"
+            <<"Reset four lane-private sums for each group, multiply the same probability register by valid cache columns, then reduce each sum with the full-mask tree.\n"
+            <<"Lane zero writes valid columns. Column/tail predicates guard memory/stores, never shuffle participation.\n"
+            <<"At R16 the four groups cover columns0..3,4..7,8..11,12..15. The 80 latent warp-level shuffle calls remain; statistics add ten down-shuffles and two broadcasts.\n"
+            <<"Both broadcasts use mask0xffffffff, source lane0, width32, and their F4 return-preg is read immediately in WHIRL.\n"
+            <<"FINAL TAIL: "<<tail<<" real token(s), "<<32-tail<<" neutral lanes per row. Every lane still executes every collective.\n"
+            <<"An allowed finite one-token chunk has d_c=1,z_c=its cache vector; an empty chunk has d_c=0,z_c=0.\n"
+            <<"Write [raw_m_c,d_c,normalized_z_c] at (chunk*"<<rows<<"+row)*(R+2); no global score/probability buffers.\n"
+            <<"The retained 128-thread merge uses m=max m_c, t_c=d_c*exp(m_c-m), D=sum t_c, z=sum(t_c/D)*z_c, LSE=m+log(D).\n"
+            <<"Select zero mass before exp for empty chunks. All-empty rows give zero latent and -infinity LSE.\n"
+            <<"RESOURCE TRADEOFF: selected local shared storage drops160->0 bytes and three warp memory fences disappear, replaced by two register broadcasts.\n"
+            <<"Lane-private score, maximum, denominator and probability can increase register pressure; inspect ptxas spills/resources and whole-call GPU timing.\n"
+            <<"The block/chunk count, four-column grouping, tuple traffic, merge and projection stages are unchanged at this width. No measured speedup is asserted.\n";
+        text<<"REGISTER LIFETIME WALKTHROUGH: attention_masked_score survives the max tree; accumulator/next_value are tree scratch.\n"
+            <<"attention_raw_maximum receives the first broadcast; attention_maximum is its finite-safe copy. Raw and safe maxima remain distinct for tuple semantics.\n"
+            <<"attention_weight first holds this lane's exponential, survives the denominator tree, then holds its normalized probability.\n"
+            <<"attention_denominator receives the second broadcast and is separate from later column-reduction scratch.\n"
+            <<"Four latent sum registers reset per column group, while the probability register is never overwritten by the column trees.\n"
+            <<"WHY BROADCAST AFTER A TREE: lane zero is guaranteed to own the complete 32-lane reduction; other lanes can hold only partial results.\n"
+            <<"A shuffle-down tree alone is not an all-lanes reduction. Source lane0 supplies the same completed maximum/denominator to every lane.\n"
+            <<"FENCE 1 REMOVAL (maximum): old lane0 shared max store -> warp memory fence -> all-lane shared max loads.\n"
+            <<"New: full-mask max tree -> register broadcast -> each lane derives its safe maximum. The shared producer/consumer edge no longer exists.\n"
+            <<"FENCE 2 REMOVAL (denominator): old lane0 shared denominator store -> warp memory fence -> shared denominator loads.\n"
+            <<"New: preserve each lane's exponential, sum through scratch registers, broadcast lane0's completed sum, and divide the preserved exponential.\n"
+            <<"FENCE 3 REMOVAL (probabilities): old shared probability stores -> publication fence -> latent shared probability loads.\n"
+            <<"New: lane l retains p_l and uses it for every valid cache column in every group. No lane reads a probability produced by another lane.\n"
+            <<"For R16, lane l updates p_l*cache[token,0..3], then 4..7,8..11,12..15 using the same p_l. Only the product sums cross lanes, through shuffle trees.\n"
+            <<"INDEPENDENT-SCHEDULING PROOF: each private value follows its own lane's program order; each cross-lane scalar dependency is an explicit full-mask shuffle.\n"
+            <<"All 32 non-exited lanes must reach the same collectives with mask0xffffffff. Masked/tail predicates surround memory/arithmetic, not collective calls.\n"
+            <<"The broadcasts replace register communication needs, not the memory-order semantics of a fence. There is no shared-memory communication to order.\n"
+            <<"TWO-TOKEN MATHEMATICAL EXAMPLE: scores 0 and log(3), with all other lanes masked, give m=log(3), e0=1/3,e1=1, D=4/3.\n"
+            <<"Broadcasts copy m and D into all lanes; lane0 keeps p0=1/4 and lane1 keeps p1=3/4. If a cache column is 2 and 10, its reduced z_c is8.\n"
+            <<"This is an illustrative real-arithmetic example; actual F32 exp/reductions obey the existing numerical policy and reference tolerance.\n"
+            <<"EMPTY/TAIL PARTICIPATION: an empty chunk has raw maximum=-infinity, safe maximum=0, exponential=0, denominator=0 and normalized probability=0.\n"
+            <<"Neutral lanes still broadcast and shuffle. The final "<<tail<<"-token chunk changes memory guards, not collective participation or group count.\n"
+            <<"The readable serial helper's arrays emulate lane state; the actual WHIRL-derived local kernel has register scalars and no shared arrays.\n";
+        ExplainDependencies(k,text);Explain("STAGE SEMANTICS",text.str());
+    }
     void ExplainNarrowBlockStage(const VHO_TENSOR_KERNEL &k) {
+        if(k.register_statistics) {ExplainWarpRegisterStage(k);return;}
         const VHO_TENSOR_ATTENTION &a=_plan.attention;std::ostringstream text;
         UINT64 rows=a.batch*a.heads,warps=k.threads/32,columns=warps*4;
         text<<"FUSED ATTENTION: chunk-local attention; NARROW BLOCK OWNERSHIP.\n"
@@ -519,6 +578,13 @@ public:
     }
     /* Explain source-level work from the already selected ledger; no search. */
     void ExplainNarrowCosts(std::ostringstream &text,const VHO_TENSOR_CHUNK_CANDIDATE &winner) {
+        if(_p.chunk_policy==4) {
+            text<<"WARP-REGISTER COST WALKTHROUGH: width32 keeps one score/exponential/probability per lane and two broadcast statistics.\n"
+                <<"Its selected shared footprint is zero, with zero memory fences and two full-mask register broadcasts per local CTA.\n"
+                <<"Width64 retains two warps, shared storage288 bytes and five CTA barriers. Other mappings retain their existing storage and synchronization.\n"
+                <<"Changing register demand can offset shared-memory savings; profile allocation quanta still apply and coverage is not measured occupancy.\n";
+            return;
+        }
         if(_p.chunk_policy==3 && (winner.width==32 || winner.width==64)) {
             const VHO_TENSOR_ATTENTION &a=_plan.attention;UINT64 real=a.batch*a.heads*a.length;
             text<<"NARROW-KERNEL COST WALKTHROUGH: selected width "<<winner.width<<", block "<<winner.threads<<" threads.\n";
@@ -674,6 +740,9 @@ public:
             <<"Resource admission uses each kernel's actual thread count; profile register/shared allocation quanta remain authoritative.\n"
             <<"A one-warp local kernel uses three full-mask warp fences, while a two-warp local kernel retains five CTA barriers.\n"
             <<"Legacy coverage-v1/v2 recipes keep 128-thread geometry; the policy and candidate block_x ledger seal the new choice.\n";
+        if(_p.chunk_policy==4) text<<"SINGLE-WARP REGISTER EXTENSION: coverage-v4 retains narrow block geometry and selects register-broadcast statistics only for split local width32.\n"
+            <<"The per-lane probability is immutable and private across column groups; no shared publication or memory fence is required.\n"
+            <<"Candidate statistics and native metadata seal this ownership proof; coverage-v3 reproduces the prior three-fence realization.\n";
         ExplainNarrowCosts(text,*winner);
         text<<"The profiles describe an offline planning envelope. Architecture sm_90 alone never supplies an enabled SM count.\n"
             <<"Changing SM count changes the coverage target even when per-SM resources, register estimates and numerical semantics are unchanged.\n";

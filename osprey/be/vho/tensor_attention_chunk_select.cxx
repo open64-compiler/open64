@@ -57,7 +57,7 @@ BOOL VHO_tensor_select_attention_chunks(const VHO_TENSOR_PROGRAM &input,
     const VHO_TENSOR_GPU_PROFILE &g,VHO_TENSOR_CHUNK_SELECTION *output,FILE *f) {
     try {
         require(output && VHO_tensor_gpu_profile_valid(g,f),"invalid automatic chunk output/profile");
-        require(input.chunk_policy==1 || input.chunk_policy==2 || input.chunk_policy==3,"unknown automatic chunk policy");
+        require(input.chunk_policy==1 || input.chunk_policy==2 || input.chunk_policy==3 || input.chunk_policy==4,"unknown automatic chunk policy");
         VHO_TENSOR_PROGRAM base=input;base.auto_chunks=false;
         require(base.register_latent && VHO_tensor_validate_program(base,f),"automatic chunks require admitted register attention");
         VHO_TENSOR_ATTENTION a=VHO_tensor_attention(base);require(a.enabled,"automatic chunks require absorbed attention");
@@ -71,8 +71,8 @@ BOOL VHO_tensor_select_attention_chunks(const VHO_TENSOR_PROGRAM &input,
             VHO_TENSOR_CHUNK_CANDIDATE c;c.width=width;
             UINT64 span=width?width:a.length;c.chunks=(a.length+span-1)/span;
             c.ctas=a.batch*a.heads*c.chunks;
-            c.threads=input.chunk_policy==3 && width && width<=64?width:128;
-            c.local_shared=4*(((span+c.threads-1)/c.threads)*c.threads+8);
+            c.threads=input.chunk_policy>=3 && width && width<=64?width:128;
+            c.local_shared=input.chunk_policy==4 && width==32?0:4*(((span+c.threads-1)/c.threads)*c.threads+8);
             c.merge_shared=c.chunks>1?4*(((c.chunks+127)/128)*128+8):0;
             c.scratch=c.chunks>1?4*a.batch*a.heads*c.chunks*(a.rank+2):0;
             c.reason="native_capacity";
@@ -114,6 +114,7 @@ const char *VHO_tensor_chunk_policy_name(const VHO_TENSOR_PROGRAM &p) {
     if(p.chunk_policy==1) return "coverage-v1";
     if(p.chunk_policy==2) return "coverage-v2";
     if(p.chunk_policy==3) return "coverage-v3";
+    if(p.chunk_policy==4) return "coverage-v4";
     throw std::runtime_error("unknown automatic chunk policy");
 }
 

@@ -53,11 +53,12 @@ std::string decimal(UINT64 n) {std::ostringstream s;s<<n;return s.str();}
 /* Typed CUDA builtins are the existing ordinary CALL mechanism, not new IR
  * opcodes. Effects remain conservative; convergence belongs to this schedule. */
 bool collective(const ST *s) {
-    const char *name=ST_name(s);bool shuffle=!strcmp(name,"__shfl_down_sync"),warp=!strcmp(name,"__syncwarp");
+    const char *name=ST_name(s);bool broadcast=!strcmp(name,"__shfl_sync");
+    bool shuffle=broadcast || !strcmp(name,"__shfl_down_sync"),warp=!strcmp(name,"__syncwarp");
     if(!shuffle && !warp && strcmp(name,"__syncthreads")) return false;
     if(ST_class(s)!=CLASS_FUNC || ST_sclass(s)!=SCLASS_EXTERN) return false;
     TY_IDX t=ST_pu_type(s);if(TY_kind(t)!=KIND_FUNCTION || !TY_has_prototype(t)) return false;
-    TYLIST_IDX a=TY_tylist(t);TYPE_ID expected[]={shuffle?MTYPE_F4:MTYPE_V,MTYPE_U4,MTYPE_F4,MTYPE_U4,MTYPE_I4};
+    TYLIST_IDX a=TY_tylist(t);TYPE_ID expected[]={shuffle?MTYPE_F4:MTYPE_V,MTYPE_U4,MTYPE_F4,broadcast?MTYPE_I4:MTYPE_U4,MTYPE_I4};
     UINT32 count=shuffle?5:warp?2:1;
     for(UINT32 i=0;i<count;++i) {TY_IDX p=TYLIST_type(Tylist_Table[a+i]);if(!p || TY_mtype(p)!=expected[i]) return false;}
     return TYLIST_type(Tylist_Table[a+count])==TY_IDX_ZERO;
@@ -356,11 +357,12 @@ VHO_TENSOR_SCHEDULE schedule(const VHO_TENSOR_PROGRAM &p) {
         if(a.enabled && i==33) {
             VHO_TENSOR_KERNEL k;k.id=k.root=i;k.output=chunks>1?a.partial:a.bundle;k.stage=chunks>1?1:0;
             k.mapping=3;k.chunks=chunks;k.split_width=chunks>1?p.split_width:a.length;
-            k.threads=p.chunk_policy==3 && p.register_latent && k.stage==1 && (k.split_width==32 || k.split_width==64)?k.split_width:p.threads;
+            k.threads=p.chunk_policy>=3 && p.register_latent && k.stage==1 && (k.split_width==32 || k.split_width==64)?k.split_width:p.threads;
+            k.register_statistics=p.chunk_policy==4 && k.stage==1 && k.threads==32 && k.split_width==32;
             UINT32 ids[]={a.q,a.qr,a.cache,a.rope_cache,a.mask};k.inputs.assign(ids,ids+5);k.elements=VHO_tensor_elements(plan.bindings.values[k.output]);
             plan.kernels.push_back(k);
             if(chunks>1) {
-                k.id=i+4096;k.mapping=4;k.stage=2;k.threads=p.threads;k.output=a.bundle;k.inputs.clear();k.inputs.push_back(a.partial);
+                k.id=i+4096;k.mapping=4;k.stage=2;k.threads=p.threads;k.register_statistics=false;k.output=a.bundle;k.inputs.clear();k.inputs.push_back(a.partial);
                 k.elements=VHO_tensor_elements(plan.bindings.values[k.output]);plan.kernels.push_back(k);
             }
             continue;
@@ -493,11 +495,11 @@ public:
             WN_Add(MTYPE_U8,WN_Mpy(MTYPE_U8,k,integer(n)),WN_Binary(OPR_REM,MTYPE_U8,flat,integer(n))));
     }
     /* Construct a standard typed, effectful CUDA builtin declaration once. */
-    ST *Builtin(bool shuffle,bool warp=false) {
-        const char *name=shuffle?"__shfl_down_sync":warp?"__syncwarp":"__syncthreads";const ST *old;ST_IDX index;
+    ST *Builtin(bool shuffle,bool warp=false,bool broadcast=false) {
+        const char *name=shuffle?(broadcast?"__shfl_sync":"__shfl_down_sync"):warp?"__syncwarp":"__syncthreads";const ST *old;ST_IDX index;
         FOREACH_SYMBOL(GLOBAL_SYMTAB,old,index) if(!strcmp(ST_name(old),name)) {need(collective(old),"incompatible CUDA builtin");return &St_Table[ST_st_idx(old)];}
         TY_IDX ty;TY &t=New_TY(ty);TY_Init(t,0,KIND_FUNCTION,MTYPE_UNKNOWN,0);Set_TY_has_prototype(ty);
-        TYLIST_IDX a;TYPE_ID types[]={shuffle?MTYPE_F4:MTYPE_V,MTYPE_U4,MTYPE_F4,MTYPE_U4,MTYPE_I4};
+        TYLIST_IDX a;TYPE_ID types[]={shuffle?MTYPE_F4:MTYPE_V,MTYPE_U4,MTYPE_F4,broadcast?MTYPE_I4:MTYPE_U4,MTYPE_I4};
         UINT32 count=shuffle?5:warp?2:1;
         for(UINT32 i=0;i<count;++i) {Set_TYLIST_type(New_TYLIST(a),MTYPE_To_TY(types[i]));if(!i) Set_TY_tylist(t,a);}
         Set_TYLIST_type(New_TYLIST(a),TY_IDX_ZERO);PU_IDX pi;PU &pu=New_PU(pi);PU_Init(pu,ty,GLOBAL_SYMTAB+1);Set_PU_c_lang(pu);
@@ -518,6 +520,16 @@ public:
             WN_INSERT_BlockLast(combine,store(_sum,value));
             WN_INSERT_BlockLast(body,WN_CreateIf(WN_LT(MTYPE_U8,load(_lane),integer(32-offset)),combine,WN_CreateBlock()));
         }
+    }
+    /* Full-mask register broadcast, with the standard immediate return-preg
+     * read. No shared publication is implied or required by this CALL. */
+    void WarpBroadcast(WN *body,ST *destination) {
+        WN *call=WN_Call(MTYPE_F4,MTYPE_V,4,ST_st_idx(Builtin(true,false,true)));WN_Set_Call_Default_Flags(call);
+        WN *args[]={WN_Intconst(MTYPE_U4,0xffffffffU),load(_sum),WN_Intconst(MTYPE_I4,0),WN_Intconst(MTYPE_I4,32)};
+        TYPE_ID types[]={MTYPE_U4,MTYPE_F4,MTYPE_I4,MTYPE_I4};
+        for(UINT32 i=0;i<4;++i) WN_kid(call,i)=WN_CreateParm(types[i],args[i],MTYPE_To_TY(types[i]),WN_PARM_BY_VALUE);
+        WN_INSERT_BlockLast(body,call);
+        WN_INSERT_BlockLast(body,store(destination,WN_Ldid(MTYPE_F4,-1,Return_Val_Preg,MTYPE_To_TY(MTYPE_F4))));
     }
     /* Each synchronization point is outside all lane/column/tail predicates. */
     void Barrier(WN *body) {
@@ -753,6 +765,8 @@ public:
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.operation",decimal(_kernel.id).c_str());
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.mapping",decimal(_kernel.mapping).c_str());
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.shared_bytes",decimal(VHO_tensor_shared_bytes(_program,_kernel)).c_str());
+        if(_program.chunk_policy==4) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_statistics",
+            _kernel.register_statistics?"warp_register_broadcast":_kernel.mapping>=3?"shared":"none");
         if(_program.auto_chunks) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.chunk_selection",VHO_tensor_chunk_selection_identity(_program).c_str());
         if(_program.register_latent) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_accumulation",_kernel.mapping>=3?"register_4_columns_per_warp":"none");
         if(_program.fuse_attention) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_layout",
@@ -786,6 +800,7 @@ UINT64 VHO_tensor_grid(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERNEL &k) {
 
 /* Shared storage is selected explicitly and checked against mapped metadata. */
 UINT64 VHO_tensor_shared_bytes(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERNEL &k) {
+    if(k.register_statistics) return 0;
     if(k.mapping<3) return k.mapping==2?640:0;
     UINT64 count=k.mapping==3?k.split_width:k.chunks;
     UINT64 quantum=k.mapping==3?k.threads:128;
@@ -865,7 +880,7 @@ BOOL VHO_tensor_materialize_kernel(const VHO_TENSOR_PROGRAM &p,UINT32 ordinal,SR
         for(UINT32 i=0;i<3;++i) {if(f.Is_Null() || strcmp(FLD_name(f),names[i]) || FLD_ofst(f)!=4*i || FLD_type(f)!=MTYPE_To_TY(MTYPE_U4) ||
             (i==2)!=!!FLD_last_field(f)) return FALSE;if(i!=2) f=FLD_next(f);}
     }
-    FOREACH_SYMBOL(GLOBAL_SYMTAB,symbol,idx) if(!strcmp(ST_name(symbol),"__shfl_down_sync") || !strcmp(ST_name(symbol),"__syncthreads") || !strcmp(ST_name(symbol),"__syncwarp"))
+    FOREACH_SYMBOL(GLOBAL_SYMTAB,symbol,idx) if(!strcmp(ST_name(symbol),"__shfl_down_sync") || !strcmp(ST_name(symbol),"__syncthreads") || !strcmp(ST_name(symbol),"__syncwarp") || !strcmp(ST_name(symbol),"__shfl_sync"))
         if(!collective(symbol)) return FALSE;
     VHO_TENSOR_DEVICE(plan.bindings,selected(plan,ordinal),source).Materialize();return TRUE;
 }
@@ -911,6 +926,11 @@ BOOL VHO_tensor_verify_kernel(const VHO_TENSOR_PROGRAM &p,UINT32 ordinal,FILE *d
         if(p.auto_chunks) {
             const char *selection=ST_tensor_metadata(st,"tensor.kernel.chunk_selection");
             need(selection && VHO_tensor_chunk_selection_identity(p)==selection,"automatic selection metadata mismatch");
+        }
+        if(p.chunk_policy==4) {
+            const char *statistics=ST_tensor_metadata(st,"tensor.kernel.attention_statistics");
+            std::string expected_statistics=kernel.register_statistics?"warp_register_broadcast":kernel.mapping>=3?"shared":"none";
+            need(statistics && expected_statistics==statistics,"attention statistics mismatch");
         }
         if(p.register_latent) {
             const char *accumulation=ST_tensor_metadata(st,"tensor.kernel.attention_accumulation");

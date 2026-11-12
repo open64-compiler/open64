@@ -53,7 +53,7 @@ class AutoChunkTests(unittest.TestCase):
     def test_auto_width32_native_reference(self):
         j=self.execute(513,gpu=gpu_profile())
         self.assertEqual(j['split_width'],32)
-        self.assertEqual(j['chunk_selection']['policy'],'coverage-v3')
+        self.assertEqual(j['chunk_selection']['policy'],'coverage-v4')
 
     def test_legacy_policy_remains_selectable_and_stable(self):
         source=self.attention()
@@ -124,7 +124,7 @@ class AutoChunkTests(unittest.TestCase):
         source=self.attention();self.select(source,gpu_profile(),'selected')
         text=(self.root/'selected.json').read_text()
         changes=[('"split_width" : 64','"split_width" : 128'),
-                 ('"policy" : "coverage-v3"','"policy" : "unknown"'),
+                 ('"policy" : "coverage-v4"','"policy" : "unknown"'),
                  ('"ctas" : 260','"ctas" : 261'),
                  ('"block_x" : 32','"block_x" : 64')]
         for i,(old,new) in enumerate(changes):
@@ -144,6 +144,26 @@ class AutoChunkTests(unittest.TestCase):
     def test_width32_large_finite_values(self):
         j=self.execute(513,variant='large-values',gpu=gpu_profile())
         self.assertEqual(j['split_width'],32)
+
+    def test_v3_shared_statistics_remain_reproducible(self):
+        j=self.execute(513,variant='wide',gpu=gpu_profile(),chunk_policy='coverage-v3')
+        self.assertEqual(j['chunk_selection']['policy'],'coverage-v3')
+        row=next(c for c in j['chunk_selection']['candidates'] if c['width']==32)
+        self.assertEqual(row['local_shared_bytes'],160)
+
+    def test_v4_seals_register_statistics_ledger(self):
+        source=self.attention();j=self.select(source,gpu_profile(),'warp-register')
+        row=next(c for c in j['chunk_selection']['candidates'] if c['width']==32)
+        self.assertEqual(row['local_shared_bytes'],0)
+        self.assertEqual(row['statistics'],'warp_register_broadcast')
+        text=(self.root/'warp-register.json').read_text()
+        for i,(old,new) in enumerate([('"statistics" : "warp_register_broadcast"','"statistics" : "shared"'),
+                                    ('"local_shared_bytes" : 0','"local_shared_bytes" : 160')]):
+            self.assertIn(old,text)
+            bad=self.root/('forged-register-%d.json'%i);bad.write_text(fusion.reseal(text.replace(old,new,1)))
+            target=self.root/('forged-register-%d.cu'%i)
+            self.run_tool(self.lowerer,'schedule-source',bad,target,success=False)
+            self.assertFalse(target.exists())
 
     def test_lower_optimization_level_rejects_automatic_selection(self):
         source=self.fixture(level=0)

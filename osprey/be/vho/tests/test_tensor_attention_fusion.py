@@ -79,7 +79,7 @@ class AttentionFusionTests(unittest.TestCase):
         self.run_tool(self.lowerer,'cooperate',fused,coop,'--allow-reassociate')
         return coop
 
-    def execute(self,length,split=0,variant='normal',rename=False,register_width=None,check_previous=False,gpu=None):
+    def execute(self,length,split=0,variant='normal',rename=False,register_width=None,check_previous=False,gpu=None,chunk_policy=None):
         """Run actual mapped WHIRL CUDA on synchronized host workers and compare FP64."""
         previous=self.fixture(length,variant,split=split)
         if rename:
@@ -90,7 +90,8 @@ class AttentionFusionTests(unittest.TestCase):
         if gpu is not None:
             profile=self.root/'gpu.json';profile.write_text(json.dumps(gpu))
             selected=self.root/'automatic.json'
-            self.run_tool(self.lowerer,'auto-attention',recipe,selected,'--gpu-profile',profile,'--allow-reassociate')
+            self.run_tool(self.lowerer,'auto-attention',recipe,selected,'--gpu-profile',profile,'--allow-reassociate',
+                          *(['--chunk-policy',chunk_policy] if chunk_policy else []))
             recipe=selected;register_width=json.loads(recipe.read_text())['split_width']
         elif register_width is not None:
             selected=self.root/'register.json'
@@ -134,9 +135,23 @@ class AttentionFusionTests(unittest.TestCase):
             self.assertEqual(block,split if gpu is not None and split in (32,64) else 128)
             self.assertEqual(len(re.findall(r'__syncthreads\s*\(', (self.root/'kernels.cu').read_text())),
                              (0 if block==32 else 5)+(5 if split and length>split else 0))
-            self.assertEqual(len(re.findall(r'(?m)^\s*__syncwarp\s*\(', (self.root/'kernels.cu').read_text())),3 if block==32 else 0)
+            register_statistics=(json.loads(recipe.read_text()).get('chunk_selection',{}).get('policy')=='coverage-v4' and block==32)
+            self.assertEqual(len(re.findall(r'(?m)^\s*__syncwarp\s*\(', (self.root/'kernels.cu').read_text())),3 if block==32 and not register_statistics else 0)
+            self.assertEqual(len(re.findall(r'(?m)^\s*\w+\s*=\s*__shfl_sync\s*\(', (self.root/'kernels.cu').read_text())),2 if register_statistics else 0)
+            if register_statistics:
+                self.assertEqual(local['shared_bytes'],'0')
+                self.assertEqual(local['attention_statistics'],'warp_register_broadcast')
+                body=(self.root/'kernels.cu').read_text().split('void '+local['name']+'(',1)[1].split('\nextern ',1)[0]
+                self.assertNotIn('__shared__',body)
+                self.assertNotIn('__syncwarp(',body)
+                self.assertNotIn('__syncthreads(',body)
+
         if gpu is not None:
-            for mode in ['audit-attention-block']+(['audit-warp-mask','audit-warp-prototype','audit-warp-barrier'] if block==32 else []):
+            modes=['audit-attention-block']
+            if register_statistics:
+                modes+=['audit-attention-statistics','audit-broadcast-mask','audit-broadcast-source','audit-broadcast-width','audit-broadcast-prototype','audit-broadcast-missing']
+            elif block==32:modes+=['audit-warp-mask','audit-warp-prototype','audit-warp-barrier']
+            for mode in modes:
                 rejected=self.root/(mode+'.json')
                 self.run_tool(self.lowerer,mode,after,recipe,rejected,success=False)
                 self.assertFalse(rejected.exists())
