@@ -1,6 +1,6 @@
 /* Copyright (C) 2026 Open64 Project */
 /* PU-local tensor semantic lowering and explicit baseline GPU mapping.
- * Design: doc/AI-COMPILER-TENSOR-KERNEL-LOWERING-v0.1.md. These transient
+ * Design: doc/AI-COMPILER-TENSOR-KERNEL-LOWERING-v0.2.md. These transient
  * recipes contain no WHIRL pointers and add no mapped-image representation.
  * The driver owns source/device scopes, image writing and launch manifests. */
 #ifndef tensor_kernel_lower_INCLUDED
@@ -30,13 +30,32 @@ struct VHO_TENSOR_OPERATION {
     std::map<std::string,std::string> attributes;
 };
 struct VHO_TENSOR_PROGRAM {
+    VHO_TENSOR_PROGRAM():opt_level(0),threads(1),fuse(false),split_width(0) {}
     std::string source_pu;
     std::string source_file;
     UINT32 opt_level;
     UINT32 threads;
+    bool fuse;                  /* explicit O3 producer inlining */
+    UINT32 split_width;          /* 0 ordered, otherwise explicit reassociation */
     std::vector<VHO_TENSOR_VALUE> values;
     std::vector<VHO_TENSOR_OPERATION> operations;
 };
+
+/* Deterministic PU-local launch plan. Synthetic scratch is detached storage,
+ * never a new logical opcode or binary WHIRL record. IDs >=4096 are merges. */
+struct VHO_TENSOR_KERNEL {
+    UINT32 id,root,output;
+    UINT32 split_width,chunks,stage; /* 0 direct, 1 partial, 2 merge */
+    UINT64 elements;
+    std::vector<UINT32> inputs;
+};
+struct VHO_TENSOR_SCHEDULE {
+    VHO_TENSOR_PROGRAM bindings;
+    std::vector<VHO_TENSOR_KERNEL> kernels;
+};
+/* Select only pure producer fusion and independent contiguous reduction chunks.
+ * O3 is required. Nonzero split_width is explicit floating-point permission. */
+extern BOOL VHO_tensor_schedule(const VHO_TENSOR_PROGRAM &,VHO_TENSOR_SCHEDULE *,FILE *);
 
 /* Validate all dimensions, dataflow, schemas and aliases before mutation.
  * This is also the fresh-device-context admission check for a copied recipe. */

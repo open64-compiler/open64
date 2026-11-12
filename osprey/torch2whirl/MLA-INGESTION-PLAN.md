@@ -1,6 +1,6 @@
 # Absorbed MLA Standalone Ingestion Test
 
-Version v0.4 dated November 5 2026. This fixture extracts the absorbed single
+Version v0.6 dated November 5 2026. This fixture extracts the absorbed single
 query MLA algorithm into a deterministic read-only tensor program. Short and
 long contexts execute the same source. CPU FP32 eager and genuine FX execution
 are checked against an independently expanded scalar FP64 reference.
@@ -12,8 +12,9 @@ the existing source capture conventions. Native MLA ingestion now emits real
 typed WHIRL through both the public API and standalone driver, with independent
 mapped-image reopening. Compilable WHIRL-derived reference CUDA can now be
 emitted before lowering. A VHO-owned primitive lowering also generates ordinary
-device WHIRL and executable CUDA kernels for both contexts. Optimized fused or
-split attention and GPU execution validation remain open.
+device WHIRL and executable CUDA kernels for both contexts. Short-context
+producer fusion and long-context parallel split reductions are implemented in
+the focused lowering pipeline; GPU execution validation remains open.
 The source graph consumes the published
 [native tensor expression contract](../../doc/AI-COMPILER-NATIVE-TENSOR-EXPRESSION-CONTRACT-v0.1.md).
 
@@ -182,9 +183,9 @@ file may provide create_model and open64_sample_inputs; the driver delegates
 sample resolution to Python instead of requiring redundant CLI descriptors.
 Tests require Python to reject a missing provider without writing an image.
 
-Next gates are baseline executable lowering, numerical validation of compiled
-execution, and short/long schedule and AOT native-kernel comparisons against
-the same oracle. AOT remains the production baseline.
+The subsequent v0.4/v0.5 sections record executable lowering and host numerical
+validation of the generated code. Remaining gates include real GPU execution,
+timing, and production driver integration. AOT remains the production baseline.
 
 ## Historical v0.1 validation
 
@@ -296,8 +297,80 @@ The local CUDA runtime reports no usable device (probe error 35), so actual
 GPU execution and timing remain open. `validate_mla_gpu.py` can execute the
 retained launchers and portable saved oracles on a GPU host without PyTorch.
 
-This is an AOT executable baseline with 34 launches and explicit intermediate
-traffic. Automatic be_driver integration, short-path fusion, long-context
-split/merge attention, tiling/staging, production runtime dispatch and measured
-performance acceptance remain later milestones. Existing source and reference
-CUDA lanes remain available; no new MLIR interfaces or tensor traits are added.
+At v0.4 this was an AOT executable baseline with 34 launches and explicit
+intermediate traffic. The v0.5 milestone below adds producer fusion and split
+reductions. Automatic be_driver integration, tiling/staging, production runtime
+dispatch and measured performance acceptance remain later milestones. Existing
+source and reference CUDA lanes remain available; no new MLIR interfaces or
+tensor traits are added.
+
+## Fused and split device WHIRL v0.5
+
+The [v0.2 lowering specification](../../doc/AI-COMPILER-TENSOR-KERNEL-LOWERING-v0.2.md)
+controls O3 producer fusion and parallel contiguous reduction chunks. The
+source graph, source attributes and original v0.1/v0.4 baseline remain intact.
+No frontend changes or new native logical operators are required.
+
+Short L=127 now uses 9 kernels and 3,528 temporary bytes, compared with 34
+kernels and 27,542 bytes. Elementwise operations and transpose/reshape indexing
+are fused into materialized contractions, reductions, and result stores.
+Long L=8193 uses the same producer fusion plus split maximum, denominator sum,
+and weighted latent contraction: 12 kernels and 204,240 temporary bytes versus
+34 and 1,664,940. W=256 gives 33 chunks with a one-element tail. Partial writes
+are independent; ordered merge kernels consume them on the same stream.
+
+```sh
+tensor_kernel_lower prepare mla.B baseline.json --verify 3
+tensor_kernel_lower optimize baseline.json short.json --fuse
+tensor_kernel_lower optimize baseline.json long.json --fuse \
+  --split-width 256 --allow-reassociate
+```
+
+Each context uses its own shape-specialized baseline recipe. The subsequent
+device/audit/whirl2c commands are unchanged. Nonzero split width requires
+explicit reassociation permission; this is tolerance-preserving F32 execution,
+not a bitwise promise. O0/O1/O2 reject optimization selection and retain serial
+semantic lowering. The emitter prints already-selected WHIRL semantics.
+
+Seven scenarios per context cover original inputs, one masked head, all masked,
+tail-only valid data, empty first chunk, equal scores, and large finite scores.
+The harness checks unmodified emitted arithmetic against the independent FP64
+oracle with rtol=2e-5 and atol=2e-6, including output/LSE, allocation canaries,
+unchanged inputs, and reversed work-item order for optimized variants. Separate
+native reopening checks bodies, prototypes, launch bindings, and split policy.
+Scoped sanitizers, generic non-MLA semantic tests, missing-permission rejection,
+optimization-level gates, CUDA compilation, and AOT coexistence are required.
+
+The launchers and portable GPU-only checker retain all saved scenarios for a
+compatible GPU host. GPU execution and timing are still NOT_RUN locally because
+the runtime finds no usable device. Launch/storage reductions are structural
+evidence, not measured speedups. This is not a single fused attention kernel;
+global score intermediates, contraction/reduction boundaries, and some producer
+recomputation remain. AOT is the baseline; runtime threshold tuning, be_driver
+integration, warp/SMEM staging, and production acceptance remain open. Named
+ownership/transfer roles remain TBD as requested.
+
+## Readable selected-schedule CUDA v0.6
+
+The [selected schedule source specification](../../doc/AI-COMPILER-TENSOR-SCHEDULE-SOURCE-v0.1.md)
+adds `tensor_kernel_lower schedule-source selected.json optimized.cu`. The
+printer consumes the same VHO-selected plan used for scalar device WHIRL,
+after fusion/split selection and before low-level coordinate expansion.
+
+The short file exposes 9 stages; long exposes 12, with explicit partial and
+merge calls using width 256 and 33 chunks. Named lazy views show fused
+reshape/transpose, masking, arithmetic, and exp/log without allocating those
+intermediates. Materialized boundaries and source identities remain visible.
+The supporting header executes the selected stages serially for checking.
+This view is a compilable host/device review function; production GPU kernels
+still come from the actual selected device `.B` through normal whirl2c.
+
+The review harness joins stage IDs against independently audited device-image
+metadata, compiles both files with host C++ and NVCC, checks all seven saved
+scenarios per context against the FP64 oracle, and requires byte-for-byte
+parity with the lowered host outputs. Input/guard preservation, deterministic
+printing, no-overwrite behavior, generic non-MLA operations, baseline rejection,
+and stale-policy rejection are covered. No source/device IR, schedule policy,
+binary layout, normal emitter behavior, or GPU validation status changes.
+There is no separate optimized tensor `.B` at this boundary in the current
+focused pipeline; the readable source projects the selected detached schedule.

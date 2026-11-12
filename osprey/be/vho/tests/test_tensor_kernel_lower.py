@@ -42,6 +42,8 @@ def produce(kind, path):
             'attr.accum_dtype': 'float32', 'attr.reassociate': 'false'}, 'maximum', out)
     elif kind == 'boolean':
         op, out = b.operator('common.logical_not', 1, [x], {}, 'inverse', ty), ty
+    elif kind == 'fill':
+        op, out = b.operator('common.fill_like', 1, [x], {'attr.value_bits': '3f800000'}, 'ones', ty), ty
     else:
         op, out = b.operator('common.sub', 1, [x, x], {'attr.broadcast_rule': 'numpy'}, 'difference', ty), ty
     b.set_value_source_position(op, file, 1)
@@ -150,10 +152,15 @@ class TensorKernelTests(unittest.TestCase):
         self.assertIn('unsupported tensor trait/representation field', result.stderr)
         self.assertFalse((self.root / 'no.json').exists())
 
-    def execute_generic(self, kind, level):
+    def execute_generic(self, kind, level, fuse=False, split=0):
         import difflib
         import torch
         _, recipe = self.fixture(kind, level)
+        if fuse:
+            optimized = self.root / 'optimized.json'
+            options = ['--split-width', split, '--allow-reassociate'] if split else []
+            self.run_tool(self.lowerer, 'optimize', recipe, optimized, '--fuse', *options)
+            recipe = optimized
         before, after = self.root / 'device.before.B', self.root / 'device.after.B'
         self.run_tool(self.lowerer, 'device', recipe, before, after)
         for image in (before, after):
@@ -163,7 +170,9 @@ class TensorKernelTests(unittest.TestCase):
         manifest = self.root / 'launch.json'
         self.run_tool(self.lowerer, 'audit', after, recipe, manifest)
         launch = json.loads(manifest.read_text())
-        self.assertEqual(len(launch['kernels']), 2)
+        expected_count = 1 if fuse and kind in ('valid', 'boolean', 'fill') else 3 if split else 2
+        self.assertEqual(len(launch['kernels']), expected_count)
+        self.assertEqual(sum(k['split_stage'] == '1' for k in launch['kernels']), int(bool(split)))
         self.assertTrue(all(int(x['block_x']) == (128 if level == 3 else 1) for x in launch['kernels']))
         self.run_tool(self.w2c, '-cuda', '-TARG:abi=n64', '-O0',
             '-CLIST:dotc_file=' + str(self.root / 'kernels.cu'), '-CLIST:doth_file=' + str(self.root / 'kernels.h'), after)
@@ -187,7 +196,7 @@ class TensorKernelTests(unittest.TestCase):
             expected = None
         else:
             data = struct.pack('<6f', 1, -2, 3, 4, 5, 6)
-            expected = b'\0' * 24
+            expected = struct.pack('<6f', *([1.] * 6)) if kind == 'fill' else b'\0' * 24
         (self.root / 'input.bin').write_bytes(data)
         self.run_tool(self.root / 'host', self.root / 'input.bin', self.root / 'output.bin')
         if expected is None:
@@ -197,6 +206,18 @@ class TensorKernelTests(unittest.TestCase):
             self.assertEqual(b, -2.)
         else:
             self.assertEqual((self.root / 'output.bin').read_bytes(), expected)
+        if fuse:
+            import re
+            from tensor_schedule_review import execute_source
+            source = self.root / 'optimized.cu'
+            self.run_tool(self.lowerer, 'schedule-source', recipe, source)
+            function = re.search(r'void (open64_optimized_[A-Za-z0-9_]+)\(', source.read_text()).group(1)
+            header = Path(__file__).resolve().parents[2] / 'whirl2c'
+            library = self.root / 'optimized.so'
+            self.run_tool('g++', '-x', 'c++', '-std=c++17', '-O1', '-shared', '-fPIC', '-ffp-contract=off',
+                          '-fno-fast-math', '-I' + str(header), source, '-o', library)
+            got = execute_source(library, function, json.loads(recipe.read_text()), data)
+            self.assertEqual(got, (self.root / 'output.bin').read_bytes())
         old = after.read_bytes()
         self.run_tool(self.lowerer, 'device', recipe, before, after, success=False)
         self.assertEqual(after.read_bytes(), old)
@@ -208,6 +229,58 @@ class TensorKernelTests(unittest.TestCase):
     def test_byte_boolean_interface_executes(self): self.execute_generic('boolean', 3)
     def test_unequal_batch_broadcast_matmul_executes(self): self.execute_generic('batch-matmul', 3)
     def test_maximum_propagates_nan(self): self.execute_generic('maximum', 3)
+    def test_fused_subtraction_executes(self): self.execute_generic('valid', 3, fuse=True)
+    def test_fused_boolean_executes(self): self.execute_generic('boolean', 3, fuse=True)
+    def test_fused_fill_preserves_unused_input_abi(self): self.execute_generic('fill', 3, fuse=True)
+    def test_fused_batch_broadcast_executes(self): self.execute_generic('batch-matmul', 3, fuse=True)
+    def test_split_matmul_uneven_tail(self): self.execute_generic('batch-matmul', 3, fuse=True, split=3)
+    def test_split_maximum_preserves_nan(self): self.execute_generic('maximum', 3, fuse=True, split=2)
+
+    def test_schedule_source_requires_selected_recipe(self):
+        for level in (0, 3):
+            _, recipe = self.fixture('view-level%d' % level, level)
+            out = self.root / ('view%d.cu' % level)
+            result = self.run_tool(self.lowerer, 'schedule-source', recipe, out, success=False)
+            self.assertIn('optimized selected schedule required', result.stderr)
+            self.assertFalse(out.exists())
+
+    def test_schedule_source_refuses_stale_policy(self):
+        _, base = self.fixture('valid', 3)
+        recipe = self.root / 'optimized.json'
+        self.run_tool(self.lowerer, 'optimize', base, recipe, '--fuse')
+        p = json.loads(recipe.read_text())
+        p['source_pu'] += '_changed'
+        recipe.write_text(json.dumps(p))
+        out = self.root / 'stale.cu'
+        self.run_tool(self.lowerer, 'schedule-source', recipe, out, success=False)
+        self.assertFalse(out.exists())
+
+    def test_optimization_level_and_permission_boundaries(self):
+        for level in (0, 1, 2):
+            _, recipe = self.fixture('level' + str(level), level)
+            output = self.root / ('optimized%d.json' % level)
+            self.run_tool(self.lowerer, 'optimize', recipe, output, '--fuse', success=False)
+            self.assertFalse(output.exists())
+        _, recipe = self.fixture('valid', 3)
+        output = self.root / 'no-permission.json'
+        self.run_tool(self.lowerer, 'optimize', recipe, output, '--fuse', '--split-width', 2, success=False)
+        self.assertFalse(output.exists())
+        for width in (0, 1, 4097, -1, '2garbage'):
+            self.run_tool(self.lowerer, 'optimize', recipe, output, '--fuse', '--split-width', width,
+                          '--allow-reassociate', success=False)
+            self.assertFalse(output.exists())
+
+    def test_optimized_policy_cannot_be_silently_changed(self):
+        _, base = self.fixture('valid', 3)
+        recipe = self.root / 'optimized.json'
+        self.run_tool(self.lowerer, 'optimize', base, recipe, '--fuse')
+        p = json.loads(recipe.read_text())
+        for key, value in [('split_width', 256), ('reassociation', 'allow'), ('fuse', False)]:
+            changed = dict(p, **{key: value})
+            bad = self.root / (key + '.json')
+            bad.write_text(json.dumps(changed))
+            self.run_tool(self.lowerer, 'device', bad, self.root / 'b.B', self.root / 'a.B', success=False)
+            self.assertFalse((self.root / 'b.B').exists() or (self.root / 'a.B').exists())
 
 
 if __name__ == '__main__':

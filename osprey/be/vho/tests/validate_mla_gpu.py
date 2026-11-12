@@ -64,7 +64,11 @@ def main():
                 if probe.returncode:
                     raise RuntimeError('CUDA probe failed: ' + probe.stderr)
                 checks = {}
-                for variant in ('original', 'one-masked-head', 'all-masked'):
+                references = sorted((root / context).glob('*.reference.json'))
+                if not references:
+                    raise ValueError('missing saved reference cases')
+                for reference in references:
+                    variant = reference.name[:-len('.reference.json')]
                     path = out / (label + '-' + variant + '.bin')
                     result = subprocess.run([str(runner), str(root / context / (variant + '.inputs.bin')), str(path)],
                                             capture_output=True, text=True)
