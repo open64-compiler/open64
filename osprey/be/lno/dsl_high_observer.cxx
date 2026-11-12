@@ -50,6 +50,14 @@ bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_
         result.control_key = VHO_mla_search_control_key(input.controls);
     } else if (!VHO_mla_explore(program, input.gpu, input.model, options, &result.exploration, NULL))
         return reason = "no_estimated_candidate", false;
+    LNO_DSL_search_report_keys(input,result);
+    output = result; reason = "observed"; return true;
+}
+
+/* Derive exact source/resource/model identities through the one shared spelling.
+ * No estimates, native allocation or mutation occurs; application compares all
+ * fields against the sealed observer result before any selected construction. */
+void LNO_DSL_search_report_keys(const DSL_HIGH_SEARCH_INPUT &input,DSL_HIGH_SEARCH_REPORT &result) {
     result.manifest_key = VHO_tensor_recipe_key(input.algorithm);
     const VHO_TENSOR_GPU_PROFILE &gpu = input.gpu;
     const DSL_HARDWARE_RESOURCE_RECORD &resources = gpu.resources;
@@ -64,5 +72,4 @@ bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_
         << input.model.architecture << '/' << input.model.provenance << "/reference_cycles";
     for (unsigned i = 0; i < VHO_MLA_COST_FIELDS; ++i) model_key << '/' << input.model.values[i];
     result.resource_key = resource_key.str(); result.model_key = model_key.str();
-    output = result; reason = "observed"; return true;
 }

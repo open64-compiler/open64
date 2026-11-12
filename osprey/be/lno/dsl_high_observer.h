@@ -1,7 +1,8 @@
 /* Copyright (C) 2026 Open64 Project */
 /* Detached LNO search input/report; native pointers never cross this interface.
  * Design: doc/AI-COMPILER-SEARCH-M2C-OBSERVER-v1.0.md. No selected application,
- * candidate lowering, or mapped-image representation is provided here. */
+ * candidate lowering, or mapped-image representation is provided here.
+ * Optional outputs are owned copies for the separate selected-only caller. */
 #ifndef dsl_high_observer_INCLUDED
 #define dsl_high_observer_INCLUDED
 #include "dsl_high_snapshot.h"
@@ -41,9 +42,14 @@ extern bool LNO_DSL_validate_search_input(const DSL_HIGH_SNAPSHOT &, const DSL_H
  * service has no native handles and never applies or materializes a winner. */
 extern bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &, DSL_HIGH_SEARCH_REPORT &, std::string &);
 /* Native active-PU wrapper: validate lineage/ABI, guard physical tree/table
- * state, run detached exploration, revalidate analyses and retain fallback. */
+ * state, run detached exploration, revalidate analyses and retain fallback.
+ * Optional output DTOs are cleared on entry and copied only after successful
+ * isolation; no native pointer, application authority or mutation escapes. */
 extern void LNO_DSL_observe_high(WN *, DU_MANAGER *, ALIAS_MANAGER *, ARRAY_DIRECTED_GRAPH16 *,
-    const DSL_HIGH_EPOCH &, const DSL_HIGH_BINDINGS &, const DSL_HIGH_SNAPSHOT &, uint64_t, FILE *);
+    const DSL_HIGH_EPOCH &, const DSL_HIGH_BINDINGS &, const DSL_HIGH_SNAPSHOT &, uint64_t, FILE *, DSL_HIGH_SEARCH_INPUT * = NULL, DSL_HIGH_SEARCH_REPORT * = NULL);
+/* Derive complete binding identities without exploration or native handles.
+ * Native selected-plan admission reuses this to detect rebinding after search. */
+extern void LNO_DSL_search_report_keys(const DSL_HIGH_SEARCH_INPUT &,DSL_HIGH_SEARCH_REPORT &);
 /* Monotonic host collection/validation/exploration accounting, never GPU time. */
 extern uint64_t LNO_DSL_observer_time_us();
 /* Query the existing read-only option descriptor service. This file-scope

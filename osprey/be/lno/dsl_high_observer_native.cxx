@@ -156,7 +156,9 @@ uint64_t LNO_DSL_observer_time_us() {
  * defect and aborts rather than continuing with potentially corrupted state. */
 void LNO_DSL_observe_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias, ARRAY_DIRECTED_GRAPH16 *graph,
     const DSL_HIGH_EPOCH &epoch, const DSL_HIGH_BINDINGS &bindings, const DSL_HIGH_SNAPSHOT &snapshot,
-    uint64_t snapshot_us, FILE *trace) {
+    uint64_t snapshot_us, FILE *trace, DSL_HIGH_SEARCH_INPUT *selected_input, DSL_HIGH_SEARCH_REPORT *selected_report) {
+    if(selected_input) *selected_input=DSL_HIGH_SEARCH_INPUT();
+    if(selected_report) *selected_report=DSL_HIGH_SEARCH_REPORT();
     DSL_HIGH_SEARCH_CONFIGURATION configuration=DSL_observer_configuration();
     if(configuration.specified && configuration.mode!="on") {
         if(trace) fprintf(trace,"AI_HIGH_SEARCH 2 SKIP reason=%s fallback=ordinary_lno\n",
@@ -193,6 +195,10 @@ void LNO_DSL_observe_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias, ARRAY
         analyses_current;
     uint64_t observer_us = LNO_DSL_observer_time_us()-boundary_begin;
     FmtAssert(unchanged,("read-only High observer changed native source/tables/analyses"));
+    if(observed) {
+        if(selected_input) *selected_input=input;
+        if(selected_report) *selected_report=report;
+    }
     if (trace) {
         fprintf(trace,"AI_HIGH_SEARCH 1 IMAGE_ABI dep_bytes=%lu must_offset=%lu bool_bytes=%lu vertex_bytes=%lu edge_bytes=%lu word_bytes=%lu pu_field_bytes=%lu\n",
             (unsigned long)sizeof(DEP_STRUCT),(unsigned long)offsetof(DEP_STRUCT,Is_Must),(unsigned long)sizeof(mBOOL),

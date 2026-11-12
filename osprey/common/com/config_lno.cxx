@@ -629,8 +629,15 @@ MHD *Current_MHD = &Mhd_Options;
  * Design: doc/AI-COMPILER-SEARCH-M3-CONTROLS-v1.0.md. */
 static char *LNO_High_Search_Mode = NULL;
 static char *LNO_High_Search_Bindings = NULL;
+static char *LNO_High_Apply = NULL;
+static char *LNO_High_Apply_Checkpoint = NULL;
 
 static OPTION_DESC Options_LNO[] = {
+
+  { OVK_NAME, OV_VISIBLE, FALSE, "high_apply", "high_apply", 0, 0, 0,
+    &LNO_High_Apply, NULL, "on/off: apply only the freshly admitted High search winner" },
+  { OVK_NAME, OV_VISIBLE, FALSE, "high_apply_checkpoint", "high_apply_checkpoint", 0, 0, 0,
+    &LNO_High_Apply_Checkpoint, NULL, "Fresh base path for selected High before/after mapped images" },
 
   { OVK_NAME, OV_VISIBLE, FALSE, "high_search", "high_search", 0, 0, 0,
     &LNO_High_Search_Mode, NULL,
