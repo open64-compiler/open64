@@ -194,11 +194,13 @@ BE_LNOPT_CXX_SRCS = \
   dsl_high_snapshot_capture.cxx \
   dsl_high_reuse.cxx \
   dsl_high_quantized.cxx \
+  dsl_q1_preopt.cxx \
   dsl_high_observer.cxx \
   dsl_high_observer_json.cxx \
   dsl_high_observer_native.cxx \
   dsl_high_apply.cxx \
   tensor_high_lower.cxx \
+  tensor_q1_program.cxx \
   tensor_schedule.cxx \
   tensor_attention_chunk_select.cxx \
   tensor_attention_search.cxx \
@@ -575,3 +577,9 @@ dsl_high_movement_test: dsl_high_movement_test.o tensor_attention_search_test.o 
 	$(link.c++f) -o $@ $^
 
 dsl_high_quantized.o: $(BE_LNOPT_DIR)/dsl_high_quantized.cxx $(BE_LNOPT_DIR)/dsl_high_quantized.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
+
+tensor_q1_program.o: $(BE_DIR)/vho/tensor_q1_program.cxx $(BE_DIR)/vho/tensor_q1_program.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+lnodriver.o dsl_q1_preopt.o: $(BE_LNOPT_DIR)/dsl_q1_preopt.h
+
+dsl_q1_preopt.o dsl_high_quantized.o: $(BE_LNOPT_DIR)/dsl_high_quantized.h $(BE_DIR)/vho/tensor_q1_program.h

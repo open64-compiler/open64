@@ -27,6 +27,7 @@
 #include "err_host.tab"
 #include "config.h"
 #include "config_opt.h"
+#include "config_dsl.h"
 #include "controls.h"
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
@@ -37,6 +38,7 @@
 #include "tensor_kernel_lower.h"
 #include "tensor_attention_search.h"
 #include "../be/lno/dsl_high_quantized.h"
+#include "../be/vho/tensor_q1_program.h"
 #include "tensor_schedule_source.h"
 #ifdef OPEN64_TENSOR_SELECTED_BRIDGE
 #include "tensor_selected_bridge.h"
@@ -342,12 +344,31 @@ bool remove_barrier(WN *n,const char *name="__syncthreads") {
 #include "tensor_selected_bridge_driver.inc"
 #endif
 #include "tensor_quantized_review.inc"
+#include "tensor_q1_rebind_test.inc"
 } // namespace
 
 /* The executable establishes exactly one source PU or fresh device translation
  * unit. The VHO service never expands its compilation scope or writes files. */
 int main(int argc,char **argv) {
     try {
+        if(argc>=2 && !strcmp(argv[1],"q1-rebind-test")) return q1_rebind_test(argc,argv);
+        if(argc==4 && !strcmp(argv[1],"q1-production-manifest")) {
+            need(access(argv[3],F_OK)!=0,"Q1 manifest output exists");initialize(false);
+            Open_Input_Info(argv[2]);Initialize_Symbol_Tables(FALSE);New_Scope(GLOBAL_SYMTAB,Malloc_Mem_Pool,FALSE);
+            PU_Info *pu=Read_Global_Info(NULL);need(pu && !PU_Info_next(pu) && !PU_Info_child(pu),"Q1 requires one production entry");
+            Read_Local_Info(MEM_pu_nz_pool_ptr,pu);Current_PU_Info=pu;Current_pu=&PU_Info_pu(pu);
+            Current_scope=PU_lexical_level(*Current_pu);Current_Map_Tab=PU_Info_maptab(pu);
+            WN *entry=PU_Info_tree_ptr(pu);VHO_TENSOR_PROGRAM p;std::string why;
+            need(VHO_q1_program_read(entry,p,why),why.c_str());
+            Json::Value manifest;manifest["schema"]="open64.quantized-common-high.v1";
+            manifest["function"]=ST_name(WN_st(entry));manifest["recipe"]=q1_encode(p);
+            manifest["buffers"]=Json::Value(Json::arrayValue);
+            for(unsigned i=0;i<p.values.size();++i) if(p.values[i].storage==i) manifest["buffers"].append(i);
+            need(WN_num_formals(entry)==manifest["buffers"].size()+1,"Q1 physical ABI mismatch");
+            manifest["status_argument"]="last-disjoint-int32; 0=success,1=refuse; discard all results on refusal";
+            manifest["search_invoked"]=false;manifest["optimization_candidates_enabled"]=false;
+            write_json(argv[3],manifest);return 0;
+        }
         if(argc==6 && !strcmp(argv[1],"q1-high-facts-test")) {
             need(access(argv[3],F_OK)!=0 && access(argv[4],F_OK)!=0 && access(argv[5],F_OK)!=0,"Q1 negative output exists");
             VHO_TENSOR_PROGRAM p=q1_decode(search_read(argv[2]));initialize(true);

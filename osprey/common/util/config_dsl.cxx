@@ -66,7 +66,11 @@ char *VHO_DSL_GPU_Arch = NULL;
 UINT32 VHO_DSL_GEMM_Memory_Latency = 0;
 BOOL VHO_DSL_GEMM_Memory_Latency_Set = FALSE;
 
+char *VHO_DSL_Q1_High = NULL;
+char *VHO_DSL_Q1_Checkpoint = NULL;
 static OPTION_DESC Options_DSL[] = {
+  { OVK_NAME, OV_VISIBLE, FALSE, "q1_high", "q1_high", 0, 0, 0, &VHO_DSL_Q1_High, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "q1_checkpoint", "q1_checkpoint", 0, 0, 0, &VHO_DSL_Q1_Checkpoint, NULL },
   { OVK_BOOL, OV_VISIBLE, TRUE, "partition_axis", "partition_axis",
     FALSE, 0, 0, &VHO_DSL_Partition_Axis, &VHO_DSL_Partition_Axis_Set },
   { OVK_NAME, OV_VISIBLE, FALSE, "normalization_mode", "normalization_mode",

@@ -36,6 +36,8 @@ class DSL_HIGH_QUANTIZED_CAPTURE {
     std::vector<std::string> _loop_stack;
     std::map<unsigned,const VHO_TENSOR_OPERATION *> _definitions;
     unsigned _operation;
+    bool _post;
+    DSL_HIGH_Q1_RESOLVER _resolver;
     /* Stable syntactic expression key retains indirect loads and scalar
      * definitions. It is not an affine/alias or equality proof. */
     std::string Tree(WN *node) {
@@ -75,10 +77,28 @@ class DSL_HIGH_QUANTIZED_CAPTURE {
         if(co->name=="common.scatter") Pair(co->inputs[2],so->inputs[2],depth+1);
         /* The local successor joins both updates, never an allocator epoch. */
     }
+    /* Follow unique live DU definitions for a scalarized formal address. This
+     * is identity recovery, not alias disambiguation or affine inference. */
+    ST_IDX Base(WN *node,unsigned depth=0) {
+        if(!node || depth>64) return ST_IDX_ZERO;
+        OPERATOR op=WN_operator(node);
+        if(op==OPR_LDID) {
+            if(_formals.count(WN_st_idx(node))) return WN_st_idx(node);
+            WN *def=_resolver.definition?_resolver.definition(_resolver.context,node):NULL;
+            return def && WN_operator(def)==OPR_STID?Base(WN_kid0(def),depth+1):ST_IDX_ZERO;
+        }
+        if(op==OPR_ARRAY || op==OPR_CVT) return Base(WN_kid0(node),depth+1);
+        if(op==OPR_ADD) {
+            ST_IDX a=Base(WN_kid0(node),depth+1),b=Base(WN_kid1(node),depth+1);
+            return a && !b?a:b && !a?b:ST_IDX_ZERO;
+        }
+        return ST_IDX_ZERO;
+    }
     /* A load-derived scalar or conditional choice in an ARRAY coordinate
      * remains indirect even when its base formal is known. Never project it as an affine/cacheline access. */
     bool Indirect(WN *node) {
-        if(WN_operator(node)==OPR_ILOAD || (WN_operator(node)==OPR_LDID && _data_derived.count(WN_st_idx(node)))) return true;
+        if(WN_operator(node)==OPR_ILOAD || (WN_operator(node)==OPR_LDID &&
+           (_data_derived.count(WN_st_idx(node)) || (_post && ST_class(WN_st(node))==CLASS_PREG)))) return true;
         for(INT i=0;i<WN_kid_count(node);++i) if(WN_kid(node,i) && Indirect(WN_kid(node,i))) return true;
         return false;
     }
@@ -88,10 +108,12 @@ class DSL_HIGH_QUANTIZED_CAPTURE {
         OPCODE comparison;BOOL increasing;
         WN *lo=WN_LOOP_LowerBound(node),*hi=WN_LOOP_UpperBound(node,&comparison);
         WN *step=WN_LOOP_Increment(node,&increasing);
-        require(lo && hi && step && WN_desc(WN_start(node))==MTYPE_I8 && OPCODE_desc(comparison)==MTYPE_I8 &&
+        require(lo && hi && step && (WN_desc(WN_start(node))==MTYPE_I8 || (_post && WN_desc(WN_start(node))==MTYPE_I4)) &&
+            OPCODE_desc(comparison)==WN_desc(WN_start(node)) &&
             WN_operator(lo)==OPR_INTCONST && WN_operator(hi)==OPR_INTCONST && WN_operator(step)==OPR_INTCONST &&
             WN_const_val(lo)==0 && WN_const_val(step)==1 && increasing &&
-            OPCODE_operator(comparison)==OPR_LT && WN_const_val(hi)>0 && WN_const_val(hi)<=16777216,"q1_noncanonical_loop");
+            (OPCODE_operator(comparison)==OPR_LT || (_post && OPCODE_operator(comparison)==OPR_LE)) &&
+            WN_const_val(hi)>=(_post?0:1) && WN_const_val(hi)<=16777216,"q1_noncanonical_loop");
         DSL_HIGH_LOOP loop;loop.id=id;loop.parent=_loop_stack.empty()?"":_loop_stack.back();
         loop.induction=ST_name(WN_st(WN_index(node)));loop.comparison=OPCODE_name(comparison);
         loop.lower=0;loop.upper=WN_const_val(hi);loop.step=1;_facts._loops.push_back(loop);_loop_stack.push_back(id);
@@ -99,15 +121,19 @@ class DSL_HIGH_QUANTIZED_CAPTURE {
     /* Record each actual memory operation with lexical lifetime endpoints.
      * Access order describes syntax, not a dynamic execution timestamp. */
     void Visit(WN *node,bool conditional,const std::string &path,bool data_control=false) {
-        OPERATOR op=WN_operator(node);
+        OPERATOR op=WN_operator(node);unsigned previous_operation=_operation;
         /* Preserve transitive data/control provenance across local temporaries.
          * Never clear within a branch/loop: conservative uncertainty is safer
          * than falsely treating a loaded page or chosen update as affine. */
         if(op==OPR_STID && (data_control || Indirect(WN_kid0(node)))) _data_derived.insert(WN_st_idx(node));
         bool dependent_condition=op==OPR_IF && Indirect(WN_kid0(node));
-        if(op==OPR_DO_LOOP) Loop(node,path);
+        if(op==OPR_DO_LOOP) {
+            const char *tag=ST_tensor_metadata(WN_st_idx(WN_index(node)),"tensor.q1.operation");
+            if(tag) {char *end;unsigned long n=strtoul(tag,&end,10);require(end!=tag && !*end && tag[0]>='0' && tag[0]<='9' && n<_program.operations.size() && number(n)==tag,"q1_operation_join");_operation=n;_groups.insert(n);}
+            Loop(node,path);
+        }
         if(op==OPR_STID) require(!_formals.count(WN_st_idx(node)),"q1_base_reassignment");
-        if(op==OPR_COMMENT) {
+        if(op==OPR_COMMENT && !_post) {
             const char *text=Index_To_Str(WN_GetComment(node));unsigned n;
             if(sscanf(text,"Common High operation %u:",&n)==1) {
                 require(n<_program.operations.size(),"q1_operation_group");_operation=n;_groups.insert(n);
@@ -116,38 +142,45 @@ class DSL_HIGH_QUANTIZED_CAPTURE {
         require(!DSL_WN_Is_Native(node) && op!=OPR_CALL && op!=OPR_ICALL,"q1_unlowered_or_call");
         if(op==OPR_ILOAD || op==OPR_ISTORE) {
             WN *addr=op==OPR_ILOAD?WN_kid0(node):WN_kid1(node);
-            if(WN_operator(addr)==OPR_LDID && _formals.count(WN_st_idx(addr)) &&
-               _formals[WN_st_idx(addr)]==_facts._storages.size()) {
+            ST_IDX resolved=_post?Base(addr):ST_IDX_ZERO;
+            if((_post && resolved && _formals[resolved]==_facts._storages.size()) ||
+               (WN_operator(addr)==OPR_LDID && _formals.count(WN_st_idx(addr)) && _formals[WN_st_idx(addr)]==_facts._storages.size())) {
                 require(op==OPR_ISTORE && WN_desc(node)==MTYPE_I4 && !WN_offset(node) &&
                     WN_operator(WN_kid0(node))==OPR_INTCONST &&
                     (WN_const_val(WN_kid0(node))==0 || WN_const_val(WN_kid0(node))==1),"q1_status_write");return;
             }
-            require(WN_operator(addr)==OPR_ARRAY && WN_kid_count(addr)==3 && WN_operator(WN_kid0(addr))==OPR_LDID,"q1_opaque_address");
-            ST_IDX base=WN_st_idx(WN_kid0(addr));require(_formals.count(base),"q1_nonformal_address");
-            unsigned formal=_formals[base];require(formal<_facts._storages.size() && _operation<_program.operations.size(),"q1_access_group");
+            if(!_post) require(WN_operator(addr)==OPR_ARRAY && WN_kid_count(addr)==3 && WN_operator(WN_kid0(addr))==OPR_LDID,"q1_opaque_address");
+            ST_IDX base=_post?resolved:WN_st_idx(WN_kid0(addr));require(base && _formals.count(base),"q1_nonformal_address");
+            unsigned formal=_formals[base];require(formal<_facts._storages.size() && (_post || _operation<_program.operations.size()),"q1_access_group");
             DSL_HIGH_QUANTIZED_STORAGE &storage=_facts._storages[formal];
-            require(WN_operator(WN_kid1(addr))==OPR_INTCONST &&
+            if(WN_operator(addr)==OPR_ARRAY) require(WN_operator(WN_kid1(addr))==OPR_INTCONST &&
                     WN_const_val(WN_kid1(addr))==(INT64)VHO_tensor_elements(_program.values[storage.source_root]),"q1_array_extent");
             TYPE_ID type=TY_mtype(TY_pointed(ST_type(St_Table[base])));
-            require(WN_desc(node)==type && WN_element_size(addr)==MTYPE_byte_size(type),"q1_memory_encoding");
+            require(WN_desc(node)==type && (WN_operator(addr)!=OPR_ARRAY || WN_element_size(addr)==MTYPE_byte_size(type)),"q1_memory_encoding");
             DSL_HIGH_QUANTIZED_ACCESS access;access.id=path;access.storage=storage.id;access.version=storage.version;
-            access.group="operation:"+number(_operation);access.operation=_operation;access.loops=_loop_stack;
+            access.group=_operation==~0U?"unknown-canonical-group":"operation:"+number(_operation);access.operation=_operation;access.loops=_loop_stack;
             access.order=_facts._accesses.size();access.write=op==OPR_ISTORE;
-            access.indirect=Indirect(WN_kid2(addr));access.conditional=conditional;
-            access.element_bytes=WN_element_size(addr);access.encoding=MTYPE_name(type);access.address_key=Tree(addr);
-            if(!storage.input && !access.write) require(_producers[storage.source_root]<_operation,"q1_read_before_version");
-            if(access.write) require(!storage.input && _producers[storage.source_root]==_operation,"q1_unexpected_write");
+            access.indirect=WN_operator(addr)!=OPR_ARRAY || Indirect(WN_kid2(addr));access.conditional=conditional;
+            access.element_bytes=MTYPE_byte_size(type);access.encoding=MTYPE_name(type);access.address_key=Tree(addr);
+            // Executable identity alone omits ST operation metadata and live
+            // DU edges. Seal the observed join as well, so a different group
+            // or formal resolution cannot revalidate former owned facts.
+            _facts._native_key+="|q1-access:"+access.id+":"+access.storage+":"+number(access.operation)+":"+
+                number(access.indirect)+":"+number(access.conditional);
+            if(!_post && !storage.input && !access.write) require(_producers[storage.source_root]<_operation,"q1_read_before_version");
+            if(access.write) require(!storage.input && (_post || _producers[storage.source_root]==_operation),"q1_unexpected_write");
             if(storage.first_use.empty()) storage.first_use=access.id;storage.last_use=access.id;
             _facts._accesses.push_back(access);
         }
         if(op==OPR_BLOCK) {
             unsigned n=0;for(WN *s=WN_first(node);s;s=WN_next(s)) Visit(s,conditional,path+"/s"+number(n++),data_control);
         } else for(INT i=0;i<WN_kid_count(node);++i) if(WN_kid(node,i)) Visit(WN_kid(node,i),conditional || op==OPR_IF,path+"/k"+number(i),data_control || dependent_condition);
-        if(op==OPR_DO_LOOP) _loop_stack.pop_back();
+        if(op==OPR_DO_LOOP) {_loop_stack.pop_back();_operation=previous_operation;}
     }
 public:
     /* Borrow only the active driver's PU and detached admitted source. */
-    DSL_HIGH_QUANTIZED_CAPTURE(WN *entry,const VHO_TENSOR_PROGRAM &p) : _entry(entry),_program(p),_operation(~0U) {}
+    DSL_HIGH_QUANTIZED_CAPTURE(WN *entry,const VHO_TENSOR_PROGRAM &p,bool post=false,const DSL_HIGH_Q1_RESOLVER &resolver=DSL_HIGH_Q1_RESOLVER())
+        : _entry(entry),_program(p),_operation(~0U),_post(post),_resolver(resolver) {}
     /* Capture formals, real memory nodes and paired local scale versions.
      * No allocator generation, inter-call lifetime or no-alias fact beyond
      * this explicit disjoint-buffer ABI is inferred. */
@@ -235,9 +268,9 @@ public:
             s.scale_pair_ready_group=s.input && ss.input?"entry":"operation:"+number(ready);
         }
         _facts._native_key=Tree(_entry);Visit(WN_func_body(_entry),false,"body");
-        for(unsigned i=0;i<_program.operations.size();++i) if(_program.operations[i].name!="common.reshape")
+        for(unsigned i=0;i<_program.operations.size();++i) if(!_post && _program.operations[i].name!="common.reshape")
             require(_groups.count(i),"q1_missing_operation_group");
-        _facts._stamp=epoch.Stamp();require(epoch.Matches(_facts._stamp),"q1_expired_epoch");_facts._valid=true;return _facts;
+        _facts._post_preopt=_post;_facts._stamp=epoch.Stamp();require(epoch.Matches(_facts._stamp),"q1_expired_epoch");_facts._valid=true;return _facts;
     }
 };
 /* Clear first, then publish complete owned facts. Native tables are read only. */
@@ -254,4 +287,33 @@ bool LNO_DSL_revalidate_quantized_high(WN *entry,const VHO_TENSOR_PROGRAM &p,con
     DSL_HIGH_QUANTIZED_FACTS fresh;
     if(!LNO_DSL_capture_quantized_high(entry,p,epoch,fresh,why)) return false;
     if(!facts.Same_content(fresh)) {why="q1_native_or_source_changed";return false;}return true;
+}
+
+/* New activation/generation plus actual canonical sites; no source WN is reused. */
+bool LNO_DSL_rebind_quantized_high(WN *entry,const VHO_TENSOR_PROGRAM &p,const DSL_HIGH_EPOCH &epoch,
+    const DSL_HIGH_Q1_RESOLVER &resolver,DSL_HIGH_QUANTIZED_FACTS &out,std::string &why) {
+    out=DSL_HIGH_QUANTIZED_FACTS();why.clear();
+    try {DSL_HIGH_QUANTIZED_FACTS fresh=DSL_HIGH_QUANTIZED_CAPTURE(entry,p,true,resolver).Capture(epoch);out=fresh;return true;}
+    catch(const std::exception &e) {why=e.what();return false;}
+}
+/* Owned proof reports are safe after native analysis lifetime expiry. */
+void LNO_DSL_print_quantized_high(FILE *file,const DSL_HIGH_QUANTIZED_FACTS &facts,const char *stage,bool live) {
+    if(!file) return;
+    unsigned indirect=0,unknown=0;
+    for(unsigned i=0;i<facts.Accesses().size();++i) {indirect+=facts.Accesses()[i].indirect;unknown+=facts.Accesses()[i].operation==~0U;}
+    fprintf(file,"AI_Q1_FACTS 1 %s live=%s post_preopt=%s storages=%lu loops=%lu accesses=%lu indirect=%u unknown_groups=%u search=false legality=not_proved\n",
+        stage,live?"true":"false",facts.Post_preopt()?"true":"false",(unsigned long)facts.Storages().size(),(unsigned long)facts.Loops().size(),(unsigned long)facts.Accesses().size(),indirect,unknown);
+    for(unsigned i=0;i<facts.Storages().size();++i) {
+        const DSL_HIGH_QUANTIZED_STORAGE &s=facts.Storages()[i];
+        fprintf(file,"AI_Q1_STORAGE 1 %s id=%s value=%s version=%s scale=%s scale_version=%s origin=%s role=%s encoding=%s first=%s last=%s lifetime=invocation_only\n",
+            stage,s.id.c_str(),s.value.c_str(),s.version.c_str(),s.scale_storage.c_str(),s.scale_version.c_str(),s.origin_version.c_str(),s.role.c_str(),s.encoding.c_str(),s.first_use.c_str(),s.last_use.c_str());
+    }
+}
+
+/* Fresh canonical equality, never equality against an expired source snapshot. */
+bool LNO_DSL_revalidate_rebound_quantized_high(WN *entry,const VHO_TENSOR_PROGRAM &p,const DSL_HIGH_EPOCH &epoch,
+    const DSL_HIGH_Q1_RESOLVER &resolver,const DSL_HIGH_QUANTIZED_FACTS &facts,std::string &why) {
+    if(!facts.Post_preopt() || !facts.Is_live(epoch)) {why="q1_stale_rebound_epoch";return false;}
+    DSL_HIGH_QUANTIZED_FACTS fresh;if(!LNO_DSL_rebind_quantized_high(entry,p,epoch,resolver,fresh,why)) return false;
+    if(!facts.Same_content(fresh)) {why="q1_canonical_facts_changed";return false;}return true;
 }

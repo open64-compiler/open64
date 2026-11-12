@@ -12,6 +12,7 @@
 #include <set>
 #include <stdexcept>
 #include "tensor_kernel_lower.h"
+#include "tensor_q1_program.h"
 #include "wn.h"
 #include "wn_util.h"
 #include "stab.h"
@@ -257,6 +258,13 @@ public:
         for (UINT32 i = 0; i < _program.operations.size(); ++i) {
             const VHO_TENSOR_OPERATION &op = _program.operations[i];
             if (op.name == "common.reshape") continue;
+            if(_quantized) {
+                for(unsigned axis=0;axis<_program.values[op.output].shape.size();++axis) {
+                    std::ostringstream name,id;name<<"q1_op_"<<i<<"_axis_"<<axis;id<<i;
+                    _indices[axis]=VHO_high_local(name.str().c_str(),MTYPE_I8,_source);
+                    ST_tensor_bind_metadata(ST_st_idx(_indices[axis]),"tensor.q1.operation",id.str().c_str());
+                }
+            }
             USRCPOS position; USRCPOS_srcpos(position) = _source;
             if (op.source_line) USRCPOS_linenum(position) = op.source_line;
             _source = USRCPOS_srcpos(position);
@@ -288,6 +296,7 @@ public:
         for (UINT32 i = 0; i < formals.size(); ++i) WN_formal(entry, i) = WN_CreateIdname(0, formals[i]);
         WN_Set_Linenum(entry, _source); Set_PU_Info_tree_ptr(Current_PU_Info, entry);
         ST_tensor_bind_metadata(ST_st_idx(function), "tensor.high.recipe_key", (_quantized?VHO_tensor_quantized_high_key(_program):VHO_tensor_recipe_key(_program)).c_str());
+        if(_quantized) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.q1.algorithm",VHO_q1_program_encode(_program).c_str());
         ST_tensor_bind_metadata(ST_st_idx(function), "tensor.high.schema", _quantized?"quantized-common-high-v1":"common-high-v1");
         ST_tensor_bind_metadata(ST_st_idx(function), "tensor.high.buffer_contract", "disjoint-storage-formals");
     }
