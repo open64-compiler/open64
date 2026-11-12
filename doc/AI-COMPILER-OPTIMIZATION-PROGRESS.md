@@ -1,12 +1,29 @@
 # AI Compiler Optimization Progress
 
-Snapshot: 2026-10-29, integrated against `develop` at `ecbb857f` (merged PR #202)
+Snapshot: 2026-10-30, integrated against `develop` at `ecbb857f` (merged PR #202)
 Scope: Open64 AI optimization, with standalone rank-2 F32 GEMM as the first
 generated-kernel case. This is a running status ledger, not a replacement for
 the [implementation plan](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md) or
 the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
+
+2026-10-30 first bounded R1-ND1 partition-axis discovery accepted:
+[Native partition-axis design](AI-COMPILER-NATIVE-PARTITION-AXIS-v0.1.md).
+LNO reuses its reduction manager/access vectors and PREOPT DU/alias services
+to identify instance/contribution axes from ordinary scalar C WHIRL. Thirteen
+native cases produce five proved domains and eight explicit refusals, including
+transposed axes, equal extents, a local temporary and union overlap. Enabled,
+disabled, default and trace-OFF O3 outputs are byte-identical mapped images;
+O0/O1/O2 emit no discovery events. Four trace-auditor tests and existing default
+v1/v2 normalization regressions pass. `-DSL:partition_axis=on` is opt-in, minimum
+O3/LNO; no normalization operator, physical partition selection or rewrite is
+inferred. Complete LayerNorm/RMSNorm recognition and planner handoff remain open.
+The performance framework, offline harness, dashboard and skill remain deferred
+on user direction; no GPU evidence is claimed.
+
+Accepted review package:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/native-partition-axis/sha256-c4cba42e1fdd0235ecd213f964c938e4e4c642a3c5c476b8f7875d759f867d0b/`.
 
 2026-10-29 LN4 bounded compiler-side closure accepted, implementation `046b198b`:
 [Host dispatch and mode detail v0.1](AI-COMPILER-LAYERNORM-HOST-DISPATCH-v0.1.md).

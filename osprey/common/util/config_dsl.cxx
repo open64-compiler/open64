@@ -43,6 +43,8 @@ BOOL VHO_DSL_Dump_After_Shape_Refinement = FALSE;
 BOOL VHO_DSL_Dump_After_Shape_Refinement_Set = FALSE;
 BOOL VHO_DSL_AI_Opt_Trace = TRUE;
 BOOL VHO_DSL_AI_Opt_Trace_Set = FALSE;
+BOOL VHO_DSL_Partition_Axis = FALSE;
+BOOL VHO_DSL_Partition_Axis_Set = FALSE;
 BOOL VHO_DSL_CUDA_TMA_Prefetch = FALSE;
 BOOL VHO_DSL_CUDA_TMA_Prefetch_Set = FALSE;
 BOOL VHO_DSL_CUDA_SMEM_Layout_Search = TRUE;
@@ -65,6 +67,8 @@ UINT32 VHO_DSL_GEMM_Memory_Latency = 0;
 BOOL VHO_DSL_GEMM_Memory_Latency_Set = FALSE;
 
 static OPTION_DESC Options_DSL[] = {
+  { OVK_BOOL, OV_VISIBLE, TRUE, "partition_axis", "partition_axis",
+    FALSE, 0, 0, &VHO_DSL_Partition_Axis, &VHO_DSL_Partition_Axis_Set },
   { OVK_NAME, OV_VISIBLE, FALSE, "normalization_mode", "normalization_mode",
     0, 0, 0, &VHO_DSL_Normalization_Mode, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "normalization_host_entry", "normalization_host_entry",
