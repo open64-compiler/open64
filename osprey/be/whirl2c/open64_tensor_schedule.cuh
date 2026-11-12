@@ -315,5 +315,18 @@ O64_HD void merge_attention_to(float *out,const I &input) {
     }
   }
 }
+/* Register ownership is explicit in native WHIRL. This serial review uses the
+ * same per-column F32 lane sums and shuffle tree; only physical ownership and
+ * cache staging differ. These helpers do not select a GPU schedule. */
+template<uint64_t B,uint64_t H,uint64_t L,uint64_t R,uint64_t DR,uint64_t W,uint64_t C,bool Partial,
+         class Q,class QR,class Cache,class Rope,class Mask>
+O64_HD void register_fused_attention_to(float *out,const Q &q,const QR &qr,const Cache &cache,
+                                       const Rope &rope,const Mask &mask,uint32_t scale) {
+    fused_attention_to<B,H,L,R,DR,W,C,Partial>(out,q,qr,cache,rope,mask,scale);
+}
+template<uint64_t B,uint64_t H,uint64_t L,uint64_t R,uint64_t C,class I>
+O64_HD void register_merge_attention_to(float *out,const I &input) {
+    merge_attention_to<B,H,L,R,C>(out,input);
+}
 } // namespace open64_schedule
 #endif

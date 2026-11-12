@@ -30,7 +30,7 @@ struct VHO_TENSOR_OPERATION {
     std::map<std::string,std::string> attributes;
 };
 struct VHO_TENSOR_PROGRAM {
-    VHO_TENSOR_PROGRAM():opt_level(0),threads(1),fuse(false),split_width(0),cooperative(false),fuse_attention(false) {}
+    VHO_TENSOR_PROGRAM():opt_level(0),threads(1),fuse(false),split_width(0),cooperative(false),fuse_attention(false),register_latent(false) {}
     std::string source_pu;
     std::string source_file;
     UINT32 opt_level;
@@ -39,6 +39,7 @@ struct VHO_TENSOR_PROGRAM {
     UINT32 split_width;          /* 0 unsplit, otherwise selected chunk width */
     bool cooperative;           /* explicit warp trees and staged dot products */
     bool fuse_attention;        /* explicit stable local softmax / rescaled merge */
+    bool register_latent;       /* four lane-private columns per warp, v5 */
     std::vector<VHO_TENSOR_VALUE> values;
     std::vector<VHO_TENSOR_OPERATION> operations;
 };

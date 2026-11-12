@@ -114,7 +114,8 @@ public:
                 UINT32 owner=_owners[value];const VHO_TENSOR_KERNEL &producer=_plan.kernels[owner];
                 text<<", produced by stage "<<owner+1<<".\n";
                 if(producer.mapping>=3) {
-                    text<<"  This is the completed fused latent/LSE bundle; no global score buffer is read.\n";
+                    text<<(producer.stage==1?"  This is completed chunk-major [m_c,d_c,z_c] scratch, not the final latent/LSE bundle.\n":
+                        "  This is the completed fused latent/LSE bundle; no global score buffer is read.\n");
                 } else if(producer.stage==2) {
                     const std::string &operation=_p.operations[producer.root].name;
                     text<<"  This is a completed global "<<(operation=="common.reduce_max"?"maximum":"sum")<<" from all "<<producer.chunks<<" chunks.\n";
@@ -239,23 +240,23 @@ public:
                 <<"+ dot(rope_query,rope_cache[token])). Both contractions retain ascending F32 inner loops.\n"
                 <<"Mask-false tokens and padding use -infinity, with guarded source reads. Source scale bits are 0x"<<std::hex<<a.scale_bits<<std::dec<<".\n";
             text<<"Chunk interval is [c*"<<k.split_width<<",min((c+1)*"<<k.split_width<<","<<a.length<<")); "<<k.chunks<<" chunk(s).\n";
-            UINT64 groups=(a.rank+3)/4,full_barriers=5+2*groups*((k.split_width+31)/32);
+            UINT64 groups=(a.rank+3)/4,full_barriers=_p.register_latent?5:5+2*groups*((k.split_width+31)/32);
             text<<"CTA WALKTHROUGH: four warps first cooperate across TOKENS for the max and denominator.\n"
                 <<"Each warp uses shuffle offsets 16,8,4,2,1; lane zero publishes its partial, then thread zero folds four warp partials.\n"
-                <<"After normalization, ownership changes: a complete warp reduces TOKENS for one latent COLUMN.\n"
+                <<(_p.register_latent?"After normalization, each warp reduces TOKENS for four private latent columns.\n":"After normalization, ownership changes: a complete warp reduces TOKENS for one latent COLUMN.\n")
                 <<"The two max-fold barriers, two denominator-fold barriers and probability-publication barrier contribute five CTA barriers.\n";
-            text<<"With "<<groups<<" column groups, a full segment adds 2*"<<groups<<"*ceil("<<k.split_width
+            if(!_p.register_latent) text<<"With "<<groups<<" column groups, a full segment adds 2*"<<groups<<"*ceil("<<k.split_width
                 <<"/32) cache-tile barriers, for "<<full_barriers<<" CTA barrier calls along each thread's path.\n";
             if(k.stage==1) {
                 UINT64 tail=a.length-UINT64(k.chunks-1)*k.split_width;
                 text<<"The final chunk starts at "<<UINT64(k.chunks-1)*k.split_width<<" and has "<<tail<<" real token(s), but still uses capacity "<<capacity
-                    <<" and all collectives; its actual CTA barrier count is "<<5+2*groups*((tail+31)/32)<<".\n";
+                    <<" and all collectives; its actual CTA barrier count is "<<(_p.register_latent?5:5+2*groups*((tail+31)/32))<<".\n";
             } else text<<"This direct CTA covers the whole row, so its local softmax is already the global softmax; no rescaling merge follows.\n";
             text<<"Score storage is shared["<<capacity<<"], overwritten in place with stable exponentials, then normalized local probabilities.\n"
                 <<"Four full-warp max trees publish four shared partials; thread zero folds those four and publishes the maximum.\n"
                 <<"The same CTA reduction computes d_c=sum exp(score-m_c). Normalize probabilities once in shared memory.\n"
-                <<"A nonfinite maximum uses the source zero fallback; a nonpositive denominator uses one. Fully masked rows produce zero latent and LSE -infinity.\n"
-                <<"Warp w owns latent columns group*4+w. Stage 32x4 cache tiles using the selected XOR bank layout;\n"
+                <<"A nonfinite maximum uses the source zero fallback; a nonpositive denominator uses one. Fully masked rows produce zero latent and LSE -infinity.\n";
+            if(!_p.register_latent) text<<"Warp w owns latent columns group*4+w. Stage 32x4 cache tiles using the selected XOR bank layout;\n"
                 <<"barriers publish each cache tile and release it before reuse. Multiply the shared local probabilities\n"
                 <<"by staged cache values, then use five shuffle-down rounds to obtain each column's local latent value.\n";
             if(k.stage==1) text<<"Only tuple [m_c,d_c,z_c[0..R-1]] is written globally at (c*"<<rows<<"+row)*(R+2).\n"
@@ -291,8 +292,64 @@ public:
                 <<"Use the source safe maximum and denominator fallbacks; all-empty chunks give zero output and LSE -infinity.\n"
                 <<"The rescaling is essential because each z_c used its own chunk-local softmax. A plain sum or average is incorrect.\n"
                 <<"CTA reductions combine maxima and D; shared normalized alpha weights are reused by all latent columns.\n"
-                <<"One full warp per latent column reduces chunk contributions with offsets 16,8,4,2,1.\n"
+                <<(_p.register_latent?"Each warp maintains four private column sums; each uses offsets 16,8,4,2,1.\n":"One full warp per latent column reduces chunk contributions with offsets 16,8,4,2,1.\n")
                 <<"Write only [z[0..R-1],LSE] at row*(R+1), consumed by the retained value projection and output stores.\n";
+        }
+        if(_p.register_latent) {
+            text<<"REGISTER ACCUMULATION: warp w owns columns group*16+w*4+j, j=0..3.\n"
+                <<"Lane l visits local tokens (or chunks) l,l+32,... and reads each shared normalized weight once for four columns.\n"
+                <<"Four F32 register sums are lane-private. Cache or partial-tuple values are read directly, with column/tail bounds.\n"
+                <<"No shared cache tile exists and no CTA barriers occur in latent accumulation. The remaining five CTA barriers\n"
+                <<"publish four-warp max summaries, max, denominator summaries, denominator, and normalized weights.\n"
+                <<"After the fifth barrier the shared weights are immutable; only lane-private state changes until full-warp shuffles.\n"
+                <<"Every lane executes all five shuffle rounds for all four sums, including inactive column tails; lane zero writes valid columns.\n"
+                <<"For the same partition, each column keeps its lane-strided F32 additions and tree; changing chunk width can change rounding.\n"
+                <<"Four columns expose independent arithmetic but may increase registers or sacrifice cache-tile locality; verify resources and GPU timing.\n";
+            text<<"WHY TILE BARRIERS DISAPPEAR: the old cooperative cache tile was written and read by different warps.\n"
+                <<"Its first barrier prevented reads before publication; its second prevented overwriting values still in use.\n"
+                <<"Direct cache/tuple reads now feed only the owning lane's four sums. There is no shared cache tile to publish or overwrite.\n"
+                <<"Removing those dependencies makes both tile barriers unnecessary; merely deleting them from the staged path would be unsafe.\n"
+                <<"BARRIER 1: all warp maxima are visible before thread zero reads them.\n"
+                <<"BARRIER 2: thread zero's maximum is visible before any thread computes exponential weights.\n"
+                <<"BARRIER 3: all warp denominator sums are visible before thread zero reads them.\n"
+                <<"BARRIER 4: thread zero's denominator is visible before any thread normalizes its weights.\n"
+                <<"BARRIER 5: all normalized weights are visible before any warp accumulates latent columns.\n"
+                <<"These are five dynamic CTA barrier calls per participating thread, not five different hardware barrier IDs.\n"
+                <<"Register accumulation still needs warp communication: shuffle rounds reduce lane-private sums without shared cache storage.\n"
+                <<"Reading a weight once means once per lane/token within its four-column group; the other warps read it for their own columns.\n";
+            if(a.rank==16) text<<"For this R=16 selection, warp 0 owns columns 0..3, warp 1 owns 4..7, warp 2 owns 8..11, warp 3 owns 12..15.\n";
+            if(k.mapping==3 && k.stage==0 && a.length==127)
+                text<<"SHORT L=127 EXAMPLE: lane 0 accumulates tokens 0,32,64,96 into four private sums.\n"
+                    <<"Lane 31 visits 31,63,95; token 127 is out of range and is never read. Score padding still participates neutrally in CTA folds.\n"
+                    <<"After the five shuffle rounds, lane zero writes its warp's four completed latent columns.\n";
+            if(k.mapping==4 && k.chunks==65)
+                text<<"LONG C=65 MERGE EXAMPLE: tids 0..64 each supply one chunk to max/D; tids 65..127 are neutral.\n"
+                    <<"For each column group, lane 0 accumulates chunks 0,32,64; lane 1 takes 1,33; lane 31 takes 31,63.\n"
+                    <<"Each of the four column sums then uses the same full-warp tree, and lane zero writes the final columns.\n";
+            if(k.mapping==3) text<<"At this partition the staged path would execute "<<5+2*((a.rank+3)/4)*((k.split_width+31)/32)
+                <<" barriers per full segment; this path executes five, including every tail.\n";
+            if(k.mapping==3 && k.stage==1) {
+                UINT64 old_width=2*k.split_width,old_chunks=(a.length+old_width-1)/old_width;
+                text<<"TWO INDEPENDENT CHANGES: register accumulation removes tile barriers at any admitted chunk width.\n"
+                    <<"Reducing the chunk width separately shortens local token loops and increases independently schedulable CTAs.\n"
+                    <<"It also repeats fixed five-barrier CTA work for more chunks; smaller chunks alone do not eliminate synchronization.\n";
+                if(old_width<=4096 && old_chunks>1) {
+                    UINT64 old_span=old_width<a.length?old_width:a.length;
+                    text<<"Comparison with a staged width-"<<old_width<<" candidate: "<<old_chunks<<" -> "<<k.chunks
+                        <<" chunks, "<<rows*old_chunks<<" -> "<<rows*k.chunks<<" local CTAs.\n";
+                    text<<"At fixed width "<<old_width<<", register ownership alone changes full-chunk barriers from "
+                        <<5+2*((a.rank+3)/4)*((old_span+31)/32)<<" to five. Selected width "<<k.split_width<<" also uses five.\n";
+                    text<<"Partial tuple allocation "<<4*rows*old_chunks*(a.rank+2)<<" -> "<<4*rows*k.chunks*(a.rank+2)
+                        <<" bytes; "<<_plan.kernels.size()<<" selected launches. More merge work accompanies the larger grid.\n";
+                }
+                text<<"The partial attention scratch is chunks*B*H*(R+2) F32 values: more chunks mean more tuple stores, loads and rescaling work.\n"
+                    <<"The separate merge still has one CTA per row; its chunk scan and vector reductions grow with the chunk count.\n"
+                    <<"For fully populated chunks the token count and score-dot work over the whole sequence are unchanged.\n"
+                    <<"The one-token tail, when present, still pays five barriers and full-warp trees; it has little useful work to amortize them.\n"
+                    <<"Smaller chunks can fill idle SMs or expose more scheduling work, but after saturation the extra merge/fixed work can dominate.\n"
+                    <<"Register pressure and direct-load cache behavior must be measured separately from shared-memory savings.\n"
+                    <<"Use whole-call latency, including unchanged projections and launches, to choose between retained AOT candidates.\n";
+            }
         }
         text<<"All CTA barriers and shuffle rounds are uniform across the full 128-thread block, including token/column tails.\n"
             <<"This explicit AOT option permits F32 regrouping and chunk-local normalization; compare with the FP64 oracle, not old F32 bytes.\n"
