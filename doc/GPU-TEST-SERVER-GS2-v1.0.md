@@ -1,8 +1,5 @@
 # GPU testing HTTP service and remote client GS2 v1.0
 
-Review staging: this PR publishes the wire contract; server and client
-implementations follow in the next two dependent PRs.
-
 November 11, 2026. Implemented authenticated loopback HTTP service, managed GS1
 worker pool and reconnectable client. The supported wire contract is
 [OpenAPI v0.2](GPU-TEST-SERVER-API-v0.2.openapi.json). It makes the earlier
