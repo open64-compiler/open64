@@ -1,8 +1,5 @@
 # GPU testing worker adapter GS1 v1.0
 
-Review staging: this layer publishes durable state; subprocess execution follows
-in the next dependent PR. The complete worker contract is recorded below.
-
 November 11, 2026. Implemented local worker and durable state. HTTP service,
 remote client and NVIDIA qualification remain GS2/GS3. OpenCTI stays deferred.
 Controlling direction: API v0.1 (`GPU-TEST-SERVER-API-v0.1.md`, historical design reference) and
