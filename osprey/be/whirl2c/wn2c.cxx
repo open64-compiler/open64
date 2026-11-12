@@ -3601,13 +3601,19 @@ WN2C_binaryop(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 } /* WN2C_binaryop */
 
 
-/* Reuse the established unsigned extraction handler for canonical CUDA U4
- * nodes; all other unary operations retain their normal translation path. */
+/* Print explicit CUDA scalar math without the host-only whirl2c helper ABI;
+ * retain normal C spellings and the existing unsigned extraction handler. */
 static STATUS
 WN2C_unaryop(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 {
    if (W2C_Cuda_Mode && WN_opcode(wn) == OPC_U4EXTRACT_BITS)
       return WN2C_extract_bits(tokens, wn, context);
+   if (W2C_Cuda_Mode && WN_opcode(wn) == OPC_F4ABS) {
+      Append_Token_String(tokens, "fabsf(");
+      WN2C_translate(tokens, WN_kid0(wn), context);
+      Append_Token_Special(tokens, ')');
+      return EMPTY_STATUS;
+   }
    Is_True(WN_kid_count(wn) == 1, ("Expected 1 kid in WN2C_unaryop()"));
 
    if (WN2C_IS_INFIX_OP(WN_opcode(wn)))
@@ -5680,6 +5686,8 @@ WN2C_array(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 } /* WN2C_array */
 
 
+/* Print pure intrinsic meaning with target-appropriate scalar ABI spellings;
+ * this translation never chooses numerical policy or changes the WHIRL tree. */
 static STATUS 
 WN2C_intrinsic_op(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 {
@@ -5697,8 +5705,12 @@ WN2C_intrinsic_op(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 
    /* A buffer to hold the tokens representing the function call */
    call_tokens = New_Token_Buffer();
-   Append_Token_String(call_tokens,
-                       WN_intrinsic_name((INTRINSIC)WN_intrinsic(wn)));
+   /* These pure F32 WHIRL intrinsics use CUDA's declared scalar math ABI.
+    * No approximation, fusion or source-level algorithm is selected here. */
+   const char *intrinsic_name = WN_intrinsic_name((INTRINSIC)WN_intrinsic(wn));
+   if (W2C_Cuda_Mode && WN_intrinsic(wn) == INTRN_F4EXP) intrinsic_name = "expf";
+   if (W2C_Cuda_Mode && WN_intrinsic(wn) == INTRN_F4LOG) intrinsic_name = "logf";
+   Append_Token_String(call_tokens, intrinsic_name);
 
    /* Append the argument list to the function reference.
     */

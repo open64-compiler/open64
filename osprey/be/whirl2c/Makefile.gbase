@@ -198,7 +198,7 @@ LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
 LCDEFS = $(HOSTDEFS) $(TARGDEFS)
 LCINCS = $(addprefix -I, $(HEADER_DIRS))
 ifeq ($(BUILD_OS), LINUX)
-LCINCS += -I$(BUILD_AREA)/include
+LCINCS += -I$(BUILD_AREA)/include -I$(BUILD_TOT)/linux/include
 endif
 
 LC++OPTS = $(STD_COMPILE_OPTS)
