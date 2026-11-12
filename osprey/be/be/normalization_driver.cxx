@@ -30,7 +30,8 @@
 #include "be_symtab.h"
 #include "dsl_pu_transaction.h"
 #include "dsl_gatekeeper.h"
-#include "dsl_ir_image.h"
+#include "dsl_image_service.h"
+#include "../com/dsl_pu_interface_verify.h"
 #include "opt_dsl_normalization_request.h"
 #include "normalization_driver.h"
 

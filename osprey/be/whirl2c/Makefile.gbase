@@ -140,6 +140,7 @@ SRC_DIRS = \
   $(BE_WHIRL2C_DIR)
 
 HEADER_DIRS = \
+  $(COMMON_DIR)/targ_info/access \
   $(SRC_DIRS)		\
   $(COMMON_COM_DIR)	\
   $(COMMON_COM_TARGET_DIR)\

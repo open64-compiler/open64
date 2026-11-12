@@ -13,7 +13,7 @@
 #include "wn.h"
 #include "wn_util.h"
 #include "ir_bread.h"
-#include "dsl_ir_image.h"
+#include "dsl_image_service.h"
 #include "dsl_gatekeeper.h"
 #include "errors.h"
 #include <unistd.h>
