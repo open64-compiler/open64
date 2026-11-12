@@ -1012,6 +1012,10 @@ static BOOL Skip_HoistIf;
 static BOOL Skip_SVR;
 static BOOL Skip_Unswitch;
 #endif /* KEY */
+/* Optimize only the driver-selected PU using its live DU/alias analyses.
+ * Optional High capture/search observes ordinary LNO at effective O3; its
+ * epoch expires before subsequent mutation. Refused search leaves ordinary
+ * LNO in control and never establishes another PU or REGION context. */
 extern WN * Lnoptimizer(PU_Info* current_pu, 
 			WN *func_nd , DU_MANAGER *du_mgr,
 			ALIAS_MANAGER *alias_mgr)

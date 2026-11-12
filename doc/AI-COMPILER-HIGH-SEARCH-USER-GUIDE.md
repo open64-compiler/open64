@@ -328,9 +328,16 @@ exercise actual native parsing/observation, retain diagnostics and reopen real
 binary WHIRL. Validation additionally covers malformed, missing and stale
 bindings, smaller budgets and explicit off; see the PR's retained evidence.
 
-Examples validated with authenticated historical tools and matching native
-search/parser sources establish this documentation's usage. They do not close fresh compilation
-and native-boundary acceptance for the relocated PR stack. The PR remains draft
-until its separate acceptance gates pass. The known long post-LNO dependence-
-image reopening defect remains outside the short-fixture walkthrough; no long
-executable pipeline or GPU performance is certified here.
+The examples and native search controls have been validated with freshly built
+Linux development backend, WOPT, LNO and inspection tools, with development
+assertions enabled. Retained evidence distinguishes these fresh compiler runs
+from authenticated producer inputs and comparison tools reused from the earlier
+milestone. It includes complete short/long search coverage, bounded and refused
+requests, native-state isolation, unchanged search-on/off mapped views, and a
+file-by-file compliance review.
+
+The known long post-LNO dependence-image failure in the downstream code-generation
+reader reproduces on the comparison baseline. Short host execution and the long
+pre-LNO host reference are validated separately; a long post-LNO executable
+pipeline remains unverified. These checks certify bounded estimation and ordinary
+LNO fallback, with no GPU execution, calibration or performance claim.

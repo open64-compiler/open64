@@ -25,6 +25,8 @@
 #include "erglob.h"
 #include "err_host.tab"
 #include "dsl_ir_image.h"
+#include "dsl_image_service.h"
+#include "dsl_ir_rewrite.h"
 #include "dsl_gatekeeper.h"
 
 BOOL Run_vsaopt = FALSE;

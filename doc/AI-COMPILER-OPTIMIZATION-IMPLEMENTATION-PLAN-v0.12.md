@@ -171,8 +171,8 @@ The earlier freeze-as-convergence claim is withdrawn. Report best estimated amon
 
 November 6 2026 | PREC0 through PREC4 open; documentation-only policy adoption
 
-Implement the [v0.5 precision policy](AI_compiler_optimization_design_v0.5.md#precision-policy-amendment)
-and [numerical accumulation amendment](AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md#precision-policy-amendment):
+Implement the [precision policy](AI_compiler_optimization_design_v0.7.md#precision-policy-amendment)
+and [numerical accumulation design](AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md):
 **FP8 operands where authorized; FP16 or FP32 reduction/accumulation, with FP32
 as the default.** Preserve explicit source arithmetic, current FP32-only
 contracts and all accepted evidence. FP8 is not a reduction-state choice.

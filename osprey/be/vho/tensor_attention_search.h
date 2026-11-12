@@ -16,7 +16,7 @@ enum VHO_MLA_COST_FIELD {
 extern const char *const VHO_mla_cost_names[VHO_MLA_COST_FIELDS];
 struct VHO_MLA_COST_PROFILE {
     /* Unknown timings start at zero; admission requires explicit positive values. */
-    VHO_MLA_COST_PROFILE() {memset(values,0,sizeof(values));}
+    inline VHO_MLA_COST_PROFILE() {memset(values,0,sizeof(values));}
     std::string id,architecture,provenance;
     UINT64 values[VHO_MLA_COST_FIELDS];
 };

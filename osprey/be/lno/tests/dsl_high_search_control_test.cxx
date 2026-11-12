@@ -3,7 +3,6 @@
  * Loads real retained MLA recipes; no native compiler contexts or factories.
  * Design: doc/AI-COMPILER-SEARCH-M3-CONTROLS-v1.0.md. */
 #include "../dsl_high_observer.h"
-#include <cassert>
 #include <algorithm>
 #include <cstdio>
 #include <stdexcept>
@@ -41,11 +40,14 @@ static VHO_MLA_PRODUCTION_RESULT VHO_test_search(const DSL_HIGH_SEARCH_INPUT &in
  * mechanism, simultaneous predicates, fairness and cooperative time limits. */
 int main(int argc,char **argv) {
     try {
-        assert(argc==3);DSL_HIGH_SEARCH_INPUT short_input,long_input;std::string reason;
-        assert(LNO_DSL_read_search_input(argv[1],short_input,reason) && LNO_DSL_read_search_input(argv[2],long_input,reason));
+        if(argc!=3) throw std::runtime_error("expected short and long binding paths");
+        DSL_HIGH_SEARCH_INPUT short_input,long_input;std::string reason;
+        if(!LNO_DSL_read_search_input(argv[1],short_input,reason) || !LNO_DSL_read_search_input(argv[2],long_input,reason))
+            throw std::runtime_error("fixture preparation: "+reason);
         VHO_MLA_SEARCH_CONTROL control;VHO_test_clock();VHO_MLA_PRODUCTION_RESULT full=VHO_test_search(short_input,control);
         VHO_MLA_SEARCH_OPTIONS legacy_options;VHO_MLA_SEARCH_RESULT legacy;
-        assert(VHO_mla_explore(VHO_test_program(short_input),short_input.gpu,short_input.model,legacy_options,&legacy,NULL));
+        if(!VHO_mla_explore(VHO_test_program(short_input),short_input.gpu,short_input.model,legacy_options,&legacy,NULL))
+            throw std::runtime_error("legacy reference exploration failed");
         VHO_test_require(full.has_winner && full.exploration.complete && full.exploration.evaluations==12 &&
             full.exploration.winner==legacy.winner,"full_union_matches_legacy_optimum");
         VHO_test_require(full.events.size()==full.proposals && full.proposals==full.exploration.evaluations+full.exploration.cache_hits,"cache_and_proposal_accounting");
