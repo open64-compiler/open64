@@ -55,7 +55,7 @@ struct VHO_TENSOR_CHUNK_SELECTION {
     std::vector<VHO_TENSOR_CHUNK_CANDIDATE> candidates;
 };
 struct VHO_TENSOR_PROGRAM {
-    VHO_TENSOR_PROGRAM():opt_level(0),threads(1),fuse(false),split_width(0),cooperative(false),fuse_attention(false),register_latent(false),auto_chunks(false),chunk_policy(1) {}
+    VHO_TENSOR_PROGRAM():opt_level(0),threads(1),fuse(false),split_width(0),cooperative(false),fuse_attention(false),register_latent(false),auto_chunks(false),search_selected(false),chunk_policy(1) {}
     std::string source_pu;
     std::string source_file;
     UINT32 opt_level;
@@ -66,6 +66,8 @@ struct VHO_TENSOR_PROGRAM {
     bool fuse_attention;        /* explicit stable local softmax / rescaled merge */
     bool register_latent;       /* four lane-private columns per warp, v5 */
     bool auto_chunks;           /* sealed resource-aware v6 selection */
+    bool search_selected;        /* fixed two-phase winner; never rerun selection per kernel */
+    std::string search_evidence,search_identity; /* driver-owned canonical audit JSON and opaque identity */
     UINT32 chunk_policy;        /* 1 legacy 128+, 2 expanded 32+ search, 3 narrow blocks, 4 warp registers, 5 two-warp broadcasts, 6 warp-owned partials */
     VHO_TENSOR_GPU_PROFILE gpu;
     std::vector<VHO_TENSOR_VALUE> values;

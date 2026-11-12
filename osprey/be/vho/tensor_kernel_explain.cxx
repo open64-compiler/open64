@@ -881,6 +881,11 @@ public:
      * or claiming device execution/performance evidence that the plan lacks. */
     void ExplainOverview() {
         std::ostringstream text;std::set<UINT32> allocations;UINT64 bytes=0;
+        if(_p.search_selected) text<<"TWO-PHASE ESTIMATION: this fixed plan was selected from detached MLA candidates before native WHIRL allocation.\n"
+            <<"Search identity "<<_p.search_identity<<"; selected policy "<<_p.chunk_policy<<", chunk width "<<_p.split_width<<".\n"
+            <<"Only this selected implementation is materialized; correctness tests apply to it, while other candidates remain estimates.\n"
+            <<"The additive-wave cost model and portfolio stopping evidence are retained in the sealed recipe. No GPU optimum or calibrated latency is claimed.\n"
+            <<"Lowering and emission consume this plan without per-kernel re-exploration. Existing algorithm, tuple, synchronization and numerical explanations below remain authoritative.\n";
         ExplainAutoChunks(text);
         text<<"These explanations describe the selected logical schedule and its scalar GPU realization.\n";
         text<<"The tensor-level review uses serial helpers; production kernels use the same VHO-selected plan.\n";

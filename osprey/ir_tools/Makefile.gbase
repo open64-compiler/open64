@@ -415,13 +415,16 @@ whirl2c: whirl2c_reference_main.o whirl2c_tensor_source
 LDIRT += whirl2c whirl2c_tensor_source whirl2c_reference_main.o tensor_source.o
 
 # PU-local VHO lowering service; the standalone driver alone owns frontend APIs.
-tensor_kernel_lower: $(OBJECTS) controls.o tensor_kernel_driver.o tensor_kernel_lower.o tensor_attention_chunk_select.o tensor_kernel_explain.o tensor_schedule_source.o
-	$(link.c++f) -o $@ tensor_kernel_driver.o tensor_kernel_lower.o tensor_attention_chunk_select.o tensor_kernel_explain.o tensor_schedule_source.o controls.o $(OBJECTS) $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
+tensor_kernel_lower: $(OBJECTS) controls.o tensor_kernel_driver.o tensor_kernel_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o
+	$(link.c++f) -o $@ tensor_kernel_driver.o tensor_kernel_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o controls.o $(OBJECTS) $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
+
+tensor_attention_search.o: $(BE_VHO_DIR)/tensor_attention_search.cxx $(BE_VHO_DIR)/tensor_attention_search.h $(BE_VHO_DIR)/tensor_kernel_lower.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h $(BE_VHO_DIR)/dsl_gemm_readiness.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
 
 tensor_attention_chunk_select.o: $(BE_VHO_DIR)/tensor_attention_chunk_select.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h $(BE_VHO_DIR)/dsl_gemm_readiness.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
 
-tensor_kernel_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h
+tensor_kernel_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BUILD_BASE)/tensor_attention_search_json.inc $(BE_VHO_DIR)/tensor_attention_search.h $(BE_VHO_DIR)/tensor_kernel_lower.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
 
 tensor_kernel_lower.o: $(BE_VHO_DIR)/tensor_kernel_lower.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h $(BE_VHO_DIR)/tensor_attention_pattern.inc $(BE_VHO_DIR)/tensor_attention_device.inc
@@ -433,7 +436,7 @@ tensor_schedule_source.o: $(BUILD_TOT)/be/whirl2c/tensor_schedule_source.cxx $(B
 tensor_kernel_explain.o: $(BE_VHO_DIR)/tensor_kernel_explain.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h $(BE_VHO_DIR)/tensor_kernel_explain.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
 
-LDIRT += tensor_kernel_lower tensor_kernel_driver.o tensor_kernel_lower.o tensor_attention_chunk_select.o tensor_kernel_explain.o tensor_schedule_source.o
+LDIRT += tensor_kernel_lower tensor_kernel_driver.o tensor_kernel_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o
 
 ir_a2b: ir_b2a
 	ln -sf ir_b2a ir_a2b
