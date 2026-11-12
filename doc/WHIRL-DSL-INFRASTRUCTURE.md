@@ -2382,6 +2382,15 @@ independent of the reduction profitability/lowering implementation stream.
 
 ### LN2 Storage/Event Planning (2026-10-28)
 
+The later [LN3 profitability service](AI-COMPILER-LAYERNORM-PROFITABILITY-v0.1.md)
+reuses native source/target/storage binding and common hardware, evolution and
+candidate/cost/plan records for complete bounded analytical C0/C1/C2 choices.
+Literal per-warp jobs, explicit unknown timing, RF/SMEM/CTA slots, independent
+schedule bounds and a conservative interval gate remain phase-owned. Source
+WHIRL stays byte-identical; selected guards are freshly exported, not executable
+schedule images. No v1 promotion, reduction dependency, mapped field/opcode or
+automatic normalization lowering is introduced.
+
 The subsequent [LN2-d runtime bridge](AI-COMPILER-LAYERNORM-RUNTIME-GUARDS-v0.1.md)
 adds fresh read-only guard export and an independent runtime-only library.
 Canonical live roots/entry/device limits and atomic input/output leases gate

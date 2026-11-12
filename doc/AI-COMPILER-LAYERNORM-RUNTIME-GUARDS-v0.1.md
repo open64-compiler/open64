@@ -185,6 +185,11 @@ missing begin/completion pairs, failures that release leases, and missing cases.
 
 ## 6. Next Gates
 
+The subsequent [LN3 analytical service](AI-COMPILER-LAYERNORM-PROFITABILITY-v0.1.md)
+now compares complete closed C0/C1/C2 schedules and exports its gated choice
+through this same guard API. This does not discharge internal-event, actual
+register/entry or executable-WHIRL obligations; all selections are analysis-only.
+
 LN3 must compare complete legal C0/C1/C2 costs including pointer-scalar traffic,
 ordered critical path, row scans, barriers, tail work, resources and bubble
 costs. Neither export nor runtime admission is a profitability decision.

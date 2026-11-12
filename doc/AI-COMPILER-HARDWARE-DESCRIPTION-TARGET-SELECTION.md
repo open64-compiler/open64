@@ -12,6 +12,15 @@ Revision1/model5 receipts below remain historical, not current producer output.
 
 ## Principle
 
+LN3 scalar follow-on: the optional runtime-only
+`DSL_SCALAR_EXECUTION_PROFILE` separates dependent add/mul/div/sqrt, issue,
+global/shared/carrier startup and bandwidth, control/barriers and invocation
+overheads into versioned per-field envelopes with provenance. Built-in lookups
+return these quantities explicitly unknown. Existing description struct layouts,
+capacity values and all scalar GEMM models remain unchanged. The owning WOPT
+phase consumes this extension for [bounded LayerNorm costs](AI-COMPILER-LAYERNORM-PROFITABILITY-v0.1.md);
+common/com does not rank candidates or substitute private timing constants.
+
 Proposed MMA extension: [compute-realization design](AI-COMPILER-MMA-COMPUTE-REALIZATION-DESIGN-v0.1.md#6-proposed-hardware-description-extensions)
 specifies per-variant capability, service/initiation/latency, accumulator and
 RF/SMEM/TMEM resource payloads with provenance and unknown-state handling.

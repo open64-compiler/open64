@@ -37,6 +37,30 @@ typedef struct {
     uint64_t shared_capacity, shared_budget, shared_quantum, shared_reserved;
 } DSL_HARDWARE_RESOURCE_RECORD;
 
+/* Optional policy-free scalar/movement timing envelope. Existing hardware
+ * records keep their ABI and estimates; missing extension fields stay unknown.
+ * Design: doc/AI-COMPILER-LAYERNORM-PROFITABILITY-v0.1.md.
+ * Rates: device-global bytes/cycle, per-SM shared bytes/cycle and scalar lanes/
+ * cycle. Latencies are startup after byte service, except scalar latency is
+ * instruction-start to result-ready (includes issue). All units reference cycles.
+ * Each value has optimistic/nominal/pessimistic numeric bounds; rates reverse
+ * direction when estimating durations. Provenance 0=unknown, 1=estimate,
+ * 2=measured input, 3=synthetic experiment. No provenance is certification. */
+enum DSL_SCALAR_EXECUTION_FIELD {
+    DSL_SCALAR_GLOBAL_RATE, DSL_SCALAR_SHARED_RATE, DSL_SCALAR_COMPUTE_RATE,
+    DSL_SCALAR_GLOBAL_LATENCY, DSL_SCALAR_CARRIER_LATENCY, DSL_SCALAR_SHARED_LATENCY,
+    DSL_SCALAR_ADD_LATENCY, DSL_SCALAR_MUL_LATENCY, DSL_SCALAR_DIV_LATENCY,
+    DSL_SCALAR_SQRT_LATENCY, DSL_SCALAR_CONTROL_CYCLES, DSL_SCALAR_BARRIER_CYCLES,
+    DSL_SCALAR_GUARD_CYCLES, DSL_SCALAR_LAUNCH_CYCLES, DSL_SCALAR_WORKSPACE_CYCLES,
+    DSL_SCALAR_PUBLICATION_CYCLES, DSL_SCALAR_SECTOR_BYTES,
+    DSL_SCALAR_DIV_ISSUE_CYCLES, DSL_SCALAR_SQRT_ISSUE_CYCLES, DSL_SCALAR_FIELD_COUNT
+};
+typedef struct {
+    uint32_t version, arch_id, description_revision, model_id;
+    uint64_t values[DSL_SCALAR_FIELD_COUNT][3];
+    uint32_t provenance[DSL_SCALAR_FIELD_COUNT];
+} DSL_SCALAR_EXECUTION_PROFILE;
+
 /* Read borrowed resource fields without mutation. Require the listed positive
  * limits/quanta and a positive shared budget no larger than capacity; return
  * false on rejection. This is not complete allocation, reserved-byte or

@@ -1,12 +1,53 @@
 # AI Compiler Optimization Progress
 
-Snapshot: 2026-10-28, integrated against `develop` at `f36629fb`
+Snapshot: 2026-10-28, integrated against `develop` at `ecbb857f` (merged PR #202)
 Scope: Open64 AI optimization, with standalone rank-2 F32 GEMM as the first
 generated-kernel case. This is a running status ledger, not a replacement for
 the [implementation plan](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md) or
 the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
+
+2026-10-28 LN3 bounded complete-cost/selection accepted, implementation `d5da1c1d`:
+[Profitability detail v0.1](AI-COMPILER-LAYERNORM-PROFITABILITY-v0.1.md)
+defines the WOPT-owned source-bound C0/C1/C2 recipe, common hardware extension,
+shared occupancy helper, literal readiness scheduler, complete invocation costs,
+safe model bounds and all-alternative cost gate. It reuses AIO-1/AIO-2 records
+and fresh guard export; all choices remain analysis-only. Built-in scalar
+timing is explicitly incomplete. V1, mapped layouts and reduction coding are
+unchanged; no executable LayerNorm or GPU performance claim.
+
+Native validation passed 40 source/target cases, 728 comparisons / 2,184
+candidate cost records, 80 full mapped dumps and 160 actual PREOPT controls.
+All 32 prior source cases preserve images, dumps and PREOPT semantic facts.
+The independent frontier-scan oracle agrees on all 1,100 complete costs and
+all refusal/unknown/budget/overflow/selection outcomes. Analytical selected-kind
+census: no selection 376, C0 264, C1 8, C2 80. These are synthetic/envelope
+experiments, not hardware measurements. All 108 focused trace/oracle/join tests
+pass. All 40 scoped ASan/UBSan cases, AIO-2 mapped candidate/plan, MMA shadow
+and occupancy-oracle regressions pass. Fresh host enforcement consumes 136
+native guards with 42,884 checks; it does not execute LayerNorm arithmetic.
+Final-path replay from retained sources/binaries reproduces all images, guard
+bytes, cost traces and reports, and repeats the focused, sanitizer, host and
+shared-service checks. Sanitizers cover the new cost/fixture/hardware objects,
+not the whole compiler; legacy mapped padding uses documented zero allocator
+fill and process-pool leak checking off.
+
+Accepted immutable review package:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln3-cost/sha256-15d24bcfd6a7fdeb68988b89520d65317809485e177b44fcfb73e7efda2edb12/`.
+It retains native `.t`, source `.B`/full `.T`, PREOPT controls, guard bytes,
+all phase reports, binaries, source snapshots, commands and checksums.
+Accepted final-path replay:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln3-cost/replay/sha256-b94344d216e3cd719200fd7e7b28d0f3950ae6812b513d296ab2ed4b5ef562fb/`.
+Mutable review indexes/current links were updated only after that replay passed.
+
+Phase reports: `physical-plan.log` gives full model/resource/cost/selection
+facts, `bubble.log` gives critical-path exposure, `roofline.log` gives
+candidate-specific all-miss scalar service bounds, and `optimization.log`
+collects them. Every log keeps its first-line description, and raw native
+trace rows keep source line last. LN4 selected executable WHIRL, actual
+register/carrier/barrier conformance, real CUDA provider and GPU verification
+remain open.
 
 2026-10-28 LN2-d runtime guard export/enforcement bridge implemented:
 [Runtime guard detail v0.1](AI-COMPILER-LAYERNORM-RUNTIME-GUARDS-v0.1.md)
@@ -43,8 +84,8 @@ Retained review family:
 `/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln2d-runtime/`.
 The immutable receipt retains native/export `.B`/`.T` and `.t`, guard bytes,
 runtime logs/library, sources/tools, sanitizer/compatibility evidence and
-commands/checksums. Index only after final-path native/host replay. Next LN3:
-complete C0/C1/C2 profitability and cost-gated selection; LN4 executable WHIRL,
+commands/checksums. Index only after final-path native/host replay. The LN2-d
+handoff to bounded LN3 is now satisfied by the service above; LN4 executable WHIRL,
 real CUDA provider and GPU certification remain open. COST/DECISION/TRANSFORM none.
 
 2026-10-28 LN2 bounded storage/event planning implemented:

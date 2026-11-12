@@ -145,9 +145,9 @@ concurrent reduction coding.
 | --- | --- | --- |
 | LN0 | Review centered recipe, C0/C1/C2 direct/retention candidates, explicitly unauthorized C3 Welford, aliases/events and complete costs. | Initial design proposed; no new executable support. |
 | LN1 | Define both means, scaling, rsqrt and environment; specify native v2/admission and implement target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | Native v2/producer/PREOPT, LN1-c target binding/carriers, LN1-d oracle and bounded LN1-e integrated source/target/numerical evidence implemented. Complete LayerNorm execution and GPU conformance remain open. |
-| LN2 | Construct conditional legal storage/event plans from bound source. `alternatives.log`, `residency.log` and `fetch-pipeline.log` expose ranges/leases, capacity, banks/tails and generation/reuse constraints. | Bounded C0/C1/C2 native API implemented: 32 cases/324 queries, common target resources, acyclic completion/visibility DAG and source preservation. Runtime guards/enforcement, register/grid limits and expanded delivery remain open. |
-| LN3 | Complete comparable costs with target provenance/uncertainty and independent oracle. `physical-plan.log` explains selected/fallback reason without invented overlap or guaranteed cache hits. | Open; reuse reduction profitability. |
-| LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Open; reuse reduction lowering. |
+| LN2 | Construct conditional legal storage/event plans from bound source. `alternatives.log`, `residency.log` and `fetch-pipeline.log` expose ranges/leases, capacity, banks/tails and generation/reuse constraints. | Native planning plus LN2-d runtime guard export/host bridge implemented. Actual selected-entry/register/internal-event conformance, real CUDA provider and expanded delivery remain open. |
+| LN3 | Complete comparable costs with target provenance/uncertainty and independent oracle. `physical-plan.log` explains selected/fallback reason without invented overlap or guaranteed cache hits; `bubble.log` gives critical-path exposure; `roofline.log` gives candidate-specific all-miss service bounds. | Bounded native complete-cost/selection service implemented and retained-path replay accepted independently of reduction coding. Common AIO-1/AIO-2 records and optional hardware extension, explicit unknowns and analysis-only interval gate; no executable transformation or native calibration claim. |
+| LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Open; use established scalar/WHIRL emission services. Any reduction-lowering integration is a separately reviewed reuse, not a dependency of the accepted LN3 service. |
 | LN5 | Separately authorized parallel statistics/Welford, RF retention and async/TMA refinements with numerical legality, lowerability and complete costs. | Deferred, not implied by LN0-LN4. |
 | LN6 | Native numerical/instruction/resource/paired-performance verification and calibration. | GPU gate open; not a blocker to design/compiler work. |
 
@@ -221,7 +221,7 @@ schema separation and public version narrowing at Python and C boundaries.
 Four native v1 variants, six Python v1 cases/sixteen rejections and historical
 v1 reopen protect compatibility. The progress ledger points to durable receipts.
 
-Next: LN3 complete C0/C1/C2 profitability after the bounded LN2-d runtime bridge and the
+Next: LN4 selected executable WHIRL after bounded LN3 analytical comparison, LN2-d and the
 independent LN1-d oracle. LN1-c supplies conditional target binding and primitive carriers,
 not execution of LN-REF-1. Keep LN2/LN3
 cost/selection and LN4 executable WHIRL separate from PREOPT characterization.
@@ -309,6 +309,57 @@ async unsupported, COST/DECISION/TRANSFORM none and GPU not run. Retain native
 `.t`, source checkpoints/dumps, rebuilt WOPT/driver, sources, commands and final
 replay. LN3 profitability and LN4 actual WHIRL actions remain separate gates.
 
+LN3 implementation, 2026-10-28:
+[Complete profitability detail](AI-COMPILER-LAYERNORM-PROFITABILITY-v0.1.md)
+defines an owning-WOPT request for comparable C0/C1/C2 plans, exact native
+rebinding, model/profile/RF/budget inputs and an analysis-only result. Explicit
+per-warp literal jobs charge all external and pointer-carrier traffic, ordered
+arithmetic including division/sqrt issue and dependency latency, SMEM/control/
+barriers, fixed RF/shared/CTA slots, waves and invocation overhead. All-miss
+global and private-carrier service share one bandwidth engine; no guessed
+cache hits or independent overlap discounts. An independent frontier-scan
+oracle recomputes schedules/components and safe model bounds.
+
+All still-eligible candidates need complete comparable costs. Unknown/invalid
+timing, RF uncertainty, budget and overflow block ranking rather than becoming
+zero. Known resource-infeasible candidates are explicitly rejected. Rank nominal
+costs separately, then choose the cheapest candidate satisfying
+`upper + margin < lower(C0)`, else preserve conditional C0. Evaluate every
+alternative, not just the nominal winner. Ties prefer C0; margin cannot wrap.
+Reuse common evolution/candidate/cost/plan/fallback services; export the selected
+guard freshly but retain every runtime/lowering obligation and analysis-only
+flag. The source/matcher v1 and mapped-image layout remain unchanged.
+
+The optional generic scalar hardware extension leaves all existing description
+layouts/values unchanged. Built-in extensions are incomplete, not guessed from
+GEMM rates. Per-field provenance, units and resource-envelope origin are traced.
+The bounded native matrix adds single-row/multi-wave shapes, synthetic timing
+preferences, uncertainty/margin/tie, missing/invalid fields, RF pressure, capacity,
+budget and overflow controls. Retain raw `.t`, all report logs, paired full
+mapped inspections, real PREOPT controls, scope/table/trace parity, sanitizer
+evidence and immutable final-path replay. LN4 must prove the selected WHIRL,
+carrier storage, loops/tails/barriers, entry/register/launch/runtime conformance;
+no production provider or GPU claim follows from analytical selection.
+
+LN3 acceptance: implementation `d5da1c1d`; 40 source/target cases, 728
+comparisons, 2,184 candidate costs (1,100 complete), 80 full mapped dumps and
+160 actual PREOPT controls. All 32 earlier source cases remain byte/semantic
+compatible. The independent oracle, 108 focused tests, 40 scoped ASan/UBSan
+cases, three shared-service regressions and 136 host guard invocations
+(42,884 checks) pass. Final-path replay from authenticated retained source and
+binaries matches traces, images, guards and reports and repeats those checks.
+See the [progress ledger](AI-COMPILER-OPTIMIZATION-PROGRESS.md) for immutable
+primary/replay paths. These are model/host results, not GPU execution.
+
+Next execution package is LN4: rebind and revalidate the selected source,
+profile, recipe and guard; materialize that recipe in authoritative high-level
+WHIRL; retain before/after full mapped evidence and actual action traces;
+prove tails, carrier/frame storage, uniform barriers and slot reuse; emit CUDA
+from WHIRL and bind entry/launch/runtime obligations. A different carrier,
+register budget or schedule requires recosting, not reuse of stale LN3 costs.
+Driver/default integration must not silently authorize v1 or an incomplete
+profile. Native SKU/cache/timing calibration and GPU verification remain LN6.
+
 LN2-d implementation, 2026-10-28:
 [Runtime guard detail](AI-COMPILER-LAYERNORM-RUNTIME-GUARDS-v0.1.md) defines the
 83-word host-native guard ABI, fresh export and exact manifest matching, separate
@@ -323,7 +374,7 @@ The full native suite retains PREOPT trace controls, v1 refusals, all original
 mapped source checkpoints and exact source lines. Every condensed report begins
 with its summary description. No new compiler option/trace bit or binary image
 layout, no implicit fallback, and no dependency on reduction coding.
-Next LN3: complete legal C0/C1/C2 costs and cost-gated selection; next LN4:
+The LN2-d handoff to bounded LN3 is satisfied above; next LN4:
 selected WHIRL/entry/launch/internal-event conformance. Real CUDA provider and
 GPU certification stay explicitly open, not prerequisites for compiler-side work.
 
