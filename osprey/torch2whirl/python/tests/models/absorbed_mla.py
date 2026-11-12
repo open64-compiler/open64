@@ -8,6 +8,7 @@ copy of the full upstream layer. RoPE and KV normalization are already applied.
 import math
 
 import torch
+from open64_dsc.tensor_traits import LATENT_KV_CACHE, ROTARY_KEY_CACHE
 
 
 INPUT_NAMES = ("query_nope", "query_rope", "cache", "rope_cache",
@@ -23,6 +24,9 @@ class AbsorbedMLA(torch.nn.Module):
     The scale is the original model scale, not 1/sqrt(R+Dr).
     No final cross-head output projection, cache append, JIT or kernel dispatch.
     """
+
+    __open64_tensor_traits__ = {"cache": LATENT_KV_CACHE,
+                               "rope_cache": ROTARY_KEY_CACHE}
 
     def __init__(self, alpha):
         super().__init__()

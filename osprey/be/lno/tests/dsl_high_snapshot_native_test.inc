@@ -40,6 +40,24 @@ static void DSL_high_native_test(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias
     DSL_high_test_nodes(WN_func_body(scope), loop, memory, use, du);
     DSL_high_test_require(loop && memory && use, "live_test_coverage");
 
+    /* Perturb only an existing value index and restore it without allocating
+     * strings/metadata rows. A missed epoch bump must still be detected. */
+    for(UINT32 i=0;i<St_tensor_metadata.Size();++i) {
+        ST_TENSOR_METADATA_STORE &store=St_tensor_metadata[i];
+        bool formal=false;
+        for(INT f=0;f<WN_num_formals(scope);++f)
+            if(store.st==WN_st_idx(WN_formal(scope,f))) formal=true;
+        if(!formal) continue;
+        for(UINT32 row=store.metadata_head;row;row=Tensor_dsl_kv_table[row-1].next) {
+            TY_DSL_KV &kv=Tensor_dsl_kv_table[row-1];
+            if(strcmp(Index_To_Str(kv.key),"tensor.cache.trait")) continue;
+            STR_IDX saved=kv.value;kv.value=kv.key;
+            bool refused=!LNO_DSL_revalidate_high(scope,du,alias,graph,epoch,bindings,snapshot,reason);
+            kv.value=saved;
+            DSL_high_test_require(refused,"unannounced_cache_trait_edit");
+        }
+    }
+
     OPCODE comparison; WN *upper = WN_LOOP_UpperBound(loop, &comparison);
     INT64 old_bound = WN_const_val(upper); WN_const_val(upper) = old_bound + 1;
     bool rejected = !LNO_DSL_revalidate_high(scope, du, alias, graph, epoch, bindings, snapshot, reason);

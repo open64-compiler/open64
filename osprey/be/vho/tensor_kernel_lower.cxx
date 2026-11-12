@@ -126,6 +126,8 @@ void bind_argument(ST_IDX st,UINT32 argument,const VHO_TENSOR_PROGRAM &p,UINT32 
     ST_tensor_bind_metadata(st,(prefix+"bytes").c_str(),decimal(VHO_tensor_elements(storage)*(storage.dtype=="bool"?1:4)).c_str());
     ST_tensor_bind_metadata(st,(prefix+"dtype").c_str(),storage.dtype.c_str());
     ST_tensor_bind_metadata(st,(prefix+"name").c_str(),storage.name.c_str());
+    if(!storage.cache_trait.empty())
+        ST_tensor_bind_metadata(st,(prefix+"cache_trait").c_str(),storage.cache_trait.c_str());
 }
 class VHO_TENSOR_CAPTURE {
     PU_Info *_pu;
@@ -145,12 +147,15 @@ public:
         need(TY_is_tensor_extension(ty),"non-tensor value");VHO_TENSOR_VALUE value;
         const TY_TENSOR_SCHEMA_KEY supported[]={TY_TENSOR_SCHEMA_KIND,TY_TENSOR_SCHEMA_DTYPE,TY_TENSOR_SCHEMA_RANK,
             TY_TENSOR_SCHEMA_SHAPE,TY_TENSOR_SCHEMA_LAYOUT,TY_TENSOR_SCHEMA_NO_ALIAS,TY_TENSOR_SCHEMA_CANONICAL,
-            TY_TENSOR_SCHEMA_LINEAGE,TY_TENSOR_SCHEMA_SOURCE_LAYER_NAME,TY_TENSOR_SCHEMA_LOWERING_HINT};
+            TY_TENSOR_SCHEMA_LINEAGE,TY_TENSOR_SCHEMA_SOURCE_LAYER_NAME,TY_TENSOR_SCHEMA_LOWERING_HINT,
+            TY_TENSOR_SCHEMA_TRAITS};
         for(UINT32 i=0;i<TY_tensor_attribute_count(ty);++i) {
             const char *key=NULL,*text=NULL;TY_DSL_BIND_STATE state;
             need(TY_tensor_attribute_at(ty,i,&key,&text,&state),"unreadable tensor descriptor field");bool known=false;
             for(UINT32 k=0;k<sizeof(supported)/sizeof(supported[0]);++k) if(!strcmp(key,TY_tensor_schema_key_name(supported[k]))) known=true;
             need(known,"unsupported tensor trait/representation field: "+std::string(key));
+            if(!strcmp(key,TY_tensor_schema_key_name(TY_TENSOR_SCHEMA_TRAITS)))
+                need(state==TY_DSL_BIND_BOUND,"unbound tensor cache trait");
         }
         const char *kind=TY_tensor_attribute(ty,TY_TENSOR_SCHEMA_KIND);need(kind && !strcmp(kind,"tensor"),"unsupported tensor kind");
         const char *layout=TY_tensor_attribute(ty,TY_TENSOR_SCHEMA_LAYOUT);
@@ -158,6 +163,11 @@ public:
             !TY_tensor_attribute_is_bound(ty,"strides"),"unsupported physical tensor layout/strides");
         const char *dtype=TY_tensor_attribute(ty,TY_TENSOR_SCHEMA_DTYPE),*shape=TY_tensor_attribute(ty,TY_TENSOR_SCHEMA_SHAPE);
         need(dtype && shape,"incomplete tensor descriptor");value.dtype=dtype;value.shape=parse_numbers(shape);
+        if(TY_tensor_attribute_is_bound(ty,TY_TENSOR_SCHEMA_TRAITS)) {
+            const char *trait=TY_tensor_attribute(ty,TY_TENSOR_SCHEMA_TRAITS);
+            need(DSL_tensor_cache_trait_known(trait),"unsupported tensor trait/representation field: traits");
+            value.cache_trait=trait;
+        }
         value.name=ST_name(st);value.role=role;value.ordinal=ordinal;value.storage=_program.values.size();
         UINT32 id=value.storage;_program.values.push_back(value);_symbols[st]=id;return id;
     }
@@ -691,6 +701,8 @@ BOOL VHO_tensor_verify_kernel(const VHO_TENSOR_PROGRAM &p,UINT32 ordinal,FILE *d
             std::string av[]={decimal(value),decimal(v.storage),decimal(storage.role),decimal(storage.ordinal),decimal(VHO_tensor_elements(storage)),
                 decimal(VHO_tensor_elements(storage)*(storage.dtype=="bool"?1:4)),storage.dtype,storage.name};
             for(UINT32 k=0;k<8;++k) {const char *actual=ST_tensor_metadata(st,(std::string("tensor.argument.")+decimal(i)+"."+ak[k]).c_str());need(actual && av[k]==actual,"kernel binding mismatch");}
+            const char *trait=ST_tensor_metadata(st,(std::string("tensor.argument.")+decimal(i)+".cache_trait").c_str());
+            need(storage.cache_trait==(trait?trait:""),"kernel cache trait mismatch");
         }
         if(p.fuse_attention) {
             const char *layout=ST_tensor_metadata(st,"tensor.kernel.attention_layout");

@@ -236,6 +236,14 @@ BOOL VHO_tensor_validate_program(const VHO_TENSOR_PROGRAM &p,FILE *diagnostic) {
             for(size_t j=0;j<v.shape.size();++j) {need(v.shape[j] && v.shape[j]<=16777216/size,"invalid/large extent");size*=v.shape[j];}
             need(v.role<=2 && v.storage<p.values.size(),"invalid role/storage");
             if(v.role) need(v.storage==i,"external value cannot alias a temporary");
+            if(!v.cache_trait.empty()) {
+                need(v.cache_trait==DSL_TENSOR_TRAIT_LATENT_KV_CACHE ||
+                    v.cache_trait==DSL_TENSOR_TRAIT_ROTARY_KEY_CACHE,"unsupported cache trait");
+                const VHO_TENSOR_VALUE &base=p.values[v.storage];
+                need(v.dtype=="float32" && base.dtype=="float32" && base.role==1 &&
+                    base.shape.size()==3 && base.cache_trait==v.cache_trait && v.role!=2,
+                    "cache trait requires an input or its storage-aliasing reshape");
+            }
             if(v.role==1) {need(v.ordinal==inputs++,"input ordinal");defined.insert(i);}
             if(v.role==2) need(v.ordinal==outputs++,"output ordinal");
         }
@@ -247,6 +255,8 @@ BOOL VHO_tensor_validate_program(const VHO_TENSOR_PROGRAM &p,FILE *diagnostic) {
             for(size_t j=0;j<op.inputs.size();++j) need(op.inputs[j]<p.values.size() && defined.count(op.inputs[j]) && p.values[op.inputs[j]].role!=2,"invalid operand use");
             validate_operation(p,op);const VHO_TENSOR_VALUE &out=p.values[op.output];
             need(out.storage==(op.name=="common.reshape"?p.values[op.inputs[0]].storage:op.output),"incorrect storage alias");defined.insert(op.output);
+            if(op.name=="common.reshape")
+                need(out.cache_trait==p.values[op.inputs[0]].cache_trait,"reshape cache trait mismatch");
         }
         need(defined.size()==p.values.size(),"unused/undefined recipe values");
         if(p.fuse_attention) VHO_tensor_attention(p);
@@ -290,6 +300,15 @@ std::string VHO_tensor_recipe_key(const VHO_TENSOR_PROGRAM &p) {
         out << '/' << op.attributes.size();
         for (std::map<std::string,std::string>::const_iterator j = op.attributes.begin(); j != op.attributes.end(); ++j)
             out << '/' << j->first.size() << ':' << j->first << j->second.size() << ':' << j->second;
+    }
+    /* Keep legacy keys byte-identical. Annotated keys seal every declared and
+     * alias-propagated role, so stripping/changing a trait invalidates joins. */
+    bool annotated=false;
+    for(size_t i=0;i<p.values.size();++i) if(!p.values[i].cache_trait.empty()) annotated=true;
+    if(annotated) {
+        out << "/cache-traits-v1";
+        for(size_t i=0;i<p.values.size();++i) if(!p.values[i].cache_trait.empty())
+            out << '/' << i << '/' << p.values[i].cache_trait.size() << ':' << p.values[i].cache_trait;
     }
     return out.str();
 }

@@ -102,6 +102,8 @@ class DSL_HIGH_CAPTURE {
             value += Type(ST_type(symbol)) + "/" + DSL_high_number(ST_ofst(symbol)) + "/" +
                 DSL_high_number(ST_pt_to_unique_mem(symbol)) + "/" + DSL_high_number(ST_is_value_parm(symbol)) + "/" +
                 DSL_high_number(ST_addr_saved(symbol)) + "/" + DSL_high_number(ST_addr_passed(symbol));
+            const char *trait=ST_tensor_metadata(ST_st_idx(symbol),"tensor.cache.trait");
+            if(trait) { DSL_high_field(value,"cache-trait-v1"); DSL_high_field(value,trait); }
         }
         return value;
     }

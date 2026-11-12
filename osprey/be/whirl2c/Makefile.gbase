@@ -346,6 +346,8 @@ endif
 #----------------------------------------------------------------------
 include $(COMMONRULES)
 
+w2c_driver.o: $(BE_DIR)/vho/tensor_selected_key.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
+
 .PHONY: whirl2c_tensor_source
 whirl2c: whirl2c_tensor_source
 

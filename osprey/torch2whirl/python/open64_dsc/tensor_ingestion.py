@@ -208,6 +208,16 @@ def try_export_tensor_expressions(interpreter, model, inputs, captured):
     except (ValueError, TypeError, KeyError, OverflowError, struct.error) as error:
         raise NotImplementedError("unsupported static tensor expression: " + str(error)) from error
 
+    # Explicit content roles belong to tensor descriptors. Only storage-aliasing
+    # reshapes inherit them; materialized transpose/arithmetic results do not
+    # acquire a persistent-cache role from their input's purpose.
+    from .tensor_traits import declared_cache_traits
+    cache_traits = declared_cache_traits(
+        model, [node for node in nodes if node.op == "placeholder"], types)
+    for name, opcode, _, sources, _, _ in plans:
+        if opcode == "common.reshape" and sources[0] in cache_traits:
+            cache_traits[name] = cache_traits[sources[0]]
+
     # All source nodes and descriptors are admitted before the first PU product.
     builder = interpreter.builder()
     entry = interpreter._model_class_name(model)
@@ -225,6 +235,8 @@ def try_export_tensor_expressions(interpreter, model, inputs, captured):
         # Logical layout carries tensor values, not a physical allocation or copy.
         descriptor = dict(kind="tensor", dtype=dtype, rank=len(shape),
                           logical_shape=logical, layout="logical")
+        if name in cache_traits:
+            descriptor["traits"] = cache_traits[name]
         ty = builder.tensor_type(name + "_type", dtype, len(shape), logical, descriptor)
         type_records.append(WhirlTensorTypeRecord(name + "_type", ty.value, dtype,
                                                   len(shape), logical, descriptor))

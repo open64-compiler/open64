@@ -48,7 +48,7 @@ uint64_t DSL_observer_uint(const rapidjson::Value &value, uint64_t limit = UINT6
 /* Decode the semantic source schema, excluding derived launch/kernel fields.
  * The producer's complete typed recipe key is the authoritative native join. */
 VHO_TENSOR_PROGRAM DSL_observer_algorithm(const rapidjson::Value &value) {
-    DSL_observer_object(value, 7);
+    DSL_observer_object(value, 7 + (value.IsObject() && value.HasMember("tensor_cache_traits")));
     DSL_observer_require(DSL_observer_string(DSL_observer_member(value,"schema")) == "open64.high-algorithm.v1");
     VHO_TENSOR_PROGRAM program;
     program.source_pu = DSL_observer_string(DSL_observer_member(value,"source_pu"));
@@ -70,6 +70,21 @@ VHO_TENSOR_PROGRAM DSL_observer_algorithm(const rapidjson::Value &value) {
         DSL_observer_require(shape.IsArray() && shape.Size() > 0 && shape.Size() <= 16);
         for (unsigned j = 0; j < shape.Size(); ++j) tensor.shape.push_back(DSL_observer_uint(shape[j],16777216));
         program.values.push_back(tensor);
+    }
+    if(value.HasMember("tensor_cache_traits")) {
+        const rapidjson::Value &traits=DSL_observer_member(value,"tensor_cache_traits");
+        DSL_observer_object(traits,2);
+        DSL_observer_require(DSL_observer_string(DSL_observer_member(traits,"schema"))=="open64.tensor-cache-traits.v1");
+        const rapidjson::Value &records=DSL_observer_member(traits,"values");
+        DSL_observer_require(records.IsArray() && records.Size()>0 && records.Size()<=values.Size());
+        for(unsigned i=0;i<records.Size();++i) {
+            const rapidjson::Value &record=records[i];DSL_observer_object(record,2);
+            unsigned id=DSL_observer_uint(DSL_observer_member(record,"value"));
+            std::string trait=DSL_observer_string(DSL_observer_member(record,"trait"));
+            DSL_observer_require(id<program.values.size() && program.values[id].cache_trait.empty() &&
+                DSL_tensor_cache_trait_known(trait.c_str()));
+            program.values[id].cache_trait=trait;
+        }
     }
     for (unsigned i = 0; i < operations.Size(); ++i) {
         const rapidjson::Value &entry = operations[i]; DSL_observer_object(entry,7);
