@@ -594,3 +594,19 @@ tensor_high_lower.o tensor_q1_program.o dsl_high_quantized.o dsl_q1_preopt.o lno
 tensor_serving_schema.o: $(BE_DIR)/vho/tensor_serving_schema.cxx $(BE_DIR)/vho/tensor_serving_schema.h $(BE_DIR)/vho/tensor_workload.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 tensor_high_lower.o tensor_q1_program.o: $(BE_DIR)/vho/tensor_serving_schema.h
+
+# Q4 detached model and live-export adapter dependencies.
+tensor_attention_search.o tensor_attention_search_test.o: $(BE_DIR)/vho/tensor_quantized_movement.h $(BE_DIR)/vho/tensor_quantized_movement.inc $(BE_DIR)/vho/tensor_serving.h
+
+dsl_high_quantized_movement_test.o: $(BE_LNOPT_DIR)/tests/dsl_high_quantized_movement_test.cxx $(BE_DIR)/vho/tensor_quantized_movement.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) -std=c++98 -O0 $< -o $@
+dsl_high_quantized_movement_test: dsl_high_quantized_movement_test.o tensor_attention_search_test.o dsl_high_search_hardware.o dsl_high_observer.o dsl_high_observer_json.o dsl_high_snapshot.o dsl_high_reuse.o tensor_schedule.o tensor_attention_chunk_select.o
+	$(link.c++f) -o $@ $^
+LDIRT += dsl_high_quantized_movement_test.o dsl_high_quantized_movement_test
+
+# Q4 adds detached report fields; all value-layout consumers rebuild together.
+dsl_high_movement_test.o dsl_high_quantized_movement_test.o \
+  dsl_high_observer.o dsl_high_observer_json.o dsl_high_observer_native.o \
+  dsl_high_apply.o lnopt_main.o dsl_high_reuse.o dsl_high_search_test.o \
+  tensor_attention_search.o tensor_attention_search_test.o: \
+  $(BE_DIR)/vho/tensor_quantized_movement.h $(BE_DIR)/vho/tensor_serving.h $(BE_DIR)/vho/tensor_serving_schema.h

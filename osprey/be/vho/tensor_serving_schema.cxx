@@ -128,5 +128,5 @@ std::string VHO_tensor_serving_explanation(const VHO_TENSOR_PROGRAM &p) {
     out<<"Q3 serving binding: unbound at compile time. ";
     if(VHO_tensor_serving_schema(p,s,why)) out<<(s.paged?"Indirect page table, token and update-slot buffers; ":"Dense construction; ")<<"source P="<<s.page_tokens<<" is allocator layout, not compute tile width. ";
     else out<<"Unsupported serving schema ("<<why<<"); ordinary source route retained. ";
-    out<<"A synchronous owner must lease actual buffers, join cache/scale generations, validate page ranges and masks, and publish all four successor buffers only after status=0. Readers pin old bundles until completion; no GPU/TMA, search or dispatch permission is implied.";return out.str();
+    out<<"A synchronous owner must lease actual buffers, join cache/scale generations, validate page ranges and masks, and publish all four successor buffers only after status=0. Readers pin old bundles until completion; no GPU/TMA, search or dispatch permission is implied. Q4 costing requires a fresh Q3 snapshot; quantized cache-service studies account for packed payload, paired scales, page fragments, dequantization, retained-tile reuse and split tuples. All Q4 candidates remain analysis-only; source capacity work, correctness fallback and deferred AOT selection are preserved.";return out.str();
 }
