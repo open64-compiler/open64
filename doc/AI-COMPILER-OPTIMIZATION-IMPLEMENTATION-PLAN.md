@@ -1,8 +1,173 @@
 # AI Compiler Optimization Implementation Plan
 
+# Precision policy implementation increment
+
+November 6 2026 | PREC0 through PREC4 open; documentation-only policy adoption
+
+Implement the [v0.5 precision policy](AI_compiler_optimization_design_v0.5.md#precision-policy-amendment)
+and [numerical accumulation amendment](AI-COMPILER-NUMERICAL-ACCUMULATION-DESIGN-v0.1.md#precision-policy-amendment):
+**FP8 operands where authorized; FP16 or FP32 reduction/accumulation, with FP32
+as the default.** Preserve explicit source arithmetic, current FP32-only
+contracts and all accepted evidence. FP8 is not a reduction-state choice.
+Initial long-reduction, normalization-statistics and Softmax-denominator
+realizations retain FP32; FP16 needs an independently admitted typed recipe.
+
+| Gate | Work and dependencies | Acceptance, reports and current status |
+| --- | --- | --- |
+| PREC0: contract and capability audit | Reuse existing numerical, representation, compute and accumulation records. Distinguish operand, product, internal partial, outer-reduction and output types; define FP32 default and explicit FP16 admission without changing prior IDs/layouts. Record per-instruction legality and permissions. Coordinates with H0/H1 and existing MMA/accumulation gates. | Open. Default FP32, explicit FP16, preserved FP64 source, forbidden silent narrowing and missing numerical/ISA evidence tests. Review any schema/version change before implementation. `semantic.log` identifies source versus selected formats, numerical permission and unresolved facts. |
+| PREC1: typed reduction realization | Add the first bounded, numerically admitted FP16 reduction using existing canonical-loop/DU/access services and WHIRL materialization. Keep the current FP32 realization unchanged. Legal fallback must satisfy the bound contract; a different accumulator width is not automatically bitwise equivalent. Depends on PREC0 and the corresponding reduction lowering gate. | Open. Independent FP16/FP32 arithmetic references, long/tail/cancellation/dynamic-range/NaN/Inf/subnormal cases, order and conversion checks; preserve v1/v2 FP32 and partition-axis tests. `alternatives.log`/`tile.log` explain eligible state types and refusals. No implicit FP16 normalization/statistics enablement. |
+| PREC2: authorized FP8 operands | Complete the existing native FP8 work with explicit formats, scaling, conversion/dequantization and scale lifetime. Reuse Hopper promotion and separate Blackwell target recipes. Bind FP16 or FP32 reduction only where the exact instruction and numerical contract admit it; default FP32. Depends on PREC0 and reviewed typed fallback/numerical support. | Open. Separate operand-quantization from accumulation-error checks; reject absent permission, incompatible scales, stale bindings and unsupported target/type tuples. `semantic.log` and `fetch-pipeline.log` report payload/scale formats, conversions, movement and readiness. FP8 support is not claimed from a dtype enum. |
+| PREC3: complete-plan costs and lowering | Compare accepted precision/compute/tile/movement tuples through the existing profitability gate. Include conversion, scale traffic, partial promotion, merges, output casts, actual RF/SMEM allocation and occupancy. Numerical legality precedes cost. Materialize the winner in High WHIRL under the H4-H7 boundaries. | Open. Do not assume FP16 halves physical register allocation or FP8 always wins. Retain valid source-compatible fallback; emitters cannot select precision. `physical-plan.log` reports full costs, selected operand/reduction types, reason and actual WHIRL actions; retain before/after mapped `.B/.T` and diff, option-off and trace-off parity. |
+| PREC4: certification and controlled enablement | Certify each exact target/type/scale/promotion recipe; keep FP32 as default. Offline contract/oracle/mapped/emission tests may precede hardware access; deployed numerical and performance claims require native evidence. Coordinates with existing MMA/reduction certification, not a new benchmark system. | Open; native GPU gate pending hardware. `feedback.log` separates offline references, ISA evidence and native results, numerical error components, fallback and certification gaps. No automatic default change after a faster result and no resumption of the deferred PERF framework/dashboard. |
+
+Implement independently reviewed slices; this policy does not authorize
+cross-PU discovery, a new runtime dependency, altered binary WHIRL, a new
+compiler option spelling or silent source conversion. New trace fields require
+an explicit schema/header revision with source line last; do not change old
+positional columns in place. This increment implements no compiler feature.
+
+# Physical nonideality and FEEDBACK implementation increment
+
+Revision 0.1 | November 4 2026 | PF0 through PF7 implementation gates open
+
+Implement Appendix PN in AI_compiler_optimization_design_v0.5.md. Preserve the v0.4 WHIRL level architecture, H0-H8 gates, all historical queues/evidence, Open64 FEEDBACK count semantics, numerical legality and binary compatibility. The source inventory below identifies reuse anchors; this documentation increment implements no profile schema, collector, option, cost model or runtime path. Existing PERF framework/dashboard implementation stays deferred.
+
+## Scope and dependency order
+
+PF0 source/contract audit -> PF1 feedback identity/schema -> PF2 deterministic synthetic admission/model tests -> PF3 optional device calibration -> PF4 Open64 FEEDBACK import/propagation -> PF5 shadow complete-plan costing -> PF6 bounded selection/materialization -> PF7 native certification and runtime feedback. PF2 may use literal synthetic profiles before hardware access. PF4 can validate legacy and synthetic imports before PF3; production physical predictions require applicable calibration. No missing lane is silently considered complete.
+
+| Gate | Implementation work and owner | Acceptance and current status |
+| --- | --- | --- |
+| PF0 source and contract audit | Audit FEEDBACK/FB_FREQ/FB_Info/FB_CFG, WN instrumentation/annotation, LNO interchange/tiling updates, reader/writer formats and driver phase lifetime. Record exact consumers, compatibility and option controls. | Initial read-only anchors documented in PN6; implementation audit open. Approve empirical-record ownership and per-kind transformation rules before coding. |
+| PF1 identity schema and admission | Extend Open64 FEEDBACK with a versioned, context-tagged observation contract and stable region/plan/variant/code joins. Prefer a compatible companion profile until native-format review proves otherwise. Common records remain policy-free. | Open. Unit/origin/unknown validation; malformed/truncated/conflicting records; exact code/numerical/target/device/partition/context rejection; deterministic atomic publication; unchanged legacy FB_FREQ behavior. |
+| PF2 synthetic capacity and wave model | In the owning planning scope, model launch divisibility, cluster counts, positive capacity, occupancy bounds versus calibrated estimates, and bulk-wave applicability. No GPU required. | Open. Literal oracle for 240/256 CTA examples, zero work, tails, one/multiple CTA residency, 124 union versus 120 per-run, unknown capacity and persistent/irregular refusal. Synthetic evidence cannot certify a device. |
+| PF3 device and operating calibration | Separate target/runtime adapter queries UUID/partition/resources/function attributes and cluster occupancy. Optional controlled probes derive effective-capacity intervals; batch telemetry samples clocks/power/temperature and concurrency. | Open and optional until hardware work is resumed. Supported/unsupported API paths, probe perturbation, timing-window provenance, per-run versus union and global-time validity; unprofiled correctness/timing separate from counters. No clocks/power settings changed without separate experiment authorization. |
+| PF4 feedback import and transformation continuity | Integrate empirical profiles through existing Open64 FEEDBACK ingestion and driver-established PU scope. Preserve WN_Annotate/Instrument and existing transformation update services; add profile-kind invalidation/remapping. | Open. Real FEEDBACK count/consistency and LNO update tests; legacy reader compatibility; mapped-reopen stable joins; cloned/tiled/fused/staged and failed-transaction cases; no pointer persistence or cross-PU traversal. |
+| PF5 shadow physical profitability | Consume immutable architecture/device/calibration snapshots in existing complete-plan costs. Evaluate cluster/tile/movement alternatives and uncertainty, including calibrated clock response where available. No production choice change. | Open. Baseline WHIRL and decisions unchanged; no-profile deterministic result; separate observation/query/prediction units; no double-counted wave/power/Roofline benefit; all rejection and confidence reasons visible. |
+| PF6 bounded selection and materialization | Enable reviewed -O3 planning controls and complete-plan comparison only after independent numerical/capability legality. Apply chosen High WHIRL loops/staging/prefetch; driver registers device PUs; Mid/Low/CG realize the selected plan. | Open. Before/after mapped .B/.T/diff; strict source arithmetic, tails, barriers, context guards, option-off and trace-off invariants; High exit passes; resource mismatch triggers a bounded replan from High or certified fallback, not silent backend rescheduling. |
+| PF7 native certification and runtime feedback | Certify exact generated variants and profile applicability on available devices, with controlled default-DVFS and separately authorized fixed-condition lanes; runtime chooses only compatible certified variants. | Open. Native numerical correctness and paired raw latency samples; profiler effects separate; held-out shapes/device contexts and prediction errors; actual failure/drain tests; immutable receipts. Hardware absence is reported, not replaced by host/synthetic performance claims. |
+
+## Concrete Open64 source work map
+
+Use osprey/be/com/fb_whirl.h/.cxx for the existing FEEDBACK query/annotation/verification and transformation boundary. Use osprey/common/com/fb_freq.h and fb_info.h/.cxx to preserve current frequency types/records. Use osprey/be/com/fb_cfg.h/.cxx for existing frequency consistency and add distinct empirical-provenance validation. Review osprey/be/com/wn_instrument.h/.cxx and common/com/instr_reader.h plus common/instrument/instr_reader.cxx for profile production/import. Reuse LNO_FB_Inv_Interchange and LNO_FB_MP_Tile in osprey/be/lno/snl_trans.cxx for their existing count-update contracts. The corresponding physical metrics need separate preservation/invalidation decisions.
+
+In osprey/be/be/driver.cxx, program setup establishes target/device/profile snapshots and profile-reader ownership. Preprocess_PU binds applicable evidence under the active PU after source/domain admission. Backend_Processing/LNO_Processing consume canonical loops and current region facts. Perform_Preopt_Optimization and WOPT keep their established canonicalization/CFG roles. Do_WOPT_and_CG_with_Regions and CG obtain actual resource/code information and report mismatches to a driver-owned bounded replan service. Existing instrumentation/annotation before VHO/LNO/WOPT/CG and FEEDBACK verification remain intact; AI-P11 is the report/update point, not the only phase allowed to read prior feedback.
+
+No source location in this map is a commitment to store optimization policy in common/com or place device collectors in be.so. Runtime/provider telemetry adapters stay outside backend shared-library linkage unless separately reviewed. Any approved dependency change requires affected-product rebuilds, link closure and forbidden-frontend-symbol audits. New DSL APIs/functions must follow the repository's naming and function-contract requirements. A schema or mapped-image change requires the full compatibility/printer/reader/writer gate; none is authorized merely by this plan.
+
+## Proposed service contracts
+
+Define typed contracts for admitting a profile snapshot, querying region/variant observations, checking applicability, notifying a transformation and invalidating dependent predictions. Reuse current FEEDBACK and plan records rather than creating a parallel profile controller. Every query returns origin, unit, confidence, source/context identity and an explicit unavailable/stale status. A query cannot mutate another PU or select an optimization.
+
+Profile import preflights the full schema and all identity joins before publication. No partial valid snapshot appears after failure. Stable external keys must rebind after mapped-image reopen without WN pointers or raw process-local indices. Frequency-count propagation follows current FEEDBACK semantics; observations of kernel latency, traffic, frequency and power remain attached to the measured code/context. Predictions for new code have a distinct origin and model snapshot.
+
+Schedule application consumes the complete selected plan, architecture/device/profile/model IDs and IR generation; preflights lowerability, performs an atomic High WHIRL rewrite, returns correspondence for replacement loops/accesses/buffers and declares preserved/invalidated feedback. Destination-level legality is checked independently of profitability. No MLIR operation traits/interfaces or new scheduling language is required.
+
+## Data collection deliverables
+
+PF1/PF3 must implement the P0 logical groups in PN4: device/partition identity; code/workload/numerical binding; launch/cluster dimensions; kernel resource facts; API capacity bound; calibrated effective capacity with method; unprofiled timing samples; derived wave/tail model; and operating conditions. Optional P1 adds supported memory, utilization and power/energy diagnostics. The collector capability table names exact supported metrics, toolkit/device scope, permission requirements, collection overhead and missing data behavior before any metric is consumed.
+
+Device physical calibration and kernel execution feedback are separate profile views, with shared identity/provenance. Capacity is a function of device/partition, cluster configuration and kernel resource class. Power/frequency response also depends on workload and operating conditions. Do not merge observations solely because they share sm_90a or a product name. No field with an unknown value defaults to zero; no unsupported profiler metric is silently synthesized.
+
+## Focused validation matrix
+
+| Contract | Required cases |
+| --- | --- |
+| Identity and schema | Wrong units/version/code digest/shape/numerical/SM suffix/toolkit/partition/power context; unknown versus zero; conflict/duplicate policy; bounded record sizes; atomic failed import |
+| Capacity and waves | Correct CTA/cluster divisibility; padded launched work; zero/nonpositive/overflow bounds; 1 versus multiple CTAs per SM; per-run/union/concurrent distinctions; analytical versus measured origin |
+| Feedback continuity | Existing real frequency scaling/interchange/tiling; invalid empirical reuse after changed tile/layout/staging/ISA/partition; immutable raw observation retained after model update; mapped-reopen joins |
+| Cost and selection | Shadow leaves executable WHIRL unchanged; profile missing/stale retains certified baseline; clock response absent stays unknown; complete cost and uncertainty; bounded replan count and determinism |
+| Lowering and scope | High DO_LOOP/OPR_ARRAY staging/prefetch before Mid lowering; fixed driver order and optimization-level controls; active-PU-only mutations; post-lowering code/resource mismatch cannot silently change schedule |
+| Native evidence | Correctness before timing; paired comparable variants; fixed-condition versus default-DVFS provenance; counter/replay versus unprofiled timing; coarse energy attribution and concurrency limitations; held-out validation |
+
+Report region/plan/variant, architecture/device/profile/model snapshot IDs, feedback origin/applicability, capacity bound/estimate, launched work, predicted waves, actual observations and reasons for rejection/fallback. Extend existing versioned phase traces and tile/fetch-pipeline/physical-plan/feedback logs through a reviewed schema increment. Do not silently change positional columns or present analytical scores as measured cycles.
+
+## Completion and retained evidence
+
+Keep H0-H8 and all existing AIO/MMA/reduction/normalization records unchanged in meaning. PF gates close only after implementation, focused positive/negative and rollback tests, compatibility checks and the required independent WHIRL evidence pass. Native timing and GPU correctness are distinct receipts. Preserve accepted producer artifacts under the primary artifacts/review root; do not clean old receipts to make room for new profiles.
+
+This documentation update runs text preservation, version/link checks, no-tab/diff hygiene and DOCX rendering. It does not run calibration, change hardware settings, implement the deferred PERF framework, modify compiler source, reserve an option spelling, or claim a new measured optimization.
+
+
+# Retained v0 4 implementation queues and evidence
+
+# WHIRL architecture implementation increment
+
+Revision 1.0 | November 3 2026 | All H0 through H8 gates open
+
+Implement the normative architecture in AI_compiler_optimization_design_v0.4.md, section WHIRL optimization and GPU lowering architecture. The existing AI-P0 through AI-P11 report order, complete-plan cost selection, source numerical contracts, common execution-planning records and historical evidence remain binding. The H gates add implementation dependencies; they do not renumber AIO/MMA/LN/R milestones or claim new compiler support. The deferred PERF framework remains deferred.
+
+## Current next actions
+
+1. H0: audit the actual driver in osprey/be/be/driver.cxx and action masks in wn_lower.cxx. Record the boundary between Preprocess_PU/VHO, PREOPT and LNO_Processing, Do_WOPT_and_CG_with_Regions, LOWER_TO_CG and NVISA CG. Inventory currently implemented High WHIRL device materializers, program-owned PU registration and detached sidecar routes before changing them. Retain current options and evidence verbatim in the progress ledger.
+2. H1: define H-A common-algorithm admission and H-L DO_LOOP/OPR_ARRAY admission; choose one fixed-shape F32 matmul and a strict ascending reduction. Establish descriptor/effect/numerical binding, canonical PREOPT form, target-independent index semantics and provider/baseline fallback. Reuse the current adapter when its exact contract matches; do not create a parallel emitter or duplicate common records.
+3. H2: reuse LNO access/dependence/reuse and PREOPT alias/DU services in the active PU. Add bounded unimodular schedule candidates with an independent legality check and costed unchanged baseline. Unknown aliases or effects remain barriers unless a valid guard/fallback is generated.
+4. H4 then H5: produce actual selected High WHIRL multi-level tile loops and synchronous SMEM/prefetch DO_LOOP first. Add multi-slot and asynchronous variants only after readiness, visibility, final-reader release, generation reuse and uniform barrier proofs. AI-P7/P8 candidates remain provisional until AI-P9 complete-plan selection. Revalidate selection after materialization.
+5. H6: integrate generated PUs under driver ownership and add High exit/Mid memory-operation checkpoints. Audit and split lowering actions where necessary so ARRAY and loop structure survive until all High obligations pass. Preserve FHE and language-only paths, RID/map/pool lifetimes and the existing full-option propagation model.
+6. H7: implement Low GPU mapping and PTX lowering using the same selected WHIRL kernel. Begin with a minimal entry and supported load/store/synchronization subset. Exact target instructions, address spaces, warp/lane/fragment contracts, toolkit requirements and host ABI require explicit verifiers. External CUDA emission remains a separate consumer and parity lane.
+
+Optional H3 may run after H2 in parallel with later design work: build a check-only polyhedral extraction and round-trip lane before enabling schedule search. A solver is optional and must receive dependency/licensing approval before backend linkage. H3 failure, timeout or absence cannot block the LNO baseline or grant permission to weaken legality.
+
+## Proposed implementation ownership
+
+| Component | Concrete work | Excluded responsibility |
+| --- | --- | --- |
+| be/be driver | Phase graph, options/level gates, PU registration, analysis lifetimes and checkpoints | No search policy hidden in emission or program traversal from PU-local helpers |
+| be/vho | Domain gatekeeping, common algorithm expansion, requests for driver-owned device materialization | No unregistered PU creation or premature pointer-only expansion of eligible loops |
+| be/opt PREOPT and WOPT | Canonical form, DU/alias/CFG/SSA and contract-preserving scalar optimization | No repeated inference of domain meaning from erased source structure |
+| be/lno | Access/dependence/reuse, unimodular and optional polyhedral adapter, tile/staging/prefetch-loop transformation | No unreviewed solver dependency or numerical reassociation |
+| common/com | Reuse/extend policy-free schedule/plan/lineage records, structural verification and transactions | No harvesting, profitability policy or scope expansion |
+| Mid lowerer | Selected structured memory-operation expansion and preservation of event/effect semantics | No new schedule, tile, buffering or algorithm selection |
+| Low target and CG/NVISA | GPU mapping, target instruction realization and PTX emission | No templated reconstruction of missing kernel behavior |
+
+A source split is proposed ownership, not authorization to move an API solely by filename. Reuse existing Open64 services and record any incompatible case before adding infrastructure. No physical WHIRL encoding, ELF layout or binary section change is implied by this increment.
+
+## Driver phase sequence to implement
+
+Program setup and input admission -> active-PU domain gatekeeper -> common algorithm expansion -> language VHO to High -> PREOPT High canonicalization -> LNO dependence/reuse -> Wolf/LNO and optional polyhedral schedule candidates -> P7 hierarchical tiles plus P8 storage/movement alternatives -> P9 complete-plan selection -> High DO_LOOP/ARRAY materialization including staging/prefetch -> analysis rebuild -> High exit verifier/checkpoint -> Mid structured memory-operation lowering/checkpoint -> supported WOPT -> Low GPU mapping/checkpoint -> existing Very Low/CG actions as needed -> NVISA/PTX -> external assembly or JIT -> launch package.
+
+This is a dependency sequence, not a new promise that one existing WN_Lower mask implements each arrow. H0 must map actual action masks and every intervening pass, including MP lowering and source-emission checkpoints. If a pass destroys ARRAY/control structure or ordered memory semantics early, move or narrow its action after the owning exit gate. Use existing driver context services; functions receive only the established PU/REGION. IPA refinements occur under -ipa before the corresponding PU compilation, using explicit summaries and context.
+
+At -O0, verify and perform straightforward semantic expansion only. At -O1, honor block scope; at -O2, honor PU scope and reviewed semantic algorithms; at -O3, enable canonical-loop scheduling, tiling, hierarchy and parallelization. Each new pass needs an independent reviewed control, minimum level, maximum scope, canonical-form requirement, preservation/invalidation declaration, trace identity and failure disposition. Check-only must not alter executable WHIRL; trace-off must not alter selection. No option spelling is reserved by this document.
+
+## Acceptance matrix
+
+| Gate | Required positive cases | Required negative and recovery cases | Retained proof |
+| --- | --- | --- | --- |
+| H0 | Source-anchored action graph and existing path inventory | Lower-level/foreign options, language-only and FHE routes | Reviewed phase table, source revision and option inventory |
+| H1 | Matmul and ordered reduction; canonical-equivalent inputs converge | Bad rank/stride/extent, zero-trip/overflow, unsupported common op | Reopened H-L .B/.T; source and numerical binding |
+| H2 | Legal interchange and skew with exact domain enumeration | Illegal transformed distance (1,-1), alias/effect unknown, search budget | Dependence oracle, unchanged baseline, deterministic candidate/selection trace |
+| H3 optional | Rectangular/nonrectangular SCoPs, statement schedules, no-transform round trip | Nonaffine, statement tie with dependence, timeout and unavailable solver | Extracted relation audit, independent legality, fallback identity |
+| H4 | At least two legal hierarchical tile alternatives and unchanged baseline | Partial tiles, K-order violation, capacity/overflow failures | Actual High DO_LOOP rewrite, before/after .B/.T and full diff |
+| H5 | S=1 then S=2; prologue/steady/drain, zero/one/few tiles | Early overwrite, missing wait/visibility, divergent barrier, stale generation | High loop/event census, fault injection and exit verification |
+| H6 | Driver-owned generated entry, multiple independent PUs, Mid memory expansion | Bad launch ABI, cross-PU access, partial construction/publication | High/Mid checkpoints, rollback proof, source/plan/PU join |
+| H7 | Minimal PTX then supported mapped kernel; toolchain assembly | Unsupported SM/PTX/suffix, instruction, space, fragment or convergence | Low .B/.T, PTX, assembler diagnostics; GPU correctness only when executed |
+| H8 | Same numerical contract across baseline, generated and comparison lanes | Wrong target/input/profile reuse and measurement contamination | Pinned receipts, native raw samples when available; compiler/host evidence labeled separately |
+
+Mutation tests must change loop bounds, access maps, storage layout, numerical binding and target snapshot after selection. Require stale-proof rejection and reanalysis. Test both supported incremental analysis updates and full rebuild; never reuse a destroyed LNO graph after its owning pool ends. No-op and failed paths retain empty diffs and no valid-looking partially published image.
+
+Mandatory High exit checks are defined in the design: domain completion; canonical loop/index form; numerical/effect/dependence legality; actual tile/staging/prefetch loops; memory event and generation safety; resource/ownership envelopes; complete selected/baseline plan; driver-owned PU/ABI; independent mapped reopen. Mid and Low verifiers must attest each carried obligation was preserved or discharged. Checkpoints and reports identify level, PU/region, plan, mutation generation, obligation status and actual emitted action.
+
+## Reporting and evidence
+
+Keep existing semantic/locality/tile/fetch-pipeline/physical-plan logs and phase statuses. Add level-boundary and schedule-method detail through a reviewed trace-schema increment rather than silently changing the positional schema. Separate plan_selected, high_loops_materialized, high_exit_verified, mid_memory_lowered, low_gpu_mapped, ptx_emitted, assembled and native_executed. Earlier status does not imply later status.
+
+For future mutating milestones retain input and before/after binary images, matching independently reopened ir_b2a -st -src traces, source at the recorded DST path, full diff, selected and baseline plans, numerical results, command/options and target identities. Publish accepted receipts atomically to the primary artifacts/review hierarchy and preserve prior receipts. Reuse expensive producer evidence only when its authenticated inputs match. Build/link changes require affected-product and symbol checks, including absence of frontend-only DSL_Builder_* and Json:: leakage into be.so/lw_inline.
+
+This documentation increment runs only document hygiene, consistency/provenance checks and DOCX rendering. It changes no compiler implementation, public API, command-line option, binary format or accepted numerical recipe and supplies no new GPU result.
+
+## Risk controls and completion rule
+
+Primary risks are premature lowering, stale analyses, strict-FP changes, unsound affine extraction, incomplete staging lifetimes, illegal GPU participation, search/dependency growth and confusion between sidecar generation and integrated PTX. The corresponding controls are explicit level gates, generation-keyed proof dependencies, source arithmetic binding, conservative extraction, readiness/release proofs, target convergence verification, bounded optional search and distinct checkpoint statuses.
+
+Complete each H gate only when its implementation and mandatory focused tests, malformed inputs, rollback, mapped reopen, option/level boundaries and retained evidence pass. Native correctness and performance remain separate gates. Update AI-COMPILER-OPTIMIZATION-PROGRESS.md with exact scope and receipts when future code lands; the architecture adoption entry alone marks every H gate open.
+
+
+# Preserved implementation queues and evidence
+
 ## Status
 
-Execution plan for `AI_compiler_optimization_design_v0.3.md`. The completed
+Execution plan for `AI_compiler_optimization_design_v0.4.md`. The completed
 AIO-0 through AIO-13 queue below records the analysis and planning rollout;
 the Current Matmul Execution Queue defines the next action-gated work.
 The running [AI optimization progress ledger](AI-COMPILER-OPTIMIZATION-PROGRESS.md)
