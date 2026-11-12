@@ -338,6 +338,7 @@ BE_VHO_CXX_SRCS = \
   dsl_opt_plan_opt.cxx \
   tensor_source_capture.cxx \
   tensor_workload.cxx \
+  tensor_serving_schema.cxx \
   tensor_schedule.cxx \
   tensor_attention_chunk_select.cxx \
   tensor_high_lower.cxx \
@@ -1227,3 +1228,5 @@ quantized_driver.o tensor_q1_program.o tensor_high_lower.o dsl_q1_preopt.o: $(BE
 # Q2 owned workload layout is shared across native consumers.
 tensor_workload.o tensor_high_lower.o tensor_q1_program.o dsl_high_quantized.o dsl_q1_preopt.o driver.o: $(BE_VHO_DIR)/tensor_workload.h
 tensor_workload.o: $(BE_VHO_DIR)/tensor_kernel_lower.h
+
+tensor_serving_schema.o tensor_high_lower.o tensor_q1_program.o: $(BE_VHO_DIR)/tensor_serving_schema.h
