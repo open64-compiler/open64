@@ -25,6 +25,10 @@ typedef struct {
   UINT64 plan_seal, tree_seal, nodes, loops, scalar_operations, barriers;
 } WOPT_DSL_NORMALIZATION_DEVICE;
 
+/* Driver/JIT must establish n64 and strict compiler/host FP state before
+ * preparation or materialization. Read-only: never alter the service's FP state. */
+extern BOOL WOPT_DSL_normalization_compiler_environment_ready();
+
 /* Recompute LN3 in the active analysis PU and require exact selected-result
  * agreement. Refusal leaves output/trace/tables/source unchanged. */
 extern BOOL WOPT_DSL_prepare_normalization_lowering(WN *scope, WN *assignment,

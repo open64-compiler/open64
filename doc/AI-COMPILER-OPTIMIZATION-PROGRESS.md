@@ -8,6 +8,52 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-28 LN4 explicit driver/JIT request-profile plumbing accepted,
+implementation `236f52eb`:
+[Request design v0.1](AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md).
+The opt-in O3/n64 checkpoint decodes a closed request/profile schema, runs
+PREOPT in the selected source PU, revalidates complete LN3 costs and creates
+the selected device PU under driver ownership. It preserves source PUs and v1,
+adds complete pointer-formal metadata, and publishes standard before/after
+WHIRL without resetting source tables. Typed JIT callers share the same
+preparation gate; a compiler-service/session manager is not implemented.
+
+Acceptance passes 36 selected kernels across four targets (C0 4 / C1 4 /
+C2 28), 66 refusals, 193 full mapped inspections, 117 focused tests and
+offline CUDA/PTX/cubin with compiled RF/shared checks. Emitted-code host
+execution passes 288 datasets / 26,240 exact-oracle output checks. Scoped
+ASan/UBSan passes 36 native request cases, 36 actual driver cases, 36 reopens,
+49 decoder inputs and 36 host kernels, with byte-exact image/binding parity.
+Five shared regressions pass; two broader fixtures reproduce the same failures
+with the old gatekeeper object and are explicitly excluded from pass counts.
+The emulator ignores SSE exception-unmask writes, reported UNSUPPORTED rather
+than passed. Independent SSE rounding, other FP controls and trace-off parity
+are verified. No new dynamic dependency, source-v1 upgrade or reduction edit.
+
+Immutable primary package:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-driver/sha256-d494e9371201accac931c398543e523c6e8acfdc102d60a55710a0309a69f755/`.
+Accepted final-path replay:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-driver/replay/sha256-0ece70ea95a533c2aa4126a89b65ab464b7f5a53be7d28de6901fd0e014170a3/`.
+Replay repeats the 36 driver/offline-CUDA/host cases, 66 refusals, 117 focused
+tests and all mapped inspections. All 193 images, 36 PTX files and 36 cubins
+match byte-for-byte. Full dumps/reports use recorded artifact-path and CUDA
+banner normalization; raw `.t` comparisons use stable AI rows, retaining full
+diagnostic streams separately. The original comparator incorrectly decoded
+the deliberately invalid-UTF-8 JSON refusal fixture; a retained correction
+compares those bytes exactly and rechecks completed test acceptance. The
+primary receipt remains immutable. Sanitizers and baseline-isolation evidence
+are authenticated in the primary package, not rerun during final-path replay.
+Indexes/current links were updated only after accepted replay.
+
+`native/optimization-summary.log` lists selected/refused/compiled/host-tested
+coverage. Per-case `reports/request.log`, complete `reports/optimization.log`,
+raw `driver.t`, selected before/after `.B`/`.T` and diff, request/binding JSON,
+and `kernel.cu` retain the full source-line-last decision/transformation record.
+
+Next: production compiled-entry/provider enforcement. Native GPU verification,
+calibrated SKU/cache/timing profiles and general service-session lifecycle
+remain open. The sections below retain prior milestone evidence/history.
+
 2026-10-28 LN4 bounded selected executable-device lowering accepted,
 implementation `fa2e0b1e`:
 [Lowering detail v0.1](AI-COMPILER-LAYERNORM-EXECUTABLE-LOWERING-v0.1.md)

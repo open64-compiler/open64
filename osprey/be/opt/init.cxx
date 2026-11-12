@@ -79,6 +79,9 @@
 #include "erglob.h"
 #include "opt_htable.h"
 #include "wodriver.h"
+#include "opt_dsl_normalization_request.h"
+
+extern const WOPT_DSL_NORMALIZATION_DRIVER_API *WOPT_DSL_normalization_driver_api_p;
 
 extern void (*wopt_main_p) (INT argc, char **argv, INT, char **);
 extern void (*Wopt_Init_p) ();
@@ -124,10 +127,12 @@ extern BB_NODE* (CODEREP::*Defbb_p) () const;
 
 struct WOPT_INIT
 {
+    // Publish callbacks for the lifetime of the loaded WOPT component.
     WOPT_INIT () {
 	wopt_main_p = wopt_main;
 	Wopt_Init_p = Wopt_Init;
 	Wopt_Fini_p = Wopt_Fini;
+        WOPT_DSL_normalization_driver_api_p = &WOPT_DSL_normalization_driver_api;
 	Perform_Preopt_Optimization_p = Perform_Preopt_Optimization;
 	Perform_Global_Optimization_p = Perform_Global_Optimization;
 

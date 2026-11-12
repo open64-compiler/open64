@@ -54,6 +54,8 @@ BOOL VHO_DSL_CUDA_Legacy_Emit_Set = FALSE;
 char *VHO_DSL_PU_Specialization_Checkpoint_Output = NULL;
 char *VHO_DSL_CUDA_Tile_Output = NULL;
 char *VHO_DSL_CUDA_Whirl_Output = NULL;
+char *VHO_DSL_Normalization_Request = NULL;
+char *VHO_DSL_Normalization_Output = NULL;
 char *VHO_DSL_GEMM_Plan_Search = NULL;
 char *VHO_DSL_GEMM_Cost_Model = NULL;
 char *VHO_DSL_GPU_Arch = NULL;
@@ -61,6 +63,10 @@ UINT32 VHO_DSL_GEMM_Memory_Latency = 0;
 BOOL VHO_DSL_GEMM_Memory_Latency_Set = FALSE;
 
 static OPTION_DESC Options_DSL[] = {
+  { OVK_NAME, OV_VISIBLE, FALSE, "normalization_request", "normalization_request",
+    0, 0, 0, &VHO_DSL_Normalization_Request, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "normalization_output", "normalization_output",
+    0, 0, 0, &VHO_DSL_Normalization_Output, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "gpu_arch", "gpu_arch",
     0, 0, 0, &VHO_DSL_GPU_Arch, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "gemm_cost_model", "gemm_cost_model",

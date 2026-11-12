@@ -137,6 +137,9 @@ void (*Print_IF_INFO_p) (FILE*, IF_INFO*);
 void (*wopt_main_p) (INT argc, char **argv, INT, char **);
 void (*Wopt_Init_p) ();
 void (*Wopt_Fini_p) ();
+// Driver-owned LN4 callback table; no direct WOPT/frontend library dependency.
+struct WOPT_DSL_NORMALIZATION_DRIVER_API;
+const WOPT_DSL_NORMALIZATION_DRIVER_API *WOPT_DSL_normalization_driver_api_p;
 WN* (*Perform_Preopt_Optimization_p) (WN *, WN *);
 WN* (*Perform_Global_Optimization_p) (WN *, WN *, struct ALIAS_MANAGER *);
 

@@ -122,9 +122,24 @@ identities. `physical-plan.log`, `bubble.log`, `roofline.log`, `lowering.log`,
 
 ## Remaining Integration Gates
 
-The explicit API requires real caller-supplied complete profiles and binding;
+The opt-in [driver/JIT request boundary](AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md)
+adds strict versioned profile ingestion, active-PU PREOPT and revalidated
+selection, driver-created kernel PUs and a terminal whole-image checkpoint.
+It preserves all source PUs/interfaces and adds ordinary owner-qualified pointer
+formal rows for the kernel. An isolated CLI child writes the before snapshot:
+standard writing consumes SSA and replaces PU subsection pointers with file
+offsets, so copying state bits or PU_Info alone is not sufficient rollback.
+The final parent write is terminal. Typed JIT preparation does not fork or write
+files; a general service session manager remains separate.
+
+Compiler-session admission now explicitly checks n64, IEEE-accurate/no-roundoff
+controls, host round-to-nearest and (on SSE hosts) disabled FTZ/DAZ. The API
+refuses an unsafe session without changing the service FP state. Target FP
+declarations do not establish the compiler process's own environment.
+
+The explicit API and driver require caller-supplied complete profiles and binding;
 it does not silently turn unknown built-in timing or Python/source v1 into an
-optimized kernel. Default driver dispatch, production CUDA adapter, actual
+optimized kernel. Automatic/default dispatch, production CUDA adapter, actual
 compiled RF admission, GPU numerical/timing verification and calibrated cache/
 dispatch models remain separately reported. An altered carrier, launch geometry
 or numerical recipe requires a fresh cost/binding decision.

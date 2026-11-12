@@ -64,7 +64,7 @@ def audit(text,reopened=None):
 
 def cuda_structure(text,record):
     """Inspect actual emission: uniform barrier depth, exact scalar forms and layout."""
-    g=record['guard'];kind=g['kind'];name='ln_ref_c'+str(kind-1)
+    g=record['guard'];kind=g['kind'];name=record.get('kernel_name','ln_ref_c'+str(kind-1))
     match=re.search(r'extern "C" __global__ void '+name+r'\(\s*_IEEE32 \* x,\s*_IEEE32 \* gamma,\s*_IEEE32 \* beta,\s*_IEEE32 \* y\)\s*\{(.*)\}\s*/\* '+name+r' \*/',text,re.S)
     require(match is not None,'missing exact kernel/formal ABI');body=match[1]
     require('__restrict' not in text and 'OPR_DSL' not in text,'invented alias/lowering semantics')

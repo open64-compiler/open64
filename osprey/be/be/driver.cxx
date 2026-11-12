@@ -65,6 +65,8 @@
  * ====================================================================
  */
 
+/* LN4's opt-in request checkpoint owns PU lifetimes here, not in WOPT.
+ * Design: doc/AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md. */
 #include <sys/types.h>
 #include "../../common/ir_image/dsl_image_service.h"
 #include "../com/dsl_pu_interface_verify.h"
@@ -112,6 +114,16 @@
 #include "config_list.h"	    /* for List_Enabled, etc. */
 #include "config_clist.h"        /* for CLIST_cuda */
 #include "config_dsl.h"          /* for the AI trace control */
+#include "normalization_driver.h"
+#include "opt_dsl_normalization_request.h"
+
+#if defined(SHARED_BUILD) && !defined(BUILD_FAST_BIN) && \
+    (defined(__linux__) || defined(BUILD_OS_DARWIN) || defined(__CYGWIN__) || defined(__MINGW32__))
+extern const WOPT_DSL_NORMALIZATION_DRIVER_API *WOPT_DSL_normalization_driver_api_p;
+#define BE_DSL_NORMALIZATION_API WOPT_DSL_normalization_driver_api_p
+#else
+#define BE_DSL_NORMALIZATION_API (&WOPT_DSL_normalization_driver_api)
+#endif
 #include "config_lno.h"		    /* for LNO_Run_Lego, etc. */
 #include "config_cache.h"           /* for Mhd and Mhd_Options */
 #include "config_product.h"         /* for so names, etc. */
@@ -739,11 +751,29 @@ Open_FHE_Runtime_Lowering_Checkpoint (void)
              fhe_checkpoint_temp_name));
 }
 
+/* Select normal phases or an explicit terminal checkpoint; checkpoint requests
+ * load only their required components and must not fall through into CG. */
 static void
 load_components (INT argc, char **argv)
 {
     INT phase_argc;
     char **phase_argv;
+
+    const BOOL normalization_checkpoint = VHO_DSL_Normalization_Request != NULL ||
+                                          VHO_DSL_Normalization_Output != NULL;
+    if (normalization_checkpoint) {
+      FmtAssert(VHO_DSL_Normalization_Request != NULL && VHO_DSL_Normalization_Output != NULL &&
+                VHO_DSL_GPU_Arch != NULL && Opt_Level >= 3 &&
+                !FHE_Checkpoint_Enabled() && !DSL_PU_Specialization_Checkpoint_Enabled() &&
+                VHO_DSL_CUDA_Whirl_Output == NULL && VHO_DSL_CUDA_Tile_Output == NULL &&
+                !Run_ipl && !Run_ipsaopt,
+                ("LN4 request requires paired options, gpu_arch, O3 and no conflicting checkpoint"));
+      Run_lno = Run_autopar = Run_Distr_Array = FALSE;
+      Run_preopt = Run_wopt = Run_vsaopt = Run_ipsaopt = FALSE;
+      Run_cg = Run_w2c = Run_w2f = Run_w2fc_early = Run_ipl = FALSE;
+      VHO_DSL_Enable_WOPT = FALSE;
+      Emit_Global_Data = FALSE;
+    }
 
     UINT32 fhe_checkpoint_count =
         (FHE_Conversion_Checkpoint_Enabled() ? 1 : 0) +
@@ -771,7 +801,7 @@ load_components (INT argc, char **argv)
 	  || Run_preopt || Run_cg || Run_w2c || Run_w2f
           || Run_w2fc_early || Run_ipl) &&
         !FHE_Checkpoint_Enabled() &&
-        !DSL_PU_Specialization_Checkpoint_Enabled())
+        !DSL_PU_Specialization_Checkpoint_Enabled() && !normalization_checkpoint)
       Run_cg = TRUE;		    /* if nothing is set, run CG */
 
     if (Run_cg || Run_lno || Run_autopar) {
@@ -798,7 +828,7 @@ load_components (INT argc, char **argv)
 
     if ((Run_wopt || (Run_vsaopt || Run_ipsaopt))
         || Run_preopt || Run_lno || Run_autopar ||
-        VHO_DSL_Enable_WOPT) {
+        VHO_DSL_Enable_WOPT || normalization_checkpoint) {
       Get_Phase_Args (PHASE_WOPT, &phase_argc, &phase_argv);
 #if !defined(BUILD_FAST_BIN)
       load_so (WOPT_SO_NAME, WOPT_Path, Show_Progress);
@@ -878,7 +908,7 @@ Phase_Init (void)
     if (Run_cg)
 	CG_Init ();
     if ((Run_wopt || (Run_vsaopt || Run_ipsaopt)) || Run_preopt ||
-        VHO_DSL_Enable_WOPT)
+        VHO_DSL_Enable_WOPT || VHO_DSL_Normalization_Request != NULL)
 	Wopt_Init ();
     if (Run_ipl)
 	Ipl_Init ();
@@ -970,6 +1000,7 @@ Phase_Init (void)
 } /* Phase_Init */
 
 
+/* Finalize exactly the components initialized for the selected driver route. */
 static void
 Phase_Fini (void)
 {
@@ -994,7 +1025,7 @@ Phase_Fini (void)
     if (Run_ipl)
 	Ipl_Fini ();
     if ((Run_wopt || (Run_vsaopt || Run_ipsaopt)) || Run_preopt ||
-        VHO_DSL_Enable_WOPT)
+        VHO_DSL_Enable_WOPT || VHO_DSL_Normalization_Request != NULL)
 	Wopt_Fini ();
     if (Run_cg)
 	CG_Fini ();
@@ -3034,7 +3065,7 @@ main (INT argc, char **argv)
   BOOL needs_lno = FILE_INFO_needs_lno (File_info);
 
   if (needs_lno && !Run_ipl && !FHE_Checkpoint_Enabled() &&
-      !DSL_PU_Specialization_Checkpoint_Enabled()) {
+      !DSL_PU_Specialization_Checkpoint_Enabled() && VHO_DSL_Normalization_Request == NULL) {
     Run_Distr_Array = TRUE;
     if (!Run_lno && !Run_autopar) {
       /* ipl is not running, and LNO has not been loaded */
@@ -3101,7 +3132,11 @@ main (INT argc, char **argv)
   }
 #endif
 
-  if (DSL_PU_Specialization_Checkpoint_Enabled()) {
+  if (VHO_DSL_Normalization_Request != NULL) {
+    FmtAssert(BE_DSL_normalization_checkpoint
+                  (pu_tree, BE_DSL_NORMALIZATION_API, Perform_Preopt_Optimization, stderr),
+              ("LN4 driver request checkpoint failed"));
+  } else if (DSL_PU_Specialization_Checkpoint_Enabled()) {
     Process_DSL_PU_Specialization_Checkpoint(pu_tree);
   } else {
 #if defined(TARG_SL)
