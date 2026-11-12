@@ -140,18 +140,48 @@ VHO_MLA_COST_PROFILE DSL_observer_model(const rapidjson::Value &value) {
         model.values[i] = DSL_observer_uint(DSL_observer_member(parameters,VHO_mla_cost_names[i]),1000000000);
     return model;
 }
+/* Hierarchy assumptions are an explicit v3-only extension. Static policies:
+ * conservative L1 exclusion, write-through stores, no deliberate spills or
+ * overlap, and an immutable materializer capability registry. */
+VHO_MLA_MOVEMENT_PROFILE DSL_observer_hierarchy(const rapidjson::Value &v) {
+    DSL_observer_object(v,13);
+    DSL_observer_require(DSL_observer_string(DSL_observer_member(v,"schema"))=="open64.mla-hierarchy-profile.v1" &&
+        DSL_observer_string(DSL_observer_member(v,"unit"))=="reference_cycles" &&
+        DSL_observer_string(DSL_observer_member(v,"capabilities"))==VHO_mla_movement_capabilities());
+    VHO_MLA_MOVEMENT_PROFILE p;
+    p.id=DSL_observer_string(DSL_observer_member(v,"id"),96);
+    p.architecture=DSL_observer_string(DSL_observer_member(v,"architecture"),96);
+    p.provenance=DSL_observer_string(DSL_observer_member(v,"provenance"),96);
+    p.objective=DSL_observer_string(DSL_observer_member(v,"objective"),96);
+    p.hbm_rate=DSL_observer_uint(DSL_observer_member(v,"hbm_bytes_per_cycle"),1000000000);
+    p.l2_rate=DSL_observer_uint(DSL_observer_member(v,"l2_bytes_per_cycle"),1000000000);
+    p.sector_bytes=DSL_observer_uint(DSL_observer_member(v,"sector_bytes"),128);
+    p.request_amplification_ppm=DSL_observer_uint(DSL_observer_member(v,"request_amplification_ppm"),8000000);
+    p.shared_conflict_ppm=DSL_observer_uint(DSL_observer_member(v,"shared_conflict_ppm"),8000000);
+    const rapidjson::Value &rows=DSL_observer_member(v,"scenarios");
+    DSL_observer_require(rows.IsArray() && rows.Size()>0 && rows.Size()<=4);
+    for(unsigned i=0;i<rows.Size();++i) {
+        const rapidjson::Value &row=rows[i];DSL_observer_object(row,4);
+        VHO_MLA_CACHE_SCENARIO c;c.id=DSL_observer_string(DSL_observer_member(row,"id"),96);
+        c.weight=DSL_observer_uint(DSL_observer_member(row,"weight"),1000000);
+        c.cache_hit_ppm=DSL_observer_uint(DSL_observer_member(row,"cache_l2_hit_ppm"),1000000);
+        c.other_hit_ppm=DSL_observer_uint(DSL_observer_member(row,"other_l2_hit_ppm"),1000000);
+        p.scenarios.push_back(c);
+    }
+    DSL_observer_require(VHO_mla_movement_profile_valid(p,NULL));return p;
+}
 /* Decode the versioned global/per-run/composite controls without borrowing
  * JSON state. Hard safety caps remain mandatory even if budget is not named. */
-VHO_MLA_SEARCH_CONTROL DSL_observer_controls(const rapidjson::Value &value) {
+VHO_MLA_SEARCH_CONTROL DSL_observer_controls(const rapidjson::Value &value,bool movement) {
     DSL_observer_object(value,15);
-    DSL_observer_require(DSL_observer_string(DSL_observer_member(value,"schema")) == "open64.mla-search-controls.v2");
+    DSL_observer_require(DSL_observer_string(DSL_observer_member(value,"schema")) == (movement?"open64.mla-search-controls.v3":"open64.mla-search-controls.v2"));
     VHO_MLA_SEARCH_CONTROL control;
     control.space=DSL_observer_string(DSL_observer_member(value,"space"));
     control.mode=DSL_observer_string(DSL_observer_member(value,"mode"));
-    control.global_proposals=DSL_observer_uint(DSL_observer_member(value,"global_proposal_limit"),192);
-    control.global_unique=DSL_observer_uint(DSL_observer_member(value,"global_unique_limit"),12);
+    control.global_proposals=DSL_observer_uint(DSL_observer_member(value,"global_proposal_limit"),movement?576:192);
+    control.global_unique=DSL_observer_uint(DSL_observer_member(value,"global_unique_limit"),movement?36:12);
     control.global_time_us=DSL_observer_uint(DSL_observer_member(value,"global_time_limit_us"),UINT64_C(3600000000));
-    control.patience=DSL_observer_uint(DSL_observer_member(value,"patience"),12);
+    control.patience=DSL_observer_uint(DSL_observer_member(value,"patience"),movement?36:12);
     control.minimum_gain=DSL_observer_uint(DSL_observer_member(value,"minimum_gain_cycles"),1000000000);
     control.target=DSL_observer_uint(DSL_observer_member(value,"target_cycles"),UINT64_C(1000000000000000000));
     control.gap_ppm=DSL_observer_uint(DSL_observer_member(value,"gap_ppm"),1000000);
@@ -166,7 +196,7 @@ VHO_MLA_SEARCH_CONTROL DSL_observer_controls(const rapidjson::Value &value) {
         run.id=DSL_observer_string(DSL_observer_member(entry,"id"),96);
         run.strategy=DSL_observer_string(DSL_observer_member(entry,"strategy"),96);
         run.seed=DSL_observer_uint(DSL_observer_member(entry,"seed"));
-        run.proposal_limit=DSL_observer_uint(DSL_observer_member(entry,"proposal_limit"),12);control.runs.push_back(run);
+        run.proposal_limit=DSL_observer_uint(DSL_observer_member(entry,"proposal_limit"),movement?36:12);control.runs.push_back(run);
     }
     for(unsigned i=0;i<stopping.Size();++i) control.stopping.push_back(DSL_observer_string(stopping[i],96));
     const rapidjson::Value &conversion=DSL_observer_member(value,"economic_conversion");
@@ -198,12 +228,14 @@ bool LNO_DSL_read_search_input(const char *path, DSL_HIGH_SEARCH_INPUT &output, 
         DSL_observer_require(!document.HasParseError());
         unsigned nodes = 0; DSL_observer_unique(document,0,nodes);
         std::string schema=DSL_observer_string(DSL_observer_member(document,"schema"));
-        bool production=schema=="open64.lno-high-search.v2";
+        bool movement=schema=="open64.lno-high-search.v3";
+        bool production=movement || schema=="open64.lno-high-search.v2";
         DSL_observer_require(production || schema=="open64.lno-high-search.v1");
-        DSL_observer_object(document,production?13:12);
+        DSL_observer_object(document,movement?14:production?13:12);
         DSL_HIGH_SEARCH_INPUT result;
-        result.production_controls=production;
-        if(production) result.controls=DSL_observer_controls(DSL_observer_member(document,"search_controls"));
+        result.production_controls=production;result.movement_enabled=movement;
+        if(movement) result.movement_profile=DSL_observer_hierarchy(DSL_observer_member(document,"hierarchy"));
+        if(production) result.controls=DSL_observer_controls(DSL_observer_member(document,"search_controls"),movement);
         result.unit = DSL_observer_string(DSL_observer_member(document,"unit"));
         result.function = DSL_observer_string(DSL_observer_member(document,"function"));
         result.source_key = DSL_observer_string(DSL_observer_member(document,"source_key"),8*1024*1024);

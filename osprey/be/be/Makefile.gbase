@@ -1201,3 +1201,5 @@ dsl_tensor_analysis.o: $(BE_VHO_DIR)/dsl_tensor_analysis_internal.h
 dsl_tensor_locality.o: $(BE_VHO_DIR)/dsl_tensor_locality_internal.h \
     $(BE_COM_DIR)/dsl_tensor_control_snapshot.h \
     $(BE_COM_DIR)/dsl_tensor_control_snapshot_internal.h
+# MR2 observer input/report are owned values crossing the driver boundary.
+driver.o: $(BE_DIR)/vho/tensor_attention_search.h $(BE_DIR)/vho/tensor_attention_movement.h

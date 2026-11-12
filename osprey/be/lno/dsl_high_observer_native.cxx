@@ -105,6 +105,37 @@ void DSL_observer_print(FILE *trace, const DSL_HIGH_SEARCH_REPORT &report, const
             i,candidate.policy,candidate.width,candidate.evaluated?"true":"false",candidate.eligible?"true":"false",
             (unsigned long long)candidate.total,candidate.reason.c_str());
     }
+    if(report.movement) {
+        fprintf(trace,"AI_HIGH_MOVEMENT 1 PROFILE %s\nAI_HIGH_MOVEMENT 1 CATALOG %s capability=%s\n",
+            VHO_mla_movement_profile_key(input.movement_profile).c_str(),VHO_mla_movement_catalog(),VHO_mla_movement_capabilities());
+        fprintf(trace,"AI_HIGH_MOVEMENT 1 SCOPE modeled=true measured=false traffic_units=device_bytes latency_units=reference_cycles overlap=none L1=ignored stores=write-through spills=not-admitted actual_spills=unknown certificates=disabled\n");
+        for(unsigned i=0;i<result.candidates.size();++i) {
+            const VHO_MLA_SEARCH_CANDIDATE &c=result.candidates[i];
+            fprintf(trace,"AI_HIGH_MOVEMENT 1 CANDIDATE ordinal=%u G=%u W=%u column=%u sweeps=%u modeled=%s eligible=%s cycles=%llu cache_payload=%llu cache_requests=%llu partial_allocation=%llu partial_requests=%llu score_storage=%llu head_slots=%llu reason=%s\n",
+                i,c.descriptor.group,c.width,c.descriptor.column,c.descriptor.retained?1:2,c.movement.modeled?"true":"false",c.eligible?"true":"false",
+                (unsigned long long)c.total,(unsigned long long)c.movement.cache_payload,(unsigned long long)c.movement.cache_requests,
+                (unsigned long long)c.movement.partial_allocation,(unsigned long long)c.movement.partial_requests,
+                (unsigned long long)c.movement.score_storage,(unsigned long long)c.movement.head_slots,c.reason.c_str());
+            for(size_t q=0;q<c.movement.scenario_cycles.size();++q)
+                fprintf(trace,"AI_HIGH_MOVEMENT 1 SCENARIO candidate=%u id=%s cycles=%llu\n",i,input.movement_profile.scenarios[q].id.c_str(),(unsigned long long)c.movement.scenario_cycles[q]);
+            for(size_t j=0;j<c.stages.size();++j) {
+                const VHO_MLA_STAGE_ESTIMATE &st=c.stages[j];
+                fprintf(trace,"AI_HIGH_MOVEMENT 1 STAGE candidate=%u index=%lu op=%llu tokens=%llu heads=%llu ctas=%llu threads=%llu shared=%llu rounded_shared=%llu shared_transfer_per_cta=%llu registers=%llu rounded_registers=%llu resident=%llu unused=%llu rounds=%llu compute=%llu memory=%llu special=%llu local=%llu sync=%llu launch=%llu total=%llu\n",
+                    i,(unsigned long)j,(unsigned long long)st.operation,(unsigned long long)st.movement.valid_tokens,
+                    (unsigned long long)st.movement.valid_heads,(unsigned long long)st.ctas,(unsigned long long)st.threads,
+                    (unsigned long long)st.shared,(unsigned long long)st.movement.rounded_shared,(unsigned long long)st.shared_bytes,(unsigned long long)st.movement.registers,
+                    (unsigned long long)st.movement.rounded_registers,(unsigned long long)st.resident,(unsigned long long)st.movement.unused_slots,
+                    (unsigned long long)st.rounds,(unsigned long long)st.compute,(unsigned long long)st.memory,(unsigned long long)st.special,
+                    (unsigned long long)st.local,(unsigned long long)st.sync,(unsigned long long)st.launch,(unsigned long long)st.total);
+                for(size_t k=0;k<st.movement.traffic.size();++k) {
+                    const VHO_MLA_TRAFFIC_ESTIMATE &t=st.movement.traffic[k];
+                    fprintf(trace,"AI_HIGH_MOVEMENT 1 TRAFFIC candidate=%u stage=%lu scenario=%s operand=%s direction=%s requested=%llu transactions=%llu L2=%llu HBM=%llu SMEM=%llu\n",
+                        i,(unsigned long)j,t.scenario.c_str(),t.operand.c_str(),t.direction.c_str(),(unsigned long long)t.requested,
+                        (unsigned long long)t.transactions,(unsigned long long)t.l2,(unsigned long long)t.hbm,(unsigned long long)t.shared);
+                }
+            }
+        }
+    }
     if(!report.controlled) fprintf(trace,"AI_HIGH_SEARCH 1 OBSERVED estimates=%llu cache_hits=%llu runs=%lu complete=%s winner=%u conclusion=%s applied=false schedule_legality=not_proved\n",
         (unsigned long long)result.evaluations,(unsigned long long)result.cache_hits,(unsigned long)result.runs.size(),
         result.complete?"true":"false",result.winner,result.complete?"best_estimated_in_declared_space":"best_estimated_among_explored");
@@ -199,7 +230,7 @@ void LNO_DSL_observe_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias, ARRAY
     uint64_t validation_us = LNO_DSL_observer_time_us()-begin, exploration_us = 0;
     bool observed = false;
     if (valid) {
-        begin = LNO_DSL_observer_time_us(); observed = LNO_DSL_observe_search(input,report,reason);
+        begin = LNO_DSL_observer_time_us(); observed = LNO_DSL_observe_search(input,report,reason,&reuse);
         exploration_us = LNO_DSL_observer_time_us()-begin;
     }
     std::string current_reason;

@@ -18,8 +18,8 @@ void bridge_test_mutation(bool source) {
         TY_IDX function=ST_pu_type(WN_st(root));Set_TYLIST_type(Tylist_Table[TY_tylist(function)],MTYPE_To_TY(MTYPE_F4));
     }
     if(source) {
-        const char *names[]={"width","policy","resources","model","controls","numerical","scratch","source","facts"};
-        for(unsigned i=0;i<9;++i) if(bridge_test_fault==names[i])
+        const char *names[]={"width","policy","resources","model","controls","numerical","scratch","source","facts","head_group","movement"};
+        for(unsigned i=0;i<11;++i) if(bridge_test_fault==names[i])
             ST_tensor_bind_metadata(st,(std::string("tensor.high.selected.")+names[i]).c_str(),"stale");
     } else {
         if(bridge_test_fault=="barrier") remove_barrier(root);
@@ -85,7 +85,7 @@ Json::Value selected_admission(const char *image,const VHO_TENSOR_PROGRAM &origi
     bridge_test_mutation(true);
 #endif
     need(metadata(st,"tensor.high.accepted.schema")=="mla-selected-native-v1" &&
-        metadata(st,"tensor.high.selected.schema")=="lno-selected-mla-v1","bridge unsealed source");
+        (metadata(st,"tensor.high.selected.schema")=="lno-selected-mla-v1" || metadata(st,"tensor.high.selected.schema")=="lno-selected-mla-v2"),"bridge unsealed source");
     UINT32 symbols=ST_Table_Size(CURRENT_SYMTAB),types=TY_Table_Size();
     std::string key=VHO_tensor_selected_key(root);
     need(key==metadata(st,"tensor.high.accepted.key"),"bridge stale selected source/key/COMMENT");
@@ -96,8 +96,9 @@ Json::Value selected_admission(const char *image,const VHO_TENSOR_PROGRAM &origi
             LNO_DSL_production_input_key(*production)==metadata(st,"tensor.high.production.input"),
             "bridge production manifest/source/resource/model/control binding changed");
         need(VHO_tensor_gpu_profile_valid(production->gpu,NULL) &&
-            VHO_mla_search_control_valid(production->controls,NULL),"bridge production resource/control invalid");
+            (production->movement_enabled?VHO_mla_movement_control_valid(production->controls,NULL):VHO_mla_search_control_valid(production->controls,NULL)),"bridge production resource/control invalid");
     }
+    if(production) need(production->movement_enabled==(metadata(st,"tensor.high.selected.schema")=="lno-selected-mla-v2"),"bridge movement schema mismatch");
     WN *source_comment=WN_first(WN_func_body(root));
     need(source_comment && WN_operator(source_comment)==OPR_COMMENT,"bridge source explanation missing");
     need(!original.fuse&&!original.auto_chunks&&!original.search_selected &&
@@ -277,7 +278,11 @@ int selected_bridge_command(int argc,char **argv) {
         launch["storages"]=Json::Value(Json::arrayValue);
         for(std::map<UINT32,Json::Value>::const_iterator i=storages.begin();i!=storages.end();++i) launch["storages"].append(i->second);
         write_json((prefix+".launch.json").c_str(),launch);
-        write_source((prefix+".optimized.cu").c_str(),W2C_tensor_schedule_source(plan,VHO_tensor_explanations(plan),encode(p)["recipe_fingerprint"].asString()));
+        std::string optimized=W2C_tensor_schedule_source(plan,VHO_tensor_explanations(plan),encode(p)["recipe_fingerprint"].asString());
+        /* Copy the accepted MR2 COMMENT verbatim. This presentation path
+         * introduces no scheduling policy and preserves legacy source bytes. */
+        if(input.movement_enabled) optimized="/* "+accepted["source_comment"].asString()+" */\n"+optimized;
+        write_source((prefix+".optimized.cu").c_str(),optimized);
         Json::Value complete;complete["schema"]="open64.selected-device-production.v1";
         complete["status"]="PASS";complete["search_invocations"]=0;
         complete["kernel_count"]=Json::UInt(plan.kernels.size());

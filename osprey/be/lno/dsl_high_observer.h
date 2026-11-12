@@ -17,19 +17,23 @@ struct DSL_HIGH_SEARCH_INPUT {
     std::vector<unsigned> buffers;
     bool allow_reassociate;
     bool production_controls;
+    bool movement_enabled;
+    VHO_MLA_MOVEMENT_PROFILE movement_profile;
     VHO_MLA_SEARCH_CONTROL controls;
     /* Missing permission never defaults to authorization. */
-    DSL_HIGH_SEARCH_INPUT() : allow_reassociate(false), production_controls(false) {}
+    DSL_HIGH_SEARCH_INPUT() : allow_reassociate(false), production_controls(false), movement_enabled(false) {}
 };
 struct DSL_HIGH_SEARCH_REPORT {
     DSL_HIGH_REUSE_FACTS reuse;
     VHO_MLA_SEARCH_RESULT exploration;
     std::string resource_key, model_key, manifest_key;
     bool controlled;
+    bool movement;
+    std::string movement_key;
     VHO_MLA_PRODUCTION_RESULT production;
     std::string control_key;
     /* V1 reporting remains the archival default until v2 controls are bound. */
-    DSL_HIGH_SEARCH_REPORT() : controlled(false) {}
+    DSL_HIGH_SEARCH_REPORT() : controlled(false), movement(false) {}
 };
 
 /* Strict, bounded JSON adapter into owned records. Reject duplicate/unknown
@@ -42,7 +46,8 @@ extern bool LNO_DSL_validate_search_input(const DSL_HIGH_SNAPSHOT &, const DSL_H
     const DSL_HIGH_SEARCH_INPUT &, std::string &);
 /* Explore only owned records using the existing finite MLA portfolio. This
  * service has no native handles and never applies or materializes a winner. */
-extern bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &, DSL_HIGH_SEARCH_REPORT &, std::string &);
+extern bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &, DSL_HIGH_SEARCH_REPORT &, std::string &, const DSL_HIGH_REUSE_FACTS * = NULL);
+extern std::string LNO_DSL_movement_binding(const DSL_HIGH_SEARCH_INPUT &,const DSL_HIGH_REUSE_FACTS &);
 /* Native active-PU wrapper: validate lineage/ABI, guard physical tree/table
  * state, run detached exploration, revalidate analyses and retain fallback.
  * Optional output DTOs are cleared on entry and copied only after successful

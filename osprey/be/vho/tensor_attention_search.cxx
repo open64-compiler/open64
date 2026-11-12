@@ -72,7 +72,7 @@ void Attention_counts(VHO_MLA_STAGE_ESTIMATE &s,const VHO_TENSOR_ATTENTION &a,co
 }
 /* Cost one candidate at most once. All-stage schedule admission and occupancy
  * precede selection. No table creation, source emission or regression occurs. */
-void Evaluate(VHO_MLA_SEARCH_CANDIDATE &c,const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR_GPU_PROFILE &g,const VHO_MLA_COST_PROFILE &model) {
+void Evaluate(VHO_MLA_SEARCH_CANDIDATE &c,const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR_GPU_PROFILE &g,const VHO_MLA_COST_PROFILE &model,bool counts_only=false) {
     c.evaluated=true;c.reason="native_capacity";
     VHO_TENSOR_PROGRAM p=source;p.auto_chunks=false;p.search_selected=false;p.search_evidence.clear();p.search_identity.clear();
     p.register_latent=true;p.chunk_policy=c.policy;p.split_width=c.width;
@@ -96,7 +96,8 @@ void Evaluate(VHO_MLA_SEARCH_CANDIDATE &c,const VHO_TENSOR_PROGRAM &source,const
             s.dependency=width;
             if(k.mapping==2) {s.barriers=mul(2,ceilq(width,32));s.shared_bytes=mul(640,ceilq(width,32));s.shuffles=20;}
         }
-        Cost_stage(s,g,model);c.total=add(c.total,s.total);c.stages.push_back(s);
+        if(!counts_only) {Cost_stage(s,g,model);c.total=add(c.total,s.total);}
+        c.stages.push_back(s);
     }
     c.reason="eligible";c.eligible=true;
 }
@@ -104,7 +105,7 @@ void Evaluate(VHO_MLA_SEARCH_CANDIDATE &c,const VHO_TENSOR_PROGRAM &source,const
 UINT64 Next_random(UINT64 &state) {state=(state*UINT64(1664525)+UINT64(1013904223))&UINT64(0xffffffff);return state;}
 /* Structural neighbors share a width or adjacent widths in one family. */
 bool Neighbors(const VHO_MLA_SEARCH_CANDIDATE &a,const VHO_MLA_SEARCH_CANDIDATE &b) {
-    return a.width==b.width || (a.policy==b.policy && ((!a.width && b.width==32) || (!b.width && a.width==32) ||
+    return (a.descriptor.group==b.descriptor.group && a.width==b.width) || (a.descriptor.group==b.descriptor.group && a.policy==b.policy && ((!a.width && b.width==32) || (!b.width && a.width==32) ||
         (a.width && b.width && (a.width==2*b.width || b.width==2*a.width))));
 }
 /* One declared catalog shared by v1 archival and v2 controlled exploration. */
@@ -117,10 +118,10 @@ void VHO_search_catalog(VHO_MLA_SEARCH_RESULT &result) {
 UINT32 VHO_search_propose(const std::string &strategy,const bool *visited,UINT32 anchor,
     const std::vector<VHO_MLA_SEARCH_CANDIDATE> &candidates,UINT64 &state,bool &restart) {
     std::vector<UINT32> available;
-    for(UINT32 i=0;i<12;++i) if(!visited[i] && (strategy!="local" || Neighbors(candidates[anchor],candidates[i]))) available.push_back(i);
+    for(UINT32 i=0;i<candidates.size();++i) if(!visited[i] && (strategy!="local" || Neighbors(candidates[anchor],candidates[i]))) available.push_back(i);
     restart=available.empty();
-    if(restart) for(UINT32 i=0;i<12;++i) if(!visited[i]) available.push_back(i);
-    return available.empty()?12:available[strategy=="exhaustive"?0:Next_random(state)%available.size()];
+    if(restart) for(UINT32 i=0;i<candidates.size();++i) if(!visited[i]) available.push_back(i);
+    return available.empty()?candidates.size():available[strategy=="exhaustive"?0:Next_random(state)%available.size()];
 }
 /* Apply explicitly scoped stopping predicates. The bound is solely on this
  * additive estimator (every realization launches at least five kernels), never
@@ -133,6 +134,8 @@ std::string Stop(const VHO_MLA_SEARCH_OPTIONS &o,UINT64 best,UINT64 lower,UINT64
     return "";
 }
 }
+
+#include "tensor_attention_movement.inc"
 
 /* Explicit complete timings are required; neither unknown zeros nor a generic
  * architecture alias supplies absent exp/div/shuffle/launch costs. */
@@ -228,12 +231,12 @@ bool VHO_search_stop_enabled(const VHO_MLA_SEARCH_CONTROL &control,const char *n
     return std::find(control.stopping.begin(),control.stopping.end(),name)!=control.stopping.end();
 }
 struct VHO_MLA_RUN_STATE {
-    bool visited[12], active, found;
+    bool visited[36], active, found;
     UINT64 random, stale;
     UINT32 anchor;
     /* Independent deterministic state; shared estimates live only in result. */
-    explicit VHO_MLA_RUN_STATE(UINT64 seed) : active(true), found(false), random(seed), stale(0) {
-        std::fill(visited,visited+12,false);anchor=Next_random(random)%12;
+    explicit VHO_MLA_RUN_STATE(UINT64 seed,unsigned count=12) : active(true), found(false), random(seed), stale(0) {
+        std::fill(visited,visited+36,false);anchor=Next_random(random)%count;
     }
 };
 /* Record all terminal predicates in a fixed priority order. Completeness is
@@ -241,7 +244,7 @@ struct VHO_MLA_RUN_STATE {
 std::vector<std::string> VHO_search_predicates(const VHO_MLA_SEARCH_CONTROL &control,
     const VHO_MLA_PRODUCTION_RESULT &result,bool active) {
     std::vector<std::string> predicates;
-    if(result.exploration.evaluations==12) predicates.push_back("declared_space_complete");
+    if(result.exploration.evaluations==result.exploration.candidates.size()) predicates.push_back("declared_space_complete");
     if(result.proposals>=control.global_proposals) predicates.push_back("global_proposal_budget");
     if(result.exploration.evaluations>=control.global_unique) predicates.push_back("global_unique_budget");
     if(control.global_time_us && result.elapsed_us>=control.global_time_us) predicates.push_back("global_time_budget");
@@ -269,11 +272,12 @@ VHO_MLA_SEARCH_CONTROL::VHO_MLA_SEARCH_CONTROL() : space("mla-family-width-space
 
 /* Validate hard bounds, unique IDs, provider support and dimensional evidence.
  * A caller cannot disable the safety caps by omitting budget/exhaustion stops. */
-BOOL VHO_mla_search_control_valid(const VHO_MLA_SEARCH_CONTROL &control,FILE *diagnostic) {
-    bool valid=control.space=="mla-family-width-space-v1" && control.mode=="estimate" &&
+static BOOL VHO_mla_control_valid(const VHO_MLA_SEARCH_CONTROL &control,FILE *diagnostic,bool movement) {
+    UINT64 count=movement?36:12;
+    bool valid=control.space==(movement?VHO_mla_movement_catalog():"mla-family-width-space-v1") && control.mode=="estimate" &&
         !control.runs.empty() && control.runs.size()<=16 && !control.stopping.empty() && control.stopping.size()<=6 &&
-        control.global_proposals>0 && control.global_proposals<=192 && control.global_unique>0 && control.global_unique<=12 &&
-        control.global_time_us<=UINT64(3600000000ULL) && control.patience>0 && control.patience<=12 &&
+        control.global_proposals>0 && control.global_proposals<=16*count && control.global_unique>0 && control.global_unique<=count &&
+        control.global_time_us<=UINT64(3600000000ULL) && control.patience>0 && control.patience<=count &&
         control.minimum_gain<=1000000000 && control.gap_ppm<=1000000 && control.target<=UINT64(1000000000000000000ULL) &&
         control.remaining_invocations<=UINT64(1000000000000ULL) && control.evaluation_cost<=UINT64(1000000000000000000ULL);
     std::set<std::string> ids,stops;
@@ -281,7 +285,7 @@ BOOL VHO_mla_search_control_valid(const VHO_MLA_SEARCH_CONTROL &control,FILE *di
         const VHO_MLA_SEARCH_RUN_CONTROL &run=control.runs[i];
         valid=valid && VHO_search_id(run.id) && ids.insert(run.id).second &&
             (run.strategy=="local" || run.strategy=="random" || run.strategy=="exhaustive") &&
-            run.proposal_limit>0 && run.proposal_limit<=12 && run.seed<=0xffffffffU;
+            run.proposal_limit>0 && run.proposal_limit<=count && run.seed<=0xffffffffU;
     }
     for(size_t i=0;i<control.stopping.size();++i) {
         const std::string &stop=control.stopping[i];
@@ -297,15 +301,19 @@ BOOL VHO_mla_search_control_valid(const VHO_MLA_SEARCH_CONTROL &control,FILE *di
             control.conversion_provenance=="estimated" || control.conversion_provenance=="measured-input") &&
             DSL_readiness_mul(control.host_us,control.cycles_per_us,&converted) && converted==control.evaluation_cost;
     } else valid=valid && !control.host_us && !control.cycles_per_us && control.conversion_provenance.empty();
+    if(movement && (VHO_search_stop_enabled(control,"relative-gap") || VHO_search_stop_enabled(control,"cost-aware"))) valid=false;
     if(!valid && diagnostic) fprintf(diagnostic,"MLA controlled search: invalid controls or unsupported stopping evidence\n");
     return valid;
 }
+
+BOOL VHO_mla_search_control_valid(const VHO_MLA_SEARCH_CONTROL &c,FILE *f) {return VHO_mla_control_valid(c,f,false);}
+BOOL VHO_mla_movement_control_valid(const VHO_MLA_SEARCH_CONTROL &c,FILE *f) {return VHO_mla_control_valid(c,f,true);}
 
 /* Bind all policy values, including same-ID run changes and unit conversion.
  * This full identity is not a cryptographic signature or a portable time trace. */
 std::string VHO_mla_search_control_key(const VHO_MLA_SEARCH_CONTROL &control) {
     std::ostringstream key;
-    key<<"mla-search-controls-v2/"<<control.space<<'/'<<control.mode<<'/'<<control.global_proposals<<'/'<<control.global_unique<<'/'
+    key<<(control.space==VHO_mla_movement_catalog()?"mla-search-controls-v3/":"mla-search-controls-v2/")<<control.space<<'/'<<control.mode<<'/'<<control.global_proposals<<'/'<<control.global_unique<<'/'
         <<control.global_time_us<<'/'<<control.patience<<'/'<<control.minimum_gain<<'/'<<control.target<<'/'<<control.gap_ppm<<'/'
         <<control.remaining_invocations<<'/'<<control.evaluation_cost<<'/'<<control.economic_conversion<<'/'<<control.host_us<<'/'
         <<control.cycles_per_us<<'/'<<control.conversion_provenance<<"/runs="<<control.runs.size();
@@ -321,20 +329,23 @@ std::string VHO_mla_search_control_key(const VHO_MLA_SEARCH_CONTROL &control) {
 /* Reuse the v1 catalog/proposers/evaluator under a fair portfolio scheduler.
  * Caps are checked before every proposal and after every complete estimate;
  * a cache hit consumes only a proposal. No native callback or context exists. */
-BOOL VHO_mla_explore_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR_GPU_PROFILE &gpu,
-    const VHO_MLA_COST_PROFILE &model,const VHO_MLA_SEARCH_CONTROL &control,VHO_MLA_PRODUCTION_RESULT *output,FILE *diagnostic) {
+static BOOL VHO_mla_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR_GPU_PROFILE &gpu,
+    const VHO_MLA_COST_PROFILE &model,const VHO_MLA_SEARCH_CONTROL &control,VHO_MLA_PRODUCTION_RESULT *output,FILE *diagnostic,const VHO_MLA_MOVEMENT_CONTEXT *movement) {
     try {
         UINT64 start=VHO_search_clock(),last=start;
         VHO_MLA_SEARCH_OPTIONS legacy_validation;
-        if(!output || !VHO_mla_search_control_valid(control,diagnostic) || !VHO_mla_search_inputs_valid(model,legacy_validation,diagnostic) ||
+        if(!output || !VHO_mla_control_valid(control,diagnostic,movement!=NULL) ||
+            (movement && (!VHO_mla_movement_profile_valid(movement->profile,diagnostic) || movement->profile.architecture!=gpu.architecture)) || !VHO_mla_search_inputs_valid(model,legacy_validation,diagnostic) ||
             !VHO_tensor_gpu_profile_valid(gpu,diagnostic) || model.architecture!=gpu.architecture ||
             source.opt_level!=3 || !source.fuse_attention || !source.cooperative || !VHO_tensor_validate_program(source,diagnostic))
             throw std::runtime_error("controlled_search_admission_failed");
         VHO_MLA_PRODUCTION_RESULT result;VHO_MLA_SEARCH_RESULT &search=result.exploration;
-        search.lower_bound=mul(5,model.values[VHO_MLA_LAUNCH]);VHO_search_catalog(search);
+        if(movement) {search.lower_bound=0;Movement_catalog(search,VHO_tensor_attention(source));}
+        else {search.lower_bound=mul(5,model.values[VHO_MLA_LAUNCH]);VHO_search_catalog(search);}
+        unsigned count=search.candidates.size();
         std::vector<VHO_MLA_RUN_STATE> states;
         for(size_t i=0;i<control.runs.size();++i) {
-            states.push_back(VHO_MLA_RUN_STATE(control.runs[i].seed));
+            states.push_back(VHO_MLA_RUN_STATE(control.runs[i].seed,count));
             VHO_MLA_SEARCH_RUN run;run.strategy=control.runs[i].strategy;search.runs.push_back(run);
         }
         result.run_predicates.resize(control.runs.size());size_t cursor=0;
@@ -347,14 +358,16 @@ BOOL VHO_mla_explore_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSO
             size_t current=cursor;cursor=(cursor+1)%states.size();
             VHO_MLA_RUN_STATE &state=states[current];VHO_MLA_SEARCH_RUN &run=search.runs[current];
             bool restart=false;UINT32 id=VHO_search_propose(run.strategy,state.visited,state.anchor,search.candidates,state.random,restart);
-            if(id==12) throw std::runtime_error("controlled_proposal_state_inconsistent");
+            /* Charge a compatible G1 seed as the first ordinary proposal. */
+            if(movement && !result.proposals) id=VHO_tensor_attention(source).length<=4096?0:3;
+            if(id==count) throw std::runtime_error("controlled_proposal_state_inconsistent");
             if(restart && run.strategy=="local") ++run.restarts;
             state.visited[id]=true;run.visited.push_back(id);++result.proposals;
             VHO_MLA_SEARCH_CANDIDATE &candidate=search.candidates[id];bool hit=candidate.evaluated;
             if(!hit) {
                 ++search.evaluations;
-                try {Evaluate(candidate,source,gpu,model);}
-                catch(const std::exception &error) {candidate.evaluated=true;candidate.eligible=false;candidate.reason=error.what();candidate.total=0;candidate.stages.clear();}
+                try {if(movement) Movement_evaluate(candidate,source,gpu,model,*movement);else Evaluate(candidate,source,gpu,model);}
+                catch(const std::exception &error) {candidate.evaluated=true;candidate.eligible=false;candidate.reason=error.what();candidate.total=0;candidate.stages.clear();candidate.movement=VHO_MLA_MOVEMENT_ESTIMATE();}
             } else ++search.cache_hits;
             ++state.stale;
             if(candidate.eligible && (!state.found || candidate.total<run.best || (candidate.total==run.best && id<run.winner))) {
@@ -371,7 +384,7 @@ BOOL VHO_mla_explore_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSO
             event.eligible=candidate.eligible;event.run_best=run.best;event.global_best=result.has_winner?search.candidates[search.winner].total:0;
             result.events.push_back(event);
             std::vector<std::string> &predicates=result.run_predicates[current];
-            if(run.visited.size()==12) predicates.push_back("run_space_exhausted");
+            if(run.visited.size()==count) predicates.push_back("run_space_exhausted");
             if(run.visited.size()>=control.runs[current].proposal_limit) predicates.push_back("run_proposal_budget");
             if(VHO_search_stop_enabled(control,"plateau") && state.found && state.stale>=control.patience) predicates.push_back("empirical_plateau");
             if(!predicates.empty()) {run.termination=predicates[0];state.active=false;}
@@ -381,7 +394,7 @@ BOOL VHO_mla_explore_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSO
         VHO_search_elapsed(start,last,result);bool active=false;
         for(size_t i=0;i<states.size();++i) active=active || states[i].active;
         result.predicates=VHO_search_predicates(control,result,active);result.termination=result.predicates[0];
-        search.complete=search.evaluations==12;
+        search.complete=search.evaluations==count;
         for(size_t i=0;i<search.runs.size();++i)
             if(search.runs[i].termination.empty()) search.runs[i].termination="global:"+result.termination;
         *output=result;return TRUE;
@@ -389,3 +402,12 @@ BOOL VHO_mla_explore_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSO
         if(diagnostic) fprintf(diagnostic,"MLA controlled search: %s\n",error.what());return FALSE;
     }
 }
+
+/* Legacy callers preserve their exact catalog, timings and controls. */
+BOOL VHO_mla_explore_controlled(const VHO_TENSOR_PROGRAM &s,const VHO_TENSOR_GPU_PROFILE &g,
+    const VHO_MLA_COST_PROFILE &m,const VHO_MLA_SEARCH_CONTROL &c,VHO_MLA_PRODUCTION_RESULT *o,FILE *f) {
+    return VHO_mla_controlled(s,g,m,c,o,f,NULL);
+}
+BOOL VHO_mla_explore_movement(const VHO_TENSOR_PROGRAM &s,const VHO_TENSOR_GPU_PROFILE &g,
+    const VHO_MLA_COST_PROFILE &m,const VHO_MLA_SEARCH_CONTROL &c,const VHO_MLA_MOVEMENT_CONTEXT &x,
+    VHO_MLA_PRODUCTION_RESULT *o,FILE *f) {return VHO_mla_controlled(s,g,m,c,o,f,&x);}

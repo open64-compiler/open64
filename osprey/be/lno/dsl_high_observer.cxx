@@ -27,14 +27,17 @@ bool LNO_DSL_validate_search_input(const DSL_HIGH_SNAPSHOT &snapshot, const DSL_
     if (!VHO_tensor_gpu_profile_valid(input.gpu, NULL)) return reason = "gpu_resources_invalid", false;
     if (input.model.architecture != input.gpu.architecture || !VHO_mla_search_inputs_valid(input.model, options, NULL))
         return reason = "model_binding_invalid", false;
-    if (input.production_controls && !VHO_mla_search_control_valid(input.controls,NULL))
+    if(input.movement_enabled && (!input.production_controls ||
+        !VHO_mla_movement_profile_valid(input.movement_profile,NULL) || input.movement_profile.architecture!=input.gpu.architecture))
+        return reason="movement_profile_invalid",false;
+    if (input.production_controls && !(input.movement_enabled?VHO_mla_movement_control_valid(input.controls,NULL):VHO_mla_search_control_valid(input.controls,NULL)))
         return reason = "search_controls_invalid", false;
     reason = "validated"; return true;
 }
 
 /* Reuse the existing estimator, candidate ordering, cache and scoped conclusion.
  * All fusion flags below describe detached implementation hypotheses only. */
-bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_REPORT &output, std::string &reason) {
+bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_REPORT &output, std::string &reason,const DSL_HIGH_REUSE_FACTS *reuse) {
     output = DSL_HIGH_SEARCH_REPORT();
     VHO_TENSOR_PROGRAM program = input.algorithm;
     program.fuse = program.cooperative = program.fuse_attention = program.register_latent = true;
@@ -44,7 +47,20 @@ bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_
     program.split_width = 128;
     VHO_MLA_SEARCH_OPTIONS options;
     DSL_HIGH_SEARCH_REPORT result;
-    if (input.production_controls) {
+    if(input.movement_enabled) {
+        if(!reuse || !reuse->Available()) return reason="movement_reuse_unproved",false;
+        VHO_MLA_MOVEMENT_CONTEXT context;context.profile=input.movement_profile;context.proof_key=reuse->Binding_key();
+        const std::vector<DSL_HIGH_REUSE_CACHE> &caches=reuse->Summary().caches;
+        if(caches.size()!=2) return reason="movement_cache_census_invalid",false;
+        for(size_t i=0;i<caches.size();++i) {
+            if(caches[i].role==DSL_TENSOR_TRAIT_LATENT_KV_CACHE) context.latent_payload=caches[i].payload_bytes;
+            if(caches[i].role==DSL_TENSOR_TRAIT_ROTARY_KEY_CACHE) context.rotary_payload=caches[i].payload_bytes;
+        }
+        if(!VHO_mla_explore_movement(program,input.gpu,input.model,input.controls,context,&result.production,NULL))
+            return reason="movement_search_failed",false;
+        result.controlled=result.movement=true;result.exploration=result.production.exploration;
+        result.control_key=VHO_mla_search_control_key(input.controls);result.movement_key=LNO_DSL_movement_binding(input,*reuse);
+    } else if (input.production_controls) {
         if (!VHO_mla_explore_controlled(program,input.gpu,input.model,input.controls,&result.production,NULL))
             return reason = "controlled_search_failed", false;
         result.controlled = true; result.exploration = result.production.exploration;
@@ -60,4 +76,12 @@ bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_
  * fields against the sealed observer result before any selected construction. */
 void LNO_DSL_search_report_keys(const DSL_HIGH_SEARCH_INPUT &input,DSL_HIGH_SEARCH_REPORT &result) {
     LNO_DSL_fill_search_keys(input,result);
+}
+
+/* No compact hash or profile ID substitutes for full model/proof bindings. */
+std::string LNO_DSL_movement_binding(const DSL_HIGH_SEARCH_INPUT &i,const DSL_HIGH_REUSE_FACTS &r) {
+    DSL_HIGH_SEARCH_REPORT keys;LNO_DSL_search_report_keys(i,keys);
+    const std::string fields[]={keys.manifest_key,keys.resource_key,keys.model_key,VHO_mla_search_control_key(i.controls),r.Binding_key()};
+    std::ostringstream out;out<<"mla-movement-binding-v1;";
+    for(unsigned k=0;k<5;++k) out<<fields[k].size()<<':'<<fields[k]<<';';return out.str();
 }

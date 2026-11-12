@@ -555,3 +555,19 @@ include $(COMMONRULES)
 
 DSONAMEOPT =
 
+
+# MR2 changes only detached DTOs. Rebuild every consumer of their value layout.
+dsl_high_observer.o dsl_high_observer_json.o dsl_high_observer_native.o \
+  dsl_high_apply.o lnopt_main.o dsl_high_reuse.o dsl_high_search_test.o \
+  tensor_attention_search.o tensor_attention_search_test.o: \
+  $(BE_DIR)/vho/tensor_attention_search.h $(BE_DIR)/vho/tensor_attention_movement.h
+
+tensor_attention_search.o tensor_attention_search_test.o: $(BE_DIR)/vho/tensor_attention_movement.inc
+
+dsl_high_search_control_test: dsl_high_reuse.o
+
+dsl_high_movement_test.o: $(BE_LNOPT_DIR)/tests/dsl_high_movement_test.cxx $(BE_LNOPT_DIR)/dsl_high_observer.h $(BE_DIR)/vho/tensor_attention_movement.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_high_movement_test: dsl_high_movement_test.o tensor_attention_search_test.o dsl_high_search_hardware.o dsl_high_observer.o dsl_high_observer_json.o dsl_high_snapshot.o dsl_high_reuse.o tensor_schedule.o tensor_attention_chunk_select.o
+	$(link.c++f) -o $@ $^
