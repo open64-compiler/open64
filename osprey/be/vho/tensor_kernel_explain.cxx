@@ -351,6 +351,24 @@ public:
                     <<"Use whole-call latency, including unchanged projections and launches, to choose between retained AOT candidates.\n";
             }
         }
+        if(_p.auto_chunks && _p.chunk_policy==2 && (_p.split_width==32 || _p.split_width==64)) {
+            if(k.mapping==3) {
+                text<<"NARROW LOCAL OWNERSHIP: width "<<_p.split_width<<" changes token span, not the 128-thread launch or four-column register ownership.\n";
+                if(_p.split_width==64) text<<"On a full chunk each latent lane visits local tokens lane and lane+32; lane 0 takes 0,32 and lane 31 takes 31,63.\n";
+                else text<<"On a full chunk each latent lane visits exactly local token lane (0..31), then its four sums enter the full-warp trees.\n";
+                text<<"The final tail uses bounds checks, but every lane still executes the same collective rounds and all five CTA barriers.\n";
+            } else {
+                text<<"NARROW MERGE OWNERSHIP: statistics thread t visits chunks t,t+128,...; tid 0 visits "
+                    <<(k.chunks+127)/128<<" real chunk(s). Vector lane l visits l,l+32,...; lane 0 visits "
+                    <<(k.chunks+31)/32<<" chunk(s).\n";
+                if(k.chunks==129) text<<"For C=129, tid 0 folds chunks 0,128; other tids take one. Vector lane 0 takes 0,32,64,96,128; other lanes take four.\n";
+                if(k.chunks==257) text<<"For C=257, tid 0 folds 0,128,256; other tids take two. Vector lane 0 takes 0,32,64,96,128,160,192,224,256; other lanes take eight.\n";
+                text<<"The native merge allocates "<<capacity<<" weight slots but processes only "<<k.chunks
+                    <<". Unwritten allocation-padding slots are never read, normalized or exponentiated.\n"
+                    <<"Local score padding is different: those neutral slots are explicitly written and visited by local exp/normalization loops.\n"
+                    <<"The same zero-mass guard precedes rescaling: empty chunks contribute zero mass; an all-empty row returns zero latent output and LSE -infinity.\n";
+            }
+        }
         text<<"All CTA barriers and shuffle rounds are uniform across the full 128-thread block, including token/column tails.\n"
             <<"This explicit AOT option permits F32 regrouping and chunk-local normalization; compare with the FP64 oracle, not old F32 bytes.\n"
             <<"Shared-memory use, barriers, register pressure, small grids and score dot work can limit speed; no measured GPU speedup is asserted.\n";
@@ -421,10 +439,144 @@ public:
         else text<<"Operands are materialized buffers or dense aliases; this stage stores only its own result.\n";
         Explain("STAGE SEMANTICS",text.str(),"  ");
     }
+    /* Explain source-level work from the already selected ledger; no search. */
+    void ExplainNarrowCosts(std::ostringstream &text,const VHO_TENSOR_CHUNK_CANDIDATE &winner) {
+        if(_p.chunk_policy!=2 || (winner.width!=32 && winner.width!=64)) return;
+        const VHO_TENSOR_ATTENTION &a=_plan.attention;UINT64 rows=a.batch*a.heads;
+        UINT64 capacity=((winner.width+127)/128)*128;
+        text<<"NARROW-KERNEL COST WALKTHROUGH: selected width "<<winner.width<<" tokens; blocks still contain 128 threads.\n";
+        text<<"On a full chunk, tids 0.."<<winner.width-1<<" score real tokens; tids "<<winner.width
+            <<"..127 write neutral -infinity without reading source cache/query data for those padding tokens.\n";
+        text<<"All 128 threads still enter the four-warp max/denominator folds and the five CTA barriers.\n"
+            <<"The shared array is then reused for exponentials and normalized probabilities. Its capacity is "
+            <<capacity<<" even though a full chunk has only "<<winner.width<<" real tokens.\n";
+        text<<"The local exp/normalization loops visit every shared slot, including neutral padding. Real masked positions can also be neutral.\n"
+            <<"Padding avoids source score-dot reads, but still carries shared-array/reduction work in the selected source.\n";
+        text<<"COST TABLE: logical row/token positions = "<<rows<<"*"<<a.length<<"="<<rows*a.length
+            <<". Padding counts are unused shared slots beyond each chunk's actual token span, independent of masks. A corresponding global index may belong to another chunk.\n";
+        const UINT64 widths[]={128,64,32};
+        for(UINT32 w=0;w<3;++w) for(size_t i=0;i<_plan.chunk_selection.candidates.size();++i) {
+            const VHO_TENSOR_CHUNK_CANDIDATE &c=_plan.chunk_selection.candidates[i];
+            if(c.width!=widths[w]) continue;
+            UINT64 slots=c.ctas*((c.width+127)/128)*128;
+            text<<"LOCAL COST width="<<c.width<<" chunks="<<c.chunks<<" CTAs="<<c.ctas
+                <<" shared_exp_slots="<<slots<<" padding_slots="<<slots-rows*a.length
+                <<" local_CTA_barrier_phases="<<5*c.ctas<<" partial_bytes="<<c.scratch
+                <<" merge_shared_bytes="<<c.merge_shared<<" status="<<c.reason<<".\n";
+        }
+        text<<"These are source-loop slots and CTA rendezvous counts, not measured instructions, cycles or a sequential sum of GPU latency.\n"
+            <<"CTAs can overlap; compiler folding/predication can change executed padding cost. Allowed-token score dots still cover the same context.\n"
+            <<"A normalized weight is reused by four lane-private column sums. All four warps do useful latent-column work for R=16,\n"
+            <<"even though only one/two warps score real tokens on a full width-32/64 chunk.\n";
+        text<<"MERGE COST: "<<winner.chunks<<" tuples per row, each holding R+2="<<a.rank+2
+            <<" F32 values; partial storage "<<winner.scratch<<" bytes. The merge still launches only "<<rows<<" row CTAs.\n";
+        text<<"More tuples increase global tuple stores/loads, chunk-rescaling exponentials and vector contributions. They do not add a merge launch.\n"
+            <<"Both narrow variants retain the six-stage fused long-context plan; unchanged projections and output stores remain part of whole-call time.\n"
+            <<"Goal coverage can improve while whole-call latency worsens; select measured performance separately from this coverage heuristic.\n";
+    }
+    /* Read the sealed phase result; printing never changes width or resources. */
+    void ExplainAutoChunks(std::ostringstream &text) {
+        if(!_p.auto_chunks) return;
+        const VHO_TENSOR_CHUNK_SELECTION &s=_plan.chunk_selection;
+        if(s.candidates.empty() || s.width!=_p.split_width)
+            throw std::runtime_error("stale automatic chunk walkthrough");
+        const VHO_TENSOR_GPU_PROFILE &g=_p.gpu;
+        text<<"AUTOMATIC COMPILE-TIME CHUNKS: "<<VHO_tensor_chunk_policy_name(_p)<<"; profile "<<g.id<<", architecture "<<g.architecture<<".\n"
+            <<"Explicit device/partition SM count "<<g.sms<<"; estimated registers/thread "<<g.registers_per_thread
+            <<"; requested local CTAs/SM "<<g.target_ctas_per_sm<<"; partial scratch budget "<<g.scratch_budget<<" bytes.\n";
+        text<<"Capacities are supplied planning inputs; register demand is an estimate, not a measured occupancy or latency promise.\n"
+            <<"The existing occupancy service rounds register/shared allocations and applies block, warp, thread, register and shared limits.\n"
+            <<"Each candidate must pass native admission, all-stage resource fit and the partial-scratch budget, including the merge.\n"
+            <<"Coverage goal = SMs * min(requested CTAs/SM, estimated resident local CTAs/SM).\n"
+            <<"Rank by min(local CTAs,goal)/goal, then fewer chunks to limit scratch, merge and fixed CTA work.\n"
+            <<"If a direct plan fits and L<=256, keep it to avoid short-row split/merge overhead. Candidate split widths are "<<(_p.chunk_policy==2?"32":"128")<<"..4096 powers of two.\n";
+        text<<"Selected width "<<s.width<<(s.width?"":" (zero means direct whole row)")
+            <<"; short-direct rule "<<(s.short_direct?"applied":"not applied")<<". No runtime device query or JIT is required.\n";
+        for(size_t i=0;i<s.candidates.size();++i) {
+            const VHO_TENSOR_CHUNK_CANDIDATE &c=s.candidates[i];
+            text<<"CANDIDATE width="<<c.width<<" chunks="<<c.chunks<<" CTAs="<<c.ctas
+                <<" shared(local/merge)="<<c.local_shared<<"/"<<c.merge_shared
+                <<" scratch="<<c.scratch<<" estimated_resident="<<c.resident
+                <<" coverage="<<c.coverage<<"/"<<c.goal<<" status="<<c.reason;
+            if(c.eligible && c.width==s.width) text<<" SELECTED";
+            text<<".\n";
+        }
+        const VHO_TENSOR_ATTENTION &a=_plan.attention;
+        const VHO_TENSOR_CHUNK_CANDIDATE *winner=NULL;size_t eligible=0;
+        for(size_t i=0;i<s.candidates.size();++i) {
+            const VHO_TENSOR_CHUNK_CANDIDATE &c=s.candidates[i];
+            if(c.eligible) ++eligible;
+            if(c.eligible && c.width==s.width) winner=&c;
+        }
+        if(!winner) throw std::runtime_error("missing selected automatic candidate");
+        text<<"WINNER WALKTHROUGH: B*H="<<a.batch*a.heads<<", L="<<a.length<<", R="<<a.rank<<".\n";
+        text<<"The selected local resource estimate permits "<<winner->resident<<" resident CTAs/SM; the profile requests "
+            <<g.target_ctas_per_sm<<". Thus goal="<<g.sms<<"*min("<<g.target_ctas_per_sm<<","<<winner->resident
+            <<")="<<winner->goal<<" CTAs.\n";
+        text<<"Maximum estimated residency and requested CTA population have different roles: only their minimum sets this policy goal.\n"
+            <<"Coverage is a count of available CTAs relative to that goal. It is not measured GPU utilization or achieved warp occupancy.\n";
+        text<<eligible<<" of "<<s.candidates.size()<<" enumerated candidates pass all capacity/resource/scratch checks";
+        if(eligible==s.candidates.size()) text<<"; the winner comparisons here are ranking decisions, not resource rejections";
+        text<<".\n";
+        if(s.short_direct) {
+            text<<"WHY SHORT STAYS DIRECT: L="<<a.length<<" is within the <=256 short-row rule and direct attention fits.\n"
+                <<"Selected width=0 is a sentinel for span L="<<a.length<<", not a zero-length chunk. One CTA owns each of "
+                <<a.batch*a.heads<<" rows; there is no partial scratch or merge launch.\n";
+            UINT64 minimum=_p.chunk_policy==2?32:128;
+            if(a.length<=minimum) text<<"All split widths in this policy are >="<<minimum<<" and >=this L; duplicate whole-row split plans are omitted.\n";
+            else if(_p.chunk_policy==2) text<<"Widths 32/64 can now form short-row split plans, but the legal direct plan still has priority under the short-row rule.\n";
+            if(winner->coverage<winner->goal) text<<"The small grid intentionally remains below its "<<winner->goal
+                <<"-CTA target to avoid short-row splitting/merging overhead. This rule is heuristic, not a timing measurement.\n";
+            else text<<"The direct plan already reaches the requested coverage without short-row splitting/merging overhead.\n";
+        } else if(winner->width) {
+            UINT64 tail=a.length-(winner->chunks-1)*winner->width;
+            text<<"Selected C=ceil("<<a.length<<"/"<<winner->width<<")="<<winner->chunks
+                <<"; local CTAs="<<a.batch*a.heads<<"*"<<winner->chunks<<"="<<winner->ctas
+                <<"; the last chunk has "<<tail<<" token(s).\n";
+            if(a.length>4096) text<<"Direct attention is absent because L exceeds the admitted direct limit 4096; this is a native capacity rule.\n";
+            if(winner->coverage<winner->goal)
+                text<<"WHY THIS WIDTH WINS: no enumerated feasible candidate reaches full coverage. The selected "
+                    <<winner->coverage<<"/"<<winner->goal<<" is the greatest available fraction.\n"
+                    <<"Width "<<(_p.chunk_policy==2?32:128)<<" is the smallest split candidate in "<<VHO_tensor_chunk_policy_name(_p)<<"; narrower widths are outside this search, so no optimum over them is claimed.\n";
+            else text<<"WHY THIS WIDTH WINS: selected coverage is "<<winner->coverage<<"/"<<winner->goal
+                    <<". Extra CTAs beyond the goal receive no further coverage credit; fewer chunks then reduce scratch and merge/fixed work.\n";
+            text<<"Each chunk writes R+2="<<a.rank+2<<" F32 scalars per row. Total partial scratch = "
+                <<winner->chunks<<"*"<<a.batch*a.heads<<"*"<<a.rank+2<<"*4="<<winner->scratch<<" bytes.\n";
+        } else text<<"WHY DIRECT WINS: whole-row attention already provides the selected coverage with one chunk and zero partial scratch.\n";
+        for(size_t i=0;i<s.candidates.size();++i) {
+            const VHO_TENSOR_CHUNK_CANDIDATE &c=s.candidates[i];
+            if(&c==winner) continue;
+            text<<"ALTERNATIVE width="<<c.width<<": ";
+            if(!c.eligible) text<<"excluded by "<<c.reason;
+            else if(s.short_direct) text<<"the legal direct plan takes priority under the short-row rule";
+            else if(c.coverage*winner->goal<winner->coverage*c.goal)
+                text<<"coverage "<<c.coverage<<"/"<<c.goal<<" is below the selected "<<winner->coverage<<"/"<<winner->goal
+                    <<" even though this candidate passes resource/scratch checks";
+            else if(c.chunks>winner->chunks)
+                text<<"coverage ties at "<<c.coverage<<"/"<<c.goal<<", but "<<c.chunks<<" chunks and "<<c.scratch
+                    <<" scratch bytes exceed the selected "<<winner->chunks<<" chunks and "<<winner->scratch<<" bytes";
+            else text<<"coverage/chunk-count tie uses the policy's stable width order";
+            text<<".\n";
+        }
+        if(_p.chunk_policy==2) text<<"SMALL-CHUNK EXTENSION: coverage-v2 adds 32 and 64 to the legacy coverage-v1 candidate set.\n"
+            <<"Blocks remain 128 threads and score capacity still rounds up to 128 slots. On full chunks, width 64 has two useful scoring warps; width 32 has one.\n"
+            <<"Every warp still participates in max/denominator folds and full-mask trees, with neutral padding and guarded source reads.\n"
+            <<"More chunks can reach coverage sooner, but repeat five-barrier CTA work, padded exponential work, tuple traffic and merge contributions.\n"
+            <<"Once coverage ties, fewer chunks retain priority. Width 32 therefore does not automatically beat width 64.\n"
+            <<"Merge shared storage follows the rounded chunk count, including counts above 128/256; reject a candidate if its merge no longer fits.\n"
+            <<"Legacy v1 recipes remain bound to their old candidate set; --chunk-policy coverage-v1 explicitly reproduces that policy.\n";
+        ExplainNarrowCosts(text,*winner);
+        text<<"The profiles describe an offline planning envelope. Architecture sm_90 alone never supplies an enabled SM count.\n"
+            <<"Changing SM count changes the coverage target even when per-SM resources, register estimates and numerical semantics are unchanged.\n";
+        text<<"This is a resource/coverage heuristic, not a calibrated instruction-stall model or proof of the fastest kernel.\n"
+            <<"The selected v6 recipe seals the profile and full ledger. Recompute after shape, mask semantics, resources or policy changes.\n"
+            <<"stream-attention with an explicit width overrides automatic selection and emits the manual v5 policy.\n";
+    }
     /* Explain interfaces and actual allocations without assuming a model name
      * or claiming device execution/performance evidence that the plan lacks. */
     void ExplainOverview() {
         std::ostringstream text;std::set<UINT32> allocations;UINT64 bytes=0;
+        ExplainAutoChunks(text);
         text<<"These explanations describe the selected logical schedule and its scalar GPU realization.\n";
         text<<"The tensor-level review uses serial helpers; production kernels use the same VHO-selected plan.\n";
         text<<"Fusion, materialization cuts, chunk sizes, and numerical policy were selected before printing.\n";

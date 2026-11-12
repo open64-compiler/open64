@@ -101,12 +101,16 @@ def review(args):
         case.mkdir()
         for name in ('recipe.json', 'launch.json', 'device.after.B', 'device.after.T'):
             shutil.copyfile(source / 'O3' / name, case / name)
-        if args.cooperative or args.refresh_explanations or args.fuse_attention or args.stream_attention:
-            assert sum(map(bool,(args.cooperative,args.refresh_explanations,args.fuse_attention,args.stream_attention)))==1
+        if args.cooperative or args.refresh_explanations or args.fuse_attention or args.stream_attention or args.auto_attention:
+            assert sum(map(bool,(args.cooperative,args.refresh_explanations,args.fuse_attention,args.stream_attention,args.auto_attention)))==1
             assert args.ir_b2a and args.whirl2c
             for name in ('recipe.json','device.after.B','device.after.T'):
                 (case / name).rename(case / ('baseline.' + name))
-            if args.stream_attention:
+            if args.auto_attention:
+                assert args.gpu_profile
+                run(context+'-auto-attention',[args.lowerer,'auto-attention',case/'baseline.recipe.json',
+                    case/'recipe.json','--gpu-profile',args.gpu_profile,'--allow-reassociate'])
+            elif args.stream_attention:
                 run(context+'-stream-attention',[args.lowerer,'stream-attention',case/'baseline.recipe.json',
                     case/'recipe.json','--split-width','0' if context=='short' else str(args.attention_split_width),'--allow-reassociate'])
             elif args.fuse_attention:
@@ -130,7 +134,7 @@ def review(args):
         before = digest(case / 'recipe.json')
         run(context + '-mapped-audit', [args.lowerer, 'audit', case / 'device.after.B',
             case / 'recipe.json', case / 'launch.reopened.json'])
-        if args.cooperative or args.fuse_attention or args.stream_attention: shutil.copyfile(case / 'launch.reopened.json',case / 'launch.json')
+        if args.cooperative or args.fuse_attention or args.stream_attention or args.auto_attention: shutil.copyfile(case / 'launch.reopened.json',case / 'launch.json')
         launch = json.loads((case / 'launch.json').read_text())
         assert launch == json.loads((case / 'launch.reopened.json').read_text())
         cuda = case / ('mla_' + context + '_optimized.cu')
@@ -215,7 +219,7 @@ def review(args):
             output.write_bytes(raw)
             check = check_output(case / (variant + '.reference.json'), output)
             lowered = source / 'O3' / (variant + '.host.bin')
-            if not (args.cooperative or args.fuse_attention or args.stream_attention):
+            if not (args.cooperative or args.fuse_attention or args.stream_attention or args.auto_attention):
                 assert raw == lowered.read_bytes(), context + ': source/lowered difference: ' + variant
             if mapped:
                 mapped_output = mapped / (variant + '.outputs.bin')
@@ -228,7 +232,7 @@ def review(args):
                     check['gpu_reference']=check_output(case / (variant + '.reference.json'),gpu_output)
             check.update(lowered_host_bitwise_parity='PASS', buffer_canaries='PASS', inputs_unchanged='PASS')
             checks[variant] = check
-        if not (args.cooperative or args.refresh_explanations or args.fuse_attention or args.stream_attention):
+        if not (args.cooperative or args.refresh_explanations or args.fuse_attention or args.stream_attention or args.auto_attention):
             assert digest(case / 'device.after.B') == digest(source / 'O3/device.after.B')
         assert not list(case.glob('*.tmp-*'))
         if recipe.get('fuse_attention',False):
@@ -243,7 +247,7 @@ def review(args):
             previous_mapped_code_unchanged=bool(args.previous_mapped))
     report = dict(status='PASS', schema='open64.tensor-schedule-source-review.v1', cases=cases,
         lowerer_sha256=digest(args.lowerer), optimization_selected_by_printer=False,
-        low_level_whirl_changed=bool(args.whirl2c), executable_code_changed=bool(args.cooperative or args.fuse_attention or args.stream_attention), gpu_execution='PASS' if all(c['gpu_execution']=='PASS' for c in cases.values()) else 'UNAVAILABLE')
+        low_level_whirl_changed=bool(args.whirl2c), executable_code_changed=bool(args.cooperative or args.fuse_attention or args.stream_attention or args.auto_attention), gpu_execution='PASS' if all(c['gpu_execution']=='PASS' for c in cases.values()) else 'UNAVAILABLE')
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
     (root / 'SHA256SUMS').write_text(''.join(digest(p) + '  ' + str(p.relative_to(root)) + '\n'
         for p in sorted(root.rglob('*')) if p.is_file()))
@@ -263,6 +267,8 @@ def main():
     parser.add_argument('--previous-mapped', type=Path)
     parser.add_argument('--refresh-explanations',action='store_true',help='Rebuild the unchanged selected plan with current COMMENT text')
     parser.add_argument('--fuse-attention',action='store_true',help='Select fused score/softmax/latent with stable rescaled chunk merge')
+    parser.add_argument('--auto-attention',action='store_true',help='Select attention chunks using an explicit offline GPU resource profile')
+    parser.add_argument('--gpu-profile',type=Path)
     parser.add_argument('--stream-attention',action='store_true',help='Select register latent accumulation and explicit long chunk width')
     parser.add_argument('--attention-split-width',type=int,default=128)
     parser.add_argument('--cooperative', action='store_true',help='Select explicit warp/shared schedule with reassociation permission')
