@@ -2,6 +2,16 @@
 
 2026-11-12 | H1 exact device selection deliverable
 
+H1b implementation update: [immutable resource/profile import v1.0](AI-COMPILER-H1B-GPU-PROFILE-IMPORT-v1.0.md)
+now resolves pinned external facts for both H20 variants into sealed,
+driver-owned contexts. Strict schema/quantity/provenance/binding checks,
+separate resource/execution/budget digests, explicit unknowns and failure
+preservation are implemented. Architecture-only/H1a behavior and generic
+fallback remain unchanged. H1c consumer/cache/selected-plan integration and
+H1d product/serving qualification remain open; imported facts are not yet
+inputs to the existing generic planner. The earlier H1a status below records
+its original scope.
+
 H1a implementation update: [exact option/identity admission](AI-COMPILER-H1A-GPU-DEVICE-SELECTION-v1.0.md)
 now implements both H20 device keys, baseline sm_90 compatibility, device-only
 effective ISA, early refusals and generic-path reporting. Focused native and

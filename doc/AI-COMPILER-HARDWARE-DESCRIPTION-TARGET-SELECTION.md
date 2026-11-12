@@ -6,6 +6,15 @@ layout change, proprietary NVIDIA compiler data, GPU probing or new library.
 
 ## H1 device selection requirement, 2026-11-12
 
+Implemented H1b slice: [resource/profile import v1.0](AI-COMPILER-H1B-GPU-PROFILE-IMPORT-v1.0.md)
+adds gpu_profile, gpu_profile_sha256 and gpu_profile_toolchain under the shared
+DSL option group. The driver imports exact pinned bytes once, validates
+device/resource/partition/toolchain and budget joins, and owns immutable typed
+facts with separate section identities. Missing quantities stay unknown;
+old architecture descriptions and reference_cycles are unchanged. H1c planner
+bindings and H1d execution qualification remain pending. Earlier status notes
+below retain their original scope.
+
 Implemented H1a slice: [GPU device selection v1.0](AI-COMPILER-H1A-GPU-DEVICE-SELECTION-v1.0.md)
 registers exact h20_96gb/h20_141gb identities and validates baseline sm_90
 before source loading. Device-only selection supplies the effective baseline

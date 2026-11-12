@@ -620,6 +620,7 @@ BE_C_SRCS = \
 BE_C_OBJS =  $(BE_C_SRCS:.c=.o)
 
 BE_COM_CXX_SRCS = \
+  dsl_gpu_profile.cxx \
   dsl_ir_lower.cxx \
   dsl_ir_group_lower.cxx \
   dsl_program_interface.cxx \
@@ -934,6 +935,8 @@ default:
 
 driver.o: $(BE_VHO_DIR)/tensor_selected_key.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
 driver.o: $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_memory_hierarchy.h
+driver.o dsl_gpu_profile.o: $(BE_COM_DIR)/dsl_gpu_profile.h $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_device_profile.h
+dsl_gpu_profile.o: $(BE_VHO_DIR)/fhe_sha256.h $(BUILD_TOT)/rapidjson/document.h
 driver.o: $(BE_DIR)/lno/dsl_high_snapshot.h $(BE_DIR)/lno/dsl_high_reuse.h $(BE_DIR)/lno/dsl_high_observer.h
 
 #----------------------------------------------------------------------

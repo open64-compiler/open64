@@ -1,5 +1,19 @@
 # AI Compiler Optimization Progress
 
+## H1b immutable resource/profile import, 2026-11-12
+
+[GPU profile import v1.0](AI-COMPILER-H1B-GPU-PROFILE-IMPORT-v1.0.md)
+implements exact digest-pinned import for both H20 keys, driver-owned sealed
+contexts, explicit unknowns, physical units/bounds/provenance, resource and
+partition joins, execution conditions/toolchain binding, workload budget
+checks and separate dependency digests. Production C++98 remains supported;
+no hardware probing or shared-library dependency is added.
+Native validation passes 97 cases including host ASan/UBSan; actual backend
+validation passes 16 accepted cases and 22 early refusals with generic O0/O3
+B/T parity and prior-output preservation. H1c/H1d remain open. Imported data
+are not yet consumed by the generic planner and no actual H20 measurement,
+device correctness or performance qualification is claimed.
+
 ## H1a option and registry implementation, 2026-11-12
 
 [GPU device selection v1.0](AI-COMPILER-H1A-GPU-DEVICE-SELECTION-v1.0.md)
