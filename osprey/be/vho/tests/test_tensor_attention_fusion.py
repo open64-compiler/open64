@@ -115,8 +115,10 @@ class AttentionFusionTests(unittest.TestCase):
         manifest=self.root/'launch.json';self.run_tool(self.lowerer,'audit',after,recipe,manifest)
         launch=json.loads(manifest.read_text());self.assertEqual(len(launch['kernels']),6 if split and length>split else 5)
         self.assertFalse({15,20}.intersection(int(s['storage']) for s in launch['storages']))
-        self.run_tool(self.w2c,'-cuda','-TARG:abi=n64','-O0','-CLIST:dotc_file='+str(self.root/'kernels.cu'),
+        saved_trace=after.with_suffix('.T').read_bytes();self.assertTrue(saved_trace)
+        self.run_tool(self.w2c,'-cuda','-TARG:abi=n64','-O0','-ft,'+str(self.root/'w2c.phase.t'),'-CLIST:dotc_file='+str(self.root/'kernels.cu'),
                       '-CLIST:doth_file='+str(self.root/'kernels.h'),after)
+        self.assertEqual(after.with_suffix('.T').read_bytes(),saved_trace)
         shutil.copyfile(Path(__file__).parent/'tensor_collective_stub/cuda_runtime.h',self.root/'cuda_runtime.h')
         for name,reverse in [('host',False),('reverse',True)]:
             (self.root/(name+'.cxx')).write_text(runner(launch,False,reverse=reverse))
@@ -217,7 +219,7 @@ class AttentionFusionTests(unittest.TestCase):
             old_recipe=self.root/'attention.json'
             self.run_tool(self.lowerer,'device',old_recipe,old/'before.B',old/'after.B')
             self.run_tool(self.lowerer,'audit',old/'after.B',old_recipe,old/'launch.json')
-            self.run_tool(self.w2c,'-cuda','-TARG:abi=n64','-O0','-CLIST:dotc_file='+str(old/'kernels.cu'),
+            self.run_tool(self.w2c,'-cuda','-TARG:abi=n64','-O0','-ft,'+str(old/'w2c.phase.t'),'-CLIST:dotc_file='+str(old/'kernels.cu'),
                           '-CLIST:doth_file='+str(old/'kernels.h'),old/'after.B')
             old_launch=json.loads((old/'launch.json').read_text())
             (old/'host.cxx').write_text(runner(old_launch,False))

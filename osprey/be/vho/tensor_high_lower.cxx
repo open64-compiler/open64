@@ -4,7 +4,8 @@
  * Design: doc/AI-COMPILER-SEARCH-M2A-HIGH-ADMISSION-v1.0.md.
  * Produces ordered signed DO_LOOP/ARRAY WHIRL, without GPU mapping, search,
  * runtime calls or a new binary representation. Selected-body contract:
- * doc/AI-COMPILER-SEARCH-M4-ATOMIC-HIGH-v1.0.md. The driver owns buffer ABI,
+ * doc/AI-COMPILER-SEARCH-M4-ATOMIC-HIGH-v1.0.md. Q1 guarded semantic form:
+ * doc/AI-COMPILER-MLA-Q1-HIGH-OWNED-FACTS-v1.0.md. The driver owns buffer ABI,
  * source/device contexts and publication; rejected preflight never mutates. */
 #include <cstdlib>
 #include <sstream>
@@ -50,11 +51,12 @@ class VHO_TENSOR_HIGH {
     std::vector<ST *> _indices;
     ST *_reduction, *_sum, *_next;
     std::map<UINT32,WN *> _constants;
-    bool _selected;
+    bool _selected, _quantized;
+    ST *_status, *_integer, *_scan, *_match, *_rounded;
 public:
     /* Borrow only validated detached facts and the active PU's source mapping. */
-    VHO_TENSOR_HIGH(const VHO_TENSOR_PROGRAM &program, SRCPOS source)
-        : _program(program), _source(source), _selected(false) {}
+    VHO_TENSOR_HIGH(const VHO_TENSOR_PROGRAM &program, SRCPOS source, bool quantized=false)
+        : _program(program), _source(source), _selected(false), _quantized(quantized) {}
     /* Reuse source F32 constants during a transaction; never extend TCON or
      * global constant-ST caches that cannot be safely truncated on rollback. */
     WN *Float(UINT32 bits) {
@@ -101,7 +103,7 @@ public:
     WN *Address(UINT32 value, WN *index) {
         const VHO_TENSOR_VALUE &v = _program.values[value];
         WN *array = WN_Create(OPR_ARRAY, Pointer_Mtype, MTYPE_V, 3);
-        WN_element_size(array) = v.dtype == "bool" ? 1 : 4;
+        WN_element_size(array) = MTYPE_byte_size(Scalar_type(v));
         WN_kid0(array) = WN_Ldid(Pointer_Mtype, 0, _buffers[v.storage], ST_type(_buffers[v.storage]));
         WN_kid1(array) = VHO_high_integer(VHO_tensor_elements(v));
         WN_kid2(array) = index;
@@ -109,9 +111,10 @@ public:
     }
     /* Read the actual materialized input; no producer fusion/reassociation. */
     WN *Read(UINT32 value, WN *index) {
-        TYPE_ID type = _program.values[value].dtype == "bool" ? MTYPE_U1 : MTYPE_F4;
+        TYPE_ID type = Scalar_type(_program.values[value]);
         return WN_Iload(type, 0, MTYPE_To_TY(type), Address(value, index));
     }
+#include "tensor_high_quantized.inc"
     /* Use a strict ordered signed counted loop, with no GPU/thread coordinate. */
     WN *Loop(ST *iv, UINT64 extent, WN *body) {
         return WN_CreateDO(WN_CreateIdname(0, iv), VHO_high_store(iv, VHO_high_integer(0)),
@@ -125,6 +128,7 @@ public:
         const VHO_TENSOR_VALUE &a = _program.values[input];
         const std::string &name = operation.name;
         if (name == "copy") return Read(input, Output_index(output));
+        if(_quantized && Is_quantized(operation)) return Quantized_expression(operation,body);
         if (name == "common.fill_like")
             return Float(strtoul(operation.attributes.find("attr.value_bits")->second.c_str(), NULL, 16));
         if (name == "common.transpose") {
@@ -210,7 +214,7 @@ public:
         for (UINT32 i = 0; i < _program.values.size(); ++i) {
             const VHO_TENSOR_VALUE &value = _program.values[i];
             if (value.storage != i) continue;
-            TY_IDX pointer = Make_Pointer_Type(MTYPE_To_TY(value.dtype == "bool" ? MTYPE_U1 : MTYPE_F4));
+            TY_IDX pointer = Make_Pointer_Type(MTYPE_To_TY(Scalar_type(value)));
             Set_TY_is_restrict(pointer);
             std::ostringstream name; name << "storage_" << i;
             ST *formal = New_ST(CURRENT_SYMTAB);
@@ -220,7 +224,19 @@ public:
              * do not change pointer TY identity or invent a cache lifetime. */
             if(!value.cache_trait.empty())
                 ST_tensor_bind_metadata(ST_st_idx(formal), "tensor.cache.trait", value.cache_trait.c_str());
+            if(_quantized) {
+                ST_tensor_bind_metadata(ST_st_idx(formal),"tensor.q1.value",value.name.c_str());
+                ST_tensor_bind_metadata(ST_st_idx(formal),"tensor.q1.encoding",value.cache_encoding.c_str());
+                ST_tensor_bind_metadata(ST_st_idx(formal),"tensor.q1.scale",value.cache_scale.c_str());
+                ST_tensor_bind_metadata(ST_st_idx(formal),"tensor.q1.evidence",value.cache_evidence.c_str());
+            }
             _buffers[i] = formal; formals.push_back(formal); Set_TYLIST_type(New_TYLIST(list), pointer);
+        }
+        if(_quantized) {
+            TY_IDX pointer=Make_Pointer_Type(MTYPE_To_TY(MTYPE_I4));Set_TY_is_restrict(pointer);
+            _status=New_ST(CURRENT_SYMTAB);ST_Init(_status,Save_Str("q1_status"),CLASS_VAR,SCLASS_FORMAL,EXPORT_LOCAL,pointer);
+            Set_ST_is_value_parm(_status);Set_ST_Srcpos(*_status,_source);
+            formals.push_back(_status);Set_TYLIST_type(New_TYLIST(list),pointer);
         }
         Set_TYLIST_type(New_TYLIST(list), TY_IDX_ZERO); Set_PU_prototype(Pu_Table[ST_pu(function)], type);
         for (UINT32 i = 0; i < 16; ++i) {
@@ -231,6 +247,13 @@ public:
         _sum = VHO_high_local("ordered_sum", MTYPE_F4, _source);
         _next = VHO_high_local("next_value", MTYPE_F4, _source);
         WN *body = WN_CreateBlock();
+        if(_quantized) {
+            _integer=VHO_high_local("checked_integer",MTYPE_I8,_source);
+            _scan=VHO_high_local("update_scan",MTYPE_I8,_source);
+            _match=VHO_high_local("update_match",MTYPE_I8,_source);
+            _rounded=VHO_high_local("rounded_f32",MTYPE_F4,_source);
+            Status(body,0);
+        }
         for (UINT32 i = 0; i < _program.operations.size(); ++i) {
             const VHO_TENSOR_OPERATION &op = _program.operations[i];
             if (op.name == "common.reshape") continue;
@@ -241,12 +264,19 @@ public:
             std::ostringstream explanation;
             explanation << "Common High operation " << i << ": " << op.name
                 << "; materialized storage " << output.storage
-                << ". Signed zero-based unit loops and affine ARRAY indexing; reductions retain ordered F32 folds."
+                << ". Signed zero-based unit loops and " << (_quantized?"explicit ARRAY indexing (page accesses may be indirect)":"affine ARRAY indexing")
+                << "; reductions retain ordered F32 folds."
                 << " No GPU mapping or schedule search. Reshape aliases reuse caller storage.";
             WN *comment = WN_CreateComment(explanation.str().c_str());
             WN_Set_Linenum(comment, _source); WN_INSERT_BlockLast(body, comment);
+            if(_quantized) {
+                std::ostringstream contract;contract<<"Q1 semantic lowering: exact byte sign/zero extension, promoted arithmetic; "
+                    <<"gather bounds, checked index arithmetic, integral byte conversion and unique fresh updates guard before unsafe operations. "
+                    <<"Status 0 succeeds, 1 refuses input; scratch may be partial on refusal. No serving phase, allocator lifetime, GPU or reuse permission is inferred.";
+                WN_INSERT_BlockLast(body,WN_CreateComment(contract.str().c_str()));
+            }
             WN *work = WN_CreateBlock(); WN *value = Expression(op, work);
-            TYPE_ID dtype = output.dtype == "bool" ? MTYPE_U1 : MTYPE_F4;
+            TYPE_ID dtype = Scalar_type(output);
             WN_INSERT_BlockLast(work, WN_Istore(dtype, 0, Make_Pointer_Type(MTYPE_To_TY(dtype)), Address(op.output, Output_index(output)), value));
             for (INT axis = (INT)output.shape.size() - 1; axis >= 0; --axis) {
                 WN *outer = WN_CreateBlock(); WN_INSERT_BlockLast(outer, Loop(_indices[axis], output.shape[axis], work)); work = outer;
@@ -257,8 +287,8 @@ public:
         WN *entry = WN_CreateEntry(formals.size(), function, body, WN_CreateBlock(), WN_CreateBlock());
         for (UINT32 i = 0; i < formals.size(); ++i) WN_formal(entry, i) = WN_CreateIdname(0, formals[i]);
         WN_Set_Linenum(entry, _source); Set_PU_Info_tree_ptr(Current_PU_Info, entry);
-        ST_tensor_bind_metadata(ST_st_idx(function), "tensor.high.recipe_key", VHO_tensor_recipe_key(_program).c_str());
-        ST_tensor_bind_metadata(ST_st_idx(function), "tensor.high.schema", "common-high-v1");
+        ST_tensor_bind_metadata(ST_st_idx(function), "tensor.high.recipe_key", (_quantized?VHO_tensor_quantized_high_key(_program):VHO_tensor_recipe_key(_program)).c_str());
+        ST_tensor_bind_metadata(ST_st_idx(function), "tensor.high.schema", _quantized?"quantized-common-high-v1":"common-high-v1");
         ST_tensor_bind_metadata(ST_st_idx(function), "tensor.high.buffer_contract", "disjoint-storage-formals");
     }
 };
@@ -287,4 +317,18 @@ BOOL VHO_tensor_materialize_high(const VHO_TENSOR_PROGRAM &program, SRCPOS sourc
  * all allocations belong to its savepoint. No native root is published here. */
 WN *VHO_tensor_build_selected_high(const VHO_TENSOR_PROGRAM &program, WN *scope) {
     return VHO_TENSOR_HIGH(program,WN_Get_Linenum(scope)).Selected_body(scope);
+}
+
+/* Opt-in unoptimized semantic expansion, with the same empty-PU and strict-FP
+ * preflight as legacy High. Reject before allocation; caller owns discarded
+ * target scope on exceptional failure and publishes only verified images. */
+BOOL VHO_tensor_materialize_quantized_high(const VHO_TENSOR_PROGRAM &program,SRCPOS source,FILE *diagnostic) {
+    if(!VHO_tensor_validate_quantized_high(program,diagnostic) ||
+       !source || !SRCPOS_filenum(source) || SRCPOS_linenum(source)<=0 ||
+       !Current_PU_Info || Current_pu!=&PU_Info_pu(Current_PU_Info) ||
+       OPT_Fast_Math || Roundoff_Level!=ROUNDOFF_NONE || IEEE_Arithmetic!=IEEE_ACCURATE) return FALSE;
+    WN *entry=PU_Info_tree_ptr(Current_PU_Info);
+    if(!entry || WN_operator(entry)!=OPR_FUNC_ENTRY || WN_num_formals(entry) || WN_first(WN_func_body(entry)) ||
+       ST_device_symbol_kind(St_Table[PU_Info_proc_sym(Current_PU_Info)])!=DEVICE_SYMBOL_NONE) return FALSE;
+    VHO_TENSOR_HIGH(program,source,true).Materialize();return TRUE;
 }

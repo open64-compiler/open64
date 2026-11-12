@@ -415,20 +415,20 @@ whirl2c: whirl2c_reference_main.o whirl2c_tensor_source
 LDIRT += whirl2c whirl2c_tensor_source whirl2c_reference_main.o tensor_source.o
 
 # PU-local VHO lowering service; the standalone driver alone owns frontend APIs.
-tensor_kernel_lower: $(OBJECTS) controls.o tensor_kernel_driver.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o
-	$(link.c++f) -o $@ tensor_kernel_driver.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o controls.o $(OBJECTS) $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
+tensor_kernel_lower: q1_high_facts.o q1_high_epoch.o $(OBJECTS) controls.o tensor_kernel_driver.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o
+	$(link.c++f) -o $@ q1_high_facts.o q1_high_epoch.o tensor_kernel_driver.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o controls.o $(OBJECTS) $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
 
 # Standalone consumer of existing be.so lowering; no new dependency/symbol is
 # added to be.so, and the legacy tensor_kernel_lower remains link-independent.
-tensor_selected_bridge: $(OBJECTS) controls.o tensor_bridge_driver.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o
-	$(link.c++f) -o $@ tensor_bridge_driver.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o dsl_builder.o dsl_contract.o dsl_simp.o controls.o -L$(BUILD_AREA)/be -l:be.so $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
+tensor_selected_bridge: q1_high_facts.o q1_high_epoch.o $(OBJECTS) controls.o tensor_bridge_driver.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o
+	$(link.c++f) -o $@ q1_high_facts.o q1_high_epoch.o tensor_bridge_driver.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o dsl_builder.o dsl_contract.o dsl_simp.o controls.o -L$(BUILD_AREA)/be -l:be.so $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
 
 # Keep all consumers of the detached value layout and role constants in sync.
 tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o \
   tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o \
   tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o \
   tensor_attention_chunk_select.o tensor_attention_search.o \
-  tensor_schedule_source.o tensor_kernel_explain.o: \
+  tensor_schedule_source.o tensor_kernel_explain.o q1_high_facts.o: \
   $(BE_VHO_DIR)/tensor_kernel_lower.h $(COMMON_COM_DIR)/dsl_tensor_traits.h
 
 # Reuse the strict owned manifest decoder; never link native LNO/search hooks.
@@ -443,7 +443,7 @@ tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BUILD_BASE
 
 # Native mutations are compiled out of the production executable.
 tensor_selected_bridge_test: tensor_selected_bridge tensor_bridge_test_driver.o
-	$(link.c++f) -o $@ tensor_bridge_test_driver.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o dsl_builder.o dsl_contract.o dsl_simp.o controls.o -L$(BUILD_AREA)/be -l:be.so $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
+	$(link.c++f) -o $@ q1_high_facts.o q1_high_epoch.o tensor_bridge_test_driver.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_schedule.o tensor_high_lower.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o dsl_builder.o dsl_contract.o dsl_simp.o controls.o -L$(BUILD_AREA)/be -l:be.so $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
 
 tensor_bridge_driver.o tensor_selected_bridge.o: $(BE_VHO_DIR)/tensor_selected_key.h
 tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_TOT)/be/lno/dsl_high_binding_keys.h
@@ -460,7 +460,7 @@ tensor_selected_bridge.o: $(BE_VHO_DIR)/tensor_selected_bridge.cxx $(BE_VHO_DIR)
 tensor_selected_ptx.o: $(BUILD_TOT)/be/cg/NVISA/tensor_selected_ptx.cxx $(BE_VHO_DIR)/tensor_selected_bridge.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
 
-tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_lower.cxx $(BE_VHO_DIR)/tensor_high_selected.inc $(BE_VHO_DIR)/tensor_kernel_lower.h
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_lower.cxx $(BE_VHO_DIR)/tensor_high_selected.inc $(BE_VHO_DIR)/tensor_high_quantized.inc $(BE_VHO_DIR)/tensor_kernel_lower.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
 
 tensor_attention_search.o: $(BE_VHO_DIR)/tensor_attention_search.cxx $(BE_VHO_DIR)/tensor_attention_search.h $(BE_VHO_DIR)/tensor_kernel_lower.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h $(BE_VHO_DIR)/dsl_gemm_readiness.h
@@ -1257,3 +1257,9 @@ tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o \
   $(BE_VHO_DIR)/tensor_attention_search.h $(BE_VHO_DIR)/tensor_attention_movement.h
 
 tensor_attention_search.o: $(BE_VHO_DIR)/tensor_attention_movement.inc
+
+# Q1's optional standalone observer reuses the existing epoch implementation.
+q1_high_facts.o: $(BUILD_TOT)/be/lno/dsl_high_quantized.cxx $(BUILD_TOT)/be/lno/dsl_high_quantized.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+q1_high_epoch.o: $(BUILD_TOT)/be/lno/dsl_high_snapshot.cxx $(BUILD_TOT)/be/lno/dsl_high_snapshot.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@

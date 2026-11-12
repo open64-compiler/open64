@@ -36,6 +36,7 @@
 #include "../torch2whirl/python/native/quantized_cache_inference.h"
 #include "tensor_kernel_lower.h"
 #include "tensor_attention_search.h"
+#include "../be/lno/dsl_high_quantized.h"
 #include "tensor_schedule_source.h"
 #ifdef OPEN64_TENSOR_SELECTED_BRIDGE
 #include "tensor_selected_bridge.h"
@@ -347,6 +348,123 @@ bool remove_barrier(WN *n,const char *name="__syncthreads") {
  * unit. The VHO service never expands its compilation scope or writes files. */
 int main(int argc,char **argv) {
     try {
+        if(argc==6 && !strcmp(argv[1],"q1-high-facts-test")) {
+            need(access(argv[3],F_OK)!=0 && access(argv[4],F_OK)!=0 && access(argv[5],F_OK)!=0,"Q1 negative output exists");
+            VHO_TENSOR_PROGRAM p=q1_decode(search_read(argv[2]));initialize(true);
+            PU_Info *pu=DSL_Builder_Create_Minimal_PU("open64_quantized_high");
+            need(pu && DSL_Builder_Select_PU(pu),"Q1 test target PU");
+            USRCPOS source;USRCPOS_clear(source);
+            USRCPOS_filenum(source)=DSL_Builder_Register_Source_File(pu,p.source_file.c_str());USRCPOS_linenum(source)=1;
+            need(VHO_tensor_materialize_quantized_high(p,USRCPOS_srcpos(source),stderr),"Q1 test High materialization");
+            WN *entry=PU_Info_tree_ptr(pu);DSL_HIGH_EPOCH epoch(p.source_pu);DSL_HIGH_QUANTIZED_FACTS facts;std::string why;
+            bool captured=LNO_DSL_capture_quantized_high(entry,p,epoch,facts,why);need(captured,why.c_str());
+            std::vector<PU_Info *> pus(1,pu);checkpoint(pus,argv[3]);
+            WN *loop=find_loop(entry);need(loop!=NULL,"Q1 test missing loop");
+            WN *bound=WN_kid1(WN_end(loop));need(WN_operator(bound)==OPR_INTCONST,"Q1 test bound");
+            INT64 old=WN_const_val(bound);WN_const_val(bound)=old+1;
+            checkpoint(pus,argv[4]);
+            need(!LNO_DSL_revalidate_quantized_high(entry,p,epoch,facts,why),"Q1 unannounced native mutation accepted");
+            WN_const_val(bound)=old;need(LNO_DSL_revalidate_quantized_high(entry,p,epoch,facts,why),"Q1 restoration failed");
+            ST *formal=WN_st(WN_formal(entry,0));TY_IDX original_type=ST_type(formal),ty=original_type;
+            Clear_TY_is_restrict(ty);Set_ST_type(formal,ty);
+            std::string alias_image=std::string(argv[4])+".alias.B";checkpoint(pus,alias_image.c_str());
+            DSL_HIGH_QUANTIZED_FACTS unknown;bool alias=LNO_DSL_capture_quantized_high(entry,p,epoch,unknown,why);
+            Set_ST_type(formal,original_type);need(!alias && why=="q1_alias_unknown","Q1 unknown alias accepted");
+            need(LNO_DSL_revalidate_quantized_high(entry,p,epoch,facts,why),"Q1 alias restoration failed");
+            Json::Value result;result["native_mutation_refused"]=true;result["unknown_alias_refused"]=true;
+            result["restoration_verified"]=true;result["scope"]="explicit corruption test only; not normal observer";
+            write_json(argv[5],result);return 0;
+        }
+        if(argc==5 && !strcmp(argv[1],"q1-facts")) {
+            need(access(argv[4],F_OK)!=0,"Q1 facts output exists");
+            VHO_TENSOR_PROGRAM p=q1_decode(search_read(argv[3]));initialize(false);
+            Open_Input_Info(argv[2]);Initialize_Symbol_Tables(FALSE);New_Scope(GLOBAL_SYMTAB,Malloc_Mem_Pool,FALSE);
+            PU_Info *pu=Read_Global_Info(NULL);need(pu && !PU_Info_next(pu) && !PU_Info_child(pu),"Q1 facts require one PU");
+            Read_Local_Info(MEM_pu_nz_pool_ptr,pu);Current_PU_Info=pu;Current_pu=&PU_Info_pu(pu);
+            Current_scope=PU_lexical_level(*Current_pu);Current_Map_Tab=PU_Info_maptab(pu);
+            WN *entry=PU_Info_tree_ptr(pu);DSL_HIGH_EPOCH epoch(p.source_pu);
+            UINT32 types=TY_Table_Size(),symbols=ST_Table_Size(CURRENT_SYMTAB);DSL_HIGH_QUANTIZED_FACTS facts;std::string why;
+            bool captured=LNO_DSL_capture_quantized_high(entry,p,epoch,facts,why);need(captured,why.c_str());
+            need(LNO_DSL_revalidate_quantized_high(entry,p,epoch,facts,why),why.c_str());
+            Json::Value report;report["schema"]="open64.quantized-high-facts.v1";
+            report["storages"]=Json::Value(Json::arrayValue);report["accesses"]=Json::Value(Json::arrayValue);
+            report["loops"]=Json::Value(Json::arrayValue);
+            for(unsigned i=0;i<facts.Loops().size();++i) {
+                const DSL_HIGH_LOOP &l=facts.Loops()[i];Json::Value j;j["id"]=l.id;j["parent"]=l.parent;
+                j["induction"]=l.induction;j["lower"]=Json::Int64(l.lower);j["upper"]=Json::Int64(l.upper);j["step"]=Json::Int64(l.step);
+                report["loops"].append(j);
+            }
+            for(unsigned i=0;i<facts.Storages().size();++i) {
+                const DSL_HIGH_QUANTIZED_STORAGE &s=facts.Storages()[i];Json::Value j;
+                j["id"]=s.id;j["value"]=s.value;j["version"]=s.version;j["scale_storage"]=s.scale_storage;j["scale_version"]=s.scale_version;
+                j["encoding"]=s.encoding;j["role"]=s.role;
+                j["shape"]=Json::Value(Json::arrayValue);j["strides"]=Json::Value(Json::arrayValue);
+                for(unsigned d=0;d<s.shape.size();++d) {j["shape"].append(Json::UInt64(s.shape[d]));j["strides"].append(Json::UInt64(s.strides[d]));}
+                j["payload_bytes"]=Json::UInt64(s.payload_bytes);j["lineage"]=s.lineage;
+                j["origin_storage"]=s.origin_storage;j["origin_version"]=s.origin_version;j["scale_pair_ready_group"]=s.scale_pair_ready_group;
+                j["alias_contract"]="declared-disjoint-storage-formals; runtime addresses not observed";j["input"]=s.input;j["output"]=s.output;
+                j["first_use"]=s.first_use;j["last_use"]=s.last_use;
+                j["lifetime"]="current-invocation; lexical endpoints; no inter-call persistence or publication proof";
+                report["storages"].append(j);
+            }
+            for(unsigned i=0;i<facts.Accesses().size();++i) {
+                const DSL_HIGH_QUANTIZED_ACCESS &a=facts.Accesses()[i];Json::Value j;
+                j["id"]=a.id;j["storage"]=a.storage;j["version"]=a.version;j["group"]=a.group;j["order"]=a.order;
+                j["write"]=a.write;j["indirect"]=a.indirect;j["conditional"]=a.conditional;
+                j["loops"]=Json::Value(Json::arrayValue);for(unsigned k=0;k<a.loops.size();++k) j["loops"].append(a.loops[k]);
+                j["element_bytes"]=Json::Int64(a.element_bytes);j["encoding"]=a.encoding;j["address_key"]=a.address_key;
+                report["accesses"].append(j);
+            }
+            OPT_Fast_Math=TRUE;bool numeric=LNO_DSL_revalidate_quantized_high(entry,p,epoch,facts,why);OPT_Fast_Math=FALSE;
+            need(!numeric && why=="q1_numeric_context","Q1 numerical context change accepted");
+            /* Exercise token expiry before any native context could be touched. */
+            DSL_HIGH_EPOCH other(p.source_pu);need(!facts.Is_live(other),"Q1 activation ABA accepted");
+            epoch.Before_mutation();need(!facts.Is_live(epoch) &&
+                !LNO_DSL_revalidate_quantized_high(NULL,p,epoch,facts,why) && why=="q1_stale_epoch","Q1 epoch invalidation failed");
+            DSL_HIGH_QUANTIZED_FACTS rebuilt;need(LNO_DSL_capture_quantized_high(entry,p,epoch,rebuilt,why) && facts.Same_content(rebuilt),"Q1 rebuild changed facts");
+            VHO_TENSOR_PROGRAM changed=p;changed.values[0].cache_scale="nonexistent-scale";
+            need(!LNO_DSL_revalidate_quantized_high(entry,changed,epoch,rebuilt,why),"Q1 stale scale accepted");
+            epoch.Close();need(!rebuilt.Is_live(epoch) && !rebuilt.Storages().empty(),"Q1 lifetime expiry failed");
+            need(types==TY_Table_Size() && symbols==ST_Table_Size(CURRENT_SYMTAB),"Q1 facts mutated native tables");
+            report["numeric_change_refused"]=true;report["native_tables_unchanged"]=true;report["epoch_invalidation"]=true;report["rebuild"]=true;
+            report["scale_change_refused"]=true;report["lifetime_expiry"]=true;report["activation_isolation"]=true;
+            report["dependence_legality"]="not_proved";report["search_invoked"]=false;report["grouped_reuse_eligible"]=false;
+            write_json(argv[4],report);return 0;
+        }
+        if(argc==4 && !strcmp(argv[1],"q1-prepare")) {
+            need(access(argv[3],F_OK)!=0,"Q1 output exists");initialize(false);
+            Open_Input_Info(argv[2]);Initialize_Symbol_Tables(FALSE);New_Scope(GLOBAL_SYMTAB,Malloc_Mem_Pool,FALSE);
+            PU_Info *pu=Read_Global_Info(NULL);need(pu && !PU_Info_next(pu) && !PU_Info_child(pu),"Q1 requires one PU");
+            Read_Local_Info(MEM_pu_nz_pool_ptr,pu);Current_PU_Info=pu;Current_pu=&PU_Info_pu(pu);
+            Current_scope=PU_lexical_level(*Current_pu);Current_Map_Tab=PU_Info_maptab(pu);
+            q1_source_review(pu);VHO_TENSOR_PROGRAM p;
+            need(VHO_tensor_prepare_quantized_program(pu,&p,stderr),"Q1 source admission failed");
+            write_json(argv[3],q1_encode(p));return 0;
+        }
+        if(argc==6 && !strcmp(argv[1],"q1-high")) {
+            need(access(argv[3],F_OK)!=0 && access(argv[4],F_OK)!=0 && access(argv[5],F_OK)!=0,"Q1 output exists");
+            VHO_TENSOR_PROGRAM p=q1_decode(search_read(argv[2]));initialize(true);
+            PU_Info *pu=DSL_Builder_Create_Minimal_PU("open64_quantized_high");
+            need(pu && DSL_Builder_Select_PU(pu),"cannot create Q1 High PU");std::vector<PU_Info *> pus(1,pu);
+            USRCPOS source;USRCPOS_clear(source);
+            USRCPOS_filenum(source)=DSL_Builder_Register_Source_File(pu,p.source_file.c_str());USRCPOS_linenum(source)=1;
+            UINT32 types=TY_Table_Size(),symbols=ST_Table_Size(CURRENT_SYMTAB);
+            need(!VHO_tensor_materialize_quantized_high(p,0,NULL) && types==TY_Table_Size() && symbols==ST_Table_Size(CURRENT_SYMTAB),"Q1 rejected preflight mutated");
+            OPT_Fast_Math=TRUE;BOOL unsafe=VHO_tensor_materialize_quantized_high(p,USRCPOS_srcpos(source),NULL);OPT_Fast_Math=FALSE;
+            need(!unsafe && types==TY_Table_Size() && symbols==ST_Table_Size(CURRENT_SYMTAB),"Q1 unsafe preflight mutated");
+            checkpoint(pus,argv[3]);
+            need(VHO_tensor_materialize_quantized_high(p,USRCPOS_srcpos(source),stderr),"Q1 High materialization failed");
+            types=TY_Table_Size();symbols=ST_Table_Size(CURRENT_SYMTAB);
+            need(!VHO_tensor_materialize_quantized_high(p,USRCPOS_srcpos(source),NULL) && types==TY_Table_Size() && symbols==ST_Table_Size(CURRENT_SYMTAB),"Q1 nonempty preflight mutated");
+            need(DSL_Gatekeeper_Verify_No_Native_PU(pu,stderr),"Q1 native operation remains");
+            checkpoint(pus,argv[4]);Json::Value manifest;
+            manifest["schema"]="open64.quantized-common-high.v1";manifest["function"]="open64_quantized_high";
+            manifest["recipe"]=q1_encode(p);manifest["buffers"]=Json::Value(Json::arrayValue);
+            for(unsigned i=0;i<p.values.size();++i) if(p.values[i].storage==i) manifest["buffers"].append(i);
+            manifest["status_argument"]="last-disjoint-int32; 0=success,1=refuse; discard all results on refusal";
+            manifest["search_invoked"]=false;manifest["optimization_candidates_enabled"]=false;
+            write_json(argv[5],manifest);return 0;
+        }
         if(argc==4 && !strcmp(argv[1],"q1-inspect")) {
             need(access(argv[3],F_OK)!=0,"Q1 review output exists");initialize(false);
             Open_Input_Info(argv[2]);Initialize_Symbol_Tables(FALSE);New_Scope(GLOBAL_SYMTAB,Malloc_Mem_Pool,FALSE);
