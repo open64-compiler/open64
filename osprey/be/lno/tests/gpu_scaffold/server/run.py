@@ -188,6 +188,32 @@ def evaluate(options):
             reason=None if accepted else "not every case clears the improvement/noise threshold"
     result["reason"]=reason
     persist(out,result)
+    # Persist authoritative unprofiled results BEFORE optional diagnostics. The
+    # collector receives no benchmark result object and cannot replace timings.
+    if options.profile_pm:
+        if options.check_only or result["status"]!="completed":
+            result["diagnostics"]=dict(status="skipped",reason="requires a completed GPU benchmark")
+        else:
+            passed=[c for c in result["cases"] if c["status"]=="passed"]
+            selected=options.profile_case or ([max(passed,key=lambda c:c["useful_flops"])["case_id"]] if passed else [])
+            try:
+                if not selected or any(x not in {c["case_id"] for c in passed} for x in selected):
+                    raise ValueError("profile cases must name successfully benchmarked datasets")
+                from pm import collect
+                identity=dict(submission_id=submission_id,workload_id=manifest["workload_id"],
+                              suite_id=manifest["suite_id"],corpus_sha256=result["corpus_sha256"],
+                              baseline_id=result["baseline_id"],environment=copy.deepcopy(result["environment"]),
+                              atol=ATOL,rtol=RTOL)
+                result["diagnostics"]=collect(exe,corpus,out.parent,list(dict.fromkeys(selected)),
+                    result["environment"]["gpu_uuid"],options,identity)
+            except Exception as error:
+                # Profiling/tool incompatibility cannot invalidate completed tests.
+                result["diagnostics"]=dict(status="failed",reason=str(error))
+            for case in result["cases"]:
+                diagnostic=result["diagnostics"].get("cases",{}).get(case["case_id"])
+                if diagnostic:
+                    case["diagnostics"]=diagnostic
+        persist(out,result)
     print(out)
     return 0 if result["status"]=="completed" and all(c["status"]=="passed" for c in result["cases"]) or options.check_only else 1
 
@@ -202,9 +228,19 @@ def main():
     parser.add_argument("--timeout",type=float,default=120)
     parser.add_argument("--min-improvement",type=float,default=0.02)
     parser.add_argument("--check-only",action="store_true")
+    parser.add_argument("--profile-pm",action="store_true",help="optional separate single-pass PM diagnostics")
+    parser.add_argument("--profile-case",action="append",help="case ID; repeat to select multiple (default: largest FLOP count)")
+    parser.add_argument("--ncu",default="ncu")
+    parser.add_argument("--ncu-python",default=sys.executable,help="Python compatible with NVIDIA ncu_report")
+    parser.add_argument("--ncu-python-path",help="Nsight Compute extras/python directory")
+    parser.add_argument("--pm-memory-metric",help="override default DRAM/L2 proxy with a supported metric")
+    parser.add_argument("--pm-compute-metric",help="override FMA/SM default, e.g. a Tensor Core metric")
+    parser.add_argument("--pm-interval",type=int,default=20000,help="sampling interval; cycles or ns depending on GPU (0=auto)")
     args=parser.parse_args()
-    if args.samples<1 or args.warmup<0 or args.timeout<=0 or not 0<=args.min_improvement<1:
+    if args.samples<1 or args.warmup<0 or args.timeout<=0 or not 0<=args.min_improvement<1 or args.pm_interval<0:
         parser.error("invalid measurement policy")
+    if args.profile_case and not args.profile_pm:
+        parser.error("--profile-case requires --profile-pm")
     try:
         return evaluate(args)
     except (ValueError,KeyError,OSError) as error:
