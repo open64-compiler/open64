@@ -22,6 +22,13 @@ DEFAULT_LIMITS = dict(max_queue_wait_seconds=86400, collection_grace_seconds=120
                       max_execution_seconds=86400)
 
 
+class AdmissionError(ValueError):
+    """Expose a stable admission reason without changing GS1 ValueError callers."""
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
 def utc():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -165,7 +172,12 @@ class Store:
         with self.connect() as db:
             return [json.loads(x[0]) for x in db.execute('SELECT data FROM gpus ORDER BY id')]
 
-    def submit(self, request, principal, key):
+    def submit(self, request, principal, key, quota=None, return_created=False):
+        """Atomically replay or admit; optional API quotas never block a replay.
+
+        GS1 callers retain a job dictionary. API callers can request the
+        (job, created) result for exact 200/202 admission status.
+        """
         request = valid_request(request)
         if any(not isinstance(x, str) or not 1 <= len(x) <= 128 or any(ord(c) < 32 for c in x) for x in (principal, key)):
             raise ValueError('principal/idempotency key must be bounded text')
@@ -173,8 +185,14 @@ class Store:
             old = db.execute('SELECT request,data FROM jobs WHERE principal=? AND idem=?', (principal, key)).fetchone()
             if old:
                 if old[0] != encoded(request):
-                    raise ValueError('idempotency key conflicts with another request')
-                return json.loads(old[1])
+                    raise AdmissionError('IDEMPOTENCY_CONFLICT', 'idempotency key conflicts with another request')
+                return (json.loads(old[1]), False) if return_created else json.loads(old[1])
+            if quota is not None:
+                if type(quota) is not int or quota < 1:
+                    raise ValueError('invalid admission quota')
+                count = db.execute("SELECT COUNT(*) FROM jobs WHERE principal=? AND state NOT IN ('completed','failed','cancelled','interrupted')", (principal,)).fetchone()[0]
+                if count >= quota:
+                    raise AdmissionError('ADMISSION_QUOTA', 'active job quota reached')
             packet = self.packet(request['packet_id'])
             if request['execution_timeout_seconds'] > self.limits['max_execution_seconds']:
                 raise ValueError('execution budget exceeds server policy')
@@ -200,7 +218,7 @@ class Store:
                 failures=[], steps=[], retry_of=request['retry_of'])
             db.execute('INSERT INTO jobs VALUES (?,?,?,?,?,?)', (job_id, job['state'], principal, key, encoded(request), encoded(job)))
             self._save(db, job, 'request durably accepted; no work launched')
-            return job
+            return (job, True) if return_created else job
 
     def get(self, job_id):
         with self.connect() as db:
