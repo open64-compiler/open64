@@ -147,7 +147,7 @@ concurrent reduction coding.
 | LN1 | Define both means, scaling, rsqrt and environment; specify native v2/admission and implement target binding while preserving v1. `semantic.log` separates reference identity from original-source unknowns. | Native v2/producer/PREOPT, LN1-c target binding/carriers, LN1-d oracle and bounded LN1-e integrated source/target/numerical evidence implemented. Complete LayerNorm execution and GPU conformance remain open. |
 | LN2 | Construct conditional legal storage/event plans from bound source. `alternatives.log`, `residency.log` and `fetch-pipeline.log` expose ranges/leases, capacity, banks/tails and generation/reuse constraints. | Native planning plus LN2-d runtime guard export/host bridge implemented. Actual selected-entry/register/internal-event conformance, real CUDA provider and expanded delivery remain open. |
 | LN3 | Complete comparable costs with target provenance/uncertainty and independent oracle. `physical-plan.log` explains selected/fallback reason without invented overlap or guaranteed cache hits; `bubble.log` gives critical-path exposure; `roofline.log` gives candidate-specific all-miss service bounds. | Bounded native complete-cost/selection service implemented and retained-path replay accepted independently of reduction coding. Common AIO-1/AIO-2 records and optional hardware extension, explicit unknowns and analysis-only interval gate; no executable transformation or native calibration claim. |
-| LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Open; use established scalar/WHIRL emission services. Any reduction-lowering integration is a separately reviewed reuse, not a dependency of the accepted LN3 service. |
+| LN4 | Selected high-level WHIRL and CUDA emission, guards and mapped before/after evidence. Reports name actual storage/loop/access/sync actions, not verification events. | Bounded explicit device lowering API accepted with immutable replay. Source-revalidated C0/C1/C2 materialization, exact scalar carriers and CUDA emission are independent of reduction. Default driver request/profile plumbing and production runtime adapter remain open. |
 | LN5 | Separately authorized parallel statistics/Welford, RF retention and async/TMA refinements with numerical legality, lowerability and complete costs. | Deferred, not implied by LN0-LN4. |
 | LN6 | Native numerical/instruction/resource/paired-performance verification and calibration. | GPU gate open; not a blocker to design/compiler work. |
 
@@ -359,6 +359,50 @@ from WHIRL and bind entry/launch/runtime obligations. A different carrier,
 register budget or schedule requires recosting, not reuse of stale LN3 costs.
 Driver/default integration must not silently authorize v1 or an incomplete
 profile. Native SKU/cache/timing calibration and GPU verification remain LN6.
+
+LN4 implementation, 2026-10-28:
+[Selected executable WHIRL detail](AI-COMPILER-LAYERNORM-EXECUTABLE-LOWERING-v0.1.md).
+`WOPT_DSL_prepare_normalization_lowering` recomputes LN3 and requires exact
+expected-result agreement in the active analysis PU. The driver creates/selects
+an empty device PU; `WOPT_DSL_materialize_normalization_device` fills only that
+scope. C0 has three ordered loops/no SMEM; C1 has four loops/four uniform
+barriers; C2 has five loops/five barriers and explicit X-to-d arena reuse.
+Private pointer carriers preserve all rn arithmetic and separately rounded
+stages. Source v1 is never promoted. No reduction implementation is imported.
+
+Required acceptance: fresh source/plan/guard joins and full independent C0/C1/C2
+cost recomputation; before/after source and device `.B`/full `.T`; native mapped
+reopen identity; positive trace-off image/product parity; stale selection,
+unsafe FP, nonempty scope and corrupted body/attributes refused; actual
+`whirl2c -cuda`, PTX/cubin assembly and RF/shared-resource audit; emitted
+control/access code under explicitly substituted host CTA/scalar leaves versus
+the exact-rational oracle, including tails, aliases and exceptional values.
+`lowering.log` summarizes actual materialization actions, `compile.log` actual
+offline tools/resources, `numerical.log` host substitutions and output checks.
+Retain raw `.t`, generated `.cu`, manifest, all reports and immutable replay.
+The explicit API does not connect unknown built-in profiles to default driver
+dispatch; a production CUDA provider and native GPU results remain separate.
+
+LN4 bounded acceptance, implementation `fa2e0b1e`: 65 cases, 45 selected
+kernels (C0 13 / C1 4 / C2 28), 20 refusals/no-choice outcomes, 220 full
+mapped dumps, 260 actual PREOPT controls and 113 focused tests. All 45 kernels
+emit from mapped WHIRL, compile to PTX/cubin and fit the declared RF/static
+shared reservations. Positive trace-off image parity and native mutation
+controls pass. Host substitutions execute 360 cases with 43,464 exact-oracle
+output checks; 65 scoped compiler sanitizer cases, 45 sanitized host kernels,
+45 native guard invocations / 14,236 host checks and three shared-service
+regressions pass. Immutable replay reproduces all images/traces/reports/guards/
+PTX/cubins and repeats validation. See the
+[progress ledger](AI-COMPILER-OPTIMIZATION-PROGRESS.md) for retained identities.
+
+Next LN4 integration package: establish real driver/JIT request/profile and
+target configuration, prepare/revalidate the handoff at final analysis, create
+the device PU under driver ownership, and package the exact compiled entry
+manifest for the runtime provider. Keep v1 and incomplete timing ineligible.
+Actual allocation leases, entry resolution, static/dynamic shared admission,
+register/launch limits and device completion must be enforced by the production
+adapter. No ordinary source compilation or GPU execution is implied by the
+accepted explicit API; native GPU numerical/performance calibration remains LN6.
 
 LN2-d implementation, 2026-10-28:
 [Runtime guard detail](AI-COMPILER-LAYERNORM-RUNTIME-GUARDS-v0.1.md) defines the

@@ -29,11 +29,12 @@ This initial comparison fixes common runtime bindings, target, layout and launch
 geometry across the three retention choices; thread-count/layout search is a
 separate expansion, not an unreported part of this bounded candidate space.
 
-The normal Python matcher remains v1. The existing backend cannot execute v2
-normalization; it continues to diagnose the missing VHO lowering route. This
-milestone is an explicit planning API exercised by native fixtures, not a new
-default driver transformation or compiler option. LN4 must connect approved
-selection to authoritative executable WHIRL before an optimized kernel can run.
+The normal Python matcher remains v1. The ordinary backend path still diagnoses
+unselected v2 normalization rather than silently choosing a kernel. LN3 is an
+explicit planning API, not a new default driver transformation or option.
+[LN4's explicit lowering API](AI-COMPILER-LAYERNORM-EXECUTABLE-LOWERING-v0.1.md)
+now revalidates approved selection and materializes authoritative device WHIRL;
+default request/profile plumbing and a production runtime provider remain open.
 
 ## 2. Terms And Comparison Boundary
 

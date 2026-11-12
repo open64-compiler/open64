@@ -8,6 +8,46 @@ the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
 
+2026-10-28 LN4 bounded selected executable-device lowering accepted,
+implementation `fa2e0b1e`:
+[Lowering detail v0.1](AI-COMPILER-LAYERNORM-EXECUTABLE-LOWERING-v0.1.md)
+defines source-PU revalidation of the complete LN3 result followed by a numeric
+handoff to the driver's active empty kernel PU. C0/C1/C2 become actual standard
+WHIRL loops, pointer-scalar operations and explicit shared/barrier effects;
+`whirl2c -cuda` is the only CUDA kernel producer. V1, source images, binary
+layouts and reduction coding remain unchanged. Compiled RF/shared limits and
+host numerical checks are separate from analytical cost and GPU certification.
+
+The final-source 65-case compiler matrix passed with 45 selected kernels,
+220 full mapped dumps, 260 PREOPT controls, 360 host-adapter cases / 43,464
+output checks and offline CUDA/PTX/cubin assembly. All 113 focused tests pass.
+Positive trace-off materialization preserves images/products byte-for-byte;
+stale choices, unsafe FP, nonempty kernels, changed array bounds, addresses,
+scalar effects, kernel qualifiers and barrier order/effects refuse. All 65
+scoped compiler ASan/UBSan cases and 45 sanitized emitted-code host kernels
+pass; 45 native selected guards pass 14,236 host checks. Three shared-service
+regressions pass. Sanitizers cover the new service/fixture and host adapter,
+not the whole compiler; native mapped padding uses the documented zero-fill
+allocator convention with process-pool leak checking off.
+
+Final-path replay repeats the complete compiler/offline-assembly/numerical,
+sanitizer, host guard and shared-service checks. Images, raw traces, guards,
+reports, PTX and cubins match exactly; only the CUDA banner timestamp is
+normalized. The exact offline CUDA 12.8.93 toolkit is retained with its license.
+Accepted immutable package:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-lowering/sha256-fe6aa26d51ac5749b007cfdda84d3616256c94df36c86a04de1d8f5638621fcc/`.
+Accepted final-path replay:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-lowering/replay/sha256-5202fde0e983b8e1309bfe30123c2710ed42a75670c9cb676b2ff21d409cc72a/`.
+Review indexes/current links were updated only after replay passed.
+
+`native/reports-final/optimization.log` collects complete independently
+recomputed costs, selection reasons, actual WHIRL actions, offline resources
+and numerical reports; the raw source-line-last `.t` and generated `.cu`
+remain available for every case. Default driver request/profile plumbing,
+production CUDA provider and GPU tests remain open; no hardware timing
+improvement is claimed. Next is that explicit driver/JIT/provider integration,
+not silent promotion of v1 or unknown built-in timing.
+
 2026-10-28 LN3 bounded complete-cost/selection accepted, implementation `d5da1c1d`:
 [Profitability detail v0.1](AI-COMPILER-LAYERNORM-PROFITABILITY-v0.1.md)
 defines the WOPT-owned source-bound C0/C1/C2 recipe, common hardware extension,
