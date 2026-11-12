@@ -72,6 +72,8 @@
 #include "config_cache.h"
 #include "config_list.h"
 #include "config_lno.h"
+#include "config_dsl.h"
+#include "dsl_partition_axis.h"
 #include "config_opt.h"
 #include "erbe.h"
 #include "glob.h"		    /* Irb_File_Name, Cur_PU_Name */
@@ -1268,6 +1270,14 @@ extern WN * Lnoptimizer(PU_Info* current_pu,
     Start_Timer ( T_LNOAccess_CU );
     LNO_Build_Access(func_nd, &LNO_default_pool);  
     Stop_Timer ( T_LNOAccess_CU );
+    /* Native discovery consumes PREOPT DU and freshly built access maps before
+     * unrolling or locality rewrites invalidate them. It grants no FP or
+     * parallelization permission. Design: doc/AI-COMPILER-NATIVE-PARTITION-AXIS-v0.1.md. */
+    if (VHO_DSL_Partition_Axis && Opt_Level >= 3 && LNO_enabled && LNO_Opt > 0) {
+      FILE *axis_trace = VHO_DSL_AI_Opt_Trace &&
+          Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG) ? TFile : NULL;
+      LNO_DSL_discover_partition_axes(func_nd, Du_Mgr, Alias_Mgr, axis_trace);
+    }
     if (LNO_Verbose) {
       LNO_Print_Access(TFile,func_nd);  
     }

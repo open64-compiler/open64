@@ -42,6 +42,8 @@ extern BOOL VHO_DSL_Dump_After_Shape_Refinement;
 extern BOOL VHO_DSL_Dump_After_Shape_Refinement_Set;
 extern BOOL VHO_DSL_AI_Opt_Trace;
 extern BOOL VHO_DSL_AI_Opt_Trace_Set;
+extern BOOL VHO_DSL_Partition_Axis;
+extern BOOL VHO_DSL_Partition_Axis_Set;
 extern BOOL VHO_DSL_CUDA_TMA_Prefetch;
 extern char *VHO_DSL_GEMM_Plan_Search;
 extern char *VHO_DSL_GEMM_Cost_Model;

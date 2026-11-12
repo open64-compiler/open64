@@ -188,6 +188,7 @@ BE_COM_CXX_SRCS = \
 BE_LNOPT_SRCS = 
 
 BE_LNOPT_CXX_SRCS = \
+  dsl_partition_axis.cxx \
   lnodriver.cxx			\
   lnopt_main.cxx		\
   lnoutils.cxx			\

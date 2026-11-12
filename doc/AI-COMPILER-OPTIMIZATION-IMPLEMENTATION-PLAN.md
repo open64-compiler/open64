@@ -8,6 +8,25 @@ the Current Matmul Execution Queue defines the next action-gated work.
 The running [AI optimization progress ledger](AI-COMPILER-OPTIMIZATION-PROGRESS.md)
 summarizes phase maturity, option status, and accepted execution evidence.
 
+2026-10-29 normalization discovery follow-on: bounded explicit-contract LN4
+completion does not implement discovery from ordinary scalar/loop WHIRL.
+[R1-ND1 through R1-ND4](#native-whirl-discovery-queue-r1-nd) now define that
+required work. **R1-ND1's first bounded native partition-axis slice is now
+implemented**; see [Native partition-axis discovery](AI-COMPILER-NATIVE-PARTITION-AXIS-v0.1.md).
+It reuses LNO reduction/access services and PREOPT DU/alias facts on ordinary
+scalar C WHIRL, independently of reduction lowering and GPU availability.
+Broader ND1 facts and connected LayerNorm/RMSNorm recognition remain open.
+
+2026-10-29 performance infrastructure proposal: the separate living
+[Performance measurement and regression plan v0.1](AI-COMPILER-PERFORMANCE-MEASUREMENT-PLAN-v0.1.md)
+defines the PERF0-PERF6 delivery queue for numerical admission, frozen baselines,
+offline packaging, paired native timing, roofline/selector-quality reporting,
+and a quick-glance regression dashboard. **2026-10-30 user direction defers all
+performance-framework implementation, including offline PERF0/PERF1 and the
+skill/dashboard, until later.** Resume only on user direction; current work is
+native partition-axis discovery. Native performance evidence still requires a
+GPU. The performance harness remains opt-in and the framework is design-only.
+
 The architecture document is authoritative for the `AI-P0` through `AI-P11`
 phase order, the TensorEvolutionGraph-centered design, common-versus-domain
 ownership, and plan-level profitability. This document turns that design into
@@ -122,6 +141,64 @@ certification. Follow the
 
 Every gate must retain semantic and numerical conditions, complete cost
 components/units/provenance, rejection/fallback and actual maturity.
+
+### Native WHIRL Discovery Queue (R1-ND)
+
+Decision, 2026-10-29: independent native scalar/loop discovery is an explicit
+implementation debt, **not implemented** by existing R1 frontend matching,
+PREOPT verification of DSL contracts, or LN1-LN4 explicit-reference completion.
+Implement this queue without waiting for a GPU or changing concurrent reduction
+lowering. Reuse reviewed recurrence/def-use/domain/access services; it does not
+depend on completion of the other chat's reduction cost or lowering code.
+See [common architecture](AI-COMPILER-COMMON-EXECUTION-PLANNING.md#3-two-layers-and-one-authority)
+and the [bounded algorithm and admission rules](AI-COMPILER-LAYERNORM-OPTIMIZATION-DESIGN-v0.1.md#31-native-discovery-and-feature-domain-inference).
+
+The compiler derives instance and feature domains from program dependencies,
+not PyTorch names, `normalized_shape`, hidden/channel labels, parameter names
+or preattached normalization tags. Explicit native contracts remain supported;
+their verification and native discovery must have distinguishable evidence.
+Use positive static rectangular FP32 scalar/loop fixtures first. Do not broaden
+binary WHIRL, source v1/v2 semantics, arithmetic permissions or default dispatch.
+
+| Slice, in execution order | Actionable implementation and required tool summary | Acceptance / status |
+| --- | --- | --- |
+| R1-ND1: native facts and canonical forms | Inventory PREOPT/WOPT/LNO recurrence, def-use, loop/access and dependence reuse points; implement a read-only active-PU query for initialization/update/finalization, instance/contribution domains, coverage, scalar arithmetic and access/effect evidence. Define reviewed canonical counted-loop inputs and invalidation after mutation. `semantic.log` reports evidence origin, domains/cardinalities, source IDs, known/unknown facts and refusal. | First bounded slice implemented, 2026-10-30: `-O3 -DSL:partition_axis=on` (default OFF), LNO-owned sum/squared-sum I/K query and optional transient visitor; actual PREOPT DU, private reduction manager, LNO access vectors and alias proof. Ordinary C fixtures cover row/transposed axes, equal extents, renamed symbols, local temporary and explicit domain/access/alias/recurrence refusals; mapped reopen and unchanged-WHIRL/trace/level controls are required. See the dedicated design/review runner. Full LayerNorm/RMSNorm recognition, generalized domains and planner handoff remain open. |
+| R1-ND2: centered LayerNorm discovery | Combine native recurrence/access facts to prove same-domain mean, centering, centered-squares mean, epsilon/inverse-scale path and affine output broadcasts. Derive R/N and logical I/K independently of loop/symbol names; publish source-compatible characterization only, preserving exact scalar operations and unresolved environment facts. `semantic.log` explains every matched edge, numerical restriction and near-match refusal. | Open; depends on ND1. Positive canonical static FP32 X[R,N]/gamma[N]/beta[N] scalar-loop cases, N=1/odd widths and reviewed materialized temporaries; negatives for mismatched domains/input versions, N-1 denominator, E[X*X]-mean*mean, wrong epsilon placement, intervening alias writes, unsupported effects or escaping statistics. No implicit LN-REF-1 conversion. |
+| R1-ND3: RMSNorm discovery | Reuse the same fact query to prove squared-input mean and scaling of original X without centering. Keep recipe identity and numerical obligations distinct from centered LayerNorm; review an adapter to existing RMS contracts rather than adding an opcode from a name. `semantic.log` reports squared-input domain, finalization/affine maps and unsupported bindings. | Open; depends on ND1, scheduled after ND2. Untagged scalar-loop RMS fixtures and LN-versus-RMS discrimination, wrong-count/square-source/broadcast negatives, source numerical witnesses and mapped/PREOPT/trace parity. Discovery does not claim executable RMSNorm support. |
+| R1-ND4: partition and planner handoff | Feed proved native characterization into legal ownership/storage/movement candidate construction; reuse reviewed common records and the existing complete-cost gate. Bind exact source arithmetic before any LN1-LN4 use; unsupported recipes retain original WHIRL. `tile.log` reports ownership candidates and ordered-statistics restrictions; `physical-plan.log` reports lowerability, full costs, winner/fallback and actual actions. | Open; depends on ND2/ND3 and separately reviewed source-compatible adapters. At least one exact-compatible centered source reaches C0/C1/C2 comparison and selected high-level WHIRL/CUDA; unbound and unsupported RMS bindings explicitly refuse lowering. Retain before/after mapped images/diffs, numerical oracle, trace-off identical decisions and existing explicit-contract/v1/v2 regressions. No GPU/performance claim. |
+
+Shared completion criteria:
+
+1. Recompute equivalent native query results after independent mapped-image
+   reopening and actual PREOPT in the driver-established PU scope; do not
+   introduce a persisted discovery format. No helper silently expands to
+   another PU; cross-PU work requires IPA. Common/com stays policy-free.
+2. Frontend names/tags are absent in discovery fixtures. Rename function and
+   variable identifiers without changing derived domains/recipe (source IDs
+   may differ). A largest/trailing extent or matching affine length alone must
+   never establish the feature domain. Include non-normalization near matches.
+3. Preserve actual arithmetic/order/conversion and observable uses. A source
+   numerical witness checks the discovered recipe but cannot grant parallel
+   trees, Welford, approximate rsqrt, FMA or implicit native-v2 admission.
+4. Read-only stages retain original and post-query `.B`, independently reopened
+   `ir_b2a -st -src` `.T` files and an empty semantic diff; ND4 retains real
+   before/after transformation images and raw diff. Do not count recognition,
+   contract verification or trace emission as a transformation.
+5. Reuse option-controlled WOPT `.t`, existing AI trace mask and source-line-last
+   conventions; review/version any new positional rows and strict auditor.
+   Every phase log begins `# What it summarizes:`. `optimization.log` collects
+   successful phase detail; `optimization-summary.log` distinguishes discovery,
+   numerical binding, selection, actual transformation, refused/disabled stages
+   and still-open GPU verification. Unsupported sources keep their original
+   program or receive an explicit existing-path diagnostic, never invented code.
+6. Preserve source, commands/options/target, `.t`, phase logs, oracle results,
+   `.B/.T`/diff, emitted `.cu` where applicable, hashes and receipts under the
+   established AI research artifact hierarchy; never replace durable receipts.
+
+General multi-axis/strided/dynamic/indirect discovery, arbitrary scheduling,
+interprocedural recognition and a universal normalization matcher are follow-on
+work, not implied by this bounded queue. Only ND1 is the next coding slice;
+ND2-ND4 completion requires their stated evidence and reviewed interfaces.
 
 ### LayerNorm Design And Concurrent Reduction Coding
 
