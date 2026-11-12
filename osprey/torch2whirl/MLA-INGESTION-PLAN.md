@@ -1,6 +1,6 @@
 # Absorbed MLA Standalone Ingestion Test
 
-Version v0.2 dated November 5 2026. This fixture extracts the absorbed single
+Version v0.3 dated November 5 2026. This fixture extracts the absorbed single
 query MLA algorithm into a deterministic read-only tensor program. Short and
 long contexts execute the same source. CPU FP32 eager and genuine FX execution
 are checked against an independently expanded scalar FP64 reference.
@@ -10,7 +10,9 @@ The controlling frontend workflow is
 The [building block ingestion plan](BUILDING-BLOCK-INGESTION-PLAN.md) supplies
 the existing source capture conventions. Native MLA ingestion now emits real
 typed WHIRL through both the public API and standalone driver, with independent
-mapped-image reopening. Executable lowering and GPU validation remain open.
+mapped-image reopening. Compilable WHIRL-derived reference CUDA can now be
+emitted before lowering. Executable optimized lowering and GPU execution
+validation remain open.
 The source graph consumes the published
 [native tensor expression contract](../../doc/AI-COMPILER-NATIVE-TENSOR-EXPRESSION-CONTRACT-v0.1.md).
 
@@ -216,3 +218,44 @@ repair that unrelated gate.
 
 The native images preserve source semantics structurally. They are not compiled
 GPU execution evidence and do not close MTKP transfer or performance gates.
+
+## Reference CUDA v0.3
+
+The [tensor source contract](../../doc/AI-COMPILER-TENSOR-SOURCE-v0.1.md)
+adds an explicit read-only `whirl2c -cuda -tensor-source` mode. It consumes the
+native `.B`, validates all PUs, and emits compilable serial host/device CUDA
+functions for the actual typed graph, including all 46 MLA operations. The
+generic reference header is supplied with the source. Seven inputs remain
+runtime arguments; output and LSE remain separate mutable result references.
+There is no model-specific CUDA template or input payload baked into source.
+
+```sh
+whirl2c -cuda -tensor-source -CLIST:dotc_file=mla.reference.cu mla.B
+python3 python/tests/mla_cuda_review.py --artifact-dir /absolute/fresh/mla-cuda \
+  --native-review /absolute/mla-native --whirl2c /build/ir_tools/whirl2c \
+  --ir-b2a /build/ir_tools/ir_b2a \
+  --header /src/osprey/be/whirl2c/open64_tensor_reference.cuh \
+  --nvcc /cuda/bin/nvcc
+```
+
+`--native-review` contains the prior review's short/long directories with
+`mla.B`, `inputs.pt`, and `reference.pt`. The harness compiles the actual
+emitted source as host C++, executes original inputs, one all-masked head and
+all heads masked, and compares output/LSE with the independent expanded FP64
+oracle at the established tolerances. It separately compiles both CUDA device
+functions for sm_90, preserves unchanged image digests and identical independent
+before/after `.T`, and checks no-overwrite and invalid-option rejection.
+
+The reference function is callable CUDA device code, with no kernel launcher
+or resource plan. Optimized common-IR lowering, High WHIRL scheduling and
+tiling, Mid memory lowering, Low GPU mapping, normal selected-kernel CUDA/PTX,
+device execution and timing remain subsequent milestones. AOT remains the
+production baseline. Named workstream roles remain TBD, as requested.
+
+The v0.3 focused suite passes all 41 tests. Host execution of emitted CUDA
+passes all six context/mask combinations. Maximum absolute output error on
+the original short/long cases is 8.36e-9 / 9.84e-9; maximum finite LSE error is
+3.78e-7 / 1.18e-6. Both files compile with CUDA 12.8 NVCC for sm_90 with FMA
+and FTZ disabled. Independent `.T` and `.B` remain unchanged. Additional
+standalone C++ checks pass on macOS and Linux. GPU execution and performance
+remain NOT_RUN.
