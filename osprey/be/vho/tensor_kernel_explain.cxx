@@ -212,9 +212,11 @@ public:
         text<<"Previous nominal token exp evaluations: "<<(1+old_probability_groups)*rows*a.length
             <<" = rows*L*(one denominator pass + "<<old_probability_groups<<" weighted-latent column groups).\n";
         text<<"Fused valid-token exp evaluations: "<<rows*a.length<<". The selected loops actually visit "<<rows*chunks*capacity
-            <<(_p.chunk_policy==4 && span==32?" lane exponential positions including neutral tails":" shared exp slots including padding");
+            <<(((_p.chunk_policy==4 && span==32) || (_p.chunk_policy>=5 && _p.split_width && (span==32 || span==64)))?" lane exponential positions including neutral tails":" shared exp slots including padding");
         if(chunks>1) text<<", plus at most "<<rows*chunks<<" chunk-rescale exps (empty chunks take zero)";
         text<<".\nThis is source-level work accounting; compiler folding/predication and instruction throughput can change executed cost.\n";
+        if(_p.chunk_policy==6 && _p.split_width==64)
+            text<<"Warp-owned local merging adds up to four rescaling exps per CTA (two in each leader), plus two coefficient broadcasts per warp. Empty warp masses skip exp.\n";
         UINT64 prior_weighted_ctas=a.length>=32?rows*((a.rank+3)/4)*chunks:(rows*a.rank*chunks+127)/128;
         text<<"The previous weighted-latent launch had "<<prior_weighted_ctas<<" CTAs; the fused local-attention launch has "<<rows*chunks
             <<" CTAs, now also doing scoring and softmax. This can reduce parallelism even while eliminating work and traffic.\n";
@@ -289,7 +291,115 @@ public:
             <<"The readable serial helper's arrays emulate lane state; the actual WHIRL-derived local kernel has register scalars and no shared arrays.\n";
         ExplainDependencies(k,text);Explain("STAGE SEMANTICS",text.str());
     }
+    /* Two warp leaders fold immutable, disjoint shared summaries, then each
+     * broadcasts the complete result within its own 32-lane warp. */
+    void ExplainTwoWarpRegisterStage(const VHO_TENSOR_KERNEL &k) {
+        const VHO_TENSOR_ATTENTION &a=_plan.attention;std::ostringstream text;
+        UINT64 rows=a.batch*a.heads,tail=a.length-UINT64(k.chunks-1)*64;
+        text<<"FUSED ATTENTION: TWO-WARP REGISTER BROADCASTS; 64 threads, three CTA barriers, 272 selected shared bytes.\n"
+            <<"Launch "<<VHO_tensor_grid(_p,k)<<" CTAs. Row=block modulo "<<rows<<", chunk=block / "<<rows<<". Thread t owns score token chunk*64+t.\n"
+            <<"Scores and unnormalized exponentials stay lane-private. Mask-false/tail scores are -infinity and skip source dot reads.\n"
+            <<"SHARED LAYOUT: probabilities[64] plus summaries[4]. Maxima use summaries[0,1]; denominators use summaries[2,3].\n"
+            <<"REGISTER LIFETIME WALKTHROUGH: preserve score s_t while scratch registers run the max tree; preserve e_t while scratch runs the sum tree.\n"
+            <<"A shuffle-down tree leaves a complete reduction in lane0 only. The following source0 broadcast supplies that result to every lane needing exp or division.\n"
+            <<"CTA BARRIER 1: each warp reduces its 32 score registers with full-mask down-shuffles 16,8,4,2,1; lane zero publishes its warp maximum.\n"
+            <<"The first unconditional CTA barrier publishes both maxima. Lane zero in EACH warp folds max summaries0 then1 in the original F32 order.\n"
+            <<"Each warp executes __shfl_sync(mask0xffffffff,value,source0,width32) to broadcast its leader's identical complete maximum.\n"
+            <<"WARP-RELATIVE SOURCE: source0 means physical thread0 in warp0 and thread32 in warp1, not thread0 for the entire64-thread CTA.\n"
+            <<"Both leaders recompute the same two-summary fold so neither warp needs a shared final statistic produced by the other.\n"
+            <<"Raw and finite-safe maxima remain registers. No shared final-maximum store/publication barrier is required.\n"
+            <<"Each lane computes exp(score-safe_max), keeps that exponential private, and performs the existing warp denominator sum tree.\n"
+            <<"CTA BARRIER 2: lane zero of each warp writes its denominator to summaries[2+warp]; this barrier publishes both denominator partials.\n"
+            <<"Both warp leaders fold denominator summaries2 then3 from +0 in the same F32 order, then broadcast the completed denominator within their warp.\n"
+            <<"DISJOINT-SLOT PROOF: max slots0,1 are never overwritten by denominator slots2,3. A fast warp cannot clobber a maximum that the other leader has not read.\n"
+            <<"FAST/SLOW WARP TIMELINE: A both leaders store maxima; B barrier1 publishes them; C warp0 reads maxima while warp1 pauses before its reads.\n"
+            <<"D warp0 computes exponentials and writes its denominator at slot2; E warp1 resumes and still reads unchanged max slots0,1.\n"
+            <<"If D wrote slot0 instead, E could mistake a sum for a maximum. Barrier1 orders pre-barrier stores; it does not order these later reads against later stores.\n"
+            <<"Denominator slots2,3 likewise remain unchanged while the separate probability array is populated; a fast warp cannot overwrite a slow leader's sum inputs.\n"
+            <<"Reusing two slots for both reductions would require a release barrier and invalidate this three-barrier schedule.\n"
+            <<"CTA BARRIER 3: normalize each lane's private exponential using denominator>0?denominator:1, store probabilities[tid], then publish all64 probabilities.\n"
+            <<"WHY THIS BARRIER REMAINS: each latent-column warp visits tokens lane and lane+32, so each consumes probabilities produced by the other warp.\n"
+            <<"THREE PUBLICATION EDGES: barrier1 orders both max stores before either leader's max loads; barrier2 orders both sum stores before either leader's sum loads.\n"
+            <<"Barrier3 orders all64 probability stores before either column warp loads them. Each edge includes shared data written by the other warp.\n"
+            <<"Removing either former final-statistic barrier is safe because the final max and denominator travel only through registers and warp-local broadcasts.\n"
+            <<"A 32-lane shuffle does not communicate across warps and is not a general shared-memory fence. CTA barriers1,2,3 supply the remaining cross-warp ordering.\n"
+            <<"All64 threads reach all three barriers. All32 lanes per warp reach every full-mask shuffle/broadcast, including neutral mask/tail lanes.\n"
+            <<"COLUMN OWNERSHIP: warp w owns group*8+w*4+j, j=0..3; ceil(R/8)="<<(a.rank+7)/8<<" groups for R="<<a.rank<<".\n"
+            <<"TOKEN/COLUMN CROSSING: lane l of BOTH column warps visits tokens l and l+32; score ownership is one token per thread, column ownership is four columns per warp.\n"
+            <<"For example warp0 lane0 needs p0 and p32 for columns0..3; warp1 lane0 needs the same p0,p32 for columns4..7. Each reads the other warp's probability.\n"
+            <<"Each group resets four private sums and reads immutable shared probabilities; lane zero stores valid reduced columns.\n"
+            <<"At R16, group0 covers warp0 columns0..3/warp1 columns4..7, group1 covers8..11/12..15. The 80 latent warp-level down-shuffles remain.\n"
+            <<"Each max/denominator broadcast CALL executes once per warp: two static broadcast sites, four warp-level broadcasts per CTA.\n"
+            <<"This replaces five CTA barrier phases with three, without changing score arithmetic, column grouping, chunk count or tuple traffic.\n"
+            <<"FINAL TAIL: "<<tail<<" valid token(s), "<<64-tail<<" neutral score lanes per row. A completely empty warp still publishes neutral summaries and joins all collectives.\n"
+            <<"For a35-token tail, warp0 supplies32 scores and warp1 supplies3; both leaders still fold both summaries and both column warps consume all35 probabilities.\n"
+            <<"For a one-token tail, warp1 has no score tokens but still contributes neutral max/sum, broadcasts and computes its valid latent columns using p0 after barrier3.\n"
+            <<"Finite one-token tails retain d_c=1,z_c=that cache vector; empty chunks retain d_c=0,z_c=0. Raw and safe maximum fallbacks remain distinct.\n"
+            <<"Write [raw_m_c,d_c,normalized_z_c] at (chunk*"<<rows<<"+row)*(R+2). The separate128-thread merge retains stable zero-mass-guarded rescaling and its five CTA barriers.\n"
+            <<"Selected shared storage is4*(64+4)=272 bytes (prior4*(64+8)=288). Only normalized probabilities are written to the64-slot array.\n"
+            <<"PROOF SCOPE: coverage-v5, split local mapping3/stage1, threads=width=64 and register latent accumulation. Other widths or changed ownership require reanalysis.\n"
+            <<"Register pressure, duplicate two-summary folds and extra broadcasts can offset barrier/shared-traffic savings. Inspect backend resources and GPU timing; no measured speedup is asserted.\n";
+        ExplainDependencies(k,text);Explain("STAGE SEMANTICS",text.str());
+    }
+    /* Describe the VHO-selected ownership and sole publication edge; this
+     * shared payload also becomes native COMMENT nodes and normal-whirl2c CUDA. */
+    void Explain_warp_owned_stage(const VHO_TENSOR_KERNEL &k) {
+        const VHO_TENSOR_ATTENTION &a=_plan.attention;std::ostringstream text;
+        text<<"WARP-OWNED TOKEN PARTIALS: 64 threads, one unconditional CTA barrier, "<<8*(a.rank+2)<<" selected shared bytes.\n"
+            <<"Launch "<<VHO_tensor_grid(_p,k)<<" CTAs. Row=block modulo "<<a.batch*a.heads<<", chunk=block / "<<a.batch*a.heads<<"; token=chunk*64+warp*32+lane.\n"
+            <<"OWNERSHIP CHANGE: each warp owns its32 tokens AND ALL latent columns, rather than owning four columns while reading both token halves.\n"
+            <<"Each score is still computed once. Scores, exponentials and normalized probabilities stay lane-private; no shared score/probability array exists.\n"
+            <<"REGISTER VALUE FLOW: attention_masked_score=s_t stays private while accumulator/next_value run the max tree; attention_raw_maximum=m_w and attention_maximum=safe_m_w are broadcast-derived scalars.\n"
+            <<"attention_weight then holds e_t, survives the denominator scratch reduction, and is overwritten by p_t after division. No other lane reads this private probability.\n"
+            <<"WARP-LOCAL SOFTMAX: reduce raw maximum m_w through full-mask down-shuffles16,8,4,2,1, broadcast lane0 with source0/width32, derive safe maximum.\n"
+            <<"Preserve e_t=exp(s_t-safe_m_w) while scratch registers reduce d_w; broadcast d_w and retain p_t=e_t/(d_w>0?d_w:1) in each lane.\n"
+            <<"LOCAL NORMALIZATION: p_t is normalized over this warp's allowed tokens only. The final64-token probability is alpha_w*p_t; local normalization alone does not combine the warps.\n"
+            <<"For finite nonempty scores, e_t<=1 and 1<=d_w<=32; d_w measures exponential mass relative to m_w and is not generally the token count.\n"
+            <<"BROADCAST SOURCE0: lane0 means physical thread0 in warp0 and thread32 in warp1. A reduction tree leaves its complete result in the leader, so both max and denominator need broadcasts.\n"
+            <<"RAW/Safe DISTINCTION: preserve raw m_w=-infinity for empty warps, use safe_m_w=0 only for arithmetic. All neutral lanes still reach every collective.\n"
+            <<"LATENT OWNERSHIP: group g covers columns4*g+j, j0..3, in BOTH warps; ceil(R/4)="<<(a.rank+3)/4<<" groups. Each lane uses only its own token and probability.\n"
+            <<"Four private sums reset per group. Full-mask warp trees produce z_w[j]=sum_{t in warp} p_t*cache[t,j]; each leader writes its own tuple.\n"
+            <<"At R16 BOTH warps visit column groups0..3,4..7,8..11,12..15. Warp0 uses only tokens0..31 and warp1 only32..63; together they compute64*R token/cache products, not twice that work.\n"
+            <<"TUPLE MEANING: z_w is a normalized local expectation, not an unnormalized numerator. Retain BOTH m_w and d_w so the final merge can restore each warp's relative mass.\n"
+            <<"IMMUTABLE SHARED TUPLES: partials[warp*(R+2)+component], component0=raw_m_w,1=d_w,2+j=z_w[j]; extent2*(R+2)="<<2*(a.rank+2)<<" floats.\n"
+            <<"TUPLE SLOT MAP: warp0 uses m[0],d[1],z[2.."<<a.rank+1<<"]; warp1 uses m["<<a.rank+2<<"],d["<<a.rank+3<<"],z["<<a.rank+4<<".."<<2*a.rank+3<<"].\n"
+            <<"For R16 this is [m0,d0,z0[0..15]] at slots0..17 and [m1,d1,z1[0..15]] at18..35:36 floats,144 bytes. These are CTA-local partials, not extra global scratch.\n"
+            <<"SOLE CTA BARRIER: both warps finish all tuple stores before any thread reads either tuple. Slots have one producing warp, disjoint writes and no reuse.\n"
+            <<"Old max and denominator CTA barriers disappear because softmax statistics are warp-local. The old probability barrier disappears because probabilities never cross warps.\n"
+            <<"NEW CROSS-WARP EDGE: complete [m_w,d_w,z_w] tuples cross warps together at this one publication; no read occurs before that barrier.\n"
+            <<"PUBLICATION TIMELINE: a fast warp may finish its entire tuple while the other still processes columns, but it waits at the barrier before loading either tuple.\n"
+            <<"After both arrive, every shared element has its final value. Consumers never overwrite these slots, so no read/reuse release barrier is needed.\n"
+            <<"STABLE TWO-WARP MERGE: both leaders fold m=max(m_0,m_1) in order0,1. For d_w==0 set t_w=0 BEFORE exp; otherwise t_w=d_w*exp(safe_m_w-safe_m).\n"
+            <<"DERIVATION: d_w*z_w[j]=sum_{t in warp} exp(s_t-m_w)*cache[t,j]. Multiplying by exp(m_w-m) expresses this numerator on one common exponential origin.\n"
+            <<"Therefore t_w*z_w[j] is that warp's common-origin numerator and sum_w t_w is the common-origin denominator; their ratio is the64-token expectation.\n"
+            <<"For finite participating maxima, m_w-m<=0, so the merge does not evaluate exp of a large positive raw score. Averaging z0,z1 without their masses would be incorrect in general.\n"
+            <<"Compute D=(0+t_0)+t_1, alpha_w=t_w/(D>0?D:1), and broadcast alpha0 then alpha1 from lane0 within each warp.\n"
+            <<"Final column j is z[j]=(0+alpha0*z_0[j])+alpha1*z_1[j]. Thread tid owns columns tid,tid+64,... with guarded stores. Thread0 writes raw m and D.\n"
+            <<"LEADER RECOMPUTATION: both leaders independently derive the same m,D,alpha0,alpha1 in order0,1. Only thread0 stores m,D; other lanes need only the two broadcast coefficients.\n"
+            <<"This intentional duplicate scalar fold avoids publishing another shared final statistic and introducing a second CTA barrier.\n"
+            <<"At R16 final stores belong to threads0..15; threads16..63 still join all broadcasts. For R>64 each owner continues at tid+64,tid+128,... .\n"
+            <<"NUMERICAL EXAMPLE: in one example cache column, warp0 has one allowed score0 with value2; warp1 has two allowed scores log(3) with values10 and14; all other lanes are masked.\n"
+            <<"Then (m0,d0,z0)=(0,1,2), (m1,d1,z1)=(log(3),2,12); common masses are1/3 and2, D=7/3, coefficients1/7 and6/7, final z=74/7.\n"
+            <<"The direct token weights are1,3,3, giving (2+30+42)/7=74/7. An unweighted average of the local expectations would give7 and would be wrong.\n"
+            <<"This is an illustrative real-arithmetic example; actual F32 exp/trees/division retain the admitted numerical policy and reference tolerance.\n"
+            <<"Four static register-broadcast sites execute per warp: local max, local denominator, alpha0, alpha1. A32-lane shuffle never crosses warps or replaces a memory fence.\n"
+            <<"These four broadcast sites execute in EACH warp: eight warp-level broadcasts per CTA. The serial readable helper emulates lane state; native WHIRL owns the actual memory/barrier schedule.\n"
+            <<"All64 threads reach the sole CTA barrier; all32 lanes reach every full-mask collective outside tail/mask/column predicates. Independent scheduling is supported.\n"
+            <<"TAILS: a35-token tail gives32+3 tokens; a one-token tail gives1+0. Empty warps publish [-infinity,0,zero_vector] and still participate.\n"
+            <<"EMPTY-WARP GUARD EXAMPLE: if a nonempty warp has m=-1000 and the other has d=0, evaluating its fallback exp(0-(-1000)) could overflow before multiplying by zero. Branch on d==0 first.\n"
+            <<"If both warps are empty, raw m=-infinity, safe m=0, D=0, both coefficients=0 and z=zero_vector. A finite one-token tail has D=1 and z=that token's cache vector.\n"
+            <<"In that one-token tail, the empty second warp produces its OWN zero latent vector; it never consumes warp0's probability. Its tuple is read only after the shared barrier.\n"
+            <<"The combined output remains [raw_m_c,d_c,normalized_z_c]. The separate128-thread inter-chunk merge keeps its existing stable rescaling and five CTA barriers.\n"
+            <<"NUMERICAL CHANGE: an additional stable hierarchical reduction changes F32 rounding; O3 explicit allow-reassociate and FP64 reference tolerances are required, not bitwise equality with coverage-v5.\n"
+            <<"COST: token/cache products are not duplicated, but both warps reduce every column. At R16 latent warp-level down-shuffles rise80->160; extra rescaling and broadcasts can offset barrier savings.\n"
+            <<"Shared bytes=8*(R+2), versus272 in coverage-v5; below272 only for R<32, equal at R32, larger above32. Resource admission uses the actual rank.\n"
+            <<"PROOF SCOPE: coverage-v6, split local width=threads=64, register latent accumulation, finite admitted shape. Other widths/direct/merge retain their prior algorithms.\n"
+            <<"coverage-v5 remains selectable for the three-barrier ownership. GPU latency, race-sanitizer and measured speedup remain hardware-gated.\n";
+        ExplainDependencies(k,text);Explain("STAGE SEMANTICS",text.str());
+    }
     void ExplainNarrowBlockStage(const VHO_TENSOR_KERNEL &k) {
+        if(k.warp_owned_partials) {Explain_warp_owned_stage(k);return;}
+        if(k.two_warp_statistics) {ExplainTwoWarpRegisterStage(k);return;}
         if(k.register_statistics) {ExplainWarpRegisterStage(k);return;}
         const VHO_TENSOR_ATTENTION &a=_plan.attention;std::ostringstream text;
         UINT64 rows=a.batch*a.heads,warps=k.threads/32,columns=warps*4;
@@ -578,6 +688,20 @@ public:
     }
     /* Explain source-level work from the already selected ledger; no search. */
     void ExplainNarrowCosts(std::ostringstream &text,const VHO_TENSOR_CHUNK_CANDIDATE &winner) {
+        if(_p.chunk_policy==6) {
+            text<<"WARP-OWNED COST WALKTHROUGH: width64 owns tokens within each warp and computes all columns, then publishes two tuples at one CTA barrier.\n"
+                <<"Shared storage is8*(R+2) bytes; no shared probabilities. Two warp-local softmax reductions and a stable two-tuple merge change F32 association.\n"
+                <<"Both warps reduce every column, doubling column shuffle work; extra rescaling/broadcasts may offset synchronization savings. No latency claim follows from barrier count.\n"
+                <<"Width32 remains register-only; direct/wider/128-thread inter-chunk merge retain prior resource and ordering contracts.\n";
+            return;
+        }
+        if(_p.chunk_policy==5) {
+            text<<"TWO-WARP COST WALKTHROUGH: width64 retains private scores/exp and register final statistics, with272 shared bytes and three CTA barrier phases.\n"
+                <<"Each warp publishes max and denominator partials into disjoint slots, folds both and broadcasts within the warp.\n"
+                <<"Normalized probabilities still cross warp boundaries, requiring the third CTA barrier. Width32 retains zero shared bytes and zero memory fences.\n"
+                <<"The128-thread merge and wider local kernels retain their prior resource/ordering contracts. Coverage is not measured occupancy or latency.\n";
+            return;
+        }
         if(_p.chunk_policy==4) {
             text<<"WARP-REGISTER COST WALKTHROUGH: width32 keeps one score/exponential/probability per lane and two broadcast statistics.\n"
                 <<"Its selected shared footprint is zero, with zero memory fences and two full-mask register broadcasts per local CTA.\n"
@@ -743,6 +867,9 @@ public:
         if(_p.chunk_policy==4) text<<"SINGLE-WARP REGISTER EXTENSION: coverage-v4 retains narrow block geometry and selects register-broadcast statistics only for split local width32.\n"
             <<"The per-lane probability is immutable and private across column groups; no shared publication or memory fence is required.\n"
             <<"Candidate statistics and native metadata seal this ownership proof; coverage-v3 reproduces the prior three-fence realization.\n";
+        if(_p.chunk_policy==6) text<<"WARP-OWNED EXTENSION: coverage-v6 selects two independent32-token distributions for local width64, merged after one CTA tuple barrier.\n";
+        if(_p.chunk_policy==5) text<<"TWO-WARP BROADCAST EXTENSION: coverage-v5 selects disjoint-summary register broadcasts for split local width64, reducing five CTA barriers to three.\n"
+            <<"The one-warp width32 register path is retained unchanged; explicit coverage-v4 reproduces the previous five-barrier width64 realization.\n";
         ExplainNarrowCosts(text,*winner);
         text<<"The profiles describe an offline planning envelope. Architecture sm_90 alone never supplies an enabled SM count.\n"
             <<"Changing SM count changes the coverage target even when per-SM resources, register estimates and numerical semantics are unchanged.\n";

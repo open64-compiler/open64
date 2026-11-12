@@ -28,7 +28,7 @@ def produce(path,length,variant):
     from models.absorbed_mla import AbsorbedMLA,validate_inputs
     from models.mla_reference import expanded_reference
     path.mkdir(exist_ok=False)
-    b,h,dn,dr,r,dv=2,2,3,2,21 if variant=="wide" else 5,4
+    b,h,dn,dr,r,dv=2,2,3,2,37 if variant=="larger-rank" else 21 if variant=="wide" else 5,4
     shapes=[(b,h,dn),(b,h,dr),(b,length,r),(b,length,dr),(h,dn,r),(h,dv,r)]
     generator=torch.Generator().manual_seed(27182)
     inputs=[torch.randn(shape,generator=generator,dtype=torch.float32)*0.15 for shape in shapes]
@@ -38,6 +38,10 @@ def produce(path,length,variant):
         inputs[0].zero_();inputs[1].fill_(1);inputs[3].fill_(-1000)
         allowed[...,:33]=False
         if variant=='large-values': inputs[2].fill_(3e37);inputs[5].mul_(0.1)
+    if variant=='opposing-warps':
+        inputs[1].fill_(1)
+        for token in range(length):inputs[3][:,token,:].fill_(-1000 if token%64<32 else 1000)
+        allowed[...,32:64]=False  # Empty upper warp at very negative lower-warp maximum.
     inputs.append(allowed);inputs=tuple(inputs);validate_inputs(inputs)
     model=AbsorbedMLA(1/math.sqrt(dn+dr)).eval()
     module=export_to_whirl(model,inputs,WhirlExportOptions(backend='native',model_name='unrelated_attention_fixture'))
@@ -133,11 +137,22 @@ class AttentionFusionTests(unittest.TestCase):
             local=next(k for k in launch['kernels'] if int(k['operation'])==33)
             block=int(local['block_x'])
             self.assertEqual(block,split if gpu is not None and split in (32,64) else 128)
-            self.assertEqual(len(re.findall(r'__syncthreads\s*\(', (self.root/'kernels.cu').read_text())),
-                             (0 if block==32 else 5)+(5 if split and length>split else 0))
-            register_statistics=(json.loads(recipe.read_text()).get('chunk_selection',{}).get('policy')=='coverage-v4' and block==32)
+            policy=json.loads(recipe.read_text()).get('chunk_selection',{}).get('policy')
+            register_statistics=(policy in ('coverage-v4','coverage-v5','coverage-v6') and block==32)
+            two_warp_statistics=(policy=='coverage-v5' and block==64)
+            warp_owned_partials=(policy=='coverage-v6' and block==64)
+            # Larger ranks can stage a projection too; count attention barriers
+            # in their owning functions rather than across the translation unit.
+            mapped_text=(self.root/'kernels.cu').read_text()
+            local_body=mapped_text.split('void '+local['name']+'(',1)[1].split('\nextern ',1)[0]
+            self.assertEqual(len(re.findall(r'(?m)^\s*__syncthreads\s*\(',local_body)),
+                             0 if block==32 else 1 if warp_owned_partials else 3 if two_warp_statistics else 5)
+            if split and length>split:
+                merge=next(k for k in launch['kernels'] if int(k['operation'])==4129)
+                merge_body=mapped_text.split('void '+merge['name']+'(',1)[1].split('\nextern ',1)[0]
+                self.assertEqual(len(re.findall(r'(?m)^\s*__syncthreads\s*\(',merge_body)),5)
             self.assertEqual(len(re.findall(r'(?m)^\s*__syncwarp\s*\(', (self.root/'kernels.cu').read_text())),3 if block==32 and not register_statistics else 0)
-            self.assertEqual(len(re.findall(r'(?m)^\s*\w+\s*=\s*__shfl_sync\s*\(', (self.root/'kernels.cu').read_text())),2 if register_statistics else 0)
+            self.assertEqual(len(re.findall(r'(?m)^\s*\w+\s*=\s*__shfl_sync\s*\(', (self.root/'kernels.cu').read_text())),4 if warp_owned_partials else 2 if register_statistics or two_warp_statistics else 0)
             if register_statistics:
                 self.assertEqual(local['shared_bytes'],'0')
                 self.assertEqual(local['attention_statistics'],'warp_register_broadcast')
@@ -146,11 +161,33 @@ class AttentionFusionTests(unittest.TestCase):
                 self.assertNotIn('__syncwarp(',body)
                 self.assertNotIn('__syncthreads(',body)
 
+            if warp_owned_partials:
+                # Exercise rank-dependent shared storage, independent of block size.
+                rank=37 if variant=='larger-rank' else 21 if variant=='wide' else 5
+                self.assertEqual(local['shared_bytes'],str(8*(rank+2)))
+                self.assertEqual(local['attention_statistics'],'warp_owned_partials')
+                body=(self.root/'kernels.cu').read_text().split('void '+local['name']+'(',1)[1].split('\nextern ',1)[0]
+                self.assertIn('attention_shared_warp_partials['+str(2*(rank+2)),body)
+                self.assertNotIn('attention_shared_probabilities',body)
+                self.assertNotIn('attention_shared_scores_weights',body)
+                self.assertEqual(len(re.findall(r'(?m)^\s*__syncthreads\s*\(',body)),1)
+                self.assertIn('WARP-OWNED TOKEN PARTIALS',body)
+            if two_warp_statistics:
+                self.assertEqual(local['shared_bytes'],'272')
+                self.assertEqual(local['attention_statistics'],'two_warp_register_broadcast')
+                body=(self.root/'kernels.cu').read_text().split('void '+local['name']+'(',1)[1].split('\nextern ',1)[0]
+                self.assertIn('attention_shared_probabilities[64',body)
+                self.assertIn('attention_shared_warp_summaries[4',body)
+                self.assertNotIn('attention_shared_scores_weights',body)
+                self.assertEqual(len(re.findall(r'(?m)^\s*__syncthreads\s*\(',body)),3)
+
         if gpu is not None:
             modes=['audit-attention-block']
-            if register_statistics:
+            if register_statistics or two_warp_statistics or warp_owned_partials:
                 modes+=['audit-attention-statistics','audit-broadcast-mask','audit-broadcast-source','audit-broadcast-width','audit-broadcast-prototype','audit-broadcast-missing']
-            elif block==32:modes+=['audit-warp-mask','audit-warp-prototype','audit-warp-barrier']
+            if warp_owned_partials:modes+=['audit-warp-partial-alias','audit-warp-partial-barrier']
+            if two_warp_statistics:modes+=['audit-two-warp-summary-alias']
+            elif block==32 and not register_statistics:modes+=['audit-warp-mask','audit-warp-prototype','audit-warp-barrier']
             for mode in modes:
                 rejected=self.root/(mode+'.json')
                 self.run_tool(self.lowerer,mode,after,recipe,rejected,success=False)

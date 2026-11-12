@@ -66,7 +66,7 @@ struct VHO_TENSOR_PROGRAM {
     bool fuse_attention;        /* explicit stable local softmax / rescaled merge */
     bool register_latent;       /* four lane-private columns per warp, v5 */
     bool auto_chunks;           /* sealed resource-aware v6 selection */
-    UINT32 chunk_policy;        /* 1 legacy 128+, 2 expanded 32+ search, 3 narrow blocks, 4 warp registers */
+    UINT32 chunk_policy;        /* 1 legacy 128+, 2 expanded 32+ search, 3 narrow blocks, 4 warp registers, 5 two-warp broadcasts, 6 warp-owned partials */
     VHO_TENSOR_GPU_PROFILE gpu;
     std::vector<VHO_TENSOR_VALUE> values;
     std::vector<VHO_TENSOR_OPERATION> operations;
@@ -75,7 +75,9 @@ struct VHO_TENSOR_PROGRAM {
 /* Deterministic PU-local launch plan. Synthetic scratch is detached storage,
  * never a new logical opcode or binary WHIRL record. IDs >=4096 are merges. */
 struct VHO_TENSOR_KERNEL {
-    VHO_TENSOR_KERNEL():register_statistics(false) {}
+    VHO_TENSOR_KERNEL():warp_owned_partials(false),two_warp_statistics(false),register_statistics(false) {}
+    bool warp_owned_partials;   /* independent 32-token distributions, one CTA tuple publication */
+    bool two_warp_statistics;   /* disjoint summary slots, register broadcasts, three CTA barriers */
     bool register_statistics;   /* one token/lane; private scores/weights, shuffle broadcasts */
     UINT32 id,root,output,threads; /* selected launch size, owned by VHO */
     UINT32 split_width,chunks,stage; /* 0 direct, 1 partial, 2 merge */
