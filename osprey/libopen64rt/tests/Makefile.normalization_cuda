@@ -1,6 +1,7 @@
 # Optional LN4 CUDA Driver adapter; no compiler/reduction or legacy runtime changes.
 # Design: doc/AI-COMPILER-LAYERNORM-COMPILED-ENTRY-v0.1.md.
 CXX ?= c++
+CC ?= cc
 AR ?= ar
 SOURCE ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 CUDA_HOME ?= /usr/local/cuda
@@ -10,12 +11,26 @@ CXXFLAGS += -std=c++11 -Wall -Wextra -Werror -pthread
 all: libopen64_normalization_cuda.a
 
 normalization_cuda.o: $(SOURCE)/libopen64rt/normalization_cuda.cxx \
-                      $(SOURCE)/include/open64_normalization_cuda.h
+                      $(SOURCE)/include/open64_normalization_cuda.h \
+                      $(SOURCE)/include/open64_normalization_runtime.h \
+                      $(SOURCE)/include/open64_target_buffer_service.h $(CUDA_HOME)/include/cuda.h
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 normalization_runtime.o: $(SOURCE)/libopen64rt/normalization_runtime.cxx \
-                         $(SOURCE)/include/open64_normalization_runtime.h
+                         $(SOURCE)/include/open64_normalization_runtime.h \
+                         $(SOURCE)/include/open64_target_buffer_service.h
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-libopen64_normalization_cuda.a: normalization_cuda.o normalization_runtime.o
+normalization_execution.o: $(SOURCE)/libopen64rt/normalization_execution.cxx \
+                           $(SOURCE)/include/open64_normalization_execution.h \
+                           $(SOURCE)/include/open64_normalization_cuda.h \
+                           $(SOURCE)/include/open64_normalization_runtime.h \
+                           $(SOURCE)/include/open64_target_buffer_service.h
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
+target_buffer_service.o: $(SOURCE)/libopen64rt/target_buffer_service.c \
+                         $(SOURCE)/include/open64_target_buffer_service.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+libopen64_normalization_cuda.a: normalization_cuda.o normalization_runtime.o normalization_execution.o target_buffer_service.o
 	$(AR) rcs $@ $^

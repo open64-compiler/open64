@@ -144,6 +144,10 @@ device CUDA/PTX/cubins and numerical evidence. New acceptance is runtime/package
 evidence, not a fresh compiler transformation or GPU numerical/performance run.
 See the progress ledger for derived immutable receipts and final-path replay.
 
-Next: integrate this optional entry package into the host-dispatch/service
-consumer with reviewed buffer/root, hash and readiness/consumer services. Keep
-general compiler-session lifecycle and native GPU certification separate.
+Follow-on, 2026-10-29: the
+[host/service execution consumer](AI-COMPILER-LAYERNORM-EXECUTION-CONSUMER-v0.1.md)
+now composes this adapter with shared registry roots, target-buffer callbacks,
+host copies and readiness/consumer/quiescence hooks. It is a runtime library,
+not selected host-PU call emission or an installed deployment provider. Those
+compiler/driver integration steps, reviewed deployment services, general
+compiler-session lifecycle and native GPU certification remain separate.

@@ -91,6 +91,11 @@ int open64_normalization_register(OPEN64_NORMALIZATION_RUNTIME *,
   const OPEN64_TARGET_BUFFER_VIEW *, uint64_t *allocation);
 /* Retire only unleased live roots before external free/rebind; no memory free. */
 int open64_normalization_retire(OPEN64_NORMALIZATION_RUNTIME *, uint64_t allocation);
+/* Read-only whole-root snapshot for a consumer's borrowed-handle preflight.
+ * Does NOT acquire a lease; admission revalidates liveness. Caller synchronizes
+ * external free/rebind as for registration. Failure preserves output. */
+int open64_normalization_root_view(OPEN64_NORMALIZATION_RUNTIME *, uint64_t allocation,
+  OPEN64_TARGET_BUFFER_VIEW *output);
 
 /* Snapshot exact guard/entry; atomically acquire three immutable-input and exclusive-Y
  * leases over canonical subranges. Fixed capacity 64 roots/tickets. Failures

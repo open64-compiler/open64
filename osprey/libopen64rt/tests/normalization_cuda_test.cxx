@@ -20,6 +20,8 @@ static OPEN64_NORMALIZATION_RUNTIME *runtime;
 static uint64_t ticket;
 static unsigned loads,unloads,launches,drains,hook_calls;
 static int fault,fail_event;
+static void (*launch_observer)(void **);
+static void (*drain_observer)();
 
 /* Every assertion is retained with native source line, including refusals. */
 static void check(bool value,const char *name)
@@ -134,11 +136,16 @@ extern "C" CUresult CUDAAPI cuLaunchKernel(CUfunction function,unsigned gx,unsig
     }
     check(*static_cast<CUdeviceptr *>(args[i])==expected,"exact_subrange_pointer_argument");
   }
+  if(fail_event!=1 && launch_observer)launch_observer(args);
   return fail_event==1 ? CUDA_ERROR_UNKNOWN:CUDA_SUCCESS;
 }
 /* Ambiguous launches must join this exact stream before releasing any lease. */
 extern "C" CUresult CUDAAPI cuStreamSynchronize(CUstream input)
-{++drains;check(input==stream(),"exact_stream_drain");return fail_event==11 ? CUDA_ERROR_UNKNOWN:CUDA_SUCCESS;}
+{
+  ++drains;check(input==stream(),"exact_stream_drain");
+  if(fail_event!=11 && drain_observer)drain_observer();
+  return fail_event==11 ? CUDA_ERROR_UNKNOWN:CUDA_SUCCESS;
+}
 
 /* SHA hook stand-in is an exact-byte oracle for the retained cubin. Production
  * supplies a trusted SHA-256 implementation, not this test-only comparator. */
