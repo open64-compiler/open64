@@ -39,13 +39,17 @@ def indices(text):
 
 def infer_expression(name, version, attrs, operands):
     """Validate exact schema/types and infer a bounded static logical result."""
+    from .quantized_contract import SCHEMAS, DTYPES, infer_quantized
+    if (name, version) in SCHEMAS:
+        return infer_quantized(name, version, attrs, operands, broadcast)
     if VERSIONS.get(name) != version:
         raise ValueError("unsupported tensor expression version")
     contract = operator_contract(name, version)
     if len(operands) != contract.arity or set(attrs) != set(contract.required_attrs):
         raise ValueError("tensor expression schema or arity mismatch")
     for dtype, shape in operands:
-        if dtype not in ("float32", "bool") or not 1 <= len(shape) <= 16 or any(n <= 0 for n in shape):
+        allowed = DTYPES | {"bool"} if name in ("common.reshape", "common.transpose") else {"float32", "bool"}
+        if dtype not in allowed or not 1 <= len(shape) <= 16 or any(n <= 0 for n in shape):
             raise ValueError("positive static rank 1 through 16 FP32 or bool required")
     dtype, shape = operands[0]
     expected = shape

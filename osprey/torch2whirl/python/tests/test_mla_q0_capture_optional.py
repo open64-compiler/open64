@@ -134,10 +134,10 @@ class MLAQ0CaptureTests(unittest.TestCase):
         value["paging"]["write_slots"][1]=value["paging"]["write_slots"][0][:]
         with self.assertRaises(ValueError):validate_contract(value)
 
-    def test_native_mapper_is_not_silently_broadened(self):
+    def test_mapper_uses_the_q1_published_source_contracts(self):
         for name in CASES:
             model,inputs,_=make_fixture(name)
-            self.assertEqual(probe_ingestion(model,inputs)["status"],"expected-unsupported")
+            self.assertEqual(probe_ingestion(model,inputs)["status"],"supported-source-contract")
 
     def test_source_receipt_replay_and_no_replace(self):
         with tempfile.TemporaryDirectory() as temporary:

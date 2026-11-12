@@ -756,10 +756,13 @@ DSL_Gatekeeper_Verify_Memory_Behavior
         if (effect.effect_kind == DSL_STATE_EFFECT_MODIFY)
             ++modify_count;
     }
-    if (dsl_operator == OPR_DSLSCATTER &&
+    if (dsl_operator == OPR_DSLSCATTER && version == 1 &&
         (effect_count == 0 || modify_count == 0))
         return DSL_Gatekeeper_Report
                    (context, "OPR_DSLSCATTER requires a modifying state edge");
+    if (dsl_operator == OPR_DSLSCATTER && version == 2 && effect_count != 0)
+        return DSL_Gatekeeper_Report
+                   (context, "OPR_DSLSCATTER.v2 is functional and forbids old-state effects");
     if (dsl_operator == OPR_DSLATTENTION && version == 2 &&
         (effect_count != 2 || modify_count != 2))
         return DSL_Gatekeeper_Report

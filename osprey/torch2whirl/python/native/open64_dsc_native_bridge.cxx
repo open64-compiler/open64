@@ -35,6 +35,8 @@ Open64_DSC_Dtype_To_TY(const char *dtype)
     if (dtype == NULL)
         return TY_IDX_ZERO;
 
+    if (strcmp(dtype, "int8") == 0)
+        return MTYPE_To_TY(MTYPE_I1);
     if (strcmp(dtype, "int32") == 0 || strcmp(dtype, "i32") == 0)
         return MTYPE_To_TY(MTYPE_I4);
     if (strcmp(dtype, "int64") == 0 || strcmp(dtype, "i64") == 0)

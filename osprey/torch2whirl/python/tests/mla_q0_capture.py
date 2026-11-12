@@ -1,7 +1,8 @@
 """Q0 quantized/paged MLA source census and CPU correctness artifacts.
 
-This runner performs source capture, not candidate exploration. Unsupported
-native ingestion is a required refusal, never a fabricated WHIRL image.
+This runner performs source capture, not candidate exploration. Q0 receipts
+record unsupported ingestion; Q1 supports the published native source contracts.
+No .B is fabricated by this source-capture lane.
 """
 import argparse
 from collections import Counter
@@ -176,7 +177,10 @@ def probe_ingestion(model,inputs,native=False):
         if "unsupported FX graph node" not in message:
             raise
         return dict(status="expected-unsupported",diagnostic=message,artifact_created=False)
-    raise AssertionError("Q0-only graph unexpectedly entered native ingestion")
+    # Q1 now publishes the typed source contracts discovered by this census.
+    # Keep Q0's source/golden/replay lane as a drift detector; historical Q0
+    # receipts retain the original unsupported result at their producer commit.
+    return dict(status="supported-source-contract",artifact_created=False)
 
 
 def write_artifacts(destination,native=False,native_tools=None):

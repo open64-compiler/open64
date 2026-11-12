@@ -32,6 +32,8 @@
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
 #include "dsl_gatekeeper.h"
+#include "dsl_shape.h"
+#include "../torch2whirl/python/native/quantized_cache_inference.h"
 #include "tensor_kernel_lower.h"
 #include "tensor_attention_search.h"
 #include "tensor_schedule_source.h"
@@ -338,12 +340,21 @@ bool remove_barrier(WN *n,const char *name="__syncthreads") {
 #ifdef OPEN64_TENSOR_SELECTED_BRIDGE
 #include "tensor_selected_bridge_driver.inc"
 #endif
+#include "tensor_quantized_review.inc"
 } // namespace
 
 /* The executable establishes exactly one source PU or fresh device translation
  * unit. The VHO service never expands its compilation scope or writes files. */
 int main(int argc,char **argv) {
     try {
+        if(argc==4 && !strcmp(argv[1],"q1-inspect")) {
+            need(access(argv[3],F_OK)!=0,"Q1 review output exists");initialize(false);
+            Open_Input_Info(argv[2]);Initialize_Symbol_Tables(FALSE);New_Scope(GLOBAL_SYMTAB,Malloc_Mem_Pool,FALSE);
+            PU_Info *pu=Read_Global_Info(NULL);need(pu && !PU_Info_next(pu) && !PU_Info_child(pu),"Q1 requires one source PU");
+            Read_Local_Info(MEM_pu_nz_pool_ptr,pu);Current_PU_Info=pu;Current_pu=&PU_Info_pu(pu);
+            Current_scope=PU_lexical_level(*Current_pu);Current_Map_Tab=PU_Info_maptab(pu);
+            write_json(argv[3],q1_source_review(pu));return 0;
+        }
 #ifdef OPEN64_TENSOR_SELECTED_BRIDGE
 #ifdef OPEN64_TENSOR_BRIDGE_TEST
         if(argc>=2 && (!strcmp(argv[1],"bridge-test-multiple") || !strcmp(argv[1],"bridge-test-graph"))) return selected_bridge_command(argc,argv);

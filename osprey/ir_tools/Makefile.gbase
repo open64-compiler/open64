@@ -435,10 +435,10 @@ tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o \
 tensor_bridge_bindings.o: $(BUILD_TOT)/be/lno/dsl_high_observer_json.cxx $(BUILD_TOT)/be/lno/dsl_high_observer.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
 
-tensor_bridge_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BUILD_BASE)/tensor_selected_bridge_driver.inc $(BE_VHO_DIR)/tensor_selected_bridge.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
+tensor_bridge_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BUILD_BASE)/tensor_selected_bridge_driver.inc $(BE_VHO_DIR)/tensor_selected_bridge.h $(COMMON_COM_DIR)/dsl_native_tree_key.h $(BUILD_BASE)/tensor_quantized_review.inc $(BUILD_TOT)/torch2whirl/python/native/quantized_cache_inference.h
 	$(cxx) -DOPEN64_TENSOR_SELECTED_BRIDGE -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
 
-tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BUILD_BASE)/tensor_selected_bridge_driver.inc $(BE_VHO_DIR)/tensor_selected_key.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
+tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BUILD_BASE)/tensor_selected_bridge_driver.inc $(BE_VHO_DIR)/tensor_selected_key.h $(COMMON_COM_DIR)/dsl_native_tree_key.h $(BUILD_BASE)/tensor_quantized_review.inc $(BUILD_TOT)/torch2whirl/python/native/quantized_cache_inference.h
 	$(cxx) -DOPEN64_TENSOR_SELECTED_BRIDGE -DOPEN64_TENSOR_BRIDGE_TEST -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
 
 # Native mutations are compiled out of the production executable.
@@ -469,7 +469,7 @@ tensor_attention_search.o: $(BE_VHO_DIR)/tensor_attention_search.cxx $(BE_VHO_DI
 tensor_attention_chunk_select.o: $(BE_VHO_DIR)/tensor_attention_chunk_select.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h $(BE_VHO_DIR)/dsl_gemm_readiness.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
 
-tensor_kernel_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BUILD_BASE)/tensor_attention_search_json.inc $(BE_VHO_DIR)/tensor_attention_search.h $(BE_VHO_DIR)/tensor_kernel_lower.h
+tensor_kernel_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BUILD_BASE)/tensor_quantized_review.inc $(BUILD_TOT)/torch2whirl/python/native/quantized_cache_inference.h $(BUILD_BASE)/tensor_attention_search_json.inc $(BE_VHO_DIR)/tensor_attention_search.h $(BE_VHO_DIR)/tensor_kernel_lower.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
 
 tensor_schedule.o: $(BE_VHO_DIR)/tensor_schedule.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h $(BE_VHO_DIR)/tensor_attention_pattern.inc

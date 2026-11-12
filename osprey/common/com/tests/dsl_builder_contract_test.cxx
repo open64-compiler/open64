@@ -678,7 +678,7 @@ Check_Upgraded_Ingestion_APIs(void)
         }
     }
     if (!DSL_Shape_Has_Operator_Rule(OPR_DSLADD, 1) ||
-        DSL_Shape_Has_Operator_Rule(OPR_DSLADD, 2) ||
+        !DSL_Shape_Has_Operator_Rule(OPR_DSLADD, 2) ||
         DSL_Shape_Check_Operator(&shape_input) != DSL_SHAPE_CHECK_VALID) {
         fprintf(stderr, "registered common.add.v1 shape rule changed\n");
         failed = 1;
@@ -690,7 +690,7 @@ Check_Upgraded_Ingestion_APIs(void)
         failed = 1;
     }
     shape_input.result_ty = tensor_ty;
-    shape_input.version = 2;
+    shape_input.version = 65535;
     if (DSL_Shape_Check_Operator(&shape_input) !=
             DSL_SHAPE_CHECK_UNREGISTERED) {
         fprintf(stderr, "shape service borrowed a rule from another version\n");
@@ -1284,7 +1284,7 @@ Check_Operator_Creation(void)
     if (DSL_WN_Get_Logical_Opcode(older, &logical_opcode, NULL) ||
         logical_opcode.dsl_operator != OPR_DSLADD ||
         logical_opcode.source_version != 0 ||
-        logical_opcode.effective_version != 1 ||
+        logical_opcode.effective_version != 2 ||
         logical_opcode.version_disposition !=
             DSL_OPCODE_VERSION_REJECTED_OLDER) {
         fprintf(stderr, "older DSL opcode version was not deterministically rejected\n");
@@ -1292,11 +1292,11 @@ Check_Operator_Creation(void)
     }
 
     WN *newer = DSL_WN_Create_Opcode
-                    (DSL_OPCODE_COMMON_ADD, 2, "attr.broadcast_rule=none");
+                    (DSL_OPCODE_COMMON_ADD, 65535, "attr.broadcast_rule=none");
     if (DSL_WN_Get_Logical_Opcode(newer, &logical_opcode, NULL) ||
         logical_opcode.dsl_operator != OPR_DSLADD ||
-        logical_opcode.source_version != 2 ||
-        logical_opcode.effective_version != 1 ||
+        logical_opcode.source_version != 65535 ||
+        logical_opcode.effective_version != 2 ||
         logical_opcode.version_disposition !=
             DSL_OPCODE_VERSION_REJECTED_NEWER) {
         fprintf(stderr, "newer DSL opcode version was not deterministically rejected\n");
@@ -1345,7 +1345,7 @@ Check_Operator_Creation(void)
     }
 
     if (DSL_WN_Create_Logical_Opcode
-            (OPR_DSLADD, 2, add_payload, kids, 2,
+            (OPR_DSLADD, 65535, add_payload, kids, 2,
              DSL_OPCODE_OUTPUT_LEGACY_EVAL) != NULL ||
         DSL_WN_Create_Logical_Opcode
             (OPR_DSLADD, 1, add_payload, kids, 1,
@@ -1655,9 +1655,15 @@ Check_Production_Native_Builder(void)
     type_core.dtype = "int32";
     type_core.rank = 2;
     type_core.logical_shape = "[2,2]";
-    tensor_ty = DSL_Builder_Create_Tensor_Type_Core
+    /* Publication admission requires an interned canonical descriptor; the
+     * legacy core-only factory intentionally does not establish that fact. */
+    DSL_BUILDER_TENSOR_DESCRIPTOR canonical_descriptor;
+    memset(&canonical_descriptor, 0, sizeof(canonical_descriptor));
+    canonical_descriptor.type_core = type_core;
+    canonical_descriptor.representation.layout = "logical";
+    tensor_ty = DSL_Builder_Intern_Tensor_Type
                     ("production_native_tensor", MTYPE_To_TY(MTYPE_I4),
-                     &type_core);
+                     &canonical_descriptor);
 
     kids[0] = DSL_Builder_Create_Tensor_Constant
                   ("native_zero", tensor_ty, "int32", 2, "[2,2]",
@@ -1676,8 +1682,11 @@ Check_Production_Native_Builder(void)
     matmul_attrs[1].name = "attr.transpose_kid1";
     matmul_attrs[1].value = "false";
     add = DSL_Builder_Create_Operator(add_id, 1, kids, 2, &add_attr, 1);
-    matmul = DSL_Builder_Create_Operator
-                 (matmul_id, 1, kids, 2, matmul_attrs, 2);
+    /* The publishable result uses the same canonical typed API as ingestion;
+     * legacy inferred core-only result types are covered by creation tests. */
+    matmul = DSL_Builder_Create_Operator_With_Result
+                 (matmul_id, 1, kids, 2, matmul_attrs, 2,
+                  "native_matmul", tensor_ty);
 
     if (kids[0] == NULL || kids[1] == NULL || add == NULL || matmul == NULL) {
         fprintf(stderr, "production native builder rejected valid values\n");
@@ -1824,7 +1833,7 @@ Check_Production_Native_Builder(void)
 
     WN_OFFSET saved_record = WN_offset(add_expression);
     WN_offset(add_expression) = Save_Str
-        ("__WHIRL_DSL__:opcode:common.add:v2:attr.broadcast_rule=none");
+        ("__WHIRL_DSL__:opcode:common.add:v65535:attr.broadcast_rule=none");
     if (DSL_Gatekeeper_Verify_Program
             (pu, gatekeeper_dump, &gatekeeper_result) ||
         gatekeeper_result.error_count == 0) {
@@ -1870,6 +1879,13 @@ Check_Production_Native_Builder(void)
         !DSL_Builder_Finalize_Mapped_Image(&request) ||
         access(request.path, F_OK) != 0) {
         fprintf(stderr, "gatekeeper blocked valid mapped-image output\n");
+        DSL_BUILDER_VERIFY_RESULT verification;
+        char detail[8192];
+        memset(&verification, 0, sizeof(verification));
+        verification.diagnostic = detail;
+        verification.diagnostic_capacity = sizeof(detail);
+        DSL_Builder_Verify_Program(&verification);
+        fprintf(stderr, "%s\n", detail);
         failed = 1;
     }
     if (retained_artifact == NULL || retained_artifact[0] == '\0')
@@ -1924,7 +1940,7 @@ Check_DSL_IR_Image_Tables(void)
         failed = 1;
     }
 
-    if (!DSL_Operator_Get_Info(OPR_DSLADD, &logical_info)) {
+    if (!DSL_Operator_Get_Info_Version(OPR_DSLADD, 1, &logical_info)) {
         fprintf(stderr, "common.add logical descriptor is unavailable\n");
         return 1;
     }
@@ -2714,7 +2730,7 @@ Check_Native_DSL_Node_Layout(void)
     ST_IDX temp_st;
     int failed = 0;
 
-    if (!DSL_Operator_Get_Info(OPR_DSLADD, &operator_info) ||
+    if (!DSL_Operator_Get_Info_Version(OPR_DSLADD, 1, &operator_info) ||
         operator_info.dsl_operator != OPR_DSLADD ||
         strcmp(operator_info.logical_name, "OPR_DSLADD") != 0 ||
         strcmp(operator_info.stable_name, "common.add") != 0 ||
@@ -2731,11 +2747,23 @@ Check_Native_DSL_Node_Layout(void)
         DSL_Operator_Find("common.add", strlen("common.add"), 1) !=
             OPR_DSLADD ||
         DSL_Operator_Find("common.add", strlen("common.add"), 2) !=
-            OPR_DSLUNKNOWN ||
+            OPR_DSLADD ||
         DSL_Operator_Get_Info(OPR_DSLUNKNOWN, NULL) ||
         strcmp(DSL_OPERATOR_name((DSL_OPERATOR)99),
                "OPR_DSLUNKNOWN") != 0) {
         fprintf(stderr, "logical DSL operator descriptor changed\n");
+        failed = 1;
+    }
+
+    DSL_OPERATOR_INFO current_info;
+    if (!DSL_Operator_Get_Info(OPR_DSLADD, &current_info) ||
+        current_info.version != 2 || current_info.nkids != 2 ||
+        current_info.effect_model != DSL_EFFECT_MODEL_PURE ||
+        current_info.lowering_model != DSL_LOWERING_MODEL_MARKER_ONLY ||
+        strcmp(current_info.attribute_schema, "attr.broadcast_rule;attr.integer_domain") != 0 ||
+        (UINT32)OPR_DSLFILLLIKE != 48 || (UINT32)OPR_DSLABS != 49 ||
+        (UINT32)OPR_DSLGATHER != 55) {
+        fprintf(stderr, "Q1 additive source registry/version contract changed\n");
         failed = 1;
     }
 
@@ -2851,7 +2879,7 @@ Check_Native_DSL_Node_Layout(void)
     if (DSL_WN_Create_Native
             (OPR_DSLUNKNOWN, 1, NULL, NULL, 0) != NULL ||
         DSL_WN_Create_Native(OPR_DSLADD, 0, NULL, NULL, 0) != NULL ||
-        DSL_WN_Create_Native(OPR_DSLADD, 2, NULL, kids, 2) != NULL ||
+        DSL_WN_Create_Native(OPR_DSLADD, 65535, NULL, kids, 2) != NULL ||
         DSL_WN_Create_Native(OPR_DSLADD, 1, NULL, kids, 1) != NULL ||
         DSL_WN_Create_Native(OPR_DSLADD, 1, NULL, NULL, 1) != NULL) {
         fprintf(stderr, "native DSL WN accepted an invalid record\n");
@@ -15622,6 +15650,17 @@ main(void)
     Initialize_Test_Context();
     if (getenv("OPEN64_DSL_DST_LIFECYCLE_ONLY") != NULL)
         return Check_Builder_DST_Lifecycle();
+    if (getenv("OPEN64_DSL_Q1_REGISTRY_ONLY") != NULL) {
+        failed |= Check_Tensor_Type_And_Descriptor();
+        failed |= Check_Operator_Creation();
+        failed |= Check_Production_Native_Builder();
+        failed |= Check_Native_DSL_Node_Layout();
+        return failed;
+    }
+    /* Writer/reader tests own separate process lifetimes, just as ingestion
+     * certification does; do not reuse a written global/DST image here. */
+    if (getenv("OPEN64_DSL_Q1_IMAGE_ONLY") != NULL)
+        return Check_DSL_IR_Image_Tables();
     if (getenv("OPEN64_DSL_INGESTION_API_ONLY") != NULL)
         return Check_Upgraded_Ingestion_APIs();
     if (getenv("OPEN64_DSL_TENSOR_ALIGNMENT_ONLY") != NULL)
