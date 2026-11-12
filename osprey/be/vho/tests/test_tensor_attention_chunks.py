@@ -53,7 +53,7 @@ class AutoChunkTests(unittest.TestCase):
     def test_auto_width32_native_reference(self):
         j=self.execute(513,gpu=gpu_profile())
         self.assertEqual(j['split_width'],32)
-        self.assertEqual(j['chunk_selection']['policy'],'coverage-v4')
+        self.assertEqual(j['chunk_selection']['policy'],'coverage-v6')
 
     def test_legacy_policy_remains_selectable_and_stable(self):
         source=self.attention()
@@ -124,7 +124,7 @@ class AutoChunkTests(unittest.TestCase):
         source=self.attention();self.select(source,gpu_profile(),'selected')
         text=(self.root/'selected.json').read_text()
         changes=[('"split_width" : 64','"split_width" : 128'),
-                 ('"policy" : "coverage-v4"','"policy" : "unknown"'),
+                 ('"policy" : "coverage-v6"','"policy" : "unknown"'),
                  ('"ctas" : 260','"ctas" : 261'),
                  ('"block_x" : 32','"block_x" : 64')]
         for i,(old,new) in enumerate(changes):
@@ -165,9 +165,63 @@ class AutoChunkTests(unittest.TestCase):
             self.run_tool(self.lowerer,'schedule-source',bad,target,success=False)
             self.assertFalse(target.exists())
 
+    def test_v4_two_warp_statistics_remain_reproducible(self):
+        j=self.execute(513,variant='wide',gpu=gpu_profile(sms=16),chunk_policy='coverage-v4')
+        self.assertEqual(j['split_width'],64)
+        self.assertEqual(j['chunk_selection']['policy'],'coverage-v4')
+        self.assertEqual(next(c for c in j['chunk_selection']['candidates'] if c['width']==64)['local_shared_bytes'],288)
+
+    def test_two_warp_partial_second_warp_tail(self):
+        j=self.execute(547,variant='wide',gpu=gpu_profile(sms=16))
+        self.assertEqual(j['split_width'],64)
+
+    def test_v5_seals_two_warp_summary_plan(self):
+        source=self.attention();j=self.select(source,gpu_profile(),'two-warp',policy='coverage-v5')
+        row=next(c for c in j['chunk_selection']['candidates'] if c['width']==64)
+        self.assertEqual(row['local_shared_bytes'],272)
+        self.assertEqual(row['statistics'],'two_warp_register_broadcast')
+        text=(self.root/'two-warp.json').read_text()
+        for i,(old,new) in enumerate([('"statistics" : "two_warp_register_broadcast"','"statistics" : "shared"'),
+                                     ('"local_shared_bytes" : 272','"local_shared_bytes" : 288')]):
+            self.assertIn(old,text)
+            bad=self.root/('forged-two-warp-%d.json'%i);bad.write_text(fusion.reseal(text.replace(old,new,1)))
+            target=self.root/('forged-two-warp-%d.cu'%i)
+            self.run_tool(self.lowerer,'schedule-source',bad,target,success=False)
+            self.assertFalse(target.exists())
+
     def test_lower_optimization_level_rejects_automatic_selection(self):
         source=self.fixture(level=0)
         self.select(source,gpu_profile(),'O0',success=False)
+
+    def test_v5_two_warp_native_reproduction(self):
+        j=self.execute(547,variant='wide',gpu=gpu_profile(sms=16),chunk_policy='coverage-v5')
+        self.assertEqual(j['chunk_selection']['policy'],'coverage-v5')
+
+    def test_warp_owned_negative_empty_and_rescaled_warps(self):
+        j=self.execute(547,variant='opposing-warps',gpu=gpu_profile(sms=16))
+        self.assertEqual(j['split_width'],64)
+
+    def test_warp_owned_large_finite_values(self):
+        j=self.execute(513,variant='large-values',gpu=gpu_profile(sms=16))
+        self.assertEqual(j['split_width'],64)
+
+    def test_warp_owned_rank_exceeds_previous_shared_footprint(self):
+        j=self.execute(547,variant='larger-rank',gpu=gpu_profile(sms=16))
+        self.assertEqual(j['split_width'],64)
+
+    def test_v6_seals_warp_tuple_resources_and_ownership(self):
+        source=self.attention();j=self.select(source,gpu_profile(),'warp-owned')
+        row=next(c for c in j['chunk_selection']['candidates'] if c['width']==64)
+        self.assertEqual(row['local_shared_bytes'],56)  # R5 fixture: two (R+2) F32 tuples.
+        self.assertEqual(row['statistics'],'warp_owned_partials')
+        text=(self.root/'warp-owned.json').read_text()
+        for i,(old,new) in enumerate([('"statistics" : "warp_owned_partials"','"statistics" : "two_warp_register_broadcast"'),
+                                     ('"local_shared_bytes" : 56','"local_shared_bytes" : 272')]):
+            self.assertIn(old,text)
+            bad=self.root/('forged-warp-owned-%d.json'%i);bad.write_text(fusion.reseal(text.replace(old,new,1)))
+            target=self.root/('forged-warp-owned-%d.cu'%i)
+            self.run_tool(self.lowerer,'schedule-source',bad,target,success=False)
+            self.assertFalse(target.exists())
 
 
 if __name__=='__main__':unittest.main()

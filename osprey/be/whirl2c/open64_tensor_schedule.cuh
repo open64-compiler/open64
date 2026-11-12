@@ -355,6 +355,69 @@ O64_HD void warp_register_fused_attention_to(float *out,const Q &q,const QR &qr,
     static_assert(Threads==32 && W==32 && Partial && C>1,"one token per lane in split attention");
     block_fused_attention_to<B,H,L,R,DR,W,C,Partial,Threads>(out,q,qr,cache,rope,mask,scale);
 }
+// Serial emulation of the VHO-selected two-warp statistics/broadcast plan.
+// Native WHIRL owns the disjoint summary slots and three CTA barriers; this
+// helper reuses the exact two-summary F32 fold and per-column warp arithmetic.
+template<uint64_t B,uint64_t H,uint64_t L,uint64_t R,uint64_t DR,uint64_t W,uint64_t C,bool Partial,unsigned Threads,
+         class Q,class QR,class Cache,class Rope,class Mask>
+O64_HD void two_warp_register_fused_attention_to(float *out,const Q &q,const QR &qr,const Cache &cache,
+                                               const Rope &rope,const Mask &mask,uint32_t scale) {
+    static_assert(Threads==64 && W==64 && Partial && C>1,"two full warps in split attention");
+    block_fused_attention_to<B,H,L,R,DR,W,C,Partial,Threads>(out,q,qr,cache,rope,mask,scale);
+}
+// Serial review of VHO's selected warp-owned partial tuples. Each warp owns
+// 32 tokens and all columns; native WHIRL publishes two tuples at one CTA barrier.
+// This helper preserves the same F32 warp trees and stable two-tuple merge.
+template<uint64_t B,uint64_t H,uint64_t L,uint64_t R,uint64_t DR,uint64_t W,uint64_t C,bool Partial,unsigned Threads,
+         class Q,class QR,class Cache,class Rope,class Mask>
+O64_HD void warp_owned_fused_attention_to(float *out,const Q &q,const QR &qr,const Cache &cache,
+                                        const Rope &rope,const Mask &mask,uint32_t scale_bits) {
+    static_assert(Threads==64 && W==64 && Partial && C>1,"two warp-owned token sets in split attention");
+    const uint64_t rows=B*H;const float scale=open64_reference::bits_float(scale_bits);
+    for(uint64_t chunk=0;chunk<C;++chunk) for(uint64_t row=0;row<rows;++row) {
+        float maxima[2],denominators[2],latent[2][R];
+        for(unsigned warp=0;warp<2;++warp) {
+            float scores[32],lanes[32],probabilities[32];
+            for(unsigned lane=0;lane<32;++lane) {
+                const uint64_t token=chunk*64+warp*32+lane;float score=neutral<true>();
+                if(token<L && mask.at(row*L+token)) {
+                    float dot=0.0f,position=0.0f;
+                    for(uint64_t k=0;k<R;++k) dot=dot+q.at(row*R+k)*cache.at(((row/H)*L+token)*R+k);
+                    for(uint64_t k=0;k<DR;++k) position=position+qr.at(row*DR+k)*rope.at(((row/H)*L+token)*DR+k);
+                    score=(dot+position)*scale;
+                }
+                scores[lane]=score;lanes[lane]=accumulate<true>(neutral<true>(),score);
+            }
+            maxima[warp]=warp_tree<true>(lanes);
+            const float safe_max=open64_reference::finite(maxima[warp])?maxima[warp]:0.0f;
+            for(unsigned lane=0;lane<32;++lane) {
+                probabilities[lane]=::expf(scores[lane]-safe_max);lanes[lane]=0.0f+probabilities[lane];
+            }
+            denominators[warp]=warp_tree<false>(lanes);
+            const float safe_d=denominators[warp]>0.0f?denominators[warp]:1.0f;
+            for(unsigned lane=0;lane<32;++lane) probabilities[lane]=probabilities[lane]/safe_d;
+            for(uint64_t column=0;column<R;++column) {
+                for(unsigned lane=0;lane<32;++lane) {
+                    const uint64_t token=chunk*64+warp*32+lane;lanes[lane]=0.0f;
+                    if(token<L) lanes[lane]=lanes[lane]+probabilities[lane]*cache.at(((row/H)*L+token)*R+column);
+                }
+                latent[warp][column]=warp_tree<false>(lanes);
+            }
+        }
+        float maximum=neutral<true>();
+        for(unsigned warp=0;warp<2;++warp) maximum=accumulate<true>(maximum,maxima[warp]);
+        const float safe_max=open64_reference::finite(maximum)?maximum:0.0f;float masses[2];
+        for(unsigned warp=0;warp<2;++warp)
+            masses[warp]=denominators[warp]==0.0f?0.0f:denominators[warp]*::expf((open64_reference::finite(maxima[warp])?maxima[warp]:0.0f)-safe_max);
+        const float denominator=(0.0f+masses[0])+masses[1],safe_d=denominator>0.0f?denominator:1.0f;
+        for(unsigned warp=0;warp<2;++warp) masses[warp]=masses[warp]/safe_d;
+        const uint64_t base=(chunk*rows+row)*(R+2);out[base]=maximum;out[base+1]=denominator;
+        for(uint64_t column=0;column<R;++column) {
+            float value=0.0f;for(unsigned warp=0;warp<2;++warp) value=value+masses[warp]*latent[warp][column];
+            out[base+2+column]=value;
+        }
+    }
+}
 // Merge normalized local distributions with stable exponential weights.
 // Empty chunks contribute exactly zero before evaluating a rescaling exp.
 template<uint64_t B,uint64_t H,uint64_t L,uint64_t R,uint64_t C,class I>

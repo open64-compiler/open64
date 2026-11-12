@@ -358,11 +358,13 @@ VHO_TENSOR_SCHEDULE schedule(const VHO_TENSOR_PROGRAM &p) {
             VHO_TENSOR_KERNEL k;k.id=k.root=i;k.output=chunks>1?a.partial:a.bundle;k.stage=chunks>1?1:0;
             k.mapping=3;k.chunks=chunks;k.split_width=chunks>1?p.split_width:a.length;
             k.threads=p.chunk_policy>=3 && p.register_latent && k.stage==1 && (k.split_width==32 || k.split_width==64)?k.split_width:p.threads;
-            k.register_statistics=p.chunk_policy==4 && k.stage==1 && k.threads==32 && k.split_width==32;
+            k.register_statistics=p.chunk_policy>=4 && k.stage==1 && k.threads==32 && k.split_width==32;
+            k.warp_owned_partials=p.chunk_policy==6 && p.register_latent && k.stage==1 && k.threads==64 && k.split_width==64;
+            k.two_warp_statistics=p.chunk_policy==5 && p.register_latent && k.stage==1 && k.threads==64 && k.split_width==64;
             UINT32 ids[]={a.q,a.qr,a.cache,a.rope_cache,a.mask};k.inputs.assign(ids,ids+5);k.elements=VHO_tensor_elements(plan.bindings.values[k.output]);
             plan.kernels.push_back(k);
             if(chunks>1) {
-                k.id=i+4096;k.mapping=4;k.stage=2;k.threads=p.threads;k.register_statistics=false;k.output=a.bundle;k.inputs.clear();k.inputs.push_back(a.partial);
+                k.id=i+4096;k.mapping=4;k.stage=2;k.threads=p.threads;k.register_statistics=false;k.two_warp_statistics=false;k.warp_owned_partials=false;k.output=a.bundle;k.inputs.clear();k.inputs.push_back(a.partial);
                 k.elements=VHO_tensor_elements(plan.bindings.values[k.output]);plan.kernels.push_back(k);
             }
             continue;
@@ -765,8 +767,8 @@ public:
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.operation",decimal(_kernel.id).c_str());
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.mapping",decimal(_kernel.mapping).c_str());
         ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.shared_bytes",decimal(VHO_tensor_shared_bytes(_program,_kernel)).c_str());
-        if(_program.chunk_policy==4) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_statistics",
-            _kernel.register_statistics?"warp_register_broadcast":_kernel.mapping>=3?"shared":"none");
+        if(_program.chunk_policy>=4) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_statistics",
+            _kernel.warp_owned_partials?"warp_owned_partials":_kernel.register_statistics?"warp_register_broadcast":_kernel.two_warp_statistics?"two_warp_register_broadcast":_kernel.mapping>=3?"shared":"none");
         if(_program.auto_chunks) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.chunk_selection",VHO_tensor_chunk_selection_identity(_program).c_str());
         if(_program.register_latent) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_accumulation",_kernel.mapping>=3?"register_4_columns_per_warp":"none");
         if(_program.fuse_attention) ST_tensor_bind_metadata(ST_st_idx(function),"tensor.kernel.attention_layout",
@@ -800,7 +802,9 @@ UINT64 VHO_tensor_grid(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERNEL &k) {
 
 /* Shared storage is selected explicitly and checked against mapped metadata. */
 UINT64 VHO_tensor_shared_bytes(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERNEL &k) {
+    if(k.warp_owned_partials) return 8*(VHO_tensor_attention(p).rank+2);
     if(k.register_statistics) return 0;
+    if(k.two_warp_statistics) return 4*(64+4);
     if(k.mapping<3) return k.mapping==2?640:0;
     UINT64 count=k.mapping==3?k.split_width:k.chunks;
     UINT64 quantum=k.mapping==3?k.threads:128;
@@ -927,9 +931,9 @@ BOOL VHO_tensor_verify_kernel(const VHO_TENSOR_PROGRAM &p,UINT32 ordinal,FILE *d
             const char *selection=ST_tensor_metadata(st,"tensor.kernel.chunk_selection");
             need(selection && VHO_tensor_chunk_selection_identity(p)==selection,"automatic selection metadata mismatch");
         }
-        if(p.chunk_policy==4) {
+        if(p.chunk_policy>=4) {
             const char *statistics=ST_tensor_metadata(st,"tensor.kernel.attention_statistics");
-            std::string expected_statistics=kernel.register_statistics?"warp_register_broadcast":kernel.mapping>=3?"shared":"none";
+            std::string expected_statistics=kernel.warp_owned_partials?"warp_owned_partials":kernel.register_statistics?"warp_register_broadcast":kernel.two_warp_statistics?"two_warp_register_broadcast":kernel.mapping>=3?"shared":"none";
             need(statistics && expected_statistics==statistics,"attention statistics mismatch");
         }
         if(p.register_latent) {
