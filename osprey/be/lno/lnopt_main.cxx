@@ -75,6 +75,7 @@
 #include "config_dsl.h"
 #include "dsl_partition_axis.h"
 #include "dsl_high_admission.h"
+#include "dsl_high_snapshot.h"
 #include "config_opt.h"
 #include "erbe.h"
 #include "glob.h"		    /* Irb_File_Name, Cur_PU_Name */
@@ -1018,6 +1019,14 @@ extern WN * Lnoptimizer(PU_Info* current_pu,
   STDOUT = stdout;
   last_loop_num = 0;
 
+  /* LNO owns this PU activation and expires captured facts before its first
+   * subsequent mutation. Owned records outlive analysis-map/pool cleanup.
+   * Design: doc/AI-COMPILER-SEARCH-M2B-OWNED-SNAPSHOT-v1.0.md. */
+  DSL_HIGH_EPOCH high_epoch(Cur_PU_Name ? Cur_PU_Name : "active-pu");
+  DSL_HIGH_SNAPSHOT high_snapshot;
+  DSL_HIGH_BINDINGS high_bindings;
+  FILE *high_snapshot_trace = NULL;
+
   MEM_POOL_Initialize(&ARA_memory_pool, "ARA_memory_pool", FALSE);
   MEM_POOL_Push(&ARA_memory_pool);
 
@@ -1366,9 +1375,27 @@ extern WN * Lnoptimizer(PU_Info* current_pu,
         !LNO_Run_Lego && !Run_autopar && !PU_has_mp(Get_Current_PU()) && !PU_mp(Get_Current_PU())) {
       FILE *high_trace = VHO_DSL_AI_Opt_Trace &&
           Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG) ? TFile : NULL;
-      LNO_DSL_admit_common_high(func_nd, Du_Mgr, Alias_Mgr, Array_Dependence_Graph, high_trace);
+      if (LNO_DSL_admit_common_high(func_nd, Du_Mgr, Alias_Mgr, Array_Dependence_Graph, high_trace)) {
+        high_bindings = LNO_DSL_high_bindings(Src_File_Name);
+        std::string reason;
+        if (LNO_DSL_capture_high(func_nd, Du_Mgr, Alias_Mgr, Array_Dependence_Graph,
+            high_epoch, high_bindings, high_snapshot, reason)) {
+          high_snapshot_trace = high_trace;
+          high_snapshot.Print(high_trace, "CAPTURE");
+        } else if (high_trace) {
+          fprintf(high_trace, "AI_HIGH_SNAPSHOT 1 REFUSED reason=%s fallback=ordinary_lno\n", reason.c_str());
+        }
+      }
     }
-  
+
+    /* All ordinary LNO work below may change source or analysis state. No
+     * detached fact may be reused as current across this coarse boundary. */
+    high_epoch.Before_mutation();
+    if (high_snapshot_trace) fprintf(high_snapshot_trace,
+        "AI_HIGH_SNAPSHOT 1 INVALIDATION live_epoch=%llu:%llu snapshot_current=%s reason=legacy_lno_mutation\n",
+        (unsigned long long)high_epoch.Stamp().activation, (unsigned long long)high_epoch.Stamp().mutation,
+        high_snapshot.Is_current(high_epoch, high_bindings) ? "true" : "false");
+    high_snapshot.Print(high_snapshot_trace, "EXPIRE_BEFORE_HOIST");
     Hoist_Varying_Lower_Bounds(func_nd); 
 #ifndef TARG_X8664
     // Move If_MinMax() after Array_Substutution() so that
@@ -1694,6 +1721,8 @@ return_point:
   MEM_POOL_Pop(&ARA_memory_pool);
   MEM_POOL_Delete(&ARA_memory_pool);
   LNO_Restore_Configs();
+  high_epoch.Close();
+  high_snapshot.Print(high_snapshot_trace, "OWNED_AFTER_CLEANUP");
   return func_nd;
 }
 
