@@ -1,5 +1,19 @@
 # AI Compiler Optimization Implementation Plan
 
+## H20 next design phase, 2026-11-12
+
+The user has confirmed H20 96 GB servers. Start the proposed
+[H20 memory-hierarchy implementation queue](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.0.md)
+under [optimization design v0.9](AI_compiler_optimization_design_v0.9.md) and
+[resource/memory design v0.2](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.2.md).
+H0 discovers/qualifies hardware; H1-H3 supply versioned profiles, owned facts
+and complete detached costing; H4R/H4N, H5 and H6 deliver Reduction/LayerNorm,
+GEMM and MLA; H7 qualifies the four-suite release; H8 is optional cluster reuse.
+These are planned milestones. Existing historical completion/evidence below
+retains its original scope. This design does not mark PERF0-PERF6 implemented
+or reopen deferred AOT selection policy, PREOPT COMMENT repair or OpenCTI.
+
+
 # Precision policy implementation increment
 
 November 6 2026 | PREC0 through PREC4 open; documentation-only policy adoption

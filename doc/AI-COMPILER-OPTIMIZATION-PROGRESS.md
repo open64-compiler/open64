@@ -1,5 +1,19 @@
 # AI Compiler Optimization Progress
 
+## H20 next-phase design, 2026-11-12
+
+Versioned [optimization design v0.9](AI_compiler_optimization_design_v0.9.md),
+[resource/memory design v0.2](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.2.md)
+and [H20 implementation plan](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.0.md)
+propose the next four-operator workstream. H20 96 GB is user-confirmed;
+live inventory, measurements and all H0-H8 implementation gates are pending.
+Current source gaps include synthetic target envelopes, analysis-only MR2
+grouped materialization, Q6 strict-path serial/few-owner work, and Reduction
+selected-execution acceptance. Design publication does not accept those gaps
+or change the status of prior PRs. AOT selection policy, PREOPT COMMENT repair
+and OpenCTI remain deferred.
+
+
 Snapshot: 2026-10-30, integrated against `develop` at `ecbb857f` (merged PR #202)
 Scope: Open64 AI optimization, with standalone rank-2 F32 GEMM as the first
 generated-kernel case. This is a running status ledger, not a replacement for
