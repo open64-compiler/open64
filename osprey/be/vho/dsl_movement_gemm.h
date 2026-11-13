@@ -20,4 +20,8 @@ extern BOOL VHO_DSL_capture_gemm_movement(WN *,const DSL_TILE_SITE_RECORD &,
  * The owning selector supplies legality/capability; no native state is read. */
 extern bool VHO_DSL_gemm_h3_plan(const DSL_TILE_PLAN_RECORD &,const DSL_FETCH_PLAN_RECORD &,
     const DSL_HARDWARE_DESCRIPTION_RECORD &,DSL_H3_PLAN &,std::string &);
+/* H4 uses H2 layout/alias/lifetime admission and exact staged consumer counts
+ * for both original and retained siblings. No native mutation or profiling. */
+extern bool VHO_DSL_gemm_h4_plan(const DSL_TILE_PLAN_RECORD &,const DSL_FETCH_PLAN_RECORD &,
+    const DSL_HARDWARE_DESCRIPTION_RECORD &,const DSL_MOVEMENT_FACTS &,DSL_H3_PLAN &,std::string &);
 #endif

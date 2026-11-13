@@ -5,8 +5,10 @@
  * No executable/native allocation or new algebra/alias proof is introduced.
  * H3 separately projects admitted work counts for physical estimation.
  * Designs: doc/AI-COMPILER-H2-OWNED-MOVEMENT-FACTS-v1.0.md and
- * doc/AI-COMPILER-H3-MOVEMENT-COSTING-v1.0.md. */
+ * doc/AI-COMPILER-H3-MOVEMENT-COSTING-v1.0.md and
+ * doc/AI-COMPILER-H4-GEMM-HIERARCHY-v1.0.md. */
 #include "dsl_movement_gemm.h"
+#include "dsl_gemm_hierarchy.h"
 #include "../com/dsl_movement_native.h"
 #include "dsl_shape.h"
 #include "config.h"
@@ -100,4 +102,40 @@ bool VHO_DSL_gemm_h3_plan(const DSL_TILE_PLAN_RECORD &tile,const DSL_FETCH_PLAN_
     }
     if(!DSL_movement_add(stage.scalar_ops,stage.read_requests/4,stage.issue_ops)) {reason="h3_gemm_issue_overflow";return false;}
     plan.stages.push_back(stage);out=plan;reason="projected";return true;
+}
+
+/* Count the same selected consumer the native builder emits. H2 source facts
+ * are prerequisites, never rewritten to predicted shared traffic. Full fixed
+ * geometry/layout/capability identity prevents equal-cost recipe aliasing. */
+bool VHO_DSL_gemm_h4_plan(const DSL_TILE_PLAN_RECORD &tile,const DSL_FETCH_PLAN_RECORD &fetch,
+    const DSL_HARDWARE_DESCRIPTION_RECORD &hardware,const DSL_MOVEMENT_FACTS &facts,DSL_H3_PLAN &out,std::string &reason)
+{
+    if(!facts.Available() || facts.Capture().binding.family!="GEMM" || facts.Capture().accesses.size()!=3 ||
+        !facts.Capture().accesses[0].reuse_proved || !facts.Capture().accesses[1].reuse_proved ||
+        facts.Capture().work.extents.size()!=3 || facts.Capture().work.extents[0]!=tile.problem_m ||
+        facts.Capture().work.extents[1]!=tile.problem_n || facts.Capture().work.extents[2]!=tile.problem_k ||
+        tile.legality!=DSL_OPT_LEGALITY_PROVEN || fetch.legality!=DSL_OPT_LEGALITY_PROVEN || fetch.resources.model!=1) {reason="h4_missing_admission";return false;}
+    // Native semantic/type admission is the owner's earlier boundary. This
+    // projection rechecks only copied resource/count evidence, with no TY read.
+    DSL_FETCH_RESOURCE_RECORD resources;
+    if(!VHO_DSL_fetch_resource_requirements(tile,fetch,&resources) ||
+        memcmp(&resources,&fetch.resources,sizeof(resources))) {reason="h4_resource_recipe_changed";return false;}
+    DSL_H3_PLAN plan;if(!VHO_DSL_gemm_h3_plan(tile,fetch,hardware,plan,reason)) return false;
+    DSL_H3_STAGE &stage=plan.stages[0];
+    if(!(fetch.flags&DSL_FETCH_PLAN_FLAG_DIRECT)) {
+        DSL_GEMM_HIERARCHY_WORK work;
+        if(!VHO_DSL_gemm_hierarchy_work(tile.cta_m,tile.cta_n,tile.cta_k,tile.thread_m,tile.thread_n,tile.problem_k,
+            (fetch.flags&DSL_FETCH_PLAN_FLAG_RETAIN_B)!=0,work,reason)) return false;
+        uint64_t requests,loads;
+        if(!DSL_movement_add(work.shared_reads,work.shared_writes,stage.shared_requests) ||
+            !DSL_movement_add(stage.read_requests,stage.write_through_requests,requests) ||
+            !DSL_movement_add(requests/4,stage.shared_requests/4,loads) ||
+            !DSL_movement_add(work.scalar_ops,loads,stage.issue_ops)) {reason="h4_issue_overflow";return false;}
+        stage.scalar_ops=work.scalar_ops;
+    }
+    std::ostringstream identity;identity<<"h4/"<<plan.id<<"/"<<tile.problem_m<<','<<tile.problem_n<<','<<tile.problem_k<<','<<tile.source_descriptor_ty<<'/'<<tile.cta_m<<','<<tile.cta_n<<','<<tile.cta_k<<','
+        <<tile.thread_m<<','<<tile.thread_n<<','<<tile.a_shared_layout<<','<<tile.b_shared_layout<<','<<tile.a_shared_stride<<','
+        <<fetch.flags<<','<<fetch.stage_count<<','<<fetch.prefetch_distance<<','<<fetch.issue_point<<','<<fetch.arrival_barrier<<','<<fetch.wait_point;
+    plan.id=stage.id=identity.str();plan.capability="H4-F32-D-S1-T2-and-scalar-B-retention";
+    out=plan;reason="h4-owned-work";return true;
 }

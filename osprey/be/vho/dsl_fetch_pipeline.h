@@ -57,7 +57,9 @@ enum {
     DSL_FETCH_PLAN_FLAG_ASYNC = 0x00000004,
     DSL_FETCH_PLAN_FLAG_SEMANTICS_PRESERVING = 0x00000008,
     /* A logical demand stage with no physical software-managed buffer. */
-    DSL_FETCH_PLAN_FLAG_DIRECT = 0x00000010
+    DSL_FETCH_PLAN_FLAG_DIRECT = 0x00000010,
+    /* H4 runtime-only selected consumer: scalar B registers across output rows. */
+    DSL_FETCH_PLAN_FLAG_RETAIN_B = 0x00000020
 };
 
 enum {

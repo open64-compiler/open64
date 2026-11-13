@@ -82,6 +82,7 @@ DSL_fetch_wait_point_name (UINT32 point)
  * selection and tile joins, direct-versus-staged fields, stored cost sums and
  * optional resource ledgers. A version-one ledger must fit its recorded limits
  * for a proven plan; target formulas and semantic legality are not re-proved.
+ * The H4 flag is runtime-only vocabulary; owning VHO preflights its meaning.
  * Return FALSE at the first detected defect with optional diagnostics, leaving
  * caller records and the store unchanged. */
 BOOL
@@ -116,6 +117,7 @@ DSL_fetch_pipeline_ir_verify
                                  DSL_FETCH_PLAN_FLAG_PROVISIONAL |
                                  DSL_FETCH_PLAN_FLAG_ASYNC |
                                  DSL_FETCH_PLAN_FLAG_DIRECT |
+                                 DSL_FETCH_PLAN_FLAG_RETAIN_B |
                                  DSL_FETCH_PLAN_FLAG_SEMANTICS_PRESERVING;
             if (plan.id != expected_plan || plan.site_id != site.id ||
                 plan.tile_plan_id != site.selected_tile_plan_id ||

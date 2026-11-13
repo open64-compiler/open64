@@ -1,5 +1,8 @@
 # Common Execution Planning For AI Building Blocks
 
+H4 implementation update: [GEMM hierarchy v1.0](AI-COMPILER-H4-GEMM-HIERARCHY-v1.0.md) consumes H2/H3 ownership and finite request budgets to compare staged B scalar retention with the existing consumers. The saved shared/issue work and extra RF reservation are explicit; no source/global traffic reduction or hardware speedup is inferred. Fixed selected application and COMMENT generation stay in the existing VHO/driver path. See [plan v1.5](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.5.md).
+
+
 H3 implementation update, 2026-11-12:
 [physical costing v1.0](AI-COMPILER-H3-MOVEMENT-COSTING-v1.0.md) consumes the
 owned H2 projections with exact H20/profile/model dependencies. A separate ns
