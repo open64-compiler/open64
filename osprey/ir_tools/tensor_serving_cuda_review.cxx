@@ -1,7 +1,8 @@
 /* Copyright (C) 2026 Open64 Project */
-/* Q6d test-only embedding ABI. Typed code is decoded from owner-authenticated
+/* Q6d model / Q7 real-Driver private qualification ABI. Typed code is decoded from owner-authenticated
  * Q6c fixtures; this does not define a serving-engine packaging/selection ABI.
- * Contract: doc/AI-COMPILER-MLA-Q6D-DEVICE-BINDINGS-v1.0.md. */
+ * Contracts: doc/AI-COMPILER-MLA-Q6D-DEVICE-BINDINGS-v1.0.md and
+ * doc/AI-COMPILER-MLA-Q7-QUALIFICATION-v1.0.md. */
 #include "../be/vho/tensor_serving_cuda.h"
 #include "../be/vho/tensor_q1_program.h"
 #include "../rapidjson/document.h"
@@ -26,12 +27,18 @@ static VHO_MLA_CUDA_CODE Q6D_decode(const char *wire) {
     for(unsigned i=0;i<3;++i) {code.stage_keys[i]=j["stages"][i]["native_key"].GetString();code.names[i]=j["stages"][i]["function"].GetString();code.grid[i]=j["stages"][i]["grid_x"].GetUint64();code.block[i]=j["stages"][i]["block_x"].GetUint64();code.shared[i]=j["stages"][i]["shared_bytes"].GetUint64();}return code;
 }
 extern "C" {
-/* Test Open keeps a cleanup-only object reachable after any acquired-resource failure. */
-void *open64_q6d_create(const char *wire,const char *approved,const void *image,size_t bytes,bool (*hash)(const void *,size_t,unsigned char *)) {
+/* Qualification owner supplies actual current context and nondefault streams.
+ * Authentication is external to this private fixture decoder. Failed Open
+ * keeps acquired resources reachable; this is not a serving-engine ABI. */
+void *open64_q6d_create_on(const char *wire,const char *approved,const void *image,size_t bytes,bool (*hash)(const void *,size_t,unsigned char *),void *context,void *producer,void *execution) {
     Q6D_REVIEW_SESSION *s=new Q6D_REVIEW_SESSION;s->runtime=NULL;s->hash=hash;
     try {s->approved=Q6D_decode(approved);VHO_MLA_CUDA_CODE code=Q6D_decode(wire);VHO_MLA_CUDA_HOOKS hooks={s,Q6D_authorize,Q6D_hash};
-        VHO_MLA_CUDA::Open(code,image,bytes,(void *)0x101,(void *)0x201,(void *)0x202,hooks,s->runtime,s->error);
+        VHO_MLA_CUDA::Open(code,image,bytes,context,producer,execution,hooks,s->runtime,s->error);
     }catch(const std::exception &e){s->error=e.what();}return s;
+}
+/* Preserve the existing Q6d model entry and its synthetic handle identities. */
+void *open64_q6d_create(const char *wire,const char *approved,const void *image,size_t bytes,bool (*hash)(const void *,size_t,unsigned char *)) {
+    return open64_q6d_create_on(wire,approved,image,bytes,hash,(void *)0x101,(void *)0x201,(void *)0x202);
 }
 /* Diagnostic-only refusal text never grants a device lease. */
 const char *open64_q6d_error(void *p) {return ((Q6D_REVIEW_SESSION *)p)->error.c_str();}
@@ -61,8 +68,11 @@ int open64_q6d_cancel(void *p,UINT64 ticket,int wait) {auto s=(Q6D_REVIEW_SESSIO
 int open64_q6d_drain(void *p) {auto s=(Q6D_REVIEW_SESSION *)p;return s->runtime->Drain(s->error);}
 /* Pending token freshness does not expose an unpinned pointer. */
 int open64_q6d_live(void *p,UINT64 ticket) {auto s=(Q6D_REVIEW_SESSION *)p;return s->runtime->Is_live(ticket);}
-/* Consumer stream obtains a single atomic cache/scale/map reader lease. */
-int open64_q6d_reader(void *p,UINT64 bundle,UINT64 *reader,UINT64 *addresses,unsigned *count) {auto s=(Q6D_REVIEW_SESSION *)p;std::vector<UINT64> out;bool ok=s->runtime->Reader(bundle,(void *)0x203,*reader,out,s->error);if(ok){*count=out.size();for(unsigned i=0;i<out.size();++i)addresses[i]=out[i];}return ok;}
+/* Qualification caller supplies an actual consumer stream. The fixed MLA
+ * contract bounds the whole tuple to seven views; caller reserves 16 slots. */
+int open64_q6d_reader_on(void *p,UINT64 bundle,UINT64 *reader,UINT64 *addresses,unsigned *count,void *stream) {auto s=(Q6D_REVIEW_SESSION *)p;std::vector<UINT64> out;bool ok=s->runtime->Reader(bundle,stream,*reader,out,s->error);if(ok){*count=out.size();for(unsigned i=0;i<out.size();++i)addresses[i]=out[i];}return ok;}
+/* Preserve the model consumer identity without changing its publication path. */
+int open64_q6d_reader(void *p,UINT64 bundle,UINT64 *reader,UINT64 *addresses,unsigned *count) {return open64_q6d_reader_on(p,bundle,reader,addresses,count,(void *)0x203);}
 /* Consumer completion is recorded once and retryable on pending/error. */
 int open64_q6d_reader_done(void *p,UINT64 reader,int wait) {auto s=(Q6D_REVIEW_SESSION *)p;return s->runtime->Reader_done(reader,wait,s->error);}
 /* No cache/scale component can retire while a consumer or parent user is live. */

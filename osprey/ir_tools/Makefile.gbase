@@ -1358,3 +1358,10 @@ LDIRT += mla_cuda_driver_mock.o tensor_serving_cuda_review.o libmla_serving_cuda
 mla_serving_registry.o: $(BE_VHO_DIR)/tensor_serving.cxx $(BE_VHO_DIR)/tensor_serving.h $(BE_VHO_DIR)/tensor_quantized_movement.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) -std=c++11 -fPIC -pthread $< -o $@
 LDIRT += mla_serving_registry.o
+
+# Q7 qualification links the same adapter/registry to the actual Driver.
+# The SDK stub is link-only: never add its directory to a runtime search path.
+# No model implementation or test-counter registry enters this library.
+libmla_serving_cuda_q7.so: tensor_serving_cuda_review.o mla_serving_cuda.o mla_serving_registry.o tensor_attention_search.o $(BUILD_AREA)/be/be.so
+	$(link.c++f) -shared -pthread -o $@ tensor_serving_cuda_review.o mla_serving_cuda.o mla_serving_registry.o tensor_attention_search.o -L$(BUILD_AREA)/be -l:be.so -L$(CUDA_HOME)/lib64/stubs -L$(CUDA_HOME)/lib/stubs -lcuda -Wl,-rpath,'$$ORIGIN/../be' $(TENSOR_KERNEL_FLAGS)
+LDIRT += libmla_serving_cuda_q7.so
