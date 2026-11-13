@@ -96,7 +96,7 @@ def main():
         before, after = reopen(case / 'source.before.B', case), reopen(case / 'source.after.B', case)
         difference(before, after, case / 'source.before-after.diff')
         run('whirl2c', [tools / 'whirl2c/whirl2c', '-cuda', '-TARG:abi=n64', '-O0',
-            '-CLIST:dotc_file=' + str(case / 'selected.native.cu'), '-CLIST:doth_file=' + str(case / 'selected.native.h'), case / 'selected.B'], case)
+            '-ft,' + str(case / 'whirl2c.phase.t'), '-CLIST:dotc_file=' + str(case / 'selected.native.cu'), '-CLIST:doth_file=' + str(case / 'selected.native.h'), case / 'selected.B'], case)
         chosen = int(re.search(r'AI_H3_SELECT 1 family=GEMM tile=(\d+)', phase)[1])
         tile = next(line.split() for line in phase.splitlines() if line.startswith('AI_OPT 7 TILE_CAND ') and int(line.split()[4]) == chosen)
         grid = next(line.split() for line in phase.splitlines() if line.startswith('AI_OPT 7 TILE_GRID ') and int(line.split()[4]) == chosen)
@@ -129,9 +129,10 @@ def main():
         difference(before, after, case / 'selected.before-after.diff')
         assert 'H3 chose this existing executable recipe' in after.read_text()
         c = case / 'selected.reference.cu'
-        run('whirl2c', [tools / 'whirl2c/whirl2c', '-TARG:abi=n64', '-O0', '-CLIST:dotc_file=' + str(c),
+        run('whirl2c', [tools / 'whirl2c/whirl2c', '-TARG:abi=n64', '-O0', '-ft,' + str(case / 'whirl2c.phase.t'), '-CLIST:dotc_file=' + str(c),
             '-CLIST:doth_file=' + str(c.with_suffix('.h')), case / 'selected.after.B'], case)
         assert 'H3 chose this existing executable recipe' in c.read_text()
+        assert after.stat().st_size and 'H3 chose this existing executable recipe' in after.read_text()
         library = case / 'selected.reference.so'
         run('compile', ['gcc', '-x', 'c', '-std=c99', '-O2', '-shared', '-fPIC', '-ffp-contract=off', '-fno-fast-math',
             '-I' + str(source / 'osprey/include'), '-include', source / 'osprey/be/lno/tests/common_high_host.h', c, '-lm', '-o', library], case)
@@ -163,8 +164,9 @@ def main():
         difference(a, b, case / 'normalization.device.before-after.diff')
         cuda = case / 'normalization.cu'
         run('norm-whirl2c', [tools / 'whirl2c/whirl2c', '-cuda', '-TARG:abi=n64', '-O0',
-            '-CLIST:dotc_file=' + str(cuda), '-CLIST:doth_file=' + str(cuda.with_suffix('.h')),
+            '-ft,' + str(case / 'normalization.whirl2c.phase.t'), '-CLIST:dotc_file=' + str(cuda), '-CLIST:doth_file=' + str(cuda.with_suffix('.h')),
             case / 'normalization.device.after.B'], case)
+        assert b.stat().st_size and b.read_text()
         sys.path.insert(0, str(source / 'osprey/be/opt/tests'))
         from normalization_lower_trace_report import audit
         from normalization_lower_host import adapter, datasets, protocol, audit_output
