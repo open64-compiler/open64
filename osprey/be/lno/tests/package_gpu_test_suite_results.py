@@ -11,11 +11,16 @@ from pathlib import Path
 import tarfile
 import tempfile
 import sys
-from gpu_test_suite_common import catalog,snapshot,write,ROOT,RETURN_SCHEMA,ROLES
+from gpu_test_suite_common import catalog,snapshot,write,ROOT,RETURN_SCHEMA,ROLES,roles
 from package_mla_q7_results import digest_file,capture_environment,snapshot_file
 
 
 def collect(args):
+    """Snapshot drained workload data, including optional H7, into a sealed return.
+
+    Keep malformed/partial evidence and environment observations; run no tests,
+    compile, search or acceptance logic. Existing output paths are never replaced.
+    """
     packet=args.packet.resolve();run=args.run.resolve();output=args.output.absolute();checksum=Path(str(output)+'.sha256')
     if run==packet or packet in run.parents:raise ValueError('run outputs must be outside the source packet')
     if output.exists() or output.is_symlink() or checksum.exists() or checksum.is_symlink():raise ValueError('return files already exist')
@@ -43,9 +48,12 @@ def collect(args):
             for source in (inner,Path(str(inner)+'.sha256')):
                 if snapshot_file(source,bundle/'results/mla-q7'/source.name):notes.append(dict(path=str(source),reason='native Q7 archive changed during snapshot'))
         else:snapshot(native,bundle/'results/mla-q7/raw-partial',notes)
+        if 'h20' in table['packets']:snapshot(run/'h20',bundle/'results/h20',notes)
         environment=capture_environment(bundle/'environment',args.command_timeout)
         profiles={role:dict(kind='q7_return' if role=='mla-q7' else 'shared_json',
-            path='results/mla-q7/Open64_MLA_Q7_results.tar.gz' if role=='mla-q7' else 'results/'+role+'/result.json') for role in ROLES}
+            path='results/mla-q7/Open64_MLA_Q7_results.tar.gz' if role=='mla-q7' else 'results/'+role+'/result.json') for role in roles(table)}
+        for role,entry in profiles.items():
+            if role.startswith('h20-'):entry.update(path='results/h20/'+role+'/result.json')
         for entry in profiles.values():entry['present']=(bundle/entry['path']).is_file()
         write(bundle/'suite-results.json',dict(schema='open64.gpu-test.suite-results.v1',profiles=profiles,
             assessment='NOT_ASSESSED_BY_COLLECTOR',timings_pooled=False,profiling_separate=True))
@@ -55,7 +63,7 @@ def collect(args):
             search_invocations=0,environment_commands=environment['commands'],scaffold_build_evidence=build_evidence))
         (bundle/'README.md').write_text('''# Combined GPU test return
 
-This is collected evidence, not test acceptance. Three workloads retain their
+This is collected evidence, not test acceptance. Independent workload profiles retain their
 own numerical contracts, timing scopes, ratios and independent profiling files.
 Use validate_gpu_test_suite.py with the exact original combined source packet.
 Native Q7 evidence is preserved in its authenticated inner tar. If native

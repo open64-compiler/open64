@@ -1,5 +1,10 @@
 # AI Compiler Optimization Implementation Plan
 
+## H7 GPU qualification integration, 2026-11-13
+
+[H7 specification](AI-COMPILER-H7-H20-QUALIFICATION-v1.0.md) and [H20 plan v1.8](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.8.md) define frozen selected-artifact qualification, observed H20 identity/resources, independent correctness/four-sanitizer gates, separate wall/event timing and optional profiling, integrated collection/shared return review and existing GS1/GS2 ownership. Old suites/scripts remain byte-identical. This extends software infrastructure only; actual device results, synthetic-profile calibration, matched native baselines and broader TMA providers remain visible gates. Search/WHIRL/COMMENT/fallback contracts remain; AOT serving selection and OpenCTI stay deferred.
+
+
 ## H6 explicit-contract memory-hierarchy delivery, 2026-11-12
 
 [H6 specification](AI-COMPILER-H6-NORM-REDUCTION-v1.0.md),
