@@ -5,6 +5,52 @@ scalar WHIRL adapter implemented; native FP8/FP4 support remains planned.
 Current D/S1/T2 device kernels remain scalar FP32. Open64
 `F4` means four-byte FP32, not four-bit FP4.
 
+## Precision Policy Amendment
+
+November 6 2026: **FP8 operands where authorized; FP16 or FP32 reduction, with
+FP32 as the default.** This is the governing policy for new AI precision
+realizations. It does not change existing native contracts, format IDs, mapped
+images or accepted FP32-only materializers.
+
+Storage/operand dtype, product precision, internal MMA partial precision,
+outer reduction dtype and output dtype are separate fields of the numerical
+plan. Support FP16 and FP32 reduction-state alternatives; FP8 storage or MMA
+operands do not authorize FP8 reduction state. FP32 is the default only when an
+accepted source/region contract does not already bind a different arithmetic
+recipe. An FP16 realization requires an explicit source contract or authorized
+alternative, numerical acceptance and exact target/instruction support.
+
+Retain FP32 in the initial long-reduction, LayerNorm/RMSNorm statistics and
+Softmax-denominator recipes. Input conversion/dequantization, squared-value
+arithmetic, partial merges and final output conversion must use the precisions
+bound by that recipe. Do not silently convert an ordered FP32 fold to FP16,
+reassociate it, or assume FP32 accumulation reproduces an ordered FP16 fold.
+
+FP8 admission includes the exact E4M3/E5M2 representation, scale format and
+granularity, scale ownership/lifetime, rounding, saturation/overflow and
+subnormal behavior. Source narrowing needs explicit authorization and an
+accepted numerical recipe; hardware capability or a lower estimated cost is
+insufficient. FP64 source semantics remain supported unless separately
+authorized for conversion; FP64 oracles do not require FP64 device execution.
+
+Hopper partial-sum promotion and Blackwell scale/instruction profiles remain
+distinct. The requested FP16/FP32 reduction or outer-state type does not invent
+an internal MMA precision guarantee. Require instruction-specific evidence and
+applicable numerical acceptance; preserve the original or certified
+source-compatible fallback when those obligations are unresolved.
+
+Extend existing common numerical/representation records and their verifiers
+only through reviewed, compatible contracts. Common/com owns structural facts;
+the owning optimization phase owns numerical admission, complete-plan costs
+and selection. WHIRL carries explicit selected conversions, scale operations,
+state types and promotion/merge order; emitters must not choose precision.
+
+PREC0-PREC4 in the implementation plan cover this extension. Existing text
+requiring FP32 for a particular implemented API/profile remains its supported
+subset, not evidence that FP16 reduction or native FP8 lowering already works.
+No new option, source narrowing, GPU certification or performance-framework
+implementation is introduced by this documentation amendment.
+
 MMA1 appends runtime numerical-format identities F16/BF16 (5/6), preserving
 existing IDs and layouts, for its [compute contract inventory](AI-COMPILER-MMA1-TARGET-INVENTORY.md).
 The existing segmented accumulation API and scalar materializer retain their

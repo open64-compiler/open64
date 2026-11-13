@@ -33,6 +33,8 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "dsl_builder.h"
+#include "dsl_image_service.h"
+#include "../be/com/dsl_ir_rewrite.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_shape.h"
 #include "../torch2whirl/python/native/quantized_cache_inference.h"

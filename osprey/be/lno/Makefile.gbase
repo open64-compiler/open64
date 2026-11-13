@@ -160,6 +160,7 @@ SRC_DIRS = \
   $(BE_REGION_DIR)	
 
 HEADER_DIRS = \
+  $(BE_DIR)/vho         \
   $(SRC_DIRS)		\
   $(BE_OPT_DIR)		\
   $(BE_REGION_DIR)	\
@@ -391,7 +392,7 @@ dsl_high_search_test.o: $(BE_LNOPT_DIR)/tests/dsl_high_search_control_test.cxx $
 tensor_attention_search_test.o: $(BE_DIR)/vho/tensor_attention_search.cxx $(BE_DIR)/vho/tensor_attention_search.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) -DVHO_MLA_SEARCH_TEST_CLOCK $< -o $@
 
-dsl_high_search_hardware.o: $(COMMON_COM_DIR)/dsl_memory_hierarchy.cxx
+dsl_high_search_hardware.o: $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_memory_hierarchy.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
 dsl_high_search_control_test: dsl_high_search_test.o tensor_attention_search_test.o dsl_high_search_hardware.o dsl_high_observer.o dsl_high_observer_json.o dsl_high_snapshot.o tensor_schedule.o tensor_attention_chunk_select.o
