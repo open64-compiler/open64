@@ -7,6 +7,7 @@
 #include "opt_dsl_movement.h"
 #include "dsl_memory_hierarchy.h"
 #include "config_dsl.h"
+#include "config.h"
 
 /* Checked arithmetic for scratch extents, resource reservation and CTA coverage. */
 static BOOL
@@ -182,6 +183,7 @@ WOPT_DSL_bind_reduction_staged(WN *scope, WN *assignment,
     if(b.status==WOPT_DSL_REDUCE_STAGED_BOUND) {
       DSL_MOVEMENT_FACTS facts;std::string reason;
       if(WOPT_DSL_capture_staged_movement(scope,assignment,request,facts,reason)) facts.Print(trace,"BOUND_STAGING");
+      if(VHO_DSL_H3_Search && Opt_Level>=3) {WOPT_DSL_REDUCTION_MOVEMENT_COST cost;WOPT_DSL_cost_reduction_movement(scope,assignment,request,*VHO_DSL_H3_Search,cost,reason,trace);}
     }
     if (b.base.gpu_stamp.bound) {
       const DSL_GPU_PLAN_SNAPSHOT gpu = DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);

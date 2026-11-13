@@ -3,6 +3,7 @@
  * tree/table isolation around detached search. No native mutation on any path.
  * Design: doc/AI-COMPILER-SEARCH-M2C-OBSERVER-v1.0.md. */
 #include "dsl_high_observer.h"
+#include "config_dsl.h"
 #include "pu_info.h"
 #include "wn_util.h"
 #include "config.h"
@@ -102,6 +103,10 @@ void DSL_observer_print(FILE *trace, const DSL_HIGH_SEARCH_REPORT &report, const
         report.manifest_key.c_str(),report.resource_key.c_str(),report.model_key.c_str());
     for (unsigned i = 0; i < result.candidates.size(); ++i) {
         const VHO_MLA_SEARCH_CANDIDATE &candidate = result.candidates[i];
+        if(!report.h3_model_key.empty() && candidate.h3.complete) {
+            DSL_H3_PLAN recipe;std::string why;
+            if(VHO_mla_h3_plan(candidate,input.algorithm,input.gpu,report.data_movement,recipe,why)) VHO_h3_print(trace,report.data_movement,recipe,candidate.h3);
+        }
         if(input.gpu.device.Bound()) for(size_t j=0;j<candidate.stages.size();++j) {
             const VHO_MLA_STAGE_ESTIMATE &stage=candidate.stages[j];
             fprintf(trace,"AI_HIGH_DEVICE_COST 1 candidate=%u stage=%lu physical_known=%u lower_ns=%.17g upper_ns=%.17g complete_cost=false ranking=legacy-reference-cycles\n",
@@ -147,6 +152,7 @@ void DSL_observer_print(FILE *trace, const DSL_HIGH_SEARCH_REPORT &report, const
         result.complete?"true":"false",result.winner,result.complete?"best_estimated_in_declared_space":"best_estimated_among_explored");
     else {
         const VHO_MLA_PRODUCTION_RESULT &production=report.production;
+        if(!report.h3_model_key.empty()) fprintf(trace,"AI_H3_PORTFOLIO 1 model=%s ranking_unit=ns legacy_candidate_cycles=separate\n",report.h3_model_key.c_str());
         fprintf(trace,"AI_HIGH_SEARCH 2 CONTROL_KEY %s\n",report.control_key.c_str());
         for(size_t i=0;i<production.events.size();++i) {
             const VHO_MLA_SEARCH_EVENT &event=production.events[i];
@@ -240,7 +246,7 @@ void LNO_DSL_observe_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias, ARRAY
     uint64_t validation_us = LNO_DSL_observer_time_us()-begin, exploration_us = 0;
     bool observed = false;
     if (valid) {
-        begin = LNO_DSL_observer_time_us(); observed = LNO_DSL_observe_search(input,report,reason,&reuse);
+        begin = LNO_DSL_observer_time_us(); observed = LNO_DSL_observe_search(input,report,reason,&reuse,&movement_source,VHO_DSL_H3_Search);
         exploration_us = LNO_DSL_observer_time_us()-begin;
     }
     std::string current_reason;

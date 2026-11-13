@@ -41,7 +41,7 @@ bool LNO_DSL_validate_search_input(const DSL_HIGH_SNAPSHOT &snapshot, const DSL_
 
 /* Reuse the existing estimator, candidate ordering, cache and scoped conclusion.
  * All fusion flags below describe detached implementation hypotheses only. */
-bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_REPORT &output, std::string &reason,const DSL_HIGH_REUSE_FACTS *reuse) {
+bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_REPORT &output, std::string &reason,const DSL_HIGH_REUSE_FACTS *reuse,const DSL_MOVEMENT_FACTS *h3_facts,DSL_H3_SEARCH *h3_search) {
     output = DSL_HIGH_SEARCH_REPORT();
     VHO_TENSOR_PROGRAM program = input.algorithm;
     program.fuse = program.cooperative = program.fuse_attention = program.register_latent = true;
@@ -60,17 +60,23 @@ bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_
             if(caches[i].role==DSL_TENSOR_TRAIT_LATENT_KV_CACHE) context.latent_payload=caches[i].payload_bytes;
             if(caches[i].role==DSL_TENSOR_TRAIT_ROTARY_KEY_CACHE) context.rotary_payload=caches[i].payload_bytes;
         }
-        if(!VHO_mla_explore_movement(program,input.gpu,input.model,input.controls,context,&result.production,NULL))
+        if(!(h3_search?(h3_facts && VHO_mla_explore_h3(program,input.gpu,input.model,input.controls,&context,*h3_facts,*h3_search,&result.production,NULL)):
+            VHO_mla_explore_movement(program,input.gpu,input.model,input.controls,context,&result.production,NULL)))
             return reason="movement_search_failed",false;
         result.controlled=result.movement=true;result.exploration=result.production.exploration;
         result.control_key=VHO_mla_search_control_key(input.controls);result.movement_key=LNO_DSL_movement_binding(input,*reuse);
     } else if (input.production_controls) {
-        if (!VHO_mla_explore_controlled(program,input.gpu,input.model,input.controls,&result.production,NULL))
+        if (!(h3_search?(h3_facts && VHO_mla_explore_h3(program,input.gpu,input.model,input.controls,NULL,*h3_facts,*h3_search,&result.production,NULL)):
+            VHO_mla_explore_controlled(program,input.gpu,input.model,input.controls,&result.production,NULL)))
             return reason = "controlled_search_failed", false;
         result.controlled = true; result.exploration = result.production.exploration;
         result.control_key = VHO_mla_search_control_key(input.controls);
     } else if (!VHO_mla_explore(program, input.gpu, input.model, options, &result.exploration, NULL))
         return reason = "no_estimated_candidate", false;
+    if(h3_search) {
+        if(!input.production_controls) return reason="h3_requires_production_controls",false;
+        result.h3_model_key=h3_search->Model().key;
+    }
     LNO_DSL_search_report_keys(input,result);
     output = result; reason = "observed"; return true;
 }

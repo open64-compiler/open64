@@ -27,6 +27,7 @@ struct DSL_HIGH_SEARCH_INPUT {
 struct DSL_HIGH_SEARCH_REPORT {
     DSL_HIGH_REUSE_FACTS reuse;
     DSL_MOVEMENT_FACTS data_movement;
+    std::string h3_model_key;
     VHO_MLA_SEARCH_RESULT exploration;
     std::string resource_key, model_key, manifest_key;
     bool controlled;
@@ -47,8 +48,9 @@ extern bool LNO_DSL_read_search_input(const char *, DSL_HIGH_SEARCH_INPUT &, std
 extern bool LNO_DSL_validate_search_input(const DSL_HIGH_SNAPSHOT &, const DSL_HIGH_BINDINGS &,
     const DSL_HIGH_SEARCH_INPUT &, std::string &);
 /* Explore only owned records using the existing finite MLA portfolio. This
- * service has no native handles and never applies or materializes a winner. */
-extern bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &, DSL_HIGH_SEARCH_REPORT &, std::string &, const DSL_HIGH_REUSE_FACTS * = NULL);
+ * service has no native handles and never applies or materializes a winner.
+ * Optional H3 receives owned H2 facts and a shared finite request owner. */
+extern bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &, DSL_HIGH_SEARCH_REPORT &, std::string &, const DSL_HIGH_REUSE_FACTS * = NULL,const DSL_MOVEMENT_FACTS * = NULL,DSL_H3_SEARCH * = NULL);
 extern std::string LNO_DSL_movement_binding(const DSL_HIGH_SEARCH_INPUT &,const DSL_HIGH_REUSE_FACTS &);
 /* Native active-PU wrapper: validate lineage/ABI, guard physical tree/table
  * state, run detached exploration, revalidate analyses and retain fallback.

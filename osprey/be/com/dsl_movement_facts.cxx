@@ -196,3 +196,18 @@ void DSL_movement_source_lifetime(DSL_MOVEMENT_CAPTURE &c,const std::string &sto
     DSL_MOVEMENT_LIFETIME l;l.storage=storage;l.version=version;l.raw_ready=l.decoded_ready=first;
     l.consumer=first+1;l.readers_done=first+2;c.lifetimes.push_back(l);
 }
+
+/* Bound copied standard containers with slack for allocator/node overhead.
+ * Every capacity is charged, including duplicate full-content/key strings. */
+uint64_t DSL_MOVEMENT_FACTS::Storage_charge() const
+{
+    uint64_t bytes=sizeof(*this)+_content.capacity()+_key.capacity()+1024;
+    // The complete framed serialization includes every variable field. Twice
+    // its capacity plus per-record overhead conservatively covers the copied
+    // capture, whose vectors are rebuilt from their actual element counts.
+    uint64_t copy,overhead;
+    if(!DSL_movement_mul(_content.size(),2,copy) ||
+        !DSL_movement_mul(_capture.storages.size()+_capture.accesses.size()+_capture.events.size()+_capture.lifetimes.size()+_capture.edges.size()+64,1024,overhead) ||
+        !DSL_movement_add(bytes,copy,bytes) || !DSL_movement_add(bytes,overhead,bytes)) return ~uint64_t(0);
+    return bytes;
+}

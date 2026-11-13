@@ -1,5 +1,14 @@
 # Common Execution Planning For AI Building Blocks
 
+H3 implementation update, 2026-11-12:
+[physical costing v1.0](AI-COMPILER-H3-MOVEMENT-COSTING-v1.0.md) consumes the
+owned H2 projections with exact H20/profile/model dependencies. A separate ns
+adapter and request-wide finite estimate cache reuse the existing family owners
+and M3 portfolio. Source/physical/legacy-cycle fields and capability remain
+separate; candidate estimation creates no native IR. See [plan v1.4](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.4.md)
+for current executable versus conditional/modeled scope and remaining gates.
+
+
 H2 implementation update, 2026-11-12:
 [owned movement facts v1.0](AI-COMPILER-H2-OWNED-MOVEMENT-FACTS-v1.0.md)
 projects the existing admitted family owners into detached work/storage/access,
