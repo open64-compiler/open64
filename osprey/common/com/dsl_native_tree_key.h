@@ -96,7 +96,7 @@ class DSL_NATIVE_TREE_KEY {
         case OPR_LAND:case OPR_LIOR:case OPR_SELECT:case OPR_LT:case OPR_LE:
         case OPR_GT:case OPR_GE:case OPR_EQ:case OPR_NE:case OPR_CVT:case OPR_CVTL:
         case OPR_ABS:case OPR_NEG:case OPR_INTRINSIC_OP:case OPR_PARM:case OPR_CALL:
-        case OPR_TRUNC:case OPR_SHL:case OPR_LSHR:
+        case OPR_TRUNC:case OPR_SHL:case OPR_LSHR:case OPR_TAS:
         case OPR_LABEL:case OPR_TRUEBR:case OPR_FALSEBR:case OPR_GOTO:break;
         default:throw std::runtime_error("native_key_unsupported_operator");
         }

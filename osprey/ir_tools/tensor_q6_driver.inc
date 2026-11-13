@@ -9,11 +9,9 @@
 UINT64 q6_unsigned(const Json::Value &j,const char *name) {
     need(j.isMember(name) && j[name].isUInt64(),"q6_control_unsigned");return j[name].asUInt64();
 }
-/* Inspect exactly one existing selected High image. Native reader/type-cache
- * initialization is outside the measured read-only admission boundary. */
-int q6_command(int argc,char **argv) {
-    need(argc==5,"q6-contract selected.B control.json output.json");need(access(argv[4],F_OK)!=0,"q6_output_exists");
-    std::string wire=q5_wire(argv[3]);Json::Value control;Json::Reader parser(Json::Features::strictMode());
+/* Decode the same explicit offline envelope for admission and construction. */
+VHO_Q6_CONTROL q6_control(const std::string &wire,Json::Value &control) {
+    Json::Reader parser(Json::Features::strictMode());
     need(parser.parse(wire,control,false) && control.isObject() && control.size()==9,"q6_control_shape");
     Json::FastWriter writer;need(writer.write(control)==wire,"q6_control_requires_canonical_sorted_JSON");
     const char *names[]={"schema","delivery","arch","ptx","toolkit","max_threads","shared_limit","q3_binding_key","scope"};
@@ -24,7 +22,13 @@ int q6_command(int argc,char **argv) {
     VHO_Q6_CONTROL c;UINT32 *fields[]={&c.delivery,&c.arch,&c.ptx,&c.toolkit,&c.max_threads};
     const char *ints[]={"delivery","arch","ptx","toolkit","max_threads"};
     for(unsigned i=0;i<5;++i) {UINT64 value=q6_unsigned(control,ints[i]);need(value<=0xffffffffULL,"q6_control_U4_overflow");*fields[i]=value;}
-    c.shared_limit=q6_unsigned(control,"shared_limit");initialize(false);
+    c.shared_limit=q6_unsigned(control,"shared_limit");return c;
+}
+/* Inspect exactly one existing selected High image. Native reader/type-cache
+ * initialization is outside the measured read-only admission boundary. */
+int q6_command(int argc,char **argv) {
+    need(argc==5,"q6-contract selected.B control.json output.json");need(access(argv[4],F_OK)!=0,"q6_output_exists");
+    Json::Value control;VHO_Q6_CONTROL c=q6_control(q5_wire(argv[3]),control);initialize(false);
     Open_Input_Info(argv[2]);Initialize_Symbol_Tables(FALSE);New_Scope(GLOBAL_SYMTAB,Malloc_Mem_Pool,FALSE);PU_Info *pu=Read_Global_Info(NULL);
     need(pu && !PU_Info_next(pu) && !PU_Info_child(pu),"q6_single_PU");Read_Local_Info(MEM_pu_nz_pool_ptr,pu);
     Current_PU_Info=pu;Current_pu=&PU_Info_pu(pu);Current_scope=PU_lexical_level(*Current_pu);Current_Map_Tab=PU_Info_maptab(pu);Initialize_Special_Global_Symbols();

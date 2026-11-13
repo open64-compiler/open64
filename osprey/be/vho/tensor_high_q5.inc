@@ -73,7 +73,7 @@
     }
     /* Strict max, denominator and weighted folds traverse tokens in increasing
      * order across tiles. No per-chunk normalization or reassociation occurs. */
-    WN *Q5_pass(unsigned pass) {
+    WN *Q5_compute(unsigned pass) {
         const VHO_TENSOR_WORKLOAD_GEOMETRY &g=_q5.schema.geometry;
         WN *token=WN_CreateBlock();Q5_score(token);
         if(!pass) {
@@ -91,12 +91,18 @@
                 WN_INSERT_BlockLast(token,Loop(_indices[6],g.latent,column));
             }
         }
+        return token;
+    }
+    /* The baseline still constructs exactly the same ordered tile tree. */
+    WN *Q5_pass(unsigned pass) {
+        const VHO_TENSOR_WORKLOAD_GEOMETRY &g=_q5.schema.geometry;
+        WN *token=Q5_compute(pass);
         WN *tile=Q5_decode();WN_INSERT_BlockLast(tile,Q5_heads(Q5_tokens(token)));
         WN *body=WN_CreateBlock();WN_INSERT_BlockLast(body,Loop(_indices[3],(g.keys+_q5_plan.width-1)/_q5_plan.width,tile));return body;
     }
     /* Build one plan against existing formals/constants. Every new local and
      * node belongs to the caller's journal; no root is installed here. */
-    WN *Q5_body(WN *scope,const VHO_Q5_PLAN &plan,const VHO_Q5_LAYOUT &layout) {
+    void Q5_setup(WN *scope,const VHO_Q5_PLAN &plan,const VHO_Q5_LAYOUT &layout) {
         _q5=layout;_q5_plan=plan;_selected=true;Constants(scope);unsigned formal=0;
         for(unsigned i=0;i<_program.values.size();++i) if(_program.values[i].storage==i) _buffers[i]=WN_st(WN_formal(scope,formal++));
         _status=WN_st(WN_formal(scope,formal));
@@ -105,6 +111,10 @@
         _integer=VHO_high_local("q5_integer",MTYPE_I8,_source);_scan=VHO_high_local("q5_scan",MTYPE_I8,_source);_match=VHO_high_local("q5_match",MTYPE_I8,_source);_rounded=VHO_high_local("q5_rounded",MTYPE_F4,_source);
         _q5_slot=VHO_high_local("q5_slot",MTYPE_I8,_source);_q5_score=VHO_high_local("q5_score",MTYPE_F4,_source);_q5_dot=VHO_high_local("q5_dot",MTYPE_F4,_source);_q5_rope=VHO_high_local("q5_rope",MTYPE_F4,_source);_q5_weight=VHO_high_local("q5_weight",MTYPE_F4,_source);
         _q5_scale=VHO_high_local("q5_scale",MTYPE_F4,_source);_q5_byte=VHO_high_local("q5_packed_byte",MTYPE_U4,_source);
+    }
+    /* Keep native construction order unchanged for archived Q5 images. */
+    WN *Q5_body(WN *scope,const VHO_Q5_PLAN &plan,const VHO_Q5_LAYOUT &layout) {
+        Q5_setup(scope,plan,layout);
         WN *body=WN_CreateBlock();Status(body,0);std::set<UINT32> removed(_q5.removed.begin(),_q5.removed.end());
         for(unsigned i=0;i<=_q5.start;++i) if(!removed.count(i) && _program.operations[i].name!="common.reshape") Operation(body,i);
         WN *group=WN_CreateBlock(),*init=WN_CreateBlock();
