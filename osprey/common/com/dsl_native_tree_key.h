@@ -97,8 +97,8 @@ class DSL_NATIVE_TREE_KEY {
         case OPR_GT:case OPR_GE:case OPR_EQ:case OPR_NE:case OPR_CVT:case OPR_CVTL:
         case OPR_ABS:case OPR_NEG:case OPR_INTRINSIC_OP:case OPR_PARM:case OPR_CALL:
         case OPR_TRUNC:case OPR_SHL:case OPR_LSHR:case OPR_TAS:
-        case OPR_LABEL:case OPR_TRUEBR:case OPR_FALSEBR:case OPR_GOTO:break;
-        default:throw std::runtime_error("native_key_unsupported_operator");
+        case OPR_EXTRACT_BITS:case OPR_EVAL:case OPR_LABEL:case OPR_TRUEBR:case OPR_FALSEBR:case OPR_GOTO:break;
+        default:throw std::runtime_error(std::string("native_key_unsupported_operator/")+OPCODE_name(opc));
         }
         Number(opc);Number(WN_kid_count(n));
         if(OPCODE_has_sym(opc)) {Number(WN_st_idx(n));if(WN_st_idx(n)) Symbol(WN_st(n));}
@@ -110,6 +110,7 @@ class DSL_NATIVE_TREE_KEY {
         if(op==OPR_INTCONST) Number(WN_const_val(n));
         if(op==OPR_ARRAY) Number(WN_element_size(n));
         if(op==OPR_CVTL) Number(WN_cvtl_bits(n));
+        if(op==OPR_EXTRACT_BITS) {Number(WN_bit_offset(n));Number(WN_bit_size(n));}
         if(op==OPR_INTRINSIC_OP || op==OPR_INTRINSIC_CALL) Number(WN_intrinsic(n));
         if(op==OPR_LDID||op==OPR_STID||op==OPR_ILOAD||op==OPR_ISTORE) Number(WN_field_id(n));
         if(op==OPR_COMMENT) Text(Index_To_Str(WN_GetComment(n)));

@@ -6,6 +6,7 @@
  * exp/log use separately linked device math helpers, not approximate ex2/lg2.
  * Contract: doc/AI-COMPILER-SEARCH-M5-DEVICE-BRIDGE-v1.0.md. */
 #include "tensor_selected_bridge.h"
+#include "../../vho/tensor_quantized_device.h"
 #include "wn.h"
 #include "stab.h"
 #include "pu_info.h"
@@ -125,11 +126,23 @@ class DSL_SELECTED_PTX {
             Instruction("cvt."+Type(wide.type)+"."+Type(r.type),wide.reg+", "+r.reg);return wide;
         }
         DSL_PTX_VALUE a=Expression(WN_kid0(n)),r=Fresh(type);
+        if(op==OPR_EXTRACT_BITS) {
+            Need(type==MTYPE_U4 && WN_bit_size(n)>0 && WN_bit_size(n)<=32 && WN_bit_offset(n)<=32-WN_bit_size(n),"PTX_extract_payload");
+            Instruction("bfe.u32",r.reg+", "+a.reg+", "+number(WN_bit_offset(n))+", "+number(WN_bit_size(n)));return r;
+        }
+        if(op==OPR_TAS) {Need(a.type==r.type,"PTX_TAS_type");r.space=a.space;Instruction("mov.b"+number(MTYPE_byte_size(r.type)*8),r.reg+", "+a.reg);return r;}
+        if(op==OPR_TRUNC) {Need(a.type==MTYPE_F4 && MTYPE_is_integral(r.type),"PTX_TRUNC_type");Instruction("cvt.rzi."+Type(r.type)+".f32",r.reg+", "+a.reg);return r;}
         if(op==OPR_CVT || op==OPR_CVTL) {
-            if(op==OPR_CVTL) Need(WN_cvtl_bits(n)==MTYPE_byte_size(r.type)*8,"PTX_CVTL_truncation_unsupported");
+            if(op==OPR_CVTL && WN_cvtl_bits(n)!=MTYPE_byte_size(r.type)*8) {
+                Need(WN_cvtl_bits(n)==8 || WN_cvtl_bits(n)==16,"PTX_CVTL_width");
+                Instruction("cvt."+std::string(MTYPE_is_signed(r.type)?"s":"u")+number(WN_cvtl_bits(n))+"."+Type(a.type),r.reg+", "+a.reg);return r;
+            }
+            if(a.type!=MTYPE_F4 && r.type==MTYPE_F4) {
+                Instruction("cvt.rn.f32."+Type(a.type),r.reg+", "+a.reg);return r;
+            }
             Need(a.type==r.type || (a.type!=MTYPE_F4 && r.type!=MTYPE_F4),"PTX_numeric_conversion_unsupported");
             if(a.type==r.type) Instruction("mov.b"+number(MTYPE_byte_size(r.type)*8),r.reg+", "+a.reg);
-            else Instruction("cvt."+Type(r.type)+"."+Type(a.type),r.reg+", "+a.reg);return r;
+            else Instruction("cvt."+Type(r.type)+"."+Type(a.type),r.reg+", "+a.reg);r.space=a.space;return r;
         }
         if(op==OPR_ABS||op==OPR_NEG) {Instruction((op==OPR_ABS?"abs.":"neg.")+Type(type),r.reg+", "+a.reg);return r;}
         DSL_PTX_VALUE b=Expression(WN_kid1(n));
@@ -148,6 +161,9 @@ class DSL_SELECTED_PTX {
             Instruction(op==OPR_LAND?"and.pred":"or.pred",p+", "+left+", "+right);
             Instruction("selp.u32",r.reg+", 1, 0, "+p);return r;
         }
+        if(op==OPR_SHL || op==OPR_LSHR) {
+            Instruction((op==OPR_SHL?"shl.b":"shr.u")+number(MTYPE_byte_size(r.type)*8),r.reg+", "+a.reg+", "+b.reg);return r;
+        }
         std::string operation;
         if(op==OPR_ADD) operation="add";else if(op==OPR_SUB) operation="sub";else if(op==OPR_MPY) operation="mul";
         else if(op==OPR_DIV) operation="div";else if(op==OPR_REM) operation="rem";
@@ -160,9 +176,33 @@ class DSL_SELECTED_PTX {
         if(op==OPR_ADD) {Need(a.space.empty()||b.space.empty(),"PTX_two_address_roots");r.space=a.space.empty()?b.space:a.space;}
         return r;
     }
+    /* Concrete Q6c operations have instruction-level meaning. The owning
+     * native phase already chose operands, partition, participants and phases. */
+    void Stage_call(WN *n,const std::string &op) {
+        unsigned count=op=="bulk"?4:(op=="expect" || op=="wait")?2:(op=="proxy" || op=="cta_sync")?0:1;
+        Need((unsigned)WN_kid_count(n)==count,"PTX_Q6c_arity");
+        if(op=="cta_sync") {Instruction("bar.sync","0");return;}
+        if(op=="proxy") {Instruction("fence.proxy.async.shared::cta","");return;}
+        DSL_PTX_VALUE a=Expression(WN_kid0(n));Need(a.space=="shared","PTX_Q6c_shared_operand");
+        DSL_PTX_VALUE address=Fresh(MTYPE_U4);Instruction("cvt.u32.u64",address.reg+", "+a.reg);
+        if(op=="init") {Instruction("mbarrier.init.shared::cta.b64","["+address.reg+"], 1");return;}
+        if(op=="invalidate") {Instruction("mbarrier.inval.shared::cta.b64","["+address.reg+"]");return;}
+        if(op=="arrive") {Instruction("mbarrier.arrive.release.cta.shared::cta.b64","_, ["+address.reg+"]");return;}
+        DSL_PTX_VALUE b=Expression(WN_kid(n,1));
+        if(op=="expect") {Need(b.type==MTYPE_U4,"PTX_Q6c_count");Instruction("mbarrier.expect_tx.relaxed.cta.shared::cta.b64","["+address.reg+"], "+b.reg);return;}
+        if(op=="wait") {
+            Need(b.type==MTYPE_U4,"PTX_Q6c_phase");std::string p=Predicate(),label="stage_wait_"+number(_calls++);
+            _code<<label<<":\n";Instruction("mbarrier.try_wait.parity.acquire.cta.shared::cta.b64",p+", ["+address.reg+"], "+b.reg);
+            _code<<" @!"<<p<<" bra "<<label<<";\n";return;
+        }
+        Need(op=="bulk" && b.space=="global","PTX_Q6c_global_source");DSL_PTX_VALUE bytes=Expression(WN_kid(n,2)),bar=Expression(WN_kid(n,3)),bar32=Fresh(MTYPE_U4);
+        Need(bytes.type==MTYPE_U4 && bar.space=="shared","PTX_Q6c_bulk_operands");Instruction("cvt.u32.u64",bar32.reg+", "+bar.reg);
+        Instruction("cp.async.bulk.shared::cluster.global.mbarrier::complete_tx::bytes","["+address.reg+"], ["+b.reg+"], "+bytes.reg+", ["+bar32.reg+"]");
+    }
     /* Collective lowering consumes the explicit typed CALL operands. */
     void Call(WN *n) {
         std::string name=ST_name(WN_st(n));
+        if(name.find("__open64_q6c_")==0) {Stage_call(n,name.substr(13));return;}
         if(name=="__syncthreads") {Need(WN_kid_count(n)==0,"PTX_CTA_barrier_ABI");Instruction("bar.sync","0");return;}
         Need(WN_kid_count(n)==(name=="__syncwarp"?1:4),"PTX_collective_ABI");
         WN *mask=WN_kid0(WN_kid0(n));Need(WN_operator(mask)==OPR_INTCONST && (UINT32)WN_const_val(mask)==0xffffffffU,"PTX_full_mask");
@@ -194,6 +234,7 @@ class DSL_SELECTED_PTX {
         if(op==OPR_TRUEBR||op==OPR_FALSEBR) {
             std::string p=Truth(Expression(WN_kid0(n)));_code<<" @"<<(op==OPR_FALSEBR?"!":"")<<p<<" bra L"<<WN_label_number(n)<<";\n";return;
         }
+        if(op==OPR_EVAL) {Expression(WN_kid0(n));return;}
         if(op==OPR_CALL) {Call(n);return;}
         if(op==OPR_RETURN) {Instruction("ret","");return;}
         throw std::runtime_error(std::string("PTX_statement/")+OPCODE_name(WN_opcode(n)));
@@ -203,8 +244,9 @@ public:
     DSL_SELECTED_PTX():_registers(0),_predicates(0),_calls(0) {}
     /* Build the entire entry in memory; the driver owns atomic publication. */
     std::string Build() {
-        VHO_tensor_verify_bridge("low");WN *entry=PU_Info_tree_ptr(Current_PU_Info);ST_IDX st=WN_st_idx(entry);
-        std::ostringstream out;out<<".version 7.8\n.target sm_90\n.address_size 64\n"
+        bool q6c=ST_tensor_metadata(WN_st_idx(PU_Info_tree_ptr(Current_PU_Info)),"tensor.q6c.schema")!=NULL;
+        if(q6c) VHO_q6c_verify("low");else VHO_tensor_verify_bridge("low");WN *entry=PU_Info_tree_ptr(Current_PU_Info);ST_IDX st=WN_st_idx(entry);
+        std::ostringstream out;out<<(q6c?".version 8.6\n":".version 7.8\n")<<".target sm_90\n.address_size 64\n"
             ".extern .func (.param .b32 r) __open64_exp_f32(.param .b32 x);\n"
             ".extern .func (.param .b32 r) __open64_log_f32(.param .b32 x);\n"
             ".visible .entry "<<ST_name(st)<<"(\n";

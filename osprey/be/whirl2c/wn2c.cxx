@@ -3614,6 +3614,13 @@ WN2C_unaryop(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
       Append_Token_Special(tokens, ')');
       return EMPTY_STATUS;
    }
+   /* Preserve explicit round-toward-zero F32 conversion in CUDA C++. */
+   if(W2C_Cuda_Mode && WN_operator(wn)==OPR_TRUNC && WN_desc(wn)==MTYPE_F4 &&
+      (WN_rtype(wn)==MTYPE_I4 || WN_rtype(wn)==MTYPE_U4 || WN_rtype(wn)==MTYPE_I8 || WN_rtype(wn)==MTYPE_U8)) {
+      TYPE_ID t=WN_rtype(wn);
+      Append_Token_String(tokens,t==MTYPE_I4?"__float2int_rz(":t==MTYPE_U4?"__float2uint_rz(":t==MTYPE_I8?"__float2ll_rz(":"__float2ull_rz(");
+      WN2C_translate(tokens,WN_kid0(wn),context);Append_Token_Special(tokens,')');return EMPTY_STATUS;
+   }
    Is_True(WN_kid_count(wn) == 1, ("Expected 1 kid in WN2C_unaryop()"));
 
    if (WN2C_IS_INFIX_OP(WN_opcode(wn)))

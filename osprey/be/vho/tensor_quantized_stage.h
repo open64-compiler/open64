@@ -13,7 +13,7 @@ extern WN *VHO_q6_build_high(const VHO_TENSOR_PROGRAM &,const VHO_Q5_PLAN &,
     const VHO_Q6_MAPPING &,WN *);
 /* Bind actual native code, original selected plan, source/Q3 identity and
  * complete shared inventory. Metadata is equality evidence, never a lease. */
-inline std::string VHO_q6_stage_key(WN *root) {
+static inline std::string VHO_q6_stage_key(WN *root) {
     std::ostringstream key;key<<DSL_NATIVE_TREE_KEY().Build(root);
     const char *fields[]={"tensor.q6.schema","tensor.q6.mapping","tensor.q6.control","tensor.q6.explanation","tensor.q5.applied"};
     for(unsigned i=0;i<5;++i) {

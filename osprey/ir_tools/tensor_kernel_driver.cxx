@@ -49,6 +49,7 @@
 #include "tensor_schedule_source.h"
 #ifdef OPEN64_TENSOR_SELECTED_BRIDGE
 #include "tensor_selected_bridge.h"
+#include "tensor_quantized_device.h"
 #include "../be/lno/dsl_high_binding_keys.h"
 #ifdef OPEN64_TENSOR_BRIDGE_TEST
 #include "dep_graph.h"
@@ -358,6 +359,7 @@ bool remove_barrier(WN *n,const char *name="__syncthreads") {
 #include "tensor_q6_driver.inc"
 #ifdef OPEN64_TENSOR_SELECTED_BRIDGE
 #include "tensor_q6b_driver.inc"
+#include "tensor_q6c_driver.inc"
 #endif
 } // namespace
 
@@ -366,6 +368,7 @@ bool remove_barrier(WN *n,const char *name="__syncthreads") {
 int main(int argc,char **argv) {
     try {
 #ifdef OPEN64_TENSOR_SELECTED_BRIDGE
+        if(argc>=2 && (!strcmp(argv[1],"q6-device") || !strcmp(argv[1],"q6-device-audit"))) return q6c_command(argc,argv);
         if(argc>=2 && (!strcmp(argv[1],"q6-apply") || !strcmp(argv[1],"q6-audit"))) return q6b_command(argc,argv);
 #endif
         if(argc>=2 && !strcmp(argv[1],"q6-contract")) return q6_command(argc,argv);

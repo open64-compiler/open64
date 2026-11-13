@@ -162,6 +162,7 @@ extern const WOPT_DSL_NORMALIZATION_DRIVER_API *WOPT_DSL_normalization_driver_ap
 #include "eh_region.h"		    /* for EH_Generate_Range_List, etc. */
 #include "vho_lower.h"
 #include "../vho/tensor_selected_key.h"
+#include "../vho/tensor_quantized_device.h"
 #include "dsl_lower.h"
 #include "dsl_shape_refine.h"
 #include "../com/dsl_program_interface_internal.h"
@@ -1809,8 +1810,10 @@ BE_tensor_selected_cuda_input(WN *pu)
     const char *level=ST_tensor_metadata(WN_st_idx(pu),"tensor.bridge.level");
     const char *schema=ST_tensor_metadata(WN_st_idx(pu),"tensor.bridge.schema");
     const char *stamp=ST_tensor_metadata(WN_st_idx(pu),"tensor.bridge.key");
-    if(!level && !schema && !stamp) return FALSE;
-    FmtAssert(schema && !strcmp(schema,"selected-mla-native-v1"),("unsupported selected bridge schema"));
+    const BOOL q6c=ST_tensor_metadata(WN_st_idx(pu),"tensor.q6c.schema")!=NULL;
+    if(q6c) level=ST_tensor_metadata(WN_st_idx(pu),"tensor.q6c.level");
+    if(!q6c && !level && !schema && !stamp) return FALSE;
+    FmtAssert(q6c || (schema && !strcmp(schema,"selected-mla-native-v1")),("unsupported selected bridge schema"));
     FmtAssert(Run_w2c && CLIST_cuda && !Run_lno && !Run_preopt && !Run_wopt &&
         !Run_vsaopt && !Run_ipsaopt && !Run_cg && !Run_ipl && !VHO_DSL_Enable_WOPT &&
         !Instrumentation_Enabled && level && !strcmp(level,"low"),
@@ -1819,7 +1822,8 @@ BE_tensor_selected_cuda_input(WN *pu)
 #ifdef KEY
         FmtAssert(OPT_Cyg_Instrument==0,("selected bridge CUDA does not admit instrumentation"));
 #endif
-        FmtAssert(stamp && VHO_tensor_bridge_key(pu)==stamp,("selected bridge driver rejected stale Low WHIRL"));
+        if(q6c) VHO_q6c_check_key(pu,"low");
+        else FmtAssert(stamp && VHO_tensor_bridge_key(pu)==stamp,("selected bridge driver rejected stale Low WHIRL"));
     } catch(const std::exception &error) {
         FmtAssert(FALSE,("selected bridge driver key: %s",error.what()));
     }

@@ -20,7 +20,7 @@ DTYPES = dict(float32=torch.float32, bool=torch.bool, int8=torch.int8,
               uint8=torch.uint8, int64=torch.int64)
 
 
-def execute(library, manifest, inputs, expected_status=0):
+def execute(library, manifest, inputs, expected_status=0, prefix_bytes=32):
     """Invoke generated C with canaries and separate disjoint storage buffers."""
     values = manifest['recipe']['values']
     buffers, originals, input_ids = {}, {}, set()
@@ -32,7 +32,7 @@ def execute(library, manifest, inputs, expected_status=0):
             n *= extent
         size = n * torch.empty((), dtype=DTYPES[value['dtype']]).element_size()
         payload = bytes(by_input[storage].contiguous().view(torch.uint8).flatten().tolist()) if storage in by_input else b'\xcd' * size
-        data = b'\xa5' * 32 + payload + b'\x5a' * 32
+        data = b'\xa5' * prefix_bytes + payload + b'\x5a' * 32
         assert len(payload) == size
         buffers[storage] = ctypes.create_string_buffer(data, len(data))
         originals[storage] = data
@@ -42,16 +42,16 @@ def execute(library, manifest, inputs, expected_status=0):
     function = getattr(ctypes.CDLL(str(library)), manifest['function'])
     function.argtypes = [ctypes.c_void_p] * (len(buffers) + 1)
     function.restype = None
-    function(*(ctypes.addressof(buffers[s]) + 32 for s in manifest['buffers']), ctypes.byref(status))
+    function(*(ctypes.addressof(buffers[s]) + prefix_bytes for s in manifest['buffers']), ctypes.byref(status))
     assert status.value == expected_status, (status.value, expected_status)
     for s, buffer in buffers.items():
-        assert buffer.raw[:32] == originals[s][:32] and buffer.raw[-32:] == originals[s][-32:], ('canary', s)
+        assert buffer.raw[:prefix_bytes] == originals[s][:prefix_bytes] and buffer.raw[-32:] == originals[s][-32:], ('canary', s)
         if s in input_ids:
             assert buffer.raw == originals[s], ('input mutation', s)
     outputs = []
     for v in values:
         if v['role'] == 2:
-            raw = bytearray(buffers[v['storage']].raw[32:-32])
+            raw = bytearray(buffers[v['storage']].raw[prefix_bytes:-32])
             outputs.append(torch.frombuffer(raw, dtype=DTYPES[v['dtype']]).clone().reshape(v['shape']))
     return outputs
 
