@@ -1246,3 +1246,6 @@ tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_selected.inc
 tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_quantized.inc
 # Read-only Q6c sealed-Low admission; no new backend linkage service.
 driver.o: $(BE_VHO_DIR)/tensor_quantized_device.h $(BE_VHO_DIR)/tensor_quantized_stage.h $(BE_VHO_DIR)/tensor_quantized_gpu.h
+
+# Serving schema reads VHO_TENSOR_PROGRAM including the owned GPU profile.
+tensor_serving_schema.o: $(BE_VHO_DIR)/tensor_kernel_lower.h $(BUILD_TOT)/be/com/dsl_gpu_plan.h

@@ -1403,3 +1403,11 @@ LDIRT += mla_serving_registry.o
 libmla_serving_cuda_q7.so: tensor_serving_cuda_review.o mla_serving_cuda.o mla_serving_registry.o tensor_attention_search.o $(BUILD_AREA)/be/be.so
 	$(link.c++f) -shared -pthread -o $@ tensor_serving_cuda_review.o mla_serving_cuda.o mla_serving_registry.o tensor_attention_search.o -L$(BUILD_AREA)/be -l:be.so -L$(CUDA_HOME)/lib64/stubs -L$(CUDA_HOME)/lib/stubs -lcuda -Wl,-rpath,'$$ORIGIN/../be' $(TENSOR_KERNEL_FLAGS)
 LDIRT += libmla_serving_cuda_q7.so
+
+# H1d owned device transport and opt-in host/serving contracts.
+tensor_bridge_driver.o tensor_bridge_test_driver.o tensor_selected_bridge.o \
+ tensor_serving_runtime.o tensor_serving_review.o mla_serving_registry.o \
+ mla_serving_cuda.o tensor_serving_cuda_review.o: $(BE_COM_DIR)/dsl_gpu_contract.h \
+ $(BE_COM_DIR)/dsl_gpu_plan.h $(TARG_INFO_SRC)/access/dsl_device_profile.h
+
+tensor_serving_schema.o: $(BE_VHO_DIR)/tensor_kernel_lower.h $(BE_COM_DIR)/dsl_gpu_plan.h
