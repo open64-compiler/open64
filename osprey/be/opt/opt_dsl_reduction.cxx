@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "opt_dsl_reduction.h"
+#include "opt_dsl_movement.h"
 #include "dsl_memory_hierarchy.h"
 #include "symtab.h"
 #include "config_dsl.h"
@@ -223,6 +224,10 @@ WOPT_DSL_bind_reduction_direct
   memcpy(binding.before, request->before, sizeof(binding.before));
   if (trace != NULL) {
     WOPT_DSL_reduction_direct_trace(*request, binding, trace);
+    if(binding.status==WOPT_DSL_REDUCE_DIRECT_BOUND) {
+      DSL_MOVEMENT_FACTS facts;std::string reason;
+      if(WOPT_DSL_capture_reduction_movement(scope,assignment,request,facts,reason)) facts.Print(trace,"BOUND_SOURCE");
+    }
     if (gpu.Bound()) {
       fprintf(trace,"DSL_GPU_PLAN_LEGALITY 1 family=reduction-direct binding=%s live_bytes=%llu status=%u CTA_RF=unproved runtime_discharge=0\n",
           gpu.Legality_key().c_str(),(unsigned long long)binding.live_bytes,binding.status);

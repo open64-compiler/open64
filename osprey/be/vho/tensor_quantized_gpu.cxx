@@ -7,6 +7,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <algorithm>
+#include <map>
 namespace {
 /* Fail closed before publication on an unsupported or overflowing layout. */
 void Q6_need(bool ok,const char *why) {if(!ok) throw std::runtime_error(why);}
@@ -175,5 +176,64 @@ bool VHO_q6_pipeline(const VHO_Q6_MAPPING &m,std::vector<VHO_Q6_ACTION> &out,std
             }
         }
         Q6_need(VHO_q6_verify_pipeline(m,trace,why),"q6_generated_pipeline_invalid");out.swap(trace);why.clear();return true;
+    } catch(const std::exception &e) {why=e.what();return false;}
+}
+
+/* Copy exact raw/decoded layouts and a bounded representative event prefix;
+ * the existing Q6 verifier validates every generation/pass in the full trace.
+ * Readiness of raw bytes never implies decoded readiness or readers-complete. */
+bool VHO_q6_capture_movement(const VHO_Q6_MAPPING &m,const std::vector<VHO_Q6_ACTION> &actions,
+    const DSL_MOVEMENT_BINDING &binding,DSL_MOVEMENT_FACTS &out,std::string &why) {
+    out=DSL_MOVEMENT_FACTS();
+    try {
+        Q6_need(m.key==VHO_q6_mapping_key(m) && VHO_q6_verify_pipeline(m,actions,why),"movement_Q6_pipeline_unproved");
+        Q6_need(binding.source_key==m.selected_key && binding.serving_key==m.binding_key && !binding.owner.empty(),"movement_Q6_source_or_Q3_binding");
+        DSL_MOVEMENT_CAPTURE c;c.binding=binding;c.binding.family="MLA-Q6";
+        std::ostringstream proof;proof<<m.key<<";actions="<<actions.size()<<';';
+        for(size_t i=0;i<actions.size();++i) proof<<actions[i].kind<<';'<<actions[i].pass<<';'<<actions[i].slot<<';'<<actions[i].tile<<';';
+        c.binding.proof_key=proof.str();c.binding.controls="existing-selected-Q6-raw/dequantize/publish/consume/release";
+        c.work.owner="CTA/query/head-group";c.work.domain="selected cache staging only; three ordered passes";
+        c.work.instances=m.grid;c.work.width=m.width;c.work.active_last=m.keys%m.width?m.keys%m.width:m.width;
+        c.work.axes.push_back("CTA");c.work.extents.push_back(m.grid);c.work.axes.push_back("pass");c.work.extents.push_back(3);c.work.axes.push_back("token_tile");c.work.extents.push_back(m.tiles);c.work.axes.push_back("within_tile");c.work.extents.push_back(m.width);
+        c.work.inactive_last=m.width-c.work.active_last;c.work.tail_policy="exact-active-tail; no padded global reads";
+        c.work.numerical="source S8/U4 plus matching F32 scales; ordered three-pass folds unchanged";
+        for(unsigned i=0;i<m.slots+1;++i) {
+            bool decoded=i==m.slots;std::ostringstream name,version;name<<(decoded?"decoded":"raw/");if(!decoded) name<<i;
+            version<<"p0/t"<<(decoded?0:i);std::vector<uint64_t> shape(1,decoded?m.decoded_bytes:m.raw_stride);
+            DSL_MOVEMENT_STORAGE s=DSL_movement_dense_storage(name.str(),"Q6-shared-arena",version.str(),decoded?"decoded-F32-and-padding":"raw-payload-scale-slot",shape,1,true);
+            s.offset=decoded?m.decoded_offset:i*m.raw_stride;s.capacity=m.shared_bytes;s.first_use="Q6-acquire";s.last_use="Q6-release";c.storages.push_back(s);
+        }
+        const UINT64 prefix=std::min(UINT64(3),m.tiles);std::map<UINT64,std::map<unsigned,unsigned> > events;
+        for(size_t i=0;i<actions.size();++i) {
+            const VHO_Q6_ACTION &a=actions[i];if(a.pass || a.tile>=prefix) continue;
+            std::ostringstream raw,version;raw<<"raw/"<<a.slot;version<<"p0/t"<<a.tile;
+            // Additional projections name completion/overwrite boundaries of
+            // the existing actions; they never insert a wait or a barrier.
+            unsigned kinds[2]={a.kind,0},count=1;
+            if(a.kind==VHO_Q6_DEQUANTIZE) {kinds[0]=8;kinds[1]=a.kind;count=2;}
+            if(a.kind==VHO_Q6_PUBLISH) {kinds[0]=9;kinds[1]=a.kind;count=2;}
+            for(unsigned j=0;j<count;++j) {
+                unsigned kind=kinds[j];DSL_MOVEMENT_EVENT e;std::ostringstream id;id<<"t"<<a.tile<<"/"<<kind;e.id=id.str();
+                const char *names[]={"invalid","acquire","issue","raw-ready","raw-consumer","decoded-ready","consumer","readers-complete","decoded-overwrite-begin","raw-readers-complete"};e.kind=names[kind];
+                bool decoded=kind==8 || kind==VHO_Q6_PUBLISH || kind==VHO_Q6_CONSUME || kind==VHO_Q6_RELEASE;
+                e.storage=decoded?"decoded":raw.str();e.version=version.str();e.scope="CTA/all-head-consumers";e.evidence="existing-verified-Q6-action-contract";
+                unsigned index=c.events.size();if(index) c.edges.push_back(DSL_MOVEMENT_EDGE(index-1,index));c.events.push_back(e);events[a.tile][kind]=index;
+            }
+        }
+        for(UINT64 t=0;t<prefix;++t) {
+            std::ostringstream raw,version;raw<<"raw/"<<t%m.slots;version<<"p0/t"<<t;
+            DSL_MOVEMENT_LIFETIME r;r.storage=raw.str();r.version=version.str();r.raw_ready=r.decoded_ready=events[t][VHO_Q6_WAIT];
+            r.consumer=events[t][VHO_Q6_DEQUANTIZE];r.readers_done=events[t][9];
+            if(t+m.slots<prefix) {r.has_reuse=true;std::ostringstream next;next<<"p0/t"<<t+m.slots;r.next_version=next.str();r.reuse_ready=events[t+m.slots][VHO_Q6_ACQUIRE];}c.lifetimes.push_back(r);
+            DSL_MOVEMENT_LIFETIME d;d.storage="decoded";d.raw_storage=raw.str();d.version=version.str();d.decoded=true;
+            d.raw_ready=events[t][VHO_Q6_WAIT];d.decoded_ready=events[t][VHO_Q6_PUBLISH];d.consumer=events[t][VHO_Q6_CONSUME];d.readers_done=events[t][VHO_Q6_RELEASE];
+            if(t+1<prefix) {d.has_reuse=true;std::ostringstream next;next<<"p0/t"<<t+1;d.next_version=next.str();d.reuse_ready=events[t+1][8];}c.lifetimes.push_back(d);
+        }
+        UINT64 row=0;for(unsigned i=0;i<4;++i) row=Q6_add(row,m.raw_row[i]);
+        c.ledger.useful_reads=DSL_MOVEMENT_BYTES(Q6_mul(Q6_mul(m.batch,m.keys),row));
+        c.ledger.requested_reads=DSL_MOVEMENT_BYTES(Q6_mul(Q6_mul(Q6_mul(m.grid,m.keys),row),3));
+        c.ledger.scale=DSL_MOVEMENT_BYTES(Q6_mul(Q6_mul(Q6_mul(m.grid,m.keys),8),3));
+        c.ledger.partial=DSL_MOVEMENT_BYTES(0);
+        return DSL_MOVEMENT_FACTS::Create(c,out,why);
     } catch(const std::exception &e) {why=e.what();return false;}
 }

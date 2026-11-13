@@ -20,6 +20,7 @@ struct SESSION {
     VHO_TENSOR_SERVING *adapter;
     VHO_TENSOR_PROGRAM program;
     DSL_GPU_RUNTIME_OBSERVATION gpu;
+    std::map<UINT64,DSL_MOVEMENT_FACTS> movement;
     /* A session owns only adapter bookkeeping; buffers remain caller owned. */
     SESSION():adapter(NULL) {}
     /* The public destructor gate has already checked outstanding work/readers. */
@@ -110,6 +111,33 @@ int open64_q3_begin(void *object,const VHO_SERVING_VIEW *views,unsigned n,VHO_SE
 }
 /* The qualified caller launches exactly one synchronous entry, not a candidate. */
 int open64_q3_run(void *object,UINT64 ticket,bool (*entry)(void *,void **,UINT32),void *context,UINT64 *bundle) {SESSION *s=(SESSION *)object;std::string why;bool ok=s->adapter && s->adapter->Run(ticket,entry,context,*bundle,why);error=why;return ok;}
+/* Copy only owned H2 diagnostics. Historical facts remain readable after a
+ * ticket expires, but the production revalidation method denies their use. */
+const char *open64_h2_movement_capture(void *object,UINT64 ticket) {
+    SESSION *s=(SESSION *)object;DSL_MOVEMENT_FACTS facts;
+    if(!s->adapter->Capture_movement(ticket,facts,error)) return NULL;s->movement[ticket]=facts;
+    rapidjson::StringBuffer b;rapidjson::Writer<rapidjson::StringBuffer> w(b);w.StartObject();
+    w.Key("key");string(w,facts.Key());w.Key("device_key");string(w,facts.Capture().binding.device_key);
+    w.Key("serving_bound");w.Bool(!facts.Capture().binding.serving_key.empty());w.Key("epoch_permission");w.Bool(facts.Is_current(facts.Capture().binding,true));
+    w.Key("physical_known");w.Bool(facts.Capture().ledger.hbm.known);w.Key("scale_payload");w.Uint64(facts.Capture().ledger.scale.value);
+    w.Key("page_payload");w.Uint64(facts.Capture().ledger.page.value);w.Key("index_payload");w.Uint64(facts.Capture().ledger.index.value);
+    w.Key("storages");w.StartArray();
+    for(size_t i=0;i<facts.Capture().storages.size();++i) {
+        const DSL_MOVEMENT_STORAGE &v=facts.Capture().storages[i];w.StartObject();w.Key("id");string(w,v.id);w.Key("allocation");string(w,v.allocation);w.Key("version");string(w,v.version);
+        w.Key("offset");w.Uint64(v.offset);w.Key("bytes");w.Uint64(v.bytes);w.Key("capacity");w.Uint64(v.capacity);w.EndObject();
+    }
+    w.EndArray();w.EndObject();report_text.assign(b.GetString(),b.GetSize());return report_text.c_str();
+}
+/* Fresh actual cache/scale/page/generation observation is required; the saved
+ * diagnostic record does not keep a canceled/completed invocation alive. */
+int open64_h2_movement_revalidate(void *object,UINT64 ticket) {
+    SESSION *s=(SESSION *)object;
+    return s->movement.count(ticket) && s->adapter->Revalidate_movement(ticket,s->movement[ticket],error);
+}
+/* Read a retained detached digest without reopening a runtime ticket. */
+const char *open64_h2_movement_retained(void *object,UINT64 ticket) {
+    SESSION *s=(SESSION *)object;if(!s->movement.count(ticket)) return NULL;return s->movement[ticket].Key().c_str();
+}
 /* Prepared cancellation never publishes dirty result buffers. */
 int open64_q3_cancel(void *object,UINT64 ticket) {SESSION *s=(SESSION *)object;return s->adapter && s->adapter->Cancel(ticket,error);}
 /* Expired/foreign tokens cannot dereference former allocations. */
