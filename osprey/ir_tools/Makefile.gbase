@@ -1471,3 +1471,6 @@ tensor_bridge_test_driver.o tensor_kernel_driver.o tensor_serving_review.o: $(BU
 
 # H3 selected normalization review reimports the existing H1 context.
 dsl_normalization_cost_test dsl_normalization_lower_test dsl_normalization_request_test: dsl_gpu_profile_owner_test.o
+
+# H4 complete reverse consumers for runtime fetch-control and recipe headers.
+dsl_fetch_pipeline.o dsl_physical_plan.o: $(BUILD_TOT)/be/vho/dsl_fetch_pipeline_opt.h $(BUILD_TOT)/be/vho/dsl_fetch_pipeline.h $(BUILD_TOT)/be/vho/dsl_movement_gemm.h

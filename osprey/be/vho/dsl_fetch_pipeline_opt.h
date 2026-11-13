@@ -49,6 +49,8 @@ typedef struct {
     UINT32 hardware_arch_id;
     UINT32 enable_direct;
     DSL_TILE_PLAN_ID tile_plan_id;
+    /* H4 bounded staged siblings; zero preserves the historical catalog. */
+    UINT32 enable_b_retention;
     UINT32 reserved;
 } VHO_DSL_FETCH_PIPELINE_CONTROL;
 
