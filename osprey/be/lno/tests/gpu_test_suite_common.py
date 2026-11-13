@@ -40,19 +40,23 @@ def stage_scaffold(source,target):
 
 
 def catalog(packet,expected,full=True):
-    """Bind the outer catalog and both unchanged inner packet identities."""
+    """Bind v1/v2 catalogs to unchanged legacy and optional target-bound H7 packets."""
     packet=Path(packet).resolve()
     if full:authenticate_packet(packet,expected)
     source=Packet(packet,expected)
     table=loads(source.read('suite.json'))
-    if table.get('schema')!=SCHEMA or set(table.get('packets',{}))!={'scaffold','mla-q7'}:
+    if table.get('schema') not in (SCHEMA,'open64.gpu-test.suite.v2') or set(table.get('packets',{}))!=({'scaffold','mla-q7','h20'} if table.get('schema')=='open64.gpu-test.suite.v2' else {'scaffold','mla-q7'}):
         raise ValueError('unsupported combined source catalog')
-    for name in ('scaffold','mla-q7'):
+    for name in table['packets']:
         entry=table['packets'][name]
         if entry.get('directory')!=name or not re.fullmatch('[0-9a-f]{64}',entry.get('packet_sha256','')):
             raise ValueError('invalid inner packet binding')
         if hashlib.sha256(source.read(name+'/SHA256SUMS')).hexdigest()!=entry['packet_sha256']:
             raise ValueError('inner packet identity differs: '+name)
+    if 'h20' in table['packets']:
+        inner=loads(source.read('h20/h20.json'))
+        if table.get('h20_target') not in ('h20_96gb','h20_141gb') or table['h20_target']!=inner.get('gpu_device'):
+            raise ValueError('outer/inner H20 target binding differs')
     return table
 
 
@@ -76,3 +80,11 @@ def snapshot(source,destination,notes):
                 target=destination/relative
                 if target.exists():target.unlink()
                 notes.append(dict(path=str(path),reason=str(error)))
+
+
+def roles(table):
+    """Preserve old three-profile packets; H7 adds four independent boundaries."""
+    if 'h20' not in table['packets']:
+        return ROLES
+    from h20_h7_common import ROLES as h20_roles
+    return ROLES + h20_roles

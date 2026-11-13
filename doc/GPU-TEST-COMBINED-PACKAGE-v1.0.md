@@ -1,5 +1,10 @@
 # Combined GEMM and MLA NVIDIA test package v1.0
 
+## Additive H7 catalog extension
+
+The original v1 packet and all inner scripts/contracts below remain preserved. [H7 qualification](AI-COMPILER-H7-H20-QUALIFICATION-v1.0.md) adds an optional `h20` inner packet through catalog v2, four independent shared F32 profiles, explicit 96/141 targets, frozen compiler products and actual resource/correctness/sanitizer/timing/profiling gates. The existing outer runner/collector/shared receiver and GS1/GS2 registration support both catalogs. Old inner shared modules retain their pinned versions; the new outer shared validator adds H7 without rewriting original distributions. Physical results, native matched baselines/calibration and broader H4 TMA provider coverage remain explicit gaps; no complete H20 performance claim follows from package preparation.
+
+
 November 11, 2026. One source archive, one run command, one automatic return tar.
 This composes the aligned Testing scaffold v2.0 and MLA Q7 v1.4 packets without
 changing their kernels, oracles, workload ABIs, shared result format or numerical

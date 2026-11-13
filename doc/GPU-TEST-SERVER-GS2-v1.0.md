@@ -1,5 +1,10 @@
 # GPU testing HTTP service and remote client GS2 v1.0
 
+## Additive H7 registered packet capabilities
+
+[H7](AI-COMPILER-H7-H20-QUALIFICATION-v1.0.md) registers catalog-v2 H20 packets through the existing source authentication path. Registered metadata adds four H20 profiles and the explicit target only for these new packets; legacy registry records keep their exact spelling for idempotent re-registration. GS2 serves those registered capabilities without GPU probing in handlers. Existing combined-job requests, idempotency, leases, cancellation, collection and offline acceptance remain unchanged. Runtime H20 identity/resources are checked by H7; SM90 compatibility alone grants no H20 qualification. Hardware/model/baseline gaps remain visible.
+
+
 November 11, 2026. Implemented authenticated loopback HTTP service, managed GS1
 worker pool and reconnectable client. The supported wire contract is
 [OpenAPI v0.2](GPU-TEST-SERVER-API-v0.2.openapi.json). It makes the earlier

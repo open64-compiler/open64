@@ -119,12 +119,15 @@ class Service:
             size_bytes=len(data), expires_at=None, download_url='/v1/artifacts/source_sha_' + packet['packet_id'])]
 
     def packet_view(self, packet):
+        """Expose authenticated registered profiles, including optional H7 families."""
+        profiles=packet.get('profiles',['gemm','mla-core','mla-q7'])
+        requirements=['Linux x86_64 for qualification','physical sm_90, MIG disabled','registered packet CUDA/Driver/sanitizer requirements']
+        if packet.get('h20_target'):requirements.append('H7 explicitly selected device: '+packet['h20_target'])
         return dict(packet_id=packet['packet_id'], archive_sha256=packet['archive_sha256'],
             archive_size_bytes=packet['archive_size_bytes'], producer_commit=packet['producer_commit'],
             name=Path(packet['path']).name, registry_version='open64.gpu-test.worker-registry.v1',
-            profiles=['gemm', 'mla-core', 'mla-q7'], modes=['qualify', 'check-only'],
-            requirements=['Linux x86_64 for qualification', 'physical sm_90, MIG disabled',
-                'registered packet CUDA/Driver/sanitizer requirements'],
+            profiles=profiles, modes=['qualify', 'check-only'],
+            requirements=requirements,
             source_artifacts=self.source_artifacts(packet), result_schema='open64.gpu-test.results.v1')
 
     def artifact_view(self, row):
