@@ -121,20 +121,23 @@ must not emit admission reports and retain their existing behavior.
 The High image is translated by ordinary whirl2c, compiled and executed for all
 seven saved scenarios per context against the existing FP64 oracles, with
 guarded disjoint allocations and immutable inputs. The host adapter header
-maps legacy infF/F4EXP/F4LOG names to standard C math; it adds no algorithm.
+maps legacy infF/F4EXP/F4LOG names to standard C math and declares the existing
+strided vector-exp ABI; the harness links `osprey/libm/vexpf.c` and its table.
+It adds no algorithm. Both pre/post-LNO paths must pass all seven scenarios
+per context, for 28 host reference executions.
 An additional post-LNO C lane disables SIMD because ordinary whirl2c cannot
 print every x86 vector REPLICATE operator. Default native LNO is still compared
 without that control change. Exact pre/post host parity is recorded separately
 from the required FP64 numerical tolerances, not presumed.
 
-A pre-existing long-context post-LNO CG dependence-graph reopen failure is
-tracked separately: both retained and rebuilt LNO produce the same affected
-image; normal whirl2c fails in Depgraph_Read/OPCODE_make_op. The harness must
-verify baseline identity and the same baseline diagnostic before reporting this
-limitation. Unexpected failures remain test failures. This does not invalidate
-the High image's numerical checks or actual PREOPT/LNO admission, and it is not
-reported as successful post-LNO execution. Repair belongs to the later mapped
-integration acceptance gate; M2a does not alter dependence-image encoding.
+Earlier receipts record a long-context post-LNO CG dependence-graph failure:
+the tree writer omitted the offset of a vector intrinsic call. The
+[dependence-image repair](WHIRL-DEPENDENCE-IMAGE-REPAIR.md) preserves the format
+and records every call form. Newly produced long images must pass downstream
+reading and execution; the harness now requires that by default. Explicit
+`--allow-baseline-depgraph-failure` is for replaying historical baselines only
+and never counts a failed read as post-LNO execution. Old malformed images
+with absent offsets require regeneration and receive an IR diagnostic.
 
 Impact-selected existing tensor-lowering and native partition tests verify
 default behavior and linkage. Retain sources/tools, commands, source-mapped

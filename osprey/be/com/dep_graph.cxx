@@ -434,6 +434,11 @@ void ARRAY_DIRECTED_GRAPH16::Print(FILE *fp, INT)
 
 }
 
+/* Publish the existing graph image using offsets recorded by the tree writer.
+ * All retained vertices must name emitted WNs in the caller's active PU;
+ * missing offsets are compiler invariants, not permission to drop dependence
+ * vertices or silently change the graph's meaning. The binary layout stays
+ * unchanged. */
 extern "C" void
 Depgraph_Write (void *depgraph, Output_File *fl, WN_MAP off_map)
 {
@@ -462,6 +467,17 @@ Depgraph_Write (void *depgraph, Output_File *fl, WN_MAP off_map)
     }
   }
   new_vmax = x - 1;
+
+  /* Check the tree/map join before publishing any graph rows. */
+  for (v = 1; v <= vmax; v++) {
+    if (vertex_map[v] != 0) {
+      Is_True(WN_MAP32_Get(off_map, g->Get_Wn(v)) != 0,
+              ("Depgraph_Write: live PU vertex %u has no mapped tree offset",
+               (unsigned)v));
+      if (WN_MAP32_Get(off_map, g->Get_Wn(v)) == 0)
+        ErrMsg(EC_IR_Scn_Write, "dependence graph vertex", fl->file_name);
+    }
+  }
 
   ir_b_save_buf((void *)&new_vmax, sizeof(VINDEX16), sizeof(VINDEX16), 0, fl);
   ir_b_save_buf((void *)&emax, sizeof(EINDEX16), sizeof(EINDEX16), 0, fl);
@@ -515,6 +531,11 @@ Depgraph_Write (void *depgraph, Output_File *fl, WN_MAP off_map)
 
 #define WORD_ALIGNED(sz)	(((sz) % 4) == 0 ? (sz) : (sz)+(4-((sz)%4)))
 
+/* Restore graph vertices into the caller's already mapped PU and map table.
+ * Reject incomplete vertex tables and absent-node offsets before allocating a
+ * graph or mutating WN maps. In particular, zero is the tree header, never a
+ * WN. The owning reader diagnoses NULL as malformed input; valid images keep
+ * the existing edge layout and reconstruction protocol. */
 extern "C" void *
 Depgraph_Read (char *cur_addr, char *end_addr, char *wn_base)
 {
@@ -525,11 +546,27 @@ Depgraph_Read (char *cur_addr, char *end_addr, char *wn_base)
   DEP_STRUCT dep;
   WN *node;
 
+  if (end_addr < cur_addr ||
+      end_addr - cur_addr < sizeof(VINDEX16) + sizeof(EINDEX16))
+    return NULL;
+
   /* get the numbers of vertices and edges */
   vmax = *(VINDEX16 *)cur_addr;
   cur_addr += (sizeof(VINDEX16));
   emax = *(EINDEX16 *)cur_addr;
   cur_addr += (sizeof(EINDEX16));
+
+  /* Preflight the complete vertex list before Add_Vertex consults opcodes or
+   * updates native maps. Older affected images have an unset call offset. */
+  char *vertex_addr = (char *)WORD_ALIGNED((INTPTR)cur_addr);
+  if (vertex_addr > end_addr ||
+      (size_t)(end_addr - vertex_addr) / sizeof(Elf64_Word) < vmax)
+    return NULL;
+  for (UINT32 index = 0; index < vmax; ++index) {
+    Elf64_Word offset;
+    memcpy(&offset, vertex_addr + index * sizeof(Elf64_Word), sizeof(offset));
+    if (offset == 0) return NULL;
+  }
 
   g = CXX_NEW(ARRAY_DIRECTED_GRAPH16(vmax+1, emax+1, WN_MAP_DEPGRAPH,
 				     DEP_ARRAY_GRAPH), Malloc_Mem_Pool);

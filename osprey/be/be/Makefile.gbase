@@ -1062,6 +1062,15 @@ be:  $(BE_DRIVER_OBJS) $(LINK_DSO) $(BE_SO)
 		$(LDFLAGS) $(BE_SO) $(LINK_DSO_OPTS) $(LINK_DSO) -ldl
 endif
 
+# Focused mapped graph/tree contract tests use the production shared services.
+depgraph_image_test.o: $(BE_COM_DIR)/tests/depgraph_image_test.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+depgraph_image_test: depgraph_image_test.o $(BE_SO)
+	$(link.c++f) -o $@ depgraph_image_test.o $(BE_SO) -lm -ldl
+
+LDIRT += depgraph_image_test depgraph_image_test.o
+
 .PHONY: so_locations
 so_locations : 
 	cp $(BE_BE_DIR)/so_locations so_locations

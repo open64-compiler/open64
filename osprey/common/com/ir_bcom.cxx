@@ -326,7 +326,11 @@ ir_b_create_map (Output_File *fl)
 } /* ir_b_create_map */
 
 
-/* Walk the tree and copy it to contiguous memory block in the temp. file */
+/* Copy this PU's tree into the mapped output and record offsets needed by
+ * enabled auxiliary maps. Every dependence-graph call form needs an offset,
+ * including indirect and intrinsic calls; zero denotes an absent map entry,
+ * not a node at the beginning of the tree subsection. Preserve node layout
+ * and leave symbol/PU ownership with the caller. */
 #if defined(KEY) && !defined(FRONT_END) && !defined(IR_TOOLS)
 
 // ******************** IPA weak symbols^
@@ -376,7 +380,8 @@ ir_b_write_tree (WN *node, off_t base_offset, Output_File *fl, WN_MAP off_map)
 
 	if (Write_BE_Maps) {
 	    if (opr == OPR_PREFETCH || opr == OPR_PREFETCHX ||
-		OPCODE_is_load (opcode) || OPCODE_is_store (opcode))
+                OPCODE_is_load (opcode) || OPCODE_is_store (opcode) ||
+                OPCODE_is_call (opcode))
 		set_offset = TRUE;
 
 	    /* check if the WN has a prefetch pointer */

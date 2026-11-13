@@ -336,8 +336,10 @@ milestone. It includes complete short/long search coverage, bounded and refused
 requests, native-state isolation, unchanged search-on/off mapped views, and a
 file-by-file compliance review.
 
-The known long post-LNO dependence-image failure in the downstream code-generation
-reader reproduces on the comparison baseline. Short host execution and the long
-pre-LNO host reference are validated separately; a long post-LNO executable
-pipeline remains unverified. These checks certify bounded estimation and ordinary
-LNO fallback, with no GPU execution, calibration or performance claim.
+The earlier long post-LNO dependence-image failure is addressed by the
+[mapped call-offset repair](WHIRL-DEPENDENCE-IMAGE-REPAIR.md). Newly produced
+short and long images pass the downstream reader and pre/post-LNO host
+references. Older affected images contain an absent graph-node offset and
+require regeneration; the reader diagnoses that corruption. These checks
+certify bounded estimation and ordinary LNO fallback, with no GPU execution,
+calibration or performance claim.
