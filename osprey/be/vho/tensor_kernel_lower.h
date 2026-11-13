@@ -65,7 +65,7 @@ struct VHO_TENSOR_CHUNK_SELECTION {
     std::vector<VHO_TENSOR_CHUNK_CANDIDATE> candidates;
 };
 struct VHO_TENSOR_PROGRAM {
-    VHO_TENSOR_PROGRAM():opt_level(0),threads(1),fuse(false),split_width(0),cooperative(false),fuse_attention(false),register_latent(false),auto_chunks(false),search_selected(false),chunk_policy(1) {}
+    VHO_TENSOR_PROGRAM():opt_level(0),threads(1),fuse(false),split_width(0),cooperative(false),fuse_attention(false),register_latent(false),auto_chunks(false),search_selected(false),chunk_policy(1),head_group(1) {}
     std::string source_pu;
     std::string source_file;
     UINT32 opt_level;
@@ -79,6 +79,7 @@ struct VHO_TENSOR_PROGRAM {
     bool search_selected;        /* fixed two-phase winner; never rerun selection per kernel */
     std::string search_evidence,search_identity; /* driver-owned canonical audit JSON and opaque identity */
     UINT32 chunk_policy;        /* 1 legacy 128+, 2 expanded 32+ search, 3 narrow blocks, 4 warp registers, 5 two-warp broadcasts, 6 warp-owned partials */
+    UINT32 head_group;          /* H5 fixed warp-per-head panel16 recipe; legacy is one */
     VHO_TENSOR_GPU_PROFILE gpu;
     std::vector<VHO_TENSOR_VALUE> values;
     std::vector<VHO_TENSOR_OPERATION> operations;
@@ -87,7 +88,8 @@ struct VHO_TENSOR_PROGRAM {
 /* Deterministic PU-local launch plan. Synthetic scratch is detached storage,
  * never a new logical opcode or binary WHIRL record. IDs >=4096 are merges. */
 struct VHO_TENSOR_KERNEL {
-    VHO_TENSOR_KERNEL():warp_owned_partials(false),two_warp_statistics(false),register_statistics(false) {}
+    VHO_TENSOR_KERNEL():head_group(1),warp_owned_partials(false),two_warp_statistics(false),register_statistics(false) {}
+    UINT32 head_group;          /* one warp per head in the H5 attention CTA only */
     bool warp_owned_partials;   /* independent 32-token distributions, one CTA tuple publication */
     bool two_warp_statistics;   /* disjoint summary slots, register broadcasts, three CTA barriers */
     bool register_statistics;   /* one token/lane; private scores/weights, shuffle broadcasts */

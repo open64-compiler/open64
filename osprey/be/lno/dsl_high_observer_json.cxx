@@ -143,11 +143,11 @@ VHO_MLA_COST_PROFILE DSL_observer_model(const rapidjson::Value &value) {
 /* Hierarchy assumptions are an explicit v3-only extension. Static policies:
  * conservative L1 exclusion, write-through stores, no deliberate spills or
  * overlap, and an immutable materializer capability registry. */
-VHO_MLA_MOVEMENT_PROFILE DSL_observer_hierarchy(const rapidjson::Value &v) {
+VHO_MLA_MOVEMENT_PROFILE DSL_observer_hierarchy(const rapidjson::Value &v,bool hierarchy) {
     DSL_observer_object(v,13);
     DSL_observer_require(DSL_observer_string(DSL_observer_member(v,"schema"))=="open64.mla-hierarchy-profile.v1" &&
         DSL_observer_string(DSL_observer_member(v,"unit"))=="reference_cycles" &&
-        DSL_observer_string(DSL_observer_member(v,"capabilities"))==VHO_mla_movement_capabilities());
+        DSL_observer_string(DSL_observer_member(v,"capabilities"))==(hierarchy?VHO_mla_h5_capabilities():VHO_mla_movement_capabilities()));
     VHO_MLA_MOVEMENT_PROFILE p;
     p.id=DSL_observer_string(DSL_observer_member(v,"id"),96);
     p.architecture=DSL_observer_string(DSL_observer_member(v,"architecture"),96);
@@ -172,9 +172,9 @@ VHO_MLA_MOVEMENT_PROFILE DSL_observer_hierarchy(const rapidjson::Value &v) {
 }
 /* Decode the versioned global/per-run/composite controls without borrowing
  * JSON state. Hard safety caps remain mandatory even if budget is not named. */
-VHO_MLA_SEARCH_CONTROL DSL_observer_controls(const rapidjson::Value &value,bool movement) {
+VHO_MLA_SEARCH_CONTROL DSL_observer_controls(const rapidjson::Value &value,bool movement,bool hierarchy) {
     DSL_observer_object(value,15);
-    DSL_observer_require(DSL_observer_string(DSL_observer_member(value,"schema")) == (movement?"open64.mla-search-controls.v3":"open64.mla-search-controls.v2"));
+    DSL_observer_require(DSL_observer_string(DSL_observer_member(value,"schema")) == (hierarchy?"open64.mla-search-controls.v4":movement?"open64.mla-search-controls.v3":"open64.mla-search-controls.v2"));
     VHO_MLA_SEARCH_CONTROL control;
     control.space=DSL_observer_string(DSL_observer_member(value,"space"));
     control.mode=DSL_observer_string(DSL_observer_member(value,"mode"));
@@ -228,14 +228,15 @@ bool LNO_DSL_read_search_input(const char *path, DSL_HIGH_SEARCH_INPUT &output, 
         DSL_observer_require(!document.HasParseError());
         unsigned nodes = 0; DSL_observer_unique(document,0,nodes);
         std::string schema=DSL_observer_string(DSL_observer_member(document,"schema"));
-        bool movement=schema=="open64.lno-high-search.v3";
+        bool hierarchy=schema=="open64.lno-high-search.v4";
+        bool movement=hierarchy || schema=="open64.lno-high-search.v3";
         bool production=movement || schema=="open64.lno-high-search.v2";
         DSL_observer_require(production || schema=="open64.lno-high-search.v1");
         DSL_observer_object(document,movement?14:production?13:12);
         DSL_HIGH_SEARCH_INPUT result;
-        result.production_controls=production;result.movement_enabled=movement;
-        if(movement) result.movement_profile=DSL_observer_hierarchy(DSL_observer_member(document,"hierarchy"));
-        if(production) result.controls=DSL_observer_controls(DSL_observer_member(document,"search_controls"),movement);
+        result.production_controls=production;result.movement_enabled=movement;result.hierarchy_enabled=hierarchy;
+        if(movement) result.movement_profile=DSL_observer_hierarchy(DSL_observer_member(document,"hierarchy"),hierarchy);
+        if(production) result.controls=DSL_observer_controls(DSL_observer_member(document,"search_controls"),movement,hierarchy);
         result.unit = DSL_observer_string(DSL_observer_member(document,"unit"));
         result.function = DSL_observer_string(DSL_observer_member(document,"function"));
         result.source_key = DSL_observer_string(DSL_observer_member(document,"source_key"),8*1024*1024);

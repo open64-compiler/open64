@@ -132,7 +132,8 @@ extern std::string VHO_mla_search_control_key(const VHO_MLA_SEARCH_CONTROL &);
 extern BOOL VHO_mla_explore_controlled(const VHO_TENSOR_PROGRAM &,const VHO_TENSOR_GPU_PROFILE &,
     const VHO_MLA_COST_PROFILE &,const VHO_MLA_SEARCH_CONTROL &,VHO_MLA_PRODUCTION_RESULT *,FILE *);
 /* V3 reuses the same portfolio/cache/global budgets with a separately bound
- * model/catalog. Only proved executable G1 entries may become incumbents. */
+ * model/catalog. Archived v3 admits only G1; H5 requires its separate owned
+ * context, pinned H3 and exact executable panel16 recipe. */
 extern std::string VHO_mla_movement_descriptor_key(const VHO_MLA_SEARCH_CANDIDATE &);
 extern BOOL VHO_mla_movement_control_valid(const VHO_MLA_SEARCH_CONTROL &,FILE *);
 extern BOOL VHO_mla_explore_movement(const VHO_TENSOR_PROGRAM &,const VHO_TENSOR_GPU_PROFILE &,
@@ -155,7 +156,8 @@ extern BOOL VHO_mla_explore_q5(const VHO_TENSOR_PROGRAM &,const VHO_TENSOR_GPU_P
 inline uint64_t VHO_mla_candidate_rank(const VHO_MLA_SEARCH_CANDIDATE &c)
     { return c.h3.complete?c.h3.rank_ns:c.total; }
 /* Reuse admitted native recipe counts and H2 source/profile joins. The plan
- * remains a detached proposal, with no grouped execution capability invented. */
+ * remains detached; only the separately implemented H5 descriptor can add
+ * grouped execution, after both cache-role reuse proofs are validated. */
 extern bool VHO_mla_h3_plan(const VHO_MLA_SEARCH_CANDIDATE &,const VHO_TENSOR_PROGRAM &,
     const VHO_TENSOR_GPU_PROFILE &,const DSL_MOVEMENT_FACTS &,DSL_H3_PLAN &,std::string &);
 /* Existing portfolio/proposers and controls with H3 physical-unit comparisons.

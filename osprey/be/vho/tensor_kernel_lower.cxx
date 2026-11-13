@@ -391,6 +391,7 @@ public:
         return body;
     }
     #include "tensor_attention_device.inc"
+    #include "tensor_attention_hierarchy.inc"
     /* A canonical integer counted loop retains serial accumulation order. */
     WN *Loop(ST *iv,UINT64 extent,WN *body) {
         WN *begin=integer(0),*end=integer(extent);

@@ -18,11 +18,12 @@ struct DSL_HIGH_SEARCH_INPUT {
     std::vector<unsigned> buffers;
     bool allow_reassociate;
     bool production_controls;
+    bool hierarchy_enabled; /* explicit v4 binding; H20/H2/H3 required */
     bool movement_enabled;
     VHO_MLA_MOVEMENT_PROFILE movement_profile;
     VHO_MLA_SEARCH_CONTROL controls;
     /* Missing permission never defaults to authorization. */
-    DSL_HIGH_SEARCH_INPUT() : allow_reassociate(false), production_controls(false), movement_enabled(false) {}
+    DSL_HIGH_SEARCH_INPUT() : allow_reassociate(false), production_controls(false), hierarchy_enabled(false), movement_enabled(false) {}
 };
 struct DSL_HIGH_SEARCH_REPORT {
     DSL_HIGH_REUSE_FACTS reuse;

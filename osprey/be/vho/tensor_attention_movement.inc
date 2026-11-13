@@ -2,6 +2,10 @@
 /* Included by the detached estimator to reuse its counts, checked arithmetic,
  * schedule admission, occupancy and portfolio. No native services.
  * Synchronous copy -> consume -> release; no speculative overlap discount. */
+/* H5 registers only concrete panel16 schedules; archived MR2 is unchanged. */
+const char *VHO_mla_h5_catalog() {return "mla-h5-space-v1-22";}
+/* Capability is compiled ownership/algorithm, never a user-provided switch. */
+const char *VHO_mla_h5_capabilities() {return "mla-h5-v1:G1=verified-v8;G2,G4=panel16-two-sweep";}
 const char *VHO_mla_movement_catalog() {return "mla-movement-space-v1-36";}
 const char *VHO_mla_movement_capabilities() {return "mla-materializers-v1:G1=verified-v8;G2,G4,G8=analysis-only";}
 BOOL VHO_mla_movement_profile_valid(const VHO_MLA_MOVEMENT_PROFILE &p,FILE *f) {
@@ -47,12 +51,27 @@ void Movement_catalog(VHO_MLA_SEARCH_RESULT &r,const VHO_TENSOR_ATTENTION &a) {
         r.candidates.push_back(c);
     }
 }
+/* Add only implemented H5 widths and groups after the unchanged G1 catalog.
+ * Direct uses the exact source length (up to 1024); split tuples still require
+ * their original High backing proof. Catalog construction is detached only. */
+void Hierarchy_catalog(VHO_MLA_SEARCH_RESULT &r,const VHO_TENSOR_ATTENTION &a) {
+    VHO_search_catalog(r);
+    for(size_t i=0;i<r.candidates.size();++i) r.candidates[i].descriptor.column=a.rank;
+    const UINT32 widths[]={0,32,128,512,1024};
+    for(unsigned group=2;group<=4;group+=2) for(unsigned w=0;w<5;++w) {
+        VHO_MLA_SEARCH_CANDIDATE c;c.width=widths[w];c.descriptor.group=group;
+        c.descriptor.hierarchy=true;c.descriptor.column=16;r.candidates.push_back(c);
+    }
+}
+/* Frame every ownership/layout/sweep choice; the H5 suffix separates its
+ * executable panel protocol from archived hypotheses with similar dimensions. */
 std::string Movement_descriptor(const VHO_MLA_SEARCH_CANDIDATE &c) {
     std::ostringstream s;s<<"mla-movement-descriptor-v1/G="<<c.descriptor.group<<"/W="<<c.width<<"/policy="<<c.policy
         <<"/column="<<c.descriptor.column<<"/sweeps="<<(c.descriptor.retained?1:2)
         <<"/layout="<<(c.descriptor.group==1?"existing":"row-major-smem")
         <<"/ownership="<<(c.descriptor.group==1?"existing":"warp-per-head")
         <<"/pipeline=synchronous/tuple=normalized-f32-v1";
+    if(c.descriptor.hierarchy) s<<"/H5-panel16/scores=warp-private-shared/no-overlap";
     return s.str();
 }
 /* Scenario transaction counts are an explicit amplification + sector envelope,
@@ -118,10 +137,16 @@ void Movement_cost_stage(VHO_MLA_STAGE_ESTIMATE &s,const VHO_TENSOR_GPU_PROFILE 
 /* A capability-qualified G1 seed supplies all unaffected projection/output
  * stages. Grouping changes only the proposed attention CTA and its cache
  * staging; normalized per-head split tuples and the existing merge stay.
- * H1c also checks grouped reservations against owned imported CTA limits. */
+ * H1c also checks grouped reservations against owned imported CTA limits.
+ * H5 counts its concrete padded panel protocol separately; archived MR2
+ * hypotheses retain their previous analysis-only envelope and capability. */
 void Movement_evaluate(VHO_MLA_SEARCH_CANDIDATE &c,const VHO_TENSOR_PROGRAM &source,
     const VHO_TENSOR_GPU_PROFILE &g,const VHO_MLA_COST_PROFILE &model,const VHO_MLA_MOVEMENT_CONTEXT &ctx) {
     c.evaluated=true;c.movement.descriptor_key=Movement_descriptor(c);
+    bool hierarchy=c.descriptor.hierarchy;
+    if(hierarchy && (!ctx.hierarchy || (c.descriptor.group!=2 && c.descriptor.group!=4) ||
+        c.descriptor.column!=16 || c.descriptor.retained)) throw std::runtime_error("H5_descriptor_refusal");
+    if(hierarchy && !c.width && VHO_tensor_attention(source).length>1024) {c.reason="H5_direct_capacity";return;}
     VHO_MLA_SEARCH_CANDIDATE seed;seed.policy=c.policy;seed.width=c.width;
     Evaluate(seed,source,g,model,true);
     if(!seed.eligible) {c.reason=seed.reason;return;}
@@ -148,8 +173,9 @@ void Movement_evaluate(VHO_MLA_SEARCH_CANDIDATE &c,const VHO_TENSOR_PROGRAM &sou
                 UINT64 width=k.split_width,group=c.descriptor.group,headgroups=ceilq(a.heads,group);
                 UINT64 allocated_shared=VHO_tensor_shared_bytes(p,k),registers=g.registers_per_thread;
                 if(group>1) {
-                    allocated_shared=mul(4,add(add(mul(width,c.descriptor.column),mul(width,a.rope)),mul(group,add(a.rank,2))));
-                    registers=add(registers,add(ceilq(a.rank,32),add(mul(2,ceilq(width,32)),4)));
+                    allocated_shared=hierarchy?mul(4,add(512,mul(group,mul(ceilq(width,32),32)))):
+                        mul(4,add(add(mul(width,c.descriptor.column),mul(width,a.rope)),mul(group,add(a.rank,2))));
+                    registers=hierarchy?add(registers,24):add(registers,add(ceilq(a.rank,32),add(mul(2,ceilq(width,32)),4)));
                 }
                 if(allocated_shared>49152) throw std::runtime_error("movement_static_smem_48KiB");
                 UINT64 chunks=ceilq(a.length,width);bool launched=false;
@@ -175,6 +201,22 @@ void Movement_evaluate(VHO_MLA_SEARCH_CANDIDATE &c,const VHO_TENSOR_PROGRAM &sou
                         s.dependency=mul(add(a.rank,a.rope),ceilq(w,32));
                         s.scalar_ops=add(s.scalar_ops,shared_write/4);
                         s.shared_bytes=add(shared_write,shared_read);
+                    }
+                    if(hierarchy) {
+                        // Every lane owns one token in each 32-token slab; all
+                        // CTA threads publish/release the same bounded panel.
+                        // Static panel writes include padded tokens/columns.
+                        UINT64 panels=add(mul(2,ceilq(a.rank,16)),ceilq(a.rope,16));
+                        UINT64 slabs=ceilq(width,32),writes=mul(mul(mul(4,512),panels),slabs);
+                        UINT64 reads=mul(mul(mul(4,w),h),add(mul(2,a.rank),a.rope));
+                        UINT64 scores=add(mul(mul(mul(4,mul(slabs,32)),group),5),mul(mul(mul(4,w),h),ceilq(a.rank,16)));
+                        s.shared_bytes=add(add(writes,reads),scores);
+                        shared_write=writes;shared_read=add(reads,scores);
+                        s.barriers=mul(2,mul(slabs,panels));s.fences=1;
+                        s.shuffles=mul(group,add(12,mul(5,a.rank)));
+                        s.exps=s.divs=mul(group,slabs);
+                        s.dependency=add(add(a.rank,a.rope),ceilq(w,32));
+                        s.scalar_ops=add(mul(h,add(mul(w,add(mul(2,add(a.rank,a.rope)),2)),mul(mul(2,w),a.rank))),writes/4);
                     }
                     Movement_traffic(s,hp,scenario,"latent-cache","read",latent,0,true);
                     Movement_traffic(s,hp,scenario,"rotary-cache","read",rotary,0,true);
@@ -225,8 +267,8 @@ void Movement_evaluate(VHO_MLA_SEARCH_CANDIDATE &c,const VHO_TENSOR_PROGRAM &sou
         weighted=add(weighted,mul(total,scenario.weight));weight=add(weight,scenario.weight);
     }
     c.total=hp.objective=="worst"?worst:ceilq(weighted,weight);c.movement.modeled=true;
-    c.eligible=c.descriptor.group==1;
-    c.reason=c.eligible?"movement_eligible_G1":"analysis_only_unimplemented_grouped_materializer";
+    c.eligible=c.descriptor.group==1 || hierarchy;
+    c.reason=hierarchy?"H5_panel16_executable":c.eligible?"movement_eligible_G1":"analysis_only_unimplemented_grouped_materializer";
 }
 }
 
