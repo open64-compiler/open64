@@ -51,6 +51,8 @@ extern BOOL VHO_DSL_CUDA_TMA_Prefetch;
 extern char *VHO_DSL_GEMM_Plan_Search;
 /* H4 is opt-in, O3/PU-local and requires H20/H2/H3/native-output admission. */
 extern BOOL VHO_DSL_GEMM_Hierarchy;
+/* Optional selected-only H6 owner route; unknown evidence keeps fallback. */
+extern BOOL VHO_DSL_H6_Memory;
 extern char *VHO_DSL_GEMM_Hierarchy_Checkpoint;
 extern char *VHO_DSL_GEMM_Cost_Model;
 extern char *VHO_DSL_GPU_Arch;

@@ -1063,7 +1063,7 @@ dsl_normalization_lower_test: $(OBJECTS) controls.o dsl_normalization_lower_test
 dsl_normalization_request_test: $(OBJECTS) controls.o dsl_normalization_request_test.o \
                 opt_dsl_normalization_request_test.o opt_dsl_normalization_lower_test.o opt_dsl_normalization_cost_test.o \
                 opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
-	$(link.c++f) -o $@ dsl_normalization_request_test.o opt_dsl_normalization_request_test.o opt_dsl_normalization_lower_test.o \
+	$(link.c++f) opt_dsl_h6_normalization_test.o -o $@ dsl_normalization_request_test.o opt_dsl_normalization_request_test.o opt_dsl_normalization_lower_test.o \
                 opt_dsl_normalization_cost_test.o opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o \
                 opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS) opt_dsl_movement_normalization_test.o dsl_movement_facts_test.o fhe_sha256.o dsl_movement_cost_test.o dsl_gpu_profile_owner_test.o
 
@@ -1494,3 +1494,22 @@ dsl_compute_shadow_opt.o dsl_compute_model.o dsl_compute_realization.o: $(BE_VHO
 
 # Rebuild the selected H5 native panel materializer when its private body changes.
 tensor_kernel_lower.o: $(BE_VHO_DIR)/tensor_attention_hierarchy.inc
+
+# H6 uses the existing standalone native object/driver linkage, with no new
+# be.so dependency. Separate normalization-only object preserves old isolation.
+opt_dsl_h6_normalization_test.o: $(BE_OPT_DIR)/opt_dsl_h6.cxx $(BE_OPT_DIR)/opt_dsl_h6.h
+	$(cxx) -DWOPT_DSL_H6_NORMALIZATION_ONLY -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+opt_dsl_h6_test.o: $(BE_OPT_DIR)/opt_dsl_h6.cxx $(BE_OPT_DIR)/opt_dsl_h6.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+opt_dsl_h6_lower_test.o: $(BE_OPT_DIR)/opt_dsl_h6_lower.cxx $(BE_OPT_DIR)/opt_dsl_h6.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+dsl_h6_test.o: $(BE_OPT_DIR)/tests/dsl_h6_test.cxx $(BE_OPT_DIR)/opt_dsl_h6.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+H6_TEST_OBJS = opt_dsl_h6_test.o opt_dsl_h6_lower_test.o opt_dsl_normalization_lower_test.o opt_dsl_normalization_cost_test.o opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o opt_dsl_reduction_test.o opt_dsl_movement_normalization_test.o opt_dsl_movement_reduction_test.o dsl_movement_facts_test.o dsl_movement_cost_test.o dsl_movement_cost_import_test.o dsl_gpu_profile_owner_test.o fhe_sha256.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+
+dsl_h6_test: dsl_h6_test.o $(H6_TEST_OBJS) controls.o $(OBJECTS)
+	$(link.c++f) -o $@ dsl_h6_test.o $(H6_TEST_OBJS) controls.o $(OBJECTS) $(LDFLAGS)
+
+# Legacy request/host tests require only the normalization half of H6.
+dsl_normalization_request_test: opt_dsl_h6_normalization_test.o
+opt_dsl_normalization_request_test.o opt_dsl_normalization_lower_test.o dsl_normalization_lower_test.o dsl_normalization_request_test.o: $(BE_OPT_DIR)/opt_dsl_normalization_lower.h $(BE_OPT_DIR)/opt_dsl_h6.h

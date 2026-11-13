@@ -1,5 +1,19 @@
 # AI Compiler Optimization Implementation Plan
 
+## H6 explicit-contract memory-hierarchy delivery, 2026-11-12
+
+[H6 specification](AI-COMPILER-H6-NORM-REDUCTION-v1.0.md),
+[H20 plan v1.7](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.7.md)
+and [design v0.14](AI_compiler_optimization_design_v0.14.md) add finite H2/H3/H20
+selection for retained/narrow-CTA LayerNorm and contiguous shared-panel ordered
+Reduction. Native construction and correctness run only for fixed revalidated
+winners. The LayerNorm production option defaults off; Reduction's new launch
+requires explicit caller enforcement, with broader discovery/new serving adapter
+still gated. Original WHIRL/tensor-trait, COMMENT, numerical and fallback
+contracts remain. Hardware H0/H7, AOT selection and OpenCTI stay open/deferred.
+All historical implementation/evidence sections below retain their scope.
+
+
 2026-11-12 architecture clarification:
 [native opcode and tensor-trait contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
 defines representation and phase-owned legality/scheduling services for new
