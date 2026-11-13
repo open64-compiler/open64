@@ -281,7 +281,9 @@ bool DSL_apply_preflight(WN *root,DSL_HIGH_EPOCH &epoch,const DSL_HIGH_BINDINGS 
     const VHO_MLA_SEARCH_CANDIDATE &sealed=report.production.exploration.candidates[winner];
     if(candidate.policy!=sealed.policy || candidate.width!=sealed.width || candidate.scratch!=sealed.scratch || candidate.total!=sealed.total)
         return reason="selected_candidate_changed",false;
-    if(input.movement_enabled && (candidate.descriptor.group!=1 || !candidate.movement.modeled ||
+    if(input.movement_enabled && ((!input.hierarchy_enabled && candidate.descriptor.group!=1) ||
+        candidate.descriptor.hierarchy!=sealed.descriptor.hierarchy || candidate.descriptor.group!=sealed.descriptor.group ||
+        (candidate.descriptor.hierarchy && !input.hierarchy_enabled) || !candidate.movement.modeled ||
         candidate.movement.descriptor_key!=VHO_mla_movement_descriptor_key(candidate) ||
         candidate.movement.descriptor_key!=sealed.movement.descriptor_key)) return reason="movement_candidate_unimplemented_or_changed",false;
     if(!candidate.evaluated || !candidate.eligible) return reason="selected_candidate_ineligible",false;
@@ -302,6 +304,7 @@ bool DSL_apply_preflight(WN *root,DSL_HIGH_EPOCH &epoch,const DSL_HIGH_BINDINGS 
     }
     selected=input.algorithm;selected.fuse=selected.cooperative=selected.fuse_attention=selected.register_latent=true;
     selected.chunk_policy=candidate.policy;selected.split_width=candidate.width;
+    selected.head_group=candidate.descriptor.hierarchy?candidate.descriptor.group:1;
     VHO_TENSOR_SCHEDULE schedule;
     if(!VHO_tensor_schedule(selected,&schedule,NULL)) return reason="selected_schedule_invalid",false;
     const VHO_TENSOR_ATTENTION &attention=schedule.attention;
@@ -311,8 +314,9 @@ bool DSL_apply_preflight(WN *root,DSL_HIGH_EPOCH &epoch,const DSL_HIGH_BINDINGS 
     if(scratch!=candidate.scratch || scratch>input.gpu.scratch_budget) return reason="selected_scratch_mismatch",false;
     for(unsigned i=0;i<schedule.kernels.size();++i) {
         const VHO_TENSOR_KERNEL &kernel=schedule.kernels[i];DSL_GEMM_OCCUPANCY_RESULT occupancy;
-        if(!input.gpu.device.Fits_CTA(kernel.threads,input.gpu.registers_per_thread,VHO_tensor_shared_bytes(selected,kernel)) ||
-            !DSL_gemm_occupancy(input.gpu.resources,32,input.gpu.sms,kernel.threads,4*input.gpu.registers_per_thread,
+        UINT64 registers=input.gpu.registers_per_thread+(kernel.head_group>1?24:0);
+        if(!input.gpu.device.Fits_CTA(kernel.threads,registers,VHO_tensor_shared_bytes(selected,kernel)) ||
+            !DSL_gemm_occupancy(input.gpu.resources,32,input.gpu.sms,kernel.threads,4*registers,
             VHO_tensor_shared_bytes(selected,kernel),VHO_tensor_grid(selected,kernel),&occupancy) || !occupancy.resident)
             return reason="selected_resource_refusal",false;
     }
@@ -351,7 +355,10 @@ bool LNO_DSL_apply_selected_high(WN *&root,DU_MANAGER *&du,ALIAS_MANAGER *&alias
         WN *body=VHO_tensor_build_selected_high(selected,root);
         std::string explanation=Index_To_Str(WN_GetComment(WN_first(body)));
         if(!report.h3_model_key.empty()) explanation+=" H3 chose this existing executable recipe using H2 source/reuse facts and the pinned H20 physical-unit model "+report.h3_model_key+". Traffic, spills and latency are explicit model estimates, not GPU measurements; candidate exploration generated no WHIRL.";
-        if(report.movement) explanation+=" MR2 selected an implemented G=1 plan under the explicit hierarchy/reuse profile; grouped-head candidates are analysis-only. Cache/HBM traffic and cycle costs are scenario estimates, not GPU measurements. The normalized per-head partial tuple and stable merge remain unchanged.";
+        std::ostringstream head_group;head_group<<selected.head_group;
+        if(input.hierarchy_enabled && selected.head_group==1) explanation+=" H5 selected G=1: the finite H3 comparison retained an original executable consumer. No grouped panel staging was applied. H2 proofs and H20/model bindings remain sealed; latency/traffic values are estimates, not measurements.";
+        else if(input.hierarchy_enabled) explanation+=" H5 selected G="+head_group.str()+" under owned H2 latent/rotary cache proofs, the pinned H20 profile and finite H3 search. Device warps own separate heads and reuse 32-token x 16-column panels; unconditional CTA publication/release protects every refill. Scores/weights stay in warp-private shared slots; normalized per-head tuples and stable merge remain. This scalar High checkpoint describes the semantic algorithm; selected worker High carries the physical panels. Traffic/resource/latency values are estimates; GPU correctness/race/performance qualification remains required.";
+        else if(report.movement) explanation+=" MR2 selected an implemented G=1 plan under the explicit hierarchy/reuse profile; grouped-head candidates are analysis-only. Cache/HBM traffic and cycle costs are scenario estimates, not GPU measurements. The normalized per-head partial tuple and stable merge remain unchanged.";
         staged=WN_COPY_Tree(root);WN_func_body(staged)=body;
         if(DSL_apply_fault(1)) throw std::runtime_error("test_after_construction");
         previous.Stage(staged);staged_analyses=true;
@@ -377,10 +384,10 @@ bool LNO_DSL_apply_selected_high(WN *&root,DU_MANAGER *&du,ALIAS_MANAGER *&alias
          * existing metadata image. Future lowering verifies these obligations;
          * it must not infer a different width/policy or reopen search. */
         ST_IDX owner=WN_st_idx(staged);
-        ST_tensor_bind_metadata(owner,"tensor.high.selected.schema",report.movement?"lno-selected-mla-v2":"lno-selected-mla-v1");
+        ST_tensor_bind_metadata(owner,"tensor.high.selected.schema",input.hierarchy_enabled?"lno-selected-mla-v3":report.movement?"lno-selected-mla-v2":"lno-selected-mla-v1");
         if(report.movement) {
-            ST_tensor_bind_metadata(owner,"tensor.high.selected.head_group","1");
-            std::string seal="mla-movement-selected-v1;"+report.exploration.candidates[report.exploration.winner].movement.descriptor_key+";"+report.movement_key;
+            ST_tensor_bind_metadata(owner,"tensor.high.selected.head_group",head_group.str().c_str());
+            std::string seal=std::string(input.hierarchy_enabled?"mla-h5-selected-v1;":"mla-movement-selected-v1;")+report.exploration.candidates[report.exploration.winner].movement.descriptor_key+";"+report.movement_key;
             ST_tensor_bind_metadata(owner,"tensor.high.selected.movement",seal.c_str());
         }
         ST_tensor_bind_metadata(owner,"tensor.high.selected.source",rebuilt.Source_key().c_str());

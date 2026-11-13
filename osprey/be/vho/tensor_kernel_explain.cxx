@@ -475,6 +475,22 @@ public:
         ExplainDependencies(k,text);Explain("STAGE SEMANTICS",text.str());
     }
     void ExplainAttentionStage(const VHO_TENSOR_KERNEL &k) {
+        if(k.head_group>1) {
+            const VHO_TENSOR_ATTENTION &a=_plan.attention;std::ostringstream text;
+            text<<"H5 CROSS-HEAD PANEL REUSE: G="<<k.head_group<<", W="<<k.split_width<<", B="<<a.batch<<", H="<<a.heads<<", R="<<a.rank<<", rotary="<<a.rope<<".\n"
+                <<"Launch "<<VHO_tensor_grid(_p,k)<<" CTAs of "<<k.threads<<" threads. Each warp owns one head; batch/head-group/chunk are disjoint.\n"
+                <<"A 32-token x 16-column panel (2048 bytes) stages latent and rotary columns in ascending order for score dots.\n"
+                <<"All warps publish via an unconditional CTA barrier, consume the panel, then release via another CTA barrier before refill. Padded heads still participate.\n"
+                <<"Per-warp shared score/weight slots hold the entire local chunk; they are local allocations, never global score/probability buffers.\n"
+                <<"Warp max/denominator shuffles and two register broadcasts keep heads separate; a full-mask warp fence publishes normalized weights.\n"
+                <<"A second latent sweep reuses each panel across heads; sixteen scalar column accumulators span token slabs, followed by warp sums.\n"
+                <<"Mask, head, token and column guards precede caller loads/stores. Mask-false latent products still execute, preserving nonfinite behavior.\n"
+                <<"F32 dot order, finite-max and zero-denominator guards remain; parallel token folds require the selected reassociation permission.\n"
+                <<"CTA barriers per local kernel: "<<2*((k.split_width+31)/32)*(2*((a.rank+15)/16)+(a.rope+15)/16)<<"; shared allocation "<<VHO_tensor_shared_bytes(_p,k)<<" bytes.\n"
+                <<"Long contexts write disjoint [raw maximum, denominator, normalized latent] tuples in the existing chunk-major ABI. The later stable rescaling merge is unchanged.\n"
+                <<"Cache source requests are shared once per group/sweep; fewer CTAs, staging, barriers, padding and extra registers can outweigh reuse. H3 values are estimates, not measured speedups.\n";
+            Explain("SELECTED H5 STAGE",text.str());return;
+        }
         if(k.threads<128) {ExplainNarrowBlockStage(k);return;}
         const VHO_TENSOR_ATTENTION &a=_plan.attention;std::ostringstream text;
         UINT64 rows=a.batch*a.heads,capacity=(((k.mapping==3?k.split_width:k.chunks)+127)/128)*128;
@@ -880,6 +896,13 @@ public:
     /* Explain interfaces and actual allocations without assuming a model name
      * or claiming device execution/performance evidence that the plan lacks. */
     void ExplainOverview() {
+        if(_p.head_group>1) {
+            std::ostringstream text;text<<"Selected H5 MLA panel16 device plan, G="<<_p.head_group<<", split width="<<_p.split_width
+                <<". Query/value projections and output copies remain separate stages. Only the finite-search winner was materialized.\n"
+                <<"The serial tensor review function is an algorithm view; it does not execute the device panel/barrier schedule. Device attention shares cache panels across heads within a CTA; score/weight storage is CTA-local. Global output/partial tuples and their stable merge retain their existing ABI.\n"
+                <<"Native WHIRL carries explicit memory, barriers and warp operations; CUDA emission makes no optimization decisions. H20 hardware qualification remains open.\n";
+            Explain("SELECTED H5 ALGORITHM AND INTERFACE",text.str());return;
+        }
         std::ostringstream text;std::set<UINT32> allocations;UINT64 bytes=0;
         if(_p.search_selected) text<<"TWO-PHASE ESTIMATION: this fixed plan was selected from detached MLA candidates before native WHIRL allocation.\n"
             <<"Search identity "<<_p.search_identity<<"; selected policy "<<_p.chunk_policy<<", chunk width "<<_p.split_width<<".\n"

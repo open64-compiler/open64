@@ -35,9 +35,10 @@ inline std::string VHO_tensor_selected_key(WN *root) {
     const char *schema=ST_tensor_metadata(WN_st_idx(root),"tensor.high.selected.schema");
     const char *movement=ST_tensor_metadata(WN_st_idx(root),"tensor.high.selected.movement");
     const char *group=ST_tensor_metadata(WN_st_idx(root),"tensor.high.selected.head_group");
-    if(schema && !strcmp(schema,"lno-selected-mla-v2")) {
-        if(!movement || !*movement || !group || strcmp(group,"1")) throw std::runtime_error("native_selected_movement_binding");
-        std::string text=movement;key<<"movement-selected-v1;"<<text.size()<<':'<<text<<";G=1;";
+    if(schema && (!strcmp(schema,"lno-selected-mla-v2") || !strcmp(schema,"lno-selected-mla-v3"))) {
+        bool hierarchy=!strcmp(schema,"lno-selected-mla-v3");
+        if(!movement || !*movement || !group || (strcmp(group,"1") && (!hierarchy || (strcmp(group,"2") && strcmp(group,"4"))))) throw std::runtime_error("native_selected_movement_binding");
+        std::string text=movement;key<<(hierarchy?"h5-selected-v1;":"movement-selected-v1;")<<text.size()<<':'<<text<<";G="<<group<<';';
     } else if(movement || group) throw std::runtime_error("native_selected_unversioned_movement");
     for(INT i=0;i<WN_num_formals(root);++i) {
         const char *trait=ST_tensor_metadata(WN_st_idx(WN_formal(root,i)),"tensor.cache.trait");

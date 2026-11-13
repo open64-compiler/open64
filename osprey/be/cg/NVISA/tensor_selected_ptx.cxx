@@ -93,7 +93,9 @@ class DSL_SELECTED_PTX {
         Instruction("ld.param.f32",r.reg+", ["+b+"]");_code<<" }\n";return r;
     }
     /* Consume explicit Low expressions only. Address spaces follow formal/LDA
-     * roots and ADDs, so global and shared loads cannot silently interchange. */
+     * roots and ADDs, so global and shared loads cannot silently interchange.
+     * Existing integer XOR swizzles lower bitwise, like AND/OR, without any
+     * additional scheduling or layout decision at this boundary. */
     DSL_PTX_VALUE Expression(WN *n) {
         OPERATOR op=WN_operator(n);TYPE_ID type=WN_rtype(n);
         if(op==OPR_PARM) return Expression(WN_kid0(n));
@@ -167,11 +169,11 @@ class DSL_SELECTED_PTX {
         std::string operation;
         if(op==OPR_ADD) operation="add";else if(op==OPR_SUB) operation="sub";else if(op==OPR_MPY) operation="mul";
         else if(op==OPR_DIV) operation="div";else if(op==OPR_REM) operation="rem";
-        else if(op==OPR_BAND) operation="and";else if(op==OPR_BIOR) operation="or";
+        else if(op==OPR_BAND) operation="and";else if(op==OPR_BIOR) operation="or";else if(op==OPR_BXOR) operation="xor";
         else throw std::runtime_error(std::string("PTX_expression/")+OPCODE_name(WN_opcode(n)));
         if(type==MTYPE_F4) operation+=".rn";
         else if(op==OPR_MPY) operation+=".lo";
-        bool bits=op==OPR_BAND||op==OPR_BIOR;
+        bool bits=op==OPR_BAND||op==OPR_BIOR||op==OPR_BXOR;
         Instruction(operation+"."+(bits?std::string("b")+number(MTYPE_byte_size(r.type)*8):Type(type)),r.reg+", "+a.reg+", "+b.reg);
         if(op==OPR_ADD) {Need(a.space.empty()||b.space.empty(),"PTX_two_address_roots");r.space=a.space.empty()?b.space:a.space;}
         return r;

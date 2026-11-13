@@ -118,7 +118,7 @@ void DSL_observer_print(FILE *trace, const DSL_HIGH_SEARCH_REPORT &report, const
     }
     if(report.movement) {
         fprintf(trace,"AI_HIGH_MOVEMENT 1 PROFILE %s\nAI_HIGH_MOVEMENT 1 CATALOG %s capability=%s\n",
-            VHO_mla_movement_profile_key(input.movement_profile).c_str(),VHO_mla_movement_catalog(),VHO_mla_movement_capabilities());
+            VHO_mla_movement_profile_key(input.movement_profile).c_str(),input.hierarchy_enabled?VHO_mla_h5_catalog():VHO_mla_movement_catalog(),input.hierarchy_enabled?VHO_mla_h5_capabilities():VHO_mla_movement_capabilities());
         fprintf(trace,"AI_HIGH_MOVEMENT 1 SCOPE modeled=true measured=false traffic_units=device_bytes latency_units=reference_cycles overlap=none L1=ignored stores=write-through spills=not-admitted actual_spills=unknown certificates=disabled\n");
         for(unsigned i=0;i<result.candidates.size();++i) {
             const VHO_MLA_SEARCH_CANDIDATE &c=result.candidates[i];
