@@ -1374,7 +1374,10 @@ WN_get_feedback (void* handle, PU_Info* pu, MEM_POOL* pool)
 #endif 
 
 #ifdef BACK_END
-/* Read the dependence graph mapping */
+/* Restore this PU's dependence graph after its tree and map table are live.
+ * Missing subsections retain the ordinary no-graph path. Malformed graph
+ * input returns ERROR_RETURN for Read_Local_Info's IR diagnostic, without
+ * publishing a graph or marking the subsection resident. */
 void *
 WN_get_depgraph (void *handle, PU_Info *pu)
 {
@@ -1414,9 +1417,10 @@ WN_get_depgraph (void *handle, PU_Info *pu)
     /* read the graph */
     g = Depgraph_Read(cur_addr, end_addr, tree_base);
 
-    /* if g is NULL there was an error reading the graph -- it is safe to
-       return it anyway since an empty graph will be created in its place */
-    Is_True(g, ("Error: Unable to read the dependence graph"));
+    if (g == NULL) {
+        errno = EINVAL;
+        return (void *) (INTPTR) ERROR_RETURN;
+    }
 
     Init_Dep_Graph(g);
     Set_PU_Info_depgraph_ptr(pu, g);

@@ -58,7 +58,11 @@ def execute(library, manifest, raw):
 
 
 def review(args):
-    """Retain every command and native artifact, comparing actual execution paths."""
+    """Retain native paths and require post-LNO execution by default.
+
+    Historical baseline reader failures are allowed only by explicit request;
+    they never count as successful post-LNO execution.
+    """
     out = args.output.resolve()
     out.mkdir(exist_ok=False, parents=True)
     (out / 'logs').mkdir()
@@ -114,10 +118,24 @@ def review(args):
         library = out / (label + '.so')
         run(label + '-cc', ['gcc', '-std=c99', '-O2', '-shared', '-fPIC', '-ffp-contract=off',
                            '-fno-fast-math', '-I' + str(args.include), '-include',
-                           Path(__file__).with_name('common_high_host.h'), c, '-lm', '-o', library])
+                           Path(__file__).with_name('common_high_host.h'), c,
+                           *runtime_objects, '-lm', '-o', library])
         return library
 
-    report = dict(scope='M2a semantic High producer and canonical form admission', contexts={})
+    # LNO may select the existing strided vector-exp runtime. Link that exact
+    # implementation into the host review library rather than substituting an
+    # algorithm or disabling the intrinsic to avoid exercising its graph node.
+    runtime_objects = []
+    runtime_directory = Path(__file__).resolve().parents[3] / 'libm'
+    for name in ('vexpf', 'vexpftab'):
+        obj = out / (name + '.o')
+        run(name + '-runtime', ['gcc', '-std=c99', '-O2', '-fPIC',
+                               '-fno-strict-aliasing', '-ffp-contract=off',
+                               '-fno-fast-math', '-c', runtime_directory / (name + '.c'),
+                               '-o', obj])
+        runtime_objects.append(obj)
+    report = dict(scope='M2a semantic High producer and canonical form admission', contexts={},
+                  host_vector_runtime='osprey/libm/vexpf.c and vexpftab.c')
     for context in ('short', 'long'):
         recipe = out / (context + '.recipe.json')
         run(context + '-prepare', [args.lowerer, 'prepare', args.previous / 'selected' / context / 'mla.B', recipe, '--verify', '3'])
@@ -161,10 +179,11 @@ def review(args):
                                       lno=args.tools / 'lno/lno.so', extra=['-LNO:simd=0'])
         assert portable_baseline.read_bytes() == portable.read_bytes()
         libraries = [compile_view(context + '-high-view', after)]
-        post = compile_view(context + '-lno-view', portable, allow_depgraph_diagnostic=True)
+        post = compile_view(context + '-lno-view', portable,
+                            allow_depgraph_diagnostic=args.allow_baseline_depgraph_failure)
         if post is None:
             assert compile_view(context + '-baseline-lno-view', portable_baseline,
-                                allow_depgraph_diagnostic=True) is None, 'new reopen regression'
+                                allow_depgraph_diagnostic=args.allow_baseline_depgraph_failure) is None, 'new reopen regression'
             post_status = 'BASELINE_DEPGRAPH_REOPEN_FAILURE'
         else:
             libraries.append(post)
@@ -221,12 +240,14 @@ def review(args):
 
 
 def main():
-    """Require explicit tool/evidence paths; never silently skip missing tools."""
+    """Require tools/evidence and make any historical failure allowance explicit."""
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('tools', 'lno', 'b2a', 'lowerer', 'w2c', 'previous', 'include', 'cc', 'source', 'output'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--fixture-image', type=Path)
     parser.add_argument('--require-snapshot', action='store_true')
+    parser.add_argument('--allow-baseline-depgraph-failure', action='store_true',
+                        help='historical replay only; never certifies post-LNO execution')
     review(parser.parse_args())
 
 
