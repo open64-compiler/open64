@@ -62,6 +62,7 @@ char *VHO_DSL_Normalization_Mode = NULL;
 char *VHO_DSL_Normalization_Host_Entry = NULL;
 char *VHO_DSL_GEMM_Plan_Search = NULL;
 BOOL VHO_DSL_GEMM_Hierarchy = FALSE;
+BOOL VHO_DSL_H6_Memory = FALSE;
 char *VHO_DSL_GEMM_Hierarchy_Checkpoint = NULL;
 char *VHO_DSL_GEMM_Cost_Model = NULL;
 char *VHO_DSL_GPU_Arch = NULL;
@@ -80,6 +81,7 @@ char *VHO_DSL_Q1_High = NULL;
 char *VHO_DSL_Q1_Checkpoint = NULL;
 static OPTION_DESC Options_DSL[] = {
   { OVK_NAME, OV_VISIBLE, FALSE, "gemm_hierarchy_checkpoint", "gemm_hierarchy_checkpoint", 0, 0, 0, &VHO_DSL_GEMM_Hierarchy_Checkpoint, NULL },
+  { OVK_BOOL, OV_VISIBLE, FALSE, "h6_memory_hierarchy", "h6_memory_hierarchy", 0, 0, 0, &VHO_DSL_H6_Memory, NULL },
   { OVK_BOOL, OV_VISIBLE, FALSE, "gemm_hierarchy", "gemm_hierarchy", 0, 0, 0, &VHO_DSL_GEMM_Hierarchy, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "h3_model", "h3_model", 0, 0, 0, &VHO_DSL_H3_Model, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "h3_model_sha256", "h3_model_sha256", 0, 0, 0, &VHO_DSL_H3_Model_SHA256, NULL },

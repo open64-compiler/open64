@@ -20,6 +20,10 @@ typedef struct {
    * Imported selections seal/revalidate both keys and the declared live bytes. */
   DSL_GPU_PLAN_STAMP gpu_stamp;
   UINT64 gpu_live_bytes;
+  /* H6 optional compiler-only fixed-selection evidence; zero preserves legacy
+   * seals. Neither the runtime guard nor mapped WHIRL layout is extended. */
+  char h6_model_key[65],h6_estimate_key[65];
+  UINT64 h6_rank_ns;
 } WOPT_DSL_NORMALIZATION_LOWERING;
 
 /* Identity of the constructed executable tree, not a substitute for semantic
@@ -56,4 +60,12 @@ extern BOOL WOPT_DSL_materialize_normalization_device(
 extern BOOL WOPT_DSL_verify_normalization_device(
     const WOPT_DSL_NORMALIZATION_LOWERING *plan,
     const WOPT_DSL_NORMALIZATION_DEVICE *expected, FILE *diagnostic, FILE *trace);
+/* Prepare one fixed LN2 recipe, without alternative estimates or selection.
+ * The H6 owner must revalidate its full source/model/recipe first. */
+extern BOOL WOPT_DSL_prepare_normalization_fixed(WN *,WN *,
+    const WOPT_DSL_NORMALIZATION_COST_REQUEST *,UINT32,
+    WOPT_DSL_NORMALIZATION_LOWERING *);
+/* Attach fixed H6 model/cost identity after owning-phase validation; reseals
+ * the numeric handoff without performing analysis, search or mutation. */
+extern void WOPT_DSL_seal_normalization_h6(WOPT_DSL_NORMALIZATION_LOWERING &,const char *,const char *,UINT64);
 #endif
