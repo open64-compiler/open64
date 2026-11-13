@@ -1334,3 +1334,27 @@ tensor_quantized_device.o: $(BE_VHO_DIR)/tensor_quantized_device.cxx $(BE_VHO_DI
 tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_q6c_driver.inc $(BE_VHO_DIR)/tensor_quantized_device.h
 tensor_selected_ptx.o: $(BE_VHO_DIR)/tensor_quantized_device.h
 LDIRT += tensor_quantized_device.o
+
+# Optional Q6d CUDA adapter is compiled only on explicit request. It neither
+# changes be.so linkage nor needs the CUDA SDK for ordinary compiler builds.
+CUDA_HOME ?= /usr/local/cuda
+mla_serving_cuda.o: $(BUILD_TOT)/libopen64rt/mla_serving_cuda.cxx $(BE_VHO_DIR)/tensor_serving_cuda.h $(BE_VHO_DIR)/tensor_serving.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) -std=c++11 -fPIC -pthread -I$(CUDA_HOME)/include $< -o $@
+libmla_serving_cuda.a: mla_serving_cuda.o mla_serving_registry.o $(BUILD_BASE)/Makefile.gbase
+	$(RM) $@.new
+	$(AR) rcs $@.new mla_serving_cuda.o mla_serving_registry.o
+	mv -f $@.new $@
+LDIRT += mla_serving_cuda.o libmla_serving_cuda.a
+# Q6d review uses the real SDK declarations and a delayed Driver implementation.
+mla_cuda_driver_mock.o: $(BUILD_TOT)/libopen64rt/tests/mla_cuda/driver_mock.cxx
+	$(cxx) -std=c++11 -fPIC -pthread -I$(CUDA_HOME)/include -c $< -o $@
+tensor_serving_cuda_review.o: $(BUILD_BASE)/tensor_serving_cuda_review.cxx $(BE_VHO_DIR)/tensor_serving_cuda.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) -std=c++11 -fPIC -pthread $< -o $@
+libmla_serving_cuda_review.so: tensor_serving_cuda_review.o mla_cuda_driver_mock.o mla_serving_cuda.o tensor_serving_runtime.o tensor_attention_search.o $(BUILD_AREA)/be/be.so
+	$(link.c++f) -shared -pthread -o $@ tensor_serving_cuda_review.o mla_cuda_driver_mock.o mla_serving_cuda.o tensor_serving_runtime.o tensor_attention_search.o -L$(BUILD_AREA)/be -l:be.so $(TENSOR_KERNEL_FLAGS)
+LDIRT += mla_cuda_driver_mock.o tensor_serving_cuda_review.o libmla_serving_cuda_review.so
+# SDK/driver bindings remain explicit optional embedding products. The archive
+# uses a registry object without test-only generation-exhaustion entry points.
+mla_serving_registry.o: $(BE_VHO_DIR)/tensor_serving.cxx $(BE_VHO_DIR)/tensor_serving.h $(BE_VHO_DIR)/tensor_quantized_movement.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) -std=c++11 -fPIC -pthread $< -o $@
+LDIRT += mla_serving_registry.o
