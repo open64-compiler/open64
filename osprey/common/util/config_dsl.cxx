@@ -68,12 +68,17 @@ char *VHO_DSL_GPU_Profile = NULL;
 char *VHO_DSL_GPU_Profile_SHA256 = NULL;
 char *VHO_DSL_GPU_Profile_Toolchain = NULL;
 const DSL_GPU_DEVICE_CONTEXT *VHO_DSL_GPU_Context = NULL;
+DSL_H3_SEARCH *VHO_DSL_H3_Search = NULL;
+char *VHO_DSL_H3_Model = NULL;
+char *VHO_DSL_H3_Model_SHA256 = NULL;
 UINT32 VHO_DSL_GEMM_Memory_Latency = 0;
 BOOL VHO_DSL_GEMM_Memory_Latency_Set = FALSE;
 
 char *VHO_DSL_Q1_High = NULL;
 char *VHO_DSL_Q1_Checkpoint = NULL;
 static OPTION_DESC Options_DSL[] = {
+  { OVK_NAME, OV_VISIBLE, FALSE, "h3_model", "h3_model", 0, 0, 0, &VHO_DSL_H3_Model, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "h3_model_sha256", "h3_model_sha256", 0, 0, 0, &VHO_DSL_H3_Model_SHA256, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "q1_high", "q1_high", 0, 0, 0, &VHO_DSL_Q1_High, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "q1_checkpoint", "q1_checkpoint", 0, 0, 0, &VHO_DSL_Q1_Checkpoint, NULL },
   { OVK_BOOL, OV_VISIBLE, TRUE, "partition_axis", "partition_axis",

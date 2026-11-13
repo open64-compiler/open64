@@ -128,6 +128,13 @@ public:
              field == DSL_GPU_WARP_LANES) && _resources[field].lower != _resources[field].upper) return false;
         *output = _resources[field].lower; return true;
     }
+    /* H3 reports actual resource provenance without borrowing the driver. */
+    inline const DSL_GPU_RESOURCE_FACT *Resource(int field) const
+        { return field>=0 && field<DSL_GPU_RESOURCE_COUNT ? &_resources[field] : NULL; }
+    /* H3 borrows owned typed physical rates; unknowns remain explicit and no
+     * reference-cycle conversion is implied by this accessor. */
+    inline const DSL_GPU_EXECUTION_FACT *Execution(int field) const
+        { return field>=0 && field<DSL_GPU_EXECUTION_COUNT ? &_execution[field] : NULL; }
     /* A device candidate requires a proved usable budget, never all nominal HBM.
      * Program owners supply aggregate distinct allocation footprints. */
     inline bool Fits_storage(uint64_t live_bytes) const

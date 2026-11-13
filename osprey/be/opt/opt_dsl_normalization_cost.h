@@ -52,6 +52,10 @@ typedef struct {
   DSL_OPT_SELECTION_RESULT common_selection;
   OPEN64_NORMALIZATION_GUARD selected_guard;
   /* Selection evidence survives unchanged numeric choices; never a runtime ABI. */
+  /* Additive H3 ns evidence; the old costs[] remain reference-cycle records. */
+  UINT32 h3_bound,h3_complete[3];
+  UINT64 h3_rank_ns[3];
+  char h3_model_key[65];
   DSL_GPU_PLAN_STAMP gpu_stamp;
   UINT64 gpu_live_bytes;
 } WOPT_DSL_NORMALIZATION_COST_RESULT;

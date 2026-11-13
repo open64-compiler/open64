@@ -3,7 +3,9 @@
  * Source logical requests and potential reuse are independent of D/S1/T2
  * transactions and stage costs; unknown physical service remains unknown.
  * No executable/native allocation or new algebra/alias proof is introduced.
- * Design: doc/AI-COMPILER-H2-OWNED-MOVEMENT-FACTS-v1.0.md. */
+ * H3 separately projects admitted work counts for physical estimation.
+ * Designs: doc/AI-COMPILER-H2-OWNED-MOVEMENT-FACTS-v1.0.md and
+ * doc/AI-COMPILER-H3-MOVEMENT-COSTING-v1.0.md. */
 #include "dsl_movement_gemm.h"
 #include "../com/dsl_movement_native.h"
 #include "dsl_shape.h"
@@ -68,4 +70,34 @@ BOOL VHO_DSL_capture_gemm_movement(WN *scope,const DSL_TILE_SITE_RECORD &site,
         c.ledger.partial=DSL_MOVEMENT_BYTES(0);
         return DSL_MOVEMENT_FACTS::Create(c,out,reason);
     } catch(const std::exception &e) {reason=e.what();return FALSE;}
+}
+
+/* Reuse existing traffic/readiness count projection only; its cycle durations
+ * are discarded. SIMT work is derived from the admitted tile, not a TC rate. */
+bool VHO_DSL_gemm_h3_plan(const DSL_TILE_PLAN_RECORD &tile,const DSL_FETCH_PLAN_RECORD &fetch,
+    const DSL_HARDWARE_DESCRIPTION_RECORD &hardware,DSL_H3_PLAN &out,std::string &reason)
+{
+    DSL_GEMM_READINESS_INPUT input;DSL_GEMM_READINESS_RESULT ignored;
+    if(!VHO_DSL_fetch_readiness_cost(tile,fetch,hardware,&input,&ignored)) {reason="h3_gemm_count_projection";return false;}
+    DSL_H3_PLAN plan;std::ostringstream id;id<<"gemm/t"<<tile.id<<"/f"<<fetch.id;plan.id=id.str();plan.executable=true;
+    plan.capability="existing-SIMT-D-S1-T2";DSL_H3_STAGE stage;stage.id=plan.id;
+    stage.ctas=input.ctas;stage.steps=input.steps;stage.threads=fetch.resources.threads_per_cta;
+    stage.registers=(fetch.resources.register_bytes_per_thread+3)/4;stage.shared_allocation=fetch.resources.shared_bytes;
+    stage.asynchronous=fetch.engine==DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC;stage.depth=stage.asynchronous?2:1;
+    uint64_t mn,mk,kn,bytes,ops;
+    if(!DSL_movement_mul(tile.problem_m,tile.problem_n,mn) || !DSL_movement_mul(tile.problem_m,tile.problem_k,mk) ||
+        !DSL_movement_mul(tile.problem_k,tile.problem_n,kn) || !DSL_movement_add(mn,mk,bytes) ||
+        !DSL_movement_add(bytes,kn,bytes) || !DSL_movement_mul(bytes,4,plan.live_bytes) ||
+        !DSL_movement_mul(input.input_bytes,input.steps,stage.read_requests) ||
+        !DSL_movement_mul(tile.cta_m,tile.cta_n,ops) || !DSL_movement_mul(ops,2,ops) ||
+        !DSL_movement_mul(ops,tile.problem_k,stage.scalar_ops)) {reason="h3_gemm_count_overflow";return false;}
+    stage.write_through_requests=input.output_bytes;stage.reusable_reads=stage.read_requests;stage.add_chain=stage.mul_chain=tile.problem_k;
+    if(!(fetch.flags&DSL_FETCH_PLAN_FLAG_DIRECT)) {
+        if(!DSL_movement_mul(stage.scalar_ops,4,bytes) || !DSL_movement_add(bytes,stage.read_requests,stage.shared_requests)) {reason="h3_gemm_shared_overflow";return false;}
+        if(stage.asynchronous) {
+            if(!DSL_movement_add(input.steps,1,stage.barriers)) {reason="h3_gemm_barrier_overflow";return false;}
+        } else if(!DSL_movement_mul(fetch.barrier_count,input.steps,stage.barriers)) {reason="h3_gemm_barrier_overflow";return false;}
+    }
+    if(!DSL_movement_add(stage.scalar_ops,stage.read_requests/4,stage.issue_ops)) {reason="h3_gemm_issue_overflow";return false;}
+    plan.stages.push_back(stage);out=plan;reason="projected";return true;
 }

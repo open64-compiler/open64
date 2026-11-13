@@ -115,6 +115,7 @@ static BOOL DSL_gpu_owner_normalization(WN *scope,WN *value,
   WOPT_DSL_NORMALIZATION_COST_REQUEST request;
   if (!LN3_Request(scope,value,"sm_90",2,&request)) return FALSE;
   VHO_DSL_GPU_Context=NULL;
+  DSL_H3_SEARCH *saved_h3=VHO_DSL_H3_Search;VHO_DSL_H3_Search=NULL;
   WOPT_DSL_NORMALIZATION_COST_RESULT legacy_choice;
   WOPT_DSL_NORMALIZATION_LOWERING legacy;
   if (!WOPT_DSL_select_normalization_plan(scope,value,&request,&legacy_choice,stderr,NULL) ||
@@ -122,7 +123,7 @@ static BOOL DSL_gpu_owner_normalization(WN *scope,WN *value,
       !Check(!legacy.gpu_stamp.bound && offsetof(DSL_GPU_OWNER_LEGACY_LOWERING,seal)==
           offsetof(WOPT_DSL_NORMALIZATION_LOWERING,seal) && legacy.seal==DSL_gpu_owner_legacy_seal(legacy),
           "gpu_owner_legacy_raw_seal_unchanged")) return FALSE;
-  VHO_DSL_GPU_Context=context;
+  VHO_DSL_GPU_Context=context;VHO_DSL_H3_Search=saved_h3;
   const DSL_GPU_PLAN_SNAPSHOT gpu=DSL_GPU_PLAN_SNAPSHOT::Capture(context);
   DSL_IR_IMAGE_HEADER before,after;DSL_IR_Image_Get_Header(&before);
   UINT32 symbols=ST_Table_Size(CURRENT_SYMTAB),types=TY_Table_Size();
@@ -141,6 +142,13 @@ static BOOL DSL_gpu_owner_normalization(WN *scope,WN *value,
     if (!Check(choice.selected_kind && choice.gpu_live_bytes &&
         WOPT_DSL_prepare_normalization_lowering(scope,value,&request,&choice,&plan,stderr,trace),
         "gpu_owner_imported_normalization_prepare")) return FALSE;
+    if(saved_h3) {
+      // Selected-only same-ABI handoff to the existing fresh-device driver.
+      // File output never constructs a candidate PU or changes source tables.
+      std::string path=H2_review_prefix+".h3-normalization.plan";FILE *file=fopen(path.c_str(),"wx");
+      if(!file) return FALSE;bool written=fwrite(&plan,1,sizeof(plan),file)==sizeof(plan);
+      if(fclose(file)!=0 || !written) return FALSE;
+    }
     WOPT_DSL_NORMALIZATION_PLAN_BINDING binding;
     if (!WOPT_DSL_bind_normalization_plan(scope,value,&request.plans[1],&binding,stderr,NULL)) return FALSE;
     uint64_t cta_shared,sm_shared,quantum;
@@ -169,10 +177,11 @@ static BOOL DSL_gpu_owner_normalization(WN *scope,WN *value,
         changed->Budget_sha256()==context->Budget_sha256()) {
       WOPT_DSL_NORMALIZATION_COST_RESULT calibrated;
       if (!Check(WOPT_DSL_select_normalization_plan(scope,value,&request,&calibrated,stderr,NULL) &&
-          calibrated.selected_kind==choice.selected_kind &&
+          calibrated.selected_kind==(saved_h3?1:choice.selected_kind) &&
+          (!saved_h3 || (!calibrated.h3_complete[0] && !calibrated.h3_complete[1] && !calibrated.h3_complete[2])) &&
           !memcmp(calibrated.costs,choice.costs,sizeof(choice.costs)) &&
           !DSL_gpu_plan_stamp_equal(calibrated.gpu_stamp,choice.gpu_stamp),
-          "gpu_owner_calibration_invalidates_evidence_not_cycle_scenario")) return FALSE;
+          saved_h3?"H3_profile_drift_refuses_physical_comparison":"gpu_owner_calibration_invalidates_evidence_not_cycle_scenario")) return FALSE;
       const DSL_GPU_PLAN_SNAPSHOT other=DSL_GPU_PLAN_SNAPSHOT::Capture(changed);
       double low,high,other_low,other_high;
       uint64_t bytes=choice.costs[choice.selected_kind-1].global_sector_bytes;
@@ -297,8 +306,8 @@ static BOOL DSL_gpu_owner_reduction(const DSL_GPU_DEVICE_CONTEXT *context,
  * All source checkpoints use the ordinary mapped writer; no GPU runs occur. */
 int main(int argc,char **argv)
 {
-  if (argc!=8 && argc!=10) {
-    fprintf(stderr,"usage: %s source.B trace DEVICE PROFILE SHA TOOLCHAIN pass|refuse|partial [CHANGED_PROFILE SHA]\n",argv[0]);
+  if (argc!=8 && argc!=10 && argc!=12) {
+    fprintf(stderr,"usage: %s source.B trace DEVICE PROFILE SHA TOOLCHAIN pass|refuse|partial [CHANGED_PROFILE SHA [H3_MODEL SHA]]\n",argv[0]);
     return 2;
   }
   BOOL expect_pass=!strcmp(argv[7],"pass"), partial=!strcmp(argv[7],"partial");
@@ -306,10 +315,15 @@ int main(int argc,char **argv)
   DSL_GPU_DEVICE_CONTEXT_OWNER owner,other;
   if (!DSL_gpu_owner_import(argv[3],argv[4],argv[5],argv[6],&owner)) return 1;
   const DSL_GPU_DEVICE_CONTEXT *changed=NULL;
-  if (argc==10) {
+  if (argc>=10) {
     if (!DSL_gpu_owner_import(argv[3],argv[8],argv[9],argv[6],&other) ||
         DSL_gpu_plan_stamp_equal(DSL_gpu_plan_stamp(owner.Context()),DSL_gpu_plan_stamp(other.Context()))) return 1;
     changed=other.Context();
+  }
+  DSL_H3_SEARCH h3_search;std::string h3_reason;
+  if(argc==12) {
+    if(!VHO_h3_import(argv[10],argv[11],DSL_GPU_PLAN_SNAPSHOT::Capture(owner.Context()),h3_search,h3_reason)) return 1;
+    VHO_DSL_H3_Search=&h3_search;
   }
   H2_review_prefix=std::string(argv[1])+".H2";
   char variant[]="default";char *source_args[]={argv[0],argv[1],variant};
@@ -321,6 +335,7 @@ int main(int argc,char **argv)
   FILE *trace=fopen(argv[2],"wx");if (!trace) return 1;
   BOOL ok=DSL_gpu_owner_normalization(scope,value,owner.Context(),changed,expect_pass,trace) &&
       DSL_gpu_owner_reduction(owner.Context(),changed,expect_pass || partial,trace);
+  h3_search.Print(trace);VHO_DSL_H3_Search=NULL;
   VHO_DSL_GPU_Context=NULL;
   if (fclose(trace)) ok=FALSE;
   if (ok) {

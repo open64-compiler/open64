@@ -313,6 +313,8 @@ BE_REGION_CXX_SRCS = \
   region_util.cxx
 
 BE_VHO_CXX_SRCS = \
+  dsl_movement_cost.cxx \
+  dsl_movement_cost_import.cxx \
   dsl_movement_gemm.cxx \
   dsl_ckks_expand.cxx \
   dsl_opt_plan.cxx \
@@ -1263,3 +1265,13 @@ driver.o dsl_high_quantized.o dsl_q1_preopt.o: $(BUILD_TOT)/common/com/dsl_nativ
 
 # H2 complete owned-record consumer closure, including runtime sidecars.
 driver.o dsl_lower.o dsl_movement_facts.o dsl_movement_gemm.o: $(BUILD_TOT)/be/com/dsl_movement_facts.h
+
+# H3 pure physical model/import and phase-owned candidate adapters.
+dsl_movement_cost.o dsl_movement_cost_import.o driver.o dsl_lower.o dsl_movement_gemm.o: $(BE_VHO_DIR)/dsl_movement_cost.h
+
+# H3 complete reverse consumer closure for detached cost/report layouts.
+driver.o normalization_driver.o: $(BUILD_TOT)/be/vho/tensor_attention_search.h $(BUILD_TOT)/be/opt/opt_dsl_normalization_cost.h $(BUILD_TOT)/be/vho/dsl_movement_cost.h
+
+# H3 physical-model value-layout transitive consumers.
+driver.o dsl_lower.o dsl_movement_cost.o dsl_movement_cost_import.o \
+dsl_movement_gemm.o: $(BUILD_TOT)/be/vho/dsl_movement_cost.h

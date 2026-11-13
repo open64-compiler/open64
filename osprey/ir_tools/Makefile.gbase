@@ -417,7 +417,7 @@ LDIRT += whirl2c whirl2c_tensor_source whirl2c_reference_main.o tensor_source.o
 
 # PU-local VHO lowering service; the standalone driver alone owns frontend APIs.
 tensor_kernel_lower: q1_high_facts.o q1_high_epoch.o $(OBJECTS) controls.o tensor_kernel_driver.o tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o tensor_q1_program.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o
-	$(link.c++f) -o $@ q1_high_facts.o q1_high_epoch.o tensor_kernel_driver.o tensor_quantized_gpu.o tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o tensor_q1_program.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o controls.o $(OBJECTS) $(LDFLAGS) $(TENSOR_KERNEL_FLAGS) dsl_movement_facts_test.o fhe_sha256.o
+	$(link.c++f) -o $@ q1_high_facts.o q1_high_epoch.o tensor_kernel_driver.o tensor_quantized_gpu.o tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o tensor_q1_program.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o controls.o $(OBJECTS) $(LDFLAGS) $(TENSOR_KERNEL_FLAGS) dsl_movement_facts_test.o fhe_sha256.o dsl_movement_cost_test.o
 
 # Standalone consumer of existing be.so lowering; no new dependency/symbol is
 # added to be.so, and the legacy tensor_kernel_lower remains link-independent.
@@ -1031,7 +1031,7 @@ dsl_normalization_guard_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_guard_test
 dsl_normalization_cost_test: $(OBJECTS) controls.o dsl_normalization_cost_test.o \
 		opt_dsl_normalization_cost_test.o opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 	$(link.c++f) -o $@ dsl_normalization_cost_test.o opt_dsl_normalization_cost_test.o opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o \
-		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS) opt_dsl_movement_normalization_test.o dsl_movement_facts_test.o fhe_sha256.o
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS) opt_dsl_movement_normalization_test.o dsl_movement_facts_test.o fhe_sha256.o dsl_movement_cost_test.o dsl_gpu_profile_owner_test.o
 
 opt_dsl_normalization_cost_test.o: $(BE_OPT_DIR)/opt_dsl_normalization_cost.cxx $(BE_OPT_DIR)/opt_dsl_normalization_cost.h \
                 $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_hardware_performance.h $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_memory_hierarchy.h \
@@ -1050,14 +1050,14 @@ dsl_normalization_lower_test: $(OBJECTS) controls.o dsl_normalization_lower_test
                 opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 	$(link.c++f) -o $@ dsl_normalization_lower_test.o opt_dsl_normalization_lower_test.o opt_dsl_normalization_cost_test.o \
                 opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o \
-                opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS) opt_dsl_movement_normalization_test.o dsl_movement_facts_test.o fhe_sha256.o
+                opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS) opt_dsl_movement_normalization_test.o dsl_movement_facts_test.o fhe_sha256.o dsl_movement_cost_test.o dsl_gpu_profile_owner_test.o
 
 dsl_normalization_request_test: $(OBJECTS) controls.o dsl_normalization_request_test.o \
                 opt_dsl_normalization_request_test.o opt_dsl_normalization_lower_test.o opt_dsl_normalization_cost_test.o \
                 opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 	$(link.c++f) -o $@ dsl_normalization_request_test.o opt_dsl_normalization_request_test.o opt_dsl_normalization_lower_test.o \
                 opt_dsl_normalization_cost_test.o opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o \
-                opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS) opt_dsl_movement_normalization_test.o dsl_movement_facts_test.o fhe_sha256.o
+                opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS) opt_dsl_movement_normalization_test.o dsl_movement_facts_test.o fhe_sha256.o dsl_movement_cost_test.o dsl_gpu_profile_owner_test.o
 
 opt_dsl_normalization_request_test.o: $(BE_OPT_DIR)/opt_dsl_normalization_request.cxx $(BE_OPT_DIR)/opt_dsl_normalization_request.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
@@ -1086,7 +1086,7 @@ dsl_gpu_owner_contract: $(OBJECTS) controls.o dsl_gpu_owner_contract.o \
                 opt_dsl_normalization_lower_test.o opt_dsl_normalization_cost_test.o \
                 opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o \
                 opt_dsl_reduction_staged_test.o opt_dsl_reduction_test.o opt_dsl_wopt_test.o \
-                opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS) opt_dsl_movement_normalization_test.o opt_dsl_movement_reduction_test.o opt_dsl_movement_staged_test.o dsl_movement_facts_test.o
+                opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS) opt_dsl_movement_normalization_test.o opt_dsl_movement_reduction_test.o opt_dsl_movement_staged_test.o dsl_movement_facts_test.o dsl_movement_cost_test.o dsl_movement_cost_import_test.o
 
 dsl_gpu_owner_contract.o: $(BE_OPT_DIR)/tests/dsl_gpu_owner_contract.cxx \
                 $(BE_OPT_DIR)/tests/dsl_normalization_cost_test.cxx \
@@ -1137,7 +1137,7 @@ dsl_reduction_binding_test.o: $(BE_OPT_DIR)/tests/dsl_reduction_binding_test.cxx
 dsl_reduction_direct_test: $(OBJECTS) controls.o dsl_reduction_direct_test.o \
 		opt_dsl_reduction_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 	$(link.c++f) -o $@ dsl_reduction_direct_test.o opt_dsl_reduction_test.o \
-		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS) opt_dsl_movement_reduction_test.o dsl_movement_facts_test.o fhe_sha256.o
+		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS) opt_dsl_movement_reduction_test.o dsl_movement_facts_test.o fhe_sha256.o dsl_movement_cost_test.o
 
 dsl_reduction_direct_test.o: $(BE_OPT_DIR)/tests/dsl_reduction_direct_test.cxx \
                 $(BE_OPT_DIR)/opt_dsl_reduction.h $(BE_OPT_DIR)/../../include/open64_reduction_runtime.h
@@ -1150,7 +1150,7 @@ opt_dsl_reduction_test.o: $(BE_OPT_DIR)/opt_dsl_reduction.cxx $(BE_OPT_DIR)/opt_
 dsl_reduction_staged_test: $(OBJECTS) controls.o dsl_reduction_staged_test.o \
                 opt_dsl_reduction_staged_test.o opt_dsl_reduction_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 	$(link.c++f) -o $@ dsl_reduction_staged_test.o opt_dsl_reduction_staged_test.o \
-		opt_dsl_reduction_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS) opt_dsl_movement_reduction_test.o opt_dsl_movement_staged_test.o dsl_movement_facts_test.o fhe_sha256.o
+		opt_dsl_reduction_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS) opt_dsl_movement_reduction_test.o opt_dsl_movement_staged_test.o dsl_movement_facts_test.o fhe_sha256.o dsl_movement_cost_test.o
 
 dsl_reduction_staged_test.o: $(BE_OPT_DIR)/tests/dsl_reduction_staged_test.cxx $(BE_OPT_DIR)/opt_dsl_reduction_staged.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
@@ -1447,3 +1447,27 @@ opt_dsl_reduction_staged_test.o opt_dsl_reduction_test.o tensor_attention_search
 tensor_bridge_driver.o tensor_bridge_test_driver.o tensor_kernel_driver.o tensor_quantized_device.o \
 tensor_quantized_gpu.o tensor_quantized_stage.o tensor_selected_ptx.o tensor_serving_cuda_review.o \
 tensor_serving_review.o tensor_serving_runtime.o: $(BUILD_TOT)/be/com/dsl_movement_facts.h
+
+# H3 service remains backend-only; standalone tools link its pure source.
+dsl_movement_cost_test.o: $(BE_VHO_DIR)/dsl_movement_cost.cxx $(BE_VHO_DIR)/dsl_movement_cost.h $(BE_COM_DIR)/dsl_movement_facts.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+tensor_kernel_lower dsl_gpu_owner_contract dsl_normalization_cost_test dsl_normalization_lower_test dsl_normalization_request_test dsl_reduction_direct_test dsl_reduction_staged_test: dsl_movement_cost_test.o
+
+# H3 complete reverse consumer closure for detached cost/report layouts.
+dsl_gpu_owner_contract.o dsl_normalization_cost_test.o dsl_normalization_lower_test.o dsl_normalization_request_test.o \
+opt_dsl_normalization_cost_test.o opt_dsl_normalization_lower_test.o opt_dsl_normalization_request_test.o tensor_attention_search.o \
+tensor_bridge_bindings.o tensor_bridge_driver.o tensor_bridge_test_driver.o tensor_kernel_driver.o \
+tensor_serving_review.o: $(BUILD_TOT)/be/vho/tensor_attention_search.h $(BUILD_TOT)/be/opt/opt_dsl_normalization_cost.h $(BUILD_TOT)/be/vho/dsl_movement_cost.h
+
+dsl_movement_cost_import_test.o: $(BE_VHO_DIR)/dsl_movement_cost_import.cxx $(BE_VHO_DIR)/dsl_movement_cost.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+dsl_gpu_owner_contract: dsl_movement_cost_import_test.o
+
+# H3 physical-model value-layout transitive consumers.
+dsl_gpu_owner_contract.o dsl_movement_cost_import_test.o dsl_movement_cost_test.o opt_dsl_movement_normalization_test.o \
+opt_dsl_movement_reduction_test.o opt_dsl_movement_staged_test.o opt_dsl_normalization_cost_test.o opt_dsl_reduction_staged_test.o \
+opt_dsl_reduction_test.o tensor_attention_search.o tensor_bridge_bindings.o tensor_bridge_driver.o \
+tensor_bridge_test_driver.o tensor_kernel_driver.o tensor_serving_review.o: $(BUILD_TOT)/be/vho/dsl_movement_cost.h
+
+# H3 selected normalization review reimports the existing H1 context.
+dsl_normalization_cost_test dsl_normalization_lower_test dsl_normalization_request_test: dsl_gpu_profile_owner_test.o

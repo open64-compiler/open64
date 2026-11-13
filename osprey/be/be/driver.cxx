@@ -120,6 +120,7 @@
 #include "config_dsl.h"          /* for the AI trace control */
 #include "dsl_memory_hierarchy.h" /* exact H1a device/ISA admission */
 #include "dsl_gpu_plan.h"
+#include "dsl_movement_cost.h"
 #include "dsl_gpu_profile.h"      /* sealed driver-owned H1b context */
 #include "normalization_driver.h"
 #include "quantized_driver.h"
@@ -3056,6 +3057,7 @@ main (INT argc, char **argv)
   INT local_ecount, local_wcount;
   PU_Info *pu_tree;
   DSL_GPU_DEVICE_CONTEXT_OWNER gpu_device_context;
+  DSL_H3_SEARCH movement_search;
 #if defined(TARG_SL)   || defined(TARG_MIPS)
   void *handle;
 #endif  
@@ -3082,6 +3084,16 @@ main (INT argc, char **argv)
   Preconfigure ();
   Process_Command_Line (argc, argv);
   if (!BE_select_gpu_device(&gpu_device_context)) return RC_USER_ERROR;
+  /* One pinned H3 owner spans phase consumers and PUs. Invalid input refuses
+   * before native input; no supplement preserves all existing planning paths. */
+  if (VHO_DSL_H3_Model || VHO_DSL_H3_Model_SHA256) {
+    std::string reason;
+    if (!VHO_h3_import(VHO_DSL_H3_Model,VHO_DSL_H3_Model_SHA256,
+        DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context),movement_search,reason)) {
+      fprintf(stderr,"AI_H3_IMPORT REFUSE reason=%s\n",reason.c_str());return RC_USER_ERROR;
+    }
+    VHO_DSL_H3_Search=&movement_search;
+  }
 
   if (Inhibit_EH_opt && Opt_Level > 1) Opt_Level = 1;
   Reset_Timers ();
@@ -3558,6 +3570,8 @@ main (INT argc, char **argv)
   }
  
   /* No phase borrows the process context beyond normal driver cleanup. */
+  movement_search.Print(stderr);
+  VHO_DSL_H3_Search = NULL;
   VHO_DSL_GPU_Context = NULL;
   gpu_device_context.Reset();
   if ( ecount > 0 ) {
