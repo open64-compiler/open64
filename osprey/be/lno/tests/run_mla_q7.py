@@ -103,6 +103,16 @@ class DRIVER:
     def event(self):
         event = P(); self.call('cuEventCreate', C.byref(event), 0); self.events.append(event); return event
 
+    def profile(self, start):
+        """Bracket only the fixed request, excluding warmup and oracle transfers.
+
+        Bind profiling APIs only in the separate profiling process; normal
+        timing and correctness lanes retain their original Driver API surface.
+        """
+        name = 'cuProfilerStart' if start else 'cuProfilerStop'
+        function = getattr(self.lib, name); function.argtypes = []; function.restype = C.c_int
+        self.require(function(), name)
+
     def close(self):
         """Called only after every adapter/reader/host-staging owner was retired."""
         for stream in self.streams:
@@ -289,6 +299,23 @@ def capture_environment(out, label):
         (out / (label + '.nvidia-smi.txt')).write_text(p.stdout + p.stderr)
 
 
+def network_snapshot(out, label):
+    """Read host-interface counters without attributing them to GPU requests."""
+    result = dict(monotonic_ns=time.monotonic_ns(), interfaces={}, errors={},
+                  scope='host interface counters; includes other processes and non-GPU traffic')
+    for interface in sorted(Path('/sys/class/net').glob('*')):
+        if interface.name == 'lo':
+            continue
+        row = {}
+        for direction in ('rx', 'tx'):
+            try:
+                row[direction+'_bytes'] = int((interface/'statistics'/(direction+'_bytes')).read_text())
+            except (OSError, ValueError) as error:
+                result['errors'][interface.name+'/'+direction] = str(error)
+        result['interfaces'][interface.name] = row
+    (out/(label+'.json')).write_text(json.dumps(result, indent=2)+'\n')
+
+
 def execute(args, out, packet):
     driver = DRIVER(args.device)
     library = args.library.resolve() if args.library else args.packet / 'runtime/ir_tools/libmla_serving_cuda_q7.so'
@@ -301,10 +328,12 @@ def execute(args, out, packet):
     api = API(library)
     selected = [x for x in packet['cases'] if not args.case or x['id'] in args.case]
     if not selected or args.case and set(args.case) - {x['id'] for x in selected}: raise ValueError('unknown fixed case')
+    if args.mode == 'profile' and (len(selected) != 1 or args.prefix not in (None,256)):
+        raise ValueError('profile mode requires one fixed case at prefix 256')
     capture_environment(out, 'before')
     cases = []
     for case in selected:
-        prefixes = [args.prefix] if args.prefix else ([256] if args.mode == 'performance' else [256, 40])
+        prefixes = [args.prefix] if args.prefix else ([256] if args.mode in ('performance','profile') else [256, 40])
         for prefix in prefixes:
             session = SESSION(api, driver, args.packet / 'cases' / case['id'], case, prefix)
             bundle, _ = session.run(lifecycle=True); refs = session.verify(bundle); session.consume(bundle); session.retire()
@@ -317,8 +346,26 @@ def execute(args, out, packet):
                 for _ in range(args.warmup):
                     session.run(); session.retire()
                 for _ in range(args.iterations):
-                    _, timing = session.run(timed=True); host.append(timing['host_begin_submit_complete_us']); spans.append(timing['submission_stream_span_ms']); session.retire()
+                    _, timing = session.run(); host.append(timing['host_begin_submit_complete_us']); session.retire()
+                # Device events use a separate batch, matching the scaffold's
+                # measurement discipline without changing the Q3 operation scope.
+                for _ in range(args.iterations):
+                    _, timing = session.run(timed=True); spans.append(timing['submission_stream_span_ms']); session.retire()
                 bundle, _ = session.run(); session.verify(bundle); session.consume(bundle); session.retire()
+            if args.mode == 'profile':
+                # This clean request is the only captured range. Existing Q3
+                # validation/warmup executes outside it. No CUDA timing events
+                # or performance samples are produced in this process.
+                network_snapshot(out, 'network-before')
+                if args.capture_profile_range:
+                    driver.profile(True)
+                try:
+                    bundle, _ = session.run()
+                finally:
+                    if args.capture_profile_range:
+                        driver.profile(False)
+                network_snapshot(out, 'network-after')
+                refs = session.verify(bundle); session.consume(bundle); session.retire()
             session.close()
             result = dict(id=case['id'], prefix_bytes=prefix, status='PASS', references=refs,
                           ordered_kernels_per_request=3, complete_Q3_tuple=True, consumer_completion=True,
@@ -330,10 +377,18 @@ def execute(args, out, packet):
             (out / 'progress.json').write_text(json.dumps(cases, indent=2) + '\n')
             print('PASS real GPU', case['id'], 'prefix', prefix, flush=True)
     driver.close(); capture_environment(out, 'after')
-    return dict(status='PASS', gpu_execution=True, driver_model=False, device=driver.info, cases=cases,
+    result = dict(status='PASS', gpu_execution=True, driver_model=False, device=driver.info, cases=cases,
                 all_fixed_cases=len(selected)==len(packet['cases']), mode=args.mode,
                 timing_scope='persistent buffers; fixed independent requests; allocations/uploads/downloads/consumer validation excluded; host timing includes Begin and Q3 completion/publication; event span includes Submit control transfers and host gaps, NOT pure kernel duration',
                 search_invocations=0, aot_selection='deferred', race_qualified=False)
+    if args.mode == 'profile':
+        result.update(instrumented=args.capture_profile_range, timing_samples_emitted=False, profile_range_requests=1,
+                      capture_profile_range=args.capture_profile_range,
+                      buffer_residency='Q6d owned allocations on the selected GPU; no peer/remote producer in this fixed fixture',
+                      timing_scope='profiling only; no benchmark timing samples; counter replay duration is diagnostic')
+    if args.mode == 'performance':
+        result.update(wall_timing_cuda_events=False,device_timing_separate_batch=True,instrumented=False)
+    return result
 
 
 def orchestrate(args, out, packet):
@@ -383,13 +438,15 @@ def main(argv=None):
     STATE.update(gpu_execution=False, device_submission_attempted=False)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--packet', type=Path, required=True); parser.add_argument('--expected-sha256', required=True)
-    parser.add_argument('--output', type=Path, required=True); parser.add_argument('--mode', choices=('correctness','performance','all'), default='all')
+    parser.add_argument('--output', type=Path, required=True); parser.add_argument('--mode', choices=('correctness','performance','profile','all'), default='all')
+    parser.add_argument('--capture-profile-range', action='store_true', help='profile child only: bracket one request with Driver profiler APIs')
     parser.add_argument('--device', type=int, default=0); parser.add_argument('--case', action='append'); parser.add_argument('--prefix', type=int, choices=(40,256))
     parser.add_argument('--iterations', type=int, default=20); parser.add_argument('--warmup', type=int, default=3)
     parser.add_argument('--timeout', type=int, default=3600); parser.add_argument('--sanitizer', default='compute-sanitizer'); parser.add_argument('--library', type=Path)
     args = parser.parse_args(argv); args.packet = args.packet.resolve(); out = args.output.resolve(); out.mkdir(parents=True, exist_ok=False)
     report = dict(status='FAIL', gpu_execution=False, search_invocations=0, aot_selection='deferred'); code = 1
     try:
+        if args.capture_profile_range and args.mode != 'profile': raise ValueError('profiler capture is forbidden in timing/correctness lanes')
         if not 1 <= args.iterations <= 10000 or not 0 <= args.warmup <= 1000 or args.timeout <= 0: raise ValueError('invalid sample/timeout budget')
         verified = authenticate(args.packet, args.expected_sha256)
         packet = json.loads((args.packet/'packet.json').read_text())
