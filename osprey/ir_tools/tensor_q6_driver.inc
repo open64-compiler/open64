@@ -41,6 +41,10 @@ int q6_command(int argc,char **argv) {
     VHO_TENSOR_PROGRAM p;need(VHO_q1_program_read(root,p,why),why.c_str());VHO_Q6_MAPPING m;
     need(VHO_q6_mapping(p,plan,native,c,m,why),why.c_str());std::vector<VHO_Q6_ACTION> trace;
     need(VHO_q6_pipeline(m,trace,why) && VHO_q6_verify_pipeline(m,trace,why),why.c_str());
+    DSL_MOVEMENT_BINDING movement_binding;movement_binding.owner=ST_name(st);movement_binding.source_key=native;
+    movement_binding.serving_key=m.binding_key;movement_binding.device=DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
+    movement_binding.device_key=movement_binding.device.Cache_key();DSL_MOVEMENT_FACTS movement;
+    need(VHO_q6_capture_movement(m,trace,movement_binding,movement,why),why.c_str());movement.Print(stdout,"SELECTED_Q6");
     Json::Value j;j["schema"]="open64.q6.selected-placement-contract.v1";
     j["mapping_key"]=m.key;j["q3_binding_key"]=m.binding_key;j["explanation"]=m.explanation;
     j["grid_x"]=Json::UInt64(m.grid);j["block_x"]=Json::UInt64(m.threads);j["tiles_per_pass"]=Json::UInt64(m.tiles);

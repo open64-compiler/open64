@@ -235,6 +235,8 @@ void LNO_DSL_observe_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias, ARRAY
         if(fault && !strcmp(fault,"decline")) {reuse=DSL_HIGH_REUSE_FACTS();reuse_reason="test_unproved_reuse";}
     }
 #endif
+    DSL_MOVEMENT_FACTS movement_source;std::string movement_reason;
+    if(valid && reuse.Available()) LNO_DSL_capture_movement(snapshot,epoch,bindings,input.algorithm,reuse,movement_source,movement_reason);
     uint64_t validation_us = LNO_DSL_observer_time_us()-begin, exploration_us = 0;
     bool observed = false;
     if (valid) {
@@ -251,11 +253,12 @@ void LNO_DSL_observe_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias, ARRAY
     FmtAssert(unchanged,("read-only High observer changed native source/tables/analyses"));
     if(observed) {
         input.gpu.device.Print(trace, "MLA", 0);
-        report.reuse=reuse;
+        report.reuse=reuse;report.data_movement=movement_source;
         if(selected_input) *selected_input=input;
         if(selected_report) *selected_report=report;
     }
     if (trace) {
+        movement_source.Print(trace,"BEFORE_SEARCH");
         if(reuse.Available()) reuse.Print(trace,"COLLECTED",reuse.Is_current(snapshot,epoch,bindings,input.algorithm));
         else if(valid) fprintf(trace,"AI_HIGH_REUSE 1 UNAVAILABLE reason=%s fallback=existing_G1_search\n",reuse_reason.c_str());
         fprintf(trace,"AI_HIGH_SEARCH 1 IMAGE_ABI dep_bytes=%lu must_offset=%lu bool_bytes=%lu vertex_bytes=%lu edge_bytes=%lu word_bytes=%lu pu_field_bytes=%lu\n",

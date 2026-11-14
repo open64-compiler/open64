@@ -8,6 +8,7 @@
 #include "dsl_high_snapshot.h"
 #include "../vho/tensor_attention_search.h"
 #include "dsl_high_reuse.h"
+#include "dsl_high_movement.h"
 
 struct DSL_HIGH_SEARCH_INPUT {
     std::string unit, function, source_key, facts_key, numeric, host_target;
@@ -25,6 +26,7 @@ struct DSL_HIGH_SEARCH_INPUT {
 };
 struct DSL_HIGH_SEARCH_REPORT {
     DSL_HIGH_REUSE_FACTS reuse;
+    DSL_MOVEMENT_FACTS data_movement;
     VHO_MLA_SEARCH_RESULT exploration;
     std::string resource_key, model_key, manifest_key;
     bool controlled;

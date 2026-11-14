@@ -7,6 +7,25 @@
 unsigned q6_contract_test(const VHO_TENSOR_PROGRAM &p,const VHO_Q5_PLAN &plan,const std::string &native,
     const VHO_Q6_CONTROL &c,const VHO_Q6_MAPPING &m,const std::vector<VHO_Q6_ACTION> &trace) {
     unsigned checks=0;std::string why;VHO_Q6_MAPPING unchanged=m;
+    // H2 consumes the selected contract, with no native allocation or timing.
+    DSL_MOVEMENT_BINDING binding;binding.owner="Q6-test-owner";binding.source_key=native;
+    binding.serving_key=m.binding_key;binding.device=DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
+    binding.device_key=binding.device.Cache_key();DSL_MOVEMENT_FACTS facts,again;
+    need(VHO_q6_capture_movement(m,trace,binding,facts,why) && VHO_q6_capture_movement(m,trace,binding,again,why) &&
+        facts.Same_content(again) && facts.Capture().lifetimes.size()==2*std::min(UINT64(3),m.tiles),"H2_Q6_owned_selected_capture");++checks;
+    need(!facts.Capture().ledger.hbm.known && !facts.Capture().ledger.spills.known &&
+        facts.Capture().work.active_last+facts.Capture().work.inactive_last==m.width,"H2_Q6_unknown_service_exact_tail");++checks;
+    for(unsigned mutation=0;mutation<4;++mutation) {
+        DSL_MOVEMENT_BINDING bad=binding;std::vector<VHO_Q6_ACTION> actions=trace;
+        if(mutation==0) bad.source_key+="stale";
+        if(mutation==1) bad.serving_key+="stale";
+        if(mutation==2) actions.erase(actions.begin()+2); // raw wait
+        if(mutation==3) for(unsigned i=0;i<actions.size();++i) if(actions[i].kind==VHO_Q6_RELEASE) {actions.erase(actions.begin()+i);break;}
+        again=facts;need(!VHO_q6_capture_movement(m,actions,bad,again,why) && !again.Available(),"H2_Q6_stale_source_Q3_or_readiness");++checks;
+    }
+    DSL_MOVEMENT_BINDING changed_binding=binding;changed_binding.device_key+="other-profile";
+    need(!VHO_q6_capture_movement(m,trace,changed_binding,again,why) || !facts.Same_content(again),"H2_Q6_profile_binding");++checks;
+
     for(unsigned mutation=0;mutation<6;++mutation) {
         VHO_Q6_CONTROL bad=c;VHO_Q5_PLAN stale=plan;
         if(mutation==0) bad.shared_limit=1;

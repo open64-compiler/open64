@@ -1,5 +1,35 @@
 # AI Compiler Optimization Progress
 
+## H2 owned movement/reuse fact layer, 2026-11-12
+
+[H2 specification](AI-COMPILER-H2-OWNED-MOVEMENT-FACTS-v1.0.md) implements
+owned Work Partition/storage/access/version/alias/byte-ledger and event/lifetime
+projections for existing GEMM, MLA, LayerNorm and Reduction owners. Immutable
+H20 profiles bind source/proof/model/budget dependencies. Q3 registered views and
+cache/scale/page/publication joins remain authoritative; selected Q6 projection
+keeps raw readiness, decoded readiness and readers-complete separate. Source
+counts never stand for measured physical traffic. Capture is outside candidate
+exploration and selected application requires owning recapture.
+
+Focused software acceptance passes: both H20 variants under fatal ASan/UBSan
+(26 identity changes and 40 structural refusals), eight native WOPT profile
+cases, six GEMM/MLA selected-output no-op comparisons, four WOPT capture no-op
+pairs, 20 quantized serving reference cases and the existing 570 Q3/Q4 checks.
+Q6 validates 24 selected mappings with 140,984 detached native checks. Four
+portfolio/permission/selected-short-long reference tests pass. A real selected
+helper lane preserves High/Mid/Low seals and COMMENT, optimized CUDA and PTX;
+whirl2c text differs only in its translation timestamp. Five affected standalone
+family targets link successfully. Backend dependencies and lw_inline closure
+remain unchanged. All device inputs are synthetic; no GPU result is claimed.
+
+[Plan v1.3](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.3.md)
+and [resource design v0.5](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.5.md)
+retain the original open canonical-route preparation for unsupported family
+forms, H3 costing, H4-H6 materializers and H0/H7 hardware qualification.
+H2 fact capture adds no new kernel or speedup claim. Personnel roles remain TBD;
+AOT selection and OpenCTI integration stay deferred. Earlier entries retain
+historical milestone scope.
+
 ## H1d device/helper and host/serving contracts, 2026-11-12
 
 [H1d v1.0](AI-COMPILER-H1D-DEVICE-HOST-CONTRACTS-v1.0.md) carries owned pinned

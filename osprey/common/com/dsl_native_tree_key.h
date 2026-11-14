@@ -3,7 +3,10 @@
  * This policy-free helper owns no PU context or analyses. It uses existing
  * WN/ST/TY records and changes no mapped layout. Producers must establish
  * legality separately; equality detects stale products, not program equivalence.
- * Contract: doc/AI-COMPILER-SEARCH-M5-DEVICE-BRIDGE-v1.0.md. */
+ * Explicit H2 source mode also binds existing logical opcodes/tensor traits;
+ * it grants no scalar checkpoint admission and retains no native pointers.
+ * Contracts: doc/AI-COMPILER-SEARCH-M5-DEVICE-BRIDGE-v1.0.md;
+ * doc/AI-COMPILER-H2-OWNED-MOVEMENT-FACTS-v1.0.md. */
 #ifndef DSL_NATIVE_TREE_KEY_H
 #define DSL_NATIVE_TREE_KEY_H
 #include <set>
@@ -18,7 +21,7 @@ class DSL_NATIVE_TREE_KEY {
     std::ostringstream _out;
     std::set<const WN *> _seen;
     unsigned _depth;
-    bool _include_comments;
+    bool _include_comments, _include_dsl_source;
     /* Length delimit text; neither separators nor names can alias fields. */
     void Text(const char *s) { std::string v=s?s:"";_out<<v.size()<<':'<<v<<';'; }
     /* Preserve signed payload bits through an unambiguous decimal field. */
@@ -31,8 +34,21 @@ class DSL_NATIVE_TREE_KEY {
         if(depth>8) throw std::runtime_error("native_key_type_depth");
         Number(ty);Number(TY_kind(ty));Number(TY_mtype(ty));Number(TY_size(ty));
         Number(TY_align(ty));Number(TY_flags(ty));
+        /* H2 source mode additionally binds the complete tensor-trait/descriptor
+         * attribute census. Default selected scalar keys retain their spelling. */
+        if(_include_dsl_source) {
+            UINT32 count=TY_tensor_attribute_count(ty);Number(count);
+            for(UINT32 i=0;i<count;++i) {
+                const char *key=NULL,*value=NULL;TY_DSL_BIND_STATE state;
+                if(!TY_tensor_attribute_at(ty,i,&key,&value,&state)) throw std::runtime_error("native_key_tensor_attributes");
+                Text(key);Text(value);Number(state);
+            }
+        }
         switch(TY_kind(ty)) {
         case KIND_SCALAR:case KIND_VOID:break;
+        case KIND_TENSOR:
+            if(!_include_dsl_source) throw std::runtime_error("native_key_type");
+            Type(TY_tensor_element_ty(ty),depth+1);break;
         case KIND_POINTER:Type(TY_pointed(ty),depth+1);break;
         case KIND_ARRAY: {
             Type(TY_etype(ty),depth+1);ARB_HANDLE arb=TY_arb(ty);
@@ -82,8 +98,18 @@ class DSL_NATIVE_TREE_KEY {
     /* Bound recursion and reject shared executable nodes before reading payloads. */
     void Walk(const WN *n) {
         if(n && !_include_comments && WN_operator(n)==OPR_COMMENT) return;
-        if(!n || ++_depth>256 || _seen.size()>200000 || !_seen.insert(n).second || DSL_WN_Is_Native(n))
+        if(!n || ++_depth>256 || _seen.size()>200000 || !_seen.insert(n).second)
             throw std::runtime_error("native_key_tree");
+        /* Read the existing logical interface only; never decode the private
+         * escape tag or allocate a replacement WN. Owning phases prove legality. */
+        if(DSL_WN_Is_Native(n)) {
+            DSL_LOGICAL_OPCODE logical;
+            if(!_include_dsl_source || !DSL_WN_Get_Logical_Opcode(n,&logical,NULL)) throw std::runtime_error("native_key_tree");
+            Text("logical-source-v1");Number(logical.dsl_operator);Number(logical.source_version);
+            Number(logical.effective_version);Number(logical.carrier);Number(logical.version_disposition);Text(logical.payload);
+            Type(WN_ty(n));Number(WN_kid_count(n));
+            for(INT i=0;i<WN_kid_count(n);++i) Walk(WN_kid(n,i));--_depth;return;
+        }
         OPCODE opc=WN_opcode(n);OPERATOR op=WN_operator(n);
         /* Admit only payloads covered below. Native source positions, map IDs
          * and nonexecuting LOOP_INFO trip estimates are not executable keys. */
@@ -125,10 +151,12 @@ class DSL_NATIVE_TREE_KEY {
     }
 public:
     /* Admission always uses the default complete key. Explicit comment-free
-     * mode is only for independent executable-equivalence artifact comparisons. */
-    DSL_NATIVE_TREE_KEY(bool include_comments=true):_depth(0),_include_comments(include_comments) {}
+     * mode is only for independent executable-equivalence artifact comparisons.
+     * H2 explicitly opts into logical-source/descriptor identity; this does not
+     * grant selected scalar emission or change legacy accepted key spelling. */
+    DSL_NATIVE_TREE_KEY(bool include_comments=true,bool include_dsl_source=false):_depth(0),_include_comments(include_comments),_include_dsl_source(include_dsl_source) {}
     /* Return full equality evidence; never substitute a lossy hash for it. */
-    std::string Build(const WN *root) {Text("open64-native-key-v1");Walk(root);return _out.str();}
+    std::string Build(const WN *root) {Text(_include_dsl_source?"open64-dsl-source-key-v1":"open64-native-key-v1");Walk(root);return _out.str();}
     /* Bind a declaration inventory without manufacturing a WN or new table row. */
     std::string Declaration(const ST *symbol) {Text("open64-declaration-key-v1");Symbol(symbol);return _out.str();}
 };

@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "dsl_lower.h"
+#include "dsl_movement_gemm.h"
 #include "config.h"
 #include "config_dsl.h"
 #include "dsl_gatekeeper.h"
@@ -4189,6 +4190,8 @@ VHO_DSL_CUDA_Emit_Selected_Tile
                        strcmp(VHO_DSL_GEMM_Plan_Search, "joint") == 0;
     DSL_TILE_PLAN_ID joint_tile = 0;
     DSL_FETCH_PLAN_RECORD joint_fetch;memset(&joint_fetch,0,sizeof(joint_fetch));
+    DSL_MOVEMENT_FACTS movement_source;DSL_TILE_PLAN_RECORD movement_geometry;
+    std::string movement_reason;
     if (!VHO_DSL_cuda_get_hardware(&hardware)) return FALSE;
     if (emitted_plan_id != NULL)
         *emitted_plan_id = DSL_OPT_PLAN_INVALID_ID;
@@ -4246,6 +4249,16 @@ VHO_DSL_CUDA_Emit_Selected_Tile
     }
     if (tile_candidate_count != NULL)
         *tile_candidate_count = site.tile_plan_count;
+    /* H2 harvests only the admitted source baseline, once before exploration.
+     * Missing proofs add no reuse credit and preserve existing fallback policy. */
+    if ((device.Bound() || VHO_DSL_AI_Opt_Trace) &&
+        DSL_tile_plan_ir_get_plan(ir,site.first_tile_plan_id,&movement_geometry)) {
+        VHO_DSL_capture_gemm_movement(tree,site,movement_geometry,locality,movement_source,movement_reason);
+        if(VHO_DSL_AI_Opt_Trace && Get_Trace(TP_WOPT2,AI_OPT_TRACE_FLAG)) {
+            if(movement_source.Available()) movement_source.Print(TFile,"BEFORE_SEARCH");
+            else fprintf(TFile,"AI_MOVEMENT_FACTS 1 family=GEMM unavailable=%s fallback=existing_plan\n",movement_reason.c_str());
+        }
+    }
     plans = VHO_DSL_Tile_Get_Plan_Context(analysis, site.id);
     if (joint) {
         if (!VHO_DSL_cuda_select_joint_plan(pu_info, graph, locality, analysis,
@@ -4397,6 +4410,12 @@ VHO_DSL_CUDA_Emit_Selected_Tile
             !VHO_DSL_CUDA_Pipeline_Valid(tile, selected_fetch)) {
             fprintf(diagnostic, "DSL CUDA P8 selected schedule failed legality\n");
             goto done;
+        }
+        if(movement_source.Available()) {
+            DSL_MOVEMENT_FACTS fresh;
+            if(!VHO_DSL_capture_gemm_movement(tree,site,movement_geometry,locality,fresh,movement_reason) || !movement_source.Same_content(fresh)) {
+                fprintf(diagnostic,"H2 GEMM source facts changed; existing host fallback retained\n");goto done;
+            }
         }
         uint64_t physical_bytes = 0;
         if (!device.Is_current(VHO_DSL_GPU_Context) ||

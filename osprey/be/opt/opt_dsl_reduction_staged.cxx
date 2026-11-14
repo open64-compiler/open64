@@ -4,6 +4,7 @@
  * runtime ABI extension, selected WHIRL mutation or generated kernel body. */
 #include <string.h>
 #include "opt_dsl_reduction_staged.h"
+#include "opt_dsl_movement.h"
 #include "dsl_memory_hierarchy.h"
 #include "config_dsl.h"
 
@@ -178,6 +179,10 @@ WOPT_DSL_bind_reduction_staged(WN *scope, WN *assignment,
   }
   if (trace) {
     WOPT_DSL_staged_trace(b, trace);
+    if(b.status==WOPT_DSL_REDUCE_STAGED_BOUND) {
+      DSL_MOVEMENT_FACTS facts;std::string reason;
+      if(WOPT_DSL_capture_staged_movement(scope,assignment,request,facts,reason)) facts.Print(trace,"BOUND_STAGING");
+    }
     if (b.base.gpu_stamp.bound) {
       const DSL_GPU_PLAN_SNAPSHOT gpu = DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
       fprintf(trace,"DSL_GPU_PLAN_LEGALITY 1 family=reduction-staged binding=%s live_bytes=%llu status=%u RF=unproved runtime_discharge=0\n",

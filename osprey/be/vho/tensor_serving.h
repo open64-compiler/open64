@@ -8,6 +8,7 @@
 #define tensor_serving_INCLUDED
 #include "tensor_serving_schema.h"
 #include "dsl_gpu_contract.h"
+#include "dsl_movement_facts.h"
 struct VHO_SERVING_HANDLE {
     UINT64 owner,id,generation;
     /* Zero/foreign/recycled handles cannot acquire a lease. */
@@ -100,6 +101,11 @@ public:
     /* Freeze normalized cache facts from a prepared, reobserved Q3 ticket.
      * No kernel, reference test, search or compiler mutation occurs here. */
     bool Freeze_costing(UINT64,VHO_Q4_SNAPSHOT &,std::string &);
+    /* H2 captures owned registered ranges, cache/scale/page generations and
+     * source workload facts. This grants no decoded-ready or device authority. */
+    bool Capture_movement(UINT64,DSL_MOVEMENT_FACTS &,std::string &);
+    /* Rebuild actual Q3 bindings; expired/stale tickets cannot revive a copy. */
+    bool Revalidate_movement(UINT64,const DSL_MOVEMENT_FACTS &,std::string &);
     /* Reobserve before a consumer uses a study; expiration/stale controls refuse.
      * This does not turn a model winner into an executable plan. */
     bool Revalidate_costing(UINT64,const std::string &,std::string &);

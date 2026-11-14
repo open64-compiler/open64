@@ -228,7 +228,7 @@ def review(args):
         return view
     Invocation.allocate = tracked
 
-    if getattr(args, 'gpu_device', None):
+    if getattr(args, 'gpu_device', None) and not getattr(args, 'movement', False):
         # Same actual mapped-source entries and reference checks as ordinary Q3.
         # The observer is synthetic; no NVIDIA execution/attestation is claimed.
         results = []
@@ -284,6 +284,74 @@ def review(args):
         (out / 'commands.json').write_text(json.dumps(commands, indent=2) + '\n')
         (out / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
         print('PASS H1d serving ' + args.gpu_device + ' cases=' + str(len(results)))
+        return
+
+    if getattr(args, 'movement', False):
+        capture = api.open64_h2_movement_capture
+        capture.argtypes, capture.restype = [C.c_void_p, U], C.c_char_p
+        revalidate = api.open64_h2_movement_revalidate
+        revalidate.argtypes, revalidate.restype = [C.c_void_p, U], C.c_int
+        retained = api.open64_h2_movement_retained
+        retained.argtypes, retained.restype = [C.c_void_p, U], C.c_char_p
+        results = []
+        for name in CASES:
+            c = Invocation(name)
+            if c.schema['paged']:
+                assert c.import_ready()
+            assert c.begin()
+            before = [buffer.raw for buffer in c.buffers]
+            original = json.loads(capture(c.session, c.ticket))
+            assert original['serving_bound'] and not original['epoch_permission'] and not original['physical_known']
+            assert len(original['storages']) == len(c.views) + 1
+            assert json.loads(capture(c.session, c.ticket)) == original and revalidate(c.session, c.ticket)
+            assert before == [buffer.raw for buffer in c.buffers] and c.callback_count == 0
+            if c.schema['paged']:
+                # Simulate a noncooperative page-map corruption; the existing
+                # Q3 observer must reject it before any H2 facts can be reused.
+                view = c.views[c.schema['roots'].index(c.values[c.schema['table']]['storage'])]
+                address = c.address(view)
+                raw = C.string_at(address, 8)
+                C.memmove(address, (1 << 60).to_bytes(8, 'little'), 8)
+                assert not revalidate(c.session, c.ticket)
+                C.memmove(address, raw, 8)
+                assert revalidate(c.session, c.ticket)
+            old_ticket = c.ticket
+            assert functions['cancel'](c.session, old_ticket)
+            assert not revalidate(c.session, old_ticket) and retained(c.session, old_ticket).decode() == original['key']
+            # Cooperative identical-byte scale writes still advance content
+            # version; shape and numerical values cannot hide a new generation.
+            root = c.values[c.schema['returned'][1]]['storage']
+            view = c.views[c.schema['roots'].index(root)]
+            payload = C.string_at(c.address(view), view.bytes)
+            assert functions['write'](c.session, view.handle, view.offset, payload, view.bytes)
+            assert c.begin()
+            fresh = json.loads(capture(c.session, c.ticket))
+            index = c.schema['roots'].index(root)
+            assert fresh['storages'][index]['version'] != original['storages'][index]['version']
+            assert fresh['key'] != original['key'] and revalidate(c.session, c.ticket)
+            if getattr(args, 'gpu_device', None):
+                assert fresh['device_key']
+                change(c.session, b'generation')
+                assert not revalidate(c.session, c.ticket)
+                assert functions['cancel'](c.session, c.ticket)
+                c.close()
+                c = Invocation(name)
+                if c.schema['paged']:
+                    assert c.import_ready()
+                assert c.begin()
+            ok, bundle, why = c.run()
+            assert ok and bundle, why
+            c.verify()
+            assert not revalidate(c.session, c.ticket)
+            results.append(dict(case=name, stable_owned_capture=True, expired_copy_readable=True,
+                                identical_byte_scale_version_changes=True, page_corruption_refused=c.schema['paged'], reference=True))
+            (out / (name + '.movement.json')).write_text(json.dumps(fresh, indent=2) + '\n')
+            c.close()
+        report = dict(status='PASS', cases=results, references=len(results), GPU=False,
+                      gpu_device=getattr(args, 'gpu_device', None), physical_traffic='unknown', search_invocations=0)
+        (out / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
+        (out / 'commands.json').write_text(json.dumps(commands, indent=2) + '\n')
+        print('PASS H2 owned Q3 movement cases=' + str(len(results)))
         return
 
     api.open64_q3_counter_test.restype = C.c_int
@@ -544,6 +612,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('source', 'previous', 'lowerer', 'adapter', 'output'):
         parser.add_argument('--'+name, type=Path, required=True)
+    parser.add_argument('--movement', action='store_true')
     parser.add_argument('--gpu-device', choices=['h20_96gb', 'h20_141gb'])
     parser.add_argument('--q4', action='store_true')
     parser.add_argument('--q5', action='store_true')
