@@ -15,7 +15,9 @@ and [plan v1.1](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.1.md)
 supersede the earlier H1 proposal below. Require exact gpu_device selection for
 h20_96gb/h20_141gb, immutable context propagation to owning-phase consumers,
 H20/H200 mismatch rejection and explicit architecture-only reporting. The
-option is not yet implemented; H1a-H1d define implementation and test gates.
+H1a option/identity admission is implemented as described in
+[GPU device selection v1.0](AI-COMPILER-H1A-GPU-DEVICE-SELECTION-v1.0.md);
+H1b-H1d resource/profile bindings and qualification remain open.
 Preserve estimation-only exploration, selected application and compatible
 fallback. H20 141 GB selection tests do not establish device qualification.
 
@@ -30,6 +32,70 @@ These are planned milestones. Existing historical completion/evidence below
 retains its original scope. This design does not mark PERF0-PERF6 implemented
 or reopen deferred AOT selection policy, PREOPT COMMENT repair or OpenCTI.
 
+
+# KV reuse-group implementation increment
+
+November 12 2026 | KVR0 through KVR5 open; documentation-only adoption
+
+Implement [KV reuse-group design](AI-COMPILER-KV-REUSE-GROUP-DESIGN-v0.1.md)
+within the existing R6 Attention research queue and Work Partition, Resource
+Lifetime and Execution Events framework. A KV reuse group shares one resident
+KV tile among compatible query-position/head consumers in an admitted scope.
+Compression alone reduces bytes; the schedule creates temporal reuse. This
+queue extends R6 and reuses existing numerical, compute, resource and trace
+contracts without completing or renumbering their gates. No compiler option,
+native FP8 implementation, Attention lowering, persisted IR schema or H20
+performance result is added.
+
+## Bounded scope and dependencies
+
+Start with one active-PU, fixed-shape, contiguous, immutable KV head/range and
+a small explicit same-request GQA consumer group in one CTA. Use an admitted
+wider-operand/FP32-state Attention reference before introducing FP8. Preserve
+per-query masks, source head mapping, output ownership and numerical acceptance.
+Group-size-one is the retained source-compatible comparison/fallback. Current
+GEMM MMA services are reusable components, not a complete Attention kernel.
+Streaming Softmax and sequence-split merges require their own accepted
+arithmetic contracts and executable realizations before selection.
+
+KVR0 -> KVR1 -> KVR2 establish characterization, resources and events. KVR3
+may use synthetic inputs for offline model validation, but cannot select an
+unlowerable plan or claim device timing. KVR4 proceeds only after the applicable
+Attention arithmetic, High WHIRL materialization, Mid/Low realization and
+compute/movement gates pass. FP8 KVR1/KVR4 paths additionally require admitted
+encoding/scales, numerical acceptance and an executable native FP8 recipe;
+precision-dependent selection requires complete typed costs and lowering.
+KVR5 native certification requires hardware and exact numerical/target evidence
+for FP8. These are explicit prerequisites, not claims that FP8 is implemented.
+Compiler-side work and manual source review need not wait for a GPU. Cluster
+sharing, cross-request prefixes and cross-launch persistence are outside the
+first slice; no ordinary cross-CTA SMEM sharing is assumed.
+
+## Action and acceptance gates
+
+| Gate | Concrete implementation and owner | Required tests and retained evidence | What the tools must summarize |
+| --- | --- | --- | --- |
+| KVR0: semantic reuse discovery | Owning domain/canonical-analysis phase derives KV allocation/view/head/epoch identity, consumer domains, masks, scale identity and per-consumer state from verified semantics and existing access/alias/DU services. Carry policy-free identities through current common records, not a second executable graph. | Positive same-KV GQA and bounded prefill groups; ordinary single-query no-extra-reuse; reject unrelated requests, unequal KV heads/scale identities/KV positions, stale pages, unknown aliases and changed numerical contracts. Preserve strict source order and outputs; do not infer sharing from token equality or frontend names alone. | P0 `semantic.log`: admitted head mapping, consumer/source lines, numerical permissions and refusals. P1 `locality.log`: common KV ranges, separate K/V useful reuse, distinct request identities and cache uncertainty. |
+| KVR1: precision-aware group and storage candidates | P6/P7 enumerate bounded group sizes, token tiles, representations/layouts and stage counts. Reuse CommonTilePlanIR, representation lineage and resource services. Include FP8-resident, expanded and bounded-conversion paths only when admitted; calculate peak live ranges, aligned arena extent, rounded SMEM/RF reservation and spills independently. | Literal 128-token, Dk=Dv=128 payload oracle: one/two slots are 64/128 KiB wider or 32/64 KiB FP8 before extras. Add scales, raw-plus-expanded coexistence, alignment holes, conversion scratch and barriers. Check bank/sector maps, overflow, tails, actual allocation limits and unchanged FP32 state; reject absent FP8 authorization. | P6 `residency.log`: all buffers, encodings, overlap/peak versus reservation, scale/conversion bytes and provenance. P7 `tile.log`: group size, distinct consumers, token tile, issued-sector/reuse estimates, RF/SMEM bounds, candidate exclusions and source lines. |
+| KVR2: final-consumer events and scheduling | P8 binds each slot generation to payload/scale transfers, optional conversion/publication, QK/PV reads, final-reader joins and release. Bound prefetch and barrier counts; source pages/scales remain valid until copy reads complete. Separate earlier range release requires a target-supported access-completion proof. | Independent event/progress oracle; synchronous one-slot first, then two-slot. Fault-inject early overwrite, TMA-ready treated as MMA-done, missing reader/visibility, divergent arrivals, alias readers, stale generation, source eviction and barrier reuse. Cover zero/one/odd/fewer-than-slots tiles, masks and page tails. | P8 `fetch-pipeline.log`: acquire/issue/ready/convert/QK/PV/join/release per range and generation, all consumer counts, waits, source lifetime, actual overlap and rejection reasons. Distinguish data reuse from physical-slot recycling. |
+| KVR3: complete reuse/parallelism profitability | P9 uses the existing complete-plan/uncertainty services to compare group-size-one/small groups, larger groups and separately legal sequence splits across representation/tile/movement choices. Evaluate complete invocation makespan with shared bandwidth and capacity; no unconditional reuse or overlap bonus. | Literal resource/event oracle and deterministic synthetic cases where larger reuse wins, RF/SMEM pressure reverses it, grid underfill favors split, and conversion/merge cost reverses that choice. Include cache-unknown bounds, traffic reconciliation, changed target snapshots, unavailable rates, ties and no-double-counted overlap/Roofline benefit. Select only complete lowerable numerical alternatives; uncertain/incomplete evidence retains the valid baseline. | P9 `physical-plan.log`: every complete cost, conversion/promotion/merge/launch overhead, traffic tier, resident CTAs/waves, exposed wait, bounds/provenance and explicit winner/fallback reason. `tile.log` distinguishes diagnostic ranking from executable selection. |
+| KVR4: selected WHIRL and runtime guards | High WHIRL materializes the selected group loops, masks, independent state, staging/conversion and event protocol; Mid/Low realize that plan. Reuse driver-owned PU/ABI and runtime guard bridges. CUDA is emitted only from selected WHIRL; runtime enforces head/page/scale epoch and launch/resource obligations before execution. | Before/after mapped `.B`, independent `ir_b2a -st -src` `.T`, full diff and WHIRL-derived `.cu` retained for manual review; PTX/assembly checks when supported. Numerical source/reference comparisons, representation mutations, rollback, option-off/trace-off parity and runtime guard failure use a legal fallback or explicit diagnostic. Host protocol tests do not certify GPU arithmetic. | Existing transformation report plus `physical-plan.log` records actual allocation, group loops, independent state, movement and join/release actions. P10 `runtime-variant.log` records guard predicates, resource requirements, fallback and unsupported paths. Never report selection alone as a completed rewrite. |
+| KVR5: certification and feedback | Exact target/device/partition/toolkit certification and existing FEEDBACK provenance; compare accepted full invocations with a same-result baseline. H20 device resources are separate from Hopper ISA support. Native work waits for hardware; existing PERF framework/dashboard remains deferred. | Native numerical/tail/mask/scale tests, actual register/local/SMEM use, kernel identity, paired latency samples and observed traffic where available. Report prediction error, rank agreement and selection regret; do not substitute H100 timing, synthetic cycles or host checks for H20 evidence. | P11 `feedback.log`: offline versus assembler versus native evidence, applicability, observed/predicted quantities and unresolved facts. `optimization-summary.log` shows every P0-P11 status and gate; no native result is inferred from compilation. |
+
+Report basenames above follow the existing [phase artifact convention](AI_compiler_optimization_design_v0.3.md#97-matmul-trace-report-and-durable-artifact-convention).
+Each starts with `# What it summarizes:`; raw option-controlled `.t` remains
+the authoritative optimization trace. Extend compact positional schemas only
+through explicit versioning and matching parser/auditor tests. Preserve
+candidate/plan, PU/region, source-line and target/model identities through
+selection, profitability, actual transformation and report replay.
+
+Keep raw trace, full `optimization.log`, compact `optimization-summary.log`,
+phase logs, selected/baseline plans, commands/options and mapped/source evidence
+under the designated immutable AI review-artifact hierarchy with checksums.
+Skipped, disabled, rejected, unknown and not-implemented phases remain visible;
+no new mandatory log family, JSONL format or generic allocator is introduced.
+Do not regenerate Word/PDF exports or alter old acceptance receipts as part of
+this Markdown-only amendment.
 
 # Precision policy implementation increment
 
