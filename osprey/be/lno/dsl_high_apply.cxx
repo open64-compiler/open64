@@ -2,8 +2,11 @@
 /* Active-PU selected High transaction: detached search has finished. Reuse
  * PREOPT_DUONLY, LNO parent/loop/access/dependence/reduction builders and the
  * established journal/string-savepoint and child-checkpoint protocols.
- * Design: doc/AI-COMPILER-SEARCH-M4-ATOMIC-HIGH-v1.0.md. No GPU lowering. */
+ * H3 fixed-winner physical model and full-recipe binding are revalidated
+ * before mutation. Designs: doc/AI-COMPILER-SEARCH-M4-ATOMIC-HIGH-v1.0.md and
+ * doc/AI-COMPILER-H3-MOVEMENT-COSTING-v1.0.md. No GPU lowering. */
 #include "dsl_high_apply.h"
+#include "config_dsl.h"
 #include "dsl_high_binding_keys.h"
 #include "../vho/tensor_selected_key.h"
 #include "dsl_high_admission.h"
@@ -79,6 +82,13 @@ void DSL_apply_test_input(DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_REPORT &
     if(DSL_apply_fault(20)) report.reuse=DSL_HIGH_REUSE_FACTS();
     if(DSL_apply_fault(21)) report.exploration.candidates[report.exploration.winner].descriptor.group=2;
     if(DSL_apply_fault(22)) ++report.exploration.candidates[report.exploration.winner].descriptor.column;
+    if(DSL_apply_fault(23)) report.h3_model_key+="stale";
+    if(DSL_apply_fault(24)) report.exploration.candidates[report.exploration.winner].h3.binding+="stale";
+    if(DSL_apply_fault(25)) {
+        ++report.exploration.candidates[report.exploration.winner].h3.rank_ns;
+        ++report.production.exploration.candidates[report.exploration.winner].h3.rank_ns;
+    }
+    if(DSL_apply_fault(26)) report.data_movement=DSL_MOVEMENT_FACTS();
 #endif
 }
 /* Copy an ordinary High image in a child: the existing writer consumes native
@@ -275,9 +285,19 @@ bool DSL_apply_preflight(WN *root,DSL_HIGH_EPOCH &epoch,const DSL_HIGH_BINDINGS 
         candidate.movement.descriptor_key!=VHO_mla_movement_descriptor_key(candidate) ||
         candidate.movement.descriptor_key!=sealed.movement.descriptor_key)) return reason="movement_candidate_unimplemented_or_changed",false;
     if(!candidate.evaluated || !candidate.eligible) return reason="selected_candidate_ineligible",false;
+    if((VHO_DSL_H3_Search!=NULL)!=(!report.h3_model_key.empty())) return reason="h3_model_presence_changed",false;
+    if(!report.h3_model_key.empty()) {
+        DSL_H3_PLAN recipe;DSL_H3_ESTIMATE fresh;
+        if(!VHO_DSL_H3_Search || VHO_DSL_H3_Search->Model().key!=report.h3_model_key ||
+            !candidate.h3.complete || candidate.h3.key!=sealed.h3.key || candidate.h3.binding!=sealed.h3.binding || candidate.h3.rank_ns!=sealed.h3.rank_ns ||
+            !VHO_mla_h3_plan(candidate,input.algorithm,input.gpu,report.data_movement,recipe,reason) ||
+            !VHO_h3_estimate(report.data_movement,VHO_DSL_H3_Search->Model(),recipe,fresh,reason) ||
+            fresh.key!=candidate.h3.key || fresh.binding!=candidate.h3.binding || fresh.rank_ns!=candidate.h3.rank_ns)
+            return reason="h3_selected_model_or_estimate_changed",false;
+    }
     for(unsigned i=0;i<report.exploration.candidates.size();++i) {
         const VHO_MLA_SEARCH_CANDIDATE &other=report.exploration.candidates[i];
-        if(other.evaluated && other.eligible && (other.total<candidate.total || (other.total==candidate.total && i<winner)))
+        if(other.evaluated && other.eligible && (VHO_mla_candidate_rank(other)<VHO_mla_candidate_rank(candidate) || (VHO_mla_candidate_rank(other)==VHO_mla_candidate_rank(candidate) && i<winner)))
             return reason="selected_incumbent_not_best",false;
     }
     selected=input.algorithm;selected.fuse=selected.cooperative=selected.fuse_attention=selected.register_latent=true;
@@ -330,6 +350,7 @@ bool LNO_DSL_apply_selected_high(WN *&root,DU_MANAGER *&du,ALIAS_MANAGER *&alias
     try {
         WN *body=VHO_tensor_build_selected_high(selected,root);
         std::string explanation=Index_To_Str(WN_GetComment(WN_first(body)));
+        if(!report.h3_model_key.empty()) explanation+=" H3 chose this existing executable recipe using H2 source/reuse facts and the pinned H20 physical-unit model "+report.h3_model_key+". Traffic, spills and latency are explicit model estimates, not GPU measurements; candidate exploration generated no WHIRL.";
         if(report.movement) explanation+=" MR2 selected an implemented G=1 plan under the explicit hierarchy/reuse profile; grouped-head candidates are analysis-only. Cache/HBM traffic and cycle costs are scenario estimates, not GPU measurements. The normalized per-head partial tuple and stable merge remain unchanged.";
         staged=WN_COPY_Tree(root);WN_func_body(staged)=body;
         if(DSL_apply_fault(1)) throw std::runtime_error("test_after_construction");

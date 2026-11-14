@@ -9,6 +9,7 @@
 #include <string.h>
 #include "opt_dsl_normalization_cost.h"
 #include "opt_dsl_movement.h"
+#include "../vho/dsl_movement_cost.h"
 #include "pu_info.h"
 #include "config_dsl.h"
 #include "../vho/dsl_gemm_occupancy.h"
@@ -527,8 +528,10 @@ BOOL WOPT_DSL_select_normalization_plan(WN *scope,WN *assignment,
       if (!sms_known || !sms || !resources_known) c.status=WOPT_DSL_NORM_COST_UNKNOWN;
       else if (!c.resident_ctas) c.status=WOPT_DSL_NORM_COST_RESOURCE;
       else {
-        LN3_GRAPH graph(r->plans[i],bindings[i],c,r->max_jobs,r->profile.values[DSL_SCALAR_SECTOR_BYTES][1]);
-        if (r->max_jobs>1000000 || sms>~UINT32(0) || (gpu.Bound() && sms>r->max_jobs) || !graph.Build(UINT32(sms))) {
+        UINT64 graph_jobs=r->max_jobs;
+        if(VHO_DSL_H3_Search && Opt_Level>=3) graph_jobs=std::min(graph_jobs,UINT64(VHO_DSL_H3_Search->Working_items(1024)));
+        LN3_GRAPH graph(r->plans[i],bindings[i],c,graph_jobs,r->profile.values[DSL_SCALAR_SECTOR_BYTES][1]);
+        if (!graph_jobs || r->max_jobs>1000000 || sms>~UINT32(0) || (gpu.Bound() && sms>r->max_jobs) || !graph.Build(UINT32(sms))) {
           UINT32 resident=c.resident_ctas;memset(&c,0,sizeof(c));c.resident_ctas=resident;c.status=WOPT_DSL_NORM_COST_BUDGET;
         } else if (!LN3_Evaluate(graph,r->profile,UINT32(sms),&c)) {
           c.status=WOPT_DSL_NORM_COST_OVERFLOW;c.lower=c.total=c.upper=0;memset(c.terms,0,sizeof(c.terms));
@@ -551,6 +554,46 @@ BOOL WOPT_DSL_select_normalization_plan(WN *scope,WN *assignment,
             (out.selected_kind==1 || out.costs[i].total<out.costs[out.selected_kind-1].total)) {
           out.selected_kind=i+1;out.reason=WOPT_DSL_NORM_ROBUST_BENEFIT;
         }
+      }
+      if(VHO_DSL_H3_Search && Opt_Level>=3) {
+        DSL_H3_ESTIMATE estimates[3];bool complete=movement_source.Available();
+        out.h3_bound=1;std::strncpy(out.h3_model_key,VHO_DSL_H3_Search->Model().key.c_str(),64);
+        uint64_t nominal=~uint64_t(0);UINT32 best_h3=0;
+        for(UINT32 i=0;i<3;++i) {
+          const WOPT_DSL_NORMALIZATION_COST &count=out.costs[i];DSL_H3_PLAN recipe;
+          recipe.id=std::string("LayerNorm/C")+char('0'+i);recipe.capability="LN4-existing-centered-ordered";recipe.executable=true;recipe.live_bytes=bindings[i].live_bytes;
+          DSL_H3_STAGE stage;stage.id=recipe.id;stage.ctas=bindings[i].target.source.rows;stage.threads=r->plans[i].threads_per_cta;
+          stage.registers=r->registers_per_thread[i];stage.shared_allocation=r->plans[i].shared_bytes;stage.steps=bindings[i].target.source.width;
+          if(stage.ctas && count.status==WOPT_DSL_NORM_COST_COMPLETE) {
+            // Existing graph counts include private pointer carriers. Cache
+            // credit covers only proved source inputs; all remaining requests
+            // use a conservative write-through bin, independent of direction.
+            uint64_t requests=count.global_sector_bytes/stage.ctas+(count.global_sector_bytes%stage.ctas!=0);
+            uint64_t inputs=0;
+            if(!DSL_movement_mul(bindings[i].row_bytes,i?3:5,inputs)) {complete=false;continue;}
+            stage.read_requests=std::min(inputs,requests);stage.reusable_reads=stage.read_requests;stage.write_through_requests=requests-stage.read_requests;
+            stage.scalar_ops=count.scalar_lanes/stage.ctas+(count.scalar_lanes%stage.ctas!=0);
+            if(!DSL_movement_add(stage.scalar_ops,requests/4,stage.issue_ops)) {complete=false;continue;}
+            stage.shared_requests=count.shared_bytes/stage.ctas+(count.shared_bytes%stage.ctas!=0);
+            stage.barriers=count.barriers/stage.ctas+(count.barriers%stage.ctas!=0);if(!DSL_movement_mul(stage.steps,2,stage.add_chain)) {complete=false;continue;}
+            stage.divs=2;stage.rsqrts=1;
+            recipe.stages.push_back(stage);
+          }
+          bool accepted=VHO_DSL_H3_Search->Evaluate(movement_source,recipe,estimates[i],movement_reason);
+          out.h3_complete[i]=accepted;out.h3_rank_ns[i]=estimates[i].rank_ns;complete=complete && accepted;
+          VHO_h3_print(trace,movement_source,recipe,estimates[i]);
+          if(accepted && estimates[i].rank_ns<nominal) {nominal=estimates[i].rank_ns;best_h3=i;}
+        }
+        out.nominal_kind=complete?best_h3+1:1;out.selected_kind=1;out.reason=WOPT_DSL_NORM_INCOMPLETE_COST;
+        if(complete) {
+          out.reason=WOPT_DSL_NORM_UNCERTAIN_BENEFIT;
+          double baseline_lower=0;
+          for(size_t j=0;j<estimates[0].scenarios.size();++j) if(VHO_DSL_H3_Search->Model().objective=="worst" || VHO_DSL_H3_Search->Model().objective==estimates[0].scenarios[j].name)
+            baseline_lower=std::max(baseline_lower,estimates[0].scenarios[j].lower_ns);
+          for(UINT32 i=1;i<3;++i) if(double(estimates[i].rank_ns)<baseline_lower &&
+              (out.selected_kind==1 || estimates[i].rank_ns<estimates[out.selected_kind-1].rank_ns)) {out.selected_kind=i+1;out.reason=WOPT_DSL_NORM_ROBUST_BENEFIT;}
+        }
+        if(trace) fprintf(trace,"AI_H3_SELECT 1 family=LayerNorm nominal=%u selected=%u complete=%u unit=ns fallback=C0\n",out.nominal_kind,out.selected_kind,unsigned(complete));
       }
       if (!gpu.Is_current(VHO_DSL_GPU_Context) || !LN3_Record(hw,&out,diagnostic) ||
           !WOPT_DSL_export_normalization_guard(scope,assignment,

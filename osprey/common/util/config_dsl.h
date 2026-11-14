@@ -61,11 +61,17 @@ extern char *VHO_DSL_GPU_Device;
 extern char *VHO_DSL_GPU_Profile;
 extern char *VHO_DSL_GPU_Profile_SHA256;
 extern char *VHO_DSL_GPU_Profile_Toolchain;
+extern char *VHO_DSL_H3_Model;
+extern char *VHO_DSL_H3_Model_SHA256;
 /* Driver-only synchronous publication; phase owners copy before exploration.
  * Borrow expires at driver cleanup. Not a mutable resource-table row. */
 #ifdef __cplusplus
 class DSL_GPU_DEVICE_CONTEXT;
 extern const DSL_GPU_DEVICE_CONTEXT *VHO_DSL_GPU_Context;
+/* H3 supplement is imported once by be_driver. Search owner lives for one
+ * request; phases pass only owned H2 facts/work, never native contexts. */
+class DSL_H3_SEARCH;
+extern DSL_H3_SEARCH *VHO_DSL_H3_Search;
 #endif
 extern UINT32 VHO_DSL_GEMM_Memory_Latency;
 extern BOOL VHO_DSL_GEMM_Memory_Latency_Set;

@@ -8,6 +8,7 @@
 #include "opt_dsl_normalization_plan.h"
 #include "opt_dsl_reduction_staged.h"
 #include "../com/dsl_movement_facts.h"
+#include "../vho/dsl_movement_cost.h"
 /* Fresh native/source/target/storage/event admission, then owned source counts.
  * Failure clears facts and preserves the ordinary source/fallback. O3 only;
  * source and common tables are read, never rewritten. */
@@ -21,4 +22,15 @@ extern BOOL WOPT_DSL_capture_reduction_movement(WN *,WN *,
  * Tails describe only active rows/elements; no inactive access is synthesized. */
 extern BOOL WOPT_DSL_capture_staged_movement(WN *,WN *,
     const WOPT_DSL_REDUCTION_STAGED_REQUEST *,DSL_MOVEMENT_FACTS &,std::string &);
+struct WOPT_DSL_REDUCTION_MOVEMENT_COST {
+    DSL_H3_ESTIMATE direct,staged;
+    unsigned nominal;
+    /* R2 conditional plans remain analysis-only until their H6 materializer. */
+    inline WOPT_DSL_REDUCTION_MOVEMENT_COST() : nominal(0) {}
+};
+/* Rebind source once outside estimation, then compare existing direct/staged
+ * ordered recipes using H2 facts and H3 physical units. Nominal is a modeled
+ * comparison, never permission to execute an unsupported staged kernel. */
+extern BOOL WOPT_DSL_cost_reduction_movement(WN *,WN *,const WOPT_DSL_REDUCTION_STAGED_REQUEST *,
+    DSL_H3_SEARCH &,WOPT_DSL_REDUCTION_MOVEMENT_COST &,std::string &,FILE *);
 #endif

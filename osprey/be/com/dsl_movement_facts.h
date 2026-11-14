@@ -105,6 +105,9 @@ public:
     /* Require a live owner-supplied epoch and all source/control/profile joins.
      * WOPT/VHO callers without epochs must freshly recapture and Same_content. */
     bool Is_current(const DSL_MOVEMENT_BINDING &,bool epoch_live) const;
+    /* Conservative charge for copying owned strings/vectors and serialization;
+     * H3 budgets this detached storage, not process RSS or native analyses. */
+    uint64_t Storage_charge() const;
     /* Print detached facts without reading a compiler context or hardware. */
     void Print(FILE *,const char *stage) const;
 };

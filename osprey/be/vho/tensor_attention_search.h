@@ -9,6 +9,7 @@
 #include "tensor_attention_movement.h"
 #include "tensor_quantized_movement.h"
 #include "tensor_quantized_plan.h"
+#include "dsl_movement_cost.h"
 
 enum VHO_MLA_COST_FIELD {
     VHO_MLA_GLOBAL_RATE, VHO_MLA_SCALAR_RATE, VHO_MLA_SHARED_RATE,
@@ -43,6 +44,7 @@ struct VHO_MLA_STAGE_ESTIMATE {
     UINT64 rounds,compute,memory,special,local,sync,launch,total;
 };
 struct VHO_MLA_SEARCH_CANDIDATE {
+    DSL_H3_ESTIMATE h3;
     VHO_MLA_MOVEMENT_DESCRIPTOR descriptor;
     VHO_MLA_MOVEMENT_ESTIMATE movement;
     VHO_Q4_ESTIMATE quantized;
@@ -148,4 +150,17 @@ extern BOOL VHO_mla_explore_quantized(const VHO_TENSOR_GPU_PROFILE &,const VHO_M
 extern BOOL VHO_mla_explore_q5(const VHO_TENSOR_PROGRAM &,const VHO_TENSOR_GPU_PROFILE &,
     const VHO_MLA_COST_PROFILE &,const VHO_MLA_SEARCH_CONTROL &,const VHO_Q4_PROFILE &,
     const VHO_Q4_SNAPSHOT &,UINT64,VHO_MLA_PRODUCTION_RESULT *,FILE *);
+/* H3 physical rank is separate from archived cycle totals. Only complete
+ * ns estimates supplied by the selected model can replace that comparison. */
+inline uint64_t VHO_mla_candidate_rank(const VHO_MLA_SEARCH_CANDIDATE &c)
+    { return c.h3.complete?c.h3.rank_ns:c.total; }
+/* Reuse admitted native recipe counts and H2 source/profile joins. The plan
+ * remains a detached proposal, with no grouped execution capability invented. */
+extern bool VHO_mla_h3_plan(const VHO_MLA_SEARCH_CANDIDATE &,const VHO_TENSOR_PROGRAM &,
+    const VHO_TENSOR_GPU_PROFILE &,const DSL_MOVEMENT_FACTS &,DSL_H3_PLAN &,std::string &);
+/* Existing portfolio/proposers and controls with H3 physical-unit comparisons.
+ * Cycle target/gap/economic stopping is refused, not converted implicitly. */
+extern BOOL VHO_mla_explore_h3(const VHO_TENSOR_PROGRAM &,const VHO_TENSOR_GPU_PROFILE &,
+    const VHO_MLA_COST_PROFILE &,const VHO_MLA_SEARCH_CONTROL &,const VHO_MLA_MOVEMENT_CONTEXT *,
+    const DSL_MOVEMENT_FACTS &,DSL_H3_SEARCH &,VHO_MLA_PRODUCTION_RESULT *,FILE *);
 #endif

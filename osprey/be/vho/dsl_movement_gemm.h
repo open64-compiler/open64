@@ -7,6 +7,8 @@
 #include "dsl_tile_candidate.h"
 #include "dsl_tensor_locality.h"
 #include "../com/dsl_movement_facts.h"
+#include "dsl_fetch_pipeline_opt.h"
+#include "dsl_movement_cost.h"
 class WN;
 /* Caller supplies its admitted active-PU common site and source/baseline tile.
  * Native joins and dense F32 source are checked before owned publication.
@@ -14,4 +16,8 @@ class WN;
 extern BOOL VHO_DSL_capture_gemm_movement(WN *,const DSL_TILE_SITE_RECORD &,
     const DSL_TILE_PLAN_RECORD &,const DSL_TENSOR_LOCALITY_ANALYSIS *,
     DSL_MOVEMENT_FACTS &,std::string &);
+/* Project an existing admitted SIMT tile/fetch recipe into H3 physical work.
+ * The owning selector supplies legality/capability; no native state is read. */
+extern bool VHO_DSL_gemm_h3_plan(const DSL_TILE_PLAN_RECORD &,const DSL_FETCH_PLAN_RECORD &,
+    const DSL_HARDWARE_DESCRIPTION_RECORD &,DSL_H3_PLAN &,std::string &);
 #endif

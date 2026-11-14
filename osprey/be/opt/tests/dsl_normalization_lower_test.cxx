@@ -6,6 +6,8 @@
 #define DSL_NORMALIZATION_COST_NO_MAIN
 #include "dsl_normalization_cost_test.cxx"
 #include "opt_dsl_normalization_lower.h"
+#include "dsl_gpu_profile.h"
+#include "config_dsl.h"
 #include "ir_bread.h"
 #include "ir_reader.h"
 
@@ -90,6 +92,7 @@ static int LN4_Device(char **argv);
 int main(int argc,char **argv)
 {
   if (argc==5 && (!strcmp(argv[1],"device") || !strcmp(argv[1],"device-quiet"))) return LN4_Device(argv);
+  if (argc==9 && !strcmp(argv[1],"device-gpu")) return LN4_Device(argv);
   if (argc==6 && !strcmp(argv[1],"reopen")) return LN4_Reopen(argv);
   if (argc!=7) return 2;
   char mixed[]="mixed";char *source_args[]={argv[0],argv[1],!strcmp(argv[5],"legacy")?mixed:argv[5]};if (LN1b_Source_Producer(3,source_args)) return 1;
@@ -132,11 +135,20 @@ int main(int argc,char **argv)
 }
 
 /* A separate driver invocation owns the device translation unit and writer.
- * No analysis tables are reset or discarded inside the lowering service. */
+ * Optional pinned H1 import reestablishes the selected compiler context, without
+ * search or source-policy selection. No analysis tables are reset inside the
+ * lowering service; old no-import modes retain their protocol. */
 static int LN4_Device(char **argv)
 {
   Initialize_Context();if (!DSL_Builder_Begin_Program()) return 1;
   WOPT_DSL_NORMALIZATION_LOWERING plan;if (!LN4_Binary(argv[3],&plan,sizeof(plan),FALSE)) return 1;
+  DSL_GPU_DEVICE_CONTEXT_OWNER gpu_owner;
+  if(!strcmp(argv[1],"device-gpu")) {
+    DSL_HARDWARE_TARGET_SELECTION target;
+    if(!DSL_hardware_target_resolve(NULL,argv[5],&target,stderr) ||
+        !DSL_gpu_profile_resolve(target,argv[6],argv[7],argv[8],&gpu_owner,stderr)) return 1;
+    VHO_DSL_GPU_Context=gpu_owner.Context();
+  }
   FILE *trace=fopen(argv[4],"a");if (!trace) return 1;
   FILE *actions=!strcmp(argv[1],"device-quiet")?NULL:trace;
   OPT_Fast_Math=FALSE;Roundoff_Level=ROUNDOFF_NONE;IEEE_Arithmetic=IEEE_ACCURATE;

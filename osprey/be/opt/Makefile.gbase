@@ -515,3 +515,10 @@ opt_dsl_movement_normalization.o opt_dsl_movement_reduction.o opt_dsl_movement_s
 # H2 complete owned-record consumer closure, including runtime sidecars.
 opt_dsl_movement_normalization.o opt_dsl_movement_reduction.o opt_dsl_movement_staged.o opt_dsl_normalization_cost.o \
 opt_dsl_reduction.o opt_dsl_reduction_staged.o: $(BUILD_TOT)/be/com/dsl_movement_facts.h
+
+# H3 complete reverse consumer closure for detached cost/report layouts.
+opt_dsl_normalization_cost.o opt_dsl_normalization_lower.o opt_dsl_normalization_request.o opt_main.o: $(BUILD_TOT)/be/vho/tensor_attention_search.h $(BUILD_TOT)/be/opt/opt_dsl_normalization_cost.h $(BUILD_TOT)/be/vho/dsl_movement_cost.h
+
+# H3 physical-model value-layout transitive consumers.
+opt_dsl_movement_normalization.o opt_dsl_movement_reduction.o opt_dsl_movement_staged.o opt_dsl_normalization_cost.o \
+opt_dsl_reduction.o opt_dsl_reduction_staged.o: $(BUILD_TOT)/be/vho/dsl_movement_cost.h

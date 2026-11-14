@@ -357,7 +357,7 @@ std::string VHO_mla_search_control_key(const VHO_MLA_SEARCH_CONTROL &control) {
  * Imported H1c snapshots partition the owning search invocation; quantized
  * serving-specific profile adaptation remains refused until fully bound. */
 static BOOL VHO_mla_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR_GPU_PROFILE &gpu,
-    const VHO_MLA_COST_PROFILE &model,const VHO_MLA_SEARCH_CONTROL &control,VHO_MLA_PRODUCTION_RESULT *output,FILE *diagnostic,const VHO_MLA_MOVEMENT_CONTEXT *movement,const VHO_Q4_PROFILE *q4_profile=NULL,const VHO_Q4_SNAPSHOT *q4_snapshot=NULL,UINT64 q5_log=0) {
+    const VHO_MLA_COST_PROFILE &model,const VHO_MLA_SEARCH_CONTROL &control,VHO_MLA_PRODUCTION_RESULT *output,FILE *diagnostic,const VHO_MLA_MOVEMENT_CONTEXT *movement,const VHO_Q4_PROFILE *q4_profile=NULL,const VHO_Q4_SNAPSHOT *q4_snapshot=NULL,UINT64 q5_log=0,const DSL_MOVEMENT_FACTS *h3_facts=NULL,DSL_H3_SEARCH *h3_search=NULL) {
     try {
         UINT64 start=VHO_search_clock(),last=start;
         VHO_MLA_SEARCH_OPTIONS legacy_validation;
@@ -368,6 +368,12 @@ static BOOL VHO_mla_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR
                 (source.opt_level!=3 || !source.fuse_attention || !source.cooperative || !VHO_tensor_validate_program(source,diagnostic))))
             throw std::runtime_error("controlled_search_admission_failed");
         if(q4_profile && gpu.device.Bound()) throw std::runtime_error("quantized_device_profile_binding_pending");
+        if(h3_search) {
+            if(!h3_search->Working_items(8388608)) throw std::runtime_error("h3_transient_search_budget");
+            if(!h3_facts || !h3_facts->Available() || !gpu.device.Bound() || control.minimum_gain ||
+                VHO_search_stop_enabled(control,"target") || VHO_search_stop_enabled(control,"relative-gap") ||
+                VHO_search_stop_enabled(control,"cost-aware")) throw std::runtime_error("h3_requires_unit_safe_budget_controls");
+        }
         VHO_MLA_PRODUCTION_RESULT result;VHO_MLA_SEARCH_RESULT &search=result.exploration;
         if(q4_profile) {search.lower_bound=0;Q4_catalog(search);}
         else if(movement) {search.lower_bound=0;Movement_catalog(search,VHO_tensor_attention(source));}
@@ -399,20 +405,27 @@ static BOOL VHO_mla_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR
                 ++search.evaluations;
                 try {if(q5_log) Q5_evaluate(candidate,source,gpu,model,*q4_profile,*q4_snapshot,q5_log);else if(q4_profile) Q4_evaluate(candidate,gpu,model,*q4_profile,*q4_snapshot);else if(movement) Movement_evaluate(candidate,source,gpu,model,*movement);else Evaluate(candidate,source,gpu,model);}
                 catch(const std::exception &error) {candidate.evaluated=true;candidate.eligible=false;candidate.reason=error.what();candidate.total=0;candidate.stages.clear();candidate.movement=VHO_MLA_MOVEMENT_ESTIMATE();candidate.quantized=VHO_Q4_ESTIMATE();}
+                if(h3_search && (candidate.eligible || candidate.movement.modeled)) {
+                    DSL_H3_PLAN recipe;std::string why;
+                    if(!VHO_mla_h3_plan(candidate,source,gpu,*h3_facts,recipe,why) ||
+                        !h3_search->Evaluate(*h3_facts,recipe,candidate.h3,why) || !candidate.h3.executable) {
+                        candidate.eligible=false;candidate.reason=candidate.h3.complete && !candidate.h3.executable?"h3_analysis_only_no_materializer":why;
+                    }
+                }
             } else ++search.cache_hits;
             ++state.stale;
-            if(candidate.eligible && (!state.found || candidate.total<run.best || (candidate.total==run.best && id<run.winner))) {
-                if(!state.found || run.best-candidate.total>control.minimum_gain) state.stale=0;
-                run.winner=id;run.best=candidate.total;run.first_best_trial=run.visited.size();state.found=true;
+            if(candidate.eligible && (!state.found || VHO_mla_candidate_rank(candidate)<run.best || (VHO_mla_candidate_rank(candidate)==run.best && id<run.winner))) {
+                if(!state.found || run.best-VHO_mla_candidate_rank(candidate)>control.minimum_gain) state.stale=0;
+                run.winner=id;run.best=VHO_mla_candidate_rank(candidate);run.first_best_trial=run.visited.size();state.found=true;
             }
-            if(candidate.eligible && (!result.has_winner || candidate.total<search.candidates[search.winner].total ||
-                (candidate.total==search.candidates[search.winner].total && id<search.winner))) {
+            if(candidate.eligible && (!result.has_winner || VHO_mla_candidate_rank(candidate)<VHO_mla_candidate_rank(search.candidates[search.winner]) ||
+                (VHO_mla_candidate_rank(candidate)==VHO_mla_candidate_rank(search.candidates[search.winner]) && id<search.winner))) {
                 result.has_winner=true;search.winner=id;search.best_run=current;
             }
-            if(restart || (candidate.eligible && (!search.candidates[state.anchor].eligible || candidate.total<=search.candidates[state.anchor].total))) state.anchor=id;
+            if(restart || (candidate.eligible && (!search.candidates[state.anchor].eligible || VHO_mla_candidate_rank(candidate)<=VHO_mla_candidate_rank(search.candidates[state.anchor])))) state.anchor=id;
             VHO_MLA_SEARCH_EVENT event;
             event.proposal=result.proposals;event.unique=search.evaluations;event.run=current;event.candidate=id;event.cache_hit=hit;
-            event.eligible=candidate.eligible;event.run_best=run.best;event.global_best=result.has_winner?search.candidates[search.winner].total:0;
+            event.eligible=candidate.eligible;event.run_best=run.best;event.global_best=result.has_winner?VHO_mla_candidate_rank(search.candidates[search.winner]):0;
             result.events.push_back(event);
             std::vector<std::string> &predicates=result.run_predicates[current];
             if(run.visited.size()==count) predicates.push_back("run_space_exhausted");
@@ -456,4 +469,59 @@ BOOL VHO_mla_explore_q5(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_GPU_PROFILE
     const VHO_MLA_COST_PROFILE &m,const VHO_MLA_SEARCH_CONTROL &c,const VHO_Q4_PROFILE &h,
     const VHO_Q4_SNAPSHOT &x,UINT64 log_cycles,VHO_MLA_PRODUCTION_RESULT *o,FILE *f) {
     if(!log_cycles) return FALSE;return VHO_mla_controlled(p,g,m,c,o,f,NULL,&h,&x,log_cycles);
+}
+
+/* Candidate bins retain known cache reads separately; all other aggregate
+ * recipe requests are conservatively write-through, not mislabeled source
+ * reads/writes. Existing per-CTA padding counts remain upper estimates. */
+bool VHO_mla_h3_plan(const VHO_MLA_SEARCH_CANDIDATE &c,const VHO_TENSOR_PROGRAM &source,
+    const VHO_TENSOR_GPU_PROFILE &gpu,const DSL_MOVEMENT_FACTS &facts,DSL_H3_PLAN &out,std::string &why)
+{
+    try {
+        if((!c.eligible && !c.movement.modeled) || c.stages.empty() || !facts.Available()) return why="h3_MLA_unimplemented_or_unproved",false;
+        DSL_H3_PLAN plan;std::ostringstream id;id<<"mla/p"<<c.policy<<"/w"<<c.width<<"/g"<<c.descriptor.group<<"/c"<<c.descriptor.column<<"/r"<<c.descriptor.retained;
+        plan.id=id.str();plan.live_bytes=0;plan.executable=c.descriptor.group==1;plan.capability=plan.executable?"verified-G1-existing-native-v8":"grouped-model-only-no-materializer";
+        VHO_TENSOR_PROGRAM p=source;p.fuse=p.cooperative=p.fuse_attention=p.register_latent=true;p.auto_chunks=p.search_selected=false;p.chunk_policy=c.policy;p.split_width=c.width;
+        VHO_TENSOR_SCHEDULE schedule;if(!VHO_tensor_schedule(p,&schedule,NULL) || (!c.movement.modeled && schedule.kernels.size()!=c.stages.size())) return why="h3_MLA_schedule_changed",false;
+        size_t stage_count=c.stages.size();
+        if(c.movement.modeled) {
+            if(c.movement.scenario_cycles.empty() || stage_count%c.movement.scenario_cycles.size()) return why="h3_MLA_scenario_shape",false;
+            stage_count/=c.movement.scenario_cycles.size();
+        }
+        VHO_TENSOR_ATTENTION a=VHO_tensor_attention(p);bool reuse=false;
+        for(size_t i=0;i<facts.Capture().accesses.size();++i) reuse=reuse || facts.Capture().accesses[i].reuse_proved;
+        for(size_t i=0;i<p.values.size();++i) if(p.values[i].storage==i) plan.live_bytes=add(plan.live_bytes,mul(VHO_tensor_elements(p.values[i]),p.values[i].dtype=="bool"?1:4));
+        if(!gpu.high_private_reuse) plan.live_bytes=add(plan.live_bytes,c.scratch);
+        for(size_t i=0;i<stage_count;++i) {
+            const VHO_MLA_STAGE_ESTIMATE &v=c.stages[i];DSL_H3_STAGE s;
+            std::ostringstream stage;stage<<plan.id<<"/s"<<i;s.id=stage.str();s.ctas=v.ctas;s.threads=v.threads;s.registers=c.movement.modeled?v.movement.registers:gpu.registers_per_thread;s.shared_allocation=v.shared;
+            s.shared_requests=v.shared_bytes;s.scalar_ops=v.scalar_ops;s.issue_ops=add(v.scalar_ops,v.shuffles);s.launch=!c.movement.modeled || v.launch!=0;
+            s.add_chain=v.dependency;s.exps=v.exps;s.divs=v.divs;s.shuffles=v.shuffles;s.barriers=v.barriers;s.fences=v.fences;
+            uint64_t cache=0,requests=v.global_bytes;
+            if(c.movement.modeled) {
+                requests=0;
+                for(size_t t=0;t<v.movement.traffic.size();++t) {
+                    const VHO_MLA_TRAFFIC_ESTIMATE &traffic=v.movement.traffic[t];
+                    if(traffic.requested%v.ctas) return why="h3_MLA_nonuniform_request_projection",false;
+                    uint64_t per_cta=traffic.requested/v.ctas;requests=add(requests,per_cta);
+                    if(traffic.direction=="read" && (traffic.operand=="latent-cache" || traffic.operand=="rotary-cache")) cache=add(cache,per_cta);
+                }
+            } else {
+                const VHO_TENSOR_KERNEL &k=schedule.kernels[i];
+                if(k.mapping==3) {uint64_t span=k.split_width;cache=add(mul(mul(8,span),add(a.rank,a.rope)),mul(mul(4,span),a.rank));}
+            }
+            s.issue_ops=add(s.issue_ops,requests/4);
+            s.read_requests=std::min(cache,requests);s.write_through_requests=requests-s.read_requests;s.reusable_reads=reuse?s.read_requests:0;
+            plan.stages.push_back(s);
+        }
+        out=plan;why="projected";return true;
+    } catch(const std::exception &error) {why=error.what();return false;}
+}
+/* This versioned entry shares the finite portfolio and estimate cache, never
+ * native construction. Threshold stops with old cycle units cannot apply. */
+BOOL VHO_mla_explore_h3(const VHO_TENSOR_PROGRAM &s,const VHO_TENSOR_GPU_PROFILE &g,
+    const VHO_MLA_COST_PROFILE &m,const VHO_MLA_SEARCH_CONTROL &c,const VHO_MLA_MOVEMENT_CONTEXT *movement,
+    const DSL_MOVEMENT_FACTS &facts,DSL_H3_SEARCH &search,VHO_MLA_PRODUCTION_RESULT *out,FILE *f)
+{
+    return VHO_mla_controlled(s,g,m,c,out,f,movement,NULL,NULL,0,&facts,&search);
 }

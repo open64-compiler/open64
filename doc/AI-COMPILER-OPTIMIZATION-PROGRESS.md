@@ -1,5 +1,36 @@
 # AI Compiler Optimization Progress
 
+## H3 physical movement/reuse costing, 2026-11-12
+
+[H3 v1.0](AI-COMPILER-H3-MOVEMENT-COSTING-v1.0.md) adds physical ns estimates
+bound to H2 facts and immutable H20 profiles, a strict pinned model supplement
+and request-wide finite estimate/cache/work/deadline budgets. Existing GEMM
+joint pairs, MLA portfolios/MR2 projections, ordered LN recipes and conditional
+R2 direct/staged comparisons reuse their owning admissions. H3 source/physical
+ledgers, reference-cycle records, estimated/measured provenance and executable
+capability stay separate. Only an admitted selected recipe enters existing
+native lowering; COMMENT, reference qualification and fallback remain.
+
+[Plan v1.4](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.4.md),
+[resource design v0.6](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.6.md)
+and [optimization design v0.11](AI_compiler_optimization_design_v0.11.md)
+record the current scope. General missing canonical routes, new H4-H6
+materializers, imported quantized H3 adaptation, H0/H7 hardware qualification,
+AOT selection and personnel transfer roles retain their explicit open gates.
+Earlier entries describe their original historical scope.
+
+Software validation covers two synthetic H20 variants with fatal ASan/UBSan and
+30 importer cases; handwritten physical/traffic oracles and hard finite-budget
+checks; both variants' selected GEMM and MLA reference execution and 408 selected
+LayerNorm scalar comparisons each; 14 short/long MLA reference cases; six
+selected-preflight/rollback faults; O0/O1/O2 and deadline/storage/missing-HBM
+fallback; six exact no-model native parity pairs; unchanged backend dependencies
+and standalone link closure. The Q3/Q4 compatibility suite retains 570 checks,
+with 20 additional H20-bound serving/reference lifecycle cases. These are host
+and compiler checks, with no GPU correctness, race or performance qualification.
+An independent trace audit reconciles all six physical components and verifies
+that repeated rejected proposals cannot exceed the reported hard proposal cap.
+
 ## H2 owned movement/reuse fact layer, 2026-11-12
 
 [H2 specification](AI-COMPILER-H2-OWNED-MOVEMENT-FACTS-v1.0.md) implements

@@ -656,3 +656,20 @@ dsl_high_apply.o dsl_high_quantized.o dsl_q1_preopt.o: $(BUILD_TOT)/common/com/d
 dsl_high_apply.o dsl_high_device_test.o dsl_high_movement.o dsl_high_movement_test.o \
 dsl_high_observer.o dsl_high_observer_json.o dsl_high_observer_native.o dsl_high_quantized_movement_test.o \
 dsl_high_search_test.o lnopt_main.o tensor_attention_search.o tensor_attention_search_test.o: $(BUILD_TOT)/be/com/dsl_movement_facts.h
+
+# H3 detached portfolio tests resolve physical/H2 services without be.so.
+h3_cost_test.o: $(BE_DIR)/vho/dsl_movement_cost.cxx $(BE_DIR)/vho/dsl_movement_cost.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+h3_facts_test.o: $(BE_DIR)/com/dsl_movement_facts.cxx $(BE_DIR)/com/dsl_movement_facts.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+dsl_high_device_test dsl_high_search_control_test dsl_high_movement_test dsl_high_quantized_movement_test: h3_cost_test.o h3_facts_test.o dsl_high_device_sha_test.o
+
+# H3 complete reverse consumer closure for detached cost/report layouts.
+dsl_high_apply.o dsl_high_device_test.o dsl_high_movement_test.o dsl_high_observer.o \
+dsl_high_observer_json.o dsl_high_observer_native.o dsl_high_quantized_movement_test.o dsl_high_search_test.o \
+lnopt_main.o tensor_attention_search.o tensor_attention_search_test.o: $(BUILD_TOT)/be/vho/tensor_attention_search.h $(BUILD_TOT)/be/opt/opt_dsl_normalization_cost.h $(BUILD_TOT)/be/vho/dsl_movement_cost.h
+
+# H3 physical-model value-layout transitive consumers.
+dsl_high_apply.o dsl_high_device_test.o dsl_high_observer.o dsl_high_observer_json.o \
+dsl_high_observer_native.o h3_cost_test.o lnopt_main.o tensor_attention_search.o \
+tensor_attention_search_test.o: $(BUILD_TOT)/be/vho/dsl_movement_cost.h

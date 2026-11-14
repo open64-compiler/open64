@@ -3961,7 +3961,9 @@ VHO_DSL_cuda_get_hardware(DSL_HARDWARE_DESCRIPTION_RECORD *hardware)
  * pairs and movement resources, including rejected staged siblings. P7
  * topology legality does not imply movement feasibility; rebuild only the
  * verified winner. H1c filters the same detached pairs using owned imported
- * resource/budget facts; cycle ranking remains a generic scenario. MMA2 records F32 incompatibility/unknown timing only and
+ * resource/budget facts. Optional H3 compares complete physical-ns estimates
+ * from owned H2 facts; incomplete comparison retains the legacy cycle choice.
+ * MMA2 records F32 incompatibility/unknown timing only and
  * cannot change the selected SIMT pair. See
  * doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md and
  * doc/AI-COMPILER-MMA2-SHADOW-MODEL.md. */
@@ -3970,7 +3972,7 @@ VHO_DSL_cuda_select_joint_plan
         (PU_Info *pu, DSL_TENSOR_EVOLUTION_GRAPH *graph,
          DSL_TENSOR_LOCALITY_ANALYSIS *locality, DSL_TILE_ANALYSIS *tiles,
          const DSL_TILE_SITE_RECORD &site, const DSL_HARDWARE_DESCRIPTION_RECORD &hardware,
-         const DSL_GPU_PLAN_SNAPSHOT &device,
+         const DSL_GPU_PLAN_SNAPSHOT &device,const DSL_MOVEMENT_FACTS &movement_source,
          DSL_TILE_PLAN_ID *winner,
          DSL_FETCH_PLAN_RECORD *winner_fetch,
          UINT32 *candidate_count,
@@ -3979,6 +3981,8 @@ VHO_DSL_cuda_select_joint_plan
     const DSL_TILE_PLAN_IR *ir = VHO_DSL_Tile_Get_IR(tiles);
     UINT64 best = ~(UINT64)0, fallback_cost = ~(UINT64)0;
     UINT32 count = 0, chosen = 0, fallback = 0;
+    uint64_t h3_best=~uint64_t(0);UINT32 h3_chosen=0;DSL_TILE_PLAN_ID h3_tile=0;DSL_FETCH_PLAN_RECORD h3_fetch;
+    bool h3_failed=false;
     const BOOL trace = VHO_DSL_AI_Opt_Trace && Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG);
     const BOOL tma_allowed = VHO_DSL_CUDA_TMA_Prefetch && !VHO_DSL_CUDA_Tile_Apply;
     const BOOL readiness = VHO_DSL_GEMM_Cost_Model == NULL ||
@@ -4122,6 +4126,17 @@ VHO_DSL_cuda_select_joint_plan
                 count,tile.id,pipeline.id,unsigned(device_fit),(unsigned long long)pipeline.resources.shared_bytes);
             if (plan.legality != DSL_OPT_LEGALITY_PROVEN || !cost.complete || !device_fit)
                 continue;
+            if(VHO_DSL_H3_Search && Opt_Level>=3) {
+                DSL_H3_PLAN recipe;DSL_H3_ESTIMATE estimate;std::string why;
+                bool projected=VHO_DSL_gemm_h3_plan(tile,pipeline,hardware,recipe,why);
+                bool reuse=movement_source.Available();
+                if(reuse) for(unsigned a=0;a<2;++a) reuse=reuse && movement_source.Capture().accesses.size()>a && movement_source.Capture().accesses[a].reuse_proved;
+                if(projected && !reuse) recipe.stages[0].reusable_reads=0;
+                bool complete=projected && VHO_DSL_H3_Search->Evaluate(movement_source,recipe,estimate,why);
+                if(trace) VHO_h3_print(TFile,movement_source,recipe,estimate);
+                if(!complete) h3_failed=true;
+                else if(estimate.executable && estimate.rank_ns<h3_best) {h3_best=estimate.rank_ns;h3_tile=tile.id;h3_fetch=pipeline;h3_chosen=count;}
+            }
             if (cost.total < best) {
                 best = cost.total;
                 *winner = tile.id;
@@ -4138,12 +4153,17 @@ VHO_DSL_cuda_select_joint_plan
         if (!valid)
             return FALSE;
     }
+    if(VHO_DSL_H3_Search && h3_tile && !h3_failed) {
+        *winner=h3_tile;*winner_fetch=h3_fetch;chosen=h3_chosen;
+        if(trace) fprintf(TFile,"AI_H3_SELECT 1 family=GEMM tile=%u fetch=%u rank_ns=%llu conclusion=best-estimated-in-declared-space\n",h3_tile,h3_fetch.id,(unsigned long long)h3_best);
+    } else if(VHO_DSL_H3_Search && trace) fprintf(TFile,"AI_H3_SELECT 1 family=GEMM fallback=existing_plan reason=incomplete_or_budget\n");
     if (chosen == 0 || fallback == 0)
         return FALSE;
     *candidate_count = count;
     if (trace) {
         fprintf(TFile, "AI_OPT 7 JOINT_SELECT %u %u %u "
-                "selection_reason=lowest_complete_joint_cost\n", chosen, fallback, count);
+                "selection_reason=%s\n", chosen, fallback, count,
+                VHO_DSL_H3_Search && h3_tile && !h3_failed?"h3_physical_ns":"lowest_complete_joint_cost");
         VHO_DSL_compute_shadow_trace_source(TFile, hardware.arch_id,
             DSL_ACC_FORMAT_F32, chosen, source_line);
     }
@@ -4262,7 +4282,7 @@ VHO_DSL_CUDA_Emit_Selected_Tile
     plans = VHO_DSL_Tile_Get_Plan_Context(analysis, site.id);
     if (joint) {
         if (!VHO_DSL_cuda_select_joint_plan(pu_info, graph, locality, analysis,
-                                           site, hardware, device, &joint_tile, &joint_fetch, joint_candidate_count, diagnostic) ||
+                                           site, hardware, device, movement_source, &joint_tile, &joint_fetch, joint_candidate_count, diagnostic) ||
             !VHO_DSL_tile_finalize_joint_selection(analysis, site.id, joint_tile, diagnostic))
             goto done;
         ir = VHO_DSL_Tile_Get_IR(analysis);
@@ -4381,7 +4401,7 @@ VHO_DSL_CUDA_Emit_Selected_Tile
                 fetch_site.id, fetch_site.baseline_plan_id,
                 fetch_site.selected_plan_id,
                 DSL_memory_movement_name(selected_fetch.engine),
-                joint ? "lowest_complete_joint_cost" : "lowest_complete_relative_cost");
+                joint ? (VHO_DSL_H3_Search?"see_AI_H3_SELECT":"lowest_complete_joint_cost") : "lowest_complete_relative_cost");
             fflush(TFile);
         }
     }
