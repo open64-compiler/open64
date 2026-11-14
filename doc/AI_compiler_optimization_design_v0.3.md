@@ -1,5 +1,12 @@
 AI compiler optimization design
 
+2026-11-12 architecture terminology correction:
+[native WHIRL contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs opcode properties, tensor traits, phase legality and scheduling
+services. Embedded earlier revisions include these editorial corrections;
+historical implementation status and acceptance evidence retain their original
+scope.
+
 Version v0.3 | Living design skeleton | Draft for continuous expansion
 
 2026-11-12 KV reuse-group amendment:
@@ -1263,7 +1270,7 @@ The DSC direction should combine the strongest parts:
 
 - From CUDA/CUTLASS: explicit hierarchical tiling that matches hardware execution levels and resource constraints.
 
-- From Triton: tile choices as first-class compile-time parameters, MLIR-style staged lowering, backend-specific layout/pipeline passes, and empirical autotuning when analytical cost confidence is insufficient.
+- Tile and pipeline design: expose tile choices as first-class compile-time parameters and lower them through native High, Mid and Low WHIRL with target-specific layout/pipeline passes. Triton supplies an external example of keeping tile parameters visible. Empirical tuning when analytical cost confidence is insufficient remains outside estimation-only candidate search and uses a separately declared qualification experiment.
 
 This comparison upgrades the design requirement: tiling decisions should be represented as CommonTilePlanIR alternatives inside OptimizationCandidateIR and selected only through OptimizationPlanIR cost evaluation, with backend-specific hardware extensions supplying the NVIDIA, AMD, CPU, or accelerator constraints. CommonTilePlanIR should be able to record both search-generated alternatives and rule-generated alternatives, while CandidateCostIR records whether the evidence came from analytical modeling, learned prediction, hardware measurement, deterministic rule confidence, or runtime telemetry.
 

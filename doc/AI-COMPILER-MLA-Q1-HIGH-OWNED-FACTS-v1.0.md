@@ -1,5 +1,12 @@
 # Q1 canonical High lowering and owned cache facts v1.0
 
+2026-11-12 architecture terminology correction:
+[native WHIRL contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs opcode properties, tensor traits, phase legality and scheduling
+services. Embedded earlier revisions include these editorial corrections;
+historical implementation status and acceptance evidence retain their original
+scope.
+
 November 10, 2026. Extends [Q1 native ingestion v1.0](AI-COMPILER-MLA-Q1-NATIVE-INGESTION-v1.0.md)
 and [plan v1.14](AI-COMPILER-OPTIMIZATION-SEARCH-IMPLEMENTATION-PLAN-v1.14.md).
 Earlier documents and immutable source receipts remain historical evidence.
@@ -16,9 +23,10 @@ reassociation, GPU mapping, candidate search or runtime compilation.
 Very High domain operators retain their frontend/native gatekeeper boundary.
 The common High algorithm exposes byte loads, conversions, encoder arithmetic,
 index guards, gathers, fresh functional updates and ordered attention folds.
-Structured memory lowering, GPU mapping comparable to TTGIR and PTX remain later
-phases. This addition does not adopt MLIR operation interfaces or traits.
-WHIRL opcodes, tensor descriptors and existing metadata carry the meaning.
+Mid WHIRL structured memory lowering, Low WHIRL GPU mapping and PTX emission
+remain later phases. WHIRL opcodes define operation semantics; tensor
+descriptors and tensor traits carry semantic tensor properties. Existing
+compiler metadata retains provenance and phase information separately.
 
 VHO owns semantic construction in the driver's active empty host PU. LNO owns
 the read-only copied fact provider at the resulting High boundary. The standalone

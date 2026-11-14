@@ -1,5 +1,12 @@
 # Very High Level WHIRL DSL Infrastructure
 
+2026-11-12 architecture terminology correction:
+[native WHIRL contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs opcode properties, tensor traits, phase legality and scheduling
+services. Embedded earlier revisions include these editorial corrections;
+historical implementation status and acceptance evidence retain their original
+scope.
+
 This note defines a conservative path for adding very-high-level WHIRL
 features for domain-specific languages and AI-assisted compiler front ends.
 The goal is to let a new front end preserve domain intent long enough for a
@@ -309,8 +316,9 @@ compatibility rules, required tests, printing expectations, and migration
 points clearly enough that new DSL work can follow the same path.
 
 The long-term project direction is to make DSL WHIRL the primary Open64 DSL
-path for AI-era compiler construction, without any dependence on MLIR for DSL
-compiler development.  That requires preserving Open64 binary compatibility
+path for AI-era compiler construction, using native WHIRL opcode contracts,
+TensorDescriptorIR/tensor traits and Open64 analysis and lowering services.
+That requires preserving Open64 binary compatibility
 while making the DSL extension workflow easier to use, easier to validate, and
 better integrated with Open64 tools.
 

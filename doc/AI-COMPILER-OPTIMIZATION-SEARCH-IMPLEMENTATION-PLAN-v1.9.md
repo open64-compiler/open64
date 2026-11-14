@@ -1,5 +1,12 @@
 # AI compiler optimization search implementation plan v1.9
 
+2026-11-12 architecture terminology correction:
+[native WHIRL contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs opcode properties, tensor traits, phase legality and scheduling
+services. Embedded earlier revisions include these editorial corrections;
+historical implementation status and acceptance evidence retain their original
+scope.
+
 November 8, 2026 | Data movement/reuse workstream; cross-head MLA first
 
 Adopt [design v0.8](AI_compiler_optimization_design_v0.8.md),
@@ -573,9 +580,10 @@ LNO pointers or duplicate the dependence engine.
 
 M2/M3 define typed contracts for snapshot creation, proposal, admission, estimate,
 stop evaluation, winner selection, sealed-plan application and result reporting.
-Use existing WHIRL opcode/type/tensor traits and verifier predicates. No MLIR
-operation-interface/traits adoption is needed. New backend interfaces follow
-the repository's naming and function-contract conventions; an outline here is
+Use WHIRL opcode/version contracts, TY/TensorDescriptorIR tensor traits and
+phase-owned verifier predicates. Derived dependence, scheduling and resource
+facts remain in owned planning records with explicit validity epochs. Backend
+service APIs follow the repository's naming and function-contract conventions; an outline here is
 not an approved symbol list or library dependency.
 
 The production snapshot includes stable source/loop/access identities, source

@@ -1,5 +1,12 @@
 # MLA quantized/paged cache and TMA design v1.0
 
+2026-11-12 architecture terminology correction:
+[native WHIRL contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs opcode properties, tensor traits, phase legality and scheduling
+services. Embedded earlier revisions include these editorial corrections;
+historical implementation status and acceptance evidence retain their original
+scope.
+
 November 9, 2026 | Design specification; implementation and hardware acceptance open
 
 ## 1. Authority, baseline and scope
@@ -49,8 +56,10 @@ separate even when two tensors share the same type.
 
 The proposed fact vocabulary is a design DTO, not a released opcode, binary
 row, accepted JSON field or new numerical permission. Q0 must publish exact
-versioned schemas after a representative source census. No MLIR operation
-interfaces/traits or new be.so dependency are required.
+versioned schemas after a representative source census. Use WHIRL
+opcode/version contracts, TensorDescriptorIR and tensor traits, with the
+existing native gatekeepers and phase-owned legality checks. Preserve the
+existing be.so dependency boundary.
 
 ## 3. Quantized-cache inference without source declarations
 

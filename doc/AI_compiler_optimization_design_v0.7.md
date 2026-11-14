@@ -1,5 +1,12 @@
 # AI compiler optimization design v0.7
 
+2026-11-12 architecture terminology correction:
+[native WHIRL contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs opcode properties, tensor traits, phase legality and scheduling
+services. Embedded earlier revisions include these editorial corrections;
+historical implementation status and acceptance evidence retain their original
+scope.
+
 November 7, 2026 | Normative search-methodology amendment
 
 Adopt [optimization search methodology v1.0](AI-COMPILER-OPTIMIZATION-SEARCH-METHODOLOGY-v1.0.md) and its [new implementation plan](AI-COMPILER-OPTIMIZATION-SEARCH-IMPLEMENTATION-PLAN-v1.0.md). This revision defines scoped convergence and acceptance for the two-phase approach: estimate detached alternatives first, then transform and correctness-test only the selected best estimated configuration. AOT remains the baseline.
@@ -10,7 +17,7 @@ Keep the current estimated incumbent separate from the accepted executable basel
 
 Search completion and deployment acceptance are separate. Search ends at its declared stopping rule or hard budget. Correctness, actual resources and any required baseline performance comparison gate executable acceptance afterward. A correctness failure is a compiler/rule defect; a late resource mismatch may receive only an explicitly bounded selected retry. Neither case authorizes an unbounded per-candidate lowering loop.
 
-The methodology's architecture is Very High domain admission; High common algorithmic IR, canonical DO_LOOP/OPR_ARRAY indexing and LNO dependence analysis; detached Wolf unimodular and optional wider Cohen polyhedral/hybrid schedule proposals; selected multi-level tiling, SMEM staging and prefetch DO_LOOP generation; verified High exit; Mid structured memory-operation lowering; Low fixed GPU mapping comparable in purpose to TTGIR; PTX backend. Use WHIRL opcode/type/tensor contract predicates for conversion-target-style legality. No MLIR operation-interface/traits adoption is required.
+The methodology's architecture is Very High domain admission; High common algorithmic IR, canonical DO_LOOP/OPR_ARRAY indexing and LNO dependence analysis; detached Wolf unimodular and optional wider Cohen polyhedral/hybrid schedule proposals; selected multi-level tiling, SMEM staging and prefetch DO_LOOP generation; verified High exit; Mid structured memory-operation lowering; Low fixed GPU mapping; PTX backend. Native phase exit verifiers use WHIRL opcode/version contracts, tensor descriptors and tensor traits together with phase-owned dependence, alias, numerical and target checks.
 
 | Current evidence | New production work |
 | --- | --- |
@@ -1510,7 +1517,7 @@ The DSC direction should combine the strongest parts:
 
 - From CUDA/CUTLASS: explicit hierarchical tiling that matches hardware execution levels and resource constraints.
 
-- From Triton: tile choices as first-class compile-time parameters, MLIR-style staged lowering, backend-specific layout/pipeline passes, and empirical autotuning when analytical cost confidence is insufficient.
+- Tile and pipeline design: expose tile choices as first-class compile-time parameters and lower them through native High, Mid and Low WHIRL with target-specific layout/pipeline passes. Triton supplies an external example of keeping tile parameters visible. Empirical tuning when analytical cost confidence is insufficient remains outside estimation-only candidate search and uses a separately declared qualification experiment.
 
 This comparison upgrades the design requirement: tiling decisions should be represented as CommonTilePlanIR alternatives inside OptimizationCandidateIR and selected only through OptimizationPlanIR cost evaluation, with backend-specific hardware extensions supplying the NVIDIA, AMD, CPU, or accelerator constraints. CommonTilePlanIR should be able to record both search-generated alternatives and rule-generated alternatives, while CandidateCostIR records whether the evidence came from analytical modeling, learned prediction, hardware measurement, deterministic rule confidence, or runtime telemetry.
 
@@ -1788,7 +1795,7 @@ At program setup, the driver selects the architecture and device-resource snapsh
 
 If finalized register/SMEM/target information contradicts the selected estimate, the driver may request a bounded replan at the owning High stage. Identify the invalidated plan, restore a valid High checkpoint, rerun affected analyses and selection, then repeat the exit gates. Set a deterministic attempt/candidate budget and retain the certified fallback. This is controlled recompilation from a checkpoint, not arbitrary pass reordering or a backend silently changing a selected tile.
 
-Schedule application should consume the selected plan plus architecture/device/profile snapshot IDs and current IR generation. It returns new loop/access/buffer correspondence, updated analysis bindings and a record of preserved/invalidated feedback. The lowering legality contract checks destination representation and target support independently of profile profitability. No MLIR opcode-interface/trait layer is needed; WHIRL opcode contracts and tensor descriptors remain the representation authority.
+Schedule application should consume the selected plan plus architecture/device/profile snapshot IDs and current IR generation. It returns new loop/access/buffer correspondence, updated analysis bindings and a record of preserved/invalidated feedback. The lowering legality contract checks destination representation and target support independently of profile profitability. WHIRL opcode/version contracts define operations; tensor descriptors and tensor traits carry semantic tensor properties. Phase-owned Open64 analyses and verifiers check transformation legality, while derived scheduling and resource facts retain their own validity epochs.
 
 ## PN9 Runtime selection safety and reproducibility
 

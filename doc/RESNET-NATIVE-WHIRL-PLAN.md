@@ -1,5 +1,12 @@
 # Native ResNet WHIRL Operator Plan
 
+2026-11-12 architecture terminology correction:
+[native WHIRL contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs opcode properties, tensor traits, phase legality and scheduling
+services. Embedded earlier revisions include these editorial corrections;
+historical implementation status and acceptance evidence retain their original
+scope.
+
 ## Purpose
 
 This is the main-agent plan for extending `common/com`, the native WHIRL
@@ -337,7 +344,8 @@ contract tests pass.
 4. Describe binary handling only in terms of WHIRL mapped images and ELF
    sections.
 5. Keep `OPR_COMMENT` projections until an explicit retirement decision.
-6. Keep MLIR out of the DSL compiler-development path.
+6. Use native WHIRL opcode contracts, tensor traits and Open64 compiler services
+   throughout the DSL compiler-development path.
 7. Update this plan after each gate, including the exact tests that passed.
 
 ## Post-ResNet Semantic Priorities

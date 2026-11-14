@@ -301,8 +301,11 @@ At v0.4 this was an AOT executable baseline with 34 launches and explicit
 intermediate traffic. The v0.5 milestone below adds producer fusion and split
 reductions. Automatic be_driver integration, tiling/staging, production runtime
 dispatch and measured performance acceptance remain later milestones. Existing
-source and reference CUDA lanes remain available; no new MLIR interfaces or
-tensor traits are added.
+source and reference CUDA lanes remain available. The milestone uses existing
+WHIRL opcode contracts and tensor descriptors/traits, with legality and
+optimization decisions owned by the corresponding Open64 phases. The
+[native WHIRL contract](../../doc/AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+clarifies this architecture; v0.4's historical acceptance scope is unchanged.
 
 ## Fused and split device WHIRL v0.5
 

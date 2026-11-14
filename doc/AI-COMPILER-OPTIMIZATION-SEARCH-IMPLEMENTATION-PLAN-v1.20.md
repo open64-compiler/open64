@@ -1,5 +1,12 @@
 # AI compiler optimization search implementation plan v1.20
 
+2026-11-12 architecture terminology correction:
+[native WHIRL contract](AI-COMPILER-WHIRL-OPCODE-AND-TENSOR-TRAIT-CONTRACT-v1.0.md)
+governs opcode properties, tensor traits, phase legality and scheduling
+services. Embedded earlier revisions include these editorial corrections;
+historical implementation status and acceptance evidence retain their original
+scope.
+
 November 10, 2026 | Q5 complete strict plans and selected-only High lowering
 
 Adopt [Q5 specification v1.0](AI-COMPILER-MLA-Q5-SELECTED-PLANS-v1.0.md).
@@ -534,7 +541,7 @@ already present. Reuse existing phase services; publish any new API through Q0.
    capability/guard identities. Stage native page/transfer/dequantization/event
    semantics atomically. Rebuild invalidated analyses and verify High exit.
 6. Lower structured memory/control in Mid; bind fixed owners/copy/barrier/
-   conversion target semantics in Low; verify and emit native PTX/whirl2c CUDA.
+   target conversion instructions in Low; verify and emit native PTX/whirl2c CUDA.
    Neither backend nor emitter reselects P/W/G, precision or stage depth.
 7. The driver/serving adapter establishes tensor-map/update visibility, page/
    scale publication and lifetime, checks runtime guards, and dispatches an
@@ -1124,9 +1131,10 @@ LNO pointers or duplicate the dependence engine.
 
 M2/M3 define typed contracts for snapshot creation, proposal, admission, estimate,
 stop evaluation, winner selection, sealed-plan application and result reporting.
-Use existing WHIRL opcode/type/tensor traits and verifier predicates. No MLIR
-operation-interface/traits adoption is needed. New backend interfaces follow
-the repository's naming and function-contract conventions; an outline here is
+Use WHIRL opcode/version contracts, TY/TensorDescriptorIR tensor traits and
+phase-owned verifier predicates. Derived dependence, scheduling and resource
+facts remain in owned planning records with explicit validity epochs. Backend
+service APIs follow the repository's naming and function-contract conventions; an outline here is
 not an approved symbol list or library dependency.
 
 The production snapshot includes stable source/loop/access identities, source
