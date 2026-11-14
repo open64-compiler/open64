@@ -1,5 +1,31 @@
 # AI Compiler Optimization Progress
 
+## H1a option and registry implementation, 2026-11-12
+
+[GPU device selection v1.0](AI-COMPILER-H1A-GPU-DEVICE-SELECTION-v1.0.md)
+implements exact gpu_device=h20_96gb/h20_141gb selection and sm_90 baseline
+admission before input/optimizer/output activity. Omitted-device behavior is
+unchanged; explicit selection reports an identity-only generic fallback with
+device resources/calibration unbound. H1a's sm_90a device admission is deferred;
+the existing architecture-only sm_90a path remains available.
+Seventy-two registry checks, seven accepted backend cases, three byte-identical
+O0 fallback cases, fourteen early refusals, pre-change generic B/T parity,
+two estimation-only/permission regressions and shared-library closure pass.
+H1b-H1d and H0/H7 hardware qualification remain open. No GPU result is claimed.
+
+## H1 device selection design refinement, 2026-11-12
+
+[Design v0.10](AI_compiler_optimization_design_v0.10.md),
+[resource/memory v0.3](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.3.md)
+and [H20 plan v1.1](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.1.md)
+require exact gpu_device=h20_96gb/h20_141gb selection in H1. Current gpu_arch
+lookup alone cannot distinguish H20 from H200; its synthetic estimates are not
+device specifications. H1a-H1d must register/resolve the option, propagate
+separate device/resource/profile/budget identities, prevent wrong-device
+calibration reuse, preserve generic compatibility and validate selected
+fallback. These are planned gates, not implemented options or hardware results.
+Two-phase search, Q3, COMMENT and deferred work retain their existing scope.
+
 ## H20 next-phase design, 2026-11-12
 
 Versioned [optimization design v0.9](AI_compiler_optimization_design_v0.9.md),

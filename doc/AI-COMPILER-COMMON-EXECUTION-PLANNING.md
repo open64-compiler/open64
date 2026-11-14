@@ -2,6 +2,19 @@
 
 Version v0.1 | 2026-10-27 | Adopted architecture; general implementation pending
 
+## H1 resolved device context, 2026-11-12
+
+[Resource/memory v0.3](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.3.md)
+and [H20 plan v1.1](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.1.md)
+require exact gpu_device selection for H20 96 GB and 141 GB. Driver-owned
+immutable ISA/device/resource/partition/profile/budget resolution precedes
+search. Work Partition, Resource Lifetime and Execution Events consumers query
+the same context through their owning phases; common records stay policy-free.
+Shared sm_90 ISA does not establish H20/H200 resource or timing equivalence.
+Dependent cache keys, selected checks and qualification retain these separate
+bindings. This planned extension preserves two-phase search and compatible
+fallback; it changes no existing schema or implementation status.
+
 ## H20 four-family design update, 2026-11-12
 
 [Optimization design v0.9](AI_compiler_optimization_design_v0.9.md) applies the

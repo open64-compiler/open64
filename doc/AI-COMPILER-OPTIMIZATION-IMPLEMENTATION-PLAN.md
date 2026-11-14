@@ -9,6 +9,18 @@ coverage and corrections without changing historical milestone acceptance.
 
 ## H20 next design phase, 2026-11-12
 
+H1 selection refinement: [optimization design v0.10](AI_compiler_optimization_design_v0.10.md),
+[resource/memory design v0.3](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.3.md)
+and [plan v1.1](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.1.md)
+supersede the earlier H1 proposal below. Require exact gpu_device selection for
+h20_96gb/h20_141gb, immutable context propagation to owning-phase consumers,
+H20/H200 mismatch rejection and explicit architecture-only reporting. The
+H1a option/identity admission is implemented as described in
+[GPU device selection v1.0](AI-COMPILER-H1A-GPU-DEVICE-SELECTION-v1.0.md);
+H1b-H1d resource/profile bindings and qualification remain open.
+Preserve estimation-only exploration, selected application and compatible
+fallback. H20 141 GB selection tests do not establish device qualification.
+
 The user has confirmed H20 96 GB servers. Start the proposed
 [H20 memory-hierarchy implementation queue](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.0.md)
 under [optimization design v0.9](AI_compiler_optimization_design_v0.9.md) and

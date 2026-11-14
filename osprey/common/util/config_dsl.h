@@ -51,6 +51,10 @@ extern BOOL VHO_DSL_CUDA_TMA_Prefetch;
 extern char *VHO_DSL_GEMM_Plan_Search;
 extern char *VHO_DSL_GEMM_Cost_Model;
 extern char *VHO_DSL_GPU_Arch;
+/* Exact optional device key; backend admission resolves its baseline ISA.
+ * NULL preserves architecture-only behavior. No resource/profile payload.
+ * Design: doc/AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.1.md. */
+extern char *VHO_DSL_GPU_Device;
 extern UINT32 VHO_DSL_GEMM_Memory_Latency;
 extern BOOL VHO_DSL_GEMM_Memory_Latency_Set;
 extern BOOL VHO_DSL_CUDA_TMA_Prefetch_Set;

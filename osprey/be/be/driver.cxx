@@ -118,6 +118,7 @@
 #include "config_list.h"	    /* for List_Enabled, etc. */
 #include "config_clist.h"        /* for CLIST_cuda */
 #include "config_dsl.h"          /* for the AI trace control */
+#include "dsl_memory_hierarchy.h" /* exact H1a device/ISA admission */
 #include "normalization_driver.h"
 #include "quantized_driver.h"
 #include "../lno/dsl_q1_preopt.h"
@@ -3028,7 +3029,33 @@ extern "C" {
 }
 
 #ifndef LD_PLUGIN_REMOVE_MAIN
-/* Own PU/phase lifetime; image-selected FHE exits remain separate from PU-local AI selection. */
+
+/* Admit an explicit device before opening source or loading optimizer phases.
+ * Omission is a strict no-op. The borrowed baseline ISA fills only an absent
+ * gpu_arch so existing consumers (including LN4) see a validated effective ISA.
+ * H1a adds identity only: report the generic architecture fallback explicitly;
+ * do not fabricate device resources or change search/materialization policy.
+ * Design: doc/AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.1.md. */
+static BOOL BE_select_gpu_device(void)
+{
+  if (VHO_DSL_GPU_Device == NULL) return TRUE;
+  DSL_HARDWARE_TARGET_SELECTION selected;
+  if (!DSL_hardware_target_resolve(VHO_DSL_GPU_Arch, VHO_DSL_GPU_Device,
+                                   &selected, stderr)) return FALSE;
+  if (VHO_DSL_GPU_Arch == NULL)
+    VHO_DSL_GPU_Arch = const_cast<char *>(selected.architecture);
+  fprintf(stderr,
+          "DSL_GPU_DEVICE 1 device=%s device_revision=%u arch=%s "
+          "planning=generic-architecture-fallback "
+          "device_resources=unbound device_calibration=unbound\n",
+          selected.device.name, selected.device.revision, selected.architecture);
+  return TRUE;
+}
+
+/* Establish process options and own PU/phase lifetimes, rejecting malformed
+ * explicit device requests before source/IR loading. Image-selected FHE exits
+ * remain separate from PU-local AI selection. Existing checkpoint publication,
+ * cleanup and fallback responsibilities are unchanged. */
 INT
 main (INT argc, char **argv)
 {
@@ -3059,6 +3086,7 @@ main (INT argc, char **argv)
 
   Preconfigure ();
   Process_Command_Line (argc, argv);
+  if (!BE_select_gpu_device()) return RC_USER_ERROR;
 
   if (Inhibit_EH_opt && Opt_Level > 1) Opt_Level = 1;
   Reset_Timers ();

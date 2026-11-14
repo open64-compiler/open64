@@ -933,6 +933,7 @@ default:
 	$(MAKE) last
 
 driver.o: $(BE_VHO_DIR)/tensor_selected_key.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
+driver.o: $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_memory_hierarchy.h
 driver.o: $(BE_DIR)/lno/dsl_high_snapshot.h $(BE_DIR)/lno/dsl_high_reuse.h $(BE_DIR)/lno/dsl_high_observer.h
 
 #----------------------------------------------------------------------
