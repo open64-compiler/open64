@@ -117,7 +117,8 @@ void Movement_cost_stage(VHO_MLA_STAGE_ESTIMATE &s,const VHO_TENSOR_GPU_PROFILE 
 }
 /* A capability-qualified G1 seed supplies all unaffected projection/output
  * stages. Grouping changes only the proposed attention CTA and its cache
- * staging; normalized per-head split tuples and the existing merge stay. */
+ * staging; normalized per-head split tuples and the existing merge stay.
+ * H1c also checks grouped reservations against owned imported CTA limits. */
 void Movement_evaluate(VHO_MLA_SEARCH_CANDIDATE &c,const VHO_TENSOR_PROGRAM &source,
     const VHO_TENSOR_GPU_PROFILE &g,const VHO_MLA_COST_PROFILE &model,const VHO_MLA_MOVEMENT_CONTEXT &ctx) {
     c.evaluated=true;c.movement.descriptor_key=Movement_descriptor(c);
@@ -158,6 +159,7 @@ void Movement_evaluate(VHO_MLA_SEARCH_CANDIDATE &c,const VHO_TENSOR_PROGRAM &sou
                     if(!nh || !nw) continue;
                     VHO_MLA_STAGE_ESTIMATE s;s.operation=k.id;s.ctas=mul(mul(a.batch,nh),nw);
                     s.threads=group>1?mul(32,group):k.threads;s.shared=allocated_shared;
+                    if(!g.device.Fits_CTA(s.threads,registers,s.shared)) throw std::runtime_error("movement_imported_CTA_resources");
                     s.movement.valid_tokens=w;s.movement.valid_heads=h;
                     Attention_counts(s,a,k);
                     s.scalar_ops=mul(h,add(mul(w,add(mul(2,add(a.rank,a.rope)),2)),mul(mul(2,w),a.rank)));

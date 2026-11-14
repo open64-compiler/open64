@@ -1,5 +1,14 @@
 # AI Compiler Optimization Progress
 
+## H1c planner bindings, 2026-11-12
+
+[H1c v1.0](AI-COMPILER-H1C-PLANNER-BINDINGS-v1.0.md) binds immutable evidence
+to GEMM, MLA, LayerNorm and Reduction owners, High snapshot/search keys and
+selected-plan freshness. Imported resource/budget requirements are enforced;
+physical HBM service stays separate from reference-cycle scenario ranking.
+Device-bound external MLA helper transport is guarded by host fallback pending
+H1d. No GPU or physically calibrated performance result is claimed.
+
 ## H1b immutable resource/profile import, 2026-11-12
 
 [GPU profile import v1.0](AI-COMPILER-H1B-GPU-PROFILE-IMPORT-v1.0.md)

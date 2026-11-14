@@ -28,13 +28,13 @@ struct DSL_HIGH_Q1_RESOLVER {
     void *context;
     WN *(*definition)(void *,WN *);
     /* Absent DU preserves conservative unknown/refusal behavior. */
-    DSL_HIGH_Q1_RESOLVER() : context(NULL), definition(NULL) {}
+    inline DSL_HIGH_Q1_RESOLVER() : context(NULL), definition(NULL) {}
 };
 class DSL_HIGH_QUANTIZED_FACTS {
     bool _valid;
     bool _post_preopt;
     DSL_HIGH_STAMP _stamp;
-    std::string _native_key,_source_key;
+    std::string _native_key,_source_key,_device_key;
     std::vector<DSL_HIGH_LOOP> _loops;
     std::vector<DSL_HIGH_QUANTIZED_STORAGE> _storages;
     std::vector<DSL_HIGH_QUANTIZED_ACCESS> _accesses;
@@ -42,22 +42,24 @@ class DSL_HIGH_QUANTIZED_FACTS {
     friend class DSL_HIGH_QUANTIZED_CAPTURE;
 public:
     /* Empty or refused captures never expose a usable seal. */
-    DSL_HIGH_QUANTIZED_FACTS() : _valid(false), _post_preopt(false) {}
+    inline DSL_HIGH_QUANTIZED_FACTS() : _valid(false), _post_preopt(false) {}
     /* Token-only freshness gate; native consumers must also recapture. */
-    bool Is_live(const DSL_HIGH_EPOCH &e) const { return _valid && e.Matches(_stamp); }
+    inline bool Is_live(const DSL_HIGH_EPOCH &e) const { return _valid && e.Matches(_stamp); }
     /* Canonical signed loop records use stable lexical tree paths. */
-    const std::vector<DSL_HIGH_LOOP> &Loops() const { return _loops; }
+    inline const std::vector<DSL_HIGH_LOOP> &Loops() const { return _loops; }
     /* Owned vectors stay readable after native PU/maps/pools are destroyed. */
-    const std::vector<DSL_HIGH_QUANTIZED_STORAGE> &Storages() const { return _storages; }
-    const std::vector<DSL_HIGH_QUANTIZED_ACCESS> &Accesses() const { return _accesses; }
+    inline const std::vector<DSL_HIGH_QUANTIZED_STORAGE> &Storages() const { return _storages; }
+    /* Borrow copied accesses; no native node views survive capture. */
+    inline const std::vector<DSL_HIGH_QUANTIZED_ACCESS> &Accesses() const { return _accesses; }
     /* Source workload facts share this native snapshot's epoch; serving phase
      * stays unknown without a separately bound invocation witness. */
-    const VHO_TENSOR_WORKLOAD_FACTS &Workload() const { return _workload; }
+    inline const VHO_TENSOR_WORKLOAD_FACTS &Workload() const { return _workload; }
     /* Reports distinguish freshly rebound physical sites from source-form facts. */
-    bool Post_preopt() const { return _post_preopt; }
-    /* Exact keys, not review hashes, establish equality on revalidation. */
-    bool Same_content(const DSL_HIGH_QUANTIZED_FACTS &o) const {
-        return _post_preopt==o._post_preopt && _valid && o._valid && _native_key==o._native_key && _source_key==o._source_key;
+    inline bool Post_preopt() const { return _post_preopt; }
+    /* Exact keys, including copied H1c evidence, establish revalidation;
+     * context changes refuse even when native source and scale facts match. */
+    inline bool Same_content(const DSL_HIGH_QUANTIZED_FACTS &o) const {
+        return _post_preopt==o._post_preopt && _valid && o._valid && _native_key==o._native_key && _source_key==o._source_key && _device_key==o._device_key;
     }
 };
 /* Read-only structural capture at canonical Q1 High, before ARRAY lowering.

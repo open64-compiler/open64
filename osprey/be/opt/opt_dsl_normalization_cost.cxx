@@ -9,6 +9,7 @@
 #include <string.h>
 #include "opt_dsl_normalization_cost.h"
 #include "pu_info.h"
+#include "config_dsl.h"
 #include "../vho/dsl_gemm_occupancy.h"
 
 namespace {
@@ -66,11 +67,43 @@ static UINT32 LN3_Profile(const DSL_SCALAR_EXECUTION_PROFILE &p,const DSL_HARDWA
   return unknown ? WOPT_DSL_NORM_COST_UNKNOWN:WOPT_DSL_NORM_COST_COMPLETE;
 }
 
-/* Fixed analytical RF reservation, common table rounding and capacity admission.
- * No native register/spill proof or arbitrary occupancy speedup multiplier. */
+/* Evaluate declared upper RF/shared reservations. Imported one-CTA gates and
+ * rounded per-SM bounds replace synthetic capacities; unknown required facts
+ * stay distinguishable from a known zero residency. This remains a scenario
+ * occupancy estimate, not generated-register/spill or native allocation proof. */
 static UINT32 LN3_Residents(const DSL_HARDWARE_DESCRIPTION_RECORD &hw,
-    const WOPT_DSL_NORMALIZATION_PLAN_REQUEST &r,const WOPT_DSL_NORMALIZATION_PLAN_BINDING &b,UINT32 registers)
+    const WOPT_DSL_NORMALIZATION_PLAN_REQUEST &r,const WOPT_DSL_NORMALIZATION_PLAN_BINDING &b,UINT32 registers,
+    const DSL_GPU_PLAN_SNAPSHOT &gpu,BOOL *known)
 {
+  *known = registers != 0;
+  if (gpu.Bound()) {
+    uint64_t blocks, threads, cta_threads, lanes, rf, quantum, shared = 0, shared_quantum = 0, cta_shared = 0;
+    if (!registers || !gpu.Resource_limit(DSL_GPU_MAX_BLOCKS_PER_SM, &blocks) ||
+        !gpu.Resource_limit(DSL_GPU_MAX_THREADS_PER_SM, &threads) ||
+        !gpu.Resource_limit(DSL_GPU_MAX_THREADS_PER_CTA, &cta_threads) ||
+        !gpu.Resource_limit(DSL_GPU_WARP_LANES, &lanes) ||
+        !gpu.Resource_limit(DSL_GPU_REGISTERS_PER_SM, &rf) ||
+        !gpu.Resource_limit(DSL_GPU_REGISTER_QUANTUM, &quantum) || !quantum ||
+        (b.reserved_shared && (!gpu.Resource_limit(DSL_GPU_SHARED_BYTES_PER_SM, &shared) ||
+         !gpu.Resource_limit(DSL_GPU_SHARED_BYTES_PER_CTA_DEFAULT, &cta_shared) ||
+         !gpu.Resource_limit(DSL_GPU_SHARED_QUANTUM, &shared_quantum) || !shared_quantum))) {
+      *known = FALSE;
+      return 0;
+    }
+    if (!gpu.Fits_CTA(r.threads_per_cta, registers, b.reserved_shared) ||
+        registers > hw.resources.max_registers_per_thread) return 0;
+    uint64_t rounded;
+    if (!gpu.Register_reservation(r.threads_per_cta,registers,&rounded) || !rounded) return 0;
+    UINT64 resident = std::min<UINT64>(blocks, threads / r.threads_per_cta);
+    resident = std::min<UINT64>(resident, rf / rounded);
+    if (b.reserved_shared) {
+      UINT64 reserved;
+      if (!LN3_Add(b.reserved_shared, b.reserved_shared % shared_quantum ?
+          shared_quantum - b.reserved_shared % shared_quantum : 0, &reserved) || !reserved) return 0;
+      resident = std::min<UINT64>(resident, shared / reserved);
+    }
+    return resident > ~UINT32(0) ? ~UINT32(0) : UINT32(resident);
+  }
   DSL_GEMM_OCCUPANCY_RESULT allocation;
   if (!registers || !DSL_gemm_occupancy(hw.resources,b.warp_lanes,hw.performance.sms,r.threads_per_cta,
       uint64_t(registers)*4,b.reserved_shared,r.launched_ctas,&allocation)) return 0;
@@ -454,9 +487,11 @@ static void LN3_Trace(const WOPT_DSL_NORMALIZATION_COST_REQUEST &r,
 }
 }
 
-/* Native legality and comparable whole-plan inputs precede cost construction.
- * Common records are transient; selected guard is re-exported from source.
- * No accepted analysis query mutates executable WHIRL, tables or source v1. */
+/* Bind native plans and one immutable imported snapshot before exploration.
+ * Physical limits/visible SMs constrain the declared recipe; caller-supplied
+ * reference_cycles instruction costs remain a generic analytical scenario.
+ * Report HBM ns separately, seal the context even for unchanged choices and
+ * require it current before guard export. No source/table mutation occurs. */
 BOOL WOPT_DSL_select_normalization_plan(WN *scope,WN *assignment,
     const WOPT_DSL_NORMALIZATION_COST_REQUEST *r,WOPT_DSL_NORMALIZATION_COST_RESULT *output,FILE *diagnostic,FILE *trace)
 {
@@ -467,9 +502,15 @@ BOOL WOPT_DSL_select_normalization_plan(WN *scope,WN *assignment,
         !WOPT_DSL_bind_normalization_plan(scope,assignment,&r->plans[i],&bindings[i],diagnostic,NULL)) return FALSE;
   WOPT_DSL_NORMALIZATION_COST_RESULT out;memset(&out,0,sizeof(out));out.source=bindings[0].target.source;
   out.reason=WOPT_DSL_NORM_NO_BASELINE;
+  const DSL_GPU_PLAN_SNAPSHOT gpu = DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
+  out.gpu_stamp = gpu.Stamp(); out.gpu_live_bytes = bindings[0].live_bytes;
+  for (UINT32 i = 0; i < 3; ++i)
+    if (!DSL_gpu_plan_stamp_equal(bindings[i].gpu_stamp, out.gpu_stamp)) return FALSE;
   DSL_HARDWARE_DESCRIPTION_RECORD hw;memset(&hw,0,sizeof(hw));
   UINT32 profile_status=DSL_hardware_description_get_arch(bindings[0].target.architecture_id,&hw)?
       LN3_Profile(r->profile,hw):WOPT_DSL_NORM_COST_PROFILE_INVALID;
+  uint64_t sms = hw.performance.sms;
+  BOOL sms_known = !gpu.Bound() || gpu.Resource_limit(DSL_GPU_VISIBLE_SMS, &sms);
   BOOL incomplete=FALSE;
   for (UINT32 i=0;i<3;++i) {
     WOPT_DSL_NORMALIZATION_COST &c=out.costs[i];c.plan_status=bindings[i].status;
@@ -477,13 +518,15 @@ BOOL WOPT_DSL_select_normalization_plan(WN *scope,WN *assignment,
     if (c.plan_status) continue;
     if (!i) out.fallback_kind=1;
     if (c.status==WOPT_DSL_NORM_COST_COMPLETE) {
-      c.resident_ctas=LN3_Residents(hw,r->plans[i],bindings[i],r->registers_per_thread[i]);
-      if (!c.resident_ctas) c.status=r->registers_per_thread[i]?WOPT_DSL_NORM_COST_RESOURCE:WOPT_DSL_NORM_COST_UNKNOWN;
+      BOOL resources_known = FALSE;
+      c.resident_ctas=LN3_Residents(hw,r->plans[i],bindings[i],r->registers_per_thread[i],gpu,&resources_known);
+      if (!sms_known || !sms || !resources_known) c.status=WOPT_DSL_NORM_COST_UNKNOWN;
+      else if (!c.resident_ctas) c.status=WOPT_DSL_NORM_COST_RESOURCE;
       else {
         LN3_GRAPH graph(r->plans[i],bindings[i],c,r->max_jobs,r->profile.values[DSL_SCALAR_SECTOR_BYTES][1]);
-        if (r->max_jobs>1000000 || !graph.Build(UINT32(hw.performance.sms))) {
+        if (r->max_jobs>1000000 || sms>~UINT32(0) || (gpu.Bound() && sms>r->max_jobs) || !graph.Build(UINT32(sms))) {
           UINT32 resident=c.resident_ctas;memset(&c,0,sizeof(c));c.resident_ctas=resident;c.status=WOPT_DSL_NORM_COST_BUDGET;
-        } else if (!LN3_Evaluate(graph,r->profile,UINT32(hw.performance.sms),&c)) {
+        } else if (!LN3_Evaluate(graph,r->profile,UINT32(sms),&c)) {
           c.status=WOPT_DSL_NORM_COST_OVERFLOW;c.lower=c.total=c.upper=0;memset(c.terms,0,sizeof(c.terms));
         }
       }
@@ -505,9 +548,22 @@ BOOL WOPT_DSL_select_normalization_plan(WN *scope,WN *assignment,
           out.selected_kind=i+1;out.reason=WOPT_DSL_NORM_ROBUST_BENEFIT;
         }
       }
-      if (!LN3_Record(hw,&out,diagnostic) || !WOPT_DSL_export_normalization_guard(scope,assignment,
+      if (!gpu.Is_current(VHO_DSL_GPU_Context) || !LN3_Record(hw,&out,diagnostic) ||
+          !WOPT_DSL_export_normalization_guard(scope,assignment,
           &r->plans[out.selected_kind-1],&out.selected_guard,diagnostic,NULL)) return FALSE;
     }
   }
-  *output=out;if (trace) LN3_Trace(*r,out,trace);return TRUE;
+  if (!gpu.Is_current(VHO_DSL_GPU_Context)) return FALSE;
+  *output=out;
+  if (trace) {
+    LN3_Trace(*r,out,trace);
+    if (gpu.Bound()) {
+      for (UINT32 i = 0; i < 3; ++i) {
+        fprintf(trace,"DSL_GPU_PLAN_SCENARIO 1 family=layernorm kind=%u status=%u sms=%llu ranking=reference_cycles device_calibrated=0\n",
+            i+1,out.costs[i].status,(unsigned long long)(sms_known?sms:0));
+        gpu.Print(trace,"layernorm-scenario-traffic",out.costs[i].global_sector_bytes);
+      }
+    }
+  }
+  return TRUE;
 }

@@ -6,6 +6,7 @@
 #include <string.h>
 #include "opt_dsl_normalization_plan.h"
 #include "dsl_memory_hierarchy.h"
+#include "config_dsl.h"
 
 /* Validate power-of-two guarantees, never assume an offset repairs a weak base. */
 static BOOL LN2_Power_Of_Two(UINT32 value)
@@ -59,10 +60,30 @@ static BOOL LN2_Events(const WOPT_DSL_NORMALIZATION_PLAN_REQUEST &r)
   return TRUE;
 }
 
-/* Refuse by ordered gates. Fields describe only checked prefixes on refusal;
- * no output mask asserts that a provider actually enforced a runtime contract. */
+/* Sum distinct canonical backing capacities, including unused capacity within
+ * each declared live object. Alias validation precedes this query; shared
+ * affine inputs are counted once. Overflow refuses without a wrapped budget. */
+static BOOL LN2_Live_Bytes(const WOPT_DSL_NORMALIZATION_PLAN_REQUEST &r, UINT64 *output)
+{
+  UINT64 live = 0;
+  for (UINT32 i = 0; i < 4; ++i) {
+    BOOL seen = FALSE;
+    for (UINT32 j = 0; j < i; ++j)
+      if (r.ranges[i].allocation_id == r.ranges[j].allocation_id) seen = TRUE;
+    if (seen) continue;
+    if (r.ranges[i].allocation_bytes > ~(UINT64)0 - live) return FALSE;
+    live += r.ranges[i].allocation_bytes;
+  }
+  *output = live;
+  return TRUE;
+}
+
+/* Refuse by ordered gates. Imported bounds replace synthetic capacity/quantum
+ * inputs; only the established bank/layout model remains architectural. Unknown
+ * required facts refuse without granting runtime obligations or RF proof. */
 static UINT32 LN2_Status(const WOPT_DSL_NORMALIZATION_PLAN_REQUEST &r,
-                        WOPT_DSL_NORMALIZATION_PLAN_BINDING *b)
+                        WOPT_DSL_NORMALIZATION_PLAN_BINDING *b,
+                        const DSL_GPU_PLAN_SNAPSHOT &gpu)
 {
   if (b->target.status != WOPT_DSL_NORM_TARGET_BOUND) return WOPT_DSL_NORM_PLAN_TARGET_REFUSED;
   b->stages = 1;
@@ -76,6 +97,8 @@ static UINT32 LN2_Status(const WOPT_DSL_NORMALIZATION_PLAN_REQUEST &r,
     if (!LN2_Range(r.ranges[i], b->bytes[i], i == 3 ? WOPT_DSL_NORM_EXCLUSIVE_OUTPUT : WOPT_DSL_NORM_IMMUTABLE_INPUT))
       return WOPT_DSL_NORM_PLAN_RANGE_INVALID;
   if (!LN2_Alias(r, *b)) return WOPT_DSL_NORM_PLAN_ALIAS_INVALID;
+  if (gpu.Bound() && (!LN2_Live_Bytes(r, &b->live_bytes) || !gpu.Fits_storage(b->live_bytes)))
+    return WOPT_DSL_NORM_PLAN_STORAGE_INVALID;
   b->stages |= 2;
   DSL_HARDWARE_DESCRIPTION_RECORD hw;
   DSL_MEMORY_TIER_RECORD tier;
@@ -83,14 +106,38 @@ static UINT32 LN2_Status(const WOPT_DSL_NORMALIZATION_PLAN_REQUEST &r,
   if (!DSL_hardware_description_get_arch(b->target.architecture_id, &hw) ||
       !DSL_memory_hierarchy_find_tier(hw.target_profile_id, DSL_MEMORY_TIER_SHARED, &tier) ||
       !DSL_memory_hierarchy_shared_bank_model(hw.target_profile_id, &banks)) return WOPT_DSL_NORM_PLAN_STORAGE_INVALID;
+  uint64_t thread_limit = hw.resources.max_threads_per_cta, sm_threads = 0, lanes = banks.warp_lanes;
+  if (!gpu.Cache_key().empty() && gpu.Architecture() != hw.architecture) return WOPT_DSL_NORM_PLAN_OWNER_INVALID;
+  if (gpu.Bound() && (
+      !gpu.Resource_limit(DSL_GPU_MAX_THREADS_PER_CTA, &thread_limit) ||
+      !gpu.Resource_limit(DSL_GPU_MAX_THREADS_PER_SM, &sm_threads) ||
+      !gpu.Resource_limit(DSL_GPU_WARP_LANES, &lanes) || lanes != banks.warp_lanes ||
+      r.threads_per_cta > sm_threads)) return WOPT_DSL_NORM_PLAN_OWNER_INVALID;
+  /* Imported capacities do not enlarge the supported CUDA CTA interface. */
+  if (gpu.Bound() && thread_limit>1024) thread_limit=1024;
   if (r.ownership != WOPT_DSL_NORM_CTA_PER_ROW_ORDERED_OWNER_ZERO ||
       r.launched_ctas != s.rows || !r.threads_per_cta || !banks.warp_lanes ||
-      r.threads_per_cta % banks.warp_lanes || r.threads_per_cta > hw.resources.max_threads_per_cta ||
+      r.threads_per_cta % banks.warp_lanes || r.threads_per_cta > thread_limit ||
       r.tail_policy != WOPT_DSL_NORM_PREDICATE_VALID_BEFORE_ACCESS_ARITHMETIC)
     return WOPT_DSL_NORM_PLAN_OWNER_INVALID;
   b->stages |= 4;
   b->shared_limit = tier.capacity_bytes < hw.resources.shared_budget ? tier.capacity_bytes : hw.resources.shared_budget;
   b->shared_quantum = tier.allocation_granularity;
+  if (gpu.Bound()) {
+    /* The unchanged runtime guard requires a known positive quantum even for
+     * C0. C0 reserves no shared object and needs no shared-capacity fact. */
+    uint64_t quantum;
+    if (!gpu.Resource_limit(DSL_GPU_SHARED_QUANTUM, &quantum) || !quantum || quantum>~UINT32(0))
+      return WOPT_DSL_NORM_PLAN_STORAGE_INVALID;
+    b->shared_limit = 0; b->shared_quantum = quantum;
+    if (r.kind != WOPT_DSL_NORM_C0) {
+      uint64_t cta_shared, sm_shared;
+      if (!gpu.Resource_limit(DSL_GPU_SHARED_BYTES_PER_CTA_DEFAULT, &cta_shared) ||
+          !gpu.Resource_limit(DSL_GPU_SHARED_BYTES_PER_SM, &sm_shared))
+        return WOPT_DSL_NORM_PLAN_STORAGE_INVALID;
+      b->shared_limit = cta_shared < sm_shared ? cta_shared : sm_shared;
+    }
+  }
   b->bank_count = banks.bank_count; b->bank_word_bytes = banks.word_bytes; b->warp_lanes = banks.warp_lanes;
   if (r.kind == WOPT_DSL_NORM_C0) {
     if (r.row_stride_bytes || r.shared_bytes || r.cta_barriers || r.barrier_participants)
@@ -102,7 +149,8 @@ static UINT32 LN2_Status(const WOPT_DSL_NORMALIZATION_PLAN_REQUEST &r,
     b->required_shared = r.row_stride_bytes + 8; /* distinct mu and q slots */
     if (b->required_shared > ~(UINT64)0 - (b->shared_quantum - 1)) return WOPT_DSL_NORM_PLAN_STORAGE_INVALID;
     b->reserved_shared = ((b->required_shared + b->shared_quantum - 1) / b->shared_quantum) * b->shared_quantum;
-    if (r.shared_bytes != b->required_shared || b->reserved_shared > b->shared_limit)
+    if (r.shared_bytes != b->required_shared || b->reserved_shared > b->shared_limit ||
+        (gpu.Bound() && b->reserved_shared%4))
       return WOPT_DSL_NORM_PLAN_STORAGE_INVALID;
     b->required_barriers = (1U << WOPT_DSL_NORM_MU_VISIBLE) | (1U << WOPT_DSL_NORM_CENTERED_READY) |
         (1U << WOPT_DSL_NORM_Q_VISIBLE) | (1U << WOPT_DSL_NORM_READERS_DONE);
@@ -144,8 +192,9 @@ static void LN2_Trace(const WOPT_DSL_NORMALIZATION_PLAN_REQUEST &r,
     fprintf(file,"AI_NORM_EVENT 1 EDGE %u %u %u\n",i,r.before[i],line);
 }
 
-/* Target API rederives active-PU meaning before optional plan checks/trace.
- * Invalid arguments never publish a partial binding or diagnostic trace. */
+/* Rederive active-PU meaning, capture immutable driver facts and bind the
+ * declared storage/CTA requirements. Unknown imported requirements refuse;
+ * invalid native/API input leaves output/trace untouched. No source mutation. */
 BOOL WOPT_DSL_bind_normalization_plan(WN *scope, WN *assignment,
     const WOPT_DSL_NORMALIZATION_PLAN_REQUEST *request,
     WOPT_DSL_NORMALIZATION_PLAN_BINDING *output, FILE *diagnostic, FILE *trace)
@@ -154,21 +203,31 @@ BOOL WOPT_DSL_bind_normalization_plan(WN *scope, WN *assignment,
   memset(&b, 0, sizeof(b));
   if (!request || !output || !WOPT_DSL_bind_normalization_target(scope, assignment,
       &request->target, &b.target, diagnostic, NULL)) return FALSE;
-  b.status = LN2_Status(*request, &b);
+  const DSL_GPU_PLAN_SNAPSHOT gpu = DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
+  b.gpu_stamp = gpu.Stamp();
+  b.status = LN2_Status(*request, &b, gpu);
+  if (!gpu.Is_current(VHO_DSL_GPU_Context)) b.status = WOPT_DSL_NORM_PLAN_STORAGE_INVALID;
+  if (b.status != WOPT_DSL_NORM_PLAN_BOUND) b.runtime_obligations = 0;
   *output = b;
-  if (trace) LN2_Trace(*request, b, trace);
+  if (trace) {
+    LN2_Trace(*request, b, trace);
+    if (gpu.Bound()) fprintf(trace, "DSL_GPU_PLAN_LEGALITY 1 family=layernorm binding=%s live_bytes=%llu status=%u runtime_discharge=0\n",
+        gpu.Legality_key().c_str(), (unsigned long long)b.live_bytes, b.status);
+  }
   return TRUE;
 }
 
-/* Export freshly checked facts, never trust a caller-supplied prior binding.
- * Homogeneous uint64 fields permit a compact fixed-column review trace. */
+/* Export freshly checked facts only while the imported binding remains
+ * current. The runtime guard layout stays unchanged; its homogeneous uint64
+ * trace does not carry a compiler context or imply resource qualification. */
 BOOL WOPT_DSL_export_normalization_guard(WN *scope, WN *assignment,
     const WOPT_DSL_NORMALIZATION_PLAN_REQUEST *r, OPEN64_NORMALIZATION_GUARD *out,
     FILE *diagnostic, FILE *trace)
 {
   WOPT_DSL_NORMALIZATION_PLAN_BINDING b;
   if (!out || !WOPT_DSL_bind_normalization_plan(scope,assignment,r,&b,diagnostic,NULL)) return FALSE;
-  if (b.status != WOPT_DSL_NORM_PLAN_BOUND) {
+  if (b.status != WOPT_DSL_NORM_PLAN_BOUND ||
+      !DSL_gpu_plan_stamp_current(b.gpu_stamp, VHO_DSL_GPU_Context)) {
     if (trace) fprintf(trace,"AI_NORM_GUARD 1 REFUSE %u %u\n",b.status,b.target.source.source_line);
     return FALSE;
   }

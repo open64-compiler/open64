@@ -79,7 +79,9 @@ static BOOL BE_DSL_device_publish(const std::string &staging,const std::string &
 
 /* Driver-owned post-LNO boundary. The exact accepted source is mandatory;
  * no option can materialize an estimate, infer a missing plan, or replace the
- * ordinary host path. Each PU receives an independent reserved output family. */
+ * ordinary host path. H1c rechecks device evidence and retains the host when
+ * the external bridge cannot yet transport the imported context (H1d).
+ * Each PU receives an independent reserved output family. */
 static void BE_DSL_selected_device(PU_Info *current_pu,WN *root) {
     std::string output=BE_DSL_device_option("high_device_output");if(output.empty()) return;
     static BOOL reserved=FALSE,disabled=FALSE;static unsigned ordinal=0;
@@ -97,6 +99,10 @@ static void BE_DSL_selected_device(PU_Info *current_pu,WN *root) {
         try {
             const char *stamp=ST_tensor_metadata(WN_st_idx(root),"tensor.high.accepted.key");
             if(!stamp || VHO_tensor_selected_key(root)!=stamp) reason="stale_high_exit";
+            const char *device=ST_tensor_metadata(WN_st_idx(root),"tensor.high.selected.device");
+            const DSL_GPU_PLAN_SNAPSHOT current=DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
+            if(current.Cache_key()!=(device?device:"")) reason="stale_device_profile";
+            else if(!current.Cache_key().empty()) reason="device_profile_bridge_transport_pending";
         } catch(const std::exception &) {reason="invalid_high_exit";}
     }
     if(reason.empty() && !reserved) {

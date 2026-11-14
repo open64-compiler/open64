@@ -13,6 +13,7 @@
 #include "srcpos.h"
 #include "dsl_hardware_performance.h"
 #include "dsl_tensor_traits.h"
+#include "../com/dsl_gpu_plan.h"
 struct pu_info;
 class WN;
 
@@ -38,9 +39,14 @@ struct VHO_TENSOR_OPERATION {
 /* Explicit offline device envelope; architecture alone never supplies SM count.
  * Capacities/register demand are estimates under the initial profile schema. */
 struct VHO_TENSOR_GPU_PROFILE {
-    VHO_TENSOR_GPU_PROFILE():sms(0),registers_per_thread(0),target_ctas_per_sm(0),scratch_budget(0) {
+    /* Start unbound, with no reuse authority and zero/unknown envelope facts;
+     * owning adapters must supply validated resources before exploration. */
+    inline VHO_TENSOR_GPU_PROFILE():high_private_reuse(false),sms(0),registers_per_thread(0),target_ctas_per_sm(0),scratch_budget(0) {
         memset(&resources,0,sizeof(resources));
     }
+    /* H1c owned driver evidence; absent imports preserve all legacy keys. */
+    DSL_GPU_PLAN_SNAPSHOT device;
+    bool high_private_reuse; /* owner-proved source backing for High split tuples */
     std::string id,architecture;
     UINT64 sms,registers_per_thread,target_ctas_per_sm,scratch_budget;
     DSL_HARDWARE_RESOURCE_RECORD resources;

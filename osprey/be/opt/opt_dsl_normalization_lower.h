@@ -16,6 +16,10 @@ typedef struct {
   OPEN64_NORMALIZATION_GUARD guard;
   WOPT_DSL_NORMALIZATION_COST cost;
   UINT64 seal;
+  /* Appended after the legacy seal prefix to preserve no-import fingerprints.
+   * Imported selections seal/revalidate both keys and the declared live bytes. */
+  DSL_GPU_PLAN_STAMP gpu_stamp;
+  UINT64 gpu_live_bytes;
 } WOPT_DSL_NORMALIZATION_LOWERING;
 
 /* Identity of the constructed executable tree, not a substitute for semantic
@@ -30,14 +34,16 @@ typedef struct {
 extern BOOL WOPT_DSL_normalization_compiler_environment_ready();
 
 /* Recompute LN3 in the active analysis PU and require exact selected-result
- * agreement. Refusal leaves output/trace/tables/source unchanged. */
+ * agreement, including the current imported device/resource/cost/budget stamp.
+ * Refusal leaves output/trace/tables/source unchanged. */
 extern BOOL WOPT_DSL_prepare_normalization_lowering(WN *scope, WN *assignment,
     const WOPT_DSL_NORMALIZATION_COST_REQUEST *request,
     const WOPT_DSL_NORMALIZATION_COST_RESULT *expected,
     WOPT_DSL_NORMALIZATION_LOWERING *output, FILE *diagnostic, FILE *trace);
 
 /* Fill only the driver's active empty kernel PU; never create/select a PU.
- * Preflight refusal changes nothing. Success changes the active tree/formals
+ * Preflight revalidates imported evidence and declared CTA/storage demands;
+ * refusal changes nothing. Success changes the active tree/formals
  * and symbol/type tables. Source position belongs to this device PU's file.
  * Allocation failures are compiler-fatal, not recoverable partial success. */
 extern BOOL WOPT_DSL_materialize_normalization_device(
@@ -45,7 +51,8 @@ extern BOOL WOPT_DSL_materialize_normalization_device(
     WOPT_DSL_NORMALIZATION_DEVICE *output, FILE *diagnostic, FILE *trace);
 
 /* Read-only strict-tree/ASM/effects/resource-attribute identity verification
- * in the driver's active device scope, including after mapped reopen. */
+ * in the driver's active device scope, including after mapped reopen. A bound
+ * compiler handoff also requires its original current imported context. */
 extern BOOL WOPT_DSL_verify_normalization_device(
     const WOPT_DSL_NORMALIZATION_LOWERING *plan,
     const WOPT_DSL_NORMALIZATION_DEVICE *expected, FILE *diagnostic, FILE *trace);
