@@ -64,6 +64,9 @@ char *VHO_DSL_GEMM_Plan_Search = NULL;
 char *VHO_DSL_GEMM_Cost_Model = NULL;
 char *VHO_DSL_GPU_Arch = NULL;
 char *VHO_DSL_GPU_Device = NULL;
+char *VHO_DSL_GPU_Profile = NULL;
+char *VHO_DSL_GPU_Profile_SHA256 = NULL;
+char *VHO_DSL_GPU_Profile_Toolchain = NULL;
 UINT32 VHO_DSL_GEMM_Memory_Latency = 0;
 BOOL VHO_DSL_GEMM_Memory_Latency_Set = FALSE;
 
@@ -86,6 +89,12 @@ static OPTION_DESC Options_DSL[] = {
     0, 0, 0, &VHO_DSL_GPU_Arch, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "gpu_device", "gpu_device",
     0, 0, 0, &VHO_DSL_GPU_Device, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "gpu_profile", "gpu_profile",
+    0, 0, 0, &VHO_DSL_GPU_Profile, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "gpu_profile_sha256", "gpu_profile_sha256",
+    0, 0, 0, &VHO_DSL_GPU_Profile_SHA256, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "gpu_profile_toolchain", "gpu_profile_toolchain",
+    0, 0, 0, &VHO_DSL_GPU_Profile_Toolchain, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "gemm_cost_model", "gemm_cost_model",
     0, 0, 0, &VHO_DSL_GEMM_Cost_Model, NULL },
   { OVK_UINT32, OV_VISIBLE, FALSE, "gemm_memory_latency", "gemm_memory_latency",

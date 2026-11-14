@@ -119,6 +119,7 @@
 #include "config_clist.h"        /* for CLIST_cuda */
 #include "config_dsl.h"          /* for the AI trace control */
 #include "dsl_memory_hierarchy.h" /* exact H1a device/ISA admission */
+#include "dsl_gpu_profile.h"      /* sealed driver-owned H1b context */
 #include "normalization_driver.h"
 #include "quantized_driver.h"
 #include "../lno/dsl_q1_preopt.h"
@@ -3033,17 +3034,50 @@ extern "C" {
 /* Admit an explicit device before opening source or loading optimizer phases.
  * Omission is a strict no-op. The borrowed baseline ISA fills only an absent
  * gpu_arch so existing consumers (including LN4) see a validated effective ISA.
- * H1a adds identity only: report the generic architecture fallback explicitly;
- * do not fabricate device resources or change search/materialization policy.
- * Design: doc/AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.1.md. */
-static BOOL BE_select_gpu_device(void)
+ * H1b optionally imports pinned, owned facts before publishing the context.
+ * Missing input preserves the exact H1a report. Imported facts do not alter
+ * search/materialization policy until H1c; report that generic fallback.
+ * Design: doc/AI-COMPILER-H1B-GPU-PROFILE-IMPORT-v1.0.md. */
+static BOOL BE_select_gpu_device(
+    DSL_GPU_DEVICE_CONTEXT_OWNER *context)
 {
-  if (VHO_DSL_GPU_Device == NULL) return TRUE;
+  if (VHO_DSL_GPU_Device == NULL) {
+    if (VHO_DSL_GPU_Profile || VHO_DSL_GPU_Profile_SHA256 || VHO_DSL_GPU_Profile_Toolchain) {
+      fprintf(stderr, "DSL_GPU_PROFILE-001: profile import requires explicit gpu_device\n");
+      return FALSE;
+    }
+    return TRUE;
+  }
   DSL_HARDWARE_TARGET_SELECTION selected;
   if (!DSL_hardware_target_resolve(VHO_DSL_GPU_Arch, VHO_DSL_GPU_Device,
                                    &selected, stderr)) return FALSE;
+  if (!DSL_gpu_profile_resolve(selected, VHO_DSL_GPU_Profile,
+      VHO_DSL_GPU_Profile_SHA256, VHO_DSL_GPU_Profile_Toolchain, context, stderr)) return FALSE;
   if (VHO_DSL_GPU_Arch == NULL)
     VHO_DSL_GPU_Arch = const_cast<char *>(selected.architecture);
+  if (context->Context()->Imported()) {
+    fprintf(stderr,
+        "DSL_GPU_PROFILE 1 device=%s arch=%s resource=%s resource_revision=%u "
+        "partition=%s partition_kind=%s inventory=%s toolchain=%s "
+        "execution=%s execution_revision=%u model=%s budget=%s budget_revision=%u "
+        "resource_known=%u execution_known=%u budget_bounds_proved=%u "
+        "input_sha256=%s resource_sha256=%s execution_sha256=%s budget_sha256=%s "
+        "context_sha256=%s planning=generic-architecture-fallback consumer_bindings=pending\n",
+        context->Context()->Device().c_str(), context->Context()->Architecture().c_str(),
+        context->Context()->Resource_id().c_str(), context->Context()->Resource_revision(),
+        context->Context()->Partition_id().c_str(), context->Context()->Partition_kind().c_str(),
+        context->Context()->Inventory_id().c_str(), context->Context()->Toolchain().c_str(),
+        context->Context()->Execution_id().empty() ? "none" : context->Context()->Execution_id().c_str(),
+        context->Context()->Execution_revision(),
+        context->Context()->Model().empty() ? "none" : context->Context()->Model().c_str(),
+        context->Context()->Budget_id().c_str(), context->Context()->Budget_revision(),
+        context->Context()->Resource_known(),
+        context->Context()->Execution_known(), unsigned(context->Context()->Budget_bounds_proved()),
+        context->Context()->Input_sha256().c_str(), context->Context()->Resource_sha256().c_str(),
+        context->Context()->Execution_sha256().c_str(), context->Context()->Budget_sha256().c_str(),
+        context->Context()->Context_sha256().c_str());
+    return TRUE;
+  }
   fprintf(stderr,
           "DSL_GPU_DEVICE 1 device=%s device_revision=%u arch=%s "
           "planning=generic-architecture-fallback "
@@ -3061,6 +3095,7 @@ main (INT argc, char **argv)
 {
   INT local_ecount, local_wcount;
   PU_Info *pu_tree;
+  DSL_GPU_DEVICE_CONTEXT_OWNER gpu_device_context;
 #if defined(TARG_SL)   || defined(TARG_MIPS)
   void *handle;
 #endif  
@@ -3086,7 +3121,7 @@ main (INT argc, char **argv)
 
   Preconfigure ();
   Process_Command_Line (argc, argv);
-  if (!BE_select_gpu_device()) return RC_USER_ERROR;
+  if (!BE_select_gpu_device(&gpu_device_context)) return RC_USER_ERROR;
 
   if (Inhibit_EH_opt && Opt_Level > 1) Opt_Level = 1;
   Reset_Timers ();
@@ -3571,6 +3606,8 @@ main (INT argc, char **argv)
     ecount += local_ecount;
   }
  
+  /* No phase borrows the process context beyond normal driver cleanup. */
+  gpu_device_context.Reset();
   if ( ecount > 0 ) {
     Terminate(Had_Internal_Error() ? RC_INTERNAL_ERROR : RC_NORECOVER_USER_ERROR) ;
   }

@@ -55,6 +55,12 @@ extern char *VHO_DSL_GPU_Arch;
  * NULL preserves architecture-only behavior. No resource/profile payload.
  * Design: doc/AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.1.md. */
 extern char *VHO_DSL_GPU_Device;
+/* H1b exact file bytes require a digest pin and declared target toolchain.
+ * All NULL preserves H1a/architecture-only routing. Import is driver-owned.
+ * Design: doc/AI-COMPILER-H1B-GPU-PROFILE-IMPORT-v1.0.md. */
+extern char *VHO_DSL_GPU_Profile;
+extern char *VHO_DSL_GPU_Profile_SHA256;
+extern char *VHO_DSL_GPU_Profile_Toolchain;
 extern UINT32 VHO_DSL_GEMM_Memory_Latency;
 extern BOOL VHO_DSL_GEMM_Memory_Latency_Set;
 extern BOOL VHO_DSL_CUDA_TMA_Prefetch_Set;
