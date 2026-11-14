@@ -235,7 +235,8 @@ struct DSL_HIGH_NATIVE_ANALYSES {
     }
 };
 /* Independently admit the fixed winner, not a request to try another candidate.
- * Recheck source/model/resource/control identities and native epoch first. */
+ * Recheck source/model/resource/control identities, current driver H1c evidence
+ * and native epoch before any selected mutation; refusal retains ordinary LNO. */
 bool DSL_apply_preflight(WN *root,DSL_HIGH_EPOCH &epoch,const DSL_HIGH_BINDINGS &bindings,
     const DSL_HIGH_SNAPSHOT &snapshot,const DSL_HIGH_SEARCH_INPUT &input,const DSL_HIGH_SEARCH_REPORT &report,
     VHO_TENSOR_PROGRAM &selected,std::string &reason) {
@@ -284,7 +285,8 @@ bool DSL_apply_preflight(WN *root,DSL_HIGH_EPOCH &epoch,const DSL_HIGH_BINDINGS 
     if(scratch!=candidate.scratch || scratch>input.gpu.scratch_budget) return reason="selected_scratch_mismatch",false;
     for(unsigned i=0;i<schedule.kernels.size();++i) {
         const VHO_TENSOR_KERNEL &kernel=schedule.kernels[i];DSL_GEMM_OCCUPANCY_RESULT occupancy;
-        if(!DSL_gemm_occupancy(input.gpu.resources,32,input.gpu.sms,kernel.threads,4*input.gpu.registers_per_thread,
+        if(!input.gpu.device.Fits_CTA(kernel.threads,input.gpu.registers_per_thread,VHO_tensor_shared_bytes(selected,kernel)) ||
+            !DSL_gemm_occupancy(input.gpu.resources,32,input.gpu.sms,kernel.threads,4*input.gpu.registers_per_thread,
             VHO_tensor_shared_bytes(selected,kernel),VHO_tensor_grid(selected,kernel),&occupancy) || !occupancy.resident)
             return reason="selected_resource_refusal",false;
     }
@@ -366,6 +368,8 @@ bool LNO_DSL_apply_selected_high(WN *&root,DU_MANAGER *&du,ALIAS_MANAGER *&alias
         ST_tensor_bind_metadata(owner,"tensor.high.selected.policy",policy.str().c_str());
         ST_tensor_bind_metadata(owner,"tensor.high.selected.winner",winner.str().c_str());
         ST_tensor_bind_metadata(owner,"tensor.high.selected.scratch","private-role0-formals; capacity-proved");
+        if (!input.gpu.device.Cache_key().empty())
+            ST_tensor_bind_metadata(owner,"tensor.high.selected.device",input.gpu.device.Cache_key().c_str());
         ST_tensor_bind_metadata(owner,"tensor.high.production.input",LNO_DSL_production_input_key(input).c_str());
         /* The bridge must compare this exact native tree before translating the
          * closed selected algorithm. Analysis keys alone omit COMMENTs and do

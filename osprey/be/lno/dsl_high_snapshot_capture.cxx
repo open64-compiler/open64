@@ -16,6 +16,7 @@
 #include "opt_alias_mgr.h"
 #include "targ_const.h"
 #include "config.h"
+#include "config_dsl.h"
 #include "config_opt.h"
 #include "config_targ.h"
 #include <algorithm>
@@ -412,7 +413,7 @@ public:
 };
 
 /* Record effective controls without granting reassociation or claiming a GPU
- * model. Profile/manifest handoff is a later explicit driver obligation. */
+ * model. Copy immutable H1c driver evidence; source manifest remains separate. */
 DSL_HIGH_BINDINGS LNO_DSL_high_bindings(const char *unit) {
     DSL_HIGH_BINDINGS bindings;
     bindings.unit = unit ? unit : "";
@@ -420,6 +421,7 @@ DSL_HIGH_BINDINGS LNO_DSL_high_bindings(const char *unit) {
         "/fast_math=" + DSL_high_number(OPT_Fast_Math);
     bindings.target = "abi=" + DSL_high_number(Target_ABI) + "/isa=" + DSL_high_number(Target_ISA) + "/gpu_resources=unbound";
     bindings.manifest = "unbound"; bindings.model = "unbound";
+    bindings.device = DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
     return bindings;
 }
 
@@ -444,6 +446,7 @@ bool LNO_DSL_capture_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias,
 bool LNO_DSL_revalidate_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias,
     ARRAY_DIRECTED_GRAPH16 *graph, const DSL_HIGH_EPOCH &epoch, const DSL_HIGH_BINDINGS &bindings,
     const DSL_HIGH_SNAPSHOT &snapshot, std::string &reason) {
+    if (!bindings.device.Is_current(VHO_DSL_GPU_Context)) return reason = "stale_device_context", false;
     if (!snapshot.Is_current(epoch, bindings)) return reason = "stale_epoch_or_context", false;
     DSL_HIGH_SNAPSHOT current;
     if (!LNO_DSL_capture_high(scope, du, alias, graph, epoch, bindings, current, reason)) return false;

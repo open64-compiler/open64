@@ -28,6 +28,10 @@ inline std::string VHO_tensor_selected_key(WN *root) {
         if(!*production) throw std::runtime_error("native_selected_empty_production_binding");
         std::string text=production;key<<"production;"<<text.size()<<':'<<text<<';';
     }
+    /* Optional H1c extension preserves legacy seals but cannot be removed
+     * without invalidating an imported selection checkpoint. */
+    const char *device=ST_tensor_metadata(WN_st_idx(root),"tensor.high.selected.device");
+    if(device) {std::string text=device;key<<"device;"<<text.size()<<':'<<text<<';';}
     const char *schema=ST_tensor_metadata(WN_st_idx(root),"tensor.high.selected.schema");
     const char *movement=ST_tensor_metadata(WN_st_idx(root),"tensor.high.selected.movement");
     const char *group=ST_tensor_metadata(WN_st_idx(root),"tensor.high.selected.head_group");

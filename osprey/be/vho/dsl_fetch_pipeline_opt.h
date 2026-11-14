@@ -8,6 +8,7 @@
  * Scope and joint contract: doc/AI-COMPILER-OPTIMIZATION-JOINT-GEMM-PLAN-SEARCH.md.
  * Direct extension: doc/AI-COMPILER-OPTIMIZATION-D-S1-T2-COMPARISON.md.
  * Resources: doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md.
+ * H1c fixed-pair binding: doc/AI-COMPILER-H1C-PLANNER-BINDINGS-v1.0.md.
  */
 
 #ifndef dsl_fetch_pipeline_opt_INCLUDED
@@ -71,6 +72,32 @@ extern BOOL VHO_DSL_fetch_classify_occupancy
 extern BOOL VHO_DSL_fetch_hardware_description
     (const VHO_DSL_FETCH_PIPELINE_CONTROL &control,
      DSL_HARDWARE_DESCRIPTION_RECORD *hardware);
+
+/* Match owned semantic fetch specifications across temporary analysis rebuilds.
+ * IDs and padding are excluded; resources, schedule points and cost evidence
+ * must match. Read-only, with no native context or selection authority. */
+inline BOOL VHO_DSL_fetch_same_specification(const DSL_FETCH_PLAN_RECORD &a,
+    const DSL_FETCH_PLAN_RECORD &b)
+{
+    const DSL_FETCH_RESOURCE_RECORD &x=a.resources,&y=b.resources;
+    return a.target_profile_id==b.target_profile_id && a.engine==b.engine &&
+        a.fetch_count==b.fetch_count && a.stage_count==b.stage_count && a.prefetch_distance==b.prefetch_distance &&
+        a.issue_point==b.issue_point && a.arrival_barrier==b.arrival_barrier && a.wait_point==b.wait_point &&
+        a.edge_policy==b.edge_policy && a.buffering_bytes==b.buffering_bytes &&
+        a.buffering_capacity_bytes==b.buffering_capacity_bytes && a.raw_movement_cost==b.raw_movement_cost &&
+        a.hidden_movement_cost==b.hidden_movement_cost && a.unhidden_movement_cost==b.unhidden_movement_cost &&
+        a.barrier_count==b.barrier_count && a.legality==b.legality && a.rejection_reason==b.rejection_reason &&
+        a.flags==b.flags && x.model==y.model && x.register_bytes_per_thread==y.register_bytes_per_thread &&
+        x.register_capacity_per_thread==y.register_capacity_per_thread && x.threads_per_cta==y.threads_per_cta &&
+        x.thread_limit==y.thread_limit && x.shared_bytes==y.shared_bytes && x.shared_limit_bytes==y.shared_limit_bytes;
+}
+
+/* Freeze a fixed joint winner in the rebuilt active-PU analysis using the
+ * existing common selection service and complete census; never re-rank. No
+ * WHIRL mutation. Caller discards this temporary analysis on any failure and
+ * must reacquire IR/site views after successful rematerialization. */
+extern BOOL VHO_DSL_fetch_finalize_joint_selection(DSL_FETCH_PIPELINE_ANALYSIS *,
+    DSL_FETCH_SITE_ID, DSL_FETCH_PLAN_ID, FILE *);
 
 extern void VHO_DSL_Fetch_Pipeline_Control_Init
                                 (VHO_DSL_FETCH_PIPELINE_CONTROL *control);

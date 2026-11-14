@@ -5,6 +5,7 @@
 #include <string.h>
 #include "opt_dsl_reduction_staged.h"
 #include "dsl_memory_hierarchy.h"
+#include "config_dsl.h"
 
 /* Checked arithmetic for scratch extents, resource reservation and CTA coverage. */
 static BOOL
@@ -46,9 +47,10 @@ WOPT_DSL_staged_reuse(const UINT32 *next)
   return next[0] == 0 && next[1] == 0 && next[2] == 0 && next[3] == 0 && next[4] == 1;
 }
 
-/* Bind physical scratch under the existing target's conservative planning
- * envelope; real launch limits, symbol allocation and code conformance remain
- * obligations. No timing estimate or MMA capability participates in legality. */
+/* Bind declared scratch under current imported shared/thread bounds, or the
+ * unchanged generic envelope. Unknown required facts refuse. Explicit other
+ * shared bytes cover the declared recipe; no synthetic headroom is imported.
+ * RF allocation, real launch and code conformance remain obligations. */
 static UINT32
 WOPT_DSL_staged_status(WN *scope, WN *assignment,
     WOPT_DSL_REDUCTION_STAGED_BINDING *b, FILE *diagnostic)
@@ -56,6 +58,9 @@ WOPT_DSL_staged_status(WN *scope, WN *assignment,
   const WOPT_DSL_REDUCTION_STAGING &s = b->staging;
   if (b->base.status != WOPT_DSL_REDUCE_DIRECT_BOUND)
     return WOPT_DSL_REDUCE_STAGED_BASE_REFUSED;
+  if (!DSL_gpu_plan_stamp_current(b->base.gpu_stamp, VHO_DSL_GPU_Context))
+    return WOPT_DSL_REDUCE_STAGED_BASE_REFUSED;
+  const DSL_GPU_PLAN_SNAPSHOT gpu = DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
   if (!s.chunk_elements) return WOPT_DSL_REDUCE_STAGED_CHUNK_INVALID;
   WOPT_DSL_REDUCTION_ALTERNATIVES recipe;
   if (!WOPT_DSL_query_reduction_alternatives(scope, assignment, s.chunk_elements,
@@ -75,6 +80,20 @@ WOPT_DSL_staged_status(WN *scope, WN *assignment,
   b->headroom = hw.resources.shared_reserved;
   b->quantum = hw.resources.shared_quantum;
   b->max_threads = hw.resources.max_threads_per_cta;
+  if (gpu.Bound()) {
+    uint64_t cta_shared, sm_shared, quantum, cta_threads, sm_threads;
+    if (gpu.Architecture() != hw.architecture ||
+        !gpu.Resource_limit(DSL_GPU_SHARED_BYTES_PER_CTA_DEFAULT, &cta_shared) ||
+        !gpu.Resource_limit(DSL_GPU_SHARED_BYTES_PER_SM, &sm_shared) ||
+        !gpu.Resource_limit(DSL_GPU_SHARED_QUANTUM, &quantum) || !quantum ||
+        !gpu.Resource_limit(DSL_GPU_MAX_THREADS_PER_CTA, &cta_threads) ||
+        !gpu.Resource_limit(DSL_GPU_MAX_THREADS_PER_SM, &sm_threads))
+      return WOPT_DSL_REDUCE_STAGED_CAPACITY;
+    b->hardware_budget = cta_shared < sm_shared ? cta_shared : sm_shared;
+    b->headroom = 0; b->quantum = quantum;
+    b->max_threads = cta_threads < sm_threads ? cta_threads : sm_threads;
+    if (b->max_threads>1024) b->max_threads=1024; /* supported CUDA CTA interface */
+  }
   UINT64 launched;
   if (!s.rows_per_cta || s.rows_per_cta > b->max_threads ||
       s.cta_count != 1 + (b->base.source.rows - 1) / s.rows_per_cta ||
@@ -138,8 +157,10 @@ WOPT_DSL_staged_trace(const WOPT_DSL_REDUCTION_STAGED_BINDING &b, FILE *trace)
       b.runtime_obligations, b.status, b.base.source.source_line);
 }
 
-/* Reuse the direct source/ISA/storage/host-DAG gate before adding staging.
- * Native validation fails transactionally; source-valid refusal is inspectable. */
+/* Reuse direct source/ISA/imported backing admission, then filter declared
+ * staging with the same context stamp. No transient success can bypass a late
+ * context change. Native/API failure preserves output; source-valid refusal
+ * remains inspectable and grants no staged runtime obligations. */
 BOOL
 WOPT_DSL_bind_reduction_staged(WN *scope, WN *assignment,
     const WOPT_DSL_REDUCTION_STAGED_REQUEST *request,
@@ -152,18 +173,33 @@ WOPT_DSL_bind_reduction_staged(WN *scope, WN *assignment,
     return FALSE;
   b.staging = request->staging;
   b.status = WOPT_DSL_staged_status(scope, assignment, &b, diagnostic);
-  if (trace) WOPT_DSL_staged_trace(b, trace);
+  if (!DSL_gpu_plan_stamp_current(b.base.gpu_stamp, VHO_DSL_GPU_Context)) {
+    b.status = WOPT_DSL_REDUCE_STAGED_BASE_REFUSED; b.runtime_obligations = 0;
+  }
+  if (trace) {
+    WOPT_DSL_staged_trace(b, trace);
+    if (b.base.gpu_stamp.bound) {
+      const DSL_GPU_PLAN_SNAPSHOT gpu = DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
+      fprintf(trace,"DSL_GPU_PLAN_LEGALITY 1 family=reduction-staged binding=%s live_bytes=%llu status=%u RF=unproved runtime_discharge=0\n",
+          gpu.Legality_key().c_str(),(unsigned long long)b.base.live_bytes,b.status);
+      if (b.base.input_bytes && b.base.output_bytes <= ~(UINT64)0 - b.base.input_bytes)
+        gpu.Print(trace,"reduction-staged-traffic",b.base.input_bytes + b.base.output_bytes);
+    }
+  }
   *output = b;
   return TRUE;
 }
 
-/* Reconstruct a request without retaining the caller's architecture string. */
+/* Gate original imported evidence before native access, then reconstruct the
+ * request and compare all derived storage/slice facts. Rebinding to numerically
+ * equal limits cannot revive a stale resource, budget or execution identity. */
 static BOOL
 WOPT_DSL_staged_revalidate(WN *scope, WN *assignment,
     const WOPT_DSL_REDUCTION_STAGED_BINDING &old,
     WOPT_DSL_REDUCTION_STAGED_BINDING *fresh, FILE *diagnostic)
 {
-  if (old.status != WOPT_DSL_REDUCE_STAGED_BOUND || old.runtime_obligations != 255) return FALSE;
+  if (old.status != WOPT_DSL_REDUCE_STAGED_BOUND || old.runtime_obligations != 255 ||
+      !DSL_gpu_plan_stamp_current(old.base.gpu_stamp, VHO_DSL_GPU_Context)) return FALSE;
   DSL_HARDWARE_DESCRIPTION_RECORD hw;
   if (!DSL_hardware_description_get_arch(old.base.architecture_id, &hw)) return FALSE;
   WOPT_DSL_REDUCTION_STAGED_REQUEST req;
@@ -182,7 +218,10 @@ WOPT_DSL_staged_revalidate(WN *scope, WN *assignment,
   req.staging = old.staging;
   if (!WOPT_DSL_bind_reduction_staged(scope, assignment, &req, fresh, diagnostic, NULL) ||
       fresh->status != WOPT_DSL_REDUCE_STAGED_BOUND) return FALSE;
-  return old.base.status == fresh->base.status && old.base.stages_bound == fresh->base.stages_bound &&
+  return DSL_gpu_plan_stamp_equal(old.base.gpu_stamp, fresh->base.gpu_stamp) &&
+      DSL_gpu_plan_stamp_current(fresh->base.gpu_stamp, VHO_DSL_GPU_Context) &&
+      old.base.live_bytes == fresh->base.live_bytes &&
+      old.base.status == fresh->base.status && old.base.stages_bound == fresh->base.stages_bound &&
       old.base.runtime_obligations == fresh->base.runtime_obligations &&
       old.base.input_bytes == fresh->base.input_bytes && old.base.output_bytes == fresh->base.output_bytes &&
       old.chunk == fresh->chunk && old.chunks == fresh->chunks && old.last_count == fresh->last_count &&
@@ -192,8 +231,9 @@ WOPT_DSL_staged_revalidate(WN *scope, WN *assignment,
       old.quantum == fresh->quantum && old.max_threads == fresh->max_threads;
 }
 
-/* Use fresh bounded extents: generation*chunk < N and row*N < R*N; the direct
- * byte-footprint/range gate already proves every multiply/add fits UINT64. */
+/* Revalidate imported context and native storage before deriving one bounded
+ * slice. generation*chunk < N and row*N < R*N keep arithmetic within the direct
+ * range proof; refusal leaves output untouched and never reopens selection. */
 BOOL
 WOPT_DSL_reduction_staged_slice(WN *scope, WN *assignment,
     const WOPT_DSL_REDUCTION_STAGED_BINDING *binding, UINT64 row, UINT64 generation,

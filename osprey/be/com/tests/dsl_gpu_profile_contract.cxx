@@ -46,7 +46,7 @@ int main(int argc, char **argv)
         context.Context()->Toolchain() == argv[4] && context.Context()->Input_sha256() == argv[2] &&
         context.Context()->Resource_sha256().size() == 64 && context.Context()->Budget_sha256().size() == 64 &&
         context.Context()->Context_sha256().size() == 64, "owned identities");
-    require_contract(context.Context()->Resource(DSL_GPU_RESOURCE_FIELD(-1)) == NULL &&
+    require_contract(context.Context()->Resource(-1) == NULL &&
         context.Context()->Resource(DSL_GPU_RESOURCE_COUNT) == NULL &&
         context.Context()->Execution(DSL_GPU_EXECUTION_COUNT) == NULL &&
         context.Context()->Budget(DSL_GPU_BUDGET_COUNT) == NULL && context.Context()->Condition(5) == NULL, "bounded accessors");

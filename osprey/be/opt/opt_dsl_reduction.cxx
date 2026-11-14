@@ -10,6 +10,7 @@
 #include "opt_dsl_reduction.h"
 #include "dsl_memory_hierarchy.h"
 #include "symtab.h"
+#include "config_dsl.h"
 
 /* Reject stale cross-node/type/shape/order requests before accepting contracts. */
 static BOOL
@@ -71,12 +72,29 @@ WOPT_DSL_reduction_events_valid(const UINT32 *before)
       (reach[WOPT_DSL_REDUCE_CONSUME] & (1U << WOPT_DSL_REDUCE_OUTPUT_RELEASE));
 }
 
-/* A refusal never grants later stages or runtime obligations as proved facts.
- * Stage bits mean source=1, ISA=2, storage=4, events/owner=8 are contract-bound. */
+/* Count canonical global backing allocations once, after range/alias checks.
+ * The footprint includes declared unused backing capacity. Overflow leaves
+ * output untouched and cannot turn an over-budget import into an admission. */
+static BOOL WOPT_DSL_reduction_live_bytes(const WOPT_DSL_REDUCTION_DIRECT_REQUEST &request,
+                                        UINT64 *output)
+{
+  UINT64 live = request.input.allocation_bytes;
+  if (request.input.allocation_id != request.output.allocation_id) {
+    if (request.output.allocation_bytes > ~(UINT64)0 - live) return FALSE;
+    live += request.output.allocation_bytes;
+  }
+  *output = live;
+  return TRUE;
+}
+
+/* Bind native/ISA/storage/event prefixes; imported budgets constrain declared
+ * canonical backing storage without inventing missing CTA/RF demand. Refusal
+ * never grants runtime obligations. Stage bits retain their legacy meanings. */
 static UINT32
 WOPT_DSL_reduction_direct_status
     (const WOPT_DSL_REDUCTION_DIRECT_REQUEST &request,
-     WOPT_DSL_REDUCTION_DIRECT_BINDING *binding)
+     WOPT_DSL_REDUCTION_DIRECT_BINDING *binding,
+     const DSL_GPU_PLAN_SNAPSHOT &gpu)
 {
   if (!WOPT_DSL_reduction_source_equal(request.expected_source, binding->source))
     return WOPT_DSL_REDUCE_DIRECT_STALE_SOURCE;
@@ -87,6 +105,8 @@ WOPT_DSL_reduction_direct_status
   if (!DSL_hardware_description_find_arch(request.architecture, &hardware))
     return WOPT_DSL_REDUCE_DIRECT_TARGET_UNKNOWN;
   binding->architecture_id = hardware.arch_id;
+  if (!gpu.Cache_key().empty() && gpu.Architecture() != hardware.architecture)
+    return WOPT_DSL_REDUCE_DIRECT_TARGET_UNKNOWN;
   if (request.instruction != WOPT_DSL_REDUCE_PTX_ADD_RN_F32)
     return WOPT_DSL_REDUCE_DIRECT_INSTRUCTION_UNSUPPORTED;
   if (request.fp_options != 0)
@@ -115,6 +135,8 @@ WOPT_DSL_reduction_direct_status
         request.output.offset_bytes < request.input.offset_bytes + binding->input_bytes)
       return WOPT_DSL_REDUCE_DIRECT_ALIAS_OVERLAP;
   }
+  if (gpu.Bound() && (!WOPT_DSL_reduction_live_bytes(request, &binding->live_bytes) ||
+      !gpu.Fits_storage(binding->live_bytes))) return WOPT_DSL_REDUCE_DIRECT_RESOURCE_REFUSED;
   binding->stages_bound |= 4;
   if (request.row_mapping != WOPT_DSL_REDUCE_ROW_LINEAR_THREAD ||
       request.launched_threads < binding->source.rows)
@@ -139,7 +161,7 @@ WOPT_DSL_reduction_direct_trace
     "bound_runtime_obligations", "source_binding_missing", "stale_source",
     "unknown_architecture", "unsupported_instruction", "unsafe_fp_options",
     "unsupported_layout", "invalid_range", "runtime_lease_missing",
-    "overlapping_ranges", "invalid_owner_mapping", "invalid_event_order"
+    "overlapping_ranges", "invalid_owner_mapping", "invalid_event_order", "imported_resource_or_budget_refused"
   };
   const WOPT_DSL_REDUCTION_CHARACTERIZATION &s = binding.source;
   fprintf(trace, "AI_REDUCE_DIRECT 1 HEADER node input result rows width recipe source_match contiguous arch instruction "
@@ -168,8 +190,11 @@ WOPT_DSL_reduction_direct_trace
       binding.stages_bound, binding.runtime_obligations, reason[binding.status], s.source_line);
 }
 
-/* Native WHIRL remains authoritative; the caller supplies target/host contracts,
- * not facts inferred from pointer samples, Python or diagnostic metadata. */
+/* Recharacterize native source and capture current immutable imported facts.
+ * Apply only the direct request's known ISA/backing requirements; missing
+ * budgets refuse. RF/CTA launch demands remain explicit downstream obligations.
+ * Optional HBM ns reports describe input/output byte service, never cycle cost
+ * conversion or GPU qualification. Invalid native/API input changes nothing. */
 BOOL
 WOPT_DSL_bind_reduction_direct
     (WN *scope, WN *assignment, const WOPT_DSL_REDUCTION_DIRECT_REQUEST *request,
@@ -180,7 +205,13 @@ WOPT_DSL_bind_reduction_direct
   memset(&binding, 0, sizeof(binding));
   if (!WOPT_DSL_characterize_reduction(scope, assignment, &binding.source, diagnostic))
     return FALSE;
-  binding.status = WOPT_DSL_reduction_direct_status(*request, &binding);
+  const DSL_GPU_PLAN_SNAPSHOT gpu = DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
+  binding.gpu_stamp = gpu.Stamp();
+  binding.status = WOPT_DSL_reduction_direct_status(*request, &binding, gpu);
+  if (!gpu.Is_current(VHO_DSL_GPU_Context)) {
+    binding.status = WOPT_DSL_REDUCE_DIRECT_RESOURCE_REFUSED;
+    binding.runtime_obligations = 0;
+  }
   binding.instruction = request->instruction;
   binding.fp_options = request->fp_options;
   binding.runtime_contract_id = request->runtime_contract_id;
@@ -190,7 +221,15 @@ WOPT_DSL_bind_reduction_direct
   binding.row_mapping = request->row_mapping;
   binding.launched_threads = request->launched_threads;
   memcpy(binding.before, request->before, sizeof(binding.before));
-  if (trace != NULL) WOPT_DSL_reduction_direct_trace(*request, binding, trace);
+  if (trace != NULL) {
+    WOPT_DSL_reduction_direct_trace(*request, binding, trace);
+    if (gpu.Bound()) {
+      fprintf(trace,"DSL_GPU_PLAN_LEGALITY 1 family=reduction-direct binding=%s live_bytes=%llu status=%u CTA_RF=unproved runtime_discharge=0\n",
+          gpu.Legality_key().c_str(),(unsigned long long)binding.live_bytes,binding.status);
+      if (binding.input_bytes && binding.output_bytes <= ~(UINT64)0 - binding.input_bytes)
+        gpu.Print(trace,"reduction-direct-traffic",binding.input_bytes + binding.output_bytes);
+    }
+  }
   *output = binding;
   return TRUE;
 }
@@ -208,15 +247,17 @@ WOPT_DSL_reduction_export_range(const WOPT_DSL_REDUCTION_BUFFER_BINDING &source,
   target->memory_space = source.memory_space;
 }
 
-/* Native source and fresh binder results authorize export, never a saved
- * success flag alone. Output publication is the only mutation. */
+/* Gate the saved imported stamp before native rebinding, then require exact
+ * fresh source/storage evidence and the same context before runtime export.
+ * The runtime guard ABI is unchanged; output publication is the only mutation. */
 BOOL
 WOPT_DSL_export_reduction_direct_guard
     (WN *scope, WN *assignment, const WOPT_DSL_REDUCTION_DIRECT_BINDING *binding,
      OPEN64_REDUCTION_GUARD *output, FILE *diagnostic, FILE *trace)
 {
   if (binding == NULL || output == NULL || binding->status != WOPT_DSL_REDUCE_DIRECT_BOUND ||
-      binding->stages_bound != 15 || binding->runtime_obligations != 15) return FALSE;
+      binding->stages_bound != 15 || binding->runtime_obligations != 15 ||
+      !DSL_gpu_plan_stamp_current(binding->gpu_stamp, VHO_DSL_GPU_Context)) return FALSE;
   DSL_HARDWARE_DESCRIPTION_RECORD hardware;
   if (!DSL_hardware_description_get_arch(binding->architecture_id, &hardware)) return FALSE;
   WOPT_DSL_REDUCTION_DIRECT_REQUEST req;
@@ -235,7 +276,10 @@ WOPT_DSL_export_reduction_direct_guard
   WOPT_DSL_REDUCTION_DIRECT_BINDING fresh;
   if (!WOPT_DSL_bind_reduction_direct(scope, assignment, &req, &fresh, diagnostic, NULL) ||
       fresh.status != WOPT_DSL_REDUCE_DIRECT_BOUND ||
-      fresh.input_bytes != binding->input_bytes || fresh.output_bytes != binding->output_bytes)
+      fresh.input_bytes != binding->input_bytes || fresh.output_bytes != binding->output_bytes ||
+      fresh.live_bytes != binding->live_bytes ||
+      !DSL_gpu_plan_stamp_equal(fresh.gpu_stamp, binding->gpu_stamp) ||
+      !DSL_gpu_plan_stamp_current(fresh.gpu_stamp, VHO_DSL_GPU_Context))
     return FALSE;
   OPEN64_REDUCTION_GUARD g;
   memset(&g, 0, sizeof(g));

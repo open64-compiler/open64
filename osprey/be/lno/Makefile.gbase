@@ -623,3 +623,19 @@ tensor_high_lower.o: $(BE_DIR)/vho/tensor_high_selected.inc
 # Complete Q5 source qualification remains detached in standalone cost tests.
 dsl_high_search_control_test dsl_high_movement_test dsl_high_quantized_movement_test: tensor_serving_schema.o tensor_workload.o
 tensor_high_lower.o: $(BE_DIR)/vho/tensor_high_quantized.inc
+
+# H1c consumer oracle reuses detached production services; imported evidence is
+# owned input. The importer/hash objects are test-only, not added to lno.so.
+dsl_high_device_test.o: $(BE_LNOPT_DIR)/tests/dsl_high_device_test.cxx $(BE_DIR)/com/dsl_gpu_plan.h $(BE_LNOPT_DIR)/dsl_high_binding_keys.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_high_device_import_test.o: $(BE_DIR)/com/dsl_gpu_profile.cxx $(BE_DIR)/com/dsl_gpu_profile.h $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_device_profile.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) -I$(BE_DIR)/vho -I$(BUILD_TOT) $< -o $@
+
+dsl_high_device_sha_test.o: $(BE_DIR)/vho/fhe_sha256.cxx $(BE_DIR)/vho/fhe_sha256.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_high_device_test: tensor_serving_schema.o tensor_workload.o dsl_high_device_test.o dsl_high_device_import_test.o dsl_high_device_sha_test.o tensor_attention_search_test.o dsl_high_search_hardware.o dsl_high_observer.o dsl_high_observer_json.o dsl_high_snapshot.o dsl_high_reuse.o tensor_schedule.o tensor_attention_chunk_select.o
+	$(link.c++f) -o $@ $^
+
+LDIRT += dsl_high_device_test dsl_high_device_test.o dsl_high_device_import_test.o dsl_high_device_sha_test.o

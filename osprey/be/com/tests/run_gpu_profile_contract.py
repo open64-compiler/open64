@@ -18,14 +18,15 @@ REPO = Path(__file__).resolve().parents[4]
 
 
 def run(command, case):
-    """Retain the actual tool command, exit status and complete diagnostics."""
+    """Retain complete diagnostics; recoverable sanitizer errors also fail."""
     result = subprocess.run(list(map(str, command)), cwd=case, text=True,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90,
+                            env=dict(os.environ, UBSAN_OPTIONS="halt_on_error=1", ASAN_OPTIONS="halt_on_error=1"))
     with (case / 'commands.log').open('a') as out:
         out.write(json.dumps(dict(argv=list(map(str, command)), returncode=result.returncode)) + '\n')
     with (case / 'validation.log').open('a') as out:
         out.write(result.stdout)
-    if result.returncode:
+    if result.returncode or "runtime error:" in result.stdout or "ERROR: AddressSanitizer" in result.stdout:
         raise RuntimeError(str(case) + ': ' + result.stdout[-2000:])
     return result.stdout
 

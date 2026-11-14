@@ -67,6 +67,7 @@ char *VHO_DSL_GPU_Device = NULL;
 char *VHO_DSL_GPU_Profile = NULL;
 char *VHO_DSL_GPU_Profile_SHA256 = NULL;
 char *VHO_DSL_GPU_Profile_Toolchain = NULL;
+const DSL_GPU_DEVICE_CONTEXT *VHO_DSL_GPU_Context = NULL;
 UINT32 VHO_DSL_GEMM_Memory_Latency = 0;
 BOOL VHO_DSL_GEMM_Memory_Latency_Set = FALSE;
 

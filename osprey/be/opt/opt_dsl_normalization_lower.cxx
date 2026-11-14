@@ -17,6 +17,7 @@
 #include "targ_const.h"
 #include "config.h"
 #include "config_opt.h"
+#include "config_dsl.h"
 #include "pu_info.h"
 #include "stab.h"
 
@@ -41,23 +42,41 @@ static void LN4_Text(UINT64 &hash,const char *text)
   hash=LN4_Hash(hash,text,strlen(text)+1);
 }
 
-/* Handoff layout is same-process/native only and initialized without padding. */
+/* Hash the unchanged legacy numeric prefix. Imported compiler-only evidence
+ * is appended explicitly, including every section key and live footprint;
+ * zero/unbound handoffs therefore retain their exact historical seal. */
 static UINT64 LN4_Plan_Seal(const WOPT_DSL_NORMALIZATION_LOWERING &p)
 {
-  return LN4_Hash(1469598103934665603ULL,&p,offsetof(WOPT_DSL_NORMALIZATION_LOWERING,seal));
+  UINT64 hash=LN4_Hash(1469598103934665603ULL,&p,offsetof(WOPT_DSL_NORMALIZATION_LOWERING,seal));
+  if (p.gpu_stamp.bound) {
+    hash=LN4_Hash(hash,&p.gpu_stamp.bound,sizeof(p.gpu_stamp.bound));
+    hash=LN4_Hash(hash,p.gpu_stamp.resource,sizeof(p.gpu_stamp.resource));
+    hash=LN4_Hash(hash,p.gpu_stamp.execution,sizeof(p.gpu_stamp.execution));
+    hash=LN4_Hash(hash,p.gpu_stamp.budget,sizeof(p.gpu_stamp.budget));
+    hash=LN4_Hash(hash,p.gpu_stamp.context,sizeof(p.gpu_stamp.context));
+    LN4_Word(hash,p.gpu_live_bytes);
+  }
+  return hash;
 }
 
-/* Validate a prepared bounded recipe before any device symbol/WN allocation.
- * Native source admission already proved ranges/events/numerical contracts. */
+/* Reject stale imported evidence before allocation or verification. Native
+ * preparation already bound ranges/events/numerical meaning; current imported
+ * limits additionally admit declared CTA/RF/shared and backing reservations.
+ * No probe, re-ranking or runtime resource discharge occurs here. */
 static BOOL LN4_Plan_Valid(const WOPT_DSL_NORMALIZATION_LOWERING &p)
 {
+  if (!DSL_gpu_plan_stamp_current(p.gpu_stamp,VHO_DSL_GPU_Context)) return FALSE;
+  const DSL_GPU_PLAN_SNAPSHOT gpu=DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
   DSL_HARDWARE_DESCRIPTION_RECORD hw;
   const OPEN64_NORMALIZATION_GUARD &g=p.guard;
   return p.version==1 && p.seal==LN4_Plan_Seal(p) &&
       DSL_hardware_description_get_arch((UINT32)g.architecture,&hw) && p.revision==hw.revision &&
+      (!gpu.Bound() || (gpu.Architecture()==hw.architecture &&
+       gpu.Fits_storage(p.gpu_live_bytes) &&
+       gpu.Fits_CTA(g.threads,p.registers_per_thread,g.reserved_shared) && g.reserved_shared<=49152)) &&
       g.abi_version==1 && g.size==sizeof(g) && g.source_version==2 &&
       g.kind>=1 && g.kind<=3 && g.rows && g.rows<=INT_MAX && g.width && g.width<=16777216 &&
-      g.ctas==g.rows && g.threads && g.threads<=hw.resources.max_threads_per_cta &&
+      g.ctas==g.rows && g.threads && (gpu.Bound() ? g.threads<=1024 : g.threads<=hw.resources.max_threads_per_cta) &&
       p.registers_per_thread && p.registers_per_thread<=hw.resources.max_registers_per_thread &&
       p.cost.status==WOPT_DSL_NORM_COST_COMPLETE && p.cost.resident_ctas &&
       g.fp_options==0 && g.route==WOPT_DSL_NORM_ROUTE_PTX_POINTER_SCALAR_V1 &&
@@ -399,20 +418,24 @@ BOOL WOPT_DSL_normalization_compiler_environment_ready()
   return TRUE;
 }
 
-/* Expected analytical results cannot be edited into a different selection:
- * rebind current native source and recompute the entire LN3 query first. */
+/* Gate the expected imported stamp before recapturing current source/costs.
+ * Recompute LN3 and compare the whole POD result; even an unchanged numeric
+ * choice cannot revive stale calibration or budget evidence. Preserve outputs
+ * on refusal and seal the imported handoff without changing legacy seals. */
 BOOL WOPT_DSL_prepare_normalization_lowering(WN *scope,WN *assignment,
     const WOPT_DSL_NORMALIZATION_COST_REQUEST *r,const WOPT_DSL_NORMALIZATION_COST_RESULT *expected,
     WOPT_DSL_NORMALIZATION_LOWERING *output,FILE *diagnostic,FILE *trace)
 {
-  if (!r || !expected || !output) return FALSE;
+  if (!r || !expected || !output ||
+      !DSL_gpu_plan_stamp_current(expected->gpu_stamp,VHO_DSL_GPU_Context)) return FALSE;
   WOPT_DSL_NORMALIZATION_COST_RESULT current;
   if (!WOPT_DSL_select_normalization_plan(scope,assignment,r,&current,diagnostic,NULL) ||
       memcmp(&current,expected,sizeof(current)) || !current.selected_kind) return FALSE;
   WOPT_DSL_NORMALIZATION_LOWERING p;memset(&p,0,sizeof(p));
   p.version=1;p.revision=r->profile.description_revision;p.profile=r->profile;p.guard=current.selected_guard;
   p.cost=current.costs[current.selected_kind-1];p.registers_per_thread=r->registers_per_thread[current.selected_kind-1];
-  p.max_jobs=r->max_jobs;p.margin=r->margin;p.seal=LN4_Plan_Seal(p);
+  p.max_jobs=r->max_jobs;p.margin=r->margin;
+  p.gpu_stamp=current.gpu_stamp;p.gpu_live_bytes=current.gpu_live_bytes;p.seal=LN4_Plan_Seal(p);
   if (!LN4_Plan_Valid(p)) return FALSE;
   *output=p;
   if (trace) fprintf(trace,"AI_NORM_LOWER 1 PREPARE %llu %llu %llu %llu %llu %llu\n",(unsigned long long)p.guard.pu,
@@ -421,8 +444,9 @@ BOOL WOPT_DSL_prepare_normalization_lowering(WN *scope,WN *assignment,
   return TRUE;
 }
 
-/* The driver must select a new empty kernel PU before this builder is called.
- * Only that active scope is mutated; every recoverable check precedes allocation. */
+/* The driver selects a new empty kernel PU. Revalidate the selected imported
+ * handoff before symbol/WN allocation; only that active scope is mutated.
+ * Recoverable refusal preserves the empty PU and output; no selection occurs. */
 BOOL WOPT_DSL_materialize_normalization_device(const WOPT_DSL_NORMALIZATION_LOWERING *p,SRCPOS source,
     WOPT_DSL_NORMALIZATION_DEVICE *output,FILE *diagnostic,FILE *trace)
 {
@@ -471,8 +495,9 @@ BOOL WOPT_DSL_materialize_normalization_device(const WOPT_DSL_NORMALIZATION_LOWE
   return TRUE;
 }
 
-/* Compare the actual active/reopened image with its exact constructed body;
- * a changed identity never receives a successful verification trace. */
+/* Revalidate the imported selected handoff, then compare actual active device
+ * WHIRL, scalar instructions, barriers and resource attributes. Read-only;
+ * stale context/tree evidence preserves output and cannot authorize emission. */
 BOOL WOPT_DSL_verify_normalization_device(const WOPT_DSL_NORMALIZATION_LOWERING *p,
     const WOPT_DSL_NORMALIZATION_DEVICE *expected,FILE *diagnostic,FILE *trace)
 {

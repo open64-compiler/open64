@@ -25,7 +25,8 @@ UINT64 mul(UINT64 a,UINT64 b) {uint64_t r;if(!DSL_readiness_mul(a,b,&r)) throw s
 UINT64 ceilq(UINT64 a,UINT64 b) {return DSL_readiness_ceil(a,b);}
 /* Evaluate whole-stage additive bulk rounds; no speculative overlap credit.
  * Work is shared per SM, global traffic uses one device bandwidth, dependency
- * chains bound scalar service, and resident CTAs do not multiply SM throughput. */
+ * chains bound scalar service, and resident CTAs do not multiply SM throughput.
+ * H1c physical service is separately reported, never converted into cycles. */
 void Cost_stage(VHO_MLA_STAGE_ESTIMATE &s,const VHO_TENSOR_GPU_PROFILE &g,const VHO_MLA_COST_PROFILE &p) {
     const UINT64 *v=p.values;UINT64 capacity=mul(g.sms,s.resident);
     s.launch=v[VHO_MLA_LAUNCH];
@@ -42,6 +43,8 @@ void Cost_stage(VHO_MLA_STAGE_ESTIMATE &s,const VHO_TENSOR_GPU_PROFILE &g,const 
         s.special=add(s.special,mul(rounds,special));s.local=add(s.local,mul(rounds,local));s.sync=add(s.sync,mul(rounds,sync));s.rounds=add(s.rounds,rounds);
     }
     s.total=add(add(add(s.compute,s.memory),add(s.special,s.local)),add(s.sync,s.launch));
+    if (g.device.Bound()) s.physical_hbm_known = g.device.HBM_service_ns(mul(s.ctas,s.global_bytes),
+        &s.physical_hbm_lower_ns,&s.physical_hbm_upper_ns);
 }
 /* Describe full-chunk/all-mask-true work of the already admitted native
  * realization. Padding, shared publications, warp tuples and the unchanged
@@ -81,9 +84,28 @@ void Evaluate(VHO_MLA_SEARCH_CANDIDATE &c,const VHO_TENSOR_PROGRAM &source,const
     VHO_TENSOR_SCHEDULE plan;if(!VHO_tensor_schedule(p,&plan,NULL)) return;
     c.scratch=c.width?mul(mul(mul(4,a.batch*a.heads),ceilq(a.length,c.width)),a.rank+2):0;
     c.reason="scratch_budget";if(c.scratch>g.scratch_budget) return;
+    /* Imported High tuple reuse must satisfy the same private-buffer capacity
+     * proof as selected application. Keep the legacy architecture-only census. */
+    if (g.device.Bound() && g.high_private_reuse && c.width &&
+        mul(ceilq(a.length,c.width),a.rank)>a.length) {c.reason="high_private_tuple_capacity";return;}
+    if (g.device.Bound()) {
+        /* Selected High reuses the proved source private buffers for tuples.
+         * Count their backing once; H1d GPU transport must bind any new device
+         * allocations separately instead of double-counting host scratch. */
+        UINT64 live = g.high_private_reuse ? 0 : c.scratch;
+        for (size_t i = 0; i < source.values.size(); ++i) if (source.values[i].storage == i) {
+            UINT64 bytes = source.values[i].dtype == "bool" ? 1 : 4;
+            for (size_t d = 0; d < source.values[i].shape.size(); ++d) bytes = mul(bytes,source.values[i].shape[d]);
+            live = add(live,bytes);
+        }
+        if (!g.device.Fits_storage(live)) {c.reason="imported_live_storage_unknown_or_exceeded";return;}
+    }
     c.reason="resource_fit";
     for(size_t i=0;i<plan.kernels.size();++i) {
         const VHO_TENSOR_KERNEL &k=plan.kernels[i];VHO_MLA_STAGE_ESTIMATE s;
+        if (!g.device.Fits_CTA(k.threads,g.registers_per_thread,VHO_tensor_shared_bytes(p,k))) {
+            c.reason="imported_CTA_resources_unknown_or_exceeded"; return;
+        }
         s.operation=k.id;s.ctas=VHO_tensor_grid(p,k);s.threads=k.threads;s.shared=VHO_tensor_shared_bytes(p,k);
         DSL_GEMM_OCCUPANCY_RESULT occupancy;
         if(!DSL_gemm_occupancy(g.resources,32,g.sms,s.threads,4*g.registers_per_thread,s.shared,s.ctas,&occupancy) || !occupancy.resident) return;
@@ -331,7 +353,9 @@ std::string VHO_mla_search_control_key(const VHO_MLA_SEARCH_CONTROL &control) {
 
 /* Reuse the v1 catalog/proposers/evaluator under a fair portfolio scheduler.
  * Caps are checked before every proposal and after every complete estimate;
- * a cache hit consumes only a proposal. No native callback or context exists. */
+ * a cache hit consumes only a proposal. No native callback or context exists.
+ * Imported H1c snapshots partition the owning search invocation; quantized
+ * serving-specific profile adaptation remains refused until fully bound. */
 static BOOL VHO_mla_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR_GPU_PROFILE &gpu,
     const VHO_MLA_COST_PROFILE &model,const VHO_MLA_SEARCH_CONTROL &control,VHO_MLA_PRODUCTION_RESULT *output,FILE *diagnostic,const VHO_MLA_MOVEMENT_CONTEXT *movement,const VHO_Q4_PROFILE *q4_profile=NULL,const VHO_Q4_SNAPSHOT *q4_snapshot=NULL,UINT64 q5_log=0) {
     try {
@@ -343,6 +367,7 @@ static BOOL VHO_mla_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR
             (q4_profile?(!q4_snapshot || !Q4_valid(*q4_profile,*q4_snapshot,gpu) || (q5_log && (q5_log>1000000000 || !VHO_tensor_validate_quantized_high(source,NULL) || q4_snapshot->schema.source_key!=VHO_tensor_quantized_high_key(source)))):
                 (source.opt_level!=3 || !source.fuse_attention || !source.cooperative || !VHO_tensor_validate_program(source,diagnostic))))
             throw std::runtime_error("controlled_search_admission_failed");
+        if(q4_profile && gpu.device.Bound()) throw std::runtime_error("quantized_device_profile_binding_pending");
         VHO_MLA_PRODUCTION_RESULT result;VHO_MLA_SEARCH_RESULT &search=result.exploration;
         if(q4_profile) {search.lower_bound=0;Q4_catalog(search);}
         else if(movement) {search.lower_bound=0;Movement_catalog(search,VHO_tensor_attention(source));}

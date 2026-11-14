@@ -61,6 +61,12 @@ extern char *VHO_DSL_GPU_Device;
 extern char *VHO_DSL_GPU_Profile;
 extern char *VHO_DSL_GPU_Profile_SHA256;
 extern char *VHO_DSL_GPU_Profile_Toolchain;
+/* Driver-only synchronous publication; phase owners copy before exploration.
+ * Borrow expires at driver cleanup. Not a mutable resource-table row. */
+#ifdef __cplusplus
+class DSL_GPU_DEVICE_CONTEXT;
+extern const DSL_GPU_DEVICE_CONTEXT *VHO_DSL_GPU_Context;
+#endif
 extern UINT32 VHO_DSL_GEMM_Memory_Latency;
 extern BOOL VHO_DSL_GEMM_Memory_Latency_Set;
 extern BOOL VHO_DSL_CUDA_TMA_Prefetch_Set;

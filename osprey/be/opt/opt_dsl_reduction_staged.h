@@ -55,7 +55,9 @@ typedef struct {
 
 /* Owned transient contract, conditional on target/runtime/codegen obligations.
  * Hardware shared-budget/quantum/headroom fields are existing planning-envelope
- * data, not probed CUDA limits or an occupancy/profitability result. */
+ * data, not probed CUDA limits or an occupancy/profitability result. Imports
+ * replace the shared/thread limits and allocation quantum; missing required
+ * facts refuse. base.gpu_stamp binds this complete transient result. */
 typedef struct {
   WOPT_DSL_REDUCTION_DIRECT_BINDING base;
   WOPT_DSL_REDUCTION_STAGING staging;
@@ -77,7 +79,8 @@ typedef struct {
 
 /* Revalidate current native binding and derived extents before describing one
  * active row/generation. Refuse inactive owners, past-tail or stale/tampered
- * derived snapshots without touching output. O(1), never unroll a large domain.
+ * derived snapshots or changed imported context without touching output.
+ * O(1), never unroll a large domain.
  * A slice is a planning witness, NOT an executed copy or lowered instruction. */
 extern BOOL WOPT_DSL_reduction_staged_slice
     (WN *scope, WN *assignment, const WOPT_DSL_REDUCTION_STAGED_BINDING *binding,

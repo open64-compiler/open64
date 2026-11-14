@@ -2,6 +2,14 @@
 
 2026-11-12 | Native import and driver lifetime contract
 
+H1c consumer bindings are implemented as described in [planner bindings v1.0](AI-COMPILER-H1C-PLANNER-BINDINGS-v1.0.md);
+original H1b scope notes below are historical.
+
+Validation correction in [H1c](AI-COMPILER-H1C-PLANNER-BINDINGS-v1.0.md): the
+earlier sanitizer runner accepted recoverable parser UBSan diagnostics. H1c
+fixes that capacity check and makes sanitizer errors fatal; its clean rerun
+supersedes the historical sanitizer claim below.
+
 H1b extends [H1a device admission](AI-COMPILER-H1A-GPU-DEVICE-SELECTION-v1.0.md)
 under [H20 plan v1.1](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.1.md)
 and [resource/memory design v0.3](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.3.md).

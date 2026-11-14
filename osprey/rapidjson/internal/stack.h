@@ -113,8 +113,10 @@ public:
     // Expansion is run very infrequently, so it is moved to another (probably non-inline) function.
     template<typename T>
     RAPIDJSON_FORCEINLINE void Reserve(size_t count = 1) {
-         // Expand the stack if needed
-        if (RAPIDJSON_UNLIKELY(stackTop_ + sizeof(T) * count > stackEnd_))
+        // An unallocated stack has zero capacity; do not form an offset from
+        // null or a pointer beyond the allocation while checking capacity.
+        if (RAPIDJSON_UNLIKELY(!stackTop_ ||
+            count > static_cast<size_t>(stackEnd_ - stackTop_) / sizeof(T)))
             Expand<T>(count);
     }
 
@@ -173,8 +175,10 @@ public:
     }
 
     bool Empty() const { return stackTop_ == stack_; }
-    size_t GetSize() const { return static_cast<size_t>(stackTop_ - stack_); }
-    size_t GetCapacity() const { return static_cast<size_t>(stackEnd_ - stack_); }
+    // No allocation means zero size, without subtracting null pointers.
+    inline size_t GetSize() const { return stack_ ? static_cast<size_t>(stackTop_ - stack_) : 0; }
+    // No allocation means zero capacity; existing-stack subtraction is valid.
+    inline size_t GetCapacity() const { return stack_ ? static_cast<size_t>(stackEnd_ - stack_) : 0; }
 
 private:
     template<typename T>

@@ -139,13 +139,13 @@ public:
     /* Complete snapshot identity binds pinned input plus all validated sections. */
     inline const std::string &Context_sha256() const { return _context_sha256; }
     /* Bounds-check a const resource fact; known must be tested by consumers. */
-    inline const DSL_GPU_RESOURCE_FACT *Resource(DSL_GPU_RESOURCE_FIELD field) const
+    inline const DSL_GPU_RESOURCE_FACT *Resource(int field) const
         { return field >= 0 && field < DSL_GPU_RESOURCE_COUNT ? &_resources[field] : NULL; }
     /* Bounds-check an execution quantity whose unit is fixed by the schema. */
-    inline const DSL_GPU_EXECUTION_FACT *Execution(DSL_GPU_EXECUTION_FIELD field) const
+    inline const DSL_GPU_EXECUTION_FACT *Execution(int field) const
         { return field >= 0 && field < DSL_GPU_EXECUTION_COUNT ? &_execution[field] : NULL; }
     /* Bounds-check a const usable-budget fact; zero reserved bytes can be known. */
-    inline const DSL_GPU_RESOURCE_FACT *Budget(DSL_GPU_BUDGET_FIELD field) const
+    inline const DSL_GPU_RESOURCE_FACT *Budget(int field) const
         { return field >= 0 && field < DSL_GPU_BUDGET_COUNT ? &_budget[field] : NULL; }
     /* Conditions are clock, power, ECC, cache regime and workload; empty=unknown. */
     inline const std::string *Condition(unsigned index) const

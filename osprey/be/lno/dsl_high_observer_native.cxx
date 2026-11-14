@@ -94,13 +94,19 @@ bool DSL_observer_native_binding(WN *scope, const DSL_HIGH_SEARCH_INPUT &input, 
     }
     reason = "native_binding_validated"; return true;
 }
-/* Retain the scoped estimated census, not an executable selected-plan handoff. */
+/* Retain the scoped estimated census and separate H1c physical component;
+ * neither generic cycle totals nor partial ns service certify device latency. */
 void DSL_observer_print(FILE *trace, const DSL_HIGH_SEARCH_REPORT &report, const DSL_HIGH_SEARCH_INPUT &input) {
     const VHO_MLA_SEARCH_RESULT &result = report.exploration;
     fprintf(trace,"AI_HIGH_SEARCH 1 BINDINGS manifest=%s\nAI_HIGH_SEARCH 1 RESOURCE_KEY %s\nAI_HIGH_SEARCH 1 MODEL_KEY %s\n",
         report.manifest_key.c_str(),report.resource_key.c_str(),report.model_key.c_str());
     for (unsigned i = 0; i < result.candidates.size(); ++i) {
         const VHO_MLA_SEARCH_CANDIDATE &candidate = result.candidates[i];
+        if(input.gpu.device.Bound()) for(size_t j=0;j<candidate.stages.size();++j) {
+            const VHO_MLA_STAGE_ESTIMATE &stage=candidate.stages[j];
+            fprintf(trace,"AI_HIGH_DEVICE_COST 1 candidate=%u stage=%lu physical_known=%u lower_ns=%.17g upper_ns=%.17g complete_cost=false ranking=legacy-reference-cycles\n",
+                i,(unsigned long)j,unsigned(stage.physical_hbm_known),stage.physical_hbm_lower_ns,stage.physical_hbm_upper_ns);
+        }
         fprintf(trace,"AI_HIGH_SEARCH 1 CANDIDATE ordinal=%u policy=%u width=%u evaluated=%s eligible=%s cycles=%llu reason=%s\n",
             i,candidate.policy,candidate.width,candidate.evaluated?"true":"false",candidate.eligible?"true":"false",
             (unsigned long long)candidate.total,candidate.reason.c_str());
@@ -189,7 +195,8 @@ uint64_t LNO_DSL_observer_time_us() {
 }
 
 /* The owner retains ordinary LNO on missing/refused input. Candidate execution
- * receives only owned data. An isolation invariant violation is a compiler
+ * receives only owned data including H1c evidence copied before exploration.
+ * An isolation invariant violation is a compiler
  * defect and aborts rather than continuing with potentially corrupted state. */
 void LNO_DSL_observe_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias, ARRAY_DIRECTED_GRAPH16 *graph,
     const DSL_HIGH_EPOCH &epoch, const DSL_HIGH_BINDINGS &bindings, const DSL_HIGH_SNAPSHOT &snapshot,
@@ -216,6 +223,7 @@ void LNO_DSL_observe_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias, ARRAY
     DSL_HIGH_SEARCH_INPUT input; DSL_HIGH_SEARCH_REPORT report; std::string reason;
     uint64_t begin = LNO_DSL_observer_time_us();
     bool valid = LNO_DSL_read_search_input(path,input,reason);
+    if(valid) {input.gpu.device = bindings.device;input.gpu.high_private_reuse = true;}
     if(valid && configuration.specified && !input.production_controls) {valid=false;reason="production_controls_required";}
     if(valid) valid=LNO_DSL_validate_search_input(snapshot,bindings,input,reason) && DSL_observer_native_binding(scope,input,reason);
     DSL_HIGH_REUSE_FACTS reuse;std::string reuse_reason="source_not_validated";
@@ -242,6 +250,7 @@ void LNO_DSL_observe_high(WN *scope, DU_MANAGER *du, ALIAS_MANAGER *alias, ARRAY
     uint64_t observer_us = LNO_DSL_observer_time_us()-boundary_begin;
     FmtAssert(unchanged,("read-only High observer changed native source/tables/analyses"));
     if(observed) {
+        input.gpu.device.Print(trace, "MLA", 0);
         report.reuse=reuse;
         if(selected_input) *selected_input=input;
         if(selected_report) *selected_report=report;
