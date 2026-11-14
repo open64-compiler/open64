@@ -1,6 +1,8 @@
 # S6-0d CKKS2C Detailed Execution Plan
 
-Status: active. PR #178 closed S6-0c at merged `develop` commit `f8d9f29d`.
+Status: **complete through D6.** PR #178 closed S6-0c at merged `develop`
+commit `f8d9f29d`; PR #186 merged the D4 grouped terminal boundary. D5 and D6
+are certified on the complete cached image without rerunning materialization.
 S6-0d starts from the separately reopenable, gatekeeper-approved
 `secure_resnet20.ckks_ops.B`; it does not rematerialize Conv, residual, ReLU,
 or tail semantics.
@@ -22,17 +24,28 @@ public ABI descriptors, and 147 dynamic bindings from the immutable S6-0c
 image. Those bindings comprise 146 private CKKS groups plus one zero-primitive
 representation-only `common.flatten`. The standard-only terminal artifact
 reopens with `ir_b2a -st -src`, unchanged `whirl2c` emits compilable C, and the
-trace executes exactly 147 selector/evaluator pairs. D5-D6 remain open.
+trace executes exactly 147 selector/evaluator pairs. D5 selects the same
+transaction through the backend codegen route. D6 certifies the
+provider-independent compiler closure and records the current ANT capability
+result for S6-1.
 
-The D5 option spelling is staged independently: the backend recognizes
-`-FHE:codegen=ckks2c|poly2c` but does not yet select a route. Invalid
-spellings reject before phase loading. For a valid explicit route, the backend
-defers component loading until after `Read_Global_Info()`; an FHE-bearing
-image then rejects with no CG load or fallback, while unrelated WHIRL loads
-its normal components and ignores the FHE-only option. An absent option keeps
-the original early component-loading order. The cached ten-PU CKKS image
-exercises this post-read gate, but D5 still needs the actual conformance gate,
-CKKS2C exit, and continuous POLY2C path.
+Durable evidence is retained at:
+
+- `artifacts/review/fhe/sync-6/s6-0d/d5/current/` for the selected route,
+  terminal `.B`/`.T`, C/report family, diagnostics, and occupied-destination
+  rejection;
+- `artifacts/review/fhe/sync-6/s6-0d/d6/current/` for the closure report,
+  generated trace/mock replay, exact-pin ANT audit, and hashes.
+
+The D5 option contract is `-FHE:codegen=ckks2c|poly2c`. Invalid spellings
+reject before phase loading. For a valid explicit route, the backend defers
+component loading until after `Read_Global_Info()`. A certified CKKS event
+image selected with `ckks2c` enters the D4 all-PU transaction, publishes
+`<input-stem>.ckks2c.B` last, and exits with `poly_entered=0`; an explicit
+`-FHE:checkpoint=` overrides only that destination. `poly2c` remains a
+fail-closed future continuation, never a retry. Unrelated WHIRL follows its
+normal path and ignores the FHE-only option. An absent option preserves the
+original component-loading order.
 
 ## Objective
 
@@ -81,8 +94,10 @@ actually justified.
    states the exact invalidated contract, why focused/cached evidence is
    insufficient, the input hashes, and the estimated duration.
 6. Do not run the call-only CKKS facade stub. It is a compile/link fixture, not
-   a second runtime mock. Run the existing public ABI mock at D4 and the actual
-   admitted ANT adapter only at D6.
+   a second runtime mock. Run the existing public ABI mock at D4/D6. The
+   current pinned ANT source probe must report `CAPABILITY_MISSING`; the actual
+   admitted adapter begins at S6-1 after a reviewed provider pin supplies the
+   required secretless import/export capabilities.
 7. Failed publication tests use fresh destinations and must prove that neither
    final names nor `.tmp` files survive. A stale-destination test must also
    prove the pre-existing final checksum is unchanged.
@@ -142,7 +157,7 @@ not trigger it.
 | S6D-T4 | Cached complete S6-0c `.B` collection/emission/audit; no rematerialization | target under 10 minutes | D2-D5 at review boundaries |
 | S6D-T5 | Public ABI-v1 generated C compile/run against the existing SYNC-5 mock | target under 10 minutes | D4 and public-group changes |
 | S6D-T6 | `openpy` option propagation and exactly-one-exit miniature lane | target under 15 minutes | D5 and driver/config changes |
-| S6D-T7 | ANT facade compile, capability admission, failure containment, resource/key policy | environment-dependent; predeclare if over 10 minutes | D6 adapter changes |
+| S6D-T7 | Immutable D4/D5 receipt verification, mock replay, and exact-pin ANT capability probe | target under 10 minutes | D6 closure and provider-admission changes |
 | S6D-T8 | Complete S6-0d ResNet codegen/publication/reopen certification | expensive and serialized; only after explicit impact proof | A change invalidates the matching complete-certification receipt, or closure has no matching receipt |
 
 S6D-T8 consumes the accepted `.ckks_ops.B`; it is not another S6-0c
@@ -190,7 +205,7 @@ not be replaced silently with a full model run.
 | S6D-T4 | Verify accepted hashes, reopen cached `.B`, emit private C/report, compile, and run the independent complete-image audit |
 | S6D-T5 | `bash osprey/be/vho/tests/fhe_ckks2c_group_join_test.sh /private/tmp/open64-fhe-impactful/ckks2c-group-join` |
 | S6D-T6 | `bash osprey/driver/tests/openpy_fhe_ckks2c_exit_test.sh /private/tmp/open64-fhe-impactful/ckks2c-driver` |
-| S6D-T7 | `bash osprey/libopen64fhe/tests/fhe_ckks2c_ant_admission_test.sh /private/tmp/open64-fhe-impactful/ckks2c-ant` |
+| S6D-T7 | `bash osprey/libopen64fhe/tests/fhe_sync6_s6_0d_closure_test.sh <output-dir> <d4-receipt-dir> <d5-route-dir> <pinned-ace-root>`; the nested exact-pin probe must report `CAPABILITY_MISSING` until S6-1 |
 | S6D-T8 | When selected by documented impact proof, run the retained `openpy -O0 -keep -FHE:codegen=ckks2c` ResNet command, followed by separate-process `ir_b2a -st -src`, C compile/link, ABI-mock comparison, hashes, and negative cleanup audit; otherwise verify and cite the matching receipt |
 
 ### Per-commit report template
@@ -475,12 +490,15 @@ authenticated join and no ABI change.
 
 ### D5: Add the continuous backend selector
 
+**Status: complete.**
+
 **Code**
 
 - Add the reviewed `-FHE:codegen=ckks2c|poly2c` contract and propagate it
   through normal `openpy` option handling.
-- Select exactly once after the CKKS conformance gate. `ckks2c` emits and exits;
-  `poly2c` continues toward CKKS-to-POLY when that path exists.
+- Select exactly once after mapped-image inspection and the CKKS event gate.
+  `ckks2c` reuses the D4 all-PU transaction, emits, and exits; `poly2c`
+  continues toward CKKS-to-POLY only when that path exists.
 - The initial `openpy -O0` production invocation selects `ckks2c` explicitly.
 - Never retry the other route after failure.
 
@@ -489,31 +507,39 @@ authenticated join and no ABI change.
 - Option parsing/forwarding with unrelated Open64 options.
 - Exactly-one-exit traces, no POLY entry under CKKS2C, and no fallback on an
   unsupported primitive or provider capability.
-- `openpy -keep -O0` retains the CKKS input, private/public C, reports, logs,
-  and hashes.
+- The cached complete CKKS image retains its input, terminal standard `.B`,
+  source-interleaved `.T`, private/public C, reports, logs, and hashes without
+  rerunning materialization.
 
 **Exit**
 
 The driver exposes one continuous CKKS-to-C/POLY staging path with the reviewed
 early exit.
 
-### D6: Admit the ANT adapter and close S6-0d
+### D6: Close the provider-independent compiler boundary
+
+**Status: complete.** This closes S6-0d, not all of SYNC-6.
 
 **Code**
 
-- Implement the facade over an immutable, capability-audited ANT ACE pin.
-- Keep context, asset, ciphertext, and evaluation-key import explicit and the
-  server secretless.
-- Map all facade operations, including context-specific bootstrap target levels
-  15/17/18, without hidden state repair.
+- Reconcile the immutable D4 public-ABI receipt with the D5-selected CKKS2C
+  family and emit one readable closure report.
+- Run the exact pinned ANT source admission probe as a separate provider gate.
+  The current pin must remain `CAPABILITY_MISSING`; do not call its
+  key-generating/decrypting context path from the compiler closure.
+- Preserve the facade and generated private evaluator as the provider adapter
+  boundary. Implementation against an evaluation-only ANT context, public
+  keys, ciphertext import, and ciphertext export belongs to S6-1 after a new
+  immutable provider pin is reviewed.
 
 **Tests**
 
-- Compile the complete evaluator and public application.
-- First compare the public application through the existing Open64 ABI mock;
-  run the ACE-shaped adapter only at this terminal provider gate.
-- Certify capability admission, key/bootstrap support, resource cleanup,
-  failure containment, and absence of server secret material.
+- Verify immutable D4 and D5 hashes and execute the 147-operation trace against
+  the existing Open64 ABI mock.
+- Recheck wrong ordinal, missing resource, missing coefficient, and wrong
+  handle failures.
+- Require the deterministic ANT probe to verify the exact pin and report
+  `CAPABILITY_MISSING`; a false positive admission fails the closure test.
 - Retain `.ckks_ops.B`, `ir_b2a -st -src` `.T`, both C families, side assets,
   reports, commands, diagnostics, and hashes.
 
@@ -521,9 +547,10 @@ early exit.
 
 S6-0d is complete when `openpy -O0` selects CKKS2C, the complete ResNet-20 C
 family publishes atomically, the frozen public ABI schedule agrees with
-SYNC-5, and all negative failures leave no valid-looking output. Full encrypted
-client/server numerical acceptance remains the following SYNC-6 provider
-milestone unless performed as part of this gate.
+SYNC-5, and all negative failures leave no valid-looking output. This is a
+provider-independent compiler closure. S6-1 must replace the current
+`CAPABILITY_MISSING` pin before any claim of ANT adapter admission, secretless
+server execution, or encrypted numerical acceptance.
 
 ## Ownership And Coordination
 

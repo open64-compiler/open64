@@ -56,14 +56,14 @@ def graph_image(path):
 
 
 def review(args):
-    """Exercise automatic selected routing, refusal isolation and graph repair.
+    """Exercise selected routing, foreign FHE options, refusal and graph repair.
     Retain every command/diagnostic, original image and full native trace diff.
     """
     out=args.output.resolve();out.mkdir(parents=True,exist_ok=False);(out/'logs').mkdir()
     tools=args.tools.resolve();previous=args.previous.resolve();source=Path('/src/osprey/torch2whirl/python/tests/models/absorbed_mla.py')
     env=dict(os.environ,LD_LIBRARY_PATH=':'.join(map(str,[tools/'be',tools/'wopt',tools/'lno'])))
     env.pop('OPEN64_HIGH_SEARCH_BINDINGS',None);env.pop('OPEN64_HIGH_APPLY_TEST',None)
-    commands=[];report=dict(status='RUNNING',production={},fallback={},manifest_refusals={},dependence={},gpu_execution=False)
+    commands=[];report=dict(status='RUNNING',production={},fallback={},foreign_options={},manifest_refusals={},dependence={},gpu_execution=False)
 
     def run(label,argv,expected=0,baseline=False):
         """Capture the exact process result before checking it; no shell calls."""
@@ -187,6 +187,17 @@ def review(args):
         run(context+'-cuda',[tools/'whirl2c/whirl2c','-cuda','-TARG:abi=n64','-O0','-CLIST:dotc_file='+str(cu),
             '-CLIST:doth_file='+str(case/'kernels.h'),case/'selected.low.B'])
         assert 'Selected High MLA' in cu.read_text() and 'No global score/probability vectors' in cu.read_text()
+        # FHE's terminal selector is image-owned. Forwarded FHE options must
+        # leave a non-FHE MLA image on the same single selected AI route.
+        for route in ('ckks2c','poly2c'):
+            _,foreign_trace,foreign_dir,result=backend(context+'-foreign-fhe-'+route,context,device=True,
+                extra=['-FHE:codegen='+route])
+            assert foreign_trace.read_bytes()==base_trace.read_bytes()
+            assert result.stderr.count('AI_HIGH_DEVICE 1 PUBLISHED')==1 and 'FHE-CKKS2C-ROUTE:' not in result.stderr
+            foreign=json.loads((foreign_dir/'pu-0/selected.complete.json').read_text())
+            assert foreign['status']=='PASS' and foreign['search_invocations']==0
+            report['foreign_options'][context+'-'+route]=dict(host_full_T_equal=True,selected_products=1,
+                selected_search_invocations=0,FHE_route_entered=False)
         for mode,helper in [('missing',out/'does-not-exist'),('failed',Path('/bin/false')),('incomplete',Path('/bin/true'))]:
             refused,refused_trace,refused_dir,result=backend(context+'-'+mode,context,device=True,helper=helper)
             assert 'AI_HIGH_DEVICE 1 REFUSED' in result.stderr and refused_trace.read_bytes()==base_trace.read_bytes()
