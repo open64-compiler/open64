@@ -46,15 +46,16 @@ POLY2C consumes verified POLY IR, never the `.ckks_ops.B` image directly.
 Neither selection may silently substitute for the other after an operation,
 state, key, asset, or provider failure.
 
-Proposed driver contract (not yet implemented): `openpy` accepts
+Driver contract: `openpy` accepts
 `-FHE:codegen=ckks2c|poly2c`, forwards the complete option set through the
 normal Open64 driver path, and the backend owns the single post-CKKS choice.
-`ckks2c` requests the early exit; `poly2c` requests continuation. The
-initial `-O0` FHE invocation explicitly selects `ckks2c`. The option spelling,
-default, and unsupported-mode diagnostics require main/driver review before
-being treated as a shipped interface. The current `config_fhe` group has no
-such selector, and `openpy` currently ends after `be`; this paragraph is a
-design/implementation requirement, not a claim that the command works today.
+`ckks2c` requests the D4 all-PU terminal transaction and early exit;
+`poly2c` requests continuation but remains fail-closed until verified POLY IR
+and POLY2C exist. The initial `-O0` FHE invocation explicitly selects
+`ckks2c`. Selection occurs only after mapped-image inspection proves a CKKS
+event image; unrelated WHIRL ignores the FHE-only option. The selected route
+prints one entry and one exit record with `poly_entered=0` and never retries
+the other route.
 
 ## Open64 Stage Boundary
 
@@ -138,22 +139,22 @@ The executable commit-by-commit form of this sequence is maintained in
    certification lane. In a separate copy/reopen path, lower the same input
    CKKS groups to the frozen public ABI C; cross-check both outputs before
    atomic publication.
-4. Implement the ANT facade against a reviewed immutable ACE pin. Certify
-   evaluation-only context, ciphertext and key import/export, all required
-   primitives and bootstrap, failure containment, resource release, and
-   absence of server-side secret material. Any missing function or key
+4. Close provider-independent S6-0d by compiling the complete private ResNet
+   evaluator, linking the unchanged six-PU ABI-v1 application C, comparing its
+   87/147 public schedule to the ABI mock, and retaining the exact pinned ANT
+   `CAPABILITY_MISSING` report as the next-milestone boundary.
+5. At S6-1, implement the ANT facade against a new reviewed immutable ACE pin.
+   Certify evaluation-only context, ciphertext and key import/export, all
+   required primitives and bootstrap, failure containment, resource release,
+   and absence of server-side secret material. Any missing function or key
    capability is a provider blocker, not a compiler rewrite opportunity.
-5. Compile the complete private ResNet evaluator and link the unchanged
-   six-PU ABI-v1 application C. Compare its 87/147 public schedule and
-   ciphertext result identities to the ABI mock; then run real encrypted
-   client/server acceptance separately. Retain C, compile/link commands,
-   `.B`/`ir_b2a -st -src` `.T`, side data, provenance report, and hashes.
-6. Add driver/backend selection tests: `openpy` must forward the selected
+6. Driver/backend selection tests require `openpy` to forward the selected
    mode, `ckks2c` must exit before CKKS-to-POLY, and an unsupported emitter
    operation must fail without output or a POLY2C retry. Once the continuing
    path exists, test that `poly2c` starts from the same verified CKKS gate,
    enters CKKS-to-POLY exactly once, and reaches POLY2C only with verified
-   POLY IR. Neither mode may publish partial output on failure.
+   POLY IR. Neither mode may publish partial output on failure. D5 certifies
+   the early exit; the continuing path remains a future POLY milestone.
 
 Negative tests must reject a CKKS node without a selected facade operation,
 wrong direct operand/result type, missing asset or checksum, missing rotation
@@ -168,6 +169,9 @@ The FHE task owns the private CKKS operation selection, emitter semantics,
 ACE facade consumption, and certification. Main/common owns the grouped
 native mutation, mapped-image status policy, and any shared codegen hook.
 Because this stage differs from the present ANT POLY-to-C implementation,
-it requires an explicit ACE facade review before promising an ANT-linked
-pre-POLY executable. Until then, S6-0d remains blocked even if S6-0c emits
-a complete CKKS graph.
+provider admission remains separate from the provider-independent S6-0d
+compiler closure. S6-0d may close with the generated evaluator, standard
+WHIRL/public ABI sibling, and existing mock when the exact pinned ANT probe
+continues to report `CAPABILITY_MISSING`. S6-1 remains blocked until a reviewed
+ACE pin supplies an evaluation-only context, non-secret key import, and
+ciphertext input/output transport; no S6-0d result implies ANT execution.
