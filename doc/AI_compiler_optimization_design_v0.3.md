@@ -2,6 +2,14 @@ AI compiler optimization design
 
 Version v0.3 | Living design skeleton | Draft for continuous expansion
 
+2026-11-12 KV reuse-group amendment:
+[KV reuse-group planning v0.1](AI-COMPILER-KV-REUSE-GROUP-DESIGN-v0.1.md)
+defines precision-aware storage, independent query-consumer state, final-reader
+release and complete reuse-versus-parallelism profitability. The
+[KVR0-KVR5 queue](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#kv-reuse-group-implementation-increment)
+states actionable tests and phase summaries. All gates remain open; no native
+FP8, Attention lowering or H20 performance result is claimed.
+
 Scope: AI memory hierarchy optimization architecture, research opportunity mapping, common optimization IR substrate, AI-domain-specific extensions, candidate generation, profitability analysis, and implementation priorities.
 
 2026-10-28 LayerNorm native-contract design:
