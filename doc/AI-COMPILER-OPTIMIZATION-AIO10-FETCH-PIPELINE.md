@@ -1,5 +1,20 @@
 # AIO-10 Fetch And Async-Pipeline Contract
 
+## H20 design follow-on, 2026-11-12
+
+The [v0.2 resource/memory design](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.2.md)
+adds a planned comparison of direct/cooperative/qualified async supply,
+independent raw/decoded depths, exact generations and all-consumer completion.
+Joint P7/P8/P9 costing must include preparation, dequantization, SMEM service,
+occupancy, waves and startup/drain; deeper buffering is not a default winner.
+[H0-H8 delivery](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.0.md)
+keeps estimation detached and materializes only a selected supported plan.
+Current fetch/physical-plan owner paths are under osprey/be/vho; historical
+common/com paths below predate the
+[owner relocation](DSL-BACKEND-OWNERSHIP-RELOCATION.md). No new pipeline or
+H20 speedup is claimed by this amendment.
+
+
 ## Purpose
 
 ### P8 Enhancement Note 2026-10-27

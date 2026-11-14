@@ -1,5 +1,18 @@
 # AIO-9 Hierarchical Tile-Plan Contract
 
+## H20 design follow-on, 2026-11-12
+
+The [v0.2 resource/memory design](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.2.md)
+and [H20 plan](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.0.md)
+keep P7.0-P7.11 as jointly refined candidate views through P8/P9 selection.
+Extend transaction maps, head/query/reduction ownership, raw/decoded capacity
+and CTA coverage across four operator families; preserve numerical gates and
+select only implemented materializers. H20 96 GB resource/calibration import
+is planned. Current tile-plan owner paths are under osprey/be/vho; historical
+common/com paths below predate the
+[owner relocation](DSL-BACKEND-OWNERSHIP-RELOCATION.md).
+
+
 ## Purpose
 
 AIO-9 implements the first check-only AI-P7 vertical slice. It constructs a

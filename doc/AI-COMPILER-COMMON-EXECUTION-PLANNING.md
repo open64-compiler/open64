@@ -2,6 +2,19 @@
 
 Version v0.1 | 2026-10-27 | Adopted architecture; general implementation pending
 
+## H20 four-family design update, 2026-11-12
+
+[Optimization design v0.9](AI_compiler_optimization_design_v0.9.md) applies the
+existing Work Partition, Resource Lifetime and Execution Events abstractions
+to confirmed H20 96 GB servers. The
+[v0.2 resource/memory design](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.2.md)
+jointly evaluates reuse, coverage, raw/decoded storage, transfer and compute
+service for GEMM, MLA, LayerNorm and Reduction. This proposed extension uses
+WHIRL opcodes, tensor traits and the existing owned planning records. Open64
+analyses and phase verifiers enforce native numerical contracts, phase/scope
+ownership, two-phase search and Q3 publication. H20 measurements and new
+materializers are pending.
+
 ## 1. Decision And Scope
 
 Adopt the colleague's three abstractions, **Work Partition**, **Resource

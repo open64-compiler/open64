@@ -10,6 +10,17 @@ granularities. Current registry revision2 preserves performance values while
 adding a mixed-provenance resource envelope; joint model6 consumes it.
 Revision1/model5 receipts below remain historical, not current producer output.
 
+## H20 follow-on design, 2026-11-12
+
+The [v0.2 memory/resource proposal](AI-COMPILER-HARDWARE-RESOURCE-AND-MEMORY-PLANNING-DESIGN-v0.2.md)
+now defines the planned device/partition and measured execution-profile
+extension for confirmed H20 96 GB servers across GEMM, MLA, LayerNorm and
+Reduction. Exact ISA lookup remains separate from SKU resources and calibrated
+service. Existing estimated rows, structs, reference_cycles and option meanings
+remain unchanged; profile import and hardware discovery are not implemented
+by this documentation. See H0-H3 in the
+[implementation plan](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.0.md).
+
 ## Principle
 
 LN3 scalar follow-on: the optional runtime-only
