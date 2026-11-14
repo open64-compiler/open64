@@ -65,6 +65,8 @@
  * ====================================================================
  */
 
+/* LN4's opt-in request checkpoint owns PU lifetimes here, not in WOPT.
+ * Design: doc/AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md. */
 #include <sys/types.h>
 #include "../../common/ir_image/dsl_image_service.h"
 #include "../com/dsl_pu_interface_verify.h"
@@ -81,6 +83,10 @@
 #include <string>
 #include <vector>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+#include <errno.h>
 #ifndef __MINGW32__
 #include <libgen.h>
 #endif
@@ -112,6 +118,18 @@
 #include "config_list.h"	    /* for List_Enabled, etc. */
 #include "config_clist.h"        /* for CLIST_cuda */
 #include "config_dsl.h"          /* for the AI trace control */
+#include "normalization_driver.h"
+#include "quantized_driver.h"
+#include "../lno/dsl_q1_preopt.h"
+#include "opt_dsl_normalization_request.h"
+
+#if defined(SHARED_BUILD) && !defined(BUILD_FAST_BIN) && \
+    (defined(__linux__) || defined(BUILD_OS_DARWIN) || defined(__CYGWIN__) || defined(__MINGW32__))
+extern const WOPT_DSL_NORMALIZATION_DRIVER_API *WOPT_DSL_normalization_driver_api_p;
+#define BE_DSL_NORMALIZATION_API WOPT_DSL_normalization_driver_api_p
+#else
+#define BE_DSL_NORMALIZATION_API (&WOPT_DSL_normalization_driver_api)
+#endif
 #include "config_lno.h"		    /* for LNO_Run_Lego, etc. */
 #include "config_cache.h"           /* for Mhd and Mhd_Options */
 #include "config_product.h"         /* for so names, etc. */
@@ -143,6 +161,8 @@
 #include "fb_whirl.h"		    /* for FEEDBACK */
 #include "eh_region.h"		    /* for EH_Generate_Range_List, etc. */
 #include "vho_lower.h"
+#include "../vho/tensor_selected_key.h"
+#include "../vho/tensor_quantized_device.h"
 #include "dsl_lower.h"
 #include "dsl_shape_refine.h"
 #include "../com/dsl_program_interface_internal.h"
@@ -452,6 +472,8 @@ static BOOL need_fhe_checkpoint_output = FALSE;
 static BOOL need_fhe_materialization_output = FALSE;
 static BOOL need_fhe_runtime_lower_output = FALSE;
 static UINT32 cuda_emitted_pu_count = 0;
+static UINT32 normalization_host_emitted_pu_count = 0;
+static BOOL normalization_host_selected = FALSE;
 static Output_File *ir_output = 0;
 static char *fhe_checkpoint_temp_name = NULL;
 static BOOL fhe_codegen_owns_checkpoint_output = FALSE;
@@ -566,7 +588,7 @@ Cleanup_DSL_PU_Specialization_Checkpoint (void)
   free(dsl_pu_checkpoint_temp_name);
   dsl_pu_checkpoint_temp_name = NULL;
 }
-
+/* Release committed checkpoint state; free the terminal path only when driver-owned. */
 static void
 Release_FHE_Conversion_Checkpoint (void)
 {
@@ -781,11 +803,33 @@ Open_FHE_Runtime_Lowering_Checkpoint (void)
              fhe_checkpoint_temp_name));
 }
 
+/* Select normal phases or an explicit terminal checkpoint; checkpoint requests
+ * load only their required components and must not fall through into CG. */
 static void
 load_components (INT argc, char **argv)
 {
     INT phase_argc;
     char **phase_argv;
+
+    const BOOL normalization_checkpoint = VHO_DSL_Normalization_Request != NULL ||
+                                          VHO_DSL_Normalization_Output != NULL;
+    FmtAssert(!VHO_DSL_Normalization_Mode || normalization_checkpoint,
+              ("normalization_mode requires the LN4 request checkpoint"));
+    FmtAssert(!VHO_DSL_Normalization_Host_Entry || (Run_w2c && !CLIST_cuda && !Run_w2fc_early && !normalization_checkpoint),
+              ("normalization_host_entry requires ordinary whirl2c extraction"));
+    if (normalization_checkpoint) {
+      FmtAssert(VHO_DSL_Normalization_Request != NULL && VHO_DSL_Normalization_Output != NULL &&
+                VHO_DSL_GPU_Arch != NULL && Opt_Level >= 3 &&
+                !FHE_Checkpoint_Enabled() && !DSL_PU_Specialization_Checkpoint_Enabled() &&
+                VHO_DSL_CUDA_Whirl_Output == NULL && VHO_DSL_CUDA_Tile_Output == NULL &&
+                !Run_ipl && !Run_ipsaopt,
+                ("LN4 request requires paired options, gpu_arch, O3 and no conflicting checkpoint"));
+      Run_lno = Run_autopar = Run_Distr_Array = FALSE;
+      Run_preopt = Run_wopt = Run_vsaopt = Run_ipsaopt = FALSE;
+      Run_cg = Run_w2c = Run_w2f = Run_w2fc_early = Run_ipl = FALSE;
+      VHO_DSL_Enable_WOPT = FALSE;
+      Emit_Global_Data = FALSE;
+    }
 
     UINT32 fhe_checkpoint_count =
         (FHE_Conversion_Checkpoint_Enabled() ? 1 : 0) +
@@ -813,7 +857,7 @@ load_components (INT argc, char **argv)
 	  || Run_preopt || Run_cg || Run_w2c || Run_w2f
           || Run_w2fc_early || Run_ipl) &&
         !FHE_Checkpoint_Enabled() &&
-        !DSL_PU_Specialization_Checkpoint_Enabled())
+        !DSL_PU_Specialization_Checkpoint_Enabled() && !normalization_checkpoint)
       Run_cg = TRUE;		    /* if nothing is set, run CG */
 
     if (Run_cg || Run_lno || Run_autopar) {
@@ -840,7 +884,7 @@ load_components (INT argc, char **argv)
 
     if ((Run_wopt || (Run_vsaopt || Run_ipsaopt))
         || Run_preopt || Run_lno || Run_autopar ||
-        VHO_DSL_Enable_WOPT) {
+        VHO_DSL_Enable_WOPT || normalization_checkpoint) {
       Get_Phase_Args (PHASE_WOPT, &phase_argc, &phase_argv);
 #if !defined(BUILD_FAST_BIN)
       load_so (WOPT_SO_NAME, WOPT_Path, Show_Progress);
@@ -920,7 +964,7 @@ Phase_Init (void)
     if (Run_cg)
 	CG_Init ();
     if ((Run_wopt || (Run_vsaopt || Run_ipsaopt)) || Run_preopt ||
-        VHO_DSL_Enable_WOPT)
+        VHO_DSL_Enable_WOPT || VHO_DSL_Normalization_Request != NULL)
 	Wopt_Init ();
     if (Run_ipl)
 	Ipl_Init ();
@@ -932,6 +976,7 @@ Phase_Init (void)
         FmtAssert(!CLIST_cuda || !Run_w2fc_early,
                   ("whirl2c -cuda does not support early source emission"));
         cuda_emitted_pu_count = 0;
+        normalization_host_emitted_pu_count = 0;
 	W2C_Outfile_Init (!CLIST_cuda/*emit_global_decls*/);
     }
     if (Run_w2f)
@@ -976,14 +1021,14 @@ Phase_Init (void)
 	Write_BE_Maps = TRUE;
 	// Output IR after preopt to .P file, and IR after LNO to .N file.
 	if (Run_lno)
-	    ir_output = Open_Output_Info(New_Extension(output_file_name,".N"));
+	    ir_output = BE_DSL_q1_terminal()?Open_Standard_Only_Output_Info(New_Extension(output_file_name,".N"),(PU_Info *)Global_PU_Tree):Open_Output_Info(New_Extension(output_file_name,".N"));
 	else
-	    ir_output = Open_Output_Info(New_Extension(output_file_name,".P"));
+	    ir_output = BE_DSL_q1_terminal()?Open_Standard_Only_Output_Info(New_Extension(output_file_name,".P"),(PU_Info *)Global_PU_Tree):Open_Output_Info(New_Extension(output_file_name,".P"));
     }
     if (!FHE_Checkpoint_Output_Active() && need_wopt_output) {
 	Write_ALIAS_CLASS_Map = TRUE;
 	Write_BE_Maps = TRUE;
-	ir_output = Open_Output_Info(New_Extension(output_file_name,".O"));
+	ir_output = BE_DSL_q1_terminal()?Open_Standard_Only_Output_Info(New_Extension(output_file_name,".O"),(PU_Info *)Global_PU_Tree):Open_Output_Info(New_Extension(output_file_name,".O"));
     }
     if (!FHE_Checkpoint_Output_Active() && need_ipl_output) {
 	Write_BE_Maps = FALSE;
@@ -1012,6 +1057,7 @@ Phase_Init (void)
 } /* Phase_Init */
 
 
+/* Finalize exactly the components initialized for the selected driver route. */
 static void
 Phase_Fini (void)
 {
@@ -1022,6 +1068,8 @@ Phase_Fini (void)
 	W2C_Outfile_Fini (!CLIST_cuda/*emit_global_decls*/);
         FmtAssert(!CLIST_cuda || cuda_emitted_pu_count != 0,
                   ("whirl2c -cuda found no device-attributed PU"));
+        FmtAssert(!VHO_DSL_Normalization_Host_Entry || normalization_host_emitted_pu_count == 1,
+                  ("LN4 host extraction requires exactly one verified dispatch PU"));
     }
     if (Run_w2f)
 	W2F_Outfile_Fini ();
@@ -1036,7 +1084,7 @@ Phase_Fini (void)
     if (Run_ipl)
 	Ipl_Fini ();
     if ((Run_wopt || (Run_vsaopt || Run_ipsaopt)) || Run_preopt ||
-        VHO_DSL_Enable_WOPT)
+        VHO_DSL_Enable_WOPT || VHO_DSL_Normalization_Request != NULL)
 	Wopt_Fini ();
     if (Run_cg)
 	CG_Fini ();
@@ -1319,7 +1367,11 @@ LNO_Processing (PU_Info *current_pu, WN *pu)
 	  RID_set_print(TFile,REGION_get_rid(rwn));
 	}
       } else if (Run_preopt) {
+        DSL_Q1_PREOPT_SESSION q1_session(rwn);
+        q1_session.Before(rwn);
 	rwn = Perform_Preopt_Optimization(pu, rwn);
+        if(q1_session.Active()) Set_PU_Info_tree_ptr(current_pu,rwn);
+        q1_session.After(rwn);q1_session.Invalidate();
 	Check_for_IR_Dump(TP_GLOBOPT, rwn, "PREOPT");
 	if (Get_Trace(TP_REGION,TT_REGION_ALL)) {
 	  fprintf(TFile,"===== After PREOPT (:p), %s %d, stacked=%d\n",
@@ -1382,7 +1434,9 @@ Post_LNO_Processing (PU_Info *current_pu, WN *pu)
      */
     if (Run_w2c && !Run_w2fc_early) {
         if (CLIST_cuda ? is_cuda_device_pu :
-            (W2C_Should_Emit_Nested_PUs() || is_user_visible_pu)) {
+            (VHO_DSL_Normalization_Host_Entry ?
+             normalization_host_selected :
+             (W2C_Should_Emit_Nested_PUs() || is_user_visible_pu))) {
             VHO_FHE_UNLOWERED_GATE_RESULT gate_result;
             FmtAssert(VHO_FHE_Unlowered_Gate_Program_Unit
                           (current_pu, pu, stderr, &gate_result),
@@ -1392,6 +1446,8 @@ Post_LNO_Processing (PU_Info *current_pu, WN *pu)
             W2C_Outfile_Translate_Pu(pu, !CLIST_cuda/*emit_global_decls*/);
             if (CLIST_cuda)
                 ++cuda_emitted_pu_count;
+            if (VHO_DSL_Normalization_Host_Entry)
+                ++normalization_host_emitted_pu_count;
         }
     }
     if (Run_w2f && !Run_w2fc_early) {
@@ -1782,9 +1838,49 @@ static void Update_EHRegion_Inito (WN *pu) {
   Update_EHRegion_Inito_Used (pu);
 }
 
+/* A sealed Low device product is already executable source-emission input.
+ * Verify it in the driver-owned active PU before any VHO/ABI/address rewrite;
+ * never recertify a changed product inside a source printer. Other inputs
+ * retain their existing pipeline. No new be.so dependency is introduced.
+ * Contract: doc/AI-COMPILER-SEARCH-M5-DEVICE-BRIDGE-v1.0.md. */
+#include "selected_device_driver.inc"
+
+static BOOL
+BE_tensor_selected_cuda_input(WN *pu)
+{
+    if(!pu || WN_operator(pu)!=OPR_FUNC_ENTRY) return FALSE;
+    const char *level=ST_tensor_metadata(WN_st_idx(pu),"tensor.bridge.level");
+    const char *schema=ST_tensor_metadata(WN_st_idx(pu),"tensor.bridge.schema");
+    const char *stamp=ST_tensor_metadata(WN_st_idx(pu),"tensor.bridge.key");
+    const BOOL q6c=ST_tensor_metadata(WN_st_idx(pu),"tensor.q6c.schema")!=NULL;
+    if(q6c) level=ST_tensor_metadata(WN_st_idx(pu),"tensor.q6c.level");
+    if(!q6c && !level && !schema && !stamp) return FALSE;
+    FmtAssert(q6c || (schema && !strcmp(schema,"selected-mla-native-v1")),("unsupported selected bridge schema"));
+    FmtAssert(Run_w2c && CLIST_cuda && !Run_lno && !Run_preopt && !Run_wopt &&
+        !Run_vsaopt && !Run_ipsaopt && !Run_cg && !Run_ipl && !VHO_DSL_Enable_WOPT &&
+        !Instrumentation_Enabled && level && !strcmp(level,"low"),
+        ("selected bridge input requires CUDA-only emission of verified Low WHIRL"));
+    try {
+#ifdef KEY
+        FmtAssert(OPT_Cyg_Instrument==0,("selected bridge CUDA does not admit instrumentation"));
+#endif
+        if(q6c) VHO_q6c_check_key(pu,"low");
+        else FmtAssert(stamp && VHO_tensor_bridge_key(pu)==stamp,("selected bridge driver rejected stale Low WHIRL"));
+    } catch(const std::exception &error) {
+        FmtAssert(FALSE,("selected bridge driver key: %s",error.what()));
+    }
+    return TRUE;
+}
+
+/* Run ordinary active-PU backend phases, or print an already verified Low
+ * bridge product without introducing another algorithm/ABI transformation. */
 static void
 Backend_Processing (PU_Info *current_pu, WN *pu)
 {
+    if(BE_tensor_selected_cuda_input(pu)) {
+        Post_LNO_Processing(current_pu,pu);
+        return;
+    }
     {
 	/* Always process the first PU for fill-align, since that one contains
 	 * the pragmas for global symbols. And, because of IPA, we cannot
@@ -1884,6 +1980,7 @@ Backend_Processing (PU_Info *current_pu, WN *pu)
     }
 
     /* First round output (.N file, w2c, w2f, etc.) */
+    BE_DSL_selected_device(current_pu,pu);
     Set_Error_Phase ( "Post LNO Processing" );
     Post_LNO_Processing (current_pu, pu);
     if (!(Run_wopt || (Run_vsaopt || Run_ipsaopt)) && !Run_cg) return;
@@ -2017,6 +2114,8 @@ BOOL Walk_And_Insert_Init_Buf(WN* wn, WN* block)
 }
 #endif
 
+/* Driver establishes one active PU. Explicit LN4 host extraction validates its
+ * high-level ABI here, before ordinary return lowering; no cross-PU inference. */
 static WN *
 Preprocess_PU (PU_Info *current_pu)
 {
@@ -2089,7 +2188,9 @@ Preprocess_PU (PU_Info *current_pu)
     Current_Map_Tab = PU_Info_maptab(current_pu);
     Current_pu = &PU_Info_pu(current_pu);
     CURRENT_SYMTAB = PU_lexical_level(*Current_pu);
-    if ((PU_is_nested_func(*Current_pu) && PU_mp(*Current_pu)) ||
+    if (BE_DSL_q1_resident(current_pu)) {
+      Restore_Local_Symtab(current_pu);Cur_PU_Feedback=NULL;
+    } else if ((PU_is_nested_func(*Current_pu) && PU_mp(*Current_pu)) ||
         Is_Set_PU_Info_flags(current_pu, PU_IS_DRA_CLONE)) {
       is_mp_nested_pu = TRUE;
       // hack to restore nested PU's symtab
@@ -2121,6 +2222,16 @@ Preprocess_PU (PU_Info *current_pu)
    * (WN *) is calculated by Read_Local_Info().
    */
   pu = PU_Info_tree_ptr(current_pu);
+
+  // Validate high-level call/capture/return before ordinary return lowering
+  // replaces negative return pregs and RETURN_VAL with ABI-specific forms.
+  normalization_host_selected = FALSE;
+  if (VHO_DSL_Normalization_Host_Entry &&
+      !strcmp(ST_name(St_Table[PU_Info_proc_sym(current_pu)]), VHO_DSL_Normalization_Host_Entry)) {
+    FmtAssert(BE_DSL_normalization_host_matches(current_pu, VHO_DSL_Normalization_Host_Entry),
+              ("LN4 host extraction rejected a malformed dispatch PU"));
+    normalization_host_selected = TRUE;
+  }
 
   /* store original pu name */
   Orig_PU_Name = Get_Orig_PU_Name(current_pu);
@@ -2175,6 +2286,10 @@ Preprocess_PU (PU_Info *current_pu)
     Lowering_Initialize();
   }
 
+  /* Keep fixed native Low expressions and collective return ABI intact. The
+   * ordinary read/context/trace/symbol lifetime setup above still applies. */
+  if(BE_tensor_selected_cuda_input(pu)) return pu;
+
 #ifdef KEY
   if (Early_Goto_Conversion &&
        // bug 14188: by default, disabled for fortran
@@ -2222,6 +2337,14 @@ Preprocess_PU (PU_Info *current_pu)
   }
 #endif
 
+  if (BE_DSL_q1_terminal() && BE_DSL_q1_resident(current_pu)) {
+    pu=BE_DSL_q1_route(current_pu,pu,stderr);
+    pu=VHO_Lower_Driver(current_pu,pu);
+    pu=Adjust_Opt_Level(current_pu,pu,ST_name(PU_Info_proc_sym(current_pu)));
+    if(wopt_loaded) Create_Restricted_Map(MEM_pu_nz_pool_ptr);
+    if(!w2c_only) REGION_Initialize(pu,FALSE);
+    return pu;
+  }
   if (need_fhe_runtime_lower_output || need_fhe_materialization_output ||
       FHE_CKKS2C_Checkpoint_Input_Active()) {
     Set_Error_Phase ( "FHE Projected-IR Admission" );
@@ -2905,7 +3028,7 @@ extern "C" {
 }
 
 #ifndef LD_PLUGIN_REMOVE_MAIN
-
+/* Own PU/phase lifetime; image-selected FHE exits remain separate from PU-local AI selection. */
 INT
 main (INT argc, char **argv)
 {
@@ -3017,6 +3140,14 @@ main (INT argc, char **argv)
   Stop_Timer (T_ReadIR_Comp);
 
   Initialize_Special_Global_Symbols ();
+  BE_DSL_q1_prepare_file(pu_tree,!Run_ipl && !Run_ipsaopt && !FILE_INFO_ipa(File_info) &&
+      !FHE_Checkpoint_Enabled() && !VHO_DSL_Normalization_Request && !VHO_DSL_CUDA_Whirl_Output &&
+      !VHO_DSL_Enable_WOPT && !Run_autopar && !Run_Distr_Array && !Instrumentation_Enabled &&
+      !Feedback_Enabled[PROFILE_PHASE_BEFORE_VHO]
+#ifdef KEY
+      && OPT_Cyg_Instrument==0
+#endif
+      ,stderr);
 
   if (defer_components) {
     /* The image, not the option spelling, decides whether this phase owns
@@ -3081,7 +3212,7 @@ main (INT argc, char **argv)
   BOOL needs_lno = FILE_INFO_needs_lno (File_info);
 
   if (needs_lno && !Run_ipl && !FHE_Checkpoint_Enabled() &&
-      !DSL_PU_Specialization_Checkpoint_Enabled()) {
+      !DSL_PU_Specialization_Checkpoint_Enabled() && VHO_DSL_Normalization_Request == NULL) {
     Run_Distr_Array = TRUE;
     if (!Run_lno && !Run_autopar) {
       /* ipl is not running, and LNO has not been loaded */
@@ -3148,7 +3279,11 @@ main (INT argc, char **argv)
   }
 #endif
 
-  if (DSL_PU_Specialization_Checkpoint_Enabled()) {
+  if (VHO_DSL_Normalization_Request != NULL) {
+    FmtAssert(BE_DSL_normalization_checkpoint
+                  (pu_tree, BE_DSL_NORMALIZATION_API, Perform_Preopt_Optimization, stderr),
+              ("LN4 driver request checkpoint failed"));
+  } else if (DSL_PU_Specialization_Checkpoint_Enabled()) {
     Process_DSL_PU_Specialization_Checkpoint(pu_tree);
   } else {
 #if defined(TARG_SL)

@@ -3601,13 +3601,26 @@ WN2C_binaryop(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 } /* WN2C_binaryop */
 
 
-/* Reuse the established unsigned extraction handler for canonical CUDA U4
- * nodes; all other unary operations retain their normal translation path. */
+/* Print CUDA scalar math and exact unsigned extraction in both C and CUDA.
+ * The extraction payload carries offset/size; a unary helper would lose them. */
 static STATUS
 WN2C_unaryop(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 {
-   if (W2C_Cuda_Mode && WN_opcode(wn) == OPC_U4EXTRACT_BITS)
+   if (WN_opcode(wn) == OPC_U4EXTRACT_BITS)
       return WN2C_extract_bits(tokens, wn, context);
+   if (W2C_Cuda_Mode && WN_opcode(wn) == OPC_F4ABS) {
+      Append_Token_String(tokens, "fabsf(");
+      WN2C_translate(tokens, WN_kid0(wn), context);
+      Append_Token_Special(tokens, ')');
+      return EMPTY_STATUS;
+   }
+   /* Preserve explicit round-toward-zero F32 conversion in CUDA C++. */
+   if(W2C_Cuda_Mode && WN_operator(wn)==OPR_TRUNC && WN_desc(wn)==MTYPE_F4 &&
+      (WN_rtype(wn)==MTYPE_I4 || WN_rtype(wn)==MTYPE_U4 || WN_rtype(wn)==MTYPE_I8 || WN_rtype(wn)==MTYPE_U8)) {
+      TYPE_ID t=WN_rtype(wn);
+      Append_Token_String(tokens,t==MTYPE_I4?"__float2int_rz(":t==MTYPE_U4?"__float2uint_rz(":t==MTYPE_I8?"__float2ll_rz(":"__float2ull_rz(");
+      WN2C_translate(tokens,WN_kid0(wn),context);Append_Token_Special(tokens,')');return EMPTY_STATUS;
+   }
    Is_True(WN_kid_count(wn) == 1, ("Expected 1 kid in WN2C_unaryop()"));
 
    if (WN2C_IS_INFIX_OP(WN_opcode(wn)))
@@ -5680,6 +5693,8 @@ WN2C_array(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 } /* WN2C_array */
 
 
+/* Print pure intrinsic meaning with target-appropriate scalar ABI spellings;
+ * this translation never chooses numerical policy or changes the WHIRL tree. */
 static STATUS 
 WN2C_intrinsic_op(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 {
@@ -5697,8 +5712,12 @@ WN2C_intrinsic_op(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
 
    /* A buffer to hold the tokens representing the function call */
    call_tokens = New_Token_Buffer();
-   Append_Token_String(call_tokens,
-                       WN_intrinsic_name((INTRINSIC)WN_intrinsic(wn)));
+   /* These pure F32 WHIRL intrinsics use CUDA's declared scalar math ABI.
+    * No approximation, fusion or source-level algorithm is selected here. */
+   const char *intrinsic_name = WN_intrinsic_name((INTRINSIC)WN_intrinsic(wn));
+   if (W2C_Cuda_Mode && WN_intrinsic(wn) == INTRN_F4EXP) intrinsic_name = "expf";
+   if (W2C_Cuda_Mode && WN_intrinsic(wn) == INTRN_F4LOG) intrinsic_name = "logf";
+   Append_Token_String(call_tokens, intrinsic_name);
 
    /* Append the argument list to the function reference.
     */
@@ -6200,7 +6219,18 @@ WN2C_ldid(TOKEN_BUFFER tokens, const WN *wn, CONTEXT context)
        */
       char buffer[64];
       object_ty = PUinfo_Preg_Type(ST_type(WN_st(wn)), addr_offset);
-      if (addr_offset == -1) { 
+      if (addr_offset == -1 && W2C_Cuda_Mode &&
+          ST_tensor_metadata(PUINFO_FUNC_ST_IDX,"tensor.bridge.level")) {
+         /* Sealed Low retains the typed F32 collective return carrier. Use
+          * exactly the same preg naming/type service as the CALL lhs, without
+          * target-host return lowering or a bare undeclared reg17 spelling.
+          * Contract: doc/AI-COMPILER-SEARCH-M5-DEVICE-BRIDGE-v1.0.md. */
+         FmtAssert(WN_st(wn)==Return_Val_Preg && WN_rtype(wn)==MTYPE_F4 && WN_desc(wn)==MTYPE_F4,
+                   ("selected bridge CUDA supports only typed F32 collective returns"));
+         object_ty=PUinfo_Preg_Type(Stab_Mtype_To_Ty(MTYPE_F4),First_Float_Preg_Return_Offset);
+         ST2C_Use_Preg(expr_tokens,object_ty,First_Float_Preg_Return_Offset,context);
+      }
+      else if (addr_offset == -1) {
          switch (TY_mtype(Ty_Table[WN_ty(wn)])) { 
          case MTYPE_I8:
 	 case MTYPE_U8:
@@ -6874,6 +6904,69 @@ WN2C_translate_file_scope_defs(CONTEXT context)
 } /* WN2C_translate_file_scope_defs */
 
 
+/* Reconstruct flat scalar views into a one-dimensional byte arena. PREOPT
+ * may propagate a typed pointer into nested ARRAY nodes whose element sizes
+ * differ. Those are additive byte offsets, not nested C array objects. Keep
+ * this bounded to plain scalar byte arenas; leave structured/Fortran/vector
+ * addressing on its established path. No WN mutation or scheduling policy.
+ * Contract: doc/AI-COMPILER-MLA-Q6B-NATIVE-STAGING-v1.0.md. */
+static BOOL
+WN2C_byte_arena_lvalue(TOKEN_BUFFER tokens, const WN *address,
+                       STAB_OFFSET offset, TY_IDX object_ty,
+                       MTYPE dtype, CONTEXT context)
+{
+   const WN *base=address;
+   UINT count=0;
+   while (WN_operator(base)==OPR_ARRAY)
+   {
+      if (WN_num_dim(base)!=1 || WN_element_size(base)<=0) return FALSE;
+      ++count; base=WN_kid0(base);
+   }
+   if (count<2 || WN_operator(base)!=OPR_LDA || WN_field_id(base) || ST_class(WN_st(base))!=CLASS_VAR ||
+       TY_kind(object_ty)!=KIND_SCALAR || TY_mtype(object_ty)!=dtype ||
+       TY_is_volatile(object_ty) || MTYPE_byte_size(dtype)<=0 || MTYPE_byte_size(dtype)>8)
+      return FALSE;
+   TY_IDX arena=ST_type(WN_st(base));
+   if (TY_kind(arena)!=KIND_ARRAY || TY_is_volatile(arena) || ARB_dimension(TY_arb(arena))!=1 ||
+       TY_kind(TY_etype(arena))!=KIND_SCALAR ||
+       TY_is_volatile(TY_etype(arena)) ||
+       (TY_mtype(TY_etype(arena))!=MTYPE_U1 && TY_mtype(TY_etype(arena))!=MTYPE_I1))
+      return FALSE;
+
+   TOKEN_BUFFER result=New_Token_Buffer();
+   CONTEXT_reset_needs_lvalue(context);
+   CONTEXT_reset_array_basetype(context);
+   CONTEXT_reset_top_level_expr(context);
+   STATUS status=WN2C_translate(result,base,context);
+   if (STATUS_is_lvalue(status) && !STATUS_is_array_as_address(status))
+      Prepend_Token_Special(result,'&');
+   WHIRL2C_parenthesize(result);
+   WN2C_prepend_cast(result,Stab_Mtype_To_Ty(MTYPE_U1),TRUE/*pointer_to_type*/);
+   for (const WN *part=address; WN_operator(part)==OPR_ARRAY; part=WN_kid0(part))
+   {
+      Append_Token_String(result," + ((");
+      WN2C_translate(result,WN_array_index(part,0),context);
+      Append_Token_String(result,") * ");
+      Append_Token_String(result,Number_as_String(WN_element_size(part),"%lld"));
+      Append_Token_Special(result,')');
+   }
+   if (offset)
+   {
+      Append_Token_String(result," + (");
+      Append_Token_String(result,Number_as_String(offset,"%lld"));
+      Append_Token_Special(result,')');
+   }
+   WHIRL2C_parenthesize(result);
+   WN2C_prepend_cast(result,object_ty,TRUE/*pointer_to_type*/);
+   WHIRL2C_parenthesize(result);
+   Prepend_Token_Special(result,'*');
+   Append_And_Reclaim_Token_List(tokens,&result);
+   return TRUE;
+}
+
+/* Reconstruct the requested typed memory lvalue. Canonical nested byte-arena
+ * views use exact address arithmetic; all other accesses retain the existing
+ * field/type-resolution path. Source printing does not mutate the input WN. */
 void
 WN2C_memref_lhs(TOKEN_BUFFER tokens,
 		TY_IDX      *memref_typ,
@@ -6889,6 +6982,12 @@ WN2C_memref_lhs(TOKEN_BUFFER tokens,
     */
    TY_IDX  base_ty;
    STATUS  lhs_status;
+
+   if (WN2C_byte_arena_lvalue(tokens,lhs,memref_ofst,memref_object_ty,dtype,context))
+   {
+      *memref_typ=memref_object_ty;
+      return;
+   }
 
    /* Get the type of object being stored and the base-address from
     * which the store occurs.

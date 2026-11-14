@@ -43,6 +43,8 @@ BOOL VHO_DSL_Dump_After_Shape_Refinement = FALSE;
 BOOL VHO_DSL_Dump_After_Shape_Refinement_Set = FALSE;
 BOOL VHO_DSL_AI_Opt_Trace = TRUE;
 BOOL VHO_DSL_AI_Opt_Trace_Set = FALSE;
+BOOL VHO_DSL_Partition_Axis = FALSE;
+BOOL VHO_DSL_Partition_Axis_Set = FALSE;
 BOOL VHO_DSL_CUDA_TMA_Prefetch = FALSE;
 BOOL VHO_DSL_CUDA_TMA_Prefetch_Set = FALSE;
 BOOL VHO_DSL_CUDA_SMEM_Layout_Search = TRUE;
@@ -54,13 +56,31 @@ BOOL VHO_DSL_CUDA_Legacy_Emit_Set = FALSE;
 char *VHO_DSL_PU_Specialization_Checkpoint_Output = NULL;
 char *VHO_DSL_CUDA_Tile_Output = NULL;
 char *VHO_DSL_CUDA_Whirl_Output = NULL;
+char *VHO_DSL_Normalization_Request = NULL;
+char *VHO_DSL_Normalization_Output = NULL;
+char *VHO_DSL_Normalization_Mode = NULL;
+char *VHO_DSL_Normalization_Host_Entry = NULL;
 char *VHO_DSL_GEMM_Plan_Search = NULL;
 char *VHO_DSL_GEMM_Cost_Model = NULL;
 char *VHO_DSL_GPU_Arch = NULL;
 UINT32 VHO_DSL_GEMM_Memory_Latency = 0;
 BOOL VHO_DSL_GEMM_Memory_Latency_Set = FALSE;
 
+char *VHO_DSL_Q1_High = NULL;
+char *VHO_DSL_Q1_Checkpoint = NULL;
 static OPTION_DESC Options_DSL[] = {
+  { OVK_NAME, OV_VISIBLE, FALSE, "q1_high", "q1_high", 0, 0, 0, &VHO_DSL_Q1_High, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "q1_checkpoint", "q1_checkpoint", 0, 0, 0, &VHO_DSL_Q1_Checkpoint, NULL },
+  { OVK_BOOL, OV_VISIBLE, TRUE, "partition_axis", "partition_axis",
+    FALSE, 0, 0, &VHO_DSL_Partition_Axis, &VHO_DSL_Partition_Axis_Set },
+  { OVK_NAME, OV_VISIBLE, FALSE, "normalization_mode", "normalization_mode",
+    0, 0, 0, &VHO_DSL_Normalization_Mode, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "normalization_host_entry", "normalization_host_entry",
+    0, 0, 0, &VHO_DSL_Normalization_Host_Entry, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "normalization_request", "normalization_request",
+    0, 0, 0, &VHO_DSL_Normalization_Request, NULL },
+  { OVK_NAME, OV_VISIBLE, FALSE, "normalization_output", "normalization_output",
+    0, 0, 0, &VHO_DSL_Normalization_Output, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "gpu_arch", "gpu_arch",
     0, 0, 0, &VHO_DSL_GPU_Arch, NULL },
   { OVK_NAME, OV_VISIBLE, FALSE, "gemm_cost_model", "gemm_cost_model",

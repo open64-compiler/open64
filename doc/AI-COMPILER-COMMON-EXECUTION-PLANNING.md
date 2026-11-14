@@ -69,6 +69,43 @@ execution scope is not compiler analysis scope.
 
 ## 3. Two Layers And One Authority
 
+Native discovery requirement, 2026-10-29: computation characterization must
+also be derivable from ordinary scalar/loop WHIRL, independently of frontend
+operator names, framework classes, `normalized_shape`, or preattached DSL
+normalization tags. An explicitly supplied native operation remains a valid
+input contract, but verifying that contract is not evidence of discovering the
+computation from its implementation. Existing bounded R1 normalization work
+implements the former path. The 2026-10-30
+[native partition-axis slice](AI-COMPILER-NATIVE-PARTITION-AXIS-v0.1.md) now
+derives bounded sum/squared-sum I/K domains from ordinary scalar WHIRL in LNO;
+complete independent LayerNorm/RMSNorm recipe recognition remains open.
+
+Derive iteration domains, access functions, accumulator recurrences,
+initialization/update/finalization and broadcasts before assigning an operation
+family. For normalization, the feature domain is the input-index domain reduced
+into statistics and broadcast back to the corresponding outputs; unreduced
+indices identify independent instances only after dependence/effect checks.
+Neither a trailing axis nor a dimension named hidden/channels establishes that
+domain. Logical domain flattening does not establish contiguous physical layout.
+
+PREOPT exposes reviewed canonical forms without changing strict arithmetic;
+the owning VHO/WOPT/LNO phase combines its existing def-use, recurrence, loop,
+access and alias services within driver-selected scope. Common/com may carry
+policy-free characterization/proof references, not perform recognition or
+selection. Unknown accesses, effects or arithmetic remain explicit obligations
+or refusals. Source annotations may be cross-checked as evidence but cannot
+override contradictory native facts. No opaque library call is inferred to be
+normalization without an admitted semantic contract or an analyzed body.
+
+Native discovery publishes a read-only characterization, not an immediate
+replacement operator or kernel. Preserve the actual source reduction order,
+rounding, conversions, epsilon placement and observable intermediate results.
+Only separately authorized equivalent formulations and complete cost-gated
+plans may reach WHIRL transformation. The bounded algorithm is specified in
+[LayerNorm design section 3.1](AI-COMPILER-LAYERNORM-OPTIMIZATION-DESIGN-v0.1.md#31-native-discovery-and-feature-domain-inference);
+the actionable **R1-ND1 through R1-ND4** queue is in the
+[implementation plan](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#native-whirl-discovery-queue-r1-nd).
+
 ```text
 canonical WHIRL + domain semantics and numerical contract
   -> computation characterization + verified algebraic alternatives
@@ -176,7 +213,7 @@ within the complete-plan search, not arbitrary pass reordering.
 
 | Phase | New responsibility | What the tool must summarize |
 | --- | --- | --- |
-| P0 | Characterize domains, payload, effects and numerical semantics. | Region/state contract, source, assumptions and unsupported semantics. |
+| P0 | Derive domains, recurrences, payload, effects and numerical semantics from native WHIRL, or verify an explicit native contract; keep these evidence paths distinct. | Discovery/contract origin, independent/reduction domains, access/broadcast and recurrence evidence, source, unresolved facts and refusal reasons. |
 | P1 | Separate value/access/reservation lifetimes and aliases. | Access ranges, future uses, completion obligations, unknown/conflicting views. |
 | P2 | Propose verified algebraic/decomposition alternatives as well as fusion. | Original vs alternate state/work; proof, numerical permission, fallback and extra work. |
 | P3-P7 | Refine representations, partition/ownership and logical resources. | Mapping choices, partial/final ownership, bytes/alignment and rejected combinations. |

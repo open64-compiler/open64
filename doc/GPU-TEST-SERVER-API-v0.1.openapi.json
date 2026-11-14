@@ -1,0 +1,1365 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Open64 GPU performance testing service",
+    "version": "0.1.0",
+    "description": "Proposed initial registered-packet API. Service/client implementation and NVIDIA qualification remain pending. OpenCTI integration is deferred. Existing result validators remain authoritative."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8765",
+      "description": "Proposed loopback listener behind an authenticated SSH tunnel; direct remote deployment requires HTTPS."
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/v1/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "description": "Discover versions, limits and hardware/tool availability without executing a workload.",
+        "responses": {
+          "200": {
+            "description": "Server and worker capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation not authorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/packets": {
+      "get": {
+        "operationId": "listPackets",
+        "description": "List immutable operator-registered source packets. This API does not register uploaded code.",
+        "responses": {
+          "200": {
+            "description": "Authorized registered packets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PacketList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation not authorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs": {
+      "post": {
+        "operationId": "submitJob",
+        "description": "Persist an authenticated registered-packet request. Same principal/key/request returns the original job without execution duplication; conflicting reuse is rejected.",
+        "responses": {
+          "202": {
+            "description": "New durable queued job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Existing job for an identical idempotent replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation not authorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed input or invalid options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Identity/idempotency conflict or expired event cursor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Packet or target cannot satisfy the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Admission quota exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobRequest"
+              },
+              "example": {
+                "schema": "open64.gpu-test.job-request.v1",
+                "packet_id": "b070675941adcfb2d55a791f7ce87c874c2b444bd165092c644cedc3b155d032",
+                "profile": "combined",
+                "mode": "qualify",
+                "target_gpu_uuid": null,
+                "samples": 20,
+                "warmup": 3,
+                "profiling": "off",
+                "profile_timeline": false,
+                "execution_timeout_seconds": 21600,
+                "retry_of": null
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/jobs/{job_id}": {
+      "get": {
+        "operationId": "getJob",
+        "description": "Read status and closed artifact links; completed is not a qualification verdict.",
+        "responses": {
+          "200": {
+            "description": "Current durable job record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation not authorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource absent or inaccessible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/jobs/{job_id}/events": {
+      "get": {
+        "operationId": "getJobEvents",
+        "description": "Poll a bounded durable event page. An expired cursor returns code EVENT_CURSOR_EXPIRED, never silent event loss.",
+        "responses": {
+          "200": {
+            "description": "Ordered events after the requested sequence",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation not authorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed input or invalid options",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource absent or inaccessible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Identity/idempotency conflict or expired event cursor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          }
+        ]
+      }
+    },
+    "/v1/jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancelJob",
+        "description": "Idempotently request cancellation. Terminal cancelled requires stop/drain and bounded evidence handling; the response is not proof of GPU release.",
+        "responses": {
+          "202": {
+            "description": "Cancellation accepted; work may still be draining",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Job already terminal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation not authorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource absent or inaccessible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/artifacts/{artifact_id}": {
+      "get": {
+        "operationId": "downloadArtifact",
+        "description": "Retrieve only authorized registry/job artifacts by opaque ID; do not interpret IDs as paths. Initial contract uses full downloads, retried into a fresh temporary file on interruption.",
+        "responses": {
+          "200": {
+            "description": "Closed immutable bytes; verify advertised size and SHA-256 before accepting.",
+            "headers": {
+              "X-Content-SHA256": {
+                "description": "SHA-256 of the entire artifact bytes",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "Content-Length": {
+                "description": "Full artifact byte count",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation not authorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource absent or inaccessible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "opaque operator-provisioned credential"
+      }
+    },
+    "schemas": {
+      "Artifact": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "download_url": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "artifact_id",
+          "kind",
+          "media_type",
+          "sha256",
+          "size_bytes",
+          "download_url",
+          "expires_at"
+        ]
+      },
+      "JobRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema": {
+            "type": "string",
+            "enum": [
+              "open64.gpu-test.job-request.v1"
+            ]
+          },
+          "packet_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "profile": {
+            "type": "string",
+            "enum": [
+              "combined"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "qualify",
+              "check-only"
+            ]
+          },
+          "target_gpu_uuid": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "samples": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "warmup": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "profiling": {
+            "type": "string",
+            "enum": [
+              "off",
+              "auto"
+            ]
+          },
+          "profile_timeline": {
+            "type": "boolean"
+          },
+          "execution_timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400
+          },
+          "retry_of": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "nullable": true,
+            "description": "Null for an original run; otherwise an accessible terminal job for explicit rerun lineage only."
+          }
+        },
+        "required": [
+          "schema",
+          "packet_id",
+          "profile",
+          "mode",
+          "target_gpu_uuid",
+          "samples",
+          "warmup",
+          "profiling",
+          "profile_timeline",
+          "execution_timeout_seconds",
+          "retry_of"
+        ],
+        "description": "All options are explicit. Check-only requires null target, profiling off and no timeline; timeline requires auto. Cross-field and server-capability constraints are also enforced by admission."
+      },
+      "Error": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema": {
+            "type": "string",
+            "enum": [
+              "open64.gpu-test.api-error.v1"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "request_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          }
+        },
+        "required": [
+          "schema",
+          "code",
+          "message",
+          "retryable",
+          "request_id"
+        ]
+      },
+      "GPU": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "uuid": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "compute_capability": {
+            "type": "string"
+          },
+          "memory_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "sharing": {
+            "type": "string",
+            "enum": [
+              "exclusive",
+              "shared",
+              "unknown"
+            ]
+          },
+          "mig_enabled": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "mps_detected": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "qualification": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "qualified",
+              "incompatible",
+              "unknown"
+            ]
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "compute_capability",
+          "memory_bytes",
+          "available",
+          "sharing",
+          "mig_enabled",
+          "mps_detected",
+          "qualification"
+        ]
+      },
+      "Packet": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "packet_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "archive_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "archive_size_bytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "producer_commit": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "registry_version": {
+            "type": "string"
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "gemm",
+                "mla-core",
+                "mla-q7"
+              ]
+            }
+          },
+          "modes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "qualify",
+                "check-only"
+              ]
+            }
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source_artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Artifact"
+            }
+          },
+          "result_schema": {
+            "type": "string",
+            "enum": [
+              "open64.gpu-test.results.v1"
+            ]
+          }
+        },
+        "required": [
+          "packet_id",
+          "archive_sha256",
+          "archive_size_bytes",
+          "producer_commit",
+          "name",
+          "registry_version",
+          "profiles",
+          "modes",
+          "requirements",
+          "source_artifacts",
+          "result_schema"
+        ]
+      },
+      "ProfileStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "type": "string",
+            "enum": [
+              "gemm",
+              "mla-core",
+              "mla-q7"
+            ]
+          },
+          "correctness": {
+            "type": "string",
+            "enum": [
+              "not_run",
+              "unknown",
+              "pass",
+              "fail"
+            ]
+          },
+          "race_checks": {
+            "type": "string",
+            "enum": [
+              "not_run",
+              "unknown",
+              "pass",
+              "fail",
+              "not_applicable"
+            ]
+          },
+          "performance_decision": {
+            "type": "string",
+            "enum": [
+              "not_run",
+              "unavailable",
+              "accepted",
+              "rejected",
+              "inconclusive"
+            ]
+          },
+          "source_result_artifact_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "nullable": true
+          }
+        },
+        "required": [
+          "profile",
+          "correctness",
+          "race_checks",
+          "performance_decision",
+          "source_result_artifact_id"
+        ],
+        "description": "Projection of original per-profile records; never an independent numerical acceptance calculation. Null source artifact means no closed original result is available."
+      },
+      "Job": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema": {
+            "type": "string",
+            "enum": [
+              "open64.gpu-test.job.v1"
+            ]
+          },
+          "job_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          },
+          "request": {
+            "$ref": "#/components/schemas/JobRequest"
+          },
+          "packet": {
+            "$ref": "#/components/schemas/Packet"
+          },
+          "registry_version": {
+            "type": "string"
+          },
+          "runner_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "preparing",
+              "running",
+              "cancelling",
+              "collecting",
+              "validating",
+              "completed",
+              "failed",
+              "cancelled",
+              "interrupted"
+            ]
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "none",
+              "host-checks",
+              "build",
+              "qualification",
+              "diagnostics",
+              "collection",
+              "review"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "selected_gpu_uuid": {
+            "type": "string",
+            "nullable": true
+          },
+          "runner_exit_code": {
+            "type": "integer",
+            "nullable": true
+          },
+          "termination_reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "retry_of": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "nullable": true
+          },
+          "collection_status": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "pending",
+              "complete",
+              "partial",
+              "failed"
+            ]
+          },
+          "receiver_verdict": {
+            "type": "string",
+            "enum": [
+              "NOT_RUN",
+              "PASS_REPORTED",
+              "FAIL",
+              "INCOMPLETE",
+              "INVALID"
+            ]
+          },
+          "diagnostic_status": {
+            "type": "string",
+            "enum": [
+              "NOT_REQUESTED",
+              "PENDING",
+              "AVAILABLE",
+              "PARTIAL",
+              "UNAVAILABLE",
+              "FAILED"
+            ]
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProfileStatus"
+            }
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Error"
+            }
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Artifact"
+            }
+          },
+          "links": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "type": "string",
+                "format": "uri-reference"
+              },
+              "events": {
+                "type": "string",
+                "format": "uri-reference"
+              },
+              "cancel": {
+                "type": "string",
+                "format": "uri-reference"
+              }
+            },
+            "required": [
+              "status",
+              "events",
+              "cancel"
+            ]
+          }
+        },
+        "required": [
+          "schema",
+          "job_id",
+          "request",
+          "packet",
+          "registry_version",
+          "runner_id",
+          "state",
+          "phase",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "selected_gpu_uuid",
+          "runner_exit_code",
+          "termination_reason",
+          "retry_of",
+          "collection_status",
+          "receiver_verdict",
+          "diagnostic_status",
+          "profiles",
+          "failures",
+          "artifacts",
+          "links"
+        ]
+      },
+      "Capabilities": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema": {
+            "type": "string",
+            "enum": [
+              "open64.gpu-test.capabilities.v1"
+            ]
+          },
+          "api_version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "registry_version": {
+            "type": "string"
+          },
+          "service_status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "degraded",
+              "unavailable"
+            ]
+          },
+          "limits": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "max_samples": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+              },
+              "max_warmup": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000
+              },
+              "max_execution_seconds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 86400
+              },
+              "max_queue_wait_seconds": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "collection_grace_seconds": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_jobs_per_principal": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "max_events_per_page": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "artifact_retention_seconds": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "max_samples",
+              "max_warmup",
+              "max_execution_seconds",
+              "max_queue_wait_seconds",
+              "collection_grace_seconds",
+              "max_jobs_per_principal",
+              "max_events_per_page",
+              "artifact_retention_seconds"
+            ]
+          },
+          "gpus": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GPU"
+            }
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "available": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name",
+                "version",
+                "available"
+              ]
+            }
+          },
+          "profiling_modes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "off",
+                "auto"
+              ]
+            }
+          },
+          "timeline_available": {
+            "type": "boolean"
+          },
+          "packet_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        "required": [
+          "schema",
+          "api_version",
+          "registry_version",
+          "service_status",
+          "limits",
+          "gpus",
+          "tools",
+          "profiling_modes",
+          "timeline_available",
+          "packet_ids"
+        ],
+        "description": "Availability and discovery facts, not evidence that a GPU job passed qualification."
+      },
+      "PacketList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema": {
+            "type": "string",
+            "enum": [
+              "open64.gpu-test.packet-list.v1"
+            ]
+          },
+          "packets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Packet"
+            }
+          }
+        },
+        "required": [
+          "schema",
+          "packets"
+        ]
+      },
+      "EventPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema": {
+            "type": "string",
+            "enum": [
+              "open64.gpu-test.events.v1"
+            ]
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Event"
+            }
+          },
+          "next_after": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "schema",
+          "events",
+          "next_after",
+          "has_more"
+        ]
+      },
+      "Event": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "log_artifact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,128}$"
+            }
+          }
+        },
+        "required": [
+          "sequence",
+          "at",
+          "state",
+          "phase",
+          "message",
+          "log_artifact_ids"
+        ]
+      }
+    }
+  }
+}

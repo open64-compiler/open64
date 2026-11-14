@@ -1,6 +1,61 @@
 # LayerNorm Optimization Through Common Execution Planning
 
-Version v0.1 | 2026-10-28 | Design proposal for review; no new executable support
+Version v0.1 | 2026-10-28 | Living design; bounded native contracts and device lowering
+
+Native-discovery amendment, 2026-10-29: independently identify normalization
+and its feature domain from ordinary scalar/loop WHIRL, not frontend names or
+`normalized_shape`. This algorithm is a required, **unimplemented** extension;
+existing contract verification and LN4 closure do not satisfy it. See section
+3.1 and implementation milestones R1-ND1 through R1-ND4. Existing v1/v2
+semantics, explicit producers and bounded lowering remain unchanged.
+
+LN4 compiler-side closure, 2026-10-29:
+[Selected host dispatch and mode packaging](AI-COMPILER-LAYERNORM-HOST-DISPATCH-v0.1.md)
+completes the explicit checkpoint with an optional driver-created host PU,
+ordinary WHIRL-to-C extraction, selected plan/body runtime binding and a
+relocatable compiled-entry/host-source package. Service mode omits the host PU;
+the optional runtime SDK is explicitly installable. Actual mapped ABI/refusals,
+offline assembly and emitted-host-to-consumer tests cover all 36 selections.
+Device PTX/cubin remain identical to the accepted numerical producer. This does
+not provide a general openpy linker, deployment callbacks, compiler-session
+manager, performance harness or LN6 GPU certification. v1 and reduction remain
+unchanged; LN5 numerical/parallel/async refinements are separate.
+
+Execution-consumer amendment, 2026-10-29:
+[LN4 host/service consumer](AI-COMPILER-LAYERNORM-EXECUTION-CONSUMER-v0.1.md)
+adds runtime composition for host, mixed and registered-device whole roots.
+It borrows the service's shared registry, acquires leases before guard-sized
+copies and preserves retry/cancel ownership through quiescence, close,
+retirement and release. No new kernel producer, v1 change or reduction import.
+Host-PU call emission is completed by the amendment above; deployment integration
+and GPU certification remain outside this runtime-consumer acceptance.
+
+Compiled-entry amendment, 2026-10-29:
+[LN4 compiled-entry/CUDA boundary](AI-COMPILER-LAYERNORM-COMPILED-ENTRY-v0.1.md)
+binds an audited selected WHIRL entry to exact cubin bytes and a native runtime
+descriptor. The optional adapter validates live context/device/entry resources,
+four pointer formals and occupancy, then uses existing range leases and host
+events for launch/drain/consumer completion. Module pins prevent early unload.
+Source v1, compiler mapped images and reduction code are unchanged. Native GPU
+certification and deployment service/hooks remain open.
+
+Request/profile amendment, 2026-10-28:
+[LN4 driver/JIT request boundary](AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md)
+adds an opt-in backend checkpoint and a shared typed preparation API. Explicit
+source/target/profile binding now reaches cost-gated device construction and
+mapped publication through the actual driver. Automatic calibrated-profile
+provisioning, a general service-session manager and a production runtime
+provider remain open; this does not upgrade v1 or authorize a GPU launch.
+
+Executable amendment, 2026-10-28:
+[LN4 selected device WHIRL](AI-COMPILER-LAYERNORM-EXECUTABLE-LOWERING-v0.1.md)
+adds a source-revalidated lowering handoff and driver-active device-PU builder
+for C0/C1/C2. Standard high-level loops, shared arena lifetimes, uniform
+barriers and exact scalar ASM are authoritative WHIRL; existing `whirl2c -cuda`
+prints them. V1 and analysis source images remain unchanged. This explicit
+compiler API is independent of reduction coding; automatic calibrated-profile
+provisioning, production runtime provider and GPU certification remain open. Final
+matrix/sanitizer/immutable-replay acceptance is recorded in the progress ledger.
 
 Arithmetic amendment, 2026-10-28: the separate
 [LN-REF-1 reference binding](AI-COMPILER-LAYERNORM-REFERENCE-ARITHMETIC-v0.1.md)
@@ -53,7 +108,8 @@ independent model bounds/oracle and cost-gated analytical selection. It reuses
 common hardware/evolution/candidate/plan services, not reduction coding. Missing
 built-in div/sqrt/carrier/barrier timing blocks selection; synthetic/envelope
 results remain analysis-only. V1, source WHIRL and runtime obligations remain
-unchanged. Executable LN4 and GPU/native provider verification are still open.
+unchanged. This was the analytical LN3 boundary; the LN4 amendment above now
+adds bounded materialization. GPU/native provider verification remains open.
 
 Runtime-bridge amendment, 2026-10-28:
 [LN2-d guard export/enforcement](AI-COMPILER-LAYERNORM-RUNTIME-GUARDS-v0.1.md)
@@ -65,8 +121,9 @@ No source-v1 promotion, reduction dependency, profitability decision or selected
 executable LayerNorm WHIRL is introduced. LN3 and LN4 remain separate gates.
 
 Design LayerNorm now, concurrently with reduction profitability and executable
-WHIRL lowering. Reuse reduction services rather than cloning their arithmetic
-contracts, target lookup, planning, event checks or trace infrastructure.
+WHIRL lowering. Reuse established common target/IR/printer/runtime boundaries;
+any reduction-specific service integration is a separately reviewed reuse,
+not a dependency of these normalization contracts or lowering services.
 Attention and MoE receive later semantic specializations of this framework;
 they are not prerequisites for this bounded normalization design.
 
@@ -76,8 +133,10 @@ and consumes the existing
 [native normalization contract](AI-COMPILER-NATIVE-NORMALIZATION-CONTRACT-v0.1.md).
 Current code recognizes the exact centered affine Python recipe, preserves
 `common.mean_variance_norm.v1` through actual PREOPT, and derives native semantic
-facts. It does not bind executable mean/rsqrt arithmetic, select normalization
-plans or lower an executable normalization kernel.
+facts from that explicit operation. The separate explicit v2 LN-REF-1 path now
+supports bounded arithmetic binding, plan selection and LN4 lowering as recorded
+above. Neither path independently discovers normalization from ordinary scalar
+and loop WHIRL; that missing capability is specified in section 3.1.
 
 Initial scope: one canonical assignment in the active driver-selected PU;
 contiguous positive static FP32 `X[R,N]`, `gamma[N]`, `beta[N]`, result `Y[R,N]`,
@@ -99,6 +158,8 @@ below are proposals, not evidence of generated code.
 | Term | Definition |
 | --- | --- |
 | Row / feature | `r` selects a row; `k` selects a feature. Domains are `[0,R)` and `[0,N)`. |
+| Normalization instance / feature domain | One set of outputs sharing statistics / the input-index domain contributing to those statistics. A feature domain may contain multiple logical axes; hidden/channels is not an analysis rule. |
+| Native discovery / contract verification | Infer computation from scalar/loop WHIRL / validate a supplied native operation. They are distinct evidence paths into characterization. |
 | Centered recipe | Mean, subtraction, mean of squared deviations, epsilon-add, reciprocal square root, normalization, scale, then bias in native source order. |
 | Mean binding | Exact reduction identity/order/tree, count conversion, scaling operation and rounding points implementing a mean primitive. |
 | Arithmetic binding | Mean bindings plus scalar operation, rsqrt, rounding, subnormal, NaN and observable exception policies; not a timing profile. |
@@ -198,6 +259,105 @@ and is now registered as explicit native v2. The native producer declares that
 contract; the source matcher continues to emit unbound v1. Exact compatible
 source primitive bindings, if established separately, retain their own actual
 order/scaling/rsqrt rather than being silently replaced by LN-REF-1.
+
+### 3.1 Native Discovery And Feature-Domain Inference
+
+**Full normalization discovery remains required.** The first bounded scalar
+sum/squared-sum partition-axis analysis is implemented in LNO; see
+[Native partition-axis discovery](AI-COMPILER-NATIVE-PARTITION-AXIS-v0.1.md).
+It derives I/K from ordinary program semantics and does not yet classify
+complete LayerNorm/RMSNorm recipes or connect them to LN1-LN4 lowering.
+The compiler must discover the computation
+and normalization domain from native program semantics without requiring a
+PyTorch LayerNorm/RMSNorm name, `normalized_shape`, dimension names, parameter
+names or a preexisting normalization operator. Retain explicit-contract ingestion
+as a separate supported path; neither source labels nor sample agreement prove
+native recurrence, domain or numerical properties.
+
+First derive computation structure; classify LayerNorm/RMSNorm only afterward.
+For a candidate input access `X[I,K]`, `I` identifies the instance and `K` the
+statistics contribution domain. These are index relations, not prescribed loop
+positions. Establish K from accumulator updates and their input accesses, and
+establish I from initialization/finalization scope and output/statistics uses.
+Check that every output instance consumes exactly its corresponding statistics.
+Prove no conflicting cross-instance effects before declaring I parallel.
+`N=|K|` and `R=|I|` require checked domain cardinality; do not infer N from the
+largest extent, gamma length, a trailing axis or a channel label. Flattening
+several axes into a logical K does not authorize copying/repacking or invent
+contiguous strides. Actual address functions remain separate evidence.
+
+| Classification | Required native evidence |
+| --- | --- |
+| Centered LayerNorm | Mean of X over K; subtraction using that mean; mean of the same centered values squared over the same K; epsilon and inverse-scale path; normalization of those centered values; supported affine broadcasts. |
+| RMSNorm | Mean of X squared over K; epsilon and inverse-scale path; scaling of the original X; supported affine broadcasts. No implicit mean subtraction. |
+| Generic/unresolved normalization | Partial resemblance without proved common domains, def-use identity, effects or scalar semantics. Retain facts and explicit unknown/refusal; do not force a LayerNorm/RMSNorm label. |
+
+For both families, bind the actual identity, recurrence/update order, count and
+finalization, casts, intermediate rounding, contraction, sqrt/div/rsqrt and
+epsilon placement. A sum divided by N and a sum of individually scaled inputs
+are distinct recipes. A squared-input mean minus a squared mean is not silently
+converted to centered variance. Keep escaping statistics/intermediates and any
+observable exceptions; the first bounded implementation may refuse such cases.
+
+Reuse PREOPT canonicalization, WOPT def-use/SSA and alias facts, and reviewed
+LNO loop/access/dependence services rather than introducing a second analysis
+engine. PREOPT may normalize representation only under existing strict-FP and
+simplifier controls. The owning optimization phase performs discovery within
+the active driver-selected PU; IPA is required for cross-PU summaries. Common/com
+owns only reviewed policy-free records and verification. No mapped-image or
+opcode change is authorized by this amendment.
+
+```text
+discover_normalization(active_scope):
+    require driver scope and reviewed PREOPT canonical form
+    recurrences = derive_init_update_finalize_and_def_use(active_scope)
+    for connected statistics/output region in bounded_region_search(recurrences):
+        derive exact iteration domains, predicates and input/output access maps
+        derive statistic contributors K and statistic-to-output instance map I
+        prove coverage, common domains, broadcasts, aliases and effect ordering
+        preserve actual arithmetic recipe, permissions and observable uses
+        classify proved centered / RMS recipe, or retain explicit unknowns
+        publish read-only characterization with native evidence and source IDs
+        if proof incomplete: record refusal; preserve original WHIRL; continue
+        propose legal ownership, storage and movement alternatives
+        require numerical authorization, lowerability and complete cost evidence
+        select only through the existing profitability gate
+        transform only the winner; verify mapped before/after WHIRL
+```
+
+Semantic recognition can succeed while executable admission fails. In
+particular, recognition never upgrades v1 or an arbitrary scalar program to
+LN-REF-1 v2. An exact source-compatible binding is required before consuming
+LN1-LN4 services; unsupported arithmetic remains a characterized fallback, not
+an invented ordered implementation. RMSNorm needs its own reviewed numerical
+and lowering adapter, not reuse of the centered LayerNorm identity. Feature
+parallelism is not permission for a different reduction tree.
+
+Initial native-discovery admission is deliberately bounded: positive static
+rectangular FP32 domains, canonical counted loops, one instance index and one
+contribution index, direct checked affine row-major accesses, and supported pure
+scalar arithmetic/temporaries. Do not require tensor/normalization annotations
+when loop bounds and scalar access analysis suffice. Missing shape/domain or
+alias proof fails closed. Multiple axes, interchange/flattening beyond the
+reviewed forms, arbitrary strides, dynamic/indirect/ragged domains, opaque calls,
+escaping statistics and cross-PU cases remain separately diagnosed extensions.
+This bound limits the first implementation, not the architectural definition.
+
+`semantic.log` must distinguish `native_discovery` from `explicit_contract` and
+summarize I/K, R/N, contributing accesses, recurrence/broadcast evidence,
+arithmetic recipe, unresolved properties and refusal reason. `tile.log` must
+explain how these domains constrain ownership choices, including ordered-fold
+restrictions. `physical-plan.log` must distinguish recognition from numerical
+admission, profitability and actual transformation. All phase files retain
+`# What it summarizes:`; positional `.t` rows require a reviewed schema/header,
+stable source IDs and source line last, reusing existing controls. The dedicated
+partition-axis design defines the implemented `AI_PARTITION 1` trace and semantic
+reports for the bounded query; broader normalization/planner tracing remains open.
+
+Actionable slices and positive/negative tests are specified by
+[R1-ND1 through R1-ND4](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md#native-whirl-discovery-queue-r1-nd).
+Their compiler-only acceptance does not require a GPU and does not certify
+GPU arithmetic or performance.
 
 ## 4. Alternatives And Delayed Transformation
 
@@ -565,7 +725,7 @@ option-ledger review before registration. Existing `-DSL:wopt=on`,
 
 | Phase | Responsibility | What the tool must summarize |
 | --- | --- | --- |
-| P0 | Exact centered recipe and native binding. | Shapes/affine access, epsilon bits, permissions, numerical unknowns and source. |
+| P0 | Native scalar/loop discovery or explicit-contract verification, followed by source-compatible binding. | Evidence origin, derived instance/feature domains and cardinalities, recurrence/access/broadcast proofs, epsilon bits, permissions, numerical unknowns, source and refusal. |
 | P1 | Access lifetimes and aliases. | Original/centered/statistics consumers, backing ranges, conflicts and lease obligations. |
 | P2 | Algorithm/retention alternatives. | C0-C3 eligibility, binding, proof/acceptance, missing permission and prune reasons. |
 | P3-P5 | Logical representation and placement. | Row/feature layout, actual repacking costs, single-device placement and communication not-applicable reason. |
@@ -599,9 +759,10 @@ are implemented here; preserve existing AI_NORM FORM/FACT and trace-off checks.
 | LN1 | LN-REF-1 ordered means, exact count/final division, sqrt-then-divide, RNE/gradual/class-only-NaN environment; explicit native v2, carriers and oracle, preserving v1. | Native v2/producer/PREOPT, conditional target binding/carriers, LN1-d oracle and bounded LN1-e integrated evidence implemented. WHIRL-derived primitive CUDA/offline review passes. Complete LayerNorm/GPU execution remains open. |
 | LN2 | Read-only C0/C1/C2 storage/event plans; reject unsupported reformulations under v1 and LN-REF-1. | Native conditional planning and LN2-d host runtime guard bridge implemented. Actual selected-kernel/register/internal-event conformance and expanded mappings/delivery remain open. |
 | LN3 | Complete costs, independent event/model oracle, analytical winner/fallback and trace auditor. | Bounded native service implemented independently of reduction coding; exact model/profile/refusal traces, conservative cost gate, common analysis-only plans and source preservation. Native timing/cache/carrier calibration remains open. |
-| LN4 | Selected high-level WHIRL, guards, CUDA emission and mapped before/after evidence. | Open; reuse reduction lowering; initial non-TMA scope. |
+| LN4 | Selected high-level WHIRL, guards, CUDA emission and mapped before/after evidence. | Bounded C0/C1/C2 API plus explicit driver/typed-JIT request-profile integration implemented independently of reduction. See [lowering](AI-COMPILER-LAYERNORM-EXECUTABLE-LOWERING-v0.1.md) and [request binding](AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md). Automatic calibrated-profile provisioning, general service-session lifecycle, production runtime provider and GPU gates remain open. |
 | LN5 | Separately authorized parallel statistics, RF retention, Welford or async/TMA refinements. | Deferred until base semantics/executable alternatives are reviewed. |
 | LN6 | Native numerical, spill/resource, PTX/SASS and paired-latency verification/calibration. | GPU gate open, not a blocker to design/compiler-side work. |
+| R1-ND1-ND4 | Independent scalar/loop discovery substrate, centered LayerNorm, RMSNorm, then reviewed characterization-to-planner handoff; see section 3.1 and implementation plan. | First bounded ND1 partition-axis query implemented in LNO for scalar sum/squared sum; full normalization discovery and planner handoff remain open. Separate from completed explicit-contract LN1-LN4 and concurrent reduction lowering. |
 
 The user authorized **Code AI optimizations** to implement reduction R2-d/R2-e
 on an isolated branch from the verified PR #201 integration base. That chat
@@ -660,6 +821,13 @@ receipts. No compiler artifact is fabricated for this design-only increment.
    packing without pretending the allocator already exists?
 
 ## 11. Research Provenance And Design Proposals
+
+The explicit native integration now has a separate
+[LN4 driver/JIT request-profile contract](AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md):
+owned source snapshots and timing provenance, active-PU PREOPT/rebinding,
+cost-gated preparation, driver-created device PUs and whole-image checkpoints.
+It does not authorize v1, install synthetic timing as hardware truth, or provide
+a CUDA runtime/service-session implementation.
 
 Primary sources checked 2026-10-28. Local implemented contracts govern Open64;
 external equations or examples do not grant numerical permission.

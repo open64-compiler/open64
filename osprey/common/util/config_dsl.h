@@ -10,6 +10,9 @@
 #ifndef config_dsl_INCLUDED
 #define config_dsl_INCLUDED
 
+/* Explicit production Q1 buffer ABI; NULL/off preserves ordinary routing. */
+extern char *VHO_DSL_Q1_High;
+extern char *VHO_DSL_Q1_Checkpoint;
 extern BOOL VHO_DSL_Enable_WOPT;
 extern BOOL VHO_DSL_Enable_WOPT_Set;
 extern BOOL VHO_DSL_Enable_Shape_Refinement;
@@ -42,6 +45,8 @@ extern BOOL VHO_DSL_Dump_After_Shape_Refinement;
 extern BOOL VHO_DSL_Dump_After_Shape_Refinement_Set;
 extern BOOL VHO_DSL_AI_Opt_Trace;
 extern BOOL VHO_DSL_AI_Opt_Trace_Set;
+extern BOOL VHO_DSL_Partition_Axis;
+extern BOOL VHO_DSL_Partition_Axis_Set;
 extern BOOL VHO_DSL_CUDA_TMA_Prefetch;
 extern char *VHO_DSL_GEMM_Plan_Search;
 extern char *VHO_DSL_GEMM_Cost_Model;
@@ -58,6 +63,10 @@ extern BOOL VHO_DSL_CUDA_Legacy_Emit_Set;
 extern char *VHO_DSL_PU_Specialization_Checkpoint_Output;
 extern char *VHO_DSL_CUDA_Tile_Output;
 extern char *VHO_DSL_CUDA_Whirl_Output;
+extern char *VHO_DSL_Normalization_Request;
+extern char *VHO_DSL_Normalization_Output;
+extern char *VHO_DSL_Normalization_Mode;
+extern char *VHO_DSL_Normalization_Host_Entry;
 
 /* Reserved TP_WOPT2 bit for versioned AI optimization decisions. */
 #define AI_OPT_TRACE_FLAG 0x00800000

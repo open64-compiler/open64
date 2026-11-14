@@ -164,6 +164,9 @@ Usage (const char *progname)
 	   "\tand IO-statements must be lowered for translation to C.\n"
 	   "-cuda\n"
 	   "\tEnable experimental CUDA source mode for a device-attributed PU.\n"
+           "-tensor-source\n"
+           "  With -cuda, emit serial callable reference CUDA before lowering.\n"
+           "  This mode requires open64_tensor_reference.cuh beside the source.\n"
 	   "-CLIST:src_file=<Src_File_Name>\n"
 	   "\tThe name of the original source program.  When not given,\n"
 	   "\tthe <Src_File_Name> is derived from the <File_Name>.\n"
@@ -226,6 +229,23 @@ main (INT argc,                   /* Number of command line arguments */
 	p[0] = 0;
     else
 	strcpy (path, ".");
+
+    /* Explicit reference emission reads the original image without BE lowering.
+     * The ordinary selected-kernel path below retains its existing behavior.
+     */
+    for (i = 1; i < argc; ++i) {
+       if (strcmp(argv[i], "-tensor-source") == 0) {
+          char companion[PATH_MAX];
+          if (snprintf(companion, sizeof(companion), "%s/whirl2c_tensor_source",
+                       path) >= sizeof(companion)) {
+             error("tensor-source companion path is too long");
+             return RC_NORECOVER_USER_ERROR;
+          }
+          execv(companion, (char *const *)argv);
+          error("cannot execute %s: %s", companion, strerror(errno));
+          return RC_NORECOVER_USER_ERROR;
+       }
+    }
 
     for (i = 0; i<3; i++)
     {

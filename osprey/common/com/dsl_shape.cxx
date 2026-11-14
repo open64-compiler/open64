@@ -1932,7 +1932,334 @@ DSL_mean_variance_norm_result
          a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);
 }
 
+static BOOL DSL_tensor_expression_broadcast(std::vector<UINT64> *, const std::vector<UINT64> &);
+/* Q1 policy-free typed source contracts. Dynamic bounds, conversion and
+ * uniqueness are semantic guard obligations, never sample-value proofs.
+ * Executable guarded lowering is a separate Q3/Q5 admission boundary.
+ * Design: doc/AI-COMPILER-MLA-Q1-NATIVE-INGESTION-v1.0.md. */
+/* Identify only the newly versioned Q1 source schemas; legacy meanings stay exact. */
+static BOOL
+DSL_quantized_expression_contract(DSL_OPERATOR op, UINT16 version)
+{
+    return (op >= OPR_DSLABS && op <= OPR_DSLGATHER && version == 1) ||
+           ((op == OPR_DSLSCATTER || op == OPR_DSLADD || op == OPR_DSLMUL ||
+             op == OPR_DSLDIV || op == OPR_DSLREM || op == OPR_DSLFILLLIKE) && version == 2);
+}
+
+/* Pure exact spelling predicate; a missing attribute never matches. */
+static BOOL DSL_quantized_text(const char *value, const char *expected)
+{
+    return value != NULL && strcmp(value, expected) == 0;
+}
+
+/* Verify semantic encoding and scalar carrier together, without type refinement. */
+static BOOL DSL_quantized_dtype(TY_IDX ty, const char *dtype)
+{
+    TYPE_ID carrier = strcmp(dtype, "float32") == 0 ? MTYPE_F4 :
+                      strcmp(dtype, "int8") == 0 ? MTYPE_I1 :
+                      strcmp(dtype, "uint8") == 0 ? MTYPE_U1 :
+                      strcmp(dtype, "int64") == 0 ? MTYPE_I8 : MTYPE_UNKNOWN;
+    return carrier != MTYPE_UNKNOWN && DSL_Shape_Tensor_Core_Complete(ty) &&
+           DSL_quantized_text(TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_DTYPE), dtype) &&
+           DSL_Shape_TY_Valid(TY_tensor_element_ty(ty)) &&
+           TY_mtype(TY_tensor_element_ty(ty)) == carrier;
+}
+
+/* Decode canonical finite binary32 bounds into caller storage; no compiler mutation. */
+static BOOL DSL_quantized_finite_bits(const char *text, float *value)
+{
+    if (text == NULL || strlen(text) != 8 || sizeof(float) != 4) return FALSE;
+    UINT32 bits = 0;
+    for (UINT32 i = 0; i < 8; ++i) {
+        char c = text[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return FALSE;
+        bits = (bits << 4) | (c <= '9' ? c-'0' : c-'a'+10);
+    }
+    if ((bits & 0x7f800000U) == 0x7f800000U) return FALSE;
+    memcpy(value, &bits, sizeof(bits));
+    return TRUE;
+}
+
+/* Reject overflow and noncanonical integer text without relying on host long width. */
+static BOOL DSL_quantized_i64_literal(const char *text)
+{
+    if (text == NULL || *text == '\0') return FALSE;
+    BOOL negative = *text == '-';
+    const char *digits = text + (negative ? 1 : 0);
+    if (*digits == '\0' || (*digits == '0' && (negative || digits[1] != '\0'))) return FALSE;
+    UINT64 limit = negative ? (UINT64)0x8000000000000000ULL : (UINT64)0x7fffffffffffffffULL;
+    UINT64 value = 0;
+    for (const char *c = digits; *c; ++c) {
+        if (*c < '0' || *c > '9' || value > (limit-(*c-'0'))/10) return FALSE;
+        value = value*10 + (*c-'0');
+    }
+    return TRUE;
+}
+
+/* Shared native preflight/reopen predicate: check types, shape and exact modes.
+ * Guard attributes describe obligations; this function neither proves runtime
+ * values nor materializes executable guards. All failure paths are read-only. */
+static BOOL
+DSL_quantized_types_valid(DSL_OPERATOR op, UINT16 version, const TY_IDX *types,
+                          UINT32 count, TY_IDX result_ty,
+                          const DSL_TENSOR_EXPRESSION_ATTRIBUTES *a)
+{
+    DSL_OPERATOR_INFO info;
+    if (!DSL_quantized_expression_contract(op, version) || !a || !types ||
+        !DSL_Operator_Get_Info_Version(op, version, &info) || count != (UINT32)info.nkids)
+        return FALSE;
+    std::vector< std::vector<UINT64> > shapes(count);
+    std::vector<UINT64> result;
+    if (!DSL_Shape_Static_Dimensions(result_ty, &result) || result.empty() ||
+        result.size() > DSL_SHAPE_MAX_RANK) return FALSE;
+    for (UINT32 i = 0; i < count; ++i)
+        if (!DSL_Shape_Static_Dimensions(types[i], &shapes[i]) || shapes[i].empty() ||
+            shapes[i].size() > DSL_SHAPE_MAX_RANK) return FALSE;
+    std::vector<UINT64> expected = shapes[0];
+    const char *dtype = TY_tensor_attribute(types[0], TY_TENSOR_SCHEMA_DTYPE);
+    if (!dtype || !DSL_quantized_dtype(types[0], dtype)) return FALSE;
+    const char *output_dtype = dtype;
+    if (op == OPR_DSLABS || op == OPR_DSLROUNDEVEN || op == OPR_DSLCLAMP) {
+        if (!DSL_quantized_dtype(types[0], "float32")) return FALSE;
+        if (op == OPR_DSLROUNDEVEN && !DSL_quantized_text(a->rounding, "ties_to_even")) return FALSE;
+        if (op == OPR_DSLCLAMP) {
+            float lower, upper;
+            if ((!DSL_quantized_text(a->has_min,"true") && !DSL_quantized_text(a->has_min,"false")) ||
+                (!DSL_quantized_text(a->has_max,"true") && !DSL_quantized_text(a->has_max,"false")) ||
+                !DSL_quantized_finite_bits(a->min_bits,&lower) ||
+                !DSL_quantized_finite_bits(a->max_bits,&upper)) return FALSE;
+            BOOL lo = DSL_quantized_text(a->has_min,"true"), hi = DSL_quantized_text(a->has_max,"true");
+            if ((!lo && !hi) || (!lo && !DSL_quantized_text(a->min_bits,"00000000")) ||
+                (!hi && !DSL_quantized_text(a->max_bits,"00000000")) || (lo && hi && lower > upper)) return FALSE;
+        }
+    } else if (op == OPR_DSLCONVERT) {
+        if (!DSL_quantized_text(a->src_dtype,dtype)) return FALSE;
+        output_dtype = a->dst_dtype;
+        BOOL encode = DSL_quantized_text(dtype,"float32") &&
+            (DSL_quantized_text(output_dtype,"int8") || DSL_quantized_text(output_dtype,"uint8")) &&
+            DSL_quantized_text(a->mode,"checked_integral");
+        BOOL decode = (DSL_quantized_text(dtype,"int8") || DSL_quantized_text(dtype,"uint8")) &&
+            DSL_quantized_text(output_dtype,"float32") && DSL_quantized_text(a->mode,"exact");
+        if (!encode && !decode) return FALSE;
+    } else if (op == OPR_DSLPACKU4 || op == OPR_DSLUNPACKU4) {
+        INT32 axis;
+        char canonical_axis[24];
+        snprintf(canonical_axis,sizeof(canonical_axis),"%u",(UINT32)expected.size()-1);
+        if (!DSL_quantized_dtype(types[0],"uint8") || !DSL_Shape_Parse_Signed(a->axis,&axis) ||
+            axis != (INT32)expected.size()-1 || !DSL_quantized_text(a->nibble_order,"even_low") ||
+            !DSL_quantized_text(a->axis,canonical_axis) || !DSL_quantized_text(a->code_bits,"4")) return FALSE;
+        if (op == OPR_DSLPACKU4) {
+            if (expected.back()%2 != 0) return FALSE;
+            expected.back() /= 2;
+        } else {
+            if (expected.back() > ~(UINT64)0/2) return FALSE;
+            expected.back() *= 2;
+        }
+    } else if (op == OPR_DSLGATHER || op == OPR_DSLSCATTER) {
+        INT32 axis;
+        if (!DSL_Shape_Parse_Signed(a->axis,&axis) ||
+            (!DSL_quantized_text(a->axis,"0") && !DSL_quantized_text(a->axis,"1")) || axis < 0 || axis > 1 ||
+            axis >= (INT32)expected.size() || !DSL_quantized_dtype(types[1],"int64") ||
+            shapes[1].size() != 1 || !DSL_quantized_text(a->bounds,"guarded_nonnegative") ||
+            !DSL_quantized_text(a->alias_rule,"fresh_result")) return FALSE;
+        if (op == OPR_DSLGATHER) expected[axis] = shapes[1][0];
+        else {
+            std::vector<UINT64> updates = expected; updates[0] = shapes[1][0];
+            if (axis != 0 || !DSL_quantized_text(a->conflicts,"unique_indices") ||
+                !DSL_quantized_dtype(types[2],dtype) || updates != shapes[2]) return FALSE;
+        }
+    } else {
+        if (!DSL_quantized_dtype(types[0],"int64")) return FALSE;
+        if (op == OPR_DSLFILLLIKE) {
+            if (!DSL_quantized_i64_literal(a->value_i64)) return FALSE;
+        } else {
+            if (!DSL_quantized_dtype(types[1],"int64") ||
+                !DSL_quantized_text(a->broadcast_rule,"numpy") ||
+                !DSL_quantized_text(a->integer_domain,"nonnegative_i64_checked") ||
+                !DSL_tensor_expression_broadcast(&expected,shapes[1])) return FALSE;
+            if ((op == OPR_DSLDIV || op == OPR_DSLREM) && !DSL_quantized_text(a->rounding,"floor")) return FALSE;
+        }
+    }
+    return output_dtype && DSL_quantized_dtype(result_ty,output_dtype) && expected == result;
+}
+
+/* Identify the additive static source contracts without broadening old versions. */
+BOOL
+DSL_tensor_expression_contract(DSL_OPERATOR op, UINT16 version)
+{
+    return DSL_quantized_expression_contract(op, version) ||
+           (op >= OPR_DSLSUB && op <= OPR_DSLFILLLIKE && version == 1) ||
+           ((op == OPR_DSLMATMUL || op == OPR_DSLREDUCESUM) && version == 3);
+}
+
+/* Check both semantic dtype and its physical scalar carrier, without mutation. */
+static BOOL
+DSL_tensor_expression_dtype(TY_IDX ty, BOOL predicate)
+{
+    return DSL_Shape_Tensor_Core_Complete(ty) &&
+           strcmp(TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_DTYPE),
+                  predicate ? "bool" : "float32") == 0 &&
+           DSL_Shape_TY_Valid(TY_tensor_element_ty(ty)) &&
+           TY_mtype(TY_tensor_element_ty(ty)) == (predicate ? MTYPE_U1 : MTYPE_F4);
+}
+
+/* Merge trailing dimensions using NumPy broadcast rules; contradictions fail. */
+static BOOL
+DSL_tensor_expression_broadcast(std::vector<UINT64> *shape,
+                                const std::vector<UINT64> &other)
+{
+    UINT32 rank = std::max(shape->size(), other.size());
+    std::vector<UINT64> merged(rank, 1);
+    for (UINT32 offset = 0; offset < rank; ++offset) {
+        UINT64 left = offset < shape->size() ? (*shape)[shape->size()-1-offset] : 1;
+        UINT64 right = offset < other.size() ? other[other.size()-1-offset] : 1;
+        if (left != right && left != 1 && right != 1) return FALSE;
+        merged[rank-1-offset] = left == 1 ? right : left;
+    }
+    *shape = merged;
+    return TRUE;
+}
+
+/* Validate pure bounded FP32/predicate expressions before native result allocation.
+ * Contract: doc/AI-COMPILER-NATIVE-TENSOR-EXPRESSION-CONTRACT-v0.1.md.
+ * Declared dimensions are checked against operands, never trusted as inference. */
+BOOL
+DSL_tensor_expression_types_valid
+    (DSL_OPERATOR op, UINT16 version, const TY_IDX *operands, UINT32 count,
+     TY_IDX result_ty, const DSL_TENSOR_EXPRESSION_ATTRIBUTES *a)
+{
+    if (DSL_quantized_expression_contract(op, version))
+        return DSL_quantized_types_valid(op, version, operands, count, result_ty, a);
+    DSL_OPERATOR_INFO info;
+    if (!DSL_tensor_expression_contract(op, version) || a == NULL ||
+        operands == NULL || !DSL_Operator_Get_Info_Version(op, version, &info) ||
+        count != (UINT32)info.nkids) return FALSE;
+    std::vector< std::vector<UINT64> > shapes(count);
+    for (UINT32 i = 0; i < count; ++i) {
+        BOOL predicate = op == OPR_DSLLOGICALNOT || (op == OPR_DSLSELECT && i == 0);
+        if (!DSL_tensor_expression_dtype(operands[i], predicate) ||
+            !DSL_Shape_Static_Dimensions(operands[i], &shapes[i]) ||
+            shapes[i].empty() || shapes[i].size() > DSL_SHAPE_MAX_RANK) return FALSE;
+    }
+    BOOL predicate_result = op == OPR_DSLISFINITE || op == OPR_DSLGREATER ||
+                            op == OPR_DSLLOGICALNOT;
+    std::vector<UINT64> result;
+    if (!DSL_tensor_expression_dtype(result_ty, predicate_result) ||
+        !DSL_Shape_Static_Dimensions(result_ty, &result) ||
+        result.empty() || result.size() > DSL_SHAPE_MAX_RANK) return FALSE;
+    std::vector<UINT64> expected = shapes[0];
+    if (op == OPR_DSLSUB || op == OPR_DSLGREATER || op == OPR_DSLSELECT) {
+        if (a->broadcast_rule == NULL || strcmp(a->broadcast_rule, "numpy") != 0)
+            return FALSE;
+        for (UINT32 i = 1; i < count; ++i)
+            if (!DSL_tensor_expression_broadcast(&expected, shapes[i])) return FALSE;
+    } else if (op == OPR_DSLEXP || op == OPR_DSLLOG) {
+        if (a->fp_semantics == NULL || strcmp(a->fp_semantics, "source_unresolved") != 0)
+            return FALSE;
+    } else if (op == OPR_DSLFILLLIKE) {
+        if (a->value_bits == NULL || strlen(a->value_bits) != 8) return FALSE;
+        UINT32 bits = 0;
+        for (UINT32 i = 0; i < 8; ++i) {
+            char c = a->value_bits[i];
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return FALSE;
+            bits = (bits << 4) | (c <= '9' ? c - '0' : c - 'a' + 10);
+        }
+        if ((bits & 0x7f800000U) == 0x7f800000U && (bits & 0x007fffffU) != 0)
+            return FALSE;  /* NaN payload literals are outside this contract. */
+    } else if (op == OPR_DSLREDUCEMAX || op == OPR_DSLREDUCESUM) {
+        INT32 axis;
+        if (!DSL_Shape_Parse_Signed(a->axis, &axis) ||
+            axis != (INT32)expected.size() - 1 || a->keepdim == NULL ||
+            a->accum_dtype == NULL || strcmp(a->accum_dtype, "float32") != 0 ||
+            a->reassociate == NULL || strcmp(a->reassociate, "false") != 0) return FALSE;
+        if (strcmp(a->keepdim, "true") == 0) expected[axis] = 1;
+        else if (strcmp(a->keepdim, "false") == 0) expected.pop_back();
+        else return FALSE;
+    } else if (op == OPR_DSLMATMUL) {
+        if (a->batch_rule == NULL || strcmp(a->batch_rule, "numpy") != 0 ||
+            a->accum_dtype == NULL || strcmp(a->accum_dtype, "float32") != 0 ||
+            a->transpose_kid0 == NULL || strcmp(a->transpose_kid0, "false") != 0 ||
+            a->transpose_kid1 == NULL || strcmp(a->transpose_kid1, "false") != 0 ||
+            shapes[0].size() < 2 || shapes[1].size() < 2) return FALSE;
+        std::vector<UINT64> right = shapes[1];
+        UINT64 m = expected[expected.size()-2], k = expected.back(), n = right.back();
+        if (k != right[right.size()-2]) return FALSE;
+        expected.resize(expected.size()-2);
+        right.resize(right.size()-2);
+        if (!DSL_tensor_expression_broadcast(&expected, right)) return FALSE;
+        expected.push_back(m);
+        expected.push_back(n);
+    }
+    return DSL_Shape_Dimensions_Equal(expected, result);
+}
+
+/* Adapt mapped attributes to the identical preflight predicate after reopening. */
+static BOOL
+DSL_tensor_expression_result
+    (const DSL_IR_NODE_RECORD *node, const std::vector<TY_IDX> &operands,
+     TY_IDX result_ty, UINT16 version)
+{
+    if (node == NULL || operands.empty()) return FALSE;
+    DSL_TENSOR_EXPRESSION_ATTRIBUTES a;
+    memset(&a, 0, sizeof(a));
+    DSL_Shape_Node_Attribute(node, "attr.axis", &a.axis);
+    DSL_Shape_Node_Attribute(node, "attr.keepdim", &a.keepdim);
+    DSL_Shape_Node_Attribute(node, "attr.broadcast_rule", &a.broadcast_rule);
+    DSL_Shape_Node_Attribute(node, "attr.fp_semantics", &a.fp_semantics);
+    DSL_Shape_Node_Attribute(node, "attr.value_bits", &a.value_bits);
+    DSL_Shape_Node_Attribute(node, "attr.accum_dtype", &a.accum_dtype);
+    DSL_Shape_Node_Attribute(node, "attr.reassociate", &a.reassociate);
+    DSL_Shape_Node_Attribute(node, "attr.batch_rule", &a.batch_rule);
+    DSL_Shape_Node_Attribute(node, "attr.transpose_kid0", &a.transpose_kid0);
+    DSL_Shape_Node_Attribute(node, "attr.transpose_kid1", &a.transpose_kid1);
+    DSL_Shape_Node_Attribute(node, "attr.rounding", &a.rounding);
+    DSL_Shape_Node_Attribute(node, "attr.has_min", &a.has_min);
+    DSL_Shape_Node_Attribute(node, "attr.min_bits", &a.min_bits);
+    DSL_Shape_Node_Attribute(node, "attr.has_max", &a.has_max);
+    DSL_Shape_Node_Attribute(node, "attr.max_bits", &a.max_bits);
+    DSL_Shape_Node_Attribute(node, "attr.src_dtype", &a.src_dtype);
+    DSL_Shape_Node_Attribute(node, "attr.dst_dtype", &a.dst_dtype);
+    DSL_Shape_Node_Attribute(node, "attr.mode", &a.mode);
+    DSL_Shape_Node_Attribute(node, "attr.nibble_order", &a.nibble_order);
+    DSL_Shape_Node_Attribute(node, "attr.code_bits", &a.code_bits);
+    DSL_Shape_Node_Attribute(node, "attr.bounds", &a.bounds);
+    DSL_Shape_Node_Attribute(node, "attr.alias_rule", &a.alias_rule);
+    DSL_Shape_Node_Attribute(node, "attr.conflicts", &a.conflicts);
+    DSL_Shape_Node_Attribute(node, "attr.integer_domain", &a.integer_domain);
+    DSL_Shape_Node_Attribute(node, "attr.value_i64", &a.value_i64);
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD descriptor;
+    if (!DSL_IR_Image_Get_Opcode_Descriptor(node->opcode_descriptor_id, &descriptor))
+        return FALSE;
+    return DSL_tensor_expression_types_valid
+        ((DSL_OPERATOR)descriptor.logical_operator, version, &operands[0],
+         operands.size(), result_ty, &a);
+}
+
 static const DSL_SHAPE_RULE_ENTRY DSL_shape_rules[] = {
+    { OPR_DSLABS, 1, DSL_tensor_expression_result },
+    { OPR_DSLROUNDEVEN, 1, DSL_tensor_expression_result },
+    { OPR_DSLCLAMP, 1, DSL_tensor_expression_result },
+    { OPR_DSLCONVERT, 1, DSL_tensor_expression_result },
+    { OPR_DSLPACKU4, 1, DSL_tensor_expression_result },
+    { OPR_DSLUNPACKU4, 1, DSL_tensor_expression_result },
+    { OPR_DSLGATHER, 1, DSL_tensor_expression_result },
+    { OPR_DSLSCATTER, 2, DSL_tensor_expression_result },
+    { OPR_DSLADD, 2, DSL_tensor_expression_result },
+    { OPR_DSLMUL, 2, DSL_tensor_expression_result },
+    { OPR_DSLDIV, 2, DSL_tensor_expression_result },
+    { OPR_DSLREM, 2, DSL_tensor_expression_result },
+    { OPR_DSLFILLLIKE, 2, DSL_tensor_expression_result },
+    { OPR_DSLSUB, 1, DSL_tensor_expression_result },
+    { OPR_DSLEXP, 1, DSL_tensor_expression_result },
+    { OPR_DSLLOG, 1, DSL_tensor_expression_result },
+    { OPR_DSLREDUCEMAX, 1, DSL_tensor_expression_result },
+    { OPR_DSLISFINITE, 1, DSL_tensor_expression_result },
+    { OPR_DSLGREATER, 1, DSL_tensor_expression_result },
+    { OPR_DSLSELECT, 1, DSL_tensor_expression_result },
+    { OPR_DSLLOGICALNOT, 1, DSL_tensor_expression_result },
+    { OPR_DSLFILLLIKE, 1, DSL_tensor_expression_result },
+    { OPR_DSLMATMUL, 3, DSL_tensor_expression_result },
+    { OPR_DSLREDUCESUM, 3, DSL_tensor_expression_result },
     { OPR_DSLMEANVARNORM, 1, DSL_mean_variance_norm_result },
     { OPR_DSLMEANVARNORM, 2, DSL_mean_variance_norm_result },
     { OPR_DSLSTABLESOFTMAX, 1, DSL_Shape_Stable_Softmax_Result },
@@ -3253,6 +3580,16 @@ DSL_Shape_Infer_Operator
     /* These local propagation rules can derive a candidate shape before full
      * legality is known; the owning caller must still run structural admission. */
     BOOL valid = FALSE;
+    if (DSL_tensor_expression_contract(input->dsl_operator, input->version)) {
+        std::vector<TY_IDX> operands(input->operand_types,
+                                    input->operand_types + input->operand_count);
+        valid = DSL_tensor_expression_result(input->node, operands,
+                                             input->result_ty, input->version) &&
+                DSL_Shape_Fact_From_Type(input->result_ty, result);
+        if (!valid)
+            result->state = DSL_SHAPE_FACT_CONTRADICTION;
+        return valid ? DSL_SHAPE_INFERENCE_COMPLETE : DSL_SHAPE_INFERENCE_CONTRADICTION;
+    }
     switch (input->dsl_operator) {
     case OPR_DSLMEANVARNORM: {
         std::vector<TY_IDX> operands(input->operand_types,

@@ -33,13 +33,21 @@ plain_image="$artifact_dir/plain_terminal.B"
 plain_trace="$artifact_dir/plain_terminal.T"
 commands="$artifact_dir/commands.txt"
 
-# Keep backend-owned phase traces beside the retained route evidence instead
-# of leaking input-stem .t files into the source checkout.
+# Number phase traces explicitly: input-stem .t would overwrite the matching
+# ir_b2a .T inspection on a case-insensitive host-mounted filesystem. Record
+# the real option vector as well as each caller's logical invocation below.
+backend_invocation=0
 run_backend()
 {
+  backend_invocation=$((backend_invocation + 1))
+  local phase="$artifact_dir/backend-$backend_invocation.phase.t"
+  printf 'LD_LIBRARY_PATH=%q %q %q ' "$be_library" "$backend" "-ft,$phase" \
+    >>"$commands"
+  printf '%q ' "$@" >>"$commands"
+  printf '\n' >>"$commands"
   (cd "$artifact_dir" &&
     LD_LIBRARY_PATH="$be_library${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
-      "$backend" "$@")
+      "$backend" "-ft,$phase" "$@")
 }
 
 printf 'OPEN64_DSL_FHE_SYNC3_PLAN_ONLY=1 OPEN64_DSL_FHE_SYNC3_ARTIFACT=%q %q\n' \
@@ -217,6 +225,12 @@ if [[ -n "$openpy" ]]; then
   grep -Fq '/be ' "$artifact_dir/openpy-route.log"
 fi
 
+# Recheck canonical inspections after all backend calls, including failures.
+# This detects a phase-path regression instead of accepting empty .T evidence.
+test -s "$trace"
+test -s "$plain_trace"
+grep -Fq 'FHE Plan Image:' "$trace"
+grep -Fq 'FUNC_ENTRY' "$plain_trace"
 test ! -e "$image.tmp"
 (cd "$artifact_dir" && sha256sum *.B *.T *.log commands.txt >SHA256SUMS)
 echo "FHE codegen route option contract passed"

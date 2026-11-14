@@ -60,7 +60,7 @@ Class names and per-case files preserve semantic boundaries despite decompositio
 | Reduction | sum x1 | None for exact bounded row sum; general sum forms remain unsupported. |
 | Softmax | amax, sub, exp, sum, truediv x1 each | None for the exact whole bounded stable recipe; individual generic amax/exp graphs remain unsupported. |
 | LayerNorm | mean x2, sub x1, mul x3, add x2, rsqrt x1 | None for the exact centered population affine recipe; arbitrary/opaque normalization remains unsupported. |
-| Attention | transpose, truediv, invert, masked_fill, softmax x1 each; matmul x2 | transpose |
+| Attention | transpose, truediv, invert, masked_fill, softmax x1 each; matmul x2 | opaque softmax |
 | MoE | getitem x4, matmul x2, relu, squeeze, mul, sum x1 each | getitem |
 
 The [boundary regression](python/tests/test_building_blocks_capture_optional.py)
@@ -84,7 +84,7 @@ expressions and composed Attention/MoE remain separate gates.
 | matmul, relu, add, sub, mul, truediv | Common substrate expressions | Reuse published contracts where semantically applicable; define broadcast and strict FP legality before extending coverage. A mapped name alone does not prove every rank/broadcast pattern is supported. |
 | sum, amax, mean | Common substrate requirements; currently unsupported in these generic captures | Axis, keepdim, identity, reduction state, dtype, empty-domain policy and reassociation permission. |
 | exp, rsqrt, softmax | Common numerical expressions/region requirements; currently unsupported here | Stable Softmax boundary, accuracy, overflow/nonfinite behavior, normalization axes and epsilon policy. AI owns workload policy, not generic arithmetic opcodes. |
-| transpose, squeeze, static getitem slices/axis insertion | Common view/access requirements; currently unsupported here | Stride/alias/view descriptor preservation; no implied physical re-layout or copying. |
+| transpose, squeeze, static getitem slices/axis insertion | Common view/access requirements | Bounded static transpose, squeeze and unsqueeze now use native logical views; static getitem remains unsupported. No implied physical re-layout or copying. |
 | Tensor-index getitem of expert weights | Common gather requirement plus AI-domain routing semantics; currently unsupported | Indexed reads and range legality are common; expert ownership, assignment multiplicity and combine policy are AI-specific. |
 | invert, masked_fill | Common predicate/select requirements; currently unsupported here | Broadcast and mask polarity, negative-infinity constant, valid reduction domain. Causal policy belongs to attention semantics. |
 | MoE IDs and gates; attention mask | Read-only runtime state/effect inputs | AI-domain ownership/validity contract. No mutable cache, state write or inter-request lifetime is represented. |
@@ -92,6 +92,14 @@ expressions and composed Attention/MoE remain separate gates.
 | Axes, epsilon, scale, mask fill, slicing literals | Constants/attributes | Preserve exact meaning through native contracts; do not specialize away runtime IDs/gates. |
 
 ## Execution And Artifacts
+
+The [absorbed MLA ingestion milestone](MLA-INGESTION-PLAN.md) now connects a
+composed pure tensor graph through native view, broadcast contraction,
+predicate/select and elementary numerical contracts. The isolated Attention
+fixture's first unsupported operation is now opaque softmax; its prior
+transpose diagnostic is historical. Tensor-index routing remains outside
+the bounded pure-expression lane. These additions do not certify executable
+lowering or GPU performance for the original six building blocks.
 
 With CPU torch installed, from `osprey/torch2whirl`:
 

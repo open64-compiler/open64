@@ -1,5 +1,15 @@
 # OpenPy Compilation and Execution Modes Design
 
+Implementation note, 2026-10-29: the bounded explicit
+[LN4 mode checkpoint](AI-COMPILER-LAYERNORM-HOST-DISPATCH-v0.1.md) now creates
+selected standalone host dispatch in ordinary WHIRL and packages its emitted C
+with the selected device/compiled entry. Its service mode omits that host PU.
+Both use the runtime consumer/shared lease registry; checked identities precede
+movement. The optional runtime SDK is explicitly installable. This checkpoint's
+compatibility default is service; the broader proposed openpy standalone/a.out
+default, general linking/session management and inference-service deployment
+remain separate work. Performance harnesses remain explicitly opt-in.
+
 Version: v0.1
 Status: cross-domain design proposal; option spellings and most packaging/runtime paths are not implemented
 Date: 2026-10-23

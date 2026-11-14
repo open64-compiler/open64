@@ -194,6 +194,7 @@ BE_LNO_DIR		= $(BE_DIR)/lno
 BE_WHIRL2C_DIR		= $(BE_DIR)/whirl2c
 BE_WHIRL2F_DIR		= $(BE_DIR)/whirl2f
 BE_VHO_DIR		= $(BE_DIR)/vho
+
 IPL_DIR			= $(BUILD_TOT)/ipa/local
 IPA_DIR			= $(BUILD_TOT)/ipa/main/analyze
 IPO_DIR			= $(BUILD_TOT)/ipa/main/optimize
@@ -335,6 +336,16 @@ BE_VHO_CXX_SRCS = \
   dsl_shape_refine.cxx \
   dsl_opt.cxx \
   dsl_opt_plan_opt.cxx \
+  tensor_source_capture.cxx \
+  tensor_workload.cxx \
+  tensor_serving_schema.cxx \
+  tensor_schedule.cxx \
+  tensor_attention_chunk_select.cxx \
+  tensor_high_lower.cxx \
+  tensor_q1_program.cxx \
+  dsl_high_quantized.cxx \
+  dsl_q1_preopt.cxx \
+  dsl_high_snapshot.cxx \
   dsl_tensor_evolution_opt.cxx \
   dsl_tensor_analysis_opt.cxx \
   dsl_tensor_locality_opt.cxx \
@@ -776,6 +787,8 @@ BE_AS_OBJS = $(COMMON_UTIL_TARG_AS_SRCS:.s=.o)
 #
 
 BE_DRIVER_CXX_SRCS = \
+  normalization_driver.cxx \
+  quantized_driver.cxx \
   driver.cxx	        \
   driver_util.cxx	\
   iter.cxx
@@ -918,6 +931,9 @@ default:
 	$(MAKE) derived_files
 	$(MAKE) $(TARGETS)
 	$(MAKE) last
+
+driver.o: $(BE_VHO_DIR)/tensor_selected_key.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
+driver.o: $(BE_DIR)/lno/dsl_high_snapshot.h $(BE_DIR)/lno/dsl_high_reuse.h $(BE_DIR)/lno/dsl_high_observer.h
 
 #----------------------------------------------------------------------
 #  The commands in this section are done BEFORE any other target is
@@ -1196,3 +1212,33 @@ dsl_tensor_analysis.o: $(BE_VHO_DIR)/dsl_tensor_analysis_internal.h
 dsl_tensor_locality.o: $(BE_VHO_DIR)/dsl_tensor_locality_internal.h \
     $(BE_COM_DIR)/dsl_tensor_control_snapshot.h \
     $(BE_COM_DIR)/dsl_tensor_control_snapshot_internal.h
+# MR2 observer input/report are owned values crossing the driver boundary.
+driver.o: $(BE_DIR)/vho/tensor_attention_search.h $(BE_DIR)/vho/tensor_attention_movement.h
+
+# Q1 native semantic services share the same detached value layout.
+tensor_source_capture.o tensor_schedule.o tensor_attention_chunk_select.o tensor_high_lower.o tensor_q1_program.o dsl_high_quantized.o quantized_driver.o driver.o: $(BE_VHO_DIR)/tensor_kernel_lower.h
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_quantized.inc $(BE_VHO_DIR)/tensor_high_selected.inc
+dsl_high_quantized.o: $(BE_LNO_DIR)/dsl_high_quantized.cxx $(BE_LNO_DIR)/dsl_high_quantized.h
+
+config.o: $(COMMON_UTIL_DIR)/config_dsl.cxx $(COMMON_UTIL_DIR)/config_dsl.h
+
+driver.o dsl_q1_preopt.o: $(BE_LNO_DIR)/dsl_q1_preopt.h $(BE_LNO_DIR)/dsl_high_quantized.h
+quantized_driver.o tensor_q1_program.o tensor_high_lower.o dsl_q1_preopt.o: $(BE_VHO_DIR)/tensor_q1_program.h
+
+# Q2 owned workload layout is shared across native consumers.
+tensor_workload.o tensor_high_lower.o tensor_q1_program.o dsl_high_quantized.o dsl_q1_preopt.o driver.o: $(BE_VHO_DIR)/tensor_workload.h
+tensor_workload.o: $(BE_VHO_DIR)/tensor_kernel_lower.h
+
+tensor_serving_schema.o tensor_high_lower.o tensor_q1_program.o: $(BE_VHO_DIR)/tensor_serving_schema.h
+
+# Q4 detached report layout is visible through the existing search boundary.
+driver.o: $(BE_VHO_DIR)/tensor_quantized_movement.h $(BE_VHO_DIR)/tensor_serving.h
+
+# Q5 strict selected plan qualification/materialization.
+tensor_serving_schema.o: $(BE_VHO_DIR)/tensor_quantized_plan.h $(BE_VHO_DIR)/tensor_quantized_plan.inc
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_quantized_plan.h $(BE_VHO_DIR)/tensor_high_q5.inc
+tensor_q1_program.o dsl_q1_preopt.o: $(BE_VHO_DIR)/tensor_quantized_plan.h
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_selected.inc
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_quantized.inc
+# Read-only Q6c sealed-Low admission; no new backend linkage service.
+driver.o: $(BE_VHO_DIR)/tensor_quantized_device.h $(BE_VHO_DIR)/tensor_quantized_stage.h $(BE_VHO_DIR)/tensor_quantized_gpu.h

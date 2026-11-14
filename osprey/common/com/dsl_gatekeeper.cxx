@@ -167,10 +167,12 @@ DSL_Gatekeeper_Is_Projected_Input_Copy (const WN *load, const WN *store)
     return FALSE;
 }
 
-/* Only tensor or registered source/projected formals have DSL tensor-use
+/* Only tensor or registered tensor-source/projected formals have DSL tensor-use
  * restrictions. Canonical raw-buffer kernels must retain ordinary WHIRL
- * pointer loads. Keep every managed/projection admission check intact.
- * Design: doc/AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md. */
+ * pointer loads even when a mixed image records their complete physical ABI.
+ * Keep every tensor/projection admission check intact.
+ * Design: doc/AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md and
+ * doc/AI-COMPILER-MMA3-TYPED-SIMT-BASELINE.md. */
 static BOOL
 DSL_gatekeeper_managed_formal(WN *formal, UINT32 ordinal, DSL_GATEKEEPER_CONTEXT *context)
 {
@@ -178,7 +180,10 @@ DSL_gatekeeper_managed_formal(WN *formal, UINT32 ordinal, DSL_GATEKEEPER_CONTEXT
         return TRUE;
     DSL_PU_FORMAL_RECORD source;
     DSL_RUNTIME_INPUT_BINDING_RECORD runtime;
-    return DSL_PU_Interface_Image_Find_Formal(context->owner_pu_st, ordinal, &source) ||
+    DSL_IR_VALUE_RECORD value;
+    return (DSL_PU_Interface_Image_Find_Formal(context->owner_pu_st, ordinal, &source) &&
+            DSL_IR_Image_Get_Value(source.formal_value_id, &value) &&
+            (value.tensor_descriptor_id != 0 || TY_is_tensor_extension(source.formal_ty))) ||
         DSL_Program_Interface_Image_Find_Runtime_Binding(context->owner_pu_st, ordinal, &runtime);
 }
 
@@ -692,7 +697,8 @@ DSL_Gatekeeper_Required_Attributes
     }
     DSL_OPERATOR dsl_operator =
         (DSL_OPERATOR)descriptor->logical_operator;
-    BOOL exact_schema = dsl_operator == OPR_DSLREDUCESUM ||
+    BOOL exact_schema = DSL_tensor_expression_contract(dsl_operator, descriptor->version) ||
+                        dsl_operator == OPR_DSLREDUCESUM ||
                         dsl_operator == OPR_DSLSTABLESOFTMAX ||
                         dsl_operator == OPR_DSLMEANVARNORM ||
                         dsl_operator == OPR_DSLRESHAPE ||
@@ -750,10 +756,13 @@ DSL_Gatekeeper_Verify_Memory_Behavior
         if (effect.effect_kind == DSL_STATE_EFFECT_MODIFY)
             ++modify_count;
     }
-    if (dsl_operator == OPR_DSLSCATTER &&
+    if (dsl_operator == OPR_DSLSCATTER && version == 1 &&
         (effect_count == 0 || modify_count == 0))
         return DSL_Gatekeeper_Report
                    (context, "OPR_DSLSCATTER requires a modifying state edge");
+    if (dsl_operator == OPR_DSLSCATTER && version == 2 && effect_count != 0)
+        return DSL_Gatekeeper_Report
+                   (context, "OPR_DSLSCATTER.v2 is functional and forbids old-state effects");
     if (dsl_operator == OPR_DSLATTENTION && version == 2 &&
         (effect_count != 2 || modify_count != 2))
         return DSL_Gatekeeper_Report
@@ -958,7 +967,7 @@ DSL_Gatekeeper_Verify_Native_Node
                 if (i == 1)
                     second_operand_ty = source.ty;
                 if (shape_ready &&
-                    (dsl_operator == OPR_DSLMATMUL ||
+                    ((dsl_operator == OPR_DSLMATMUL && logical_opcode.effective_version < 3) ||
                      dsl_operator == OPR_DSLRESIDUALADD) &&
                     !DSL_Shape_Tensor_Compatible
                           (first_operand_ty, source.ty,
@@ -992,7 +1001,7 @@ DSL_Gatekeeper_Verify_Native_Node
             if (i == 1)
                 second_operand_ty = WN_ty(operand);
             if (shape_ready &&
-                (dsl_operator == OPR_DSLMATMUL ||
+                ((dsl_operator == OPR_DSLMATMUL && logical_opcode.effective_version < 3) ||
                  dsl_operator == OPR_DSLRESIDUALADD) &&
                 !DSL_Shape_Tensor_Compatible
                       (first_operand_ty, WN_ty(operand),
@@ -1004,6 +1013,12 @@ DSL_Gatekeeper_Verify_Native_Node
         }
     }
 
+    if (DSL_tensor_expression_contract(dsl_operator, logical_opcode.effective_version) &&
+        (!shape_ready || !image_valid || !DSL_Gatekeeper_Shape_Valid
+              (dsl_operator, logical_opcode.effective_version,
+               &image_node, operand_types, result_ty)))
+        valid = DSL_Gatekeeper_Report(context, "%s.v%u static tensor expression contract is invalid",
+                    DSL_OPERATOR_name(dsl_operator), logical_opcode.effective_version);
     if (dsl_operator == OPR_DSLMEANVARNORM &&
         (!shape_ready || !image_valid || first_operand_ty == TY_IDX_ZERO ||
          !DSL_Gatekeeper_Shape_Valid

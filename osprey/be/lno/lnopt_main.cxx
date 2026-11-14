@@ -72,6 +72,12 @@
 #include "config_cache.h"
 #include "config_list.h"
 #include "config_lno.h"
+#include "config_dsl.h"
+#include "dsl_partition_axis.h"
+#include "dsl_high_admission.h"
+#include "dsl_high_snapshot.h"
+#include "dsl_high_observer.h"
+#include "dsl_high_apply.h"
 #include "config_opt.h"
 #include "erbe.h"
 #include "glob.h"		    /* Irb_File_Name, Cur_PU_Name */
@@ -1008,12 +1014,22 @@ static BOOL Skip_SVR;
 static BOOL Skip_Unswitch;
 #endif /* KEY */
 extern WN * Lnoptimizer(PU_Info* current_pu, 
-			WN *func_nd , DU_MANAGER *du_mgr,
-			ALIAS_MANAGER *alias_mgr)
+			WN *func_nd , DU_MANAGER *&du_mgr,
+			ALIAS_MANAGER *&alias_mgr)
 {
   extern BOOL Run_lno;
   STDOUT = stdout;
   last_loop_num = 0;
+
+  /* LNO owns this PU activation and expires captured facts before its first
+   * subsequent mutation. Owned records outlive analysis-map/pool cleanup.
+   * Design: doc/AI-COMPILER-SEARCH-M2B-OWNED-SNAPSHOT-v1.0.md. */
+  DSL_HIGH_EPOCH high_epoch(Cur_PU_Name ? Cur_PU_Name : "active-pu");
+  DSL_HIGH_SNAPSHOT high_snapshot;
+  DSL_HIGH_REUSE_FACTS high_reuse;
+  DSL_HIGH_BINDINGS high_bindings;
+  FILE *high_snapshot_trace = NULL;
+  bool high_selected = false;
 
   MEM_POOL_Initialize(&ARA_memory_pool, "ARA_memory_pool", FALSE);
   MEM_POOL_Push(&ARA_memory_pool);
@@ -1268,6 +1284,14 @@ extern WN * Lnoptimizer(PU_Info* current_pu,
     Start_Timer ( T_LNOAccess_CU );
     LNO_Build_Access(func_nd, &LNO_default_pool);  
     Stop_Timer ( T_LNOAccess_CU );
+    /* Native discovery consumes PREOPT DU and freshly built access maps before
+     * unrolling or locality rewrites invalidate them. It grants no FP or
+     * parallelization permission. Design: doc/AI-COMPILER-NATIVE-PARTITION-AXIS-v0.1.md. */
+    if (VHO_DSL_Partition_Axis && Opt_Level >= 3 && LNO_enabled && LNO_Opt > 0) {
+      FILE *axis_trace = VHO_DSL_AI_Opt_Trace &&
+          Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG) ? TFile : NULL;
+      LNO_DSL_discover_partition_axes(func_nd, Du_Mgr, Alias_Mgr, axis_trace);
+    }
     if (LNO_Verbose) {
       LNO_Print_Access(TFile,func_nd);  
     }
@@ -1347,7 +1371,52 @@ extern WN * Lnoptimizer(PU_Info* current_pu,
     } 
   
     LNO_Tlog = Get_Trace ( TP_PTRACE1, TP_PTRACE1_LNO );
-  
+
+    /* Read-only form/coverage admission while full LNO facts still exist.
+     * Refusal leaves all existing transformations/fallback behavior intact.
+     * Design: doc/AI-COMPILER-SEARCH-M2A-HIGH-ADMISSION-v1.0.md. */
+    if ((VHO_DSL_Partition_Axis || LNO_DSL_production_search_requested()) && Opt_Level >= 3 && Run_lno && LNO_enabled && LNO_Opt > 0 &&
+        !LNO_Run_Lego && !Run_autopar && !PU_has_mp(Get_Current_PU()) && !PU_mp(Get_Current_PU())) {
+      FILE *high_trace = VHO_DSL_AI_Opt_Trace &&
+          Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG) ? TFile : NULL;
+      if (LNO_DSL_admit_common_high(func_nd, Du_Mgr, Alias_Mgr, Array_Dependence_Graph, high_trace)) {
+        high_bindings = LNO_DSL_high_bindings(Src_File_Name);
+        std::string reason;
+        uint64_t capture_begin = LNO_DSL_observer_time_us();
+        if (LNO_DSL_capture_high(func_nd, Du_Mgr, Alias_Mgr, Array_Dependence_Graph,
+            high_epoch, high_bindings, high_snapshot, reason)) {
+          uint64_t capture_us = LNO_DSL_observer_time_us()-capture_begin;
+          high_snapshot_trace = high_trace;
+          high_snapshot.Print(high_trace, "CAPTURE");
+          DSL_HIGH_SEARCH_INPUT selected_input;
+          DSL_HIGH_SEARCH_REPORT selected_report;
+          LNO_DSL_observe_high(func_nd, Du_Mgr, Alias_Mgr, Array_Dependence_Graph,
+              high_epoch, high_bindings, high_snapshot, capture_us, high_trace, &selected_input, &selected_report);
+          high_reuse=selected_report.reuse;
+          high_selected = LNO_DSL_apply_selected_high(func_nd, du_mgr, alias_mgr, high_epoch,
+              high_bindings, high_snapshot, selected_input, selected_report, high_trace);
+          if (high_selected) {
+            /* The complete admitted MLA PU is managed. Export CG dependences
+             * and use ordinary cleanup; do not reopen the selected schedule
+             * in reverse/fusion/fission/SNL/scalarization/prefetch passes. */
+            Build_CG_Dependence_Graph(Array_Dependence_Graph);
+            goto return_point;
+          }
+        } else if (high_trace) {
+          fprintf(high_trace, "AI_HIGH_SNAPSHOT 1 REFUSED reason=%s fallback=ordinary_lno\n", reason.c_str());
+        }
+      }
+    }
+
+    /* All ordinary LNO work below may change source or analysis state. No
+     * detached fact may be reused as current across this coarse boundary. */
+    high_epoch.Before_mutation();
+    if (high_snapshot_trace) fprintf(high_snapshot_trace,
+        "AI_HIGH_SNAPSHOT 1 INVALIDATION live_epoch=%llu:%llu snapshot_current=%s reason=legacy_lno_mutation\n",
+        (unsigned long long)high_epoch.Stamp().activation, (unsigned long long)high_epoch.Stamp().mutation,
+        high_snapshot.Is_current(high_epoch, high_bindings) ? "true" : "false");
+    high_snapshot.Print(high_snapshot_trace, "EXPIRE_BEFORE_HOIST");
+    high_reuse.Print(high_snapshot_trace,"EXPIRE_BEFORE_HOIST",high_reuse.Is_live(high_epoch));
     Hoist_Varying_Lower_Bounds(func_nd); 
 #ifndef TARG_X8664
     // Move If_MinMax() after Array_Substutution() so that
@@ -1629,7 +1698,7 @@ return_point:
     // be driver may look at this bit after LNO is run
     // Reset_SYMTAB_mp_needs_lno(Current_Symtab);
   }
-  WN_Simplify_Tree(func_nd);
+  if (!high_selected) WN_Simplify_Tree(func_nd);
 
   if (LNO_Analysis)
     Lisp_Loops(func_nd, LNO_Analysis); 
@@ -1673,6 +1742,9 @@ return_point:
   MEM_POOL_Pop(&ARA_memory_pool);
   MEM_POOL_Delete(&ARA_memory_pool);
   LNO_Restore_Configs();
+  high_epoch.Close();
+  high_snapshot.Print(high_snapshot_trace, "OWNED_AFTER_CLEANUP");
+  high_reuse.Print(high_snapshot_trace,"OWNED_AFTER_CLEANUP",high_reuse.Is_live(high_epoch));
   return func_nd;
 }
 

@@ -22,6 +22,17 @@ class OperatorContract:
 
 
 _CONTRACTS = {
+    common.SUB: OperatorContract(common.SUB, 1, 2, ("attr.broadcast_rule",)),
+    common.EXP: OperatorContract(common.EXP, 1, 1, ("attr.fp_semantics",)),
+    common.LOG: OperatorContract(common.LOG, 1, 1, ("attr.fp_semantics",)),
+    common.REDUCEMAX: OperatorContract(common.REDUCEMAX, 1, 1, ("attr.axis","attr.keepdim","attr.accum_dtype","attr.reassociate")),
+    common.ISFINITE: OperatorContract(common.ISFINITE, 1, 1, ()),
+    common.GREATER: OperatorContract(common.GREATER, 1, 2, ("attr.broadcast_rule",)),
+    common.SELECT: OperatorContract(common.SELECT, 1, 3, ("attr.broadcast_rule",)),
+    common.LOGICALNOT: OperatorContract(common.LOGICALNOT, 1, 1, ()),
+    common.FILLLIKE: OperatorContract(common.FILLLIKE, 1, 1, ("attr.value_bits",)),
+    common.MUL: OperatorContract(common.MUL, 1, 2, ("attr.broadcast_rule",)),
+    common.DIV: OperatorContract(common.DIV, 1, 2, ("attr.broadcast_rule",)),
     common.MEAN_VARIANCE_NORM: OperatorContract(
         common.MEAN_VARIANCE_NORM, 1, 3,
         ("attr.axis", "attr.accum_dtype", "attr.variance_kind", "attr.epsilon_bits",
@@ -201,6 +212,10 @@ _CONTRACTS = {
 }
 
 _VERSIONED_CONTRACTS = {
+    (common.MATMUL, 3): OperatorContract(common.MATMUL, 3, 2,
+        ("attr.transpose_kid0", "attr.transpose_kid1", "attr.batch_rule", "attr.accum_dtype")),
+    (common.REDUCE_SUM, 3): OperatorContract(common.REDUCE_SUM, 3, 1,
+        ("attr.axis", "attr.keepdim", "attr.accum_dtype", "attr.reassociate")),
     (common.MATMUL, 2): OperatorContract(
         common.MATMUL,
         2,
@@ -264,6 +279,15 @@ _VERSIONED_CONTRACTS = {
         ),
     ),
 }
+
+
+# Q0-published additive source schemas; old defaults retain their versions.
+from ..quantized_contract import SCHEMAS as _QUANTIZED_SCHEMAS
+for (_name, _version), (_arity, _attrs) in _QUANTIZED_SCHEMAS.items():
+    _contract = OperatorContract(_name, _version, _arity, tuple("attr."+a for a in _attrs))
+    _VERSIONED_CONTRACTS[_name, _version] = _contract
+    if _name not in _CONTRACTS:
+        _CONTRACTS[_name] = _contract
 
 
 def all_operator_contracts() -> Mapping[str, OperatorContract]:

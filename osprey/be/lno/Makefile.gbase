@@ -160,6 +160,7 @@ SRC_DIRS = \
   $(BE_REGION_DIR)	
 
 HEADER_DIRS = \
+  $(BE_DIR)/vho         \
   $(SRC_DIRS)		\
   $(BE_OPT_DIR)		\
   $(BE_REGION_DIR)	\
@@ -188,6 +189,24 @@ BE_COM_CXX_SRCS = \
 BE_LNOPT_SRCS = 
 
 BE_LNOPT_CXX_SRCS = \
+  dsl_partition_axis.cxx \
+  dsl_high_admission.cxx \
+  dsl_high_snapshot.cxx \
+  dsl_high_snapshot_capture.cxx \
+  dsl_high_reuse.cxx \
+  dsl_high_quantized.cxx \
+  dsl_q1_preopt.cxx \
+  dsl_high_observer.cxx \
+  dsl_high_observer_json.cxx \
+  dsl_high_observer_native.cxx \
+  dsl_high_apply.cxx \
+  tensor_high_lower.cxx \
+  tensor_workload.cxx \
+  tensor_serving_schema.cxx \
+  tensor_q1_program.cxx \
+  tensor_schedule.cxx \
+  tensor_attention_chunk_select.cxx \
+  tensor_attention_search.cxx \
   lnodriver.cxx			\
   lnopt_main.cxx		\
   lnoutils.cxx			\
@@ -324,6 +343,60 @@ LNOPT_DSOS = $(WOPT_SO) $(BE_SO) $(IPL_SO)
 LDIRT = ii_files *.pch
 
 VPATH    =  $(SRC_DIRS)
+
+# Share only detached VHO planning, never native materialization, with LNO.
+tensor_schedule.o: $(BE_DIR)/vho/tensor_schedule.cxx $(BE_DIR)/vho/tensor_kernel_lower.h $(BE_DIR)/vho/tensor_attention_pattern.inc
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+# Detached value layout is shared by every observer/application translation
+# unit. Keep incremental builds from mixing incompatible vector element ABIs.
+dsl_high_observer.o dsl_high_observer_json.o dsl_high_observer_native.o \
+  dsl_high_apply.o lnopt_main.o tensor_high_lower.o tensor_schedule.o \
+  tensor_attention_chunk_select.o tensor_attention_search.o \
+  tensor_attention_search_test.o dsl_high_search_test.o dsl_high_movement_test.o \
+  dsl_high_reuse.o dsl_high_quantized.o dsl_high_snapshot_capture.o: \
+  $(BE_DIR)/vho/tensor_kernel_lower.h $(COMMON_COM_DIR)/dsl_tensor_traits.h
+
+dsl_high_snapshot_capture.o: $(BE_LNOPT_DIR)/tests/dsl_high_snapshot_native_test.inc
+dsl_high_observer_native.o: $(BE_LNOPT_DIR)/tests/dsl_high_reuse_native_test.inc
+
+# Owned snapshot/report layout crosses the native/observer boundary. Rebuild
+# every consumer together; these records never enter a WHIRL image.
+dsl_high_snapshot.o dsl_high_snapshot_capture.o dsl_high_reuse.o \
+  dsl_high_observer.o dsl_high_observer_json.o dsl_high_observer_native.o \
+  dsl_high_apply.o lnopt_main.o dsl_high_search_test.o: \
+  $(BE_LNOPT_DIR)/dsl_high_snapshot.h $(BE_LNOPT_DIR)/dsl_high_reuse.h \
+  $(BE_LNOPT_DIR)/dsl_high_observer.h
+
+dsl_high_reuse.o: $(BE_LNOPT_DIR)/dsl_high_reuse.cxx $(BE_DIR)/vho/dsl_gemm_readiness.h
+
+tensor_attention_chunk_select.o: $(BE_DIR)/vho/tensor_attention_chunk_select.cxx $(BE_DIR)/vho/tensor_kernel_lower.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+tensor_attention_search.o: $(BE_DIR)/vho/tensor_attention_search.cxx $(BE_DIR)/vho/tensor_attention_search.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+lnodriver.o lnopt_main.o: $(BE_LNOPT_DIR)/lnoptimizer.h
+
+# Selected-only semantic construction is outside the detached search closure.
+tensor_high_lower.o: $(BE_DIR)/vho/tensor_high_lower.cxx $(BE_DIR)/vho/tensor_high_selected.inc $(BE_DIR)/vho/tensor_high_quantized.inc $(BE_DIR)/vho/tensor_kernel_lower.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_high_apply.o: $(BE_DIR)/vho/tensor_selected_key.h $(BUILD_TOT)/common/com/dsl_native_tree_key.h
+
+# Standalone tests link only the detached service and read-only hardware records.
+# The scripted clock cannot be selected in the production shared component.
+dsl_high_search_test.o: $(BE_LNOPT_DIR)/tests/dsl_high_search_control_test.cxx $(BE_LNOPT_DIR)/dsl_high_observer.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+tensor_attention_search_test.o: $(BE_DIR)/vho/tensor_attention_search.cxx $(BE_DIR)/vho/tensor_attention_search.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) -DVHO_MLA_SEARCH_TEST_CLOCK $< -o $@
+
+dsl_high_search_hardware.o: $(COMMON_TARG_INFO_ACCESS_DIR)/dsl_memory_hierarchy.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_high_search_control_test: dsl_high_search_test.o tensor_attention_search_test.o dsl_high_search_hardware.o dsl_high_observer.o dsl_high_observer_json.o dsl_high_snapshot.o tensor_schedule.o tensor_attention_chunk_select.o
+	$(link.c++f) -o $@ $^
 
 LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
 LCDEFS = $(HOSTDEFS) $(TARGDEFS)
@@ -489,3 +562,64 @@ include $(COMMONRULES)
 
 DSONAMEOPT =
 
+
+# MR2 changes only detached DTOs. Rebuild every consumer of their value layout.
+dsl_high_observer.o dsl_high_observer_json.o dsl_high_observer_native.o \
+  dsl_high_apply.o lnopt_main.o dsl_high_reuse.o dsl_high_search_test.o \
+  tensor_attention_search.o tensor_attention_search_test.o: \
+  $(BE_DIR)/vho/tensor_attention_search.h $(BE_DIR)/vho/tensor_attention_movement.h
+
+tensor_attention_search.o tensor_attention_search_test.o: $(BE_DIR)/vho/tensor_attention_movement.inc
+
+dsl_high_search_control_test: dsl_high_reuse.o
+
+dsl_high_movement_test.o: $(BE_LNOPT_DIR)/tests/dsl_high_movement_test.cxx $(BE_LNOPT_DIR)/dsl_high_observer.h $(BE_DIR)/vho/tensor_attention_movement.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_high_movement_test: dsl_high_movement_test.o tensor_attention_search_test.o dsl_high_search_hardware.o dsl_high_observer.o dsl_high_observer_json.o dsl_high_snapshot.o dsl_high_reuse.o tensor_schedule.o tensor_attention_chunk_select.o
+	$(link.c++f) -o $@ $^
+
+dsl_high_quantized.o: $(BE_LNOPT_DIR)/dsl_high_quantized.cxx $(BE_LNOPT_DIR)/dsl_high_quantized.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
+
+tensor_q1_program.o: $(BE_DIR)/vho/tensor_q1_program.cxx $(BE_DIR)/vho/tensor_q1_program.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+lnodriver.o dsl_q1_preopt.o: $(BE_LNOPT_DIR)/dsl_q1_preopt.h
+
+dsl_q1_preopt.o dsl_high_quantized.o: $(BE_LNOPT_DIR)/dsl_high_quantized.h $(BE_DIR)/vho/tensor_q1_program.h
+
+# Q2 owned workload layout is shared across native consumers.
+tensor_workload.o: $(BE_DIR)/vho/tensor_workload.cxx $(BE_DIR)/vho/tensor_workload.h $(BE_DIR)/vho/tensor_kernel_lower.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+tensor_high_lower.o tensor_q1_program.o dsl_high_quantized.o dsl_q1_preopt.o lnodriver.o: $(BE_DIR)/vho/tensor_workload.h
+
+tensor_serving_schema.o: $(BE_DIR)/vho/tensor_serving_schema.cxx $(BE_DIR)/vho/tensor_serving_schema.h $(BE_DIR)/vho/tensor_workload.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+tensor_high_lower.o tensor_q1_program.o: $(BE_DIR)/vho/tensor_serving_schema.h
+
+# Q4 detached model and live-export adapter dependencies.
+tensor_attention_search.o tensor_attention_search_test.o: $(BE_DIR)/vho/tensor_quantized_movement.h $(BE_DIR)/vho/tensor_quantized_movement.inc $(BE_DIR)/vho/tensor_serving.h
+
+dsl_high_quantized_movement_test.o: $(BE_LNOPT_DIR)/tests/dsl_high_quantized_movement_test.cxx $(BE_DIR)/vho/tensor_quantized_movement.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) -std=c++98 -O0 $< -o $@
+dsl_high_quantized_movement_test: dsl_high_quantized_movement_test.o tensor_attention_search_test.o dsl_high_search_hardware.o dsl_high_observer.o dsl_high_observer_json.o dsl_high_snapshot.o dsl_high_reuse.o tensor_schedule.o tensor_attention_chunk_select.o
+	$(link.c++f) -o $@ $^
+LDIRT += dsl_high_quantized_movement_test.o dsl_high_quantized_movement_test
+
+# Q4 adds detached report fields; all value-layout consumers rebuild together.
+dsl_high_movement_test.o dsl_high_quantized_movement_test.o \
+  dsl_high_observer.o dsl_high_observer_json.o dsl_high_observer_native.o \
+  dsl_high_apply.o lnopt_main.o dsl_high_reuse.o dsl_high_search_test.o \
+  tensor_attention_search.o tensor_attention_search_test.o: \
+  $(BE_DIR)/vho/tensor_quantized_movement.h $(BE_DIR)/vho/tensor_serving.h $(BE_DIR)/vho/tensor_serving_schema.h
+
+# Q5 strict selected plan qualification/materialization.
+tensor_serving_schema.o: $(BE_DIR)/vho/tensor_quantized_plan.h $(BE_DIR)/vho/tensor_quantized_plan.inc
+tensor_high_lower.o: $(BE_DIR)/vho/tensor_quantized_plan.h $(BE_DIR)/vho/tensor_high_q5.inc
+tensor_q1_program.o dsl_q1_preopt.o: $(BE_DIR)/vho/tensor_quantized_plan.h
+tensor_attention_search.o: $(BE_DIR)/vho/tensor_quantized_plan.h $(BE_DIR)/vho/tensor_q5_cost.inc
+tensor_attention_search_test.o: $(BE_DIR)/vho/tensor_q5_cost.inc
+tensor_high_lower.o: $(BE_DIR)/vho/tensor_high_selected.inc
+
+# Complete Q5 source qualification remains detached in standalone cost tests.
+dsl_high_search_control_test dsl_high_movement_test dsl_high_quantized_movement_test: tensor_serving_schema.o tensor_workload.o
+tensor_high_lower.o: $(BE_DIR)/vho/tensor_high_quantized.inc

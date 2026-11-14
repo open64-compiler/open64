@@ -147,6 +147,12 @@ Check_Candidate_Contract(void)
     candidate.dsl_operator = OPR_DSLADD;
     candidate.version = 2;
     if (DSL_Tensor_Fold_Candidate_Valid(&candidate, &reason) ||
+        reason != DSL_TENSOR_FOLD_REJECT_UNSUPPORTED_EVALUATOR) {
+        fprintf(stderr, "checked-index v2 inherited an unqualified fold evaluator\n");
+        return 1;
+    }
+    candidate.version = 65535;
+    if (DSL_Tensor_Fold_Candidate_Valid(&candidate, &reason) ||
         reason != DSL_TENSOR_FOLD_REJECT_UNSUPPORTED_OPERATOR) {
         fprintf(stderr, "unknown tensor fold operator version was accepted\n");
         return 1;

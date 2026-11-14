@@ -1,0 +1,24 @@
+{
+  "schema": "open64.mla-gpu-profile.v1",
+  "id": "sm90-132sm-review-estimate-v1",
+  "architecture": "sm_90",
+  "provenance": "provided-capacities-estimated-registers",
+  "sms": 132,
+  "registers_per_thread_estimate": 48,
+  "target_ctas_per_sm": 2,
+  "scratch_budget_bytes": 1048576,
+  "resources": {
+    "max_blocks": 32,
+    "max_warps": 64,
+    "max_threads": 2048,
+    "max_threads_per_cta": 1024,
+    "registers_per_sm": 65536,
+    "max_registers_per_thread": 255,
+    "register_quantum": 256,
+    "register_warp_quantum": 4,
+    "shared_capacity": 233472,
+    "shared_budget": 65536,
+    "shared_quantum": 128,
+    "shared_reserved": 0
+  }
+}

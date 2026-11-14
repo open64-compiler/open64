@@ -220,6 +220,8 @@ LDIRT += dsl_normalization_evidence_test dsl_normalization_evidence_test.o
 LDIRT += dsl_normalization_plan_test dsl_normalization_plan_test.o opt_dsl_normalization_plan_test.o
 LDIRT += dsl_normalization_guard_test dsl_normalization_guard_test.o
 LDIRT += dsl_normalization_cost_test dsl_normalization_cost_test.o opt_dsl_normalization_cost_test.o
+LDIRT += dsl_normalization_lower_test dsl_normalization_lower_test.o opt_dsl_normalization_lower_test.o
+LDIRT += dsl_normalization_request_test dsl_normalization_request_test.o opt_dsl_normalization_request_test.o
 LDIRT += dsl_softmax_contract_test dsl_softmax_contract_test.o
 LDIRT += dsl_normalization_contract_test dsl_normalization_contract_test.o
 LDIRT += dsl_normalization_ref_test dsl_normalization_ref_test.o
@@ -389,6 +391,102 @@ VPATH += $(COMMON_TARG_INFO_ACCESS_DIR)
 
 ir_b2a: $(OBJECTS) ir_a2b.o
 	$(link.c++f) -o ir_b2a ir_a2b.o $(OBJECTS) $(LDFLAGS)
+
+# Focused read-only CUDA reference mode reuses the normal mapped-image reader.
+whirl2c_tensor_source: $(OBJECTS) tensor_source.o
+	$(link.c++f) -o $@ tensor_source.o $(OBJECTS) $(LDFLAGS)
+
+tensor_source.o: $(BUILD_TOT)/be/whirl2c/tensor_source.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $< -o $@
+
+whirl2c_reference_main.o: $(BUILD_TOT)/be/whirl2c/whirl2c_main.cxx
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) -DSHARED_BUILD $< -o $@
+
+ifeq ($(BUILD_OS), LINUX)
+TENSOR_SOURCE_INCS = -I$(BUILD_TOT)/linux/include
+endif
+
+# Selected-schedule source presentation remains a standalone tool dependency.
+TENSOR_SOURCE_INCS += -I$(BUILD_TOT)/be/whirl2c
+
+whirl2c: whirl2c_reference_main.o whirl2c_tensor_source
+	$(link.c++f) -o $@ whirl2c_reference_main.o $(LDFLAGS)
+
+LDIRT += whirl2c whirl2c_tensor_source whirl2c_reference_main.o tensor_source.o
+
+# PU-local VHO lowering service; the standalone driver alone owns frontend APIs.
+tensor_kernel_lower: q1_high_facts.o q1_high_epoch.o $(OBJECTS) controls.o tensor_kernel_driver.o tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o tensor_q1_program.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o
+	$(link.c++f) -o $@ q1_high_facts.o q1_high_epoch.o tensor_kernel_driver.o tensor_quantized_gpu.o tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o tensor_q1_program.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o controls.o $(OBJECTS) $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
+
+# Standalone consumer of existing be.so lowering; no new dependency/symbol is
+# added to be.so, and the legacy tensor_kernel_lower remains link-independent.
+# Frontend-only DST producer reset belongs in these executable links alongside
+# dsl_builder.o; the MONGOOSE_BE producer deliberately omits DST_init_mem.
+tensor_selected_bridge: q1_high_facts.o q1_high_epoch.o $(OBJECTS) controls.o tensor_bridge_driver.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o tensor_q1_program.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o
+	$(link.c++f) -o $@ q1_high_facts.o q1_high_epoch.o tensor_bridge_driver.o tensor_quantized_device.o tensor_quantized_stage.o tensor_quantized_gpu.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o tensor_q1_program.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o dsl_builder.o dsl_contract.o dwarf_DST_producer.o dsl_simp.o controls.o -L$(BUILD_AREA)/be -l:be.so $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
+
+# Keep all consumers of the detached value layout and role constants in sync.
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o \
+  tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o \
+  tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o \
+  tensor_attention_chunk_select.o tensor_attention_search.o \
+  tensor_schedule_source.o tensor_kernel_explain.o q1_high_facts.o: \
+  $(BE_VHO_DIR)/tensor_kernel_lower.h $(COMMON_COM_DIR)/dsl_tensor_traits.h
+
+# Reuse the strict owned manifest decoder; never link native LNO/search hooks.
+tensor_bridge_bindings.o: $(BUILD_TOT)/be/lno/dsl_high_observer_json.cxx $(BUILD_TOT)/be/lno/dsl_high_observer.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_bridge_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BUILD_BASE)/tensor_selected_bridge_driver.inc $(BE_VHO_DIR)/tensor_selected_bridge.h $(COMMON_COM_DIR)/dsl_native_tree_key.h $(BUILD_BASE)/tensor_quantized_review.inc $(BUILD_TOT)/torch2whirl/python/native/quantized_cache_inference.h
+	$(cxx) -DOPEN64_TENSOR_SELECTED_BRIDGE -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BUILD_BASE)/tensor_selected_bridge_driver.inc $(BE_VHO_DIR)/tensor_selected_key.h $(COMMON_COM_DIR)/dsl_native_tree_key.h $(BUILD_BASE)/tensor_quantized_review.inc $(BUILD_TOT)/torch2whirl/python/native/quantized_cache_inference.h
+	$(cxx) -DOPEN64_TENSOR_SELECTED_BRIDGE -DOPEN64_TENSOR_BRIDGE_TEST -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+# Native mutations are compiled out of the production executable.
+tensor_selected_bridge_test: tensor_selected_bridge tensor_bridge_test_driver.o
+	$(link.c++f) -o $@ q1_high_facts.o q1_high_epoch.o tensor_bridge_test_driver.o tensor_quantized_device.o tensor_quantized_stage.o tensor_quantized_gpu.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o tensor_q1_program.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o dsl_builder.o dsl_contract.o dwarf_DST_producer.o dsl_simp.o controls.o -L$(BUILD_AREA)/be -l:be.so $(LDFLAGS) $(TENSOR_KERNEL_FLAGS)
+
+tensor_bridge_driver.o tensor_selected_bridge.o: $(BE_VHO_DIR)/tensor_selected_key.h
+tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_TOT)/be/lno/dsl_high_binding_keys.h
+tensor_bridge_driver.o tensor_bridge_test_driver.o tensor_bridge_bindings.o: \
+  $(BUILD_TOT)/be/lno/dsl_high_snapshot.h $(BUILD_TOT)/be/lno/dsl_high_reuse.h \
+  $(BUILD_TOT)/be/lno/dsl_high_observer.h
+tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_attention_search_json.inc $(BE_VHO_DIR)/tensor_attention_search.h
+tensor_selected_bridge: $(BUILD_AREA)/be/be.so
+LDIRT += tensor_selected_bridge tensor_selected_bridge_test tensor_bridge_driver.o tensor_bridge_test_driver.o tensor_bridge_bindings.o tensor_selected_bridge.o tensor_selected_ptx.o
+
+tensor_selected_bridge.o: $(BE_VHO_DIR)/tensor_selected_bridge.cxx $(BE_VHO_DIR)/tensor_selected_bridge.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_selected_ptx.o: $(BUILD_TOT)/be/cg/NVISA/tensor_selected_ptx.cxx $(BE_VHO_DIR)/tensor_selected_bridge.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_lower.cxx $(BE_VHO_DIR)/tensor_high_selected.inc $(BE_VHO_DIR)/tensor_high_quantized.inc $(BE_VHO_DIR)/tensor_kernel_lower.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_attention_search.o: $(BE_VHO_DIR)/tensor_attention_search.cxx $(BE_VHO_DIR)/tensor_attention_search.h $(BE_VHO_DIR)/tensor_kernel_lower.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h $(BE_VHO_DIR)/dsl_gemm_readiness.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_attention_chunk_select.o: $(BE_VHO_DIR)/tensor_attention_chunk_select.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h $(BE_VHO_DIR)/dsl_gemm_occupancy.h $(BE_VHO_DIR)/dsl_gemm_readiness.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_kernel_driver.o: $(BUILD_BASE)/tensor_kernel_driver.cxx $(BUILD_BASE)/tensor_quantized_review.inc $(BUILD_TOT)/torch2whirl/python/native/quantized_cache_inference.h $(BUILD_BASE)/tensor_attention_search_json.inc $(BE_VHO_DIR)/tensor_attention_search.h $(BE_VHO_DIR)/tensor_kernel_lower.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_schedule.o: $(BE_VHO_DIR)/tensor_schedule.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h $(BE_VHO_DIR)/tensor_attention_pattern.inc
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_kernel_lower.o: $(BE_VHO_DIR)/tensor_kernel_lower.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h $(BE_VHO_DIR)/tensor_attention_pattern.inc $(BE_VHO_DIR)/tensor_attention_device.inc
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_schedule_source.o: $(BUILD_TOT)/be/whirl2c/tensor_schedule_source.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h $(BUILD_TOT)/be/whirl2c/tensor_schedule_source.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_kernel_explain.o: $(BE_VHO_DIR)/tensor_kernel_explain.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h $(BE_VHO_DIR)/tensor_kernel_explain.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+LDIRT += tensor_kernel_lower tensor_kernel_driver.o tensor_kernel_lower.o tensor_source_capture.o tensor_workload.o tensor_serving_schema.o tensor_schedule.o tensor_high_lower.o tensor_q1_program.o tensor_attention_chunk_select.o tensor_attention_search.o tensor_kernel_explain.o tensor_schedule_source.o
 
 ir_a2b: ir_b2a
 	ln -sf ir_b2a ir_a2b
@@ -946,6 +1044,36 @@ dsl_normalization_cost_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_cost_test.c
                 $(BE_OPT_DIR)/tests/dsl_normalization_ref_test.cxx $(BE_OPT_DIR)/opt_dsl_normalization_cost.h
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
+dsl_normalization_lower_test: $(OBJECTS) controls.o dsl_normalization_lower_test.o \
+                opt_dsl_normalization_lower_test.o opt_dsl_normalization_cost_test.o opt_dsl_normalization_plan_test.o \
+                opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_normalization_lower_test.o opt_dsl_normalization_lower_test.o opt_dsl_normalization_cost_test.o \
+                opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o \
+                opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+dsl_normalization_request_test: $(OBJECTS) controls.o dsl_normalization_request_test.o \
+                opt_dsl_normalization_request_test.o opt_dsl_normalization_lower_test.o opt_dsl_normalization_cost_test.o \
+                opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
+	$(link.c++f) -o $@ dsl_normalization_request_test.o opt_dsl_normalization_request_test.o opt_dsl_normalization_lower_test.o \
+                opt_dsl_normalization_cost_test.o opt_dsl_normalization_plan_test.o opt_dsl_normalization_target_test.o \
+                opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o controls.o $(OBJECTS) $(LDFLAGS)
+
+opt_dsl_normalization_request_test.o: $(BE_OPT_DIR)/opt_dsl_normalization_request.cxx $(BE_OPT_DIR)/opt_dsl_normalization_request.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_normalization_request_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_request_test.cxx $(BE_OPT_DIR)/opt_dsl_normalization_request.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+opt_dsl_normalization_lower_test.o: $(BE_OPT_DIR)/opt_dsl_normalization_lower.cxx $(BE_OPT_DIR)/opt_dsl_normalization_lower.h \
+                $(BE_OPT_DIR)/opt_dsl_normalization_cost.h $(BE_OPT_DIR)/opt_dsl_normalization_plan.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
+dsl_normalization_lower_test.o: $(BE_OPT_DIR)/tests/dsl_normalization_lower_test.cxx \
+                $(BE_OPT_DIR)/tests/dsl_normalization_cost_test.cxx $(BE_OPT_DIR)/tests/dsl_normalization_plan_test.cxx \
+                $(BE_OPT_DIR)/tests/dsl_normalization_target_test.cxx $(BE_OPT_DIR)/tests/dsl_normalization_ref_test.cxx \
+                $(BE_OPT_DIR)/opt_dsl_normalization_lower.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+
 dsl_softmax_contract_test: $(OBJECTS) controls.o dsl_softmax_contract_test.o \
 		opt_dsl_wopt_test.o opt_dsl_semantic_wopt_test.o
 	$(link.c++f) -o $@ dsl_softmax_contract_test.o opt_dsl_wopt_test.o \
@@ -1125,3 +1253,117 @@ dsl_tensor_locality.o: $(BE_VHO_DIR)/dsl_tensor_locality_internal.h \
 
 dsl_contract.o: $(COMMON_IR_IMAGE_DIR)/dsl_contract.cxx \
     $(COMMON_IR_IMAGE_DIR)/dsl_contract.h
+# MR2 detached profile/candidate layout and included model implementation.
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o \
+  tensor_bridge_bindings.o tensor_attention_search.o: \
+  $(BE_VHO_DIR)/tensor_attention_search.h $(BE_VHO_DIR)/tensor_attention_movement.h
+
+tensor_attention_search.o: $(BE_VHO_DIR)/tensor_attention_movement.inc
+
+# Q1's optional standalone observer reuses the existing epoch implementation.
+q1_high_facts.o: $(BUILD_TOT)/be/lno/dsl_high_quantized.cxx $(BUILD_TOT)/be/lno/dsl_high_quantized.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+q1_high_epoch.o: $(BUILD_TOT)/be/lno/dsl_high_snapshot.cxx $(BUILD_TOT)/be/lno/dsl_high_snapshot.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_source_capture.o: $(BE_VHO_DIR)/tensor_source_capture.cxx $(BE_VHO_DIR)/tensor_kernel_lower.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+tensor_q1_program.o: $(BE_VHO_DIR)/tensor_q1_program.cxx $(BE_VHO_DIR)/tensor_q1_program.h $(BE_VHO_DIR)/tensor_kernel_lower.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+
+config.o: $(COMMON_UTIL_DIR)/config_dsl.cxx $(COMMON_UTIL_DIR)/config_dsl.h
+
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o q1_high_facts.o: $(BUILD_TOT)/be/lno/dsl_high_quantized.h $(BE_VHO_DIR)/tensor_q1_program.h
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_q1_rebind_test.inc
+
+# Q2 pure service and all consumers of the extended owned fact layout.
+tensor_workload.o: $(BE_VHO_DIR)/tensor_workload.cxx $(BE_VHO_DIR)/tensor_workload.h $(BE_VHO_DIR)/tensor_kernel_lower.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o q1_high_facts.o tensor_high_lower.o tensor_q1_program.o: $(BE_VHO_DIR)/tensor_workload.h
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_workload_json.inc
+
+tensor_serving_schema.o: $(BE_VHO_DIR)/tensor_serving_schema.cxx $(BE_VHO_DIR)/tensor_serving_schema.h $(BE_VHO_DIR)/tensor_workload.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+tensor_high_lower.o tensor_q1_program.o tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BE_VHO_DIR)/tensor_serving_schema.h
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_serving_json.inc
+
+# The synchronous host adapter is an embedding product, never a be.so input.
+tensor_serving_runtime.o: $(BE_VHO_DIR)/tensor_serving.cxx $(BE_VHO_DIR)/tensor_serving.h $(BE_VHO_DIR)/tensor_serving_schema.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) -std=c++11 -fPIC -pthread -DOPEN64_SERVING_TEST $< -o $@
+tensor_serving_review.o: $(BUILD_BASE)/tensor_serving_review.cxx $(BE_VHO_DIR)/tensor_serving.h $(BE_VHO_DIR)/tensor_q1_program.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) -std=c++11 -fPIC -pthread -DOPEN64_SERVING_TEST $< -o $@
+libmla_serving_review.so: tensor_serving_runtime.o tensor_serving_review.o tensor_attention_search.o $(BUILD_AREA)/be/be.so
+	$(link.c++f) -shared -pthread -o $@ tensor_serving_runtime.o tensor_serving_review.o tensor_attention_search.o -L$(BUILD_AREA)/be -l:be.so
+LDIRT += tensor_serving_schema.o tensor_serving_runtime.o tensor_serving_review.o libmla_serving_review.so
+
+# Q4 detached model and live-export adapter dependencies.
+tensor_attention_search.o tensor_serving_runtime.o tensor_serving_review.o: $(BE_VHO_DIR)/tensor_quantized_movement.h $(BE_VHO_DIR)/tensor_quantized_movement.inc $(BE_VHO_DIR)/tensor_serving.h
+
+tensor_serving_review.o: $(BUILD_BASE)/tensor_quantized_movement_review.inc
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o \
+  tensor_bridge_bindings.o: $(BE_VHO_DIR)/tensor_quantized_movement.h
+
+# Q5 strict selected plan qualification/materialization.
+tensor_serving_schema.o: $(BE_VHO_DIR)/tensor_quantized_plan.h $(BE_VHO_DIR)/tensor_quantized_plan.inc
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_quantized_plan.h $(BE_VHO_DIR)/tensor_high_q5.inc
+tensor_q1_program.o dsl_q1_preopt.o: $(BE_VHO_DIR)/tensor_quantized_plan.h
+tensor_attention_search.o: $(BE_VHO_DIR)/tensor_quantized_plan.h $(BE_VHO_DIR)/tensor_q5_cost.inc
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_q5_driver.inc $(BE_VHO_DIR)/tensor_quantized_plan.h
+tensor_serving_review.o: $(BUILD_BASE)/tensor_q5_review.inc $(BE_VHO_DIR)/tensor_quantized_plan.h
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_selected.inc
+tensor_high_lower.o: $(BE_VHO_DIR)/tensor_high_quantized.inc
+tensor_kernel_lower tensor_selected_bridge tensor_selected_bridge_test: tensor_quantized_gpu.o
+tensor_quantized_gpu.o: $(BE_VHO_DIR)/tensor_quantized_gpu.cxx $(BE_VHO_DIR)/tensor_quantized_gpu.h $(BE_VHO_DIR)/tensor_quantized_plan.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+LDIRT += tensor_quantized_gpu.o
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_q6_driver.inc $(BE_VHO_DIR)/tensor_quantized_gpu.h
+tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_q6_contract_test.inc
+
+# Reuse the same private High builder without exporting Q6 APIs/dependencies in be.so.
+tensor_selected_bridge tensor_selected_bridge_test: tensor_quantized_stage.o
+tensor_quantized_stage.o: $(BE_VHO_DIR)/tensor_high_lower.cxx $(BE_VHO_DIR)/tensor_high_q6.inc $(BE_VHO_DIR)/tensor_high_q5.inc $(BE_VHO_DIR)/tensor_high_selected.inc $(BE_VHO_DIR)/tensor_high_quantized.inc $(BE_VHO_DIR)/tensor_quantized_stage.h $(BE_VHO_DIR)/tensor_quantized_gpu.h
+	$(cxx) -DOPEN64_Q6_NATIVE_STAGE -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_q6b_driver.inc $(BE_VHO_DIR)/tensor_quantized_stage.h
+tensor_quantized_stage.o: $(BE_VHO_DIR)/tensor_kernel_lower.h $(COMMON_COM_DIR)/dsl_tensor_traits.h $(COMMON_COM_DIR)/dsl_native_tree_key.h $(BE_VHO_DIR)/tensor_quantized_plan.h $(BE_VHO_DIR)/tensor_q1_program.h $(BE_VHO_DIR)/tensor_workload.h $(BE_VHO_DIR)/tensor_serving_schema.h
+tensor_kernel_driver.o tensor_bridge_driver.o tensor_bridge_test_driver.o: $(COMMON_COM_DIR)/dsl_native_tree_key.h
+LDIRT += tensor_quantized_stage.o
+
+# Q6c belongs only to the separately linked selected-plan tool.
+tensor_selected_bridge tensor_selected_bridge_test: tensor_quantized_device.o
+tensor_quantized_device.o: $(BE_VHO_DIR)/tensor_quantized_device.cxx $(BE_VHO_DIR)/tensor_quantized_device.h $(BE_VHO_DIR)/tensor_quantized_stage.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) $< -o $@
+tensor_bridge_driver.o tensor_bridge_test_driver.o: $(BUILD_BASE)/tensor_q6c_driver.inc $(BE_VHO_DIR)/tensor_quantized_device.h
+tensor_selected_ptx.o: $(BE_VHO_DIR)/tensor_quantized_device.h
+LDIRT += tensor_quantized_device.o
+
+# Optional Q6d CUDA adapter is compiled only on explicit request. It neither
+# changes be.so linkage nor needs the CUDA SDK for ordinary compiler builds.
+CUDA_HOME ?= /usr/local/cuda
+mla_serving_cuda.o: $(BUILD_TOT)/libopen64rt/mla_serving_cuda.cxx $(BE_VHO_DIR)/tensor_serving_cuda.h $(BE_VHO_DIR)/tensor_serving.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) -std=c++11 -fPIC -pthread -I$(CUDA_HOME)/include $< -o $@
+libmla_serving_cuda.a: mla_serving_cuda.o mla_serving_registry.o $(BUILD_BASE)/Makefile.gbase
+	$(RM) $@.new
+	$(AR) rcs $@.new mla_serving_cuda.o mla_serving_registry.o
+	mv -f $@.new $@
+LDIRT += mla_serving_cuda.o libmla_serving_cuda.a
+# Q6d review uses the real SDK declarations and a delayed Driver implementation.
+mla_cuda_driver_mock.o: $(BUILD_TOT)/libopen64rt/tests/mla_cuda/driver_mock.cxx
+	$(cxx) -std=c++11 -fPIC -pthread -I$(CUDA_HOME)/include -c $< -o $@
+tensor_serving_cuda_review.o: $(BUILD_BASE)/tensor_serving_cuda_review.cxx $(BE_VHO_DIR)/tensor_serving_cuda.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) -std=c++11 -fPIC -pthread $< -o $@
+libmla_serving_cuda_review.so: tensor_serving_cuda_review.o mla_cuda_driver_mock.o mla_serving_cuda.o tensor_serving_runtime.o tensor_attention_search.o $(BUILD_AREA)/be/be.so
+	$(link.c++f) -shared -pthread -o $@ tensor_serving_cuda_review.o mla_cuda_driver_mock.o mla_serving_cuda.o tensor_serving_runtime.o tensor_attention_search.o -L$(BUILD_AREA)/be -l:be.so $(TENSOR_KERNEL_FLAGS)
+LDIRT += mla_cuda_driver_mock.o tensor_serving_cuda_review.o libmla_serving_cuda_review.so
+# SDK/driver bindings remain explicit optional embedding products. The archive
+# uses a registry object without test-only generation-exhaustion entry points.
+mla_serving_registry.o: $(BE_VHO_DIR)/tensor_serving.cxx $(BE_VHO_DIR)/tensor_serving.h $(BE_VHO_DIR)/tensor_quantized_movement.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $(TENSOR_SOURCE_INCS) $(TENSOR_KERNEL_FLAGS) -std=c++11 -fPIC -pthread $< -o $@
+LDIRT += mla_serving_registry.o
+
+# Q7 qualification links the same adapter/registry to the actual Driver.
+# The SDK stub is link-only: never add its directory to a runtime search path.
+# No model implementation or test-counter registry enters this library.
+libmla_serving_cuda_q7.so: tensor_serving_cuda_review.o mla_serving_cuda.o mla_serving_registry.o tensor_attention_search.o $(BUILD_AREA)/be/be.so
+	$(link.c++f) -shared -pthread -o $@ tensor_serving_cuda_review.o mla_serving_cuda.o mla_serving_registry.o tensor_attention_search.o -L$(BUILD_AREA)/be -l:be.so -L$(CUDA_HOME)/lib64/stubs -L$(CUDA_HOME)/lib/stubs -lcuda -Wl,-rpath,'$$ORIGIN/../be' $(TENSOR_KERNEL_FLAGS)
+LDIRT += libmla_serving_cuda_q7.so

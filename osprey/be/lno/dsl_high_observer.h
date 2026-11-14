@@ -1,0 +1,65 @@
+/* Copyright (C) 2026 Open64 Project */
+/* Detached LNO search input/report; native pointers never cross this interface.
+ * Design: doc/AI-COMPILER-SEARCH-M2C-OBSERVER-v1.0.md. No selected application,
+ * candidate lowering, or mapped-image representation is provided here.
+ * Optional outputs are owned copies for the separate selected-only caller. */
+#ifndef dsl_high_observer_INCLUDED
+#define dsl_high_observer_INCLUDED
+#include "dsl_high_snapshot.h"
+#include "../vho/tensor_attention_search.h"
+#include "dsl_high_reuse.h"
+
+struct DSL_HIGH_SEARCH_INPUT {
+    std::string unit, function, source_key, facts_key, numeric, host_target;
+    VHO_TENSOR_PROGRAM algorithm;
+    VHO_TENSOR_GPU_PROFILE gpu;
+    VHO_MLA_COST_PROFILE model;
+    std::vector<unsigned> buffers;
+    bool allow_reassociate;
+    bool production_controls;
+    bool movement_enabled;
+    VHO_MLA_MOVEMENT_PROFILE movement_profile;
+    VHO_MLA_SEARCH_CONTROL controls;
+    /* Missing permission never defaults to authorization. */
+    DSL_HIGH_SEARCH_INPUT() : allow_reassociate(false), production_controls(false), movement_enabled(false) {}
+};
+struct DSL_HIGH_SEARCH_REPORT {
+    DSL_HIGH_REUSE_FACTS reuse;
+    VHO_MLA_SEARCH_RESULT exploration;
+    std::string resource_key, model_key, manifest_key;
+    bool controlled;
+    bool movement;
+    std::string movement_key;
+    VHO_MLA_PRODUCTION_RESULT production;
+    std::string control_key;
+    /* V1 reporting remains the archival default until v2 controls are bound. */
+    DSL_HIGH_SEARCH_REPORT() : controlled(false), movement(false) {}
+};
+
+/* Strict, bounded JSON adapter into owned records. Reject duplicate/unknown
+ * fields, coercions and unsupported versions; clear output on any error. */
+extern bool LNO_DSL_read_search_input(const char *, DSL_HIGH_SEARCH_INPUT &, std::string &);
+/* Validate every shape/ABI/profile/model field and exact source/fact bindings.
+ * Effective numerical permission and native producer/ABI checks are supplied
+ * separately by the owning native caller before this detached service runs. */
+extern bool LNO_DSL_validate_search_input(const DSL_HIGH_SNAPSHOT &, const DSL_HIGH_BINDINGS &,
+    const DSL_HIGH_SEARCH_INPUT &, std::string &);
+/* Explore only owned records using the existing finite MLA portfolio. This
+ * service has no native handles and never applies or materializes a winner. */
+extern bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &, DSL_HIGH_SEARCH_REPORT &, std::string &, const DSL_HIGH_REUSE_FACTS * = NULL);
+extern std::string LNO_DSL_movement_binding(const DSL_HIGH_SEARCH_INPUT &,const DSL_HIGH_REUSE_FACTS &);
+/* Native active-PU wrapper: validate lineage/ABI, guard physical tree/table
+ * state, run detached exploration, revalidate analyses and retain fallback.
+ * Optional output DTOs are cleared on entry and copied only after successful
+ * isolation; no native pointer, application authority or mutation escapes. */
+extern void LNO_DSL_observe_high(WN *, DU_MANAGER *, ALIAS_MANAGER *, ARRAY_DIRECTED_GRAPH16 *,
+    const DSL_HIGH_EPOCH &, const DSL_HIGH_BINDINGS &, const DSL_HIGH_SNAPSHOT &, uint64_t, FILE *, DSL_HIGH_SEARCH_INPUT * = NULL, DSL_HIGH_SEARCH_REPORT * = NULL);
+/* Derive complete binding identities without exploration or native handles.
+ * Native selected-plan admission reuses this to detect rebinding after search. */
+extern void LNO_DSL_search_report_keys(const DSL_HIGH_SEARCH_INPUT &,DSL_HIGH_SEARCH_REPORT &);
+/* Monotonic host collection/validation/exploration accounting, never GPU time. */
+extern uint64_t LNO_DSL_observer_time_us();
+/* Query the existing read-only option descriptor service. This file-scope
+ * production opt-in can open snapshot capture without the legacy DSL flag. */
+extern bool LNO_DSL_production_search_requested();
+#endif

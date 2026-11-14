@@ -248,4 +248,41 @@ extern DSL_SHAPE_INFERENCE_RESULT DSL_Shape_Infer_Operator
 extern DSL_SHAPE_CHECK_RESULT DSL_Shape_Check_Operator
                                 (const DSL_SHAPE_OPERATOR_INPUT *input);
 
+/* Static tensor-expression source contracts; no target choices or IR mutation.
+ * See doc/AI-COMPILER-NATIVE-TENSOR-EXPRESSION-CONTRACT-v0.1.md. */
+typedef struct {
+    const char *axis;
+    const char *keepdim;
+    const char *broadcast_rule;
+    const char *fp_semantics;
+    const char *value_bits;
+    const char *accum_dtype;
+    const char *reassociate;
+    const char *batch_rule;
+    const char *transpose_kid0;
+    const char *transpose_kid1;
+    const char *rounding;
+    const char *has_min;
+    const char *min_bits;
+    const char *has_max;
+    const char *max_bits;
+    const char *src_dtype;
+    const char *dst_dtype;
+    const char *mode;
+    const char *nibble_order;
+    const char *code_bits;
+    const char *bounds;
+    const char *alias_rule;
+    const char *conflicts;
+    const char *integer_domain;
+    const char *value_i64;
+} DSL_TENSOR_EXPRESSION_ATTRIBUTES;
+
+/* Identify only the append-only elementary and explicit v3 contracts. */
+extern BOOL DSL_tensor_expression_contract(DSL_OPERATOR op, UINT16 version);
+/* Validate descriptors/attributes before allocation; failure mutates nothing. */
+extern BOOL DSL_tensor_expression_types_valid
+    (DSL_OPERATOR op, UINT16 version, const TY_IDX *operands, UINT32 count,
+     TY_IDX result_ty, const DSL_TENSOR_EXPRESSION_ATTRIBUTES *attrs);
+
 #endif /* dsl_shape_INCLUDED */

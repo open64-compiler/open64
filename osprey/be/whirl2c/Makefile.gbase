@@ -140,6 +140,7 @@ SRC_DIRS = \
   $(BE_WHIRL2C_DIR)
 
 HEADER_DIRS = \
+  $(COMMON_DIR)/targ_info/access \
   $(SRC_DIRS)		\
   $(COMMON_COM_DIR)	\
   $(COMMON_COM_TARGET_DIR)\
@@ -198,7 +199,7 @@ LCOPTS = $(STD_COMPILE_OPTS) $(STD_C_OPTS)
 LCDEFS = $(HOSTDEFS) $(TARGDEFS)
 LCINCS = $(addprefix -I, $(HEADER_DIRS))
 ifeq ($(BUILD_OS), LINUX)
-LCINCS += -I$(BUILD_AREA)/include
+LCINCS += -I$(BUILD_AREA)/include -I$(BUILD_TOT)/linux/include
 endif
 
 LC++OPTS = $(STD_COMPILE_OPTS)
@@ -247,6 +248,7 @@ endif
 #----------------------------------------------------------------------
 #  Variables describing additional sources, objects, and libraries
 #----------------------------------------------------------------------
+TARGETS += whirl2c_tensor_source
 ifeq ($(BUILD_COMPILER), EDG)
 LLDLIBS	= -none -lc
 endif
@@ -292,6 +294,7 @@ endif
 
 # extra files to be removed with make clobber
 LDIRT += $(BE_SO) whirl2c_be whirl2c be whirl2c_dbg
+LDIRT += whirl2c_tensor_source open64_tensor_reference.cuh
 
 whirl2c.so:  $(WHIRL2C_CXX_OBJS) $(BE_WHIRL2C_DIR)/Exported \
 		$(WHIRL2C_DSOS) $(BE_BE_DIR)/so_locations
@@ -344,6 +347,21 @@ endif
 #----------------------------------------------------------------------
 include $(COMMONRULES)
 
+w2c_driver.o: $(BE_DIR)/vho/tensor_selected_key.h $(COMMON_COM_DIR)/dsl_native_tree_key.h
+
+.PHONY: whirl2c_tensor_source
+whirl2c: whirl2c_tensor_source
+
+# The companion uses the established standalone mapped-image reader objects.
+whirl2c_tensor_source:
+	$(MAKE) -C $(TARGDIR)/ir_tools whirl2c_tensor_source SKIP_DEP_BUILD=1
+	cp $(TARGDIR)/ir_tools/whirl2c_tensor_source $@
+	cp $(BE_WHIRL2C_DIR)/open64_tensor_reference.cuh .
+
+install:: whirl2c_tensor_source
+	$(STD_INSTALL) $(STD_INSTALL_EXEC_MASK) -F $(STD_MONGOOSE_LOC) whirl2c_tensor_source
+	$(STD_INSTALL) -F $(STD_MONGOOSE_LOC) open64_tensor_reference.cuh
+
 #----------------------------------------------------------------------
 #  Special case rules for files that want to be individualistic
 #----------------------------------------------------------------------
@@ -352,3 +370,5 @@ include $(COMMONRULES)
 #SKIP 	$(CCF) -xansi -c $<
 
 
+# Q6c emission only verifies the selected native Low identity.
+w2c_driver.o: $(BE_DIR)/vho/tensor_quantized_device.h $(BE_DIR)/vho/tensor_quantized_stage.h $(BE_DIR)/vho/tensor_quantized_gpu.h

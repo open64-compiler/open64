@@ -105,7 +105,7 @@ class BuildingBlockCaptureTests(unittest.TestCase):
         model, inputs = make_fixture("layernorm")
         module = export_to_whirl(model, inputs, WhirlExportOptions(backend="mock"))
         self.assertEqual(module.operators, ["common.mean_variance_norm"])
-        blockers = {"attention": "transpose", "moe": "getitem"}
+        blockers = {"attention": "softmax", "moe": "getitem"}
         for name, blocker in blockers.items():
             with self.subTest(name=name):
                 model, inputs = make_fixture(name)

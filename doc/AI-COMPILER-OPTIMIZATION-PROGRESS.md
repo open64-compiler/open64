@@ -1,12 +1,244 @@
 # AI Compiler Optimization Progress
 
-Snapshot: 2026-10-28, integrated against `develop` at `ecbb857f` (merged PR #202)
+Snapshot: 2026-10-30, integrated against `develop` at `ecbb857f` (merged PR #202)
 Scope: Open64 AI optimization, with standalone rank-2 F32 GEMM as the first
 generated-kernel case. This is a running status ledger, not a replacement for
 the [implementation plan](AI-COMPILER-OPTIMIZATION-IMPLEMENTATION-PLAN.md) or
 the [versioned design](AI_compiler_optimization_design_v0.3.md).
 
 ## Current position
+
+2026-10-30 first bounded R1-ND1 partition-axis discovery accepted:
+[Native partition-axis design](AI-COMPILER-NATIVE-PARTITION-AXIS-v0.1.md).
+LNO reuses its reduction manager/access vectors and PREOPT DU/alias services
+to identify instance/contribution axes from ordinary scalar C WHIRL. Thirteen
+native cases produce five proved domains and eight explicit refusals, including
+transposed axes, equal extents, a local temporary and union overlap. Enabled,
+disabled, default and trace-OFF O3 outputs are byte-identical mapped images;
+O0/O1/O2 emit no discovery events. Four trace-auditor tests and existing default
+v1/v2 normalization regressions pass. `-DSL:partition_axis=on` is opt-in, minimum
+O3/LNO; no normalization operator, physical partition selection or rewrite is
+inferred. Complete LayerNorm/RMSNorm recognition and planner handoff remain open.
+The performance framework, offline harness, dashboard and skill remain deferred
+on user direction; no GPU evidence is claimed.
+
+Accepted review package:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/native-partition-axis/sha256-c4cba42e1fdd0235ecd213f964c938e4e4c642a3c5c476b8f7875d759f867d0b/`.
+
+2026-10-29 LN4 bounded compiler-side closure accepted, implementation `046b198b`:
+[Host dispatch and mode detail v0.1](AI-COMPILER-LAYERNORM-HOST-DISPATCH-v0.1.md).
+Standalone mode creates the program-specific host PU in WHIRL; ordinary
+whirl2c emits it, while CUDA mode emits only the selected device PU. Service
+mode omits the host wrapper. The checked runtime entry binds both selected
+identities before root reads/movement and preserves the consumer's cleanup
+contract. Packages preserve relocatable host C/headers; the optional runtime
+SDK has an explicit install target. No duplicate kernel/source-template path,
+v1 migration, reduction edit or new compiler runtime linkage is introduced.
+
+All 36 Hopper/Blackwell selections pass 792 scenarios per normal/sanitized
+mode, 30,368 consumer and 10,152 API mock checks per mode. All 144 mapped
+boundaries are independently dumped with source; 108 native host mutations,
+40 mode/extraction refusals and nine standalone scope/ABI/FP/v1/publication
+refusals pass. All 135 focused tests and installed SDK/public C ABI/shared
+library checks pass. Mode variants preserve source PUs and device code;
+72 PTX/cubin files are identical to the authenticated prior producer.
+Its 288 numerical datasets / 26,240 oracle checks are inherited evidence,
+not new execution. Runtime tests use CUDA API/sentinel mocks, not a GPU.
+
+Compiler-side LN4 is complete for the explicit checkpoint, not a claim of a
+general openpy `a.out` linking driver or deployed inference service. Deployment
+still supplies context/stream, registry, buffers, real SHA-256 and producer/
+consumer/quiescence hooks. General compiler sessions and native calibration
+remain separate; numerical/statistics/async refinements stay in LN5 and GPU
+certification in LN6.
+
+Accepted immutable package:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-host/sha256-6795f8abe579890512e833022cd6a6f7a9e935521bf93f5b437b0de03b98b795/`.
+Accepted final-path replay:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-host/replay/sha256-97ab80aafdea8632550eb099f47419584abbc8ed07eac7af99c326356bc38d13/`.
+Replay authenticates the package and request/CUDA dependencies, reuses the
+frozen compiler binaries and rebuilds host/runtime and offline CUDA artifacts.
+Compiler rebuild/shared-boundary proof is authenticated primary evidence,
+not a claimed new compiler rebuild. All 36 cases, both sanitizer modes, 135
+focused tests and nine standalone refusal cases pass again. Comparisons cover
+864 byte-exact files, 648 files with only documented banner/review-root
+normalization, and 216 compact-trace/entry-identity joins. Every new evidence
+hash is checked against its actual input; raw streams and full dumps remain.
+The original source bundle omitted unchanged `whirl2c.h` from its include tree,
+although each compiled-entry package contained it. Its receipt remains untouched
+and unindexed. The accepted corrected package explicitly includes that header
+and failed-replay diagnostics. Review indexes/current links advanced only after
+successful replay. Representative evidence is under
+`review/sm_90-single-row-2/`: `host.c`, `kernel.cu`, full mapped pairs/diff,
+`host-dispatch.log`, `normal.execution.t` and `optimization.log`.
+
+Backward compatibility also passes the original consumer/adapter/base-runtime
+suites in normal and sanitized modes: 720 prior package/trace/report files
+match the accepted execution receipt exactly. No GPU verification is inferred.
+
+2026-10-29 LN4 host/service execution consumer accepted, implementation
+`e72d3f4c`:
+[Consumer detail v0.1](AI-COMPILER-LAYERNORM-EXECUTION-CONSUMER-v0.1.md).
+The runtime composes selected entry, shared canonical roots/leases, target
+buffer callbacks and input/consumer/quiescence joins. Host/mixed/device modes
+allocate once per role, copy guard subranges only after admission, preserve
+partial failures and retire owned roots before free. Imported roots remain
+caller-owned. Atomic operation admission rejects concurrent/callback reentry.
+
+All 36 entries pass 22 scenarios each (792 total): 30,224 consumer checks and
+10,152 mock API checks, plus 129 focused Python tests. Existing adapter and
+base-runtime suites pass 19,860 / 11,392 checks with 72 exact prior raw traces.
+Leak-checked ASan/UBSan passes the same matrix; 360 package/guard/trace/report
+files match normal execution exactly. Seven BE/WOPT consumers of the additive
+snapshot declaration rebuild byte-identically; guard ABI and compiler runtime
+dependencies remain unchanged. Parent compiler binaries/images and 193 full
+mapped inspections are authenticated and reused, not regenerated.
+
+CUDA calls and sentinel writes are mocked, not numerical/GPU certification.
+No v1, reduction or WHIRL transformation change. Next: selected host-PU call
+emission and driver/service packaging. Deployment providers,
+compiler-session lifecycle and GPU calibration
+remain open; no standalone performance harness is silently introduced.
+
+Accepted immutable execution package:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-execution/sha256-371350ccb49c3daafee40735e771a7d67414e3657480b3855798147624c79629/`.
+Accepted final-path source rebuild/replay:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-execution/replay/sha256-c4bb5291eb90317f88e2f0c10adcdb7d2256a925260731cff981429e0a9251d4/`.
+Replay authenticates the execution, parent entry and CUDA dependency receipts,
+rebuilds normal and sanitized runtime suites from the retained source snapshot,
+and repeats all 36 entries / 792 scenarios per mode plus 129 focused tests.
+All 720 package/guard/raw-trace/report comparisons are byte-exact without
+normalization. The seven-object header compatibility proof is authenticated
+primary evidence, not rerun during this runtime replay. Review indexes/current
+links were updated only after accepted replay. See `normal/optimization-summary.log`,
+complete `normal/optimization.log` and per-case `execution.t`, `execution.log`
+and `provider.log`; source-line-last events show lease admission before H2D,
+drain before copyback, and close/retire/release ordering. No new device kernel
+or numerical execution is implied by the sentinel tests.
+
+2026-10-29 LN4 compiled-entry/package and optional CUDA Driver adapter
+accepted, implementation `50335e35`:
+[Compiled-entry detail v0.1](AI-COMPILER-LAYERNORM-COMPILED-ENTRY-v0.1.md).
+The review issuer joins retained source/selection/body/assembly evidence and
+exact cubin SHA-256. The adapter copies/hashes before load, queries actual
+entry/device/resource/parameter/occupancy facts, and launches only the selected
+geometry and subrange pointers. Existing runtime leases and host events remain
+authoritative; private ticket pins prevent unload through failed launch/drain
+or unfinished consumption. Failed rollback retains an explicit cleanup handle.
+
+All 36 inherited selections pass: 19,860 adapter checks, 11,392 independently
+audited base-runtime checks and 124 focused Python tests. ASan/UBSan with leak
+checking passes the same runtime matrix; 288 package/guard/trace/report files
+match normal execution exactly. Trace-off and callback reentry pass. Compiler
+and mapped producer are unchanged; all 193 mapped images/full dumps remain in
+the authenticated parent request receipt. No new v1, reduction or WHIRL change.
+
+This is real adapter code with deterministic CUDA API mocks, not GPU execution.
+The optional library does not enter `be.so` or the legacy runtime installation.
+Deployment must supply reviewed hash, buffer/root and readiness/consumer
+services; compiler-service lifecycle, native module/launch certification and
+GPU numerical/performance calibration remain open.
+
+Accepted derived immutable package:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-entry/sha256-99c0720550108c8e3aa60ee8a778784955228458393fccfbf96a8a557d7e5df1/`.
+Accepted final-path rebuild/replay:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-entry/replay/sha256-ec34751e3881b6994f041477c9cfbec111b3d12a62023058319cd396eb25524b/`.
+Replay authenticates the primary, request producer and CUDA dependency before
+rebuilding normal and sanitized runtime tests. It repeats all 36 cases in both
+modes plus 124 focused tests; 576 package/guard/raw-trace/report comparisons
+are byte-exact without normalization. Review indexes/current links were updated
+only after replay passed. `normal/optimization-summary.log`, complete
+`normal/optimization.log`, and per-case `compiled-entry.log`, `provider.t`,
+`provider.log`, `entry.h`/`entry.json` expose the selected contract and actual
+mock observations. Original `.cu`, mapped pairs/diffs and numerical evidence
+remain in the authenticated parent receipt. Next: explicit host-dispatch/service
+consumption with reviewed deployment hooks, independently of native GPU testing.
+
+2026-10-28 LN4 explicit driver/JIT request-profile plumbing accepted,
+implementation `236f52eb`:
+[Request design v0.1](AI-COMPILER-LAYERNORM-DRIVER-REQUEST-v0.1.md).
+The opt-in O3/n64 checkpoint decodes a closed request/profile schema, runs
+PREOPT in the selected source PU, revalidates complete LN3 costs and creates
+the selected device PU under driver ownership. It preserves source PUs and v1,
+adds complete pointer-formal metadata, and publishes standard before/after
+WHIRL without resetting source tables. Typed JIT callers share the same
+preparation gate; a compiler-service/session manager is not implemented.
+
+Acceptance passes 36 selected kernels across four targets (C0 4 / C1 4 /
+C2 28), 66 refusals, 193 full mapped inspections, 117 focused tests and
+offline CUDA/PTX/cubin with compiled RF/shared checks. Emitted-code host
+execution passes 288 datasets / 26,240 exact-oracle output checks. Scoped
+ASan/UBSan passes 36 native request cases, 36 actual driver cases, 36 reopens,
+49 decoder inputs and 36 host kernels, with byte-exact image/binding parity.
+Five shared regressions pass; two broader fixtures reproduce the same failures
+with the old gatekeeper object and are explicitly excluded from pass counts.
+The emulator ignores SSE exception-unmask writes, reported UNSUPPORTED rather
+than passed. Independent SSE rounding, other FP controls and trace-off parity
+are verified. No new dynamic dependency, source-v1 upgrade or reduction edit.
+
+Immutable primary package:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-driver/sha256-d494e9371201accac931c398543e523c6e8acfdc102d60a55710a0309a69f755/`.
+Accepted final-path replay:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-driver/replay/sha256-0ece70ea95a533c2aa4126a89b65ab464b7f5a53be7d28de6901fd0e014170a3/`.
+Replay repeats the 36 driver/offline-CUDA/host cases, 66 refusals, 117 focused
+tests and all mapped inspections. All 193 images, 36 PTX files and 36 cubins
+match byte-for-byte. Full dumps/reports use recorded artifact-path and CUDA
+banner normalization; raw `.t` comparisons use stable AI rows, retaining full
+diagnostic streams separately. The original comparator incorrectly decoded
+the deliberately invalid-UTF-8 JSON refusal fixture; a retained correction
+compares those bytes exactly and rechecks completed test acceptance. The
+primary receipt remains immutable. Sanitizers and baseline-isolation evidence
+are authenticated in the primary package, not rerun during final-path replay.
+Indexes/current links were updated only after accepted replay.
+
+`native/optimization-summary.log` lists selected/refused/compiled/host-tested
+coverage. Per-case `reports/request.log`, complete `reports/optimization.log`,
+raw `driver.t`, selected before/after `.B`/`.T` and diff, request/binding JSON,
+and `kernel.cu` retain the full source-line-last decision/transformation record.
+
+Next: production compiled-entry/provider enforcement. Native GPU verification,
+calibrated SKU/cache/timing profiles and general service-session lifecycle
+remain open. The sections below retain prior milestone evidence/history.
+
+2026-10-28 LN4 bounded selected executable-device lowering accepted,
+implementation `fa2e0b1e`:
+[Lowering detail v0.1](AI-COMPILER-LAYERNORM-EXECUTABLE-LOWERING-v0.1.md)
+defines source-PU revalidation of the complete LN3 result followed by a numeric
+handoff to the driver's active empty kernel PU. C0/C1/C2 become actual standard
+WHIRL loops, pointer-scalar operations and explicit shared/barrier effects;
+`whirl2c -cuda` is the only CUDA kernel producer. V1, source images, binary
+layouts and reduction coding remain unchanged. Compiled RF/shared limits and
+host numerical checks are separate from analytical cost and GPU certification.
+
+The final-source 65-case compiler matrix passed with 45 selected kernels,
+220 full mapped dumps, 260 PREOPT controls, 360 host-adapter cases / 43,464
+output checks and offline CUDA/PTX/cubin assembly. All 113 focused tests pass.
+Positive trace-off materialization preserves images/products byte-for-byte;
+stale choices, unsafe FP, nonempty kernels, changed array bounds, addresses,
+scalar effects, kernel qualifiers and barrier order/effects refuse. All 65
+scoped compiler ASan/UBSan cases and 45 sanitized emitted-code host kernels
+pass; 45 native selected guards pass 14,236 host checks. Three shared-service
+regressions pass. Sanitizers cover the new service/fixture and host adapter,
+not the whole compiler; native mapped padding uses the documented zero-fill
+allocator convention with process-pool leak checking off.
+
+Final-path replay repeats the complete compiler/offline-assembly/numerical,
+sanitizer, host guard and shared-service checks. Images, raw traces, guards,
+reports, PTX and cubins match exactly; only the CUDA banner timestamp is
+normalized. The exact offline CUDA 12.8.93 toolkit is retained with its license.
+Accepted immutable package:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-lowering/sha256-fe6aa26d51ac5749b007cfdda84d3616256c94df36c86a04de1d8f5638621fcc/`.
+Accepted final-path replay:
+`/Users/shinmingliu/open64/artifacts/review/ai-optimization/research/ln4-lowering/replay/sha256-5202fde0e983b8e1309bfe30123c2710ed42a75670c9cb676b2ff21d409cc72a/`.
+Review indexes/current links were updated only after replay passed.
+
+`native/reports-final/optimization.log` collects complete independently
+recomputed costs, selection reasons, actual WHIRL actions, offline resources
+and numerical reports; the raw source-line-last `.t` and generated `.cu`
+remain available for every case. Default driver request/profile plumbing,
+production CUDA provider and GPU tests remain open; no hardware timing
+improvement is claimed. Next is that explicit driver/JIT/provider integration,
+not silent promotion of v1 or unknown built-in timing.
 
 2026-10-28 LN3 bounded complete-cost/selection accepted, implementation `d5da1c1d`:
 [Profitability detail v0.1](AI-COMPILER-LAYERNORM-PROFITABILITY-v0.1.md)

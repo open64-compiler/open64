@@ -181,14 +181,14 @@ int main(int argc, char **argv)
   if (argc < 2 || argc > 3) return 2;
   const char *variant = argc == 3 ? argv[2] : "default";
   const char *variants[] = { "default", "unit", "wide", "epsilon2", "subnormal",
-                            "count-limit", "mixed", "shared-affine", "cross-pu", "single-row", "many-rows" };
+                            "count-limit", "mixed", "shared-affine", "cross-pu", "single-row", "many-rows", "feature-tail" };
   BOOL known = FALSE;
   for (UINT32 i = 0; i < sizeof(variants)/sizeof(variants[0]); ++i)
     known = known || strcmp(variant, variants[i]) == 0;
   if (!known) return 2;
   UINT64 rows = strcmp(variant,"single-row")==0 ? 1 : strcmp(variant,"many-rows")==0 ? 129 : 3, width = strcmp(variant,"many-rows")==0 ? 1 : 17;
   if (strcmp(variant, "unit") == 0) rows = width = 1;
-  if (strcmp(variant, "wide") == 0) { rows = 7; width = 65; }
+  if (strcmp(variant, "wide") == 0) { rows = 7; width = 65; } if (strcmp(variant,"feature-tail")==0) { rows=2; width=257; }
   if (strcmp(variant, "count-limit") == 0) { rows = 1; width = 16777216ULL; }
   const char *epsilon = strcmp(variant, "epsilon2") == 0 ? "3a83126f" :
                         strcmp(variant, "subnormal") == 0 ? "00000001" : "3727c5ac";

@@ -240,6 +240,8 @@ TCON2C_finalize(void)
 } /* TCON2C_finalize */
 
 
+/* Print the existing TCON value without mutation. CUDA nonfinite F32 values
+ * use a bit-interpretation expression; other modes retain their runtime ABI. */
 void 
 TCON2C_translate(TOKEN_BUFFER tokens, TCON tvalue)
 {
@@ -292,6 +294,20 @@ TCON2C_translate(TOKEN_BUFFER tokens, TCON tvalue)
       break;
 
     case MTYPE_F4:
+      /* CUDA requires an actual expression for nonfinite F32 constants.
+       * Preserve their binary32 class/sign instead of emitting invalid infF.
+       * Finite values and ordinary C keep the established spelling. */
+      if (W2C_Cuda_Mode) {
+         float value = (float)Targ_To_Host_Float(tvalue);
+         UINT32 bits;
+         memcpy(&bits, &value, sizeof(bits));
+         if ((bits & 0x7f800000U) == 0x7f800000U) {
+            char literal[64];
+            sprintf(literal, "__uint_as_float(0x%08xU)", bits);
+            Append_Token_String(tokens, literal);
+            break;
+         }
+      }
       str = Targ_Print("%.10e", tvalue);
       strbase = Remove_Trailing_Zero_Fraction(str);
       /* Undo the 'e'->'d' conversion */

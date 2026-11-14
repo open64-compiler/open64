@@ -461,6 +461,32 @@ class Open64DscSkeletonTest(unittest.TestCase):
             ),
         }
 
+        expected.update({
+            "common.sub": (1, 2, ("attr.broadcast_rule",)),
+            "common.exp": (1, 1, ("attr.fp_semantics",)),
+            "common.log": (1, 1, ("attr.fp_semantics",)),
+            "common.reduce_max": (1, 1, ("attr.axis","attr.keepdim","attr.accum_dtype","attr.reassociate")),
+            "common.isfinite": (1, 1, ()),
+            "common.greater": (1, 2, ("attr.broadcast_rule",)),
+            "common.select": (1, 3, ("attr.broadcast_rule",)),
+            "common.logical_not": (1, 1, ()),
+            "common.fill_like": (1, 1, ("attr.value_bits",)),
+            "common.mul": (1, 2, ("attr.broadcast_rule",)),
+            "common.div": (1, 2, ("attr.broadcast_rule",)),
+        })
+        # Additive Q0/Q1 source schemas; every established contract above keeps
+        # its exact default version, arity and attributes.
+        expected.update({
+            "common.abs": (1, 1, ()),
+            "common.round_even": (1, 1, ("attr.rounding",)),
+            "common.clamp": (1, 1, ("attr.has_min", "attr.min_bits", "attr.has_max", "attr.max_bits")),
+            "common.convert": (1, 1, ("attr.src_dtype", "attr.dst_dtype", "attr.mode")),
+            "common.pack_u4": (1, 1, ("attr.axis", "attr.nibble_order", "attr.code_bits")),
+            "common.unpack_u4": (1, 1, ("attr.axis", "attr.nibble_order", "attr.code_bits")),
+            "common.gather": (1, 2, ("attr.axis", "attr.bounds", "attr.alias_rule")),
+            "common.scatter": (2, 3, ("attr.axis", "attr.bounds", "attr.conflicts", "attr.alias_rule")),
+            "common.rem": (2, 2, ("attr.broadcast_rule", "attr.integer_domain", "attr.rounding")),
+        })
         self.assertEqual(set(contracts), set(expected))
         for name, (version, arity, attrs) in expected.items():
             self.assertEqual(contracts[name].version, version)

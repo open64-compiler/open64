@@ -167,6 +167,15 @@ class WhirlBuilder:
     def backend_name(self) -> str:
         return self._backend.backend_name()
 
+    def infer_quantized_cache_traits(self, records):
+        """Read-only source query, before native PU/type/value construction.
+
+        The mock backend does not claim native inferred evidence. Explicit
+        legacy FP32 declarations remain independently supported there.
+        """
+        query = getattr(self._backend, "infer_quantized_cache_traits", None)
+        return query(records) if query is not None else {}
+
     def tensor_type(
         self,
         name: str,
