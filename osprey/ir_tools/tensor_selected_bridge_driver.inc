@@ -22,6 +22,7 @@ void bridge_test_mutation(bool source) {
         for(unsigned i=0;i<11;++i) if(bridge_test_fault==names[i])
             ST_tensor_bind_metadata(st,(std::string("tensor.high.selected.")+names[i]).c_str(),"stale");
     } else {
+        if(bridge_test_fault=="device") ST_tensor_bind_metadata(st,"tensor.bridge.device","stale");
         if(bridge_test_fault=="barrier") remove_barrier(root);
         if(bridge_test_fault=="mask") {
             WN *call=find_collective(root,"__shfl_down_sync");
@@ -72,6 +73,24 @@ Json::Value bridge_launch_kernel(std::map<UINT32,Json::Value> &storages) {
     }return kernel;
 }
 
+/* Export owned compile evidence and explicit runtime obligations. These are
+ * requirements, never a claim of observed GPU compatibility or performance. */
+Json::Value bridge_gpu_requirements(const DSL_GPU_DEVICE_CONTEXT *context) {
+    DSL_GPU_HOST_REQUIREMENTS requirements=DSL_GPU_HOST_REQUIREMENTS::Capture(context);
+    Json::Value out;out["schema"]="open64.gpu-host-requirements.v1";
+    out["device"]=requirements.device;out["architecture"]=requirements.architecture;
+    out["partition"]=requirements.partition;out["toolchain"]=requirements.toolchain;
+    out["selection_key"]=requirements.selection_key;out["resource_key"]=requirements.resource_key;
+    out["execution_key"]=requirements.execution_key;out["budget_key"]=requirements.budget_key;
+    out["resource_id"]=context->Resource_id();out["resource_revision"]=context->Resource_revision();
+    out["execution_id"]=context->Execution_id();out["execution_revision"]=context->Execution_revision();
+    out["budget_id"]=context->Budget_id();out["budget_revision"]=context->Budget_revision();
+    out["device_revision"]=context->Device_revision();out["input_sha256"]=context->Input_sha256();
+    out["imported"]=requirements.imported;out["runtime_observation_required"]=true;
+    out["runtime_budget_reservation_required"]=requirements.imported;
+    out["performance_qualified"]=false;out["fallback"]="ordinary_host";return out;
+}
+
 /* Read one sealed source in a separate compiler process. Parent starts its
  * fresh device context only after this child has validated the entire source. */
 Json::Value selected_admission(const char *image,const VHO_TENSOR_PROGRAM &original,
@@ -89,6 +108,9 @@ Json::Value selected_admission(const char *image,const VHO_TENSOR_PROGRAM &origi
     UINT32 symbols=ST_Table_Size(CURRENT_SYMTAB),types=TY_Table_Size();
     std::string key=VHO_tensor_selected_key(root);
     need(key==metadata(st,"tensor.high.accepted.key"),"bridge stale selected source/key/COMMENT");
+    const DSL_GPU_PLAN_SNAPSHOT device=DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
+    const char *selected_device=ST_tensor_metadata(st,"tensor.high.selected.device");
+    need(device.Cache_key()==(selected_device?selected_device:""),"bridge selected device/resource/profile binding changed");
     if(production) {
         need(production->production_controls && production->allow_reassociate &&
             production->function==ST_name(st) && production->unit==original.source_file &&
@@ -133,7 +155,9 @@ Json::Value selected_admission(const char *image,const VHO_TENSOR_PROGRAM &origi
     result["source_comment"]=Index_To_Str(WN_GetComment(source_comment));
     result["model"]=metadata(st,"tensor.high.selected.model");result["controls"]=metadata(st,"tensor.high.selected.controls");
     result["numerical"]=metadata(st,"tensor.high.selected.numerical");result["search_invocations"]=0;
-    result["source_unchanged"]=true;return result;
+    result["source_unchanged"]=true;
+    if(!device.Cache_key().empty()) result["gpu_requirements"]=bridge_gpu_requirements(VHO_DSL_GPU_Context);
+    return result;
 }
 /* Driver owns all PU contexts/checkpoints. Every stage consumes the preceding
  * verified native product; failure leaves source and legacy fallback untouched. */
@@ -207,10 +231,24 @@ int selected_bridge_command(int argc,char **argv) {
 #ifdef OPEN64_TENSOR_BRIDGE_TEST
     if(argc==7 && !strcmp(argv[5],"--test-fault")) {bridge_test_fault=argv[6];argc=5;}
 #endif
-    need(argc==5,"bridge selected-high.B original-recipe.json output-prefix | bridge-production selected-high.B bindings.v2.json output-prefix");
+    DSL_GPU_DEVICE_CONTEXT_OWNER device_owner;
+    if(argc==10 && !strcmp(argv[5],"--gpu-context")) {
+        DSL_HARDWARE_TARGET_SELECTION target;
+        need(DSL_hardware_target_resolve("sm_90",argv[6],&target,stderr),"bridge device/ISA identity");
+        bool identity=!strcmp(argv[7],"-");
+        need(!identity || (!strcmp(argv[8],"-") && !strcmp(argv[9],"-")),"bridge identity-only companions");
+        need(DSL_gpu_profile_resolve(target,identity?NULL:argv[7],identity?NULL:argv[8],identity?NULL:argv[9],&device_owner,stderr),"bridge pinned GPU context");
+        argc=5;
+    }
+    VHO_DSL_GPU_Context=device_owner.Context();
+    need(argc==5,"bridge selected-high.B recipe.json prefix | bridge-production selected-high.B bindings.v2.json prefix [--gpu-context device profile|- sha256|- toolchain|-]");
     bool production=!strcmp(argv[1],"bridge-production");
     DSL_HIGH_SEARCH_INPUT input;std::string reason;
-    if(production) need(LNO_DSL_read_search_input(argv[3],input,reason),reason.c_str());
+    if(production) {
+        need(LNO_DSL_read_search_input(argv[3],input,reason),reason.c_str());
+        input.gpu.device=DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
+        input.gpu.high_private_reuse=true;
+    }
     std::string prefix=argv[4],admission=prefix+".admission.json";
     const char *suffixes[]={".admission.json",".high.B",".mid.B",".low.B",".ptx",".math.cu",".selected.json",
         ".launch.json",".optimized.cu",".complete.json"};
@@ -240,7 +278,7 @@ int selected_bridge_command(int argc,char **argv) {
         UINT32 file=DSL_Builder_Register_Source_File(pu,p.source_file.c_str());USRCPOS source;USRCPOS_clear(source);
         USRCPOS_filenum(source)=file;USRCPOS_linenum(source)=p.operations[plan.kernels[i].root].source_line;
         if(!USRCPOS_linenum(source)) USRCPOS_linenum(source)=1;
-        VHO_tensor_selected_worker(p,plan.kernels[i].id,USRCPOS_srcpos(source),accepted["accepted_key"].asString(),accepted["source_comment"].asString());pus.push_back(pu);
+        VHO_tensor_selected_worker(p,plan.kernels[i].id,USRCPOS_srcpos(source),accepted["accepted_key"].asString(),accepted["source_comment"].asString(),DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context).Cache_key());pus.push_back(pu);
     }
     checkpoint(pus,(prefix+".high.B").c_str());
 #ifdef OPEN64_TENSOR_BRIDGE_TEST
@@ -277,6 +315,15 @@ int selected_bridge_command(int argc,char **argv) {
     if(production) {
         launch["storages"]=Json::Value(Json::arrayValue);
         for(std::map<UINT32,Json::Value>::const_iterator i=storages.begin();i!=storages.end();++i) launch["storages"].append(i->second);
+        if(accepted.isMember("gpu_requirements")) {
+            UINT64 backing=0;
+            for(std::map<UINT32,Json::Value>::const_iterator i=storages.begin();i!=storages.end();++i) {
+                UINT64 bytes=strtoull(i->second["bytes"].asCString(),NULL,10);
+                need(bytes<=~UINT64(0)-backing,"bridge aggregate backing overflow");backing+=bytes;
+            }
+            accepted["gpu_requirements"]["minimum_backing_bytes"]=Json::UInt64(backing);
+            launch["gpu_requirements"]=accepted["gpu_requirements"];
+        }
         write_json((prefix+".launch.json").c_str(),launch);
         std::string optimized=W2C_tensor_schedule_source(plan,VHO_tensor_explanations(plan),encode(p)["recipe_fingerprint"].asString());
         /* Copy the accepted MR2 COMMENT verbatim. This presentation path
@@ -285,10 +332,11 @@ int selected_bridge_command(int argc,char **argv) {
         write_source((prefix+".optimized.cu").c_str(),optimized);
         Json::Value complete;complete["schema"]="open64.selected-device-production.v1";
         complete["status"]="PASS";complete["search_invocations"]=0;
+        if(accepted.isMember("gpu_requirements")) complete["gpu_requirements"]=accepted["gpu_requirements"];
         complete["kernel_count"]=Json::UInt(plan.kernels.size());
         complete["source"]=accepted["source_image"];complete["files"]=Json::Value(Json::arrayValue);
         for(unsigned i=0;i<9;++i) complete["files"].append(std::string("selected")+suffixes[i]);
         write_json((prefix+".complete.json").c_str(),complete);
     }
-    printf("selected_bridge=PASS kernels=%lu search_invocations=0 source_unchanged=true high=verified mid=native_ARRAY_SCF low=GPU_mapped ptx=native_scalar\n",(unsigned long)pus.size());return 0;
+    printf("selected_bridge=PASS kernels=%lu search_invocations=0 source_unchanged=true high=verified mid=native_ARRAY_SCF low=GPU_mapped ptx=native_scalar\n",(unsigned long)pus.size());VHO_DSL_GPU_Context=NULL;return 0;
 }

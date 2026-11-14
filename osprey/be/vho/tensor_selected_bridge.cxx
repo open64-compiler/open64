@@ -86,8 +86,9 @@ void vocabulary(WN *n,bool high,bool physical) {
 
 /* Adapt the established generator to an abstract worker ABI before publishing
  * High. Its temporary coordinate leaves are replaced, without changing any
- * arithmetic, work ownership, staging loop or collective selected by LNO. */
-void VHO_tensor_selected_worker(const VHO_TENSOR_PROGRAM &p,UINT32 id,SRCPOS source,const std::string &source_key,const std::string &source_comment) {
+ * arithmetic, work ownership, staging loop or collective selected by LNO.
+ * Optional H1d device evidence is sealed in every worker boundary. */
+void VHO_tensor_selected_worker(const VHO_TENSOR_PROGRAM &p,UINT32 id,SRCPOS source,const std::string &source_key,const std::string &source_comment,const std::string &device_key) {
     require(!p.auto_chunks && !p.search_selected,"bridge_cannot_search");
     require(VHO_tensor_materialize_kernel(p,id,source,stderr) && VHO_tensor_annotate_kernel(p,id,stderr) &&
         VHO_tensor_verify_kernel(p,id,stderr),"bridge_fixed_construction");
@@ -111,6 +112,7 @@ void VHO_tensor_selected_worker(const VHO_TENSOR_PROGRAM &p,UINT32 id,SRCPOS sou
     bind("tensor.kernel.body_hash","retired-by-selected-bridge-full-key");
     bind("tensor.bridge.schema","selected-mla-native-v1");
     bind("tensor.bridge.source_key",source_key);bind("tensor.bridge.fixed_recipe",VHO_tensor_recipe_key(p));
+    if(!device_key.empty()) bind("tensor.bridge.device",device_key);
     seal("high");VHO_tensor_verify_bridge("high");
 }
 /* No mutation occurs in this admission; stale seals never reach WN_Lower/CG. */

@@ -41,8 +41,9 @@ bool equal(const VHO_SERVING_HANDLE &a,const VHO_SERVING_HANDLE &b) {return a.ow
 }
 struct VHO_TENSOR_SERVING::IMPL {
     struct ALLOCATION {void *base;UINT64 bytes,generation,version,readers,writers,bundles,identity;};
-    struct BUNDLE {std::vector<VHO_SERVING_VIEW> views;std::vector<UINT64> versions;UINT64 readers,pending;std::vector<UINT64> valid_lengths;};
-    struct CALL {std::vector<VHO_SERVING_VIEW> views;VHO_SERVING_VIEW metadata;VHO_SERVING_FACTS facts;std::string controls;bool running;};
+    struct BUNDLE {std::vector<VHO_SERVING_VIEW> views;std::vector<UINT64> versions;UINT64 readers,pending;std::vector<UINT64> valid_lengths;DSL_GPU_SERVING_RESULT gpu;};
+    struct CALL {std::vector<VHO_SERVING_VIEW> views;VHO_SERVING_VIEW metadata;VHO_SERVING_FACTS facts;DSL_GPU_SERVING_RESULT gpu;std::string controls;bool running;};
+    DSL_GPU_SERVING_BINDING gpu;
     VHO_SERVING_MEMORY memory;
     bool device;
     VHO_TENSOR_PROGRAM program;
@@ -56,6 +57,25 @@ struct VHO_TENSOR_SERVING::IMPL {
     /* One instance is one source/cache timeline; generations never reset. */
     IMPL(const VHO_TENSOR_PROGRAM &p,const VHO_SERVING_MEMORY *m):device(m!=NULL),program(p),owner(issue_counter(owners)),next(0),tip(0) {
         memset(&memory,0,sizeof(memory));if(m) memory=*m;
+    }
+    /* Observe only under registry ownership, never inside compiler search.
+     * A reservation generation change expires an invocation before publication;
+     * calibration drift changes only the performance-evidence reuse result. */
+    void Check_GPU(DSL_GPU_SERVING_RESULT &facts,UINT64 bytes,const std::string &expected="") {
+        DSL_GPU_RUNTIME_OBSERVATION actual;std::string reason;bool reusable=false;
+        if(gpu.requirements.selection_key.empty()) {
+            bool valid=gpu.requirements.Check(actual,bytes,reusable,reason);need(valid,reason.c_str());return;
+        }
+        bool observed=gpu.observe && gpu.observe(gpu.context,actual,reason);
+        need(observed,reason.empty()?"gpu_runtime_observer":reason.c_str());
+        bool compatible=gpu.requirements.Check(actual,bytes,reusable,reason);need(compatible,reason.c_str());
+        std::string lease=actual.Lease_key();need(expected.empty() || expected==lease,"gpu_runtime_lease_changed");
+        facts.selection_key=gpu.requirements.selection_key;facts.lease_key=lease;facts.performance_reusable=reusable;
+    }
+    /* Count the full disjoint invocation ABI plus metadata, with overflow checks.
+     * The reservation owner is responsible for any additional runtime overhead. */
+    UINT64 Backing(const std::vector<VHO_SERVING_VIEW> &views,const VHO_SERVING_VIEW &metadata) {
+        UINT64 bytes=metadata.bytes;for(unsigned i=0;i<views.size();++i) bytes=add(bytes,views[i].bytes);return bytes;
     }
     /* Provider-owned uncertain transfers prohibit release after failed validation. */
     bool Idle() {return !device || memory.idle(memory.context);}
@@ -196,8 +216,8 @@ struct VHO_TENSOR_SERVING::IMPL {
     }
     /* Bundle references pin generation, content version and mapping as one
      * immutable record. They are not equated by caller-supplied integers. */
-    UINT64 Publish(const std::vector<VHO_SERVING_VIEW> &v,const VHO_SERVING_VIEW &meta,bool output,const VHO_SERVING_FACTS &f,CALL *call=NULL) {
-        BUNDLE b;b.readers=b.pending=0;
+    UINT64 Publish(const std::vector<VHO_SERVING_VIEW> &v,const VHO_SERVING_VIEW &meta,bool output,const VHO_SERVING_FACTS &f,CALL *call=NULL,const DSL_GPU_SERVING_RESULT *gpu_facts=NULL) {
+        BUNDLE b;b.readers=b.pending=0;if(gpu_facts) b.gpu=*gpu_facts;
         for(unsigned i=0;i<4;++i) b.views.push_back(v[Root(output?schema.returned[i]:schema.incoming[i])]);
         if(schema.paged) {b.views.push_back(v[Root(schema.table)]);b.views.push_back(v[Root(schema.tokens)]);}
         b.views.push_back(meta);b.versions.resize(b.views.size());
@@ -225,12 +245,15 @@ struct VHO_TENSOR_SERVING::IMPL {
 /* Construction validates a detached source and engine legal page-size set. */
 VHO_TENSOR_SERVING::VHO_TENSOR_SERVING(const VHO_TENSOR_PROGRAM &p,const std::vector<UINT64> &legal,std::string &why):VHO_TENSOR_SERVING(p,legal,NULL,why) {}
 /* Source admission is identical; only the explicit memory domain differs. */
-VHO_TENSOR_SERVING::VHO_TENSOR_SERVING(const VHO_TENSOR_PROGRAM &p,const std::vector<UINT64> &legal,const VHO_SERVING_MEMORY *memory,std::string &why):_impl(NULL) {
+VHO_TENSOR_SERVING::VHO_TENSOR_SERVING(const VHO_TENSOR_PROGRAM &p,const std::vector<UINT64> &legal,const VHO_SERVING_MEMORY *memory,std::string &why):VHO_TENSOR_SERVING(p,legal,memory,DSL_GPU_SERVING_BINDING(),why) {}
+/* Copy optional requirements; validation still precedes all storage operations.
+ * No external observer is invoked until an actual invocation is admitted. */
+VHO_TENSOR_SERVING::VHO_TENSOR_SERVING(const VHO_TENSOR_PROGRAM &p,const std::vector<UINT64> &legal,const VHO_SERVING_MEMORY *memory,const DSL_GPU_SERVING_BINDING &gpu,std::string &why):_impl(NULL) {
     try {need(!memory || (memory->version==1 && memory->bytes==sizeof(VHO_SERVING_MEMORY) && memory->domain && memory->validate && memory->read && memory->write && memory->idle),"q6d_memory_service");IMPL *candidate=new IMPL(p,memory);std::string reason;
         if(!VHO_tensor_serving_schema(p,candidate->schema,reason)) {delete candidate;throw std::runtime_error(reason);}
         if(candidate->schema.paged) {bool found=false;for(unsigned i=0;i<legal.size();++i) found|=legal[i]==candidate->schema.page_tokens;
             if(!found) {delete candidate;throw std::runtime_error("q3_allocator_page_size");}}
-        _impl=candidate;why.clear();
+        candidate->gpu=gpu;_impl=candidate;why.clear();
     } catch(const std::exception &e) {why=e.what();}
 }
 /* Borrowed storage remains the owner's responsibility through final teardown. */
@@ -282,7 +305,7 @@ bool VHO_TENSOR_SERVING::Retire(const VHO_SERVING_HANDLE &h,std::string &why) {
 bool VHO_TENSOR_SERVING::Import(const std::vector<VHO_SERVING_VIEW> &v,const VHO_SERVING_VIEW &m,UINT64 &bundle,std::string &why) {
     bundle=0;why.clear();if(!_impl) {why="q3_invalid_session";return false;}std::lock_guard<std::mutex> lock(_impl->mutex);
     try {need(_impl->schema.paged && !_impl->tip,"q3_import_state");for(unsigned i=0;i<v.size();++i) {IMPL::ALLOCATION &a=_impl->Allocation(v[i].handle);need(!a.writers,"q3_writer_active");}
-        VHO_SERVING_FACTS f;std::string key;_impl->Observe(v,m,f,key);bundle=_impl->Publish(v,m,false,f);return true;}catch(const std::exception &e) {why=e.what();return false;}
+        VHO_SERVING_FACTS f;DSL_GPU_SERVING_RESULT gpu;std::string key;_impl->Check_GPU(gpu,_impl->Backing(v,m));_impl->Observe(v,m,f,key);bundle=_impl->Publish(v,m,false,f,NULL,&gpu);return true;}catch(const std::exception &e) {why=e.what();return false;}
 }
 /* Admission pins all real inputs and reserves the complete disjoint ABI. */
 bool VHO_TENSOR_SERVING::Begin(const std::vector<VHO_SERVING_VIEW> &v,const VHO_SERVING_VIEW &m,UINT64 parent,VHO_SERVING_FACTS &out,std::string &why) {
@@ -291,6 +314,7 @@ bool VHO_TENSOR_SERVING::Begin(const std::vector<VHO_SERVING_VIEW> &v,const VHO_
         for(unsigned i=0;i<v.size();++i) {IMPL::ALLOCATION &a=_impl->Allocation(v[i].handle);bool input=i<_impl->schema.roots.size() && _impl->program.values[_impl->schema.roots[i]].role==1;
             need(!a.writers && (input || (!a.readers && !a.bundles)),"q3_writer_or_reader_conflict");}
         need(!_impl->Allocation(m.handle).writers,"q3_metadata_writer_active");IMPL::CALL c;c.views=v;c.metadata=m;c.running=false;
+        _impl->Check_GPU(c.gpu,_impl->Backing(v,m));
         _impl->Observe(v,m,c.facts,c.controls);_impl->Parent(v,parent,c.facts);c.facts.ticket=_impl->Issue();c.facts.parent_bundle=parent;
         for(unsigned i=0;i<v.size();++i) {IMPL::ALLOCATION &a=_impl->Allocation(v[i].handle);c.facts.allocation_ids.push_back(v[i].handle.id);c.facts.allocation_generations.push_back(a.generation);c.facts.content_versions.push_back(a.version);}
         IMPL::ALLOCATION &metadata_allocation=_impl->Allocation(m.handle);
@@ -306,6 +330,7 @@ bool VHO_TENSOR_SERVING::Freeze_costing(UINT64 ticket,VHO_Q4_SNAPSHOT &out,std::
     try {
         need(_impl->calls.count(ticket) && !_impl->calls[ticket].running,"q4_stale_or_running_ticket");
         IMPL::CALL &c=_impl->calls[ticket];VHO_SERVING_FACTS fresh;std::string controls;
+        _impl->Check_GPU(c.gpu,_impl->Backing(c.views,c.metadata),c.gpu.lease_key);
         _impl->Observe(c.views,c.metadata,fresh,controls);_impl->Parent(c.views,c.facts.parent_bundle,fresh);
         need(controls==c.controls,"q4_controls_changed");
         for(unsigned i=0;i<c.views.size()+1;++i) {
@@ -354,6 +379,7 @@ bool VHO_TENSOR_SERVING::Start_external(UINT64 ticket,std::vector<void *> &args,
     {
         std::lock_guard<std::mutex> lock(_impl->mutex);
         try {need(_impl->calls.count(ticket) && !_impl->calls[ticket].running ,"q3_stale_or_running_ticket");IMPL::CALL &c=_impl->calls[ticket];
+            _impl->Check_GPU(c.gpu,_impl->Backing(c.views,c.metadata),c.gpu.lease_key);
             VHO_SERVING_FACTS f;std::string key;_impl->Observe(c.views,c.metadata,f,key);_impl->Parent(c.views,c.facts.parent_bundle,f);need(key==c.controls,"q3_controls_changed");
             for(unsigned i=0;i<c.views.size();++i) args.push_back(_impl->Address(c.views[i],c.views[i].bytes));
             c.running=true;armed=true;INT32 pending=-1;_impl->Store(args.back(),&pending,4);
@@ -368,7 +394,8 @@ bool VHO_TENSOR_SERVING::Finish_external(UINT64 ticket,bool completed,UINT64 &bu
     std::lock_guard<std::mutex> lock(_impl->mutex);need(_impl->calls.count(ticket) && _impl->calls[ticket].running,"q3_stale_or_unarmed_ticket");IMPL::CALL &c=_impl->calls[ticket];bool success=false;
     try {need(completed,"q3_callback_incomplete");INT32 status;_impl->Read(_impl->Address(c.views.back(),4),&status,4);need(status==0,"q3_source_status_refused");
         VHO_SERVING_FACTS f;std::string key;_impl->Observe(c.views,c.metadata,f,key,true);_impl->Parent(c.views,c.facts.parent_bundle,f);need(key==c.controls,"q3_controls_changed");
-        bundle=_impl->Publish(c.views,c.metadata,true,f,&c);success=true;
+        DSL_GPU_SERVING_RESULT gpu;_impl->Check_GPU(gpu,_impl->Backing(c.views,c.metadata),c.gpu.lease_key);
+        bundle=_impl->Publish(c.views,c.metadata,true,f,&c,&gpu);success=true;
     }catch(const std::exception &e) {why=e.what();if(!_impl->Idle()) return false;_impl->Unpin(c,true);}
     _impl->calls.erase(ticket);return success;
 }
@@ -391,6 +418,15 @@ bool VHO_TENSOR_SERVING::Inspect_bundle(UINT64 id,VHO_SERVING_BUNDLE_FACTS &out,
     try {need(_impl->bundles.count(id),"q3_stale_bundle");const IMPL::BUNDLE &b=_impl->bundles[id];VHO_SERVING_BUNDLE_FACTS f;f.bundle=id;f.valid_lengths=b.valid_lengths;
         for(unsigned i=0;i<b.views.size();++i) {f.allocation_ids.push_back(b.views[i].handle.id);f.allocation_generations.push_back(b.views[i].handle.generation);f.content_versions.push_back(b.versions[i]);}
         out=f;return true;}catch(const std::exception &e) {why=e.what();return false;}
+}
+/* Optional sidecar lookup preserves old public fact layouts and never grants
+ * a reader or live observation merely by copying historical diagnostics. */
+bool VHO_TENSOR_SERVING::Inspect_gpu(UINT64 id,bool bundle,DSL_GPU_SERVING_RESULT &out,std::string &why) {
+    out=DSL_GPU_SERVING_RESULT();why.clear();if(!_impl) {why="q3_invalid_session";return false;}
+    std::lock_guard<std::mutex> lock(_impl->mutex);
+    if(bundle) {if(!_impl->bundles.count(id)) {why="q3_stale_bundle";return false;}out=_impl->bundles[id].gpu;}
+    else {if(!_impl->calls.count(id)) {why="q3_stale_ticket";return false;}out=_impl->calls[id].gpu;}
+    return true;
 }
 /* Resolve only under a live bundle reader, keeping the public facts ABI intact. */
 bool VHO_TENSOR_SERVING::Bundle_views(UINT64 bundle,std::vector<VHO_SERVING_VIEW> &views,std::string &why) {

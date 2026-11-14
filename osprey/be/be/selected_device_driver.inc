@@ -45,18 +45,41 @@ static BOOL BE_DSL_device_capture(PU_Info *current_pu,WN *root,const std::string
 }
 
 /* Run a fixed argv in a separate native tool, never a shell or PATH lookup.
+ * H1d writes only the owned pinned bytes to private staging, passing exact
+ * identity/digest/toolchain via argv. No mutable original profile is reread.
  * Diagnostics remain in private staging even on a signal or exec failure. */
 static BOOL BE_DSL_device_lower(const std::string &tool,const std::string &image,
     const std::string &bindings,const std::string &prefix,const std::string &staging) {
+    const DSL_GPU_DEVICE_CONTEXT *context=VHO_DSL_GPU_Context;
+    if(context && context->Imported()) {
+        int fd=open((staging+"/device.profile.json").c_str(),O_WRONLY|O_CREAT|O_EXCL,0600);
+        if(fd<0) return FALSE;
+        const std::string &bytes=context->Input_bytes();size_t done=0;
+        while(done<bytes.size()) {
+            ssize_t n=write(fd,bytes.data()+done,bytes.size()-done);
+            if(n<0 && errno==EINTR) continue;
+            if(n<=0) {close(fd);return FALSE;}done+=n;
+        }
+        if(close(fd)) return FALSE;
+    }
     fflush(NULL);pid_t child=fork();
     if(!child) {
         int output=open((staging+"/bridge.stdout").c_str(),O_WRONLY|O_CREAT|O_EXCL,0600);
         int error=open((staging+"/bridge.stderr").c_str(),O_WRONLY|O_CREAT|O_EXCL,0600);
         if(output<0 || error<0 || dup2(output,STDOUT_FILENO)<0 || dup2(error,STDERR_FILENO)<0) _exit(1);
         close(output);close(error);
-        char *arguments[]={const_cast<char *>(tool.c_str()),const_cast<char *>("bridge-production"),
-            const_cast<char *>(image.c_str()),const_cast<char *>(bindings.c_str()),const_cast<char *>(prefix.c_str()),NULL};
-        execv(tool.c_str(),arguments);fprintf(stderr,"selected bridge exec failed: %s\n",strerror(errno));_exit(127);
+        std::vector<std::string> values;values.push_back(tool);values.push_back("bridge-production");
+        values.push_back(image);values.push_back(bindings);values.push_back(prefix);
+        if(context) {
+            values.push_back("--gpu-context");values.push_back(context->Device());
+            values.push_back(context->Imported()?staging+"/device.profile.json":"-");
+            values.push_back(context->Imported()?context->Input_sha256():"-");
+            values.push_back(context->Imported()?context->Toolchain():"-");
+        }
+        std::vector<char *> arguments;
+        for(size_t i=0;i<values.size();++i) arguments.push_back(const_cast<char *>(values[i].c_str()));
+        arguments.push_back(NULL);
+        execv(tool.c_str(),&arguments[0]);fprintf(stderr,"selected bridge exec failed: %s\n",strerror(errno));_exit(127);
     }
     return BE_DSL_device_wait(child);
 }
@@ -69,18 +92,24 @@ static BOOL BE_DSL_device_publish(const std::string &staging,const std::string &
     const char *files[]={"source.B","bridge.stdout","bridge.stderr","selected.admission.json","selected.high.B",
         "selected.mid.B","selected.low.B","selected.ptx","selected.math.cu","selected.selected.json",
         "selected.launch.json","selected.optimized.cu","selected.complete.json"};
+    bool profile=false;
+    if(access((staging+"/device.profile.json").c_str(),F_OK)==0) {
+        if(link((staging+"/device.profile.json").c_str(),(destination+"/device.profile.json").c_str())) {rmdir(destination.c_str());return FALSE;}
+        profile=true;
+    }
     unsigned i=0;
     for(;i<sizeof(files)/sizeof(files[0]);++i)
         if(link((staging+"/"+files[i]).c_str(),(destination+"/"+files[i]).c_str())) break;
     if(i==sizeof(files)/sizeof(files[0])) return TRUE;
     while(i) {--i;unlink((destination+"/"+files[i]).c_str());}
+    if(profile) unlink((destination+"/device.profile.json").c_str());
     rmdir(destination.c_str());return FALSE;
 }
 
 /* Driver-owned post-LNO boundary. The exact accepted source is mandatory;
  * no option can materialize an estimate, infer a missing plan, or replace the
- * ordinary host path. H1c rechecks device evidence and retains the host when
- * the external bridge cannot yet transport the imported context (H1d).
+ * ordinary host path. H1d transports only owned pinned profile bytes and the
+ * helper revalidates them against the sealed selection before construction.
  * Each PU receives an independent reserved output family. */
 static void BE_DSL_selected_device(PU_Info *current_pu,WN *root) {
     std::string output=BE_DSL_device_option("high_device_output");if(output.empty()) return;
@@ -102,7 +131,6 @@ static void BE_DSL_selected_device(PU_Info *current_pu,WN *root) {
             const char *device=ST_tensor_metadata(WN_st_idx(root),"tensor.high.selected.device");
             const DSL_GPU_PLAN_SNAPSHOT current=DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
             if(current.Cache_key()!=(device?device:"")) reason="stale_device_profile";
-            else if(!current.Cache_key().empty()) reason="device_profile_bridge_transport_pending";
         } catch(const std::exception &) {reason="invalid_high_exit";}
     }
     if(reason.empty() && !reserved) {

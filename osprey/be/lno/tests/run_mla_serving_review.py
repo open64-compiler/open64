@@ -54,6 +54,12 @@ def review(args):
         f = getattr(api, 'open64_q3_' + name)
         f.argtypes, f.restype = types, result
         functions[name] = f
+    if getattr(args, 'gpu_device', None):
+        create = api.open64_h1d_q3_create
+        create.argtypes, create.restype = [C.c_char_p, U, C.c_char_p], C.c_void_p
+        change = api.open64_h1d_q3_change
+        change.argtypes, change.restype = [C.c_void_p, C.c_char_p], None
+        functions['create'] = lambda wire, page: create(wire, page, args.gpu_device.encode())
     checks, commands = [], []
     q5 = None
     if getattr(args, 'q6c', False):
@@ -221,6 +227,64 @@ def review(args):
         self._all_handles.append(view.handle)
         return view
     Invocation.allocate = tracked
+
+    if getattr(args, 'gpu_device', None):
+        # Same actual mapped-source entries and reference checks as ordinary Q3.
+        # The observer is synthetic; no NVIDIA execution/attestation is claimed.
+        results = []
+        for name in ('dense_s8_decode', 'paged_s8_decode'):
+            for fault in ('none', 'calibration'):
+                c = Invocation(name)
+                if c.schema['paged']:
+                    check(name + ' import', c.import_ready())
+                check(name + ' begin', c.begin())
+                if fault == 'calibration':
+                    change(c.session, fault.encode())
+                ok, bundle, why = c.run()
+                check(name + ' completion ' + why, ok and bundle)
+                c.verify()
+                facts = json.loads(functions['bundle_report'](c.session, bundle))
+                assert facts['gpu_selection_key'] and facts['gpu_lease_key']
+                assert facts['gpu_performance_reusable'] == (fault == 'none')
+                results.append(dict(case=name, phase='complete', fault=fault, published=True,
+                                    reference=True, performance_reusable=facts['gpu_performance_reusable']))
+                c.close()
+            for phase in ('admission', 'arm', 'completion'):
+                faults = ['unknown', 'device', 'isa', 'partition', 'resource', 'budget', 'toolchain', 'expired', 'capacity']
+                if phase != 'admission':
+                    faults += ['generation', 'context', 'reservation']
+                for fault in faults:
+                    c = Invocation(name)
+                    if c.schema['paged']:
+                        check(name + ' import', c.import_ready())
+                    if phase == 'admission':
+                        change(c.session, fault.encode())
+                        assert not c.begin() and c.ticket == 0
+                        assert c.callback_count == 0
+                    else:
+                        assert c.begin()
+                        if phase == 'arm':
+                            change(c.session, fault.encode())
+                            ok, bundle, why = c.run()
+                            assert not ok and not bundle and c.callback_count == 0
+                        else:
+                            @CALLBACK
+                            def after_entry(context, pointers, n):
+                                c.callback(context, pointers, n)
+                                change(c.session, fault.encode())
+                                return True
+                            ok, bundle, why = c.run(after_entry)
+                            assert not ok and not bundle and c.callback_count == 1
+                        assert not functions['live'](c.session, c.ticket)
+                    results.append(dict(case=name, phase=phase, fault=fault, published=False, reason=c.error()))
+                    c.close()
+        report = dict(schema='open64.h1d-serving-review.v1', status='PASS', device=args.gpu_device,
+                      checks=results, reference_executions=4, mismatch_cases=sum(not r['published'] for r in results),
+                      Q3_generations_and_publication_preserved=True, GPU=False, synthetic_observer=True)
+        (out / 'commands.json').write_text(json.dumps(commands, indent=2) + '\n')
+        (out / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
+        print('PASS H1d serving ' + args.gpu_device + ' cases=' + str(len(results)))
+        return
 
     api.open64_q3_counter_test.restype = C.c_int
     api.open64_q3_counter_test.argtypes = []
@@ -480,6 +544,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('source', 'previous', 'lowerer', 'adapter', 'output'):
         parser.add_argument('--'+name, type=Path, required=True)
+    parser.add_argument('--gpu-device', choices=['h20_96gb', 'h20_141gb'])
     parser.add_argument('--q4', action='store_true')
     parser.add_argument('--q5', action='store_true')
     parser.add_argument('--q5-long', action='store_true')

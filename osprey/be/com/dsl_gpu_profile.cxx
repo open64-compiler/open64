@@ -421,6 +421,7 @@ public:
                 !Read_execution(document["execution"], pending.get(), diagnostics) ||
                 !Read_budget(document["budget"], pending.get(), diagnostics)) return FALSE;
             // Keys expose separate dependency boundaries; input pin binds the complete snapshot.
+            pending->_input_bytes = bytes;
             pending->_input_sha256 = expected_sha256;
             pending->_resource_sha256 = sha256(identity + "\n" + pending->_toolchain + "\n" + serialized(document["resources"]));
             pending->_execution_sha256 = pending->_execution_bound ?

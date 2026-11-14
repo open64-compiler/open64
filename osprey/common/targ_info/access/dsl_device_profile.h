@@ -72,6 +72,7 @@ class DSL_GPU_DEVICE_CONTEXT {
     DSL_GPU_RESOURCE_FACT _resources[DSL_GPU_RESOURCE_COUNT];
     DSL_GPU_EXECUTION_FACT _execution[DSL_GPU_EXECUTION_COUNT];
     DSL_GPU_RESOURCE_FACT _budget[DSL_GPU_BUDGET_COUNT];
+    std::string _input_bytes;
     /* Construct defined unknown facts privately, then populate before sealing. */
     inline DSL_GPU_DEVICE_CONTEXT() : _imported(false), _execution_bound(false),
         _budget_bounds_proved(false), _device_id(0), _device_revision(0),
@@ -128,6 +129,9 @@ public:
     inline unsigned Resource_known() const { return _resource_known; }
     /* Count known rates/latencies without promoting estimates into measurements. */
     inline unsigned Execution_known() const { return _execution_known; }
+    /* Borrow the bounded original pinned bytes for a driver-owned helper copy.
+     * Empty for identity-only contexts; never reread an external pathname. */
+    inline const std::string &Input_bytes() const { return _input_bytes; }
     /* Borrow exact input content digest, or none for device-only context. */
     inline const std::string &Input_sha256() const { return _input_sha256; }
     /* Resource dependency key excludes calibration and workload-budget changes. */

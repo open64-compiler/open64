@@ -44,6 +44,8 @@
 #include "../be/vho/tensor_q1_program.h"
 #include "../be/vho/tensor_workload.h"
 #include "../be/vho/tensor_serving_schema.h"
+#include "dsl_gpu_profile.h"
+#include "dsl_gpu_contract.h"
 #include "../be/vho/tensor_quantized_gpu.h"
 #include "../be/vho/tensor_quantized_stage.h"
 #include "symtab_verify.h"

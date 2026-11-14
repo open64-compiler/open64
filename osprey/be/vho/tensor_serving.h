@@ -7,6 +7,7 @@
 #ifndef tensor_serving_INCLUDED
 #define tensor_serving_INCLUDED
 #include "tensor_serving_schema.h"
+#include "dsl_gpu_contract.h"
 struct VHO_SERVING_HANDLE {
     UINT64 owner,id,generation;
     /* Zero/foreign/recycled handles cannot acquire a lease. */
@@ -71,6 +72,9 @@ public:
     /* Explicit device registry; source validation/publication remain Q3. The
      * service admits actual device addresses, never host snapshot identities. */
     VHO_TENSOR_SERVING(const VHO_TENSOR_PROGRAM &,const std::vector<UINT64> &,const VHO_SERVING_MEMORY *,std::string &);
+    /* Optional H1d requirements are copied; observer lifetime remains owned by
+     * the caller. Recheck before arm/publication, retaining Q3 completion gates. */
+    VHO_TENSOR_SERVING(const VHO_TENSOR_PROGRAM &,const std::vector<UINT64> &,const VHO_SERVING_MEMORY *,const DSL_GPU_SERVING_BINDING &,std::string &);
     /* Destroy only after all callbacks/readers finish; never frees borrowed memory. */
     ~VHO_TENSOR_SERVING();
     /* A failed constructor exposes no registry operations. */
@@ -111,6 +115,9 @@ public:
     /* Copy the complete published version tuple; this does not acquire a reader
      * lease and cannot authorize consumption after subsequent retirement. */
     bool Inspect_bundle(UINT64,VHO_SERVING_BUNDLE_FACTS &,std::string &);
+    /* Copy optional H1d diagnostics from a live ticket or published bundle.
+     * Keeps legacy fact/bundle layouts intact; does not acquire any lease. */
+    bool Inspect_gpu(UINT64,bool,DSL_GPU_SERVING_RESULT &,std::string &);
     /* Exactly-once completion releases the reader's whole bundle lease. */
     bool Release_reader(UINT64,std::string &);
     /* Explicit retirement refuses outstanding readers or pending invocations. */

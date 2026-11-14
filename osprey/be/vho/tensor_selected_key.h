@@ -62,6 +62,8 @@ inline std::string VHO_tensor_bridge_key(WN *root) {
         const char *v=ST_tensor_metadata(WN_st_idx(root),fields[i]);std::string text=v?v:"";
         s<<(v!=NULL)<<';'<<text.size()<<':'<<text<<';';
     }
+    const char *device=ST_tensor_metadata(WN_st_idx(root),"tensor.bridge.device");
+    if(device) {std::string text=device;s<<"device;"<<text.size()<<':'<<text<<';';}
     for(INT i=0;i<WN_num_formals(root);++i) {
         const char *fields[]={"value","storage","role","ordinal","elements","bytes","dtype","name"};
         for(unsigned j=0;j<8;++j) {
