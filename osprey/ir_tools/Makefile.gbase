@@ -736,6 +736,14 @@ dsl_fetch_pipeline_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_fetch_pipeline_contract_test.cxx
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 
+# Standalone lowerer consumers link the same H2/H3/H4 owners as production.
+# Keep these objects test-local; no frontend dependency is added to be.so.
+DSL_GEMM_COST_CONTRACT_OBJS = dsl_movement_gemm_test.o dsl_gemm_hierarchy_test.o \
+        dsl_movement_facts_test.o dsl_movement_cost_test.o fhe_sha256.o \
+        dsl_compute_shadow_opt.o dsl_compute_model.o dsl_compute_realization.o
+
+dsl_physical_plan_contract_test: $(DSL_GEMM_COST_CONTRACT_OBJS)
+
 dsl_physical_plan_contract_test: $(OBJECTS) controls.o dsl_lower.o \
 		dsl_opt.o dsl_shape_refine.o dsl_runtime_variant_opt.o \
 		dsl_telemetry_feedback_opt.o \
@@ -753,7 +761,7 @@ dsl_physical_plan_contract_test: $(OBJECTS) controls.o dsl_lower.o \
 		dsl_distributed_candidate_opt.o \
 		dsl_residency_candidate_opt.o dsl_tile_candidate_opt.o \
 		dsl_fetch_pipeline_opt.o dsl_physical_plan_opt.o \
-		$(OBJECTS) $(LDFLAGS)
+		$(OBJECTS) $(LDFLAGS) $(DSL_GEMM_COST_CONTRACT_OBJS)
 
 dsl_physical_plan_contract_test.o: \
 	$(COMMON_COM_DIR)/tests/dsl_physical_plan_contract_test.cxx
@@ -762,7 +770,7 @@ dsl_physical_plan_contract_test.o: \
 dsl_lower_contract_test: $(OBJECTS) controls.o dsl_lower.o \
 		dsl_opt.o dsl_shape_refine.o dsl_lower_contract_test.o
 	$(link.c++f) -o $@ dsl_lower_contract_test.o controls.o \
-		dsl_lower.o dsl_opt.o dsl_shape_refine.o $(OBJECTS) $(LDFLAGS)
+		dsl_lower.o dsl_opt.o dsl_shape_refine.o $(OBJECTS) $(LDFLAGS) $(DSL_GEMM_COST_CONTRACT_OBJS) $(DSL_FACT_CAPTURE_OPT_OBJS) $(DSL_SELECTION_OPT_OBJS) dsl_distributed_candidate_opt.o dsl_residency_candidate_opt.o dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o dsl_physical_plan_opt.o dsl_runtime_variant_opt.o dsl_telemetry_feedback_opt.o
 
 dsl_lower_contract_test.o: \
 	$(BE_VHO_DIR)/tests/dsl_lower_contract_test.cxx
@@ -1471,3 +1479,15 @@ tensor_bridge_test_driver.o tensor_kernel_driver.o tensor_serving_review.o: $(BU
 
 # H3 selected normalization review reimports the existing H1 context.
 dsl_normalization_cost_test dsl_normalization_lower_test dsl_normalization_request_test: dsl_gpu_profile_owner_test.o
+
+# H4 complete reverse consumers for runtime fetch-control and recipe headers.
+dsl_fetch_pipeline.o dsl_physical_plan.o: $(BUILD_TOT)/be/vho/dsl_fetch_pipeline_opt.h $(BUILD_TOT)/be/vho/dsl_fetch_pipeline.h $(BUILD_TOT)/be/vho/dsl_movement_gemm.h
+
+# Actual legacy standalone lowerer closure and new runtime-control consumers.
+dsl_lower_contract_test: $(DSL_GEMM_COST_CONTRACT_OBJS) $(DSL_FACT_CAPTURE_OPT_OBJS) $(DSL_SELECTION_OPT_OBJS) dsl_distributed_candidate_opt.o dsl_residency_candidate_opt.o dsl_tile_candidate_opt.o dsl_fetch_pipeline_opt.o dsl_physical_plan_opt.o dsl_runtime_variant_opt.o dsl_telemetry_feedback_opt.o
+dsl_movement_gemm_test.o: $(BE_VHO_DIR)/dsl_movement_gemm.cxx $(BE_VHO_DIR)/dsl_movement_gemm.h $(BE_VHO_DIR)/dsl_gemm_hierarchy.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+dsl_gemm_hierarchy_test.o: $(BE_VHO_DIR)/dsl_gemm_hierarchy.cxx $(BE_VHO_DIR)/dsl_gemm_hierarchy.h
+	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
+dsl_physical_plan_contract_test.o dsl_fetch_pipeline_contract_test.o dsl_lower.o \
+dsl_compute_shadow_opt.o dsl_compute_model.o dsl_compute_realization.o: $(BE_VHO_DIR)/dsl_fetch_pipeline_opt.h $(BE_VHO_DIR)/dsl_fetch_pipeline.h

@@ -313,6 +313,7 @@ BE_REGION_CXX_SRCS = \
   region_util.cxx
 
 BE_VHO_CXX_SRCS = \
+  dsl_gemm_hierarchy.cxx \
   dsl_movement_cost.cxx \
   dsl_movement_cost_import.cxx \
   dsl_movement_gemm.cxx \
@@ -1275,3 +1276,11 @@ driver.o normalization_driver.o: $(BUILD_TOT)/be/vho/tensor_attention_search.h $
 # H3 physical-model value-layout transitive consumers.
 driver.o dsl_lower.o dsl_movement_cost.o dsl_movement_cost_import.o \
 dsl_movement_gemm.o: $(BUILD_TOT)/be/vho/dsl_movement_cost.h
+
+# H4 complete reverse consumers for runtime fetch-control and recipe headers.
+driver.o dsl_compute_model.o dsl_compute_realization.o dsl_compute_shadow_opt.o dsl_fetch_pipeline.o \
+dsl_fetch_pipeline_opt.o dsl_lower.o dsl_movement_gemm.o dsl_physical_plan.o dsl_physical_plan_opt.o \
+dsl_runtime_variant_opt.o dsl_telemetry_feedback_opt.o dsl_wgmma_opt.o dsl_wgmma_pipeline_model_opt.o: $(BUILD_TOT)/be/vho/dsl_fetch_pipeline_opt.h $(BUILD_TOT)/be/vho/dsl_fetch_pipeline.h $(BUILD_TOT)/be/vho/dsl_movement_gemm.h
+
+# H4 pure consumer count owner.
+dsl_gemm_hierarchy.o dsl_movement_gemm.o dsl_lower.o: $(BUILD_TOT)/be/vho/dsl_gemm_hierarchy.h

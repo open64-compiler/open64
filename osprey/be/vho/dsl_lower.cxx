@@ -38,7 +38,11 @@
 
 #include "dsl_lower.h"
 #include "dsl_movement_gemm.h"
+#include "dsl_gemm_hierarchy.h"
+#include <sstream>
+#include <sys/wait.h>
 #include "config.h"
+#include "glob.h"
 #include "config_dsl.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_ir_image.h"
@@ -2479,11 +2483,40 @@ VHO_DSL_CUDA_Verify_Selected_K_Loop
            WN_first(WN_do_body(loop)) == NULL;
 }
 
+/* H4 selection crosses phase lifetimes as complete owned facts/work/evidence.
+ * No WN/ST/TY or analysis pointer is retained. Driver checks the fixed winner. */
+struct DSL_GEMM_H4_BINDING {
+    bool active;
+    DSL_MOVEMENT_FACTS facts;
+    DSL_H3_ESTIMATE estimate;
+    /* Empty binding preserves every historical path. */
+    inline DSL_GEMM_H4_BINDING() : active(false) {}
+};
+/* Resolve the existing scalar/count description without a device observation. */
+static BOOL VHO_DSL_cuda_get_hardware(DSL_HARDWARE_DESCRIPTION_RECORD *);
+/* Re-evaluate only the fixed selected recipe, outside candidate exploration.
+ * Source is freshly recaptured in its owning PU before staging; the driver
+ * validates copied proof/model/profile/geometry/score without reopening it. */
+static BOOL VHO_DSL_cuda_h4_revalidate(const DSL_GEMM_H4_BINDING &binding,
+    const DSL_TILE_PLAN_RECORD &tile,const DSL_FETCH_PLAN_RECORD &fetch)
+{
+    if(!binding.active) return !(fetch.flags&DSL_FETCH_PLAN_FLAG_RETAIN_B);
+    DSL_HARDWARE_DESCRIPTION_RECORD hardware;DSL_H3_PLAN plan;DSL_H3_ESTIMATE fresh;std::string reason;
+    return VHO_DSL_H3_Search && binding.facts.Capture().binding.device.Is_current(VHO_DSL_GPU_Context) &&
+        VHO_DSL_cuda_get_hardware(&hardware) && VHO_DSL_gemm_h4_plan(tile,fetch,hardware,binding.facts,plan,reason) &&
+        VHO_h3_estimate(binding.facts,VHO_DSL_H3_Search->Model(),plan,fresh,reason) &&
+        fresh.executable && fresh.binding==binding.estimate.binding && fresh.key==binding.estimate.key && fresh.rank_ns==binding.estimate.rank_ns;
+}
+
 struct VHO_DSL_CUDA_WH_CONTEXT {
     TY_IDX float_pointer_ty;
     ST *a, *b, *c, *as, *bs, *acc;
     ST *tid, *local_row, *local_col, *row0, *col0;
     ST *base, *offset, *q, *i, *j, *av;
+    ST *b_retained[32];
+    const char *explanation;
+    SRCPOS source;
+    WN *compute, *k_loop, *prologue, *refill;
     ST *thread_idx, *block_idx, *barrier;
     ST *slot, *ready, *a_map, *b_map;
     ST *ready_init, *proxy_publish, *acquire, *issue, *wait, *invalidate;
@@ -2899,6 +2932,37 @@ VHO_DSL_CUDA_B_Shared_Index (const DSL_TILE_PLAN_RECORD &tile,
                    WN_Mpy(MTYPE_I4, row, VHO_DSL_CUDA_I4(tile.cta_n)), col);
 }
 
+/* Materialize H4 only in a fresh selected device PU: prefix TN B loads into
+ * scalar symbols, then retain the existing ordered q/i/output arithmetic.
+ * Original A hoisting is moved unchanged; each output still folds ascending K.
+ * Mutate only that fresh selected body; no source PU or existing analysis is
+ * rewritten. All consumer loads remain between the existing wait/release. */
+static WN *VHO_DSL_cuda_retain_b(const VHO_DSL_CUDA_WH_CONTEXT &c,WN *compute)
+{
+    WN *q_body=WN_do_body(compute),*i_loop=WN_first(q_body),*i_body=WN_do_body(i_loop);
+    WN *a_load=WN_first(i_body),*j_loop=WN_next(a_load);
+    Is_True(WN_operator(i_loop)==OPR_DO_LOOP && WN_operator(j_loop)==OPR_DO_LOOP,
+        ("H4 selected consumer violates fresh-PU canonical q/i/j ownership"));
+    FmtAssert(WN_operator(i_loop)==OPR_DO_LOOP && WN_operator(j_loop)==OPR_DO_LOOP,
+        ("H4 selected consumer must have canonical q/i/j ownership"));
+    for(UINT32 col=0;col<c.tile->thread_n;++col) {
+        WN *index=VHO_DSL_CUDA_B_Shared_Index(*c.tile,VHO_DSL_CUDA_I4_Load(c.q),
+            WN_Add(MTYPE_I4,VHO_DSL_CUDA_I4_Load(c.local_col),VHO_DSL_CUDA_I4(col)));
+        if(c.ready) index=WN_Add(MTYPE_I4,index,WN_Mpy(MTYPE_I4,VHO_DSL_CUDA_I4_Load(c.slot),
+            VHO_DSL_CUDA_I4(c.tile->cta_k*c.tile->cta_n)));
+        WN *load=WN_Stid(MTYPE_F4,0,c.b_retained[col],ST_type(c.b_retained[col]),VHO_DSL_CUDA_F4_Load(c,c.bs,index));
+        WN_Set_Linenum(load,c.source);WN_INSERT_BlockBefore(q_body,i_loop,load);
+        WN *acc_index=WN_Add(MTYPE_I4,WN_Mpy(MTYPE_I4,VHO_DSL_CUDA_I4_Load(c.i),
+            VHO_DSL_CUDA_I4(c.tile->thread_n)),VHO_DSL_CUDA_I4(col));
+        WN *sum=WN_Add(MTYPE_F4,VHO_DSL_CUDA_F4_Load(c,c.acc,WN_COPY_Tree(acc_index)),
+            WN_Mpy(MTYPE_F4,WN_Ldid(MTYPE_F4,0,ST_st_idx(c.av),ST_type(c.av)),
+                WN_Ldid(MTYPE_F4,0,ST_st_idx(c.b_retained[col]),ST_type(c.b_retained[col]))));
+        WN_INSERT_BlockBefore(i_body,j_loop,VHO_DSL_CUDA_F4_Store(c,c.acc,acc_index,sum));
+    }
+    WN_EXTRACT_FromBlock(i_body,j_loop);WN_DELETE_Tree(j_loop);
+    return compute;
+}
+
 /* Construct D's register-tiled global-load loop in the active device PU.
  * A is reused across j, B is loaded per i/j, and guards precede every
  * potentially invalid load. Caller preflights the plan and owns the returned
@@ -2947,7 +3011,8 @@ VHO_DSL_cuda_build_direct_loop (VHO_DSL_CUDA_WH_CONTEXT &c)
 
 /* Construct device control flow from the selected tile/fetch pair, including
  * slot storage, predication, synchronization and epilogue. Assert structural
- * schedule proof before returning; no independent emitter policy is allowed. */
+ * schedule proof before returning. H4 retention is deferred until the fresh
+ * entry exists, allowing immediate native before/after checkpoints. */
 static WN *
 VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
 {
@@ -2960,6 +3025,10 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
     const BOOL guard_n = tile.problem_n % tile.cta_n != 0;
     const BOOL guard_k = tile.problem_k % tile.cta_k != 0;
     WN *body = WN_CreateBlock();
+    if(c.explanation && *c.explanation) {
+        WN *comment=WN_CreateComment(c.explanation);WN_Set_Linenum(comment,c.source);
+        Set_ST_Srcpos(*WN_st(comment),c.source);WN_INSERT_BlockLast(body,comment);
+    }
     WN_INSERT_BlockLast
         (body, VHO_DSL_CUDA_I4_Store
                    (c.tid, VHO_DSL_CUDA_Builtin_Dim(c.thread_idx, 0, 1)));
@@ -3283,19 +3352,42 @@ VHO_DSL_CUDA_Build_Body (VHO_DSL_CUDA_WH_CONTEXT &c)
     WN_INSERT_BlockLast
         (body, VHO_DSL_CUDA_Do(c.i, VHO_DSL_CUDA_I4(0),
                                VHO_DSL_CUDA_I4(tm), 1, store_i));
+    c.compute=compute;c.k_loop=k_loop;c.prologue=prologue;c.refill=refill;
     FmtAssert(VHO_DSL_CUDA_Verify_Pipeline_Order
                   (c, body, k_loop, compute, prologue, refill),
               ("CUDA P8 WHIRL acquire/issue/wait/release proof failed"));
     return body;
 }
 
+/* Review checkpoint of the driver-owned fresh device PU. The native writer
+ * consumes subsection state, so isolate it in a child; atomically publish a
+ * fresh destination and preserve every parent table/tree/map on refusal. */
+static BOOL VHO_DSL_cuda_h4_checkpoint(PU_Info *info,const std::string &path)
+{
+    if(path.empty()) return TRUE;
+    std::string temporary=path+".tmp";
+    if(access(path.c_str(),F_OK)==0 || access(temporary.c_str(),F_OK)==0) return FALSE;
+    fflush(NULL);pid_t child=fork();if(child<0) return FALSE;
+    if(!child) {
+        PU_Info image=*info;PU_Info_next(&image)=NULL;PU_Info_child(&image)=NULL;
+        Irb_File_Name=const_cast<char *>(temporary.c_str());
+        if(!Open_Output_Info(Irb_File_Name)) _exit(1);
+        Write_PU_Info(&image);Write_Global_Info(&image);Close_Output_Info();
+        if(link(temporary.c_str(),path.c_str())) _exit(1);
+        _exit(unlink(temporary.c_str())?1:0);
+    }
+    int status=0;return waitpid(child,&status,0)==child && WIFEXITED(status) && WEXITSTATUS(status)==0;
+}
+
 /* Under backend-driver ownership, preflight the selected schedule and build
  * one device PU with its own scope/map; restore the caller context before
- * returning. No final image is published by this construction service. */
+ * returning, including checkpoint/verification failure. H4 mutates only this
+ * fresh entry after its optional before checkpoint; the driver publishes the
+ * final program image only after successful verification. */
 static BOOL
 VHO_DSL_CUDA_Build_Selected_Whirl
         (const DSL_TILE_PLAN_RECORD &tile, const DSL_FETCH_PLAN_RECORD &fetch,
-         UINT32 ordinal,
+         UINT32 ordinal, const char *explanation, SRCPOS source,
          PU_Info **device_pu,
          FILE *diagnostic)
 {
@@ -3359,6 +3451,8 @@ VHO_DSL_CUDA_Build_Selected_Whirl
     memset(&c, 0, sizeof(c));
     c.tile = &tile;
     c.fetch = &fetch;
+    c.explanation = explanation;
+    c.source = source;
     c.float_pointer_ty = float_pointer_ty;
     const char *formal_names[] = {"a", "b", "c", "a_map", "b_map"};
     ST *formals[5];
@@ -3398,6 +3492,11 @@ VHO_DSL_CUDA_Build_Selected_Whirl
     c.i = VHO_DSL_CUDA_New_Local("i", MTYPE_To_TY(MTYPE_I4));
     c.j = VHO_DSL_CUDA_New_Local("j", MTYPE_To_TY(MTYPE_I4));
     c.av = VHO_DSL_CUDA_New_Local("av", MTYPE_To_TY(MTYPE_F4));
+    if(fetch.flags&DSL_FETCH_PLAN_FLAG_RETAIN_B) for(UINT32 col=0;col<tile.thread_n;++col) {
+        std::ostringstream name;name<<"b_retained_"<<col;
+        c.b_retained[col]=VHO_DSL_CUDA_New_Local(name.str().c_str(),MTYPE_To_TY(MTYPE_F4));
+        Set_ST_Srcpos(*c.b_retained[col],source);
+    }
     TY_IDX dim_ty = VHO_DSL_CUDA_Dim_Type();
     c.thread_idx = VHO_DSL_CUDA_Builtin_Symbol("threadIdx", dim_ty);
     c.block_idx = VHO_DSL_CUDA_Builtin_Symbol("blockIdx", dim_ty);
@@ -3446,13 +3545,24 @@ VHO_DSL_CUDA_Build_Selected_Whirl
     Current_Map_Tab = PU_Info_maptab(info);
     Current_PU_Info = info;
     Save_Local_Symtab(CURRENT_SYMTAB, info);
-    *device_pu = info;
+    BOOL hierarchy_valid=TRUE;
+    if(fetch.flags&DSL_FETCH_PLAN_FLAG_RETAIN_B) {
+        std::ostringstream prefix;
+        if(VHO_DSL_GEMM_Hierarchy_Checkpoint) prefix<<VHO_DSL_GEMM_Hierarchy_Checkpoint<<".pu-"<<ordinal;
+        hierarchy_valid=prefix.str().empty() || VHO_DSL_cuda_h4_checkpoint(info,prefix.str()+".before.B");
+        if(hierarchy_valid) {
+            VHO_DSL_cuda_retain_b(c,c.compute);
+            hierarchy_valid=VHO_DSL_CUDA_Verify_Pipeline_Order(c,WN_func_body(entry),c.k_loop,c.compute,c.prologue,c.refill);
+            if(hierarchy_valid && !prefix.str().empty()) hierarchy_valid=VHO_DSL_cuda_h4_checkpoint(info,prefix.str()+".after.B");
+        }
+    }
+    *device_pu = hierarchy_valid?info:NULL;
     Scope_tab[level] = saved_scope;
     Current_scope = level;
     Current_pu = saved_pu;
     Current_Map_Tab = saved_map;
     Current_PU_Info = saved_info;
-    return TRUE;
+    return hierarchy_valid;
 }
 
 struct VHO_DSL_CUDA_PENDING_KERNEL {
@@ -3460,28 +3570,46 @@ struct VHO_DSL_CUDA_PENDING_KERNEL {
     DSL_FETCH_PLAN_RECORD fetch;
     ST_IDX owner;
     DSL_GPU_PLAN_SNAPSHOT device;
+    DSL_GEMM_H4_BINDING hierarchy;
+    std::string explanation;
 };
 
 static std::vector<VHO_DSL_CUDA_PENDING_KERNEL> VHO_DSL_CUDA_Pending_Kernels;
 
 /* Validate and copy selected numeric tile/fetch records into the driver
- * handoff registry while the analysis PU is active; do not retain analysis
- * pointers or construct another PU from this per-PU phase. */
+ * handoff registry while the analysis PU is active. H4 additionally owns its
+ * detached source/recipe evidence and explanation, revalidated before staging.
+ * No analysis pointer or another PU is constructed by this per-PU phase. */
 static BOOL
 VHO_DSL_CUDA_Stage_Selected_Whirl
         (PU_Info *pu_info, const DSL_TILE_PLAN_RECORD &tile,
-         const DSL_FETCH_PLAN_RECORD &fetch,
+         const DSL_FETCH_PLAN_RECORD &fetch,const DSL_GEMM_H4_BINDING &hierarchy,
          UINT32 *ordinal, FILE *diagnostic)
 {
     if (ordinal == NULL || !VHO_DSL_CUDA_Pipeline_Valid(tile, fetch) ||
+        !VHO_DSL_cuda_h4_revalidate(hierarchy,tile,fetch) ||
         VHO_DSL_CUDA_Pending_Kernels.size() >= UINT32_MAX) {
-        fprintf(diagnostic, "DSL CUDA device entry registry is full\n");
+        fprintf(diagnostic, "DSL CUDA selected binding is invalid/stale or device entry registry is full\n");
         return FALSE;
     }
     *ordinal = (UINT32)VHO_DSL_CUDA_Pending_Kernels.size();
     VHO_DSL_CUDA_PENDING_KERNEL pending;
     pending.tile = tile;
     pending.fetch = fetch;
+    pending.hierarchy=hierarchy;
+    if(hierarchy.active) {
+        std::ostringstream text;text<<"H4 GEMM: M="<<tile.problem_m<<", N="<<tile.problem_n<<", K="<<tile.problem_k
+            <<"; CTA tile="<<tile.cta_m<<"x"<<tile.cta_n<<"x"<<tile.cta_k<<"; output per thread="<<tile.thread_m<<"x"<<tile.thread_n
+            <<". Ordered F32 accumulators live across K; A is reused across columns. ";
+        if(fetch.flags&DSL_FETCH_PLAN_FLAG_RETAIN_B) text<<"Load each of "<<tile.thread_n<<" B columns once per K step into explicit scalar registers, then reuse across "<<tile.thread_m<<" output rows. No private B array or new global buffer. ";
+        else text<<"The original consumer won after accounting for retention's extra registers and residency. ";
+        if(fetch.flags&DSL_FETCH_PLAN_FLAG_DIRECT) text<<"Direct guarded global loads; no shared allocation or CTA barriers. ";
+        else text<<"Cooperative/shared operand tiles; "<<fetch.stage_count<<" slot(s). "
+            <<(fetch.engine==DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC?"TMA wait precedes consumers; all consumers release before refill; drain precedes invalidation. ":"Predicated copies zero inactive shared elements; CTA publication and release barriers remain. ");
+        text<<"H2 source/reuse proof and pinned H20/H3 model "<<VHO_DSL_H3_Search->Model().key
+            <<" select this recipe at estimated "<<hierarchy.estimate.rank_ns<<" ns. Registers/spills and latency are model assumptions, not GPU measurements. Search generated no candidate WHIRL.";
+        pending.explanation=text.str();
+    }
     pending.owner = PU_Info_proc_sym(pu_info);
     pending.device = DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
     VHO_DSL_CUDA_Pending_Kernels.push_back(pending);
@@ -3499,7 +3627,9 @@ VHO_DSL_CUDA_Program_Kernel_Count(void)
 /* Build one staged device PU for the backend driver and return its binding;
  * reject invalid ordinals/outputs before publication. The driver owns the
  * resulting PU lifetime and atomic program-image commit. H1c rechecks the
- * stored evidence against the current driver context before construction. */
+ * stored evidence against the current driver context before construction. H4
+ * also revalidates the fixed copied source/model/recipe/score, without search
+ * or restoration/traversal of a source PU. */
 BOOL
 VHO_DSL_CUDA_Take_Program_Kernel
         (UINT32 ordinal, PU_Info **device_pu, UINT32 *plan_id,
@@ -3513,14 +3643,25 @@ VHO_DSL_CUDA_Take_Program_Kernel
                 "device PU\n");
         return FALSE;
     }
-    const VHO_DSL_CUDA_PENDING_KERNEL &pending =
-        VHO_DSL_CUDA_Pending_Kernels[ordinal];
-    if (!pending.device.Is_current(VHO_DSL_GPU_Context)) {
+    VHO_DSL_CUDA_PENDING_KERNEL pending = VHO_DSL_CUDA_Pending_Kernels[ordinal];
+#ifdef VHO_DSL_GEMM_H4_TEST
+    // Detached handoff corruption is test-only and never a production option.
+    const char *fault=getenv("OPEN64_GEMM_H4_TEST");
+    if(fault && pending.hierarchy.active) {
+        if(!strcmp(fault,"binding")) pending.hierarchy.estimate.binding+="stale";
+        if(!strcmp(fault,"score")) ++pending.hierarchy.estimate.rank_ns;
+        if(!strcmp(fault,"consumer")) pending.fetch.flags^=DSL_FETCH_PLAN_FLAG_RETAIN_B;
+        if(!strcmp(fault,"facts")) pending.hierarchy.facts=DSL_MOVEMENT_FACTS();
+        if(!strcmp(fault,"shape")) ++pending.tile.problem_m;
+    }
+#endif
+    if (!pending.device.Is_current(VHO_DSL_GPU_Context) ||
+        !VHO_DSL_cuda_h4_revalidate(pending.hierarchy,pending.tile,pending.fetch)) {
         fprintf(diagnostic,"DSL_GPU_PLAN: stale GEMM device/resource/cost/budget binding\n");
         return FALSE;
     }
     if (!VHO_DSL_CUDA_Build_Selected_Whirl
-            (pending.tile, pending.fetch, ordinal, device_pu, diagnostic))
+            (pending.tile, pending.fetch, ordinal, pending.explanation.c_str(), ST_Srcpos(pending.owner), device_pu, diagnostic))
         return FALSE;
     *plan_id = pending.tile.optimization_plan_id;
     *tile_id = pending.tile.id;
@@ -3963,6 +4104,8 @@ VHO_DSL_cuda_get_hardware(DSL_HARDWARE_DESCRIPTION_RECORD *hardware)
  * verified winner. H1c filters the same detached pairs using owned imported
  * resource/budget facts. Optional H3 compares complete physical-ns estimates
  * from owned H2 facts; incomplete comparison retains the legacy cycle choice.
+ * H4 adds consistently costed scalar-B siblings and native-table isolation
+ * checks; those siblings cannot enter legacy ranking on incomplete search.
  * MMA2 records F32 incompatibility/unknown timing only and
  * cannot change the selected SIMT pair. See
  * doc/AI-COMPILER-OPTIMIZATION-MOVEMENT-RESOURCES.md and
@@ -3973,7 +4116,7 @@ VHO_DSL_cuda_select_joint_plan
          DSL_TENSOR_LOCALITY_ANALYSIS *locality, DSL_TILE_ANALYSIS *tiles,
          const DSL_TILE_SITE_RECORD &site, const DSL_HARDWARE_DESCRIPTION_RECORD &hardware,
          const DSL_GPU_PLAN_SNAPSHOT &device,const DSL_MOVEMENT_FACTS &movement_source,
-         DSL_TILE_PLAN_ID *winner,
+         BOOL h4,DSL_GEMM_H4_BINDING *hierarchy,DSL_TILE_PLAN_ID *winner,
          DSL_FETCH_PLAN_RECORD *winner_fetch,
          UINT32 *candidate_count,
          FILE *diagnostic)
@@ -3982,7 +4125,8 @@ VHO_DSL_cuda_select_joint_plan
     UINT64 best = ~(UINT64)0, fallback_cost = ~(UINT64)0;
     UINT32 count = 0, chosen = 0, fallback = 0;
     uint64_t h3_best=~uint64_t(0);UINT32 h3_chosen=0;DSL_TILE_PLAN_ID h3_tile=0;DSL_FETCH_PLAN_RECORD h3_fetch;
-    bool h3_failed=false;
+    bool h3_failed=false;DSL_H3_ESTIMATE h4_estimate;
+    const UINT32 source_symbols=ST_Table_Size(CURRENT_SYMTAB),global_symbols=ST_Table_Size(GLOBAL_SYMTAB),source_types=TY_Table_Size();
     const BOOL trace = VHO_DSL_AI_Opt_Trace && Get_Trace(TP_WOPT2, AI_OPT_TRACE_FLAG);
     const BOOL tma_allowed = VHO_DSL_CUDA_TMA_Prefetch && !VHO_DSL_CUDA_Tile_Apply;
     const BOOL readiness = VHO_DSL_GEMM_Cost_Model == NULL ||
@@ -3994,8 +4138,8 @@ VHO_DSL_cuda_select_joint_plan
     memset(winner_fetch,0,sizeof(*winner_fetch));
     *candidate_count = 0;
     if (trace)
-        fprintf(TFile, "AI_OPT 7 JOINT_MODE joint 48 %u %u %s low model=%u direct=%u\n",
-                site.tile_plan_count, tma_allowed, readiness ? "cycles" : "relative",
+        fprintf(TFile, "AI_OPT 7 JOINT_MODE joint %u %u %u %s low model=%u direct=%u\n",
+                h4?96:48, site.tile_plan_count, tma_allowed, readiness ? "cycles" : "relative",
                 readiness ? 6 : 3, !VHO_DSL_CUDA_Tile_Apply);
     if (trace && readiness) {
         fprintf(TFile, "AI_OPT 7 HW_DESC %s %s %u %u %s %s %u\n", hardware.architecture,
@@ -4040,6 +4184,7 @@ VHO_DSL_cuda_select_joint_plan
         control.enable_vector = control.enable_async_copy = 0;
         control.enable_multidimensional_async = tma_allowed;
         control.maximum_buffer_stages = 2;
+        control.enable_b_retention = h4;
         DSL_FETCH_PIPELINE_ANALYSIS *fetch = VHO_DSL_Fetch_Pipeline_Create
             (pu, graph, locality, NULL, tiles, &control, diagnostic);
         if (fetch == NULL)
@@ -4051,7 +4196,7 @@ VHO_DSL_cuda_select_joint_plan
             DSL_FETCH_PLAN_RECORD pipeline;
             DSL_OPT_PLAN_RECORD plan;
             DSL_OPT_COST_RECORD cost;
-            valid = ++count <= 48 && DSL_fetch_pipeline_ir_get_plan(fetch_ir, p, &pipeline) &&
+            valid = ++count <= (h4?96:48) && DSL_fetch_pipeline_ir_get_plan(fetch_ir, p, &pipeline) &&
                 DSL_opt_plan_get_plan(context, pipeline.optimization_plan_id, &plan) &&
                 DSL_opt_plan_get_cost(context, plan.cost_id, &cost);
             if (!valid)
@@ -4128,15 +4273,27 @@ VHO_DSL_cuda_select_joint_plan
                 continue;
             if(VHO_DSL_H3_Search && Opt_Level>=3) {
                 DSL_H3_PLAN recipe;DSL_H3_ESTIMATE estimate;std::string why;
-                bool projected=VHO_DSL_gemm_h3_plan(tile,pipeline,hardware,recipe,why);
+                bool projected=h4?VHO_DSL_gemm_h4_plan(tile,pipeline,hardware,movement_source,recipe,why):VHO_DSL_gemm_h3_plan(tile,pipeline,hardware,recipe,why);
                 bool reuse=movement_source.Available();
                 if(reuse) for(unsigned a=0;a<2;++a) reuse=reuse && movement_source.Capture().accesses.size()>a && movement_source.Capture().accesses[a].reuse_proved;
                 if(projected && !reuse) recipe.stages[0].reusable_reads=0;
                 bool complete=projected && VHO_DSL_H3_Search->Evaluate(movement_source,recipe,estimate,why);
                 if(trace) VHO_h3_print(TFile,movement_source,recipe,estimate);
+                if(h4 && trace && projected && !(pipeline.flags&DSL_FETCH_PLAN_FLAG_DIRECT)) {
+                    DSL_GEMM_HIERARCHY_WORK work;
+                    if(VHO_DSL_gemm_hierarchy_work(tile.cta_m,tile.cta_n,tile.cta_k,tile.thread_m,tile.thread_n,tile.problem_k,
+                        (pipeline.flags&DSL_FETCH_PLAN_FLAG_RETAIN_B)!=0,work,why))
+                        fprintf(TFile,"AI_H4_WORK 1 ordinal=%u tile=%u fetch=%u retained=%u shared_reads=%llu shared_writes=%llu B_loads=%llu extra_registers=%llu\n",
+                            count,tile.id,pipeline.id,unsigned((pipeline.flags&DSL_FETCH_PLAN_FLAG_RETAIN_B)!=0),
+                            (unsigned long long)work.shared_reads,(unsigned long long)work.shared_writes,
+                            (unsigned long long)work.b_loads,(unsigned long long)work.extra_registers);
+                }
                 if(!complete) h3_failed=true;
-                else if(estimate.executable && estimate.rank_ns<h3_best) {h3_best=estimate.rank_ns;h3_tile=tile.id;h3_fetch=pipeline;h3_chosen=count;}
+                else if(estimate.executable && estimate.rank_ns<h3_best) {h3_best=estimate.rank_ns;h3_tile=tile.id;h3_fetch=pipeline;h3_chosen=count;h4_estimate=estimate;}
             }
+            // New retained siblings require complete H3 comparison. They are
+            // never revived by legacy ranking when a finite budget expires.
+            if(pipeline.flags&DSL_FETCH_PLAN_FLAG_RETAIN_B) continue;
             if (cost.total < best) {
                 best = cost.total;
                 *winner = tile.id;
@@ -4155,8 +4312,11 @@ VHO_DSL_cuda_select_joint_plan
     }
     if(VHO_DSL_H3_Search && h3_tile && !h3_failed) {
         *winner=h3_tile;*winner_fetch=h3_fetch;chosen=h3_chosen;
+        if(h4) {hierarchy->active=true;hierarchy->facts=movement_source;hierarchy->estimate=h4_estimate;}
         if(trace) fprintf(TFile,"AI_H3_SELECT 1 family=GEMM tile=%u fetch=%u rank_ns=%llu conclusion=best-estimated-in-declared-space\n",h3_tile,h3_fetch.id,(unsigned long long)h3_best);
     } else if(VHO_DSL_H3_Search && trace) fprintf(TFile,"AI_H3_SELECT 1 family=GEMM fallback=existing_plan reason=incomplete_or_budget\n");
+    if(h4 && (source_symbols!=ST_Table_Size(CURRENT_SYMTAB) || global_symbols!=ST_Table_Size(GLOBAL_SYMTAB) || source_types!=TY_Table_Size())) return FALSE;
+    if(h4 && trace) fprintf(TFile,"AI_H4_SEARCH 1 candidates=%u native_ST=unchanged native_TY=unchanged source_key=%s retained=%u selected_only=1\n",count,movement_source.Key().c_str(),unsigned((*winner_fetch).flags&DSL_FETCH_PLAN_FLAG_RETAIN_B)!=0);
     if (chosen == 0 || fallback == 0)
         return FALSE;
     *candidate_count = count;
@@ -4174,7 +4334,9 @@ VHO_DSL_cuda_select_joint_plan
  * copy their completed records to the caller before destroying analyses.
  * Emit legacy source only when requested; device construction is driver-owned.
  * H1c snapshots precede search and are revalidated before any output; imported
- * resource/budget refusals never substitute the synthetic architecture row. */
+ * resource/budget refusals never substitute the synthetic architecture row.
+ * H4 source joins and fixed-winner evidence are checked before its owned
+ * handoff; missing prerequisites keep the previous admitted planner. */
 static BOOL
 VHO_DSL_CUDA_Emit_Selected_Tile
         (PU_Info *pu_info, WN *tree, const char *path,
@@ -4183,7 +4345,7 @@ VHO_DSL_CUDA_Emit_Selected_Tile
          UINT32 *tile_candidate_count, UINT32 *fetch_candidate_count,
          UINT32 *joint_candidate_count,
          DSL_TILE_PLAN_RECORD *emitted_tile,
-         DSL_FETCH_PLAN_RECORD *emitted_fetch,
+         DSL_FETCH_PLAN_RECORD *emitted_fetch,DSL_GEMM_H4_BINDING *hierarchy,
          FILE *diagnostic)
 {
     DSL_TENSOR_EVOLUTION_GRAPH *graph = NULL;
@@ -4212,6 +4374,8 @@ VHO_DSL_CUDA_Emit_Selected_Tile
     DSL_FETCH_PLAN_RECORD joint_fetch;memset(&joint_fetch,0,sizeof(joint_fetch));
     DSL_MOVEMENT_FACTS movement_source;DSL_TILE_PLAN_RECORD movement_geometry;
     std::string movement_reason;
+    BOOL h4=FALSE;
+    *hierarchy=DSL_GEMM_H4_BINDING();
     if (!VHO_DSL_cuda_get_hardware(&hardware)) return FALSE;
     if (emitted_plan_id != NULL)
         *emitted_plan_id = DSL_OPT_PLAN_INVALID_ID;
@@ -4279,10 +4443,16 @@ VHO_DSL_CUDA_Emit_Selected_Tile
             else fprintf(TFile,"AI_MOVEMENT_FACTS 1 family=GEMM unavailable=%s fallback=existing_plan\n",movement_reason.c_str());
         }
     }
+    h4=VHO_DSL_GEMM_Hierarchy && Opt_Level>=3 && joint && VHO_DSL_CUDA_Whirl_Output &&
+        (!VHO_DSL_CUDA_Legacy_Emit || !VHO_DSL_CUDA_Tile_Output) && VHO_DSL_H3_Search && movement_source.Available() &&
+        (device.Device()=="h20_96gb" || device.Device()=="h20_141gb") && movement_source.Capture().accesses.size()==3 &&
+        movement_source.Capture().accesses[0].reuse_proved && movement_source.Capture().accesses[1].reuse_proved &&
+        VHO_DSL_H3_Search->Working_items(8388608)!=0;
+    if(VHO_DSL_GEMM_Hierarchy && !h4 && VHO_DSL_AI_Opt_Trace) fprintf(TFile,"AI_H4_ADMISSION 1 enabled=0 reason=requires_O3_joint_H20_H2_H3_native_only_and_work_budget fallback=existing_plan\n");
     plans = VHO_DSL_Tile_Get_Plan_Context(analysis, site.id);
     if (joint) {
         if (!VHO_DSL_cuda_select_joint_plan(pu_info, graph, locality, analysis,
-                                           site, hardware, device, movement_source, &joint_tile, &joint_fetch, joint_candidate_count, diagnostic) ||
+                                           site, hardware, device, movement_source, h4, hierarchy, &joint_tile, &joint_fetch, joint_candidate_count, diagnostic) ||
             !VHO_DSL_tile_finalize_joint_selection(analysis, site.id, joint_tile, diagnostic))
             goto done;
         ir = VHO_DSL_Tile_Get_IR(analysis);
@@ -4306,6 +4476,7 @@ VHO_DSL_CUDA_Emit_Selected_Tile
             /* Reconstruct the admitted pair without a second profitability
              * selection that could revive a resource-rejected sibling. */
             fetch_control.select_plans = 0;
+            fetch_control.enable_b_retention = h4;
             fetch_control.joint_cost = 1;
             fetch_control.readiness_cost = VHO_DSL_GEMM_Cost_Model == NULL ||
                 strcmp(VHO_DSL_GEMM_Cost_Model, "readiness") == 0;
@@ -4442,6 +4613,9 @@ VHO_DSL_CUDA_Emit_Selected_Tile
             !VHO_DSL_cuda_device_fit(device,tile,selected_fetch,&physical_bytes)) {
             fprintf(diagnostic,"DSL_GPU_PLAN: GEMM resources/budget unknown, exceeded or stale\n");
             goto done;
+        }
+        if(!VHO_DSL_cuda_h4_revalidate(*hierarchy,tile,selected_fetch)) {
+            fprintf(diagnostic,"H4 selected fixed recipe/model changed; no CUDA image published\n");goto done;
         }
         device.Print(diagnostic,"GEMM-payload",physical_bytes);
         if (device.Bound()) fprintf(diagnostic,
@@ -4666,6 +4840,7 @@ VHO_DSL_Lower_Driver
     UINT32 tile_candidate_count = 0, fetch_candidate_count = 0, joint_candidate_count = 0;
     DSL_TILE_PLAN_RECORD emitted_tile;
     DSL_FETCH_PLAN_RECORD emitted_fetch;
+    DSL_GEMM_H4_BINDING hierarchy;
     UINT32 device_entry_ordinal = 0;
     memset(&emitted_tile, 0, sizeof(emitted_tile));
     if (VHO_DSL_CUDA_Tile_Apply)
@@ -4686,7 +4861,7 @@ VHO_DSL_Lower_Driver
                             &tile_candidate_count, &fetch_candidate_count,
                             &joint_candidate_count,
                             &emitted_tile,
-                            &emitted_fetch,
+                            &emitted_fetch, &hierarchy,
                             stderr);
         if (!emitted && VHO_DSL_GPU_Context && VHO_DSL_GPU_Context->Imported())
             ErrMsg(EC_Misc_User_Abort, "DSL_GPU_PLAN: no compatible GEMM plan under imported resources/budget; no CUDA image published");
@@ -4696,7 +4871,7 @@ VHO_DSL_Lower_Driver
         FmtAssert(emitted_tile_plan_id != DSL_OPT_PLAN_INVALID_ID,
                   ("CUDA WHIRL image requires a selected tile"));
         FmtAssert(VHO_DSL_CUDA_Stage_Selected_Whirl
-                      (pu_info, emitted_tile, emitted_fetch,
+                      (pu_info, emitted_tile, emitted_fetch, hierarchy,
                        &device_entry_ordinal, stderr),
                   ("DSL CUDA selected tile staging failed"));
     }

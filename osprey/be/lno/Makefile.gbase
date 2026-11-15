@@ -673,3 +673,6 @@ lnopt_main.o tensor_attention_search.o tensor_attention_search_test.o: $(BUILD_T
 dsl_high_apply.o dsl_high_device_test.o dsl_high_observer.o dsl_high_observer_json.o \
 dsl_high_observer_native.o h3_cost_test.o lnopt_main.o tensor_attention_search.o \
 tensor_attention_search_test.o: $(BUILD_TOT)/be/vho/dsl_movement_cost.h
+
+# H4 complete reverse consumers for runtime fetch-control and recipe headers.
+dsl_high_device_test.o: $(BUILD_TOT)/be/vho/dsl_fetch_pipeline_opt.h $(BUILD_TOT)/be/vho/dsl_fetch_pipeline.h $(BUILD_TOT)/be/vho/dsl_movement_gemm.h

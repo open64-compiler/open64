@@ -78,7 +78,7 @@ DSL_Fetch_Pipeline_Active (const DSL_FETCH_PIPELINE_ANALYSIS *analysis)
 }
 
 /* Initialize legacy generation defaults and an exact hardware architecture
- * key. Timing is resolved from the common table, never defaulted here. */
+ * key. H4 siblings default off. Timing is resolved from the common table. */
 void
 VHO_DSL_Fetch_Pipeline_Control_Init
         (VHO_DSL_FETCH_PIPELINE_CONTROL *control)
@@ -100,7 +100,8 @@ VHO_DSL_Fetch_Pipeline_Control_Init
 }
 
 /* Validate PU-local generation controls; joint overrides name an existing
- * tile rather than granting this phase authority to discover another PU. */
+ * tile rather than granting this phase authority to discover another PU. H4
+ * sibling generation is allowed only in the owning joint-search path. */
 static BOOL
 DSL_Fetch_Pipeline_Control_Valid
         (const VHO_DSL_FETCH_PIPELINE_CONTROL &control)
@@ -121,6 +122,7 @@ DSL_Fetch_Pipeline_Control_Valid
            control.memory_latency_set <= 1 &&
            (!control.readiness_cost || VHO_DSL_fetch_hardware_description(control, &hardware)) &&
            control.enable_direct <= 1 && (!control.enable_direct || control.joint_cost) &&
+           control.enable_b_retention <= 1 && (!control.enable_b_retention || control.joint_cost) &&
            control.reserved == 0 &&
            (!control.select_plans || control.generate_candidates);
 }
@@ -335,8 +337,9 @@ VHO_DSL_cuda_i4_geometry_safe (const DSL_TILE_PLAN_RECORD &tile)
 }
 
 /* Derive independent logical storage for each movement. D has only current
- * A/B operands, not the staged TM/TN operand envelope. Native address/control
- * registers and spills are unknown; this is not an occupancy prediction. */
+ * A/B operands, not the staged TM/TN operand envelope.
+ * H4 reserves an additional TN scalars beyond that conservative envelope.
+ * Native address/control registers and spills remain unknown. */
 BOOL
 VHO_DSL_fetch_resource_requirements
         (const DSL_TILE_PLAN_RECORD &tile, const DSL_FETCH_PLAN_RECORD &fetch,
@@ -350,6 +353,8 @@ VHO_DSL_fetch_resource_requirements
     if (!DSL_Fetch_Mul_U64(tile.thread_m, tile.thread_n, &values) ||
         !DSL_Fetch_Add_U64(values, direct ? 2 :
                           (UINT64)tile.thread_m + tile.thread_n, &values) ||
+        ((fetch.flags & DSL_FETCH_PLAN_FLAG_RETAIN_B) &&
+         (direct || tile.thread_m<2 || tile.thread_n>32 || !DSL_Fetch_Add_U64(values,tile.thread_n,&values))) ||
         !DSL_Fetch_Mul_U64(values, 4, &bytes) || bytes > UINT32_MAX)
         return FALSE;
     DSL_FETCH_RESOURCE_RECORD result;
@@ -373,11 +378,15 @@ VHO_DSL_fetch_resource_requirements
 }
 
 /* Share the executable P8 contract with lowering so unsupported engines,
- * layouts, static storage, and tensor-map geometry cannot win joint search. */
+ * layouts, static storage, and tensor-map geometry cannot win joint search.
+ * H4 retention requires staged ownership, TM>1, bounded scalar columns and a
+ * complete recomputed register/shared ledger. */
 BOOL
 VHO_DSL_fetch_pipeline_can_lower
         (const DSL_TILE_PLAN_RECORD &tile, const DSL_FETCH_PLAN_RECORD &fetch)
 {
+    if ((fetch.flags & DSL_FETCH_PLAN_FLAG_RETAIN_B) &&
+        ((fetch.flags & DSL_FETCH_PLAN_FLAG_DIRECT) || tile.thread_m<2 || tile.thread_n>32 || fetch.resources.model!=1)) return FALSE;
     if ((tile.flags & DSL_TILE_PLAN_FLAG_DEFERRED_RESOURCES) != 0 ||
         fetch.resources.model != 0) {
         DSL_FETCH_RESOURCE_RECORD resources;
@@ -803,12 +812,13 @@ DSL_Fetch_Add_Stages
 /* Build one fetch alternative from the selected PU-local tile, accounting for
  * physical staging padding separately from transfer payload. Resolve logical
  * residency rejection before constructing dependent fetch/evolution records;
- * invalid arithmetic fails analysis. No executable WHIRL is mutated. */
+ * invalid arithmetic fails analysis. H4 marks an explicit scalar-retention
+ * sibling before recomputing its resource ledger. No native IR is mutated. */
 static BOOL
 DSL_Fetch_Add_Plan
         (DSL_FETCH_PIPELINE_ANALYSIS *analysis, DSL_FETCH_SITE_RECORD *site,
          const DSL_TILE_PLAN_RECORD &tile, UINT32 engine,
-         BOOL baseline, FILE *diagnostic, BOOL direct = FALSE)
+         BOOL baseline, FILE *diagnostic, BOOL direct = FALSE, BOOL retain_b = FALSE)
 {
     DSL_MEMORY_MOVEMENT_CAPABILITY_RECORD capability;
     DSL_IR_VALUE_RECORD operands[2];
@@ -842,6 +852,7 @@ DSL_Fetch_Add_Plan
                      (baseline ? DSL_FETCH_PLAN_FLAG_BASELINE :
                       DSL_FETCH_PLAN_FLAG_PROVISIONAL);
     if (direct) pipeline.flags |= DSL_FETCH_PLAN_FLAG_DIRECT;
+    if (retain_b) pipeline.flags |= DSL_FETCH_PLAN_FLAG_RETAIN_B;
 
     UINT32 desired_stages = 1;
     if (engine == DSL_MEMORY_MOVEMENT_ASYNC_COPY)
@@ -1112,7 +1123,8 @@ DSL_Fetch_Pipeline_Materialize_IR
 
 /* Build runtime plans for the current PU and named tile, preserving rejected
  * alternatives. Selection is optional during joint enumeration; failure
- * publishes no executable WHIRL and the caller destroys partial analysis. */
+ * publishes no executable WHIRL and the caller destroys partial analysis. H4
+ * adds at most two retained staged siblings after the historical catalog. */
 BOOL
 VHO_DSL_Fetch_Pipeline_Build
         (DSL_FETCH_PIPELINE_ANALYSIS *analysis, FILE *diagnostic)
@@ -1194,6 +1206,13 @@ VHO_DSL_Fetch_Pipeline_Build
                       DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC,
                       FALSE, diagnostic))
                 return FALSE;
+        }
+        /* H4 adds two bounded staged siblings after the historical catalog.
+         * They never enter legacy profitability; owning H3 selection decides. */
+        if (analysis->control.enable_b_retention && tile.thread_m>1 && tile.thread_n<=32) {
+            if (!DSL_Fetch_Add_Plan(analysis,&active_site,tile,DSL_MEMORY_MOVEMENT_DEMAND,FALSE,diagnostic,FALSE,TRUE) ||
+                (analysis->control.enable_multidimensional_async &&
+                 !DSL_Fetch_Add_Plan(analysis,&active_site,tile,DSL_MEMORY_MOVEMENT_MULTIDIMENSIONAL_ASYNC,FALSE,diagnostic,FALSE,TRUE))) return FALSE;
         }
         if (analysis->control.select_plans) {
             DSL_OPT_SELECTION_RESULT selection;

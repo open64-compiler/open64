@@ -1,5 +1,13 @@
 # AI Compiler Optimization Progress
 
+## H4 GEMM hierarchy software delivery
+
+[H4 specification](AI-COMPILER-H4-GEMM-HIERARCHY-v1.0.md) and [plan v1.5](AI-COMPILER-H20-MEMORY-HIERARCHY-IMPLEMENTATION-PLAN-v1.5.md) add an explicit O3/H20/H2/H3/native-output gated staged B-retention catalog. Original D/S1/T2 remain; S1R/T2R reuse scalar B operands across a thread's output rows. Both staged consumer variants use consistent physical work costing and imported RF/shared/residency budgets. Only the selected fixed recipe enters native construction, with full model/source/recipe revalidation, comments, immediate before/after checkpoints and existing fallback. The general canonical-loop route, new MMA/deeper-TMA/packing/persistent-output recipes, H0/H7 GPU qualification and AOT serving selection remain open.
+
+Software qualification covers two synthetic H20 profiles and ten selected kernels (aligned/synchronous/ragged/startup/multiple generations), with exact finite reference results and 50 exceptional F32 payload cases. Ten immediate native before/after pairs retain the actual scalar-retention transform. The production work oracle independently enumerates 145 K widths under fatal ASan/UBSan and rejects five invalid/overflow cases. O0/O1/O2, unknown layout/model, finite estimate/deadline/storage caps and a synthetic RF-pressure counterexample preserve admitted fallback; five guarded stale-handoff cases reject publication. Legacy cycle-trace tests and the no-H4 four-family owner matrix remain compatible. These are compiler/host checks, not GPU performance or hardware race qualification. The existing AIO10 fetch and AIO11 physical-plan scripts also pass after restoring standalone linkage to the actual H2/H3/H4 owners. The broader generic lowerer fixture still fails Check_Value_Source_Lowering identically with isolated H3 lowerer source and H4; that pre-existing value-source gap is recorded separately and is not counted as a passing test.
+
+
+
 ## H3 physical movement/reuse costing, 2026-11-12
 
 [H3 v1.0](AI-COMPILER-H3-MOVEMENT-COSTING-v1.0.md) adds physical ns estimates
