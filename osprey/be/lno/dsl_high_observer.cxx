@@ -17,6 +17,9 @@ bool LNO_DSL_validate_search_input(const DSL_HIGH_SNAPSHOT &snapshot, const DSL_
         return reason = "device_snapshot_mismatch", false;
     if (input.gpu.device.Bound() && !input.gpu.high_private_reuse)
         return reason = "source_backing_accounting_required", false;
+    if (input.algorithm.head_group!=1) return reason="unscheduled_source_head_group",false;
+    if (input.hierarchy_enabled && (!input.movement_enabled || (!input.gpu.device.Bound() || (input.gpu.device.Device()!="h20_96gb" && input.gpu.device.Device()!="h20_141gb"))))
+        return reason="h5_requires_H20_H2_H3",false;
     if (!input.allow_reassociate) return reason = "manifest_numerical_permission_required", false;
     const VHO_TENSOR_PROGRAM &program = input.algorithm;
     if (program.source_file != input.unit || program.opt_level != 3 || program.threads != 128 ||
@@ -51,9 +54,11 @@ bool LNO_DSL_observe_search(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIGH_SEARCH_
     program.split_width = 128;
     VHO_MLA_SEARCH_OPTIONS options;
     DSL_HIGH_SEARCH_REPORT result;
+    if(input.hierarchy_enabled && (!h3_search || !h3_facts || !h3_facts->Available() || !input.movement_enabled))
+        return reason="h5_requires_H20_H2_H3",false;
     if(input.movement_enabled) {
         if(!reuse || !reuse->Available()) return reason="movement_reuse_unproved",false;
-        VHO_MLA_MOVEMENT_CONTEXT context;context.profile=input.movement_profile;context.proof_key=reuse->Binding_key();
+        VHO_MLA_MOVEMENT_CONTEXT context;context.hierarchy=input.hierarchy_enabled;context.profile=input.movement_profile;context.proof_key=reuse->Binding_key();
         const std::vector<DSL_HIGH_REUSE_CACHE> &caches=reuse->Summary().caches;
         if(caches.size()!=2) return reason="movement_cache_census_invalid",false;
         for(size_t i=0;i<caches.size();++i) {

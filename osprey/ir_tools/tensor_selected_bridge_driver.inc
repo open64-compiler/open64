@@ -6,6 +6,19 @@
 
 #ifdef OPEN64_TENSOR_BRIDGE_TEST
 std::string bridge_test_fault;
+/* Find only a real XOR swizzle in the active test PU. Mutation changes the
+ * opcode while preserving types/kids, so the ordinary native seal must fail. */
+WN *bridge_test_find_xor(WN *node) {
+    if(WN_operator(node)==OPR_BXOR) return node;
+    if(WN_operator(node)==OPR_BLOCK) {
+        for(WN *stmt=WN_first(node);stmt;stmt=WN_next(stmt)) {
+            WN *found=bridge_test_find_xor(stmt);if(found) return found;
+        }
+    } else for(INT i=0;i<WN_kid_count(node);++i) if(WN_kid(node,i)) {
+        WN *found=bridge_test_find_xor(WN_kid(node,i));if(found) return found;
+    }
+    return NULL;
+}
 /* Native mutation controls exist only in the separately built test driver. */
 void bridge_test_mutation(bool source) {
     WN *root=PU_Info_tree_ptr(Current_PU_Info);ST_IDX st=WN_st_idx(root);
@@ -16,6 +29,10 @@ void bridge_test_mutation(bool source) {
     }
     if(bridge_test_fault=="abi") {
         TY_IDX function=ST_pu_type(WN_st(root));Set_TYLIST_type(Tylist_Table[TY_tylist(function)],MTYPE_To_TY(MTYPE_F4));
+    }
+    if(bridge_test_fault=="xor") {
+        WN *node=bridge_test_find_xor(root);
+        if(node) WN_set_operator(node,OPR_BIOR);
     }
     if(source) {
         const char *names[]={"width","policy","resources","model","controls","numerical","scratch","source","facts","head_group","movement"};
@@ -104,7 +121,7 @@ Json::Value selected_admission(const char *image,const VHO_TENSOR_PROGRAM &origi
     bridge_test_mutation(true);
 #endif
     need(metadata(st,"tensor.high.accepted.schema")=="mla-selected-native-v1" &&
-        (metadata(st,"tensor.high.selected.schema")=="lno-selected-mla-v1" || metadata(st,"tensor.high.selected.schema")=="lno-selected-mla-v2"),"bridge unsealed source");
+        (metadata(st,"tensor.high.selected.schema")=="lno-selected-mla-v1" || (metadata(st,"tensor.high.selected.schema")=="lno-selected-mla-v2" || metadata(st,"tensor.high.selected.schema")=="lno-selected-mla-v3")),"bridge unsealed source");
     UINT32 symbols=ST_Table_Size(CURRENT_SYMTAB),types=TY_Table_Size();
     std::string key=VHO_tensor_selected_key(root);
     need(key==metadata(st,"tensor.high.accepted.key"),"bridge stale selected source/key/COMMENT");
@@ -120,7 +137,11 @@ Json::Value selected_admission(const char *image,const VHO_TENSOR_PROGRAM &origi
         need(VHO_tensor_gpu_profile_valid(production->gpu,NULL) &&
             (production->movement_enabled?VHO_mla_movement_control_valid(production->controls,NULL):VHO_mla_search_control_valid(production->controls,NULL)),"bridge production resource/control invalid");
     }
-    if(production) need(production->movement_enabled==(metadata(st,"tensor.high.selected.schema")=="lno-selected-mla-v2"),"bridge movement schema mismatch");
+    if(production) {
+        std::string schema=metadata(st,"tensor.high.selected.schema");
+        need(production->movement_enabled==(schema=="lno-selected-mla-v2" || schema=="lno-selected-mla-v3") &&
+            production->hierarchy_enabled==(schema=="lno-selected-mla-v3"),"bridge movement schema mismatch");
+    }
     WN *source_comment=WN_first(WN_func_body(root));
     need(source_comment && WN_operator(source_comment)==OPR_COMMENT,"bridge source explanation missing");
     need(!original.fuse&&!original.auto_chunks&&!original.search_selected &&
@@ -136,6 +157,11 @@ Json::Value selected_admission(const char *image,const VHO_TENSOR_PROGRAM &origi
         need(canonical.str()==value,"bridge noncanonical decision");
     }
     p.fuse=p.cooperative=p.fuse_attention=p.register_latent=true;p.split_width=values[0];p.chunk_policy=values[1];
+    if(metadata(st,"tensor.high.selected.schema")=="lno-selected-mla-v3") {
+        std::string group=metadata(st,"tensor.high.selected.head_group");
+        need(group=="1" || group=="2" || group=="4","bridge H5 fixed group");p.head_group=strtoul(group.c_str(),NULL,10);
+        need(device.Bound(),"bridge H5 requires H20 binding");
+    }
     VHO_TENSOR_SCHEDULE plan;need(VHO_tensor_schedule(p,&plan,stderr),"bridge fixed schedule invalid");
     for(size_t i=0;i<plan.kernels.size();++i) {
         UINT64 grid=VHO_tensor_grid(p,plan.kernels[i]);
@@ -278,7 +304,13 @@ int selected_bridge_command(int argc,char **argv) {
         UINT32 file=DSL_Builder_Register_Source_File(pu,p.source_file.c_str());USRCPOS source;USRCPOS_clear(source);
         USRCPOS_filenum(source)=file;USRCPOS_linenum(source)=p.operations[plan.kernels[i].root].source_line;
         if(!USRCPOS_linenum(source)) USRCPOS_linenum(source)=1;
+        // Review checkpoints surround this selected worker construction in
+        // the same fresh driver-owned PU; child writers do not mutate it.
+        std::ostringstream worker;worker<<prefix<<".worker-"<<i;
+        std::vector<PU_Info *> current(1,pu);
+        if(plan.kernels[i].head_group>1) checkpoint(current,(worker.str()+".before.B").c_str());
         VHO_tensor_selected_worker(p,plan.kernels[i].id,USRCPOS_srcpos(source),accepted["accepted_key"].asString(),accepted["source_comment"].asString(),DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context).Cache_key());pus.push_back(pu);
+        if(plan.kernels[i].head_group>1) checkpoint(current,(worker.str()+".after.B").c_str());
     }
     checkpoint(pus,(prefix+".high.B").c_str());
 #ifdef OPEN64_TENSOR_BRIDGE_TEST

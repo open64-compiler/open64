@@ -298,8 +298,9 @@ VHO_MLA_SEARCH_CONTROL::VHO_MLA_SEARCH_CONTROL() : space("mla-family-width-space
 /* Validate hard bounds, unique IDs, provider support and dimensional evidence.
  * A caller cannot disable the safety caps by omitting budget/exhaustion stops. */
 static BOOL VHO_mla_control_valid(const VHO_MLA_SEARCH_CONTROL &control,FILE *diagnostic,bool movement,bool quantized=false,bool q5=false) {
-    UINT64 count=(quantized || q5)?17:movement?36:12;
-    bool valid=control.space==(q5?VHO_q5_catalog():quantized?VHO_q4_catalog():movement?VHO_mla_movement_catalog():"mla-family-width-space-v1") && control.mode=="estimate" &&
+    bool hierarchy=movement && control.space==VHO_mla_h5_catalog();
+    UINT64 count=(quantized || q5)?17:hierarchy?22:movement?36:12;
+    bool valid=control.space==(q5?VHO_q5_catalog():quantized?VHO_q4_catalog():hierarchy?VHO_mla_h5_catalog():movement?VHO_mla_movement_catalog():"mla-family-width-space-v1") && control.mode=="estimate" &&
         !control.runs.empty() && control.runs.size()<=16 && !control.stopping.empty() && control.stopping.size()<=6 &&
         control.global_proposals>0 && control.global_proposals<=16*count && control.global_unique>0 && control.global_unique<=count &&
         control.global_time_us<=UINT64(3600000000ULL) && control.patience>0 && control.patience<=count &&
@@ -374,9 +375,11 @@ static BOOL VHO_mla_controlled(const VHO_TENSOR_PROGRAM &source,const VHO_TENSOR
                 VHO_search_stop_enabled(control,"target") || VHO_search_stop_enabled(control,"relative-gap") ||
                 VHO_search_stop_enabled(control,"cost-aware")) throw std::runtime_error("h3_requires_unit_safe_budget_controls");
         }
+        if(movement && (movement->hierarchy!=(control.space==VHO_mla_h5_catalog()) ||
+            (movement->hierarchy && (!h3_search || !gpu.device.Bound())))) throw std::runtime_error("H5_requires_pinned_H20_H3");
         VHO_MLA_PRODUCTION_RESULT result;VHO_MLA_SEARCH_RESULT &search=result.exploration;
         if(q4_profile) {search.lower_bound=0;Q4_catalog(search);}
-        else if(movement) {search.lower_bound=0;Movement_catalog(search,VHO_tensor_attention(source));}
+        else if(movement) {search.lower_bound=0;if(movement) {if(movement->hierarchy) Hierarchy_catalog(search,VHO_tensor_attention(source));else Movement_catalog(search,VHO_tensor_attention(source));}}
         else {search.lower_bound=mul(5,model.values[VHO_MLA_LAUNCH]);VHO_search_catalog(search);}
         unsigned count=search.candidates.size();
         std::vector<VHO_MLA_RUN_STATE> states;
@@ -480,8 +483,25 @@ bool VHO_mla_h3_plan(const VHO_MLA_SEARCH_CANDIDATE &c,const VHO_TENSOR_PROGRAM 
     try {
         if((!c.eligible && !c.movement.modeled) || c.stages.empty() || !facts.Available()) return why="h3_MLA_unimplemented_or_unproved",false;
         DSL_H3_PLAN plan;std::ostringstream id;id<<"mla/p"<<c.policy<<"/w"<<c.width<<"/g"<<c.descriptor.group<<"/c"<<c.descriptor.column<<"/r"<<c.descriptor.retained;
-        plan.id=id.str();plan.live_bytes=0;plan.executable=c.descriptor.group==1;plan.capability=plan.executable?"verified-G1-existing-native-v8":"grouped-model-only-no-materializer";
-        VHO_TENSOR_PROGRAM p=source;p.fuse=p.cooperative=p.fuse_attention=p.register_latent=true;p.auto_chunks=p.search_selected=false;p.chunk_policy=c.policy;p.split_width=c.width;
+        plan.id=id.str();plan.live_bytes=0;plan.executable=c.descriptor.group==1 || c.descriptor.hierarchy;plan.capability=c.descriptor.hierarchy?"H5-panel16-native-v1":plan.executable?"verified-G1-existing-native-v8":"grouped-model-only-no-materializer";
+        if(c.descriptor.hierarchy && (!c.movement.modeled || (c.descriptor.group!=2 && c.descriptor.group!=4) ||
+            c.descriptor.column!=16 || c.descriptor.retained)) return why="H5_unimplemented_descriptor",false;
+        if(c.descriptor.hierarchy) {
+            unsigned roles=0;
+            for(size_t i=0;i<facts.Capture().accesses.size();++i) {
+                const DSL_MOVEMENT_ACCESS &access=facts.Capture().accesses[i];
+                if(!access.reuse_proved) continue;
+                for(size_t j=0;j<facts.Capture().storages.size();++j) {
+                    const DSL_MOVEMENT_STORAGE &storage=facts.Capture().storages[j];
+                    if(storage.id==access.storage && storage.version==access.version) {
+                        if(storage.role==DSL_TENSOR_TRAIT_LATENT_KV_CACHE) roles|=1;
+                        if(storage.role==DSL_TENSOR_TRAIT_ROTARY_KEY_CACHE) roles|=2;
+                    }
+                }
+            }
+            if(roles!=3) return why="H5_both_cache_reuse_proofs_required",false;
+        }
+        VHO_TENSOR_PROGRAM p=source;p.fuse=p.cooperative=p.fuse_attention=p.register_latent=true;p.auto_chunks=p.search_selected=false;p.chunk_policy=c.policy;p.split_width=c.width;p.head_group=c.descriptor.hierarchy?c.descriptor.group:1;
         VHO_TENSOR_SCHEDULE schedule;if(!VHO_tensor_schedule(p,&schedule,NULL) || (!c.movement.modeled && schedule.kernels.size()!=c.stages.size())) return why="h3_MLA_schedule_changed",false;
         size_t stage_count=c.stages.size();
         if(c.movement.modeled) {

@@ -149,10 +149,15 @@ VHO_TENSOR_SCHEDULE schedule(const VHO_TENSOR_PROGRAM &p) {
             k.register_statistics=p.chunk_policy>=4 && k.stage==1 && k.threads==32 && k.split_width==32;
             k.warp_owned_partials=p.chunk_policy==6 && p.register_latent && k.stage==1 && k.threads==64 && k.split_width==64;
             k.two_warp_statistics=p.chunk_policy==5 && p.register_latent && k.stage==1 && k.threads==64 && k.split_width==64;
+            if(p.head_group>1) {
+                need(k.split_width<=1024,"H5 token capacity");
+                k.head_group=p.head_group;k.threads=32*p.head_group;
+                k.register_statistics=k.two_warp_statistics=k.warp_owned_partials=false;
+            }
             UINT32 ids[]={a.q,a.qr,a.cache,a.rope_cache,a.mask};k.inputs.assign(ids,ids+5);k.elements=VHO_tensor_elements(plan.bindings.values[k.output]);
             plan.kernels.push_back(k);
             if(chunks>1) {
-                k.id=i+4096;k.mapping=4;k.stage=2;k.threads=p.threads;k.register_statistics=false;k.two_warp_statistics=false;k.warp_owned_partials=false;k.output=a.bundle;k.inputs.clear();k.inputs.push_back(a.partial);
+                k.id=i+4096;k.head_group=1;k.mapping=4;k.stage=2;k.threads=p.threads;k.register_statistics=false;k.two_warp_statistics=false;k.warp_owned_partials=false;k.output=a.bundle;k.inputs.clear();k.inputs.push_back(a.partial);
                 k.elements=VHO_tensor_elements(plan.bindings.values[k.output]);plan.kernels.push_back(k);
             }
             continue;
@@ -195,9 +200,10 @@ UINT64 VHO_tensor_elements(const VHO_TENSOR_VALUE &value) {
     UINT64 size=1;for(size_t i=0;i<value.shape.size();++i) size*=value.shape[i];return size;
 }
 
-/* Four complete warps per CTA; staged dots keep four adjacent columns together. */
+/* Fixed CTA ownership: H5 groups heads only for attention, leaving merge
+ * rows and existing staged-dot column ownership unchanged. No new selection. */
 UINT64 VHO_tensor_grid(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERNEL &k) {
-    if(k.mapping>=3) {VHO_TENSOR_ATTENTION a=VHO_tensor_attention(p);return a.batch*a.heads*(k.mapping==3?k.chunks:1);}
+    if(k.mapping>=3) {VHO_TENSOR_ATTENTION a=VHO_tensor_attention(p);return a.batch*((a.heads+k.head_group-1)/k.head_group)*(k.mapping==3?k.chunks:1);}
     if(k.mapping==1) return (k.elements+3)/4;
     if(k.mapping==2) {
         const VHO_TENSOR_VALUE &out=p.values[p.operations[k.root].output];UINT64 n=out.shape.back();
@@ -208,6 +214,7 @@ UINT64 VHO_tensor_grid(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERNEL &k) {
 
 /* Shared storage is selected explicitly and checked against mapped metadata. */
 UINT64 VHO_tensor_shared_bytes(const VHO_TENSOR_PROGRAM &p,const VHO_TENSOR_KERNEL &k) {
+    if(k.head_group>1) return 4*(512+k.head_group*((k.split_width+31)/32)*32);
     if(k.warp_owned_partials) return 8*(VHO_tensor_attention(p).rank+2);
     if(k.register_statistics) return 0;
     if(k.two_warp_statistics) return 4*(64+4);
@@ -320,6 +327,9 @@ BOOL VHO_tensor_validate_quantized_high(const VHO_TENSOR_PROGRAM &p,FILE *diagno
 /* Recheck the detached handoff before allocating any device table entries. */
 BOOL VHO_tensor_validate_program(const VHO_TENSOR_PROGRAM &p,FILE *diagnostic) {
     try {
+        need(p.head_group==1 || ((p.head_group==2 || p.head_group==4) && p.opt_level==3 &&
+            p.fuse && p.cooperative && p.register_latent && p.fuse_attention && !p.auto_chunks && !p.search_selected),
+            "unsupported H5 head grouping");
         need(p.opt_level<=3 && p.threads==(p.opt_level==3?128:1),"invalid level/thread mapping");
         need((!p.fuse && !p.split_width) || p.opt_level==3,"optimization requires O3");
         need(!p.register_latent || p.fuse_attention,"register accumulation requires fused attention");
@@ -384,6 +394,7 @@ std::string VHO_tensor_recipe_key(const VHO_TENSOR_PROGRAM &p) {
         << p.fuse << '/' << p.cooperative << '/' << p.split_width << '/' << p.fuse_attention << '/'
         << p.register_latent << '/' << p.auto_chunks << '/' << p.search_selected << '/' << p.chunk_policy << '/';
     out << p.source_pu.size() << ':' << p.source_pu << p.source_file.size() << ':' << p.source_file;
+    if(p.head_group!=1) out<<"/H5-panel16/G="<<p.head_group;
     out << "/values=" << p.values.size();
     for (size_t i = 0; i < p.values.size(); ++i) {
         const VHO_TENSOR_VALUE &v = p.values[i];

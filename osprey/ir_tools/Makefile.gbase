@@ -1491,3 +1491,6 @@ dsl_gemm_hierarchy_test.o: $(BE_VHO_DIR)/dsl_gemm_hierarchy.cxx $(BE_VHO_DIR)/ds
 	$(cxx) -c $(CPPFLAGS) $(CXXFLAGS) $< -o $@
 dsl_physical_plan_contract_test.o dsl_fetch_pipeline_contract_test.o dsl_lower.o \
 dsl_compute_shadow_opt.o dsl_compute_model.o dsl_compute_realization.o: $(BE_VHO_DIR)/dsl_fetch_pipeline_opt.h $(BE_VHO_DIR)/dsl_fetch_pipeline.h
+
+# Rebuild the selected H5 native panel materializer when its private body changes.
+tensor_kernel_lower.o: $(BE_VHO_DIR)/tensor_attention_hierarchy.inc

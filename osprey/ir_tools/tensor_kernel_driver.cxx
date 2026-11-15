@@ -188,6 +188,7 @@ Json::Value encode(const VHO_TENSOR_PROGRAM &p) {
         x["block_x"]=p.threads;x["grid_x"]=Json::UInt64(p.opt_level==3?(VHO_tensor_elements(p.values[op.output])+p.threads-1)/p.threads:1);
         j["operations"].append(x);
     }
+    if(p.head_group!=1) {j["schema"]="open64.tensor-kernel.v9";j["head_group"]=p.head_group;}
     /* This checksum detects stale/corrupted detached handoffs. The retained
      * source-image SHA256 is the artifact identity, not this numeric seal. */
     Json::StyledWriter canonical;std::string bytes=canonical.write(j);UINT64 seal=1469598103934665603ULL;
@@ -201,22 +202,31 @@ std::string kernel_name(size_t ordinal) {std::ostringstream s;s<<"tensor_op_"<<o
 std::string kernel_symbol(const VHO_TENSOR_PROGRAM &p,size_t ordinal) {
     std::ostringstream s;s<<"tensor_"<<encode(p)["recipe_fingerprint"].asString()<<"_op_"<<ordinal;return s.str();
 }
-/* Read only the explicit bounded JSON recipe schema; no coercion of fields. */
+/* Read the bounded recipe schema without coercion. H5 fixed recipes are
+ * consumed only by the separate admitted bridge, never ordinary recipe tools.
+ * Failure leaves no native mutation or valid published device artifact. */
 VHO_TENSOR_PROGRAM decode_json(const Json::Value &j) {
     if(j["schema"].isString() && j["schema"].asString()=="open64.tensor-kernel.v7") {
         VHO_TENSOR_PROGRAM p=search_admit(j["attention_search"]);
         need(search_text(encode(p))==search_text(j),"stale selected MLA recipe");return p;
     }
-    bool fixed=j["schema"].asString()=="open64.tensor-kernel.v8";
+    bool hierarchy=j["schema"].asString()=="open64.tensor-kernel.v9";
+    // H5 recipes are created only after selected-source admission by the
+    // dedicated bridge; ordinary recipe commands cannot bypass H2/H3 proof.
+#ifndef OPEN64_TENSOR_SELECTED_BRIDGE
+    need(!hierarchy,"H5 requires the admitted selected bridge");
+#endif
+    bool fixed=hierarchy || j["schema"].asString()=="open64.tensor-kernel.v8";
     bool automatic=j["schema"].asString()=="open64.tensor-kernel.v6";
     bool registers=fixed || automatic || j["schema"].asString()=="open64.tensor-kernel.v5";
     bool attention=registers || j["schema"].asString()=="open64.tensor-kernel.v4";
     bool cooperative=attention || j["schema"].asString()=="open64.tensor-kernel.v3";
     bool optimized=cooperative || j["schema"].asString()=="open64.tensor-kernel.v2";
-    need(j.isObject() && j.size()==((automatic||fixed)?16:registers?15:attention?14:cooperative?12:optimized?11:8)+j.isMember("tensor_cache_traits") && j["recipe_fingerprint"].isString() && (optimized || j["schema"].asString()=="open64.tensor-kernel.v1") && j["source_pu"].isString() && j["source_file"].isString() &&
+    need(j.isObject() && j.size()==((automatic||fixed)?16:registers?15:attention?14:cooperative?12:optimized?11:8)+j.isMember("tensor_cache_traits")+hierarchy && j["recipe_fingerprint"].isString() && (optimized || j["schema"].asString()=="open64.tensor-kernel.v1") && j["source_pu"].isString() && j["source_file"].isString() &&
         j["opt_level"].isUInt() && j["threads"].isUInt() && j["values"].isArray() && j["operations"].isArray(),"invalid recipe header");
     need(j["values"].size()<=4096 && j["operations"].size()<=4096,"oversized recipe");
     VHO_TENSOR_PROGRAM p;p.source_pu=j["source_pu"].asString();p.source_file=j["source_file"].asString();p.opt_level=j["opt_level"].asUInt();p.threads=j["threads"].asUInt();
+    if(hierarchy) {need(j["head_group"].isUInt(),"H5 head group type");p.head_group=j["head_group"].asUInt();}
     if(optimized) {
         need(j["fuse"].isBool() && j["fuse"].asBool() && j["split_width"].isUInt() && j["reassociation"].isString(),"invalid optimization policy");
         p.fuse=true;p.split_width=j["split_width"].asUInt();

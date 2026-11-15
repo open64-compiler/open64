@@ -112,13 +112,15 @@ class DSL_NATIVE_TREE_KEY {
         }
         OPCODE opc=WN_opcode(n);OPERATOR op=WN_operator(n);
         /* Admit only payloads covered below. Native source positions, map IDs
-         * and nonexecuting LOOP_INFO trip estimates are not executable keys. */
+         * and nonexecuting LOOP_INFO trip estimates are not executable keys.
+         * BXOR has only ordinary typed kids; existing shared-panel swizzles
+         * require its opcode and both operands to be sealed like BAND/BIOR. */
         switch(op) {
         case OPR_FUNC_ENTRY:case OPR_BLOCK:case OPR_IDNAME:case OPR_COMMENT:case OPR_PRAGMA:
         case OPR_DO_LOOP:case OPR_IF:case OPR_RETURN:case OPR_LOOP_INFO:
         case OPR_LDID:case OPR_STID:case OPR_LDA:case OPR_ILOAD:case OPR_ISTORE:
         case OPR_INTCONST:case OPR_CONST:case OPR_ARRAY:case OPR_ADD:case OPR_SUB:
-        case OPR_MPY:case OPR_DIV:case OPR_REM:case OPR_BAND:case OPR_BIOR:
+        case OPR_MPY:case OPR_DIV:case OPR_REM:case OPR_BAND:case OPR_BIOR:case OPR_BXOR:
         case OPR_LAND:case OPR_LIOR:case OPR_SELECT:case OPR_LT:case OPR_LE:
         case OPR_GT:case OPR_GE:case OPR_EQ:case OPR_NE:case OPR_CVT:case OPR_CVTL:
         case OPR_ABS:case OPR_NEG:case OPR_INTRINSIC_OP:case OPR_PARM:case OPR_CALL:

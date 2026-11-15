@@ -22,8 +22,9 @@ struct VHO_MLA_MOVEMENT_PROFILE {
 struct VHO_MLA_MOVEMENT_CONTEXT {
     VHO_MLA_MOVEMENT_PROFILE profile;
     std::string proof_key;
+    bool hierarchy; /* v4 owner admission; never enables old MR2 hypotheses */
     UINT64 latent_payload,rotary_payload;
-    VHO_MLA_MOVEMENT_CONTEXT():latent_payload(0),rotary_payload(0) {}
+    VHO_MLA_MOVEMENT_CONTEXT():hierarchy(false),latent_payload(0),rotary_payload(0) {}
 };
 struct VHO_MLA_TRAFFIC_ESTIMATE {
     std::string operand,direction,scenario;
@@ -37,9 +38,10 @@ struct VHO_MLA_MOVEMENT_STAGE {
         rounded_registers(0),rounded_shared(0),unused_slots(0) {}
 };
 struct VHO_MLA_MOVEMENT_DESCRIPTOR {
+    bool hierarchy; /* executable H5 panel16 descriptor, separately sealed */
     UINT32 group,column;
     bool retained;
-    VHO_MLA_MOVEMENT_DESCRIPTOR():group(1),column(0),retained(false) {}
+    VHO_MLA_MOVEMENT_DESCRIPTOR():hierarchy(false),group(1),column(0),retained(false) {}
 };
 struct VHO_MLA_MOVEMENT_ESTIMATE {
     bool modeled;
@@ -49,8 +51,12 @@ struct VHO_MLA_MOVEMENT_ESTIMATE {
     VHO_MLA_MOVEMENT_ESTIMATE():modeled(false),cache_payload(0),cache_requests(0),
         partial_allocation(0),partial_requests(0),score_storage(0),head_slots(0) {}
 };
-/* Exact versioned registry. Only unchanged G=1 materializers are verified.
- * Callers cannot enable a family through JSON, flags or a profile string. */
+/* Exact registries distinguish archived MR2 analysis hypotheses from H5
+ * implemented recipes. Capability strings cannot authorize another family. */
+/* H5 registry is immutable and separate from archived analysis-only MR2. */
+extern const char *VHO_mla_h5_catalog();
+/* Fixed native panel16 capability; strings cannot grant additional recipes. */
+extern const char *VHO_mla_h5_capabilities();
 extern const char *VHO_mla_movement_catalog();
 extern const char *VHO_mla_movement_capabilities();
 extern BOOL VHO_mla_movement_profile_valid(const VHO_MLA_MOVEMENT_PROFILE &,FILE *);

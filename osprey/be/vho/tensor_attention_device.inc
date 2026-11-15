@@ -276,9 +276,11 @@
         }
         WN_INSERT_BlockLast(body,AttLoop(_att_group,integer(0),integer(_kernel.warp_owned_partials?(_attention.rank+3)/4:(_attention.rank+_kernel.threads/8-1)/(_kernel.threads/8)),1,groups));
     }
-    /* One CTA per head/chunk (or head for merge/direct); all intermediates of
-     * score, softmax and weighted latent stay in this CTA until final stores. */
+    /* Dispatch the fixed H5 group or the unchanged G1 head/chunk mapping.
+     * Score, softmax and latent intermediates stay local until tuple stores;
+     * no choice or alternative materialization occurs at this boundary. */
     WN *AttentionBody() {
+        if(_kernel.head_group>1) return H5_body();
         WN *body=WN_CreateBlock();UINT64 rows=_attention.batch*_attention.heads;
         UINT64 quantum=_kernel.mapping==3?_kernel.threads:128;
         _att_capacity=(((_kernel.mapping==3?_kernel.split_width:_kernel.chunks)+quantum-1)/quantum)*quantum;

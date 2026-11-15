@@ -28,6 +28,7 @@ inline void LNO_DSL_fill_search_keys(const DSL_HIGH_SEARCH_INPUT &input, DSL_HIG
         model_key<<"/movement;"<<VHO_mla_movement_profile_key(input.movement_profile)
             <<';'<<VHO_mla_movement_catalog()<<';'<<VHO_mla_movement_capabilities();
     }
+    if(input.hierarchy_enabled) model_key<<"/H5;"<<VHO_mla_h5_catalog()<<';'<<VHO_mla_h5_capabilities();
     if (!gpu.device.Cache_key().empty()) {
         resource_key << ";device;" << gpu.device.Legality_key() << ";high-private-reuse=" << gpu.high_private_reuse;
         model_key << ";device;" << gpu.device.Cache_key();
@@ -42,7 +43,9 @@ inline std::string LNO_DSL_production_input_key(const DSL_HIGH_SEARCH_INPUT &inp
     const std::string fields[]={input.unit,input.function,input.source_key,input.facts_key,input.numeric,input.host_target,
         report.manifest_key,report.resource_key,report.model_key,
         input.production_controls?VHO_mla_search_control_key(input.controls):"legacy-controls"};
-    std::ostringstream key;key<<(input.movement_enabled?"lno-production-input-v2;":"lno-production-input-v1;")<<input.allow_reassociate<<';'<<input.production_controls<<';';
+    std::ostringstream key;
+    if(input.hierarchy_enabled) key<<"H5-panel16;";
+    key<<(input.movement_enabled?"lno-production-input-v2;":"lno-production-input-v1;")<<input.allow_reassociate<<';'<<input.production_controls<<';';
     for(unsigned i=0;i<sizeof(fields)/sizeof(fields[0]);++i) key<<fields[i].size()<<':'<<fields[i]<<';';
     key<<input.buffers.size()<<';';for(unsigned i=0;i<input.buffers.size();++i) key<<input.buffers[i]<<';';
     return key.str();

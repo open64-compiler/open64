@@ -311,3 +311,8 @@ Existing GEMM controls are unchanged. No new production option is registered.
 The contracts, bounded planner, research cost model and Open64 ownership map
 above are Open64 design decisions/proposals, not attributed implementations
 of those systems.
+
+
+## H5 selected MLA panel ownership
+
+[H5 MLA](AI-COMPILER-H5-MLA-HIERARCHY-v1.0.md) extends only the admitted closed F32 MLA route. Current H2 latent/rotary proofs and H20/H3 bindings admit a finite G1/G2/G4 comparison. Executable grouped recipes use one warp per head, bounded shared panels, explicit readiness/release and the old tuple/merge ABI. The common fact/cost services retain no native authority; LNO owns selection, fresh validation and the atomic High transaction. Selected worker High owns memory/collectives, Mid lowers structured memory, Low maps ownership and the PTX backend emits the result. No MLIR interface or tensor-type representation change is introduced. Hardware qualification, quantized adaptation and AOT serving selection remain distinct gates.
