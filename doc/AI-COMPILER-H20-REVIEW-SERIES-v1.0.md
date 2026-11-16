@@ -1,10 +1,10 @@
 # H20 compiler review series v1.0
 
-November 13, 2026. Publication covers the completed H20 design and H1a-H7 software work. Review scope, merge status and hardware acceptance are separate. The original tested development branch and all immutable milestone receipts remain preserved.
+November 13, 2026 publication; integration status updated November 15, 2026. Publication covers the completed H20 design and H1a-H7 software work. Review scope, merge status and hardware acceptance are separate. The original tested development branch and all immutable milestone receipts remain preserved.
 
 ## Prerequisite promotion
 
-[268](https://github.com/open64-compiler/open64/pull/268) promotes the previously merged compiler integration stack to `develop`. It is a draft pending current-develop integration reconciliation/checks. Earlier PRs were merged into intermediate branches; that alone did not promote the complete stack into develop. This promotion introduces no new H20 implementation.
+[268](https://github.com/open64-compiler/open64/pull/268) promoted the previously merged compiler integration stack to `develop`. PRs #268 through #279 have now merged into `develop`; #279 reached it at `3c37725935c656945ba0b8f1decb1b7136300724`. PR #280 is reconciled against that commit and targets `develop` directly. Earlier intermediate-branch merges alone did not promote the complete stack; the completed develop reconciliation preserved that distinction.
 
 ## Focused review order
 
@@ -23,7 +23,7 @@ November 13, 2026. Publication covers the completed H20 design and H1a-H7 softwa
 | H6 | [#279](https://github.com/open64-compiler/open64/pull/279) | 24 | Optimize LayerNorm and Reduction memory hierarchy for H20 |
 | H7 | [#280](https://github.com/open64-compiler/open64/pull/280) | 23 | Integrate H20 qualification into GPU packages and shared validation |
 
-Merge the prerequisite promotion into `develop` after its integration gates pass. Retarget the first H20 PR to `develop`, review and merge there, then repeat for each successor. Do not merge a child only into its predecessor branch and assume it reached develop. Each PR body links its immediate dependency.
+The prerequisite promotion and H20 stages through H6 are merged into `develop`. Review H7 (#280) directly against `develop`; its #279 dependency is satisfied. The table preserves the original publication scopes. Merging a child only into its predecessor branch does not establish develop integration.
 
 ## Validation and evidence continuity
 
