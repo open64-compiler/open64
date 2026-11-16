@@ -193,6 +193,7 @@ def archive_result(args,out):
 
 
 def main(argv=None):
+    """Audit shared reports through trusted producer adapters without running returns."""
     parser=argparse.ArgumentParser(description=__doc__)
     choice=parser.add_mutually_exclusive_group(required=True)
     choice.add_argument('--result',type=Path);choice.add_argument('--archive',type=Path)
@@ -215,6 +216,10 @@ def main(argv=None):
             elif result['producer']=='testing-scaffold':
                 packet=Packet(args.packet,args.expected_packet_sha256) if args.packet and args.expected_packet_sha256 else None
                 review['findings']+=audit_scaffold(result,packet,args.result.resolve().parent)
+            elif result['producer']=='h20-h7':
+                from validate_h20_h7 import audit
+                packet=Packet(args.packet,args.expected_packet_sha256) if args.packet and args.expected_packet_sha256 else None
+                review['findings']+=audit(result,packet,args.result.resolve().parent)
             else:raise ValueError('unknown producer adapter')
         if result is not None:
             levels={x['severity'] for x in review['findings']}

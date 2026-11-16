@@ -21,7 +21,7 @@ import tarfile
 import time
 import uuid
 
-from gpu_test_suite_common import catalog
+from gpu_test_suite_common import catalog, roles
 from gpu_test_worker_state import Store, TERMINAL, DIGEST, encoded, utc
 from package_mla_q7_results import digest_file, snapshot_file
 from validate_mla_q7_results import manifest, safe_name
@@ -84,6 +84,8 @@ def job_lock(store, job_id):
 def authenticate_registration(packet, archive, expected):
     """Bind installed source to transport bytes; never extract registration data.
 
+    Optional H7 capabilities are captured at registration; v1 record spelling
+    remains unchanged for immutable idempotent re-registration.
     Source packets omit PACKET_ID from SHA256SUMS, unlike the result Archive
     scanner. Reuse its name/manifest rules but check this source-only inventory.
     """
@@ -133,9 +135,12 @@ def authenticate_registration(packet, archive, expected):
     for name in ('run_gpu_test_suite.py', 'package_gpu_test_suite_results.py', 'validate_gpu_test_suite.py'):
         if 'tools/' + name not in manifest((packet / 'SHA256SUMS').read_bytes()):
             raise ValueError('registered packet lacks combined worker entry points')
-    return dict(packet_id=packet_id, path=str(packet), archive=str(archive), archive_sha256=expected,
+    record=dict(packet_id=packet_id, path=str(packet), archive=str(archive), archive_sha256=expected,
         archive_size_bytes=archive.stat().st_size, producer_commit=table.get('producer_commit'),
         registry_version='open64.gpu-test.worker-registry.v1', runner_sha256=digest_file(packet / 'tools/run_gpu_test_suite.py'))
+    # Preserve exact old registry data for idempotent legacy re-registration.
+    if 'h20' in table['packets']:record.update(profiles=list(roles(table)),h20_target=table['h20_target'])
+    return record
 
 
 class NvidiaDevice:

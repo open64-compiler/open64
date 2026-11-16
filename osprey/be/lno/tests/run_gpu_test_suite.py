@@ -1,4 +1,4 @@
-"""One command for aligned GEMM, BF16 MLA and full quantized MLA/Q3 tests.
+"""One command for original GEMM/MLA/Q3 and optional fixed H20 qualification.
 
 Own orchestration/finalization only. Existing authenticated entry points own
 correctness, timing and optional independent profiling. No compiler search.
@@ -15,6 +15,7 @@ from run_mla_q7_workflow import Interrupted,interrupt,run_step,utc
 
 
 def main(argv=None):
+    """Run authenticated workloads independently and always attempt partial return."""
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--packet',type=Path,required=True);parser.add_argument('--results-parent',type=Path)
     parser.add_argument('--samples',type=int,default=20);parser.add_argument('--warmup',type=int,default=3)
@@ -45,6 +46,7 @@ def main(argv=None):
     status['CUDA_VISIBLE_DEVICES']=os.environ.get('CUDA_VISIBLE_DEVICES')
     code=0;inner_code=None;collect_code=1;identity='';table=None
     def step(label,command,timeout=None):
+        """Keep each bounded leaf group drained before outer evidence collection."""
         row={};status['steps'].append(row)
         return run_step(label,command,logs,timeout or args.step_timeout,row)
     try:
@@ -63,6 +65,15 @@ def main(argv=None):
                 elif args.profiling=='auto':command+=['--profile-pm']
                 rc=step(role,command);status['workloads'][role]=dict(exit_code=rc)
                 code=code or rc
+            if 'h20' in table['packets']:
+                command=[sys.executable,Path(__file__).with_name('run_h20_h7.py'),'--packet',packet/'h20',
+                    '--expected-sha256',table['packets']['h20']['packet_sha256'],'--output',run/'h20',
+                    '--samples',str(args.samples),'--warmup',str(args.warmup),'--timeout',str(args.timeout),'--profiling',args.profiling]
+                if args.check_only:command+=['--check-only']
+                if args.profile_timeline:command+=['--profile-timeline']
+                h20_code=step('h20-qualification',command);code=code or h20_code
+                from h20_h7_common import ROLES as h20_roles
+                for role in h20_roles:status['workloads'][role]=dict(exit_code=h20_code,check_only=args.check_only)
             q7steps=[];q7code=0;profile_code=None
             commands=[('unit',[sys.executable,'-m','unittest','discover','-s',native,'-p','test_mla_q7*.py','-v'])]
             if not args.check_only:

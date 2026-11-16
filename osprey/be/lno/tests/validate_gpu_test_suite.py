@@ -2,7 +2,7 @@
 
 Authenticate the complete tar before unpacking bounded data into a private
 temporary directory. Never execute returned files or add them to import paths.
-Each workload uses the existing shared validator and Q7 deep audit.
+Each workload uses the shared validator with its scaffold, Q7 or H7 deep audit.
 Contract: doc/GPU-TEST-COMBINED-PACKAGE-v1.0.md.
 """
 import argparse
@@ -13,13 +13,18 @@ import re
 import tarfile
 import tempfile
 import sys
-from gpu_test_suite_common import catalog,write,ROOT,RETURN_SCHEMA,ROLES
+from gpu_test_suite_common import catalog,write,ROOT,RETURN_SCHEMA,ROLES,roles
 from gpu_test_results import loads
 from validate_mla_q7_results import Archive,safe_name,digest_file
 import validate_gpu_results as shared_validator
 
 
 def review(args,out):
+    """Authenticate bounded return data and join every registered workload gate.
+
+    Delegate numerical/resource/race/timing evidence to trusted producer owners;
+    extracted files never become executable code or import paths.
+    """
     table=catalog(args.packet,args.expected_packet_sha256,full=False)
     expected=args.expected_archive_sha256
     if not expected:
@@ -34,7 +39,7 @@ def review(args,out):
     if metadata.get('schema')!=RETURN_SCHEMA or metadata.get('packet_sha256')!=args.expected_packet_sha256 or metadata.get('packets')!=table['packets']:
         raise ValueError('combined return/source identities differ')
     index=loads(archive.texts['suite-results.json'])
-    if index.get('schema')!='open64.gpu-test.suite-results.v1' or set(index.get('profiles',{}))!=set(ROLES) or index.get('timings_pooled') is not False or index.get('profiling_separate') is not True:
+    if index.get('schema')!='open64.gpu-test.suite-results.v1' or set(index.get('profiles',{}))!=set(roles(table)) or index.get('timings_pooled') is not False or index.get('profiling_separate') is not True:
         raise ValueError('invalid combined profile index or isolation contract')
     findings=[];results={};uuids=set()
     def flag(level,code,message):findings.append(dict(severity=level,code=code,message=message))
@@ -57,8 +62,8 @@ def review(args,out):
                     for block in iter(lambda:stream.read(1048576),b''):target.write(block);digest.update(block)
                 if digest.hexdigest()!=archive.hashes[relative]:raise ValueError('archive payload changed after validation')
         if digest_file(args.archive)!=expected:raise ValueError('archive changed during extraction')
-        for role in ROLES:
-            path='results/mla-q7/Open64_MLA_Q7_results.tar.gz' if role=='mla-q7' else 'results/'+role+'/result.json'
+        for role in roles(table):
+            path='results/mla-q7/Open64_MLA_Q7_results.tar.gz' if role=='mla-q7' else 'results/h20/'+role+'/result.json' if role.startswith('h20-') else 'results/'+role+'/result.json'
             entry=index['profiles'][role]
             if entry.get('path')!=path or entry.get('kind')!=('q7_return' if role=='mla-q7' else 'shared_json'):
                 raise ValueError('unexpected profile evidence path')
@@ -66,15 +71,15 @@ def review(args,out):
             if path not in archive.hashes:
                 flag('MISSING','MISSING_PROFILE',role+' evidence absent; raw partial files may be retained.')
                 results[role]=dict(overall='INCOMPLETE');continue
-            packet=args.packet/('mla-q7' if role=='mla-q7' else 'scaffold')
+            packet=args.packet/('h20' if role.startswith('h20-') else 'mla-q7' if role=='mla-q7' else 'scaffold')
             target=out/role
             argv=['--archive' if role=='mla-q7' else '--result',str(data/path),'--packet',str(packet),
-                '--expected-packet-sha256',table['packets']['mla-q7' if role=='mla-q7' else 'scaffold']['packet_sha256'],'--output',str(target)]
+                '--expected-packet-sha256',table['packets']['h20' if role.startswith('h20-') else 'mla-q7' if role=='mla-q7' else 'scaffold']['packet_sha256'],'--output',str(target)]
             shared_validator.main(argv)
             child=loads((target/'summary.json').read_bytes());results[role]=dict(overall=child['overall'],review=role+'/summary.json')
             resultpath=target/'result.json'
             if resultpath.is_file():
-                expected_workload={'gemm':'gemm.dense.bf16-fp32.bf16.v1','mla-core':'mla.decode.paged.bf16-fp32.v1','mla-q7':'mla.quantized.functional-cache.q3.v1'}[role]
+                expected_workload={'gemm':'gemm.dense.bf16-fp32.bf16.v1','mla-core':'mla.decode.paged.bf16-fp32.v1','mla-q7':'mla.quantized.functional-cache.q3.v1'}.get(role,role+'.selected-f32.v1')
                 if loads(resultpath.read_bytes()).get('workload_id')!=expected_workload:flag('ERROR','WORKLOAD_BINDING',role+' contains another workload.')
             if child['overall'] in ('FAIL','INVALID'):flag('ERROR','WORKLOAD_FAILED',role+': '+child['overall'])
             elif child['overall']!='PASS_REPORTED':flag('MISSING','WORKLOAD_INCOMPLETE',role+': '+child['overall'])
@@ -92,13 +97,14 @@ def review(args,out):
             labels=[step.get('label') for step in workflow.get('steps',[])]
             if len(labels)!=len(set(labels)):flag('ERROR','DUPLICATE_STEPS','Workflow step labels are ambiguous.')
             required={'scaffold-unit','gemm','mla-core','q7-unit'}
+            if 'h20' in table['packets']:required.add('h20-qualification')
             if not workflow.get('check_only') and workflow.get('workloads',{}).get('mla-q7',{}).get('exit_code')==0:
                 required|={'q7-compile-generated','q7-qualification'}
             if required-set(labels):flag('MISSING','STEP_COVERAGE',str(sorted(required-set(labels))))
             for label in ('exit_code','inner_collection_exit_code'):
                 code=workflow.get(label)
                 if code not in (None,0):flag('MISSING' if code in (77,78,124,130,143) else 'ERROR','WORKFLOW_NONZERO',label+' '+str(code))
-            if set(workflow.get('workloads',{}))!=set(ROLES):flag('MISSING','WORKLOAD_LEDGER','Not all workload exit statuses were recorded.')
+            if set(workflow.get('workloads',{}))!=set(roles(table)):flag('MISSING','WORKLOAD_LEDGER','Not all workload exit statuses were recorded.')
             if workflow.get('check_only'):flag('MISSING','CHECK_ONLY','CPU/corpus checks do not constitute GPU qualification.')
     if len(uuids)>1:flag('ERROR','MIXED_GPUS','Workloads record different execution GPUs; results are not pooled.')
     levels={x['severity'] for x in findings}

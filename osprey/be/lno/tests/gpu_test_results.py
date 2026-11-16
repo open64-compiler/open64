@@ -11,7 +11,9 @@ import statistics
 
 SCHEMA = 'open64.gpu-test.results.v1'
 PROFILES = ('gemm.dense.bf16-fp32.bf16.v1', 'mla.decode.paged.bf16-fp32.v1',
-            'mla.quantized.functional-cache.q3.v1')
+            'mla.quantized.functional-cache.q3.v1',
+            'h20-gemm.selected-f32.v1','h20-mla.selected-f32.v1',
+            'h20-layernorm.selected-f32.v1','h20-reduction.selected-f32.v1')
 SCAFFOLD_WALL = 'enqueue-plus-stream-completion.v1'
 SCAFFOLD_DEVICE = 'cuda-event-stream-span.v1'
 Q7_WALL = 'q3-begin-submit-complete.separate-wall-batch.v1'
