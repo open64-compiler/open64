@@ -65,6 +65,29 @@ def fixture(root):
 
 class H7Contracts(unittest.TestCase):
     """Exercise meaningful device, failure-gate and independent receiver boundaries."""
+    def test_preparation_preserves_read_only_outer_tools(self):
+        """A safely unpacked read-only base must support additive preparation."""
+        from prepare_h20_h7 import prepare_outer_files
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); scripts = root / 'scripts'; scripts.mkdir()
+            packet = root / 'packet'; tools = packet / 'tools'; tools.mkdir(parents=True)
+            legacy = tools / 'runner.py'; legacy.write_bytes(b'# original outer tool\n')
+            legacy.chmod(0o444)
+            (tools / 'legacy-only.py').write_bytes(b'# preserved legacy tool\n')
+            replacement = scripts / 'runner.py'; replacement.write_bytes(b'# current outer tool\n')
+            outer_names = ('suite.json', 'README.md', 'RELEASE_NOTES.md', 'SHA256SUMS', 'PACKET_ID')
+            for name in outer_names:
+                record = packet / name; record.write_bytes(b'preserved until rewritten'); record.chmod(0o444)
+            prepare_outer_files(scripts, packet)
+            for name in outer_names:
+                record = packet / name
+                self.assertEqual(record.read_bytes(), b'preserved until rewritten')
+                self.assertTrue(record.stat().st_mode & 0o200)
+            self.assertEqual((tools / 'runner.py').read_bytes(), replacement.read_bytes())
+            self.assertEqual((packet / 'prior-tools/runner.py').read_bytes(), b'# original outer tool\n')
+            self.assertEqual((packet / 'prior-tools/runner.py').stat().st_mode & 0o777, 0o444)
+            self.assertEqual((tools / 'legacy-only.py').read_bytes(), b'# preserved legacy tool\n')
+
     def test_device_identity_not_isa_alias(self):
         """Same SM does not make H200, another capacity or a partition eligible."""
         self.assertTrue(eligibility('h20_96gb',observed())[0])

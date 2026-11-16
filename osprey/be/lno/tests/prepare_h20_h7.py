@@ -48,6 +48,27 @@ class RECEIPT:
         target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(self.read(name))
 
 
+def prepare_outer_files(scripts, root):
+    """Prepare fresh outer-owned files for updates from a read-only base.
+
+    Source unpacking intentionally removes write permission. Only the fresh
+    output copy is replaced; the authenticated base and prior tools stay intact.
+    """
+    tools = root / 'tools'
+    shutil.copytree(tools, root / 'prior-tools')
+    for source in scripts.glob('*.py'):
+        target = tools / source.name
+        if target.exists():
+            target.unlink()
+        shutil.copy2(source, target)
+    # Inner suites retain their original bytes and modes. Only these copied
+    # outer records are rewritten by preparation and sealing below.
+    for name in ('suite.json', 'README.md', 'RELEASE_NOTES.md', 'SHA256SUMS', 'PACKET_ID'):
+        target = root / name
+        if target.is_file():
+            target.chmod(target.stat().st_mode | 0o200)
+
+
 def main(argv=None):
     """Build one explicitly selected device packet and a combined deployment tar."""
     p = argparse.ArgumentParser(description=__doc__)
@@ -60,10 +81,8 @@ def main(argv=None):
     root = out / ('Open64_H20_GPU_Test_Suite_' + args.gpu_device + '_v1.0')
     shutil.copytree(base, root)
     tools = root / 'tools'; scripts = Path(__file__).resolve().parent
-    # Preserve historical outer tools as well as every original inner script.
-    shutil.copytree(tools, root / 'prior-tools')
-    for source in scripts.glob('*.py'):
-        shutil.copy2(source, tools / source.name)
+    # The copied base may come from the immutable source unpacker.
+    prepare_outer_files(scripts, root)
     for source in ('run_h20_h7.py', 'h20_h7_common.py'):
         if not (tools / source).is_file(): raise ValueError('H7 tool missing: ' + source)
     packet = root / 'h20'; packet.mkdir()
