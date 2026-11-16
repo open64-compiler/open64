@@ -72,4 +72,12 @@ typedef struct {
 extern BOOL WOPT_DSL_select_normalization_plan(WN *scope, WN *assignment,
     const WOPT_DSL_NORMALIZATION_COST_REQUEST *request,
     WOPT_DSL_NORMALIZATION_COST_RESULT *output, FILE *diagnostic, FILE *trace);
+/* Check all three source/runtime contracts using the existing LN3 comparison;
+ * different storage recipes may not change inputs, leases or math. Read-only. */
+extern BOOL WOPT_DSL_normalization_requests_comparable(const WOPT_DSL_NORMALIZATION_COST_REQUEST *);
+/* Cost only an already fixed LN2 recipe after fresh binding. No catalog,
+ * selection or H3 budget is reopened; caller owns selected-plan validation. */
+extern BOOL WOPT_DSL_cost_normalization_fixed(WN *,WN *,
+    const WOPT_DSL_NORMALIZATION_COST_REQUEST *,UINT32,
+    WOPT_DSL_NORMALIZATION_COST *,OPEN64_NORMALIZATION_GUARD *);
 #endif

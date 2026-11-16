@@ -618,3 +618,32 @@ BOOL WOPT_DSL_select_normalization_plan(WN *scope,WN *assignment,
   }
   return TRUE;
 }
+
+/* Reuse LN3's exact graph for one selected recipe only. No common-plan
+ * registration or alternative profitability query occurs; native state stays
+ * read-only and job expansion remains bounded by the original request. */
+BOOL WOPT_DSL_cost_normalization_fixed(WN *scope,WN *assignment,
+    const WOPT_DSL_NORMALIZATION_COST_REQUEST *r,UINT32 kind,
+    WOPT_DSL_NORMALIZATION_COST *output,OPEN64_NORMALIZATION_GUARD *guard)
+{
+    if(!r || !output || !guard || Opt_Level<3 || kind<1 || kind>3 || !r->max_jobs || r->max_jobs>1000000) return FALSE;
+    WOPT_DSL_NORMALIZATION_PLAN_BINDING binding;DSL_HARDWARE_DESCRIPTION_RECORD hw;
+    const DSL_GPU_PLAN_SNAPSHOT gpu=DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
+    if(!WOPT_DSL_bind_normalization_plan(scope,assignment,&r->plans[kind-1],&binding,NULL,NULL) || binding.status ||
+        !DSL_hardware_description_get_arch(binding.target.architecture_id,&hw) || LN3_Profile(r->profile,hw)) return FALSE;
+    WOPT_DSL_NORMALIZATION_COST cost;memset(&cost,0,sizeof(cost));BOOL known=FALSE;
+    cost.resident_ctas=LN3_Residents(hw,r->plans[kind-1],binding,r->registers_per_thread[kind-1],gpu,&known);
+    uint64_t sms=0;if(!known || !cost.resident_ctas || !gpu.Resource_limit(DSL_GPU_VISIBLE_SMS,&sms) || !sms || sms>r->max_jobs) return FALSE;
+    LN3_GRAPH graph(r->plans[kind-1],binding,cost,r->max_jobs,r->profile.values[DSL_SCALAR_SECTOR_BYTES][1]);
+    if(!graph.Build(UINT32(sms)) || !LN3_Evaluate(graph,r->profile,UINT32(sms),&cost)) return FALSE;
+    OPEN64_NORMALIZATION_GUARD value;
+    if(!WOPT_DSL_export_normalization_guard(scope,assignment,&r->plans[kind-1],&value,NULL,NULL)) return FALSE;
+    *output=cost;*guard=value;return TRUE;
+}
+
+/* H6 reuses the same LN3 common-contract equality before replacing CTA widths. */
+BOOL WOPT_DSL_normalization_requests_comparable(const WOPT_DSL_NORMALIZATION_COST_REQUEST *r)
+{
+    return r && r->plans[0].kind==1 && r->plans[1].kind==2 && r->plans[2].kind==3 &&
+        LN3_Comparable(r->plans[0],r->plans[1]) && LN3_Comparable(r->plans[0],r->plans[2]);
+}

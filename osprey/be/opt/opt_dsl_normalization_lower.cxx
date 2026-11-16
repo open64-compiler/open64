@@ -11,6 +11,8 @@
 #endif
 #include <stddef.h>
 #include <set>
+#include <sstream>
+#include "../vho/dsl_movement_cost.h"
 #include <string.h>
 #include "opt_dsl_normalization_lower.h"
 #include "wn_util.h"
@@ -56,6 +58,9 @@ static UINT64 LN4_Plan_Seal(const WOPT_DSL_NORMALIZATION_LOWERING &p)
     hash=LN4_Hash(hash,p.gpu_stamp.context,sizeof(p.gpu_stamp.context));
     LN4_Word(hash,p.gpu_live_bytes);
   }
+  if(p.h6_model_key[0]) {
+    LN4_Text(hash,p.h6_model_key);LN4_Text(hash,p.h6_estimate_key);LN4_Word(hash,p.h6_rank_ns);
+  }
   return hash;
 }
 
@@ -66,6 +71,8 @@ static UINT64 LN4_Plan_Seal(const WOPT_DSL_NORMALIZATION_LOWERING &p)
 static BOOL LN4_Plan_Valid(const WOPT_DSL_NORMALIZATION_LOWERING &p)
 {
   if (!DSL_gpu_plan_stamp_current(p.gpu_stamp,VHO_DSL_GPU_Context)) return FALSE;
+  if(p.h6_model_key[0] && (!memchr(p.h6_model_key,0,65) || !memchr(p.h6_estimate_key,0,65) ||
+      !VHO_DSL_H3_Search || VHO_DSL_H3_Search->Model().key!=p.h6_model_key)) return FALSE;
   const DSL_GPU_PLAN_SNAPSHOT gpu=DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
   DSL_HARDWARE_DESCRIPTION_RECORD hw;
   const OPEN64_NORMALIZATION_GUARD &g=p.guard;
@@ -310,11 +317,22 @@ static WN *LN4_Epilogue(const LN4_CONTEXT &c)
   return c.arena?WN_CreateIf(WN_LT(MTYPE_I4,LN4_Load(c.tid),LN4_I4(c.plan->guard.width)),body,WN_CreateBlock()):LN4_Owner(c,body);
 }
 
-/* Construct all ordered executable phases, leaving uniform barriers outside
+/* Construct ordered executable phases and plan-derived COMMENT explanations,
+ * leaving uniform barriers outside
  * owner/valid-element branches. No semantic DSL operation survives here. */
 static WN *LN4_Body(const LN4_CONTEXT &c)
 {
   WN *body=WN_CreateBlock();
+  std::ostringstream explanation;
+  explanation<<"Selected ordered LayerNorm C"<<c.plan->guard.kind-1<<", rows="<<c.plan->guard.rows
+      <<", width="<<c.plan->guard.width<<", threads="<<c.plan->guard.threads<<". Lane zero performs ascending F32 mean and centered-square folds. "
+      <<"C0 rereads X; C1 retains centered d; C2 cooperatively retains X then overwrites each element with d after its own final X read. "
+      <<"Uniform publication and readers-release CTA barriers stay outside feature predicates. Finalize divide, epsilon add, sqrt and reciprocal retain explicit rounding; no reassociation/FMA. "
+      <<"Three private pointer-scalar carriers implement the existing exact instruction ABI; their physical register/spill placement is unproved. "
+      <<"Gamma/beta affine output is guarded before access; no intermediate global centered tensor. ";
+  if(c.plan->h6_model_key[0]) explanation<<"H6 selected this fixed retention/CTA recipe with owned H2 facts and pinned H20/H3 model "<<c.plan->h6_model_key
+      <<". Cost and transaction envelopes are estimates; only this winner was materialized. ";
+  WN_INSERT_BlockLast(body,WN_CreateComment(explanation.str().c_str()));
   WN_INSERT_BlockLast(body,LN4_Store(c.tid,LN4_Coord(c.thread)));WN_INSERT_BlockLast(body,LN4_Store(c.row,LN4_Coord(c.block)));
   for (UINT32 i=0;i<3;++i) WN_INSERT_BlockLast(body,LN4_Store(c.addresses[i],LN4_Address(c.scratch,LN4_I4(i))));
   if (c.plan->guard.kind==3) {
@@ -504,4 +522,31 @@ BOOL WOPT_DSL_verify_normalization_device(const WOPT_DSL_NORMALIZATION_LOWERING 
   WOPT_DSL_NORMALIZATION_DEVICE actual;
   if (!p || !expected || !LN4_Plan_Valid(*p) || !LN4_Facts(*p,&actual) || memcmp(&actual,expected,sizeof(actual))) return FALSE;
   LN4_Trace("VERIFY",*p,actual,trace);return TRUE;
+}
+
+/* Rebind only the fixed candidate and reuse the single-recipe LN3 graph;
+ * all legacy scalar/runtime obligations remain. Caller installs H6 evidence
+ * before sealing via the dedicated wrapper below, never reranks candidates. */
+BOOL WOPT_DSL_prepare_normalization_fixed(WN *scope,WN *assignment,
+    const WOPT_DSL_NORMALIZATION_COST_REQUEST *r,UINT32 kind,
+    WOPT_DSL_NORMALIZATION_LOWERING *output)
+{
+    if(!r || !output || Opt_Level<3) return FALSE;
+    WOPT_DSL_NORMALIZATION_LOWERING p;memset(&p,0,sizeof(p));
+    if(!WOPT_DSL_cost_normalization_fixed(scope,assignment,r,kind,&p.cost,&p.guard)) return FALSE;
+    p.version=1;p.revision=r->profile.description_revision;p.profile=r->profile;
+    p.registers_per_thread=r->registers_per_thread[kind-1];p.max_jobs=r->max_jobs;p.margin=r->margin;
+    const DSL_GPU_PLAN_SNAPSHOT gpu=DSL_GPU_PLAN_SNAPSHOT::Capture(VHO_DSL_GPU_Context);
+    p.gpu_stamp=gpu.Stamp();
+    WOPT_DSL_NORMALIZATION_PLAN_BINDING binding;
+    if(!WOPT_DSL_bind_normalization_plan(scope,assignment,&r->plans[kind-1],&binding,NULL,NULL) || binding.status) return FALSE;
+    p.gpu_live_bytes=binding.live_bytes;p.seal=LN4_Plan_Seal(p);
+    if(!LN4_Plan_Valid(p)) return FALSE;*output=p;return TRUE;
+}
+/* Seal the already source-validated H6 fixed result. This is a corruption
+ * binding, not an authorization boundary; H6 owns full equality preflight. */
+void WOPT_DSL_seal_normalization_h6(WOPT_DSL_NORMALIZATION_LOWERING &p,const char *model,const char *estimate,UINT64 rank)
+{
+    memset(p.h6_model_key,0,65);memset(p.h6_estimate_key,0,65);
+    strncpy(p.h6_model_key,model,64);strncpy(p.h6_estimate_key,estimate,64);p.h6_rank_ns=rank;p.seal=LN4_Plan_Seal(p);
 }

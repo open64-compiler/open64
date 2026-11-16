@@ -20,13 +20,17 @@ struct DSL_H3_MODEL {
 };
 struct DSL_H3_STAGE {
     std::string id;
+    /* Optional phase-proved aggregate per-CTA transaction envelopes; zero
+     * retains legacy rounding. Proof is owned and bound to the full recipe. */
+    std::string transaction_proof;
+    uint64_t read_transactions,write_transactions;
     uint64_t ctas,threads,registers,shared_allocation,steps,depth;
     uint64_t read_requests,write_through_requests,reusable_reads,shared_requests,scalar_ops,issue_ops;
     uint64_t add_chain,mul_chain,exps,divs,shuffles,barriers,fences,dequant,rsqrts;
     bool asynchronous,launch;
     /* Unknown work is never silently supplied by a hardware rate. Owners must
      * explicitly complete the operation-specific recipe before evaluation. */
-    inline DSL_H3_STAGE() : ctas(0),threads(0),registers(0),shared_allocation(0),steps(1),depth(1),
+    inline DSL_H3_STAGE() : read_transactions(0),write_transactions(0),ctas(0),threads(0),registers(0),shared_allocation(0),steps(1),depth(1),
         read_requests(0),write_through_requests(0),reusable_reads(0),shared_requests(0),scalar_ops(0),issue_ops(0),add_chain(0),mul_chain(0),
         exps(0),divs(0),shuffles(0),barriers(0),fences(0),dequant(0),rsqrts(0),asynchronous(false),launch(true) {}
 };

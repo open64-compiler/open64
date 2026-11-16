@@ -92,6 +92,15 @@ void VHO_h3_stage(const DSL_GPU_PLAN_SNAPSHOT &gpu,const DSL_H3_MODEL &m,const D
     uint64_t requests=VHO_h3_mul(s.ctas,VHO_h3_add(VHO_h3_add(s.read_requests,s.write_through_requests),m.spill_per_cta.value));
     uint64_t read_tx=VHO_h3_mul(VHO_h3_ceil(s.read_requests,m.transaction_bytes),m.transaction_bytes);
     uint64_t write_tx=VHO_h3_mul(VHO_h3_ceil(VHO_h3_add(s.write_through_requests,m.spill_per_cta.value),m.transaction_bytes),m.transaction_bytes);
+    if(s.read_transactions || s.write_transactions || !s.transaction_proof.empty()) {
+        VHO_h3_need(!s.transaction_proof.empty() && s.transaction_proof.size()<=16384 &&
+            (!s.read_transactions || (s.read_transactions>=read_tx && !(s.read_transactions%m.transaction_bytes))) &&
+            (!s.write_transactions || (s.write_transactions>=VHO_h3_mul(VHO_h3_ceil(s.write_through_requests,m.transaction_bytes),m.transaction_bytes) && !(s.write_transactions%m.transaction_bytes))),"h3_transaction_envelope");
+        if(s.read_transactions) read_tx=s.read_transactions;
+        // Spill service remains a distinct modeled charge when writes have
+        // an explicit source-transaction envelope.
+        if(s.write_transactions) write_tx=VHO_h3_add(s.write_transactions,VHO_h3_mul(VHO_h3_ceil(m.spill_per_cta.value,m.transaction_bytes),m.transaction_bytes));
+    }
     uint64_t transactions=VHO_h3_mul(s.ctas,VHO_h3_add(read_tx,write_tx));
     uint64_t hits=0,l2_bytes=0;
     if(scenario==1 && s.reusable_reads) {
@@ -153,6 +162,7 @@ std::string VHO_h3_plan_key(const DSL_H3_PLAN &p) {
         const DSL_H3_STAGE &s=p.stages[i];VHO_h3_field(out,s.id);
         const uint64_t fields[]={s.ctas,s.threads,s.registers,s.shared_allocation,s.steps,s.depth,s.read_requests,s.write_through_requests,s.reusable_reads,s.shared_requests,s.scalar_ops,s.issue_ops,s.add_chain,s.mul_chain,s.exps,s.divs,s.shuffles,s.barriers,s.fences,s.dequant,s.rsqrts};
         for(unsigned j=0;j<21;++j) out<<fields[j]<<';';out<<s.asynchronous<<';'<<s.launch<<';';
+        if(s.read_transactions || s.write_transactions || !s.transaction_proof.empty()) {out<<"transactions-v1;"<<s.read_transactions<<';'<<s.write_transactions<<';';VHO_h3_field(out,s.transaction_proof);}
     }
     return out.str();
 }

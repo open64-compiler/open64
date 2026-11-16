@@ -9,8 +9,10 @@
 #include <string>
 #include <string.h>
 #include "opt_dsl_normalization_request.h"
+#include "opt_dsl_h6.h"
 #include "../../rapidjson/document.h"
 #include "config.h"
+#include "config_dsl.h"
 #include "config_opt.h"
 #include "wn.h"
 #include "pu_info.h"
@@ -209,7 +211,9 @@ static BOOL LN4R_Cost_Request(const WOPT_DSL_NORMALIZATION_REQUEST &r, WOPT_DSL_
 }
 
 /* CLI and JIT share this exact typed binding. Revalidate current native source,
- * costs and guard; no source/table mutation, PU switch or runtime grant. */
+ * costs and guard; optional H6 uses owned H3 search and fixed preparation.
+ * H6 refusal retains the existing selector. No source/table mutation, PU
+ * switch or runtime grant. */
 static BOOL LN4R_Prepare(WN *scope, const WOPT_DSL_NORMALIZATION_REQUEST *r, UINT32 level,
     WOPT_DSL_NORMALIZATION_LOWERING *output, SRCPOS *position, FILE *diagnostic, FILE *trace)
 {
@@ -225,9 +229,15 @@ static BOOL LN4R_Prepare(WN *scope, const WOPT_DSL_NORMALIZATION_REQUEST *r, UIN
   if (trace) fprintf(trace, "AI_NORM_REQUEST 1 BIND %u %u %s %u %u %u\n", r->source.owner_pu,
       r->source.node_id, r->architecture, r->profile.model_id, r->profile.description_revision, r->source.source_line);
   WOPT_DSL_NORMALIZATION_LOWERING plan;
-  if (!WOPT_DSL_select_normalization_plan(scope, member, &cost, &choice, diagnostic, trace) ||
-      !WOPT_DSL_prepare_normalization_lowering(scope, member, &cost, &choice, &plan, diagnostic, trace))
+  WOPT_DSL_H6_SELECTION h6;
+  BOOL h6_ready=VHO_DSL_H6_Memory &&
+      WOPT_DSL_select_h6_normalization(scope,member,&cost,h6,trace) &&
+      WOPT_DSL_prepare_h6_normalization(scope,member,&cost,h6,plan);
+  if (!h6_ready && (!WOPT_DSL_select_normalization_plan(scope, member, &cost, &choice, diagnostic, trace) ||
+      !WOPT_DSL_prepare_normalization_lowering(scope, member, &cost, &choice, &plan, diagnostic, trace)))
     return LN4R_Refuse(diagnostic, "no complete legal cost-gated v2 plan");
+  if (h6_ready && trace) fprintf(trace,"AI_H6_APPLY 1 family=LayerNorm kind=%llu threads=%llu model=%s estimate=%s rank_ns=%llu GPU_measured=0\n",
+      (unsigned long long)plan.guard.kind,(unsigned long long)plan.guard.threads,plan.h6_model_key,plan.h6_estimate_key,(unsigned long long)plan.h6_rank_ns);
   /* Static CUDA arenas above 48 KiB need a separately designed opt-in/dynamic
    * path. Refuse here; never publish a winner different from the cost decision. */
   if (plan.guard.reserved_shared > 49152 || !WN_Get_Linenum(member))

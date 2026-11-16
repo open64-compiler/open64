@@ -249,7 +249,8 @@ static std::string LN4D_Path_Token(const std::string &path)
 }
 
 /* Review-only JSON binds the request to the actual constructed device body;
- * native guard words are explicitly not a portable service/launch ABI. */
+ * H6 additionally publishes the selected launch rather than reusing the input
+ * request width. Native guard words remain review-only, not a portable ABI. */
 static BOOL LN4D_Manifest(const std::string &path, const std::string &json,
     const char *kernel, const char *host, const WOPT_DSL_NORMALIZATION_LOWERING &p, const WOPT_DSL_NORMALIZATION_DEVICE &d)
 {
@@ -257,10 +258,16 @@ static BOOL LN4D_Manifest(const std::string &path, const std::string &json,
   fprintf(f, "{\"schema\":\"open64.layernorm.driver-review.v1\",\"request\":%s,\"kernel\":\"%s\","
       "\"selected_kind\":%llu,\"cost\":%llu,\"plan_seal\":%llu,\"tree_seal\":%llu,"
       "\"nodes\":%llu,\"loops\":%llu,\"scalar_operations\":%llu,\"barriers\":%llu,"
-      "\"runtime_authorized\":false,\"gpu_verified\":false,\"host_dispatch\":\"%s\",\"execution_mode\":\"%s\"}\n", json.c_str(), kernel,
+      "\"runtime_authorized\":false,\"gpu_verified\":false,\"host_dispatch\":\"%s\",\"execution_mode\":\"%s\"", json.c_str(), kernel,
       (unsigned long long)p.guard.kind, (unsigned long long)p.cost.total, (unsigned long long)p.seal,
       (unsigned long long)d.tree_seal, (unsigned long long)d.nodes, (unsigned long long)d.loops,
       (unsigned long long)d.scalar_operations, (unsigned long long)d.barriers, host, *host ? "standalone" : "service");
+  if (p.h6_model_key[0]) fprintf(f,
+      ",\"selected_launch\":{\"grid_x\":%llu,\"block_x\":%llu,\"shared_bytes\":%llu},"
+      "\"h6\":{\"model_key\":\"%s\",\"estimate_key\":\"%s\",\"rank_ns\":%llu,\"estimated\":true}",
+      (unsigned long long)p.guard.ctas,(unsigned long long)p.guard.threads,(unsigned long long)p.guard.reserved_shared,
+      p.h6_model_key,p.h6_estimate_key,(unsigned long long)p.h6_rank_ns);
+  fprintf(f,"}\n");
   BOOL valid = !ferror(f); return fclose(f) == 0 && valid;
 }
 }
