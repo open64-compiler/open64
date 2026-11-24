@@ -79,12 +79,7 @@
 #include "ipa_option.h"			// IPA_TRACE flags
 #include "ipa_summary.h"                // IPA_get_ functions
 
-// Maximum and count for the total number of clone nodes
-UINT32 IPA_Max_Total_Clones;
-UINT32 IPA_Num_Total_Clones = 0;
-
-INT IPA_Constant_Count = 0; // number of constants found
-MEM_POOL Global_mem_pool; 
+// Cprop globals migrated to g_ipa_ctx->cprop (ipa_context.h).
 
 
 static void

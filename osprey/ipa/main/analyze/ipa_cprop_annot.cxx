@@ -76,8 +76,7 @@ enum CONDITION_STATE {
 CONDITION_STATE *cd_status;		// status of all conditional stmts
 					// in a PU
 
-MEM_POOL Ipa_cprop_pool;		// mem pool for expression evaluations
-MEM_POOL local_cprop_pool;
+// Ipa_cprop_pool and local_cprop_pool migrated to g_ipa_ctx->cprop (ipa_context.h).
 
 // used in Evaluate_chi, which needs the caller's IPA_NODE for mapping a
 // callsite id to callee. 

@@ -150,6 +150,7 @@ IPA_LD_COMMON_SRCS = \
 
 IPA_COMMON_CXX_SRCS = \
 	ip_graph.cxx		\
+	ipa_context.cxx		\
         ipc_dst_merge.cxx       \
         ipc_dst_utils.cxx       \
 	ipc_link.cxx		\
@@ -289,7 +290,7 @@ LCINCS = $(addprefix -I, $(HEADER_DIRS))
 LCDEFS += $(HOSTDEFS)
 LCDEFS += -DSTD_MONGOOSE_LOC='"$(STD_MONGOOSE_LOC)"' -D_SUPPORT_IPA -D_MULTIGOT
 LC++DEFS += $(HOSTDEFS) -DSTD_MONGOOSE_LOC='"$(STD_MONGOOSE_LOC)"'
-LC++DEFS += -D_SUPPORT_IPA -DMONGOOSE_BE
+LC++DEFS += -D_SUPPORT_IPA -DMONGOOSE_BE -DIPA_CONTEXT_FULL_INIT
 #-DIPA_CPROP_TEST
 LC++INCS = $(LCINCS)
 

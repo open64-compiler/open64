@@ -42,8 +42,12 @@
 #ifndef cxx_ipa_section_prop_INCLUDED
 #define cxx_ipa_section_prop_INCLUDED
 
-extern MEM_POOL IPA_array_prop_pool;
-extern BOOL Trace_IPA_Sections;
+// Array-section globals now live in IPA_Context (ipa_context.h).
+#ifndef cxx_ipa_context_INCLUDED
+#include "ipa_context.h"
+#endif
+#define IPA_array_prop_pool  (g_ipa_ctx->array_section.array_prop_pool)
+#define Trace_IPA_Sections   (g_ipa_ctx->array_section.trace_ipa_sections)
 
 //------------------------------------------------------------
 // DESCR:  perform scalar EUSE and KILL analysis

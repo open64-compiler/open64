@@ -51,21 +51,26 @@ typedef struct Field_pos_
   ST_IDX     st_idx;
 } Field_pos;
 
-// Data structure to tell IPO how to relayout a struct. It has N
-// elements, where N is the number of fields in the original struct.
-extern Field_pos *Struct_field_layout;
-// Number of pieces (individual fields or smaller structs) a struct
-// is split into.
-extern INT Struct_split_count;
+// Struct-opt globals now live in IPA_Context (ipa_context.h).
+// These macros provide backward-compatible access for existing code.
+#ifndef cxx_ipa_context_INCLUDED
+#include "ipa_context.h"
+#endif
+#define Struct_field_layout \
+  (g_ipa_ctx->struct_opt.field_layout)
+#define Struct_split_count \
+  (g_ipa_ctx->struct_opt.split_count)
 
 #define MAX_NUM_FIELDS_IN_COMPLETE_STRUCT_RELAYOUT 16
-extern TYPE_ID complete_struct_relayout_type_id;
+#define complete_struct_relayout_type_id \
+  (g_ipa_ctx->struct_opt.complete_struct_relayout_type_id)
 
 #define MAX_NUM_STRUCTS_WITH_FIELD_POINTING_TO_COMPLETE_STRUCT_RELAYOUT 32
-extern TYPE_ID struct_with_field_pointing_to_complete_struct_relayout_type_id
-  [MAX_NUM_STRUCTS_WITH_FIELD_POINTING_TO_COMPLETE_STRUCT_RELAYOUT];
-extern int struct_with_field_pointing_to_complete_struct_relayout_field_num
-  [MAX_NUM_STRUCTS_WITH_FIELD_POINTING_TO_COMPLETE_STRUCT_RELAYOUT];
-extern int num_structs_with_field_pointing_to_complete_struct_relayout;
+#define struct_with_field_pointing_to_complete_struct_relayout_type_id \
+  (g_ipa_ctx->struct_opt.struct_with_field_pointing_to_complete_struct_relayout_type_id)
+#define struct_with_field_pointing_to_complete_struct_relayout_field_num \
+  (g_ipa_ctx->struct_opt.struct_with_field_pointing_to_complete_struct_relayout_field_num)
+#define num_structs_with_field_pointing_to_complete_struct_relayout \
+  (g_ipa_ctx->struct_opt.num_structs_with_field_pointing_to_complete_struct_relayout)
 
 #endif // cxx_ipa_struct_opt_INCLUDED

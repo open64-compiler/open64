@@ -66,6 +66,7 @@
 #include "ld_ipa_interface.h"		// for ld_for_all_ST ()
 
 #include "ipc_weak.h"
+#include "ipa_context.h"
 
 #include "ipc_link.h"
 #include "config_ipa.h"
@@ -166,6 +167,7 @@ ipa_dot_so_init ()
 
     Init_Operator_To_Opcode_Table ();
     Initialize_Symbol_Tables (TRUE);
+    IPA_Context_Alloc();
     Initialize_Auxiliary_Tables ();
     
     MEM_POOL_Initialize (&Type_Merge_Pool, "TY Merge Pool", 0);
@@ -292,6 +294,7 @@ ipa_driver (INT argc, char **argv)
 #endif
 
     Process_IPA_Options (argc, argv);
+    IPA_Context_Init();	    /* snapshot config_ipa.h options into g_ipa_ctx */
 
     detect_whole_program_mode();
     

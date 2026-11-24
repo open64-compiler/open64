@@ -82,7 +82,7 @@
 #include "ipa_option.h"		    // for IPA_Enable_daVinci
 #include "ipc_daVinci.h"
 
-daVinci *cg_display = 0;
+// cg_display migrated to g_ipa_ctx->visualization.cg_display (ipa_context.h).
 
 daVinci::daVinci (GRAPH *_g, MEM_POOL *_m)
 {
