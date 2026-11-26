@@ -21,6 +21,7 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "../../../common/ir_image/tests/dsl_image_owner_fixture.h"
+#include "dsl_pu_interface_verify.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_region.h"
 #include "dsl_shape_refine.h"
@@ -354,6 +355,22 @@ main(void)
     if (!TY_tensor_preserves_non_shape_state(pending_ty, refined_ty) ||
         TY_tensor_preserves_non_shape_state(pending_ty, const_refined_ty)) {
         fprintf(stderr, "SP5 shape authorization ignored TY qualifiers\n");
+        return 1;
+    }
+    // Parsing admits canonical spelling. Proof use must resolve the PU owner.
+    char local_shape[48];
+    snprintf(local_shape, sizeof(local_shape), "[2,n@pu%08x]",
+             (unsigned int)PU_Info_proc_sym(pu));
+    TY_TENSOR_TYPE_CORE_REFINEMENT symbolic = refinement;
+    symbolic.logical_shape = local_shape;
+    TY_IDX local_ty = TY_Intern_Refined_Tensor_Type(pending_ty, &symbolic, NULL);
+    symbolic.logical_shape = "[2,n@pu00000001]";
+    TY_IDX forged_ty = TY_Intern_Refined_Tensor_Type(pending_ty, &symbolic, NULL);
+    DSL_IR_VALUE_ID add_id = DSL_Builder_Get_Value_Image_Id(add);
+    if (local_ty == TY_IDX_ZERO || forged_ty == TY_IDX_ZERO ||
+        !DSL_validate_shape_value_provenance(pu, add_id, local_ty) ||
+        DSL_validate_shape_value_provenance(pu, add_id, forged_ty)) {
+        fprintf(stderr, "SP10 symbolic qualifier proof did not resolve PU owner\n");
         return 1;
     }
     DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST requests[2];

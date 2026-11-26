@@ -209,6 +209,11 @@ DSL_IR_Retype_Preflight
         return DSL_IR_Retype_Report
                    (diagnostic, "DSL-SHAPE-RETYPE-004", request.value_id,
                     "refined type is not a monotonic shape-only refinement");
+    if (!DSL_validate_shape_value_provenance
+             (pu_info, request.value_id, request.refined_ty))
+        return DSL_IR_Retype_Report
+                   (diagnostic, "DSL-SHAPE-RETYPE-004", request.value_id,
+                    "refined type has invalid symbolic provenance");
 
     DSL_IR_VALUE_RECORD value;
     if (!DSL_IR_Image_Get_Value(request.value_id, &value) ||
