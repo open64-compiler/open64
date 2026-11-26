@@ -37,4 +37,10 @@ extern BOOL DSL_Call_ABI_Image_Validate_PU
 extern BOOL DSL_PU_Interface_Image_Validate_PU
                                 (PU_Info *pu, FILE *diagnostic);
 
+/* Verify the active PU's FUNC_ENTRY, local-symbol owner and represented call,
+ * formal and REGION boundaries. Borrow the driver-owned root and diagnostic
+ * stream. FALSE leaves compiler scope and program state unchanged. */
+extern BOOL DSL_validate_active_pu_boundaries
+                                (PU_Info *pu, WN *tree, FILE *diagnostic);
+
 #endif /* DSL_PU_INTERFACE_VERIFY_INCLUDED */

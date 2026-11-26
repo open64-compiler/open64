@@ -5,6 +5,7 @@
 #include <string.h>
 #include "../../common/ir_image/dsl_image_service.h"
 #include "../com/dsl_ir_retype.h"
+#include "../com/dsl_pu_interface_verify.h"
 #include <vector>
 
 #include "dsl_shape_refine.h"
@@ -258,6 +259,8 @@ VHO_DSL_Shape_Collect_Refinement
     return TRUE;
 }
 
+/* Validate the active PU even on check-only and no-native-node paths. The
+ * retype service repeats boundary verification inside its commit/rollback. */
 BOOL
 VHO_DSL_Shape_Refine_Program_Unit
         (struct pu_info *pu_info,
@@ -268,8 +271,13 @@ VHO_DSL_Shape_Refine_Program_Unit
 {
     VHO_DSL_SHAPE_REFINE_RESULT local_result;
     memset(&local_result, 0, sizeof(local_result));
-    if (pu_info != NULL && tree != NULL &&
-        !VHO_DSL_Shape_Has_Native_Node(tree)) {
+    if (!DSL_validate_active_pu_boundaries(pu_info, tree, diagnostic)) {
+        ++local_result.diagnostic_count;
+        if (result != NULL)
+            *result = local_result;
+        return FALSE;
+    }
+    if (!VHO_DSL_Shape_Has_Native_Node(tree)) {
         if (!VHO_DSL_Shape_Refinement_Mark_Current(pu_info, tree))
             return FALSE;
         if (result != NULL)

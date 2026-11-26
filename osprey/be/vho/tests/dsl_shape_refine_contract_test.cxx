@@ -204,6 +204,17 @@ main(void)
         return 0;
     }
 
+    // A plain WHIRL subtree cannot stand in for the driver-owned PU root.
+    WN *non_root = WN_CreateBlock();
+    VHO_DSL_SHAPE_REFINE_RESULT invalid_boundary;
+    BOOL accepted_non_root = VHO_DSL_Shape_Refine_Program_Unit
+                                 (pu, non_root, FALSE, NULL, &invalid_boundary);
+    WN_Delete(non_root);
+    if (accepted_non_root || invalid_boundary.diagnostic_count == 0) {
+        fprintf(stderr, "SP10 accepted a non-root active PU boundary\n");
+        return 1;
+    }
+
     VHO_DSL_SHAPE_REFINE_RESULT disabled;
     if (VHO_DSL_Shape_Refine_Program_Unit
             (pu, PU_Info_tree_ptr(pu), FALSE, NULL, &disabled) ||

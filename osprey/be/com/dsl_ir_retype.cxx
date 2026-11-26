@@ -21,7 +21,7 @@
 #include "dsl_shape.h"
 #include "dsl_ir_image.h"
 #include "dsl_ir_rewrite_queries_internal.h"
-#include "dsl_region.h"
+#include "dsl_pu_interface_verify.h"
 #include "pu_info.h"
 #include "symtab.h"
 #include "wn.h"
@@ -393,10 +393,10 @@ DSL_IR_Retype_Rollback (const DSL_IR_RETYPE_JOURNAL &journal)
  *
  * PU_Info is the sole authority for the transaction's WHIRL root. Callers do
  * not pass a duplicate tree pointer; the implementation derives the root with
- * PU_Info_tree_ptr() for REGION verification and physical def/use scanning.
+ * PU_Info_tree_ptr() for boundary verification and physical def/use scanning.
  *
- * All requests and REGION state are preflighted before the first mutation.
- * After commit, managed-image, REGION, and strict gatekeeper verification run
+ * All requests and PU boundaries are preflighted before the first mutation.
+ * After commit, image, boundary, and strict gatekeeper verification run
  * together. A reported write or postcheck failure reverses type assignments
  * and asserts restored image/REGION validity. Optional result is cleared on
  * entry and reports attempted/rollback counts on that FALSE path. This is not
@@ -429,10 +429,10 @@ DSL_IR_Refine_Native_Value_Types
                    (diagnostic, "DSL-SHAPE-RETYPE-001", 0,
                     "empty request array");
     }
-    if (!DSL_Region_Verify_PU(pu_info, diagnostic))
+    if (!DSL_validate_active_pu_boundaries(pu_info, tree, diagnostic))
         return DSL_IR_Retype_Report
                    (diagnostic, "DSL-SHAPE-RETYPE-006", 0,
-                    "active REGION image is invalid before retyping");
+                    "active PU boundary is invalid before retyping");
 
     /* Resolve the entire batch before using any PU-local ST index. */
     const ST_IDX owner_pu_st = PU_Info_proc_sym(pu_info);
@@ -506,7 +506,7 @@ DSL_IR_Refine_Native_Value_Types
     BOOL valid = committed && (force_post_failure == NULL ||
                   strcmp(force_post_failure, "1") != 0) &&
                  DSL_IR_Image_Validate(diagnostic) &&
-                 DSL_Region_Verify_PU(pu_info, diagnostic) &&
+                 DSL_validate_active_pu_boundaries(pu_info, tree, diagnostic) &&
                  DSL_Gatekeeper_Verify_PU_Mode
                      (pu_info, DSL_GATEKEEPER_STRICT, diagnostic,
                       &gatekeeper_result);
@@ -518,7 +518,7 @@ DSL_IR_Refine_Native_Value_Types
             ++local_result.rollback_count;
         }
         FmtAssert(DSL_IR_Image_Validate(diagnostic) &&
-                  DSL_Region_Verify_PU(pu_info, diagnostic),
+                  DSL_validate_active_pu_boundaries(pu_info, tree, diagnostic),
                   ("DSL shape retype rollback failed"));
         if (result != NULL)
             *result = local_result;

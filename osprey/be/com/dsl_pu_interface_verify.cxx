@@ -16,11 +16,34 @@
 #include "../../common/ir_image/dsl_image_service.h"
 #include "dsl_runtime_interface_internal.h"
 #include "dsl_ir_transaction_internal.h"
+#include "dsl_region.h"
 #include "pu_info.h"
 #include "strtab.h"
 #include "symtab.h"
 #include "wn.h"
 #include "wn_util.h"
+
+/* Establish local ST residency before invoking checks that dereference PU
+ * symbols. Shape admission and rollback share this read-only boundary. */
+BOOL
+DSL_validate_active_pu_boundaries (PU_Info *pu, WN *tree, FILE *diagnostic)
+{
+    if (pu == NULL || tree == NULL || Current_PU_Info != pu ||
+        PU_Info_tree_ptr(pu) != tree ||
+        !DSL_IR_Image_Current_PU_Is(PU_Info_proc_sym(pu)) ||
+        WN_operator(tree) != OPR_FUNC_ENTRY ||
+        WN_st_idx(tree) != PU_Info_proc_sym(pu) ||
+        CURRENT_SYMTAB <= GLOBAL_SYMTAB ||
+        Scope_tab[CURRENT_SYMTAB].st == NULL ||
+        ST_st_idx(Scope_tab[CURRENT_SYMTAB].st) != PU_Info_proc_sym(pu)) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic, "DSL active PU boundary has invalid context\n");
+        return FALSE;
+    }
+    return DSL_Call_ABI_Image_Validate_PU(pu, diagnostic) &&
+           DSL_PU_Interface_Image_Validate_PU(pu, diagnostic) &&
+           DSL_Region_Verify_PU(pu, diagnostic);
+}
 
 /*
  * Validate one persisted runtime value projection independently of an active
