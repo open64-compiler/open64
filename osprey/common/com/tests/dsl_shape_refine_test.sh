@@ -27,6 +27,9 @@ done
 mkdir -p "$artifact_dir"
 find "$artifact_dir" -mindepth 1 -maxdepth 1 -type f -delete
 
+OPEN64_DSL_SHAPE_SYMBOLIC_MAPPING_TEST=1 \
+  "$producer" >"$artifact_dir/symbolic-mapping.log" 2>&1
+
 printf '%s\n' \
   "OPEN64_DSL_SHAPE_SP10_BEFORE_ARTIFACT=$before_image $producer" \
   "$ir_b2a -st -src $before_image $before_trace" \

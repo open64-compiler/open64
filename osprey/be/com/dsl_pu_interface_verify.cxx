@@ -72,14 +72,20 @@ DSL_shape_formal_mapping_valid (PU_Info *pu, const DSL_IR_VALUE_RECORD &value,
         DSL_CALL_ARGUMENT_RECORD argument;
         DSL_CALLSITE_METADATA_RECORD callsite;
         DSL_IR_VALUE_RECORD actual;
+        DSL_RETIRED_FORMAL_RECORD retired_formal;
+        DSL_RETIRED_CALL_ARGUMENT_RECORD retired_argument;
         DSL_PU_SOURCE_IDENTITY_RECORD source_identity;
         DSL_PU_SOURCE_IDENTITY_RECORD destination_identity;
         return DSL_PU_Interface_Image_Find_Formal(owner, ordinal, &formal) &&
                formal.formal_value_id == value.id &&
                formal.formal_st == value.st && formal.formal_ty == ty &&
+               !DSL_Program_Interface_Image_Find_Retired_Formal
+                   (formal.id, &retired_formal) &&
                DSL_Call_ABI_Image_Callee_Formal_Count(owner, ordinal) == 1 &&
                DSL_Call_ABI_Image_Get_Callee_Formal_Argument
                    (owner, ordinal, 0, &argument) &&
+               !DSL_Program_Interface_Image_Find_Retired_Call
+                   (argument.id, &retired_argument) &&
                argument.flags == 0 && argument.semantic_role != STR_IDX_ZERO &&
                argument.semantic_role < STR_Table_Size() &&
                strcmp(Index_To_Str(argument.semantic_role), "shape_mapping") == 0 &&
@@ -89,6 +95,7 @@ DSL_shape_formal_mapping_valid (PU_Info *pu, const DSL_IR_VALUE_RECORD &value,
                DSL_Call_Image_Find_PU_Identity(owner, &destination_identity) &&
                DSL_IR_Image_Get_Value(argument.argument_value_id, &actual) &&
                actual.flags == 0 && actual.ty == ty &&
+               actual.name < STR_Table_Size() &&
                DSL_IR_Image_Value_Belongs_To_PU(actual, source);
     }
     return FALSE;
@@ -101,7 +108,8 @@ DSL_shape_value_has_source (PU_Info *pu, const DSL_IR_VALUE_RECORD &value,
                             TY_IDX ty, ST_IDX source,
                             std::vector<DSL_IR_VALUE_ID> *path)
 {
-    if (!DSL_IR_Image_Value_Belongs_To_PU(value, PU_Info_proc_sym(pu)) ||
+    if (value.name >= STR_Table_Size() ||
+        !DSL_IR_Image_Value_Belongs_To_PU(value, PU_Info_proc_sym(pu)) ||
         std::find(path->begin(), path->end(), value.id) != path->end())
         return FALSE;
     if (value.producer_node_id == DSL_IR_NODE_INVALID_ID)

@@ -230,12 +230,83 @@ Verify_Multi_PU_Refinement (BOOL reverse, BOOL before)
     return TRUE;
 }
 
+/* Build one reviewed caller-to-formal proof and check that the same shape
+ * is rejected on either side of the role change when the role is absent. */
+static BOOL
+Verify_Reviewed_Symbolic_Mapping (void)
+{
+    DSL_BUILDER_PROGRAM_UNIT caller = DSL_Builder_Create_Minimal_PU("wp6_source");
+    if (caller == NULL)
+        return FALSE;
+    DSL_BUILDER_PU_SOURCE_IDENTITY identity;
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "wp6.source";
+    identity.defining_module = "wp6";
+    identity.defining_file = __FILE__;
+    identity.defining_line = __LINE__;
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    const UINT32 caller_file = DSL_Builder_Register_Source_File(caller, __FILE__);
+    position.file_id = caller_file;
+    position.line = __LINE__;
+    position.statement_begin = 1;
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Initialize_Descriptor(&descriptor, "[2,n]", "activation");
+    TY_IDX ty = DSL_Builder_Intern_Tensor_Type
+                    ("wp6_symbolic", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    DSL_BUILDER_VALUE actual =
+        DSL_Builder_Create_Model_Input("wp6_actual", ty, 0);
+    if (caller_file == 0 || ty == TY_IDX_ZERO || actual == NULL ||
+        !DSL_Builder_Set_PU_Source_Identity(caller, &identity) ||
+        !DSL_Builder_Set_Value_Source_Position(actual, &position) ||
+        !DSL_Builder_Append_PU_Value(caller, actual))
+        return FALSE;
+
+    DSL_BUILDER_PROGRAM_UNIT callee = DSL_Builder_Create_Minimal_PU("wp6_destination");
+    if (callee == NULL)
+        return FALSE;
+    identity.canonical_definition_name = "wp6.destination";
+    identity.defining_line = __LINE__;
+    position.file_id = DSL_Builder_Register_Source_File(callee, __FILE__);
+    position.line = __LINE__;
+    DSL_BUILDER_VALUE formal =
+        DSL_Builder_Declare_PU_Formal(callee, "wp6_formal", 0, ty, &position);
+    if (formal == NULL || !DSL_Builder_Set_PU_Source_Identity(callee, &identity) ||
+        !DSL_Builder_Return_PU_Values(callee, NULL, 0))
+        return FALSE;
+    const DSL_IR_VALUE_ID formal_id = DSL_Builder_Get_Value_Image_Id(formal);
+    if (DSL_validate_shape_value_provenance(callee, formal_id, ty))
+        return FALSE;
+
+    DSL_BUILDER_CALLSITE_INFO callsite;
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "WP6Destination";
+    callsite.instance_path = "model.wp6_destination";
+    callsite.context_identity = "wp6.source";
+    callsite.call_ordinal = 1;
+    callsite.source_position = position;
+    callsite.source_position.file_id = caller_file;
+    DSL_BUILDER_CALL call = DSL_Builder_Create_PU_Call
+                              (caller, callee, &actual, 1, NULL, 0, &callsite);
+    if (call == NULL || !DSL_Builder_Select_PU(callee) ||
+        DSL_validate_shape_value_provenance(callee, formal_id, ty) ||
+        !DSL_Builder_Select_PU(caller) ||
+        !DSL_Builder_Set_PU_Call_Argument_Role(call, 0, 0, "shape_mapping") ||
+        !DSL_Builder_Select_PU(callee) ||
+        !DSL_validate_shape_value_provenance(callee, formal_id, ty))
+        return FALSE;
+    puts("SP10 reviewed symbolic mapping passed");
+    return TRUE;
+}
+
 int
 main(void)
 {
     Initialize_Test_Context();
     DSL_Builder_Begin_Program();
     DSL_Opcode_Register_Common_Substrate();
+    if (getenv("OPEN64_DSL_SHAPE_SYMBOLIC_MAPPING_TEST") != NULL)
+        return Verify_Reviewed_Symbolic_Mapping() ? 0 : 1;
     const char *multi_pu = getenv("OPEN64_DSL_SHAPE_MULTI_PU_MODE");
     if (multi_pu != NULL)
         return Verify_Multi_PU_Refinement(strncmp(multi_pu, "ba", 2) == 0,
