@@ -624,6 +624,13 @@ extern BOOL TY_tensor_attribute_at (TY_IDX ty, UINT32 ordinal,
 				   const char **value,
 				   TY_DSL_BIND_STATE *state);
 extern BOOL TY_tensor_attributes_are_equivalent (TY_IDX ty1, TY_IDX ty2);
+/*
+ * Transaction authorization helper. Canonical type equivalence deliberately
+ * excludes value-context fields; same-value shape retyping must nevertheless
+ * preserve every stored field other than logical_shape.
+ */
+extern BOOL TY_tensor_preserves_non_shape_state (TY_IDX old_ty,
+                                                 TY_IDX refined_ty);
 extern BOOL TY_tensor_is_canonical (TY_IDX ty);
 extern BOOL TY_tensor_seal (TY_IDX ty);
 extern TY_IDX TY_Intern_Tensor_Type

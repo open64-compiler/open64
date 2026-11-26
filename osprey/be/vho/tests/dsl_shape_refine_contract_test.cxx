@@ -219,6 +219,13 @@ main(void)
     BOOL created = FALSE;
     TY_IDX refined_ty = TY_Intern_Refined_Tensor_Type
                             (pending_ty, &refinement, &created);
+    TY_IDX const_refined_ty = refined_ty;
+    Set_TY_is_const(const_refined_ty);
+    if (!TY_tensor_preserves_non_shape_state(pending_ty, refined_ty) ||
+        TY_tensor_preserves_non_shape_state(pending_ty, const_refined_ty)) {
+        fprintf(stderr, "SP5 shape authorization ignored TY qualifiers\n");
+        return 1;
+    }
     DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST requests[2];
     requests[0].owner_pu_st = PU_Info_proc_sym(pu);
     requests[0].value_id = DSL_Builder_Get_Value_Image_Id(add);

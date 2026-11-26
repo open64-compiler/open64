@@ -124,33 +124,15 @@ DSL_IR_Retype_Scan_Tree
 /*
  * Prove that refined_ty is a monotonic shape-only refinement of old_ty. The
  * new canonical tensor type may fill unknown dimensions, but it must preserve
- * rank, every known dimension, element type, dtype, traits, layout, sharding,
- * placement, memory, quantization, and alignment. Runtime-state and lineage
- * fields are not compared here; this predicate alone is not a proof that every
- * nonshape descriptor fact is identical. No conversion is performed.
+ * rank, every known dimension, and all non-shape TY and extension state.
+ * Failure leaves the caller's types untouched.
  */
 static BOOL
 DSL_IR_Retype_Type_Valid (TY_IDX old_ty, TY_IDX refined_ty)
 {
-    if (old_ty == refined_ty || !TY_tensor_is_canonical(old_ty) ||
-        !TY_tensor_is_canonical(refined_ty) ||
-        !DSL_Shape_Tensor_Core_Complete(refined_ty) ||
-        TY_align(old_ty) != TY_align(refined_ty))
-        return FALSE;
-
-    TENSOR_DESCRIPTOR_RECORD old_descriptor;
-    TENSOR_DESCRIPTOR_RECORD refined_descriptor;
-    if (!TY_get_tensor_descriptor_record(old_ty, &old_descriptor) ||
-        !TY_get_tensor_descriptor_record(refined_ty, &refined_descriptor) ||
-        old_descriptor.element_ty != refined_descriptor.element_ty ||
-        old_descriptor.kind != refined_descriptor.kind ||
-        old_descriptor.dtype != refined_descriptor.dtype ||
-        old_descriptor.traits != refined_descriptor.traits ||
-        old_descriptor.layout != refined_descriptor.layout ||
-        old_descriptor.sharding != refined_descriptor.sharding ||
-        old_descriptor.placement != refined_descriptor.placement ||
-        old_descriptor.memory != refined_descriptor.memory ||
-        old_descriptor.quantization != refined_descriptor.quantization)
+    if (old_ty == refined_ty ||
+        !TY_tensor_preserves_non_shape_state(old_ty, refined_ty) ||
+        !DSL_Shape_Tensor_Core_Complete(refined_ty))
         return FALSE;
 
     DSL_SHAPE_FACT old_fact;
