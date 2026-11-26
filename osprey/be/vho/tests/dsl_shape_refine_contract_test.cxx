@@ -115,12 +115,131 @@ Shape_Trigger_Names_Are_Stable (void)
                       (VHO_DSL_SHAPE_TRIGGER_COUNT), "unknown") == 0;
 }
 
+/* The producer owns each PU's builder scope. Use identical symbol creation
+ * order so the two result symbols deliberately alias as raw local ST indexes. */
+static DSL_BUILDER_VALUE
+Build_Multi_PU_Result (DSL_BUILDER_PROGRAM_UNIT pu, TY_IDX input_ty,
+                       TY_IDX pending_ty)
+{
+    DSL_BUILDER_VALUE input = DSL_Builder_Create_Model_Input
+                                  ("wp5_input", input_ty, 0);
+    if (input == NULL || !DSL_Builder_Append_PU_Value(pu, input))
+        return NULL;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    DSL_BUILDER_VALUE kids[2] = { input, input };
+    DSL_BUILDER_VALUE result = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), DSL_OPCODE_COMMON_ADD, 1),
+         1, kids, 2, &attribute, 1, "wp5_result", pending_ty);
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    position.line = __LINE__;
+    position.statement_begin = 1;
+    if (result == NULL || position.file_id == 0 ||
+        !DSL_Builder_Set_Value_Source_Position(input, &position) ||
+        !DSL_Builder_Set_Value_Source_Position(result, &position) ||
+        !DSL_Builder_Append_PU_Value(pu, result) ||
+        !DSL_Builder_Set_Tensor_Unique_Ownership(WN_st_idx(result)))
+        return NULL;
+    return result;
+}
+
+/* Exercise two driver-selected PUs, including a failed second transaction.
+ * Separate invocations test both visitation orders and can publish either
+ * the original mapped image or the successfully refined image. */
+static BOOL
+Verify_Multi_PU_Refinement (BOOL reverse, BOOL before)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Initialize_Descriptor(&descriptor, "[2,<pending>]", "derived_activation");
+    TY_IDX pending_ty = DSL_Builder_Intern_Tensor_Type
+                            ("wp5_pending", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    const char *names[] = { "shape_wp5_a", "shape_wp5_b" };
+    const char *shapes[] = { "[2,3]", "[2,5]" };
+    DSL_BUILDER_PROGRAM_UNIT pus[2];
+    DSL_BUILDER_VALUE values[2];
+    if (pending_ty == TY_IDX_ZERO)
+        return FALSE;
+    for (UINT32 ordinal = 0; ordinal < 2; ++ordinal) {
+        const UINT32 index = reverse ? 1 - ordinal : ordinal;
+        Initialize_Descriptor(&descriptor, shapes[index], "activation");
+        TY_IDX input_ty = DSL_Builder_Intern_Tensor_Type
+                              (names[index], MTYPE_To_TY(MTYPE_F4), &descriptor);
+        pus[index] = DSL_Builder_Create_Minimal_PU(names[index]);
+        if (input_ty == TY_IDX_ZERO || pus[index] == NULL)
+            return FALSE;
+        values[index] = Build_Multi_PU_Result(pus[index], input_ty, pending_ty);
+        if (values[index] == NULL)
+            return FALSE;
+    }
+    if (WN_st_idx(values[0]) != WN_st_idx(values[1]) ||
+        PU_Info_proc_sym(pus[0]) == PU_Info_proc_sym(pus[1]))
+        return FALSE;
+
+    const UINT32 first = reverse ? 1 : 0;
+    const UINT32 second = 1 - first;
+    if (!before) {
+        VHO_DSL_SHAPE_REFINE_RESULT result;
+        if (!DSL_Builder_Select_PU(pus[first]) ||
+            !VHO_DSL_Shape_Refine_Program_Unit
+                 (pus[first], PU_Info_tree_ptr(pus[first]), TRUE, stderr,
+                  &result) ||
+            result.retyped_value_count != 1)
+            return FALSE;
+        TY_IDX first_ty = WN_ty(values[first]);
+        if (!DSL_Builder_Select_PU(pus[second]) ||
+            !Value_Type_Is(values[second], pending_ty))
+            return FALSE;
+        setenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE", "1", 1);
+        BOOL accepted = VHO_DSL_Shape_Refine_Program_Unit
+                            (pus[second], PU_Info_tree_ptr(pus[second]), TRUE,
+                             stderr, &result);
+        unsetenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE");
+        if (accepted || result.rollback_count != 1 ||
+            !Value_Type_Is(values[second], pending_ty) ||
+            !DSL_Builder_Select_PU(pus[first]) ||
+            !Value_Type_Is(values[first], first_ty) ||
+            !DSL_Builder_Select_PU(pus[second]) ||
+            !VHO_DSL_Shape_Refine_Program_Unit
+                 (pus[second], PU_Info_tree_ptr(pus[second]), TRUE, stderr,
+                  &result) ||
+            result.retyped_value_count != 1)
+            return FALSE;
+        for (UINT32 index = 0; index < 2; ++index) {
+            TY_IDX ty = WN_ty(values[index]);
+            const char *shape = TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_SHAPE);
+            if (!DSL_Builder_Select_PU(pus[index]) ||
+                !Value_Type_Is(values[index], ty) || shape == NULL ||
+                strcmp(shape, shapes[index]) != 0)
+                return FALSE;
+        }
+    }
+    const char *artifact = getenv("OPEN64_DSL_SHAPE_MULTI_PU_ARTIFACT");
+    if (artifact != NULL && artifact[0] != '\0') {
+        DSL_BUILDER_MAPPED_IMAGE_REQUEST image;
+        image.path = artifact;
+        image.flags = 0;
+        if (!DSL_Builder_Finalize_Mapped_Image(&image))
+            return FALSE;
+    }
+    printf("SP10 multi-PU isolation passed: %s %s\n",
+           reverse ? "BA" : "AB", before ? "before" : "after");
+    return TRUE;
+}
+
 int
 main(void)
 {
     Initialize_Test_Context();
     DSL_Builder_Begin_Program();
     DSL_Opcode_Register_Common_Substrate();
+    const char *multi_pu = getenv("OPEN64_DSL_SHAPE_MULTI_PU_MODE");
+    if (multi_pu != NULL)
+        return Verify_Multi_PU_Refinement(strncmp(multi_pu, "ba", 2) == 0,
+                                          strstr(multi_pu, "before") != NULL)
+                   ? 0 : 1;
 
     DSL_BUILDER_TENSOR_DESCRIPTOR input_descriptor;
     DSL_BUILDER_TENSOR_DESCRIPTOR pending_descriptor;
