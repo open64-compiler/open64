@@ -228,6 +228,19 @@ main(void)
     requests[1].value_id = DSL_Builder_Get_Value_Image_Id(relu);
     requests[1].expected_old_ty = pending_ty;
     requests[1].refined_ty = refined_ty;
+
+    // Reject the whole batch when a later request names a different owner.
+    requests[1].owner_pu_st = ST_IDX_ZERO;
+    DSL_IR_VALUE_TYPE_REFINEMENT_RESULT rejected;
+    if (DSL_IR_Refine_Native_Value_Types(pu, requests, 2, NULL, &rejected) ||
+        rejected.updated_st_count != 0 || rejected.updated_wn_count != 0 ||
+        rejected.updated_value_count != 0 || rejected.rollback_count != 0 ||
+        !Value_Type_Is(add, pending_ty) || !Value_Type_Is(relu, pending_ty)) {
+        fprintf(stderr, "SP5 foreign-owner batch was not rejected atomically\n");
+        return 1;
+    }
+    requests[1].owner_pu_st = PU_Info_proc_sym(pu);
+
     DSL_IR_VALUE_TYPE_REFINEMENT_RESULT forced_failure;
     setenv("OPEN64_DSL_SHAPE_RETYPE_TEST_POSTFAIL", "1", 1);
     BOOL unexpectedly_committed = DSL_IR_Refine_Native_Value_Types

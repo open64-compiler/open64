@@ -20,6 +20,7 @@
 #include "dsl_gatekeeper.h"
 #include "dsl_shape.h"
 #include "dsl_ir_image.h"
+#include "dsl_ir_rewrite_queries_internal.h"
 #include "dsl_region.h"
 #include "pu_info.h"
 #include "symtab.h"
@@ -393,10 +394,11 @@ DSL_IR_Refine_Native_Value_Types
     if (result != NULL)
         *result = local_result;
     WN *tree = pu_info == NULL ? NULL : PU_Info_tree_ptr(pu_info);
-    if (pu_info == NULL || tree == NULL) {
+    if (pu_info == NULL || tree == NULL || Current_PU_Info != pu_info ||
+        !DSL_IR_Retype_Current_PU_Is(PU_Info_proc_sym(pu_info))) {
         return DSL_IR_Retype_Report
                    (diagnostic, "DSL-SHAPE-RETYPE-002", 0,
-                    "PU or its WHIRL tree is unavailable");
+                    "active PU or its WHIRL tree is unavailable");
     }
     if (requests == NULL || request_count == 0) {
         if (result != NULL)
@@ -410,15 +412,36 @@ DSL_IR_Refine_Native_Value_Types
                    (diagnostic, "DSL-SHAPE-RETYPE-006", 0,
                     "active REGION image is invalid before retyping");
 
-    /* Preflight every value so the type transaction cannot partially apply. */
-    std::vector<DSL_IR_RETYPE_JOURNAL> journals(request_count);
+    /* Resolve the entire batch before using any PU-local ST index. */
+    const ST_IDX owner_pu_st = PU_Info_proc_sym(pu_info);
     for (UINT32 i = 0; i < request_count; ++i) {
+        const DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST &request = requests[i];
+        if (request.value_id == DSL_IR_VALUE_INVALID_ID ||
+            request.expected_old_ty == request.refined_ty)
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-001", request.value_id,
+                        "request is malformed or has no type change");
+        DSL_IR_VALUE_RECORD value;
+        if (!DSL_IR_Image_Get_Value(request.value_id, &value))
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-003", request.value_id,
+                        "logical value does not exist");
+        if (request.owner_pu_st != owner_pu_st ||
+            !DSL_IR_Image_Value_Belongs_To_PU(value, owner_pu_st))
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-002", request.value_id,
+                        "logical value or request is not owned by the active PU");
         for (UINT32 prior = 0; prior < i; ++prior) {
             if (requests[prior].value_id == requests[i].value_id)
                 return DSL_IR_Retype_Report
                            (diagnostic, "DSL-SHAPE-RETYPE-001",
                             requests[i].value_id, "duplicate value request");
         }
+    }
+
+    /* Build the full physical def/use journal before the first write. */
+    std::vector<DSL_IR_RETYPE_JOURNAL> journals(request_count);
+    for (UINT32 i = 0; i < request_count; ++i) {
         if (!DSL_IR_Retype_Preflight
                  (pu_info, requests[i], diagnostic, &journals[i]))
             return FALSE;
