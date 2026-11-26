@@ -14,6 +14,7 @@
 
 #include "dsl_pu_interface_verify.h"
 #include "dsl_pu_interface_verify_internal.h"
+#include "dsl_program_interface_internal.h"
 #include "../../common/ir_image/dsl_image_service.h"
 #include "dsl_runtime_interface_internal.h"
 #include "dsl_ir_transaction_internal.h"
@@ -187,6 +188,62 @@ DSL_validate_shape_value_provenance (PU_Info *pu, DSL_IR_VALUE_ID value_id,
            DSL_shape_value_has_source(pu, value, proposed_ty, source, &path);
 }
 
+/* Collect matching native result stores and returns from one active tree.
+ * These are structural checks. Control-flow legality belongs to its phase. */
+static void
+DSL_scan_native_result (WN *wn, ST_IDX st, TY_IDX ty,
+                        BOOL *stored, BOOL *returned)
+{
+    if (wn == NULL || (*stored && *returned))
+        return;
+    const OPERATOR opr = WN_operator(wn);
+    if (opr == OPR_RETURN || opr == OPR_RETURN_VAL)
+        *returned = TRUE;
+    if (opr == OPR_STID && WN_st_idx(wn) == st && WN_ty(wn) == ty &&
+        WN_kid0(wn) != NULL && WN_ty(WN_kid0(wn)) == ty)
+        *stored = TRUE;
+    if (opr == OPR_BLOCK) {
+        for (WN *stmt = WN_first(wn); stmt != NULL; stmt = WN_next(stmt))
+            DSL_scan_native_result(stmt, st, ty, stored, returned);
+    } else {
+        for (INT32 i = 0; i < WN_kid_count(wn); ++i)
+            DSL_scan_native_result(WN_kid(wn, i), st, ty, stored, returned);
+    }
+}
+
+/* Validate the source-image hidden result suffix after physical formal
+ * checks. Runtime projections retain their existing verifier contract. */
+static BOOL
+DSL_verify_native_result_formals (PU_Info *pu, WN *entry, FILE *diagnostic)
+{
+    const ST_IDX owner = PU_Info_proc_sym(pu);
+    if (DSL_Program_Interface_PU_Is_Committed(owner))
+        return TRUE;
+    BOOL saw_result = FALSE;
+    for (INT32 i = 0; i < WN_num_formals(entry); ++i) {
+        DSL_PU_FORMAL_RECORD formal;
+        if (!DSL_PU_Interface_Image_Find_Formal(owner, i, &formal))
+            continue;
+        DSL_RETIRED_FORMAL_RECORD retired;
+        if (DSL_Program_Interface_Image_Find_Retired_Formal(formal.id, &retired))
+            continue;
+        BOOL result = ST_sclass(St_Table[formal.formal_st]) == SCLASS_FORMAL_REF;
+        BOOL stored = FALSE;
+        BOOL returned = FALSE;
+        if (result)
+            DSL_scan_native_result(entry, formal.formal_st, formal.formal_ty,
+                                   &stored, &returned);
+        if ((saw_result && !result) || (result && (!stored || !returned))) {
+            if (diagnostic != NULL)
+                fprintf(diagnostic, "DSL native result formal %u is invalid\n",
+                        formal.id);
+            return FALSE;
+        }
+        saw_result = saw_result || result;
+    }
+    return TRUE;
+}
+
 /* Establish local ST residency before invoking checks that dereference PU
  * symbols. Shape admission and rollback share this read-only boundary. */
 BOOL
@@ -206,6 +263,7 @@ DSL_validate_active_pu_boundaries (PU_Info *pu, WN *tree, FILE *diagnostic)
     }
     return DSL_Call_ABI_Image_Validate_PU(pu, diagnostic) &&
            DSL_PU_Interface_Image_Validate_PU(pu, diagnostic) &&
+           DSL_verify_native_result_formals(pu, tree, diagnostic) &&
            DSL_region_verify_active_pu(pu, diagnostic);
 }
 
