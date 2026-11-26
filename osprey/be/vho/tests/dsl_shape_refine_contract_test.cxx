@@ -263,6 +263,27 @@ main(void)
         return 1;
     }
 
+    // Every WN, ST, and logical value write must be independently reversible.
+    const UINT32 write_count = forced_failure.updated_wn_count +
+                               forced_failure.updated_st_count +
+                               forced_failure.updated_value_count;
+    for (UINT32 write = 1; write <= write_count; ++write) {
+        char ordinal[32];
+        snprintf(ordinal, sizeof(ordinal), "%u", write);
+        setenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE", ordinal, 1);
+        DSL_IR_VALUE_TYPE_REFINEMENT_RESULT partial_failure;
+        BOOL committed = DSL_IR_Refine_Native_Value_Types
+                             (pu, requests, 2, NULL, &partial_failure);
+        unsetenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE");
+        if (committed || partial_failure.rollback_count == 0 ||
+            !Value_Type_Is(add, pending_ty) || !Value_Type_Is(relu, pending_ty) ||
+            WN_ty(WN_kid0(WN_kid0(relu))) != pending_ty ||
+            ST_type(St_Table[unrelated]) != pending_ty) {
+            fprintf(stderr, "SP5 rollback failed at write %u\n", write);
+            return 1;
+        }
+    }
+
     VHO_DSL_SHAPE_REFINE_RESULT refined;
     if (!VHO_DSL_Shape_Refine_Program_Unit
              (pu, PU_Info_tree_ptr(pu), TRUE, stderr, &refined) ||

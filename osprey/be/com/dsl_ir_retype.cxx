@@ -60,6 +60,7 @@ typedef struct {
     DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
     WN *definition;
     std::vector<WN *> reads;
+    UINT32 applied_write_count;
 } DSL_IR_RETYPE_JOURNAL;
 
 /*
@@ -308,28 +309,67 @@ DSL_IR_Retype_Preflight
     journal->opcode = opcode;
     journal->definition = use.definition;
     journal->reads.swap(use.reads);
+    journal->applied_write_count = 0;
     return TRUE;
 }
 
 /*
- * Apply one already-preflighted journal in either direction. It changes all
- * admitted LDID types, the defining STID type, the result ST type, and the
- * logical DSL value type. The public transaction calls it old-to-refined for
- * commit and refined-to-old in reverse journal order for rollback.
+ * Record a completed write in the journal. A positive countdown injects a
+ * test failure at that write, leaving the journal ready for rollback.
  */
-static void
+static BOOL
+DSL_IR_Retype_Record_Write
+        (DSL_IR_RETYPE_JOURNAL *journal, unsigned long *writes_remaining)
+{
+    ++journal->applied_write_count;
+    return *writes_remaining == 0 || --*writes_remaining != 0;
+}
+
+/* Commit one preflighted entry. Failure leaves the exact written prefix in
+ * the journal for the caller to undo in reverse order. */
+static BOOL
 DSL_IR_Retype_Apply
         (DSL_IR_RETYPE_JOURNAL *journal,
-         TY_IDX from_ty,
-         TY_IDX to_ty)
+         unsigned long *writes_remaining)
 {
-    for (UINT32 i = 0; i < journal->reads.size(); ++i)
+    const TY_IDX to_ty = journal->request.refined_ty;
+    for (UINT32 i = 0; i < journal->reads.size(); ++i) {
         WN_set_ty(journal->reads[i], to_ty);
+        if (!DSL_IR_Retype_Record_Write(journal, writes_remaining))
+            return FALSE;
+    }
     WN_set_ty(journal->definition, to_ty);
+    if (!DSL_IR_Retype_Record_Write(journal, writes_remaining))
+        return FALSE;
     Set_ST_type(St_Table[journal->value.st], to_ty);
-    BOOL changed = DSL_IR_Image_Retype_Value
-                       (journal->value.id, from_ty, to_ty);
-    FmtAssert(changed, ("preflighted DSL value retype failed"));
+    if (!DSL_IR_Retype_Record_Write(journal, writes_remaining))
+        return FALSE;
+    return DSL_IR_Image_Retype_Value
+               (journal->value.id, journal->request.expected_old_ty, to_ty) &&
+           DSL_IR_Retype_Record_Write(journal, writes_remaining);
+}
+
+/* Undo only writes recorded for this request, in reverse commit order.
+ * The transaction owns the active PU until every applied entry is restored. */
+static void
+DSL_IR_Retype_Rollback (const DSL_IR_RETYPE_JOURNAL &journal)
+{
+    const UINT32 read_count = journal.reads.size();
+    const TY_IDX old_ty = journal.request.expected_old_ty;
+    if (journal.applied_write_count > read_count + 2) {
+        BOOL restored = DSL_IR_Image_Retype_Value
+                            (journal.value.id, journal.request.refined_ty,
+                             old_ty);
+        FmtAssert(restored, ("DSL logical value retype rollback failed"));
+    }
+    if (journal.applied_write_count > read_count + 1)
+        Set_ST_type(St_Table[journal.value.st], old_ty);
+    if (journal.applied_write_count > read_count)
+        WN_set_ty(journal.definition, old_ty);
+    UINT32 reads_written = journal.applied_write_count < read_count ?
+                           journal.applied_write_count : read_count;
+    while (reads_written != 0)
+        WN_set_ty(journal.reads[--reads_written], old_ty);
 }
 
 /*
@@ -357,7 +397,7 @@ DSL_IR_Retype_Apply
  *
  * All requests and REGION state are preflighted before the first mutation.
  * After commit, managed-image, REGION, and strict gatekeeper verification run
- * together. A reported postcheck failure reverses recorded type assignments
+ * together. A reported write or postcheck failure reverses type assignments
  * and asserts restored image/REGION validity. Optional result is cleared on
  * entry and reports attempted/rollback counts on that FALSE path. This is not
  * general exception recovery: allocation/assertion failures are uncaught, and
@@ -437,10 +477,24 @@ DSL_IR_Refine_Native_Value_Types
 
     /* Apply WN, ST, and logical-image type changes as one transaction. */
     local_result.request_count = request_count;
+    const char *fail_after_write =
+        getenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE");
+    unsigned long writes_remaining = 0;
+    if (fail_after_write != NULL && fail_after_write[0] >= '1' &&
+        fail_after_write[0] <= '9') {
+        char *end = NULL;
+        writes_remaining = strtoul(fail_after_write, &end, 10);
+        if (*end != '\0')
+            writes_remaining = 0;
+    }
+    UINT32 attempted_count = 0;
+    BOOL committed = TRUE;
     for (UINT32 i = 0; i < request_count; ++i) {
-        DSL_IR_Retype_Apply
-            (&journals[i], journals[i].request.expected_old_ty,
-             journals[i].request.refined_ty);
+        ++attempted_count;
+        if (!DSL_IR_Retype_Apply(&journals[i], &writes_remaining)) {
+            committed = FALSE;
+            break;
+        }
         ++local_result.updated_st_count;
         local_result.updated_wn_count += 1 + journals[i].reads.size();
         ++local_result.updated_value_count;
@@ -449,7 +503,7 @@ DSL_IR_Refine_Native_Value_Types
     DSL_GATEKEEPER_RESULT gatekeeper_result;
     const char *force_post_failure =
         getenv("OPEN64_DSL_SHAPE_RETYPE_TEST_POSTFAIL");
-    BOOL valid = (force_post_failure == NULL ||
+    BOOL valid = committed && (force_post_failure == NULL ||
                   strcmp(force_post_failure, "1") != 0) &&
                  DSL_IR_Image_Validate(diagnostic) &&
                  DSL_Region_Verify_PU(pu_info, diagnostic) &&
@@ -458,11 +512,9 @@ DSL_IR_Refine_Native_Value_Types
                       &gatekeeper_result);
     if (!valid) {
         /* Reverse order restores the exact pre-transaction type graph. */
-        for (UINT32 i = request_count; i != 0; --i) {
+        for (UINT32 i = attempted_count; i != 0; --i) {
             DSL_IR_RETYPE_JOURNAL &journal = journals[i - 1];
-            DSL_IR_Retype_Apply
-                (&journal, journal.request.refined_ty,
-                 journal.request.expected_old_ty);
+            DSL_IR_Retype_Rollback(journal);
             ++local_result.rollback_count;
         }
         FmtAssert(DSL_IR_Image_Validate(diagnostic) &&
@@ -472,7 +524,9 @@ DSL_IR_Refine_Native_Value_Types
             *result = local_result;
         return DSL_IR_Retype_Report
                    (diagnostic, "DSL-SHAPE-RETYPE-007", 0,
-                    "strict post-verification failed; transaction rolled back");
+                    committed ?
+                    "strict post-verification failed; transaction rolled back" :
+                    "retype write failed; transaction rolled back");
     }
     if (result != NULL)
         *result = local_result;
