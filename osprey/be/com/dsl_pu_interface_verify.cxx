@@ -42,7 +42,7 @@ DSL_validate_active_pu_boundaries (PU_Info *pu, WN *tree, FILE *diagnostic)
     }
     return DSL_Call_ABI_Image_Validate_PU(pu, diagnostic) &&
            DSL_PU_Interface_Image_Validate_PU(pu, diagnostic) &&
-           DSL_Region_Verify_PU(pu, diagnostic);
+           DSL_region_verify_active_pu(pu, diagnostic);
 }
 
 /*
