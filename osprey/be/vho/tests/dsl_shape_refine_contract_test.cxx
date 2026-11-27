@@ -1,5 +1,7 @@
 /*
- * Contract test for mandatory VHO DSL tensor shape refinement.
+ * Native fixture for VHO shape admission, atomic retype and PU isolation.
+ * Publishes ordinary mapped WHIRL for independent reader verification.
+ * Design: doc/WHIRL-DSL-SHAPE-PROPAGATION-IMPLEMENTATION-PLAN.md.
  */
 
 #include <stdio.h>
@@ -29,15 +31,18 @@
 BOOL Run_vsaopt = FALSE;
 INT8 Debug_Level = 0;
 
+/* Satisfy the standalone error handler. The fixture owns no signal cleanup. */
 void
 Signal_Cleanup(INT sig) {}
 
+/* Supply the standalone error handler with an empty host-specific argument. */
 const char *
 Host_Format_Parm(INT kind, MEM_PTR parm)
 {
     return "";
 }
 
+/* Initialize compiler tables and error services once before constructing fixture PUs. */
 static void
 Initialize_Test_Context(void)
 {
@@ -55,6 +60,7 @@ Initialize_Test_Context(void)
     DST_Init(NULL, 0);
 }
 
+/* Fill caller-owned descriptor scratch with the fixture representation and shape. */
 static void
 Initialize_Descriptor
         (DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor,
@@ -74,6 +80,7 @@ Initialize_Descriptor
     descriptor->representation.quantization = "none";
 }
 
+/* Check agreement across WN, logical value and the active PU’s resident ST. */
 static BOOL
 Value_Type_Is (DSL_BUILDER_VALUE value, TY_IDX expected)
 {
@@ -86,6 +93,7 @@ Value_Type_Is (DSL_BUILDER_VALUE value, TY_IDX expected)
            record.ty == expected;
 }
 
+/* Check public trigger spelling and fallback without changing compiler state. */
 static BOOL
 Shape_Trigger_Names_Are_Stable (void)
 {
@@ -310,6 +318,7 @@ Verify_Reviewed_Symbolic_Mapping (void)
     return TRUE;
 }
 
+/* Run the selected isolated fixture and return failure before publishing invalid evidence. */
 int
 main(void)
 {
