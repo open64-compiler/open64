@@ -1,5 +1,7 @@
 /*
- * Contract test for mandatory VHO DSL tensor shape refinement.
+ * Native fixture for VHO shape admission, atomic retype and PU isolation.
+ * Publishes ordinary mapped WHIRL for independent reader verification.
+ * Design: doc/WHIRL-DSL-SHAPE-PROPAGATION-IMPLEMENTATION-PLAN.md.
  */
 
 #include <stdio.h>
@@ -21,6 +23,7 @@
 #include "config_targ_opt.h"
 #include "dwarf_DST_mem.h"
 #include "../../../common/ir_image/tests/dsl_image_owner_fixture.h"
+#include "dsl_pu_interface_verify.h"
 #include "dsl_gatekeeper.h"
 #include "dsl_region.h"
 #include "dsl_shape_refine.h"
@@ -28,15 +31,18 @@
 BOOL Run_vsaopt = FALSE;
 INT8 Debug_Level = 0;
 
+/* Satisfy the standalone error handler. The fixture owns no signal cleanup. */
 void
 Signal_Cleanup(INT sig) {}
 
+/* Supply the standalone error handler with an empty host-specific argument. */
 const char *
 Host_Format_Parm(INT kind, MEM_PTR parm)
 {
     return "";
 }
 
+/* Initialize compiler tables and error services once before constructing fixture PUs. */
 static void
 Initialize_Test_Context(void)
 {
@@ -54,6 +60,7 @@ Initialize_Test_Context(void)
     DST_Init(NULL, 0);
 }
 
+/* Fill caller-owned descriptor scratch with the fixture representation and shape. */
 static void
 Initialize_Descriptor
         (DSL_BUILDER_TENSOR_DESCRIPTOR *descriptor,
@@ -73,6 +80,7 @@ Initialize_Descriptor
     descriptor->representation.quantization = "none";
 }
 
+/* Check agreement across WN, logical value and the active PU’s resident ST. */
 static BOOL
 Value_Type_Is (DSL_BUILDER_VALUE value, TY_IDX expected)
 {
@@ -85,6 +93,7 @@ Value_Type_Is (DSL_BUILDER_VALUE value, TY_IDX expected)
            record.ty == expected;
 }
 
+/* Check public trigger spelling and fallback without changing compiler state. */
 static BOOL
 Shape_Trigger_Names_Are_Stable (void)
 {
@@ -115,12 +124,214 @@ Shape_Trigger_Names_Are_Stable (void)
                       (VHO_DSL_SHAPE_TRIGGER_COUNT), "unknown") == 0;
 }
 
+/* The producer owns each PU's builder scope. Use identical symbol creation
+ * order so the two result symbols deliberately alias as raw local ST indexes. */
+static DSL_BUILDER_VALUE
+Build_Multi_PU_Result (DSL_BUILDER_PROGRAM_UNIT pu, TY_IDX input_ty,
+                       TY_IDX pending_ty)
+{
+    DSL_BUILDER_VALUE input = DSL_Builder_Create_Model_Input
+                                  ("wp5_input", input_ty, 0);
+    if (input == NULL || !DSL_Builder_Append_PU_Value(pu, input))
+        return NULL;
+    DSL_BUILDER_OPERATOR_ATTRIBUTE attribute;
+    attribute.name = "attr.broadcast_rule";
+    attribute.value = "none";
+    DSL_BUILDER_VALUE kids[2] = { input, input };
+    DSL_BUILDER_VALUE result = DSL_Builder_Create_Operator_With_Result
+        (DSL_Opcode_Find(DSL_Domain_Find("common"), DSL_OPCODE_COMMON_ADD, 1),
+         1, kids, 2, &attribute, 1, "wp5_result", pending_ty);
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    position.file_id = DSL_Builder_Register_Source_File(pu, __FILE__);
+    position.line = __LINE__;
+    position.statement_begin = 1;
+    if (result == NULL || position.file_id == 0 ||
+        !DSL_Builder_Set_Value_Source_Position(input, &position) ||
+        !DSL_Builder_Set_Value_Source_Position(result, &position) ||
+        !DSL_Builder_Append_PU_Value(pu, result) ||
+        !DSL_Builder_Set_Tensor_Unique_Ownership(WN_st_idx(result)))
+        return NULL;
+    return result;
+}
+
+/* Exercise two driver-selected PUs, including a failed second transaction.
+ * Separate invocations test both visitation orders and can publish either
+ * the original mapped image or the successfully refined image. */
+static BOOL
+Verify_Multi_PU_Refinement (BOOL reverse, BOOL before)
+{
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Initialize_Descriptor(&descriptor, "[2,<pending>]", "derived_activation");
+    TY_IDX pending_ty = DSL_Builder_Intern_Tensor_Type
+                            ("wp5_pending", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    const char *names[] = { "shape_wp5_a", "shape_wp5_b" };
+    const char *shapes[] = { "[2,3]", "[2,5]" };
+    DSL_BUILDER_PROGRAM_UNIT pus[2];
+    DSL_BUILDER_VALUE values[2];
+    if (pending_ty == TY_IDX_ZERO)
+        return FALSE;
+    for (UINT32 ordinal = 0; ordinal < 2; ++ordinal) {
+        const UINT32 index = reverse ? 1 - ordinal : ordinal;
+        Initialize_Descriptor(&descriptor, shapes[index], "activation");
+        TY_IDX input_ty = DSL_Builder_Intern_Tensor_Type
+                              (names[index], MTYPE_To_TY(MTYPE_F4), &descriptor);
+        pus[index] = DSL_Builder_Create_Minimal_PU(names[index]);
+        if (input_ty == TY_IDX_ZERO || pus[index] == NULL)
+            return FALSE;
+        values[index] = Build_Multi_PU_Result(pus[index], input_ty, pending_ty);
+        if (values[index] == NULL)
+            return FALSE;
+    }
+    if (WN_st_idx(values[0]) != WN_st_idx(values[1]) ||
+        PU_Info_proc_sym(pus[0]) == PU_Info_proc_sym(pus[1]))
+        return FALSE;
+
+    const UINT32 first = reverse ? 1 : 0;
+    const UINT32 second = 1 - first;
+    if (!before) {
+        VHO_DSL_SHAPE_REFINE_RESULT result;
+        if (!DSL_Builder_Select_PU(pus[first]) ||
+            !VHO_DSL_Shape_Refine_Program_Unit
+                 (pus[first], PU_Info_tree_ptr(pus[first]), TRUE, stderr,
+                  &result) ||
+            result.retyped_value_count != 1)
+            return FALSE;
+        TY_IDX first_ty = WN_ty(values[first]);
+        if (!DSL_Builder_Select_PU(pus[second]) ||
+            !Value_Type_Is(values[second], pending_ty))
+            return FALSE;
+        setenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE", "1", 1);
+        BOOL accepted = VHO_DSL_Shape_Refine_Program_Unit
+                            (pus[second], PU_Info_tree_ptr(pus[second]), TRUE,
+                             stderr, &result);
+        unsetenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE");
+        if (accepted || result.rollback_count != 1 ||
+            !Value_Type_Is(values[second], pending_ty) ||
+            !DSL_Builder_Select_PU(pus[first]) ||
+            !Value_Type_Is(values[first], first_ty) ||
+            !DSL_Builder_Select_PU(pus[second]) ||
+            !VHO_DSL_Shape_Refine_Program_Unit
+                 (pus[second], PU_Info_tree_ptr(pus[second]), TRUE, stderr,
+                  &result) ||
+            result.retyped_value_count != 1)
+            return FALSE;
+        for (UINT32 index = 0; index < 2; ++index) {
+            TY_IDX ty = WN_ty(values[index]);
+            const char *shape = TY_tensor_attribute(ty, TY_TENSOR_SCHEMA_SHAPE);
+            if (!DSL_Builder_Select_PU(pus[index]) ||
+                !Value_Type_Is(values[index], ty) || shape == NULL ||
+                strcmp(shape, shapes[index]) != 0)
+                return FALSE;
+        }
+    }
+    const char *artifact = getenv("OPEN64_DSL_SHAPE_MULTI_PU_ARTIFACT");
+    if (artifact != NULL && artifact[0] != '\0') {
+        DSL_BUILDER_MAPPED_IMAGE_REQUEST image;
+        image.path = artifact;
+        image.flags = 0;
+        if (!DSL_Builder_Finalize_Mapped_Image(&image))
+            return FALSE;
+    }
+    printf("SP10 multi-PU isolation passed: %s %s\n",
+           reverse ? "BA" : "AB", before ? "before" : "after");
+    return TRUE;
+}
+
+/* Build one reviewed caller-to-formal proof and check that the same shape
+ * is rejected on either side of the role change when the role is absent. */
+static BOOL
+Verify_Reviewed_Symbolic_Mapping (void)
+{
+    DSL_BUILDER_PROGRAM_UNIT caller = DSL_Builder_Create_Minimal_PU("wp6_source");
+    if (caller == NULL)
+        return FALSE;
+    DSL_BUILDER_PU_SOURCE_IDENTITY identity;
+    memset(&identity, 0, sizeof(identity));
+    identity.canonical_definition_name = "wp6.source";
+    identity.defining_module = "wp6";
+    identity.defining_file = __FILE__;
+    identity.defining_line = __LINE__;
+    DSL_BUILDER_SOURCE_POSITION position;
+    memset(&position, 0, sizeof(position));
+    const UINT32 caller_file = DSL_Builder_Register_Source_File(caller, __FILE__);
+    position.file_id = caller_file;
+    position.line = __LINE__;
+    position.statement_begin = 1;
+    DSL_BUILDER_TENSOR_DESCRIPTOR descriptor;
+    Initialize_Descriptor(&descriptor, "[2,n]", "activation");
+    TY_IDX ty = DSL_Builder_Intern_Tensor_Type
+                    ("wp6_symbolic", MTYPE_To_TY(MTYPE_F4), &descriptor);
+    DSL_BUILDER_VALUE actual =
+        DSL_Builder_Create_Model_Input("wp6_actual", ty, 0);
+    if (caller_file == 0 || ty == TY_IDX_ZERO || actual == NULL ||
+        !DSL_Builder_Set_PU_Source_Identity(caller, &identity) ||
+        !DSL_Builder_Set_Value_Source_Position(actual, &position) ||
+        !DSL_Builder_Append_PU_Value(caller, actual))
+        return FALSE;
+
+    // Keep rejected proof types out of the before/after refinement images.
+    TY_TENSOR_TYPE_CORE_REFINEMENT forged;
+    forged.rank = 2;
+    forged.logical_shape = "[2,n@pu00000001]";
+    TY_IDX forged_ty = TY_Intern_Refined_Tensor_Type(ty, &forged, NULL);
+    DSL_IR_VALUE_ID actual_id = DSL_Builder_Get_Value_Image_Id(actual);
+    if (forged_ty == TY_IDX_ZERO ||
+        !DSL_validate_shape_value_provenance(caller, actual_id, ty) ||
+        DSL_validate_shape_value_provenance(caller, actual_id, forged_ty))
+        return FALSE;
+
+    DSL_BUILDER_PROGRAM_UNIT callee = DSL_Builder_Create_Minimal_PU("wp6_destination");
+    if (callee == NULL)
+        return FALSE;
+    identity.canonical_definition_name = "wp6.destination";
+    identity.defining_line = __LINE__;
+    position.file_id = DSL_Builder_Register_Source_File(callee, __FILE__);
+    position.line = __LINE__;
+    DSL_BUILDER_VALUE formal =
+        DSL_Builder_Declare_PU_Formal(callee, "wp6_formal", 0, ty, &position);
+    if (formal == NULL || !DSL_Builder_Set_PU_Source_Identity(callee, &identity) ||
+        !DSL_Builder_Return_PU_Values(callee, NULL, 0))
+        return FALSE;
+    const DSL_IR_VALUE_ID formal_id = DSL_Builder_Get_Value_Image_Id(formal);
+    if (DSL_validate_shape_value_provenance(callee, formal_id, ty))
+        return FALSE;
+
+    DSL_BUILDER_CALLSITE_INFO callsite;
+    memset(&callsite, 0, sizeof(callsite));
+    callsite.canonical_class_name = "WP6Destination";
+    callsite.instance_path = "model.wp6_destination";
+    callsite.context_identity = "wp6.source";
+    callsite.call_ordinal = 1;
+    callsite.source_position = position;
+    callsite.source_position.file_id = caller_file;
+    DSL_BUILDER_CALL call = DSL_Builder_Create_PU_Call
+                              (caller, callee, &actual, 1, NULL, 0, &callsite);
+    if (call == NULL || !DSL_Builder_Select_PU(callee) ||
+        DSL_validate_shape_value_provenance(callee, formal_id, ty) ||
+        !DSL_Builder_Select_PU(caller) ||
+        !DSL_Builder_Set_PU_Call_Argument_Role(call, 0, 0, "shape_mapping") ||
+        !DSL_Builder_Select_PU(callee) ||
+        !DSL_validate_shape_value_provenance(callee, formal_id, ty))
+        return FALSE;
+    puts("SP10 reviewed symbolic mapping passed");
+    return TRUE;
+}
+
+/* Run the selected isolated fixture and return failure before publishing invalid evidence. */
 int
 main(void)
 {
     Initialize_Test_Context();
     DSL_Builder_Begin_Program();
     DSL_Opcode_Register_Common_Substrate();
+    if (getenv("OPEN64_DSL_SHAPE_SYMBOLIC_MAPPING_TEST") != NULL)
+        return Verify_Reviewed_Symbolic_Mapping() ? 0 : 1;
+    const char *multi_pu = getenv("OPEN64_DSL_SHAPE_MULTI_PU_MODE");
+    if (multi_pu != NULL)
+        return Verify_Multi_PU_Refinement(strncmp(multi_pu, "ba", 2) == 0,
+                                          strstr(multi_pu, "before") != NULL)
+                   ? 0 : 1;
 
     DSL_BUILDER_TENSOR_DESCRIPTOR input_descriptor;
     DSL_BUILDER_TENSOR_DESCRIPTOR pending_descriptor;
@@ -204,6 +415,17 @@ main(void)
         return 0;
     }
 
+    // A plain WHIRL subtree cannot stand in for the driver-owned PU root.
+    WN *non_root = WN_CreateBlock();
+    VHO_DSL_SHAPE_REFINE_RESULT invalid_boundary;
+    BOOL accepted_non_root = VHO_DSL_Shape_Refine_Program_Unit
+                                 (pu, non_root, FALSE, NULL, &invalid_boundary);
+    WN_Delete(non_root);
+    if (accepted_non_root || invalid_boundary.diagnostic_count == 0) {
+        fprintf(stderr, "SP10 accepted a non-root active PU boundary\n");
+        return 1;
+    }
+
     VHO_DSL_SHAPE_REFINE_RESULT disabled;
     if (VHO_DSL_Shape_Refine_Program_Unit
             (pu, PU_Info_tree_ptr(pu), FALSE, NULL, &disabled) ||
@@ -219,6 +441,13 @@ main(void)
     BOOL created = FALSE;
     TY_IDX refined_ty = TY_Intern_Refined_Tensor_Type
                             (pending_ty, &refinement, &created);
+    TY_IDX const_refined_ty = refined_ty;
+    Set_TY_is_const(const_refined_ty);
+    if (!TY_tensor_preserves_non_shape_state(pending_ty, refined_ty) ||
+        TY_tensor_preserves_non_shape_state(pending_ty, const_refined_ty)) {
+        fprintf(stderr, "SP5 shape authorization ignored TY qualifiers\n");
+        return 1;
+    }
     DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST requests[2];
     requests[0].owner_pu_st = PU_Info_proc_sym(pu);
     requests[0].value_id = DSL_Builder_Get_Value_Image_Id(add);
@@ -228,6 +457,19 @@ main(void)
     requests[1].value_id = DSL_Builder_Get_Value_Image_Id(relu);
     requests[1].expected_old_ty = pending_ty;
     requests[1].refined_ty = refined_ty;
+
+    // Reject the whole batch when a later request names a different owner.
+    requests[1].owner_pu_st = ST_IDX_ZERO;
+    DSL_IR_VALUE_TYPE_REFINEMENT_RESULT rejected;
+    if (DSL_IR_Refine_Native_Value_Types(pu, requests, 2, NULL, &rejected) ||
+        rejected.updated_st_count != 0 || rejected.updated_wn_count != 0 ||
+        rejected.updated_value_count != 0 || rejected.rollback_count != 0 ||
+        !Value_Type_Is(add, pending_ty) || !Value_Type_Is(relu, pending_ty)) {
+        fprintf(stderr, "SP5 foreign-owner batch was not rejected atomically\n");
+        return 1;
+    }
+    requests[1].owner_pu_st = PU_Info_proc_sym(pu);
+
     DSL_IR_VALUE_TYPE_REFINEMENT_RESULT forced_failure;
     setenv("OPEN64_DSL_SHAPE_RETYPE_TEST_POSTFAIL", "1", 1);
     BOOL unexpectedly_committed = DSL_IR_Refine_Native_Value_Types
@@ -241,6 +483,27 @@ main(void)
         !DSL_Region_Verify_PU(pu, stderr)) {
         fprintf(stderr, "SP5 late-failure rollback changed\n");
         return 1;
+    }
+
+    // Every WN, ST, and logical value write must be independently reversible.
+    const UINT32 write_count = forced_failure.updated_wn_count +
+                               forced_failure.updated_st_count +
+                               forced_failure.updated_value_count;
+    for (UINT32 write = 1; write <= write_count; ++write) {
+        char ordinal[32];
+        snprintf(ordinal, sizeof(ordinal), "%u", write);
+        setenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE", ordinal, 1);
+        DSL_IR_VALUE_TYPE_REFINEMENT_RESULT partial_failure;
+        BOOL committed = DSL_IR_Refine_Native_Value_Types
+                             (pu, requests, 2, NULL, &partial_failure);
+        unsetenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE");
+        if (committed || partial_failure.rollback_count == 0 ||
+            !Value_Type_Is(add, pending_ty) || !Value_Type_Is(relu, pending_ty) ||
+            WN_ty(WN_kid0(WN_kid0(relu))) != pending_ty ||
+            ST_type(St_Table[unrelated]) != pending_ty) {
+            fprintf(stderr, "SP5 rollback failed at write %u\n", write);
+            return 1;
+        }
     }
 
     VHO_DSL_SHAPE_REFINE_RESULT refined;

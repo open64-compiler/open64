@@ -7,6 +7,7 @@
 #include <string.h>
 #include <vector>
 #include "dsl_shape_analysis.h"
+#include "../com/dsl_pu_interface_verify.h"
 #include "../../common/com/dsl_shape_fact_internal.h"
 #include "../../common/ir_image/dsl_image_service.h"
 #include "pu_info.h"
@@ -327,6 +328,20 @@ DSL_Shape_Analyze_PU_Internal
     BOOL valid = DSL_Shape_Collect_Constraints
                      (PU_Info_proc_sym(pu), tree, &values, &constraints,
                       diagnostic);
+    /* Qualifier spelling is syntax. Check persisted proof provenance before
+     * any seed participates in inference or shape equality. */
+    for (UINT32 i = 0; valid && i < values.size(); ++i) {
+        DSL_SHAPE_SOLVER_VALUE &value = values[i];
+        if (TY_kind(value.ty) != KIND_SCALAR &&
+            !DSL_validate_shape_value_provenance(pu, value.value_id, value.ty)) {
+            value.fact.state = DSL_SHAPE_FACT_CONTRADICTION;
+            if (diagnostic != NULL)
+                fprintf(diagnostic, "DSL-SHAPE-006: invalid symbolic provenance for value %u\n",
+                        value.value_id);
+            ++local_result.diagnostic_count;
+            valid = FALSE;
+        }
+    }
     /* Stable native-node order makes propagation independent of tree walk order. */
     std::sort(constraints.begin(), constraints.end(),
               DSL_Shape_Constraint_Order);

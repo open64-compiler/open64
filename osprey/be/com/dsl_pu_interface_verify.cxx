@@ -7,20 +7,273 @@
  */
 
 #include <algorithm>
+#include <stdlib.h>
 #include <string.h>
 #include <string>
 #include <vector>
 
 #include "dsl_pu_interface_verify.h"
 #include "dsl_pu_interface_verify_internal.h"
+#include "dsl_program_interface_internal.h"
 #include "../../common/ir_image/dsl_image_service.h"
 #include "dsl_runtime_interface_internal.h"
 #include "dsl_ir_transaction_internal.h"
+#include "dsl_region.h"
+#include "dsl_shape.h"
+#include "dsl_shape_fact_internal.h"
+#include "dsl_ir_rewrite_queries_internal.h"
 #include "pu_info.h"
 #include "strtab.h"
 #include "symtab.h"
 #include "wn.h"
 #include "wn_util.h"
+
+/* Decode the canonical qualifier of a symbolic fact. All dimensions of
+ * a value may use the local owner and at most one foreign owner. */
+static BOOL
+DSL_shape_foreign_owner (const DSL_SHAPE_FACT &fact, ST_IDX owner,
+                         ST_IDX *foreign_owner)
+{
+    *foreign_owner = ST_IDX_ZERO;
+    for (INT32 i = 0; i < fact.rank; ++i) {
+        if (fact.dimension_kind[i] != DSL_SHAPE_DIMENSION_SYMBOL &&
+            fact.dimension_kind[i] != DSL_SHAPE_DIMENSION_EXPRESSION)
+            continue;
+        const char *qualifier = strstr(fact.dimension_text[i], "@pu");
+        if (qualifier == NULL)
+            return FALSE;
+        char *end = NULL;
+        ST_IDX symbol_owner = (ST_IDX)strtoul(qualifier + 3, &end, 16);
+        if (end != qualifier + 11 || !DSL_IR_Image_PU_ST_Valid(symbol_owner))
+            return FALSE;
+        if (symbol_owner == owner)
+            continue;
+        if (*foreign_owner != ST_IDX_ZERO && *foreign_owner != symbol_owner)
+            return FALSE;
+        *foreign_owner = symbol_owner;
+    }
+    return TRUE;
+}
+
+/* Join the active physical formal to its unique reviewed actual. The other
+ * PU contributes persisted IDs and types only. Re-read them for every proof. */
+static BOOL
+DSL_shape_formal_mapping_valid (PU_Info *pu, const DSL_IR_VALUE_RECORD &value,
+                                TY_IDX ty, ST_IDX source)
+{
+    const ST_IDX owner = PU_Info_proc_sym(pu);
+    WN *entry = PU_Info_tree_ptr(pu);
+    for (INT32 ordinal = 0; ordinal < WN_num_formals(entry); ++ordinal) {
+        WN *formal_wn = WN_formal(entry, ordinal);
+        if (formal_wn == NULL || WN_operator(formal_wn) != OPR_IDNAME ||
+            WN_st_idx(formal_wn) != value.st)
+            continue;
+        DSL_PU_FORMAL_RECORD formal;
+        DSL_CALL_ARGUMENT_RECORD argument;
+        DSL_CALLSITE_METADATA_RECORD callsite;
+        DSL_IR_VALUE_RECORD actual;
+        DSL_RETIRED_FORMAL_RECORD retired_formal;
+        DSL_RETIRED_CALL_ARGUMENT_RECORD retired_argument;
+        DSL_PU_SOURCE_IDENTITY_RECORD source_identity;
+        DSL_PU_SOURCE_IDENTITY_RECORD destination_identity;
+        return DSL_PU_Interface_Image_Find_Formal(owner, ordinal, &formal) &&
+               formal.formal_value_id == value.id &&
+               formal.formal_st == value.st && formal.formal_ty == ty &&
+               !DSL_Program_Interface_Image_Find_Retired_Formal
+                   (formal.id, &retired_formal) &&
+               DSL_Call_ABI_Image_Callee_Formal_Count(owner, ordinal) == 1 &&
+               DSL_Call_ABI_Image_Get_Callee_Formal_Argument
+                   (owner, ordinal, 0, &argument) &&
+               !DSL_Program_Interface_Image_Find_Retired_Call
+                   (argument.id, &retired_argument) &&
+               argument.flags == 0 && argument.semantic_role != STR_IDX_ZERO &&
+               argument.semantic_role < STR_Table_Size() &&
+               strcmp(Index_To_Str(argument.semantic_role), "shape_mapping") == 0 &&
+               DSL_Call_Image_Get_Callsite(argument.callsite_id, &callsite) &&
+               callsite.owner_pu_st == source && callsite.callee_pu_st == owner &&
+               DSL_Call_Image_Find_PU_Identity(source, &source_identity) &&
+               DSL_Call_Image_Find_PU_Identity(owner, &destination_identity) &&
+               DSL_IR_Image_Get_Value(argument.argument_value_id, &actual) &&
+               actual.flags == 0 && actual.ty == ty &&
+               actual.name < STR_Table_Size() &&
+               DSL_IR_Image_Value_Belongs_To_PU(actual, source);
+    }
+    return FALSE;
+}
+
+/* Follow a foreign qualifier through PU-local producer operands to a
+ * reviewed formal. The path detects malformed cyclic value graphs. */
+static BOOL
+DSL_shape_value_has_source (PU_Info *pu, const DSL_IR_VALUE_RECORD &value,
+                            TY_IDX ty, ST_IDX source,
+                            std::vector<DSL_IR_VALUE_ID> *path)
+{
+    if (value.name >= STR_Table_Size() ||
+        !DSL_IR_Image_Value_Belongs_To_PU(value, PU_Info_proc_sym(pu)) ||
+        std::find(path->begin(), path->end(), value.id) != path->end())
+        return FALSE;
+    if (value.producer_node_id == DSL_IR_NODE_INVALID_ID)
+        return DSL_shape_formal_mapping_valid(pu, value, ty, source);
+
+    DSL_IR_NODE_RECORD node;
+    DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
+    if (!DSL_IR_Image_Get_Node(value.producer_node_id, &node) ||
+        node.result_value_id != value.id ||
+        (node.flags & DSL_IR_NODE_FLAG_RETIRED) != 0 ||
+        !DSL_IR_Image_Get_Opcode_Descriptor(node.opcode_descriptor_id, &opcode))
+        return FALSE;
+    std::vector<TY_IDX> operand_types;
+    std::vector<DSL_SHAPE_FACT> operand_facts;
+    path->push_back(value.id);
+    BOOL proved = FALSE;
+    for (UINT32 i = 0; i < node.operand_count; ++i) {
+        DSL_IR_VALUE_REFERENCE_RECORD reference;
+        DSL_IR_VALUE_RECORD operand;
+        DSL_SHAPE_FACT fact;
+        ST_IDX operand_source;
+        if (!DSL_IR_Image_Get_Value_Reference
+                 (node.first_operand_reference_id + i, &reference) ||
+            reference.owner_node_id != node.id || reference.ordinal != i ||
+            !DSL_IR_Image_Get_Value(reference.value_id, &operand) ||
+            !DSL_Shape_Fact_From_Type(operand.ty, &fact) ||
+            !DSL_shape_foreign_owner(fact, PU_Info_proc_sym(pu), &operand_source)) {
+            proved = FALSE;
+            break;
+        }
+        operand_types.push_back(operand.ty);
+        operand_facts.push_back(fact);
+        if (operand_source == ST_IDX_ZERO)
+            continue;
+        if (operand_source != source ||
+            !DSL_shape_value_has_source(pu, operand, operand.ty, source, path)) {
+            proved = FALSE;
+            break;
+        }
+        proved = TRUE;
+    }
+    path->pop_back();
+    if (!proved)
+        return FALSE;
+    /* Provenance alone does not establish that this operator derives the
+     * claimed shape. Reuse its current inference rule before admitting it. */
+    DSL_SHAPE_INFERENCE_INPUT input;
+    input.dsl_operator = (DSL_OPERATOR)opcode.logical_operator;
+    input.version = opcode.version;
+    input.node = &node;
+    input.operand_types = &operand_types[0];
+    input.operand_facts = &operand_facts[0];
+    input.operand_count = operand_types.size();
+    input.result_ty = value.ty;
+    DSL_SHAPE_FACT expected;
+    DSL_SHAPE_FACT inferred;
+    return DSL_Shape_Fact_From_Type(ty, &expected) &&
+           DSL_Shape_Infer_Operator(&input, &inferred) ==
+               DSL_SHAPE_INFERENCE_COMPLETE &&
+           DSL_Shape_Facts_Equal(expected, inferred);
+}
+
+/* Keep syntax parsing separate from proof use. Verify the qualified owner
+ * using current shared rows and the active PU's local formal when needed. */
+BOOL
+DSL_validate_shape_value_provenance (PU_Info *pu, DSL_IR_VALUE_ID value_id,
+                                     TY_IDX proposed_ty)
+{
+    DSL_SHAPE_FACT fact;
+    if (pu == NULL || PU_Info_tree_ptr(pu) == NULL ||
+        !DSL_Shape_Fact_From_Type(proposed_ty, &fact))
+        return FALSE;
+    ST_IDX source;
+    if (!DSL_shape_foreign_owner(fact, PU_Info_proc_sym(pu), &source))
+        return FALSE;
+    if (source == ST_IDX_ZERO)
+        return TRUE;
+    DSL_IR_VALUE_RECORD value;
+    std::vector<DSL_IR_VALUE_ID> path;
+    return Current_PU_Info == pu &&
+           DSL_IR_Image_Current_PU_Is(PU_Info_proc_sym(pu)) &&
+           WN_operator(PU_Info_tree_ptr(pu)) == OPR_FUNC_ENTRY &&
+           DSL_IR_Image_Get_Value(value_id, &value) &&
+           DSL_shape_value_has_source(pu, value, proposed_ty, source, &path);
+}
+
+/* Collect matching native result stores and returns from one active tree.
+ * These are structural checks. Control-flow legality belongs to its phase. */
+static void
+DSL_scan_native_result (WN *wn, ST_IDX st, TY_IDX ty,
+                        BOOL *stored, BOOL *returned)
+{
+    if (wn == NULL || (*stored && *returned))
+        return;
+    const OPERATOR opr = WN_operator(wn);
+    if (opr == OPR_RETURN || opr == OPR_RETURN_VAL)
+        *returned = TRUE;
+    if (opr == OPR_STID && WN_st_idx(wn) == st && WN_ty(wn) == ty &&
+        WN_kid0(wn) != NULL && WN_ty(WN_kid0(wn)) == ty)
+        *stored = TRUE;
+    if (opr == OPR_BLOCK) {
+        for (WN *stmt = WN_first(wn); stmt != NULL; stmt = WN_next(stmt))
+            DSL_scan_native_result(stmt, st, ty, stored, returned);
+    } else {
+        for (INT32 i = 0; i < WN_kid_count(wn); ++i)
+            DSL_scan_native_result(WN_kid(wn, i), st, ty, stored, returned);
+    }
+}
+
+/* Validate the source-image hidden result suffix after physical formal
+ * checks. Runtime projections retain their existing verifier contract. */
+static BOOL
+DSL_verify_native_result_formals (PU_Info *pu, WN *entry, FILE *diagnostic)
+{
+    const ST_IDX owner = PU_Info_proc_sym(pu);
+    if (DSL_Program_Interface_PU_Is_Committed(owner))
+        return TRUE;
+    BOOL saw_result = FALSE;
+    for (INT32 i = 0; i < WN_num_formals(entry); ++i) {
+        DSL_PU_FORMAL_RECORD formal;
+        if (!DSL_PU_Interface_Image_Find_Formal(owner, i, &formal))
+            continue;
+        DSL_RETIRED_FORMAL_RECORD retired;
+        if (DSL_Program_Interface_Image_Find_Retired_Formal(formal.id, &retired))
+            continue;
+        BOOL result = ST_sclass(St_Table[formal.formal_st]) == SCLASS_FORMAL_REF;
+        BOOL stored = FALSE;
+        BOOL returned = FALSE;
+        if (result)
+            DSL_scan_native_result(entry, formal.formal_st, formal.formal_ty,
+                                   &stored, &returned);
+        if ((saw_result && !result) || (result && (!stored || !returned))) {
+            if (diagnostic != NULL)
+                fprintf(diagnostic, "DSL native result formal %u is invalid\n",
+                        formal.id);
+            return FALSE;
+        }
+        saw_result = saw_result || result;
+    }
+    return TRUE;
+}
+
+/* Establish local ST residency before invoking checks that dereference PU
+ * symbols. Shape admission and rollback share this read-only boundary. */
+BOOL
+DSL_validate_active_pu_boundaries (PU_Info *pu, WN *tree, FILE *diagnostic)
+{
+    if (pu == NULL || tree == NULL || Current_PU_Info != pu ||
+        PU_Info_tree_ptr(pu) != tree ||
+        !DSL_IR_Image_Current_PU_Is(PU_Info_proc_sym(pu)) ||
+        WN_operator(tree) != OPR_FUNC_ENTRY ||
+        WN_st_idx(tree) != PU_Info_proc_sym(pu) ||
+        CURRENT_SYMTAB <= GLOBAL_SYMTAB ||
+        Scope_tab[CURRENT_SYMTAB].st == NULL ||
+        ST_st_idx(Scope_tab[CURRENT_SYMTAB].st) != PU_Info_proc_sym(pu)) {
+        if (diagnostic != NULL)
+            fprintf(diagnostic, "DSL active PU boundary has invalid context\n");
+        return FALSE;
+    }
+    return DSL_Call_ABI_Image_Validate_PU(pu, diagnostic) &&
+           DSL_PU_Interface_Image_Validate_PU(pu, diagnostic) &&
+           DSL_verify_native_result_formals(pu, tree, diagnostic) &&
+           DSL_region_verify_active_pu(pu, diagnostic);
+}
 
 /*
  * Validate one persisted runtime value projection independently of an active

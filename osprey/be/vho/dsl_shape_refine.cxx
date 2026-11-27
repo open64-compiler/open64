@@ -2,9 +2,14 @@
  * Copyright (C) 2026 Open64 Project
  */
 
+/* VHO owns shape admission and generation tracking for one active PU.
+ * The retype service owns atomic updates. The mapped WHIRL format is preserved.
+ * Design: doc/WHIRL-DSL-SHAPE-PROPAGATION-IMPLEMENTATION-PLAN.md. */
+
 #include <string.h>
 #include "../../common/ir_image/dsl_image_service.h"
 #include "../com/dsl_ir_retype.h"
+#include "../com/dsl_pu_interface_verify.h"
 #include <vector>
 
 #include "dsl_shape_refine.h"
@@ -52,6 +57,7 @@ static const char *VHO_DSL_shape_trigger_name[VHO_DSL_SHAPE_TRIGGER_COUNT] = {
     "vho_dsl_optimization"
 };
 
+/* Return the stable diagnostic spelling for a trigger, with a fallback for invalid input. */
 const char *
 VHO_DSL_Shape_Trigger_Name (VHO_DSL_SHAPE_TRIGGER trigger)
 {
@@ -61,6 +67,8 @@ VHO_DSL_Shape_Trigger_Name (VHO_DSL_SHAPE_TRIGGER trigger)
     return VHO_DSL_shape_trigger_name[trigger];
 }
 
+/* Look up scratch generation state for a driver-supplied PU and tree.
+ * Reset it on owner change, and create it only when requested. */
 static VHO_DSL_SHAPE_GENERATION_STATE *
 VHO_DSL_Shape_Generation_State
         (PU_Info *pu_info,
@@ -100,6 +108,8 @@ VHO_DSL_Shape_Generation_State
     return &VHO_DSL_shape_generation_state.back();
 }
 
+/* Record that the caller verified this root at the current PU generation.
+ * Failure leaves the generation uncertified. */
 static BOOL
 VHO_DSL_Shape_Refinement_Mark_Current
         (PU_Info *pu_info,
@@ -115,6 +125,8 @@ VHO_DSL_Shape_Refinement_Mark_Current
     return TRUE;
 }
 
+/* Advance the selected PU generation after a reported transformation.
+ * Reject unknown triggers before changing the generation. */
 BOOL
 VHO_DSL_Shape_Refinement_Invalidate
         (PU_Info *pu_info,
@@ -148,6 +160,8 @@ VHO_DSL_Shape_Refinement_Invalidate
     return TRUE;
 }
 
+/* Require verification of the supplied root at the latest PU generation.
+ * The lookup may reset scratch state if the PU identity changed. */
 BOOL
 VHO_DSL_Shape_Refinement_Is_Current
         (PU_Info *pu_info,
@@ -176,6 +190,7 @@ VHO_DSL_Shape_Refinement_Is_Current
     return current;
 }
 
+/* Search a borrowed WHIRL subtree for native DSL nodes without changing it. */
 static BOOL
 VHO_DSL_Shape_Has_Native_Node (WN *wn)
 {
@@ -198,6 +213,8 @@ VHO_DSL_Shape_Has_Native_Node (WN *wn)
     return FALSE;
 }
 
+/* Intern the type for a complete solver fact and append an active-PU retype
+ * request. Rejection prevents batch mutation, though a new TY may exist. */
 static BOOL
 VHO_DSL_Shape_Collect_Refinement
         (const DSL_SHAPE_REFINEMENT *refinement,
@@ -258,6 +275,8 @@ VHO_DSL_Shape_Collect_Refinement
     return TRUE;
 }
 
+/* Validate the active PU even on check-only and no-native-node paths. The
+ * retype service repeats boundary verification inside its commit/rollback. */
 BOOL
 VHO_DSL_Shape_Refine_Program_Unit
         (struct pu_info *pu_info,
@@ -268,8 +287,13 @@ VHO_DSL_Shape_Refine_Program_Unit
 {
     VHO_DSL_SHAPE_REFINE_RESULT local_result;
     memset(&local_result, 0, sizeof(local_result));
-    if (pu_info != NULL && tree != NULL &&
-        !VHO_DSL_Shape_Has_Native_Node(tree)) {
+    if (!DSL_validate_active_pu_boundaries(pu_info, tree, diagnostic)) {
+        ++local_result.diagnostic_count;
+        if (result != NULL)
+            *result = local_result;
+        return FALSE;
+    }
+    if (!VHO_DSL_Shape_Has_Native_Node(tree)) {
         if (!VHO_DSL_Shape_Refinement_Mark_Current(pu_info, tree))
             return FALSE;
         if (result != NULL)
@@ -363,6 +387,8 @@ VHO_DSL_Shape_Refine_Program_Unit
     return TRUE;
 }
 
+/* Run shape admission on the active driver PU using its phase options.
+ * Stop on rejection; a successful call returns the same root. */
 WN *
 VHO_DSL_Shape_Refine_Driver
         (struct pu_info *pu_info,

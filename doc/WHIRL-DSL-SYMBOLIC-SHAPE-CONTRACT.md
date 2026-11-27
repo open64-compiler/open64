@@ -47,6 +47,15 @@ The hexadecimal payload is the owning global function `ST_IDX`. Consequently,
 be carried through an explicitly reviewed PU interface or call contract.
 Unqualified symbols outside an active PU are rejected.
 
+An explicit qualifier is accepted by the syntax parser. Before using a
+persisted tensor shape as proof, the PU solver resolves its qualifier to
+a live owner. A foreign owner requires a unique `shape_mapping` call
+argument for a physical formal in the active PU. The proof checks the
+current formal, callsite, source identities, and actual value records.
+Derived values must trace their foreign qualifier to that formal through
+PU-local producers and reproduce the claimed shape using operator inference.
+The retype transaction repeats provenance validation for the proposed type.
+
 The normalizer removes insignificant whitespace and leading zeroes from
 constants. Canonical text participates in immutable tensor-type uniquing.
 Refinement creates or reuses a new canonical `TY_IDX`; it never edits a sealed

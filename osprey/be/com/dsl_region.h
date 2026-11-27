@@ -110,6 +110,10 @@ extern BOOL DSL_Region_Consume_WN (PU_Info *pu, const WN *wn);
  */
 extern BOOL DSL_Region_Verify_PU (PU_Info *pu, FILE *diagnostic);
 
+/* Check registered REGION attachment and local interface residency in the
+ * driver-selected PU. Uses the existing store without mutation or PU switching. */
+extern BOOL DSL_region_verify_active_pu (PU_Info *pu, FILE *diagnostic);
+
 /*
  * Print stored region/metadata/interface facts to a borrowed FILE, requiring
  * live REGION trees and readable contract/pragma strings. NULL stream or no

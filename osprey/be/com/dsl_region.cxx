@@ -938,6 +938,33 @@ DSL_Region_Tree_Contains (const WN *root, const WN *target)
     return FALSE;
 }
 
+/* Check physical attachment before structural inspection dereferences a REGION.
+ * The boundary verifier has already established the active local table. */
+BOOL
+DSL_region_verify_active_pu (PU_Info *pu, FILE *diagnostic)
+{
+    DSL_REGION_STORE *store = DSL_Region_Find_Store(pu);
+    if (store == NULL)
+        return TRUE;
+    WN *tree = PU_Info_tree_ptr(pu);
+    for (UINT32 i = 0; i < store->regions.size(); ++i) {
+        const dsl_region_runtime &region = *store->regions[i];
+        if (!DSL_Region_Tree_Contains(tree, region.wn))
+            return DSL_Region_Report(diagnostic, "active REGION is detached",
+                                     region.image.region_id);
+    }
+    for (UINT32 i = 0; i < store->interfaces.size(); ++i) {
+        const DSL_REGION_INTERFACE_RECORD &binding = store->interfaces[i];
+        if (ST_IDX_level(binding.st) != CURRENT_SYMTAB ||
+            ST_IDX_index(binding.st) == 0 ||
+            ST_IDX_index(binding.st) >= ST_Table_Size(CURRENT_SYMTAB))
+            return DSL_Region_Report(diagnostic,
+                                     "active REGION symbol is not resident",
+                                     binding.region_id);
+    }
+    return DSL_Region_Verify_Store(store, diagnostic);
+}
+
 /*
  * Read a borrowed strict tree for any STID to the exact symbol, visiting
  * BLOCK lists and ordinary kids. NULL roots fail; this is existence, not

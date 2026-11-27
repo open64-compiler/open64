@@ -20,7 +20,8 @@
 #include "dsl_gatekeeper.h"
 #include "dsl_shape.h"
 #include "dsl_ir_image.h"
-#include "dsl_region.h"
+#include "dsl_ir_rewrite_queries_internal.h"
+#include "dsl_pu_interface_verify.h"
 #include "pu_info.h"
 #include "symtab.h"
 #include "wn.h"
@@ -59,6 +60,7 @@ typedef struct {
     DSL_IR_OPCODE_DESCRIPTOR_RECORD opcode;
     WN *definition;
     std::vector<WN *> reads;
+    UINT32 applied_write_count;
 } DSL_IR_RETYPE_JOURNAL;
 
 /*
@@ -123,33 +125,15 @@ DSL_IR_Retype_Scan_Tree
 /*
  * Prove that refined_ty is a monotonic shape-only refinement of old_ty. The
  * new canonical tensor type may fill unknown dimensions, but it must preserve
- * rank, every known dimension, element type, dtype, traits, layout, sharding,
- * placement, memory, quantization, and alignment. Runtime-state and lineage
- * fields are not compared here; this predicate alone is not a proof that every
- * nonshape descriptor fact is identical. No conversion is performed.
+ * rank, every known dimension, and all non-shape TY and extension state.
+ * Failure leaves the caller's types untouched.
  */
 static BOOL
 DSL_IR_Retype_Type_Valid (TY_IDX old_ty, TY_IDX refined_ty)
 {
-    if (old_ty == refined_ty || !TY_tensor_is_canonical(old_ty) ||
-        !TY_tensor_is_canonical(refined_ty) ||
-        !DSL_Shape_Tensor_Core_Complete(refined_ty) ||
-        TY_align(old_ty) != TY_align(refined_ty))
-        return FALSE;
-
-    TENSOR_DESCRIPTOR_RECORD old_descriptor;
-    TENSOR_DESCRIPTOR_RECORD refined_descriptor;
-    if (!TY_get_tensor_descriptor_record(old_ty, &old_descriptor) ||
-        !TY_get_tensor_descriptor_record(refined_ty, &refined_descriptor) ||
-        old_descriptor.element_ty != refined_descriptor.element_ty ||
-        old_descriptor.kind != refined_descriptor.kind ||
-        old_descriptor.dtype != refined_descriptor.dtype ||
-        old_descriptor.traits != refined_descriptor.traits ||
-        old_descriptor.layout != refined_descriptor.layout ||
-        old_descriptor.sharding != refined_descriptor.sharding ||
-        old_descriptor.placement != refined_descriptor.placement ||
-        old_descriptor.memory != refined_descriptor.memory ||
-        old_descriptor.quantization != refined_descriptor.quantization)
+    if (old_ty == refined_ty ||
+        !TY_tensor_preserves_non_shape_state(old_ty, refined_ty) ||
+        !DSL_Shape_Tensor_Core_Complete(refined_ty))
         return FALSE;
 
     DSL_SHAPE_FACT old_fact;
@@ -225,6 +209,11 @@ DSL_IR_Retype_Preflight
         return DSL_IR_Retype_Report
                    (diagnostic, "DSL-SHAPE-RETYPE-004", request.value_id,
                     "refined type is not a monotonic shape-only refinement");
+    if (!DSL_validate_shape_value_provenance
+             (pu_info, request.value_id, request.refined_ty))
+        return DSL_IR_Retype_Report
+                   (diagnostic, "DSL-SHAPE-RETYPE-004", request.value_id,
+                    "refined type has invalid symbolic provenance");
 
     DSL_IR_VALUE_RECORD value;
     if (!DSL_IR_Image_Get_Value(request.value_id, &value) ||
@@ -325,28 +314,67 @@ DSL_IR_Retype_Preflight
     journal->opcode = opcode;
     journal->definition = use.definition;
     journal->reads.swap(use.reads);
+    journal->applied_write_count = 0;
     return TRUE;
 }
 
 /*
- * Apply one already-preflighted journal in either direction. It changes all
- * admitted LDID types, the defining STID type, the result ST type, and the
- * logical DSL value type. The public transaction calls it old-to-refined for
- * commit and refined-to-old in reverse journal order for rollback.
+ * Record a completed write in the journal. A positive countdown injects a
+ * test failure at that write, leaving the journal ready for rollback.
  */
-static void
+static BOOL
+DSL_IR_Retype_Record_Write
+        (DSL_IR_RETYPE_JOURNAL *journal, unsigned long *writes_remaining)
+{
+    ++journal->applied_write_count;
+    return *writes_remaining == 0 || --*writes_remaining != 0;
+}
+
+/* Commit one preflighted entry. Failure leaves the exact written prefix in
+ * the journal for the caller to undo in reverse order. */
+static BOOL
 DSL_IR_Retype_Apply
         (DSL_IR_RETYPE_JOURNAL *journal,
-         TY_IDX from_ty,
-         TY_IDX to_ty)
+         unsigned long *writes_remaining)
 {
-    for (UINT32 i = 0; i < journal->reads.size(); ++i)
+    const TY_IDX to_ty = journal->request.refined_ty;
+    for (UINT32 i = 0; i < journal->reads.size(); ++i) {
         WN_set_ty(journal->reads[i], to_ty);
+        if (!DSL_IR_Retype_Record_Write(journal, writes_remaining))
+            return FALSE;
+    }
     WN_set_ty(journal->definition, to_ty);
+    if (!DSL_IR_Retype_Record_Write(journal, writes_remaining))
+        return FALSE;
     Set_ST_type(St_Table[journal->value.st], to_ty);
-    BOOL changed = DSL_IR_Image_Retype_Value
-                       (journal->value.id, from_ty, to_ty);
-    FmtAssert(changed, ("preflighted DSL value retype failed"));
+    if (!DSL_IR_Retype_Record_Write(journal, writes_remaining))
+        return FALSE;
+    return DSL_IR_Image_Retype_Value
+               (journal->value.id, journal->request.expected_old_ty, to_ty) &&
+           DSL_IR_Retype_Record_Write(journal, writes_remaining);
+}
+
+/* Undo only writes recorded for this request, in reverse commit order.
+ * The transaction owns the active PU until every applied entry is restored. */
+static void
+DSL_IR_Retype_Rollback (const DSL_IR_RETYPE_JOURNAL &journal)
+{
+    const UINT32 read_count = journal.reads.size();
+    const TY_IDX old_ty = journal.request.expected_old_ty;
+    if (journal.applied_write_count > read_count + 2) {
+        BOOL restored = DSL_IR_Image_Retype_Value
+                            (journal.value.id, journal.request.refined_ty,
+                             old_ty);
+        FmtAssert(restored, ("DSL logical value retype rollback failed"));
+    }
+    if (journal.applied_write_count > read_count + 1)
+        Set_ST_type(St_Table[journal.value.st], old_ty);
+    if (journal.applied_write_count > read_count)
+        WN_set_ty(journal.definition, old_ty);
+    UINT32 reads_written = journal.applied_write_count < read_count ?
+                           journal.applied_write_count : read_count;
+    while (reads_written != 0)
+        WN_set_ty(journal.reads[--reads_written], old_ty);
 }
 
 /*
@@ -370,11 +398,11 @@ DSL_IR_Retype_Apply
  *
  * PU_Info is the sole authority for the transaction's WHIRL root. Callers do
  * not pass a duplicate tree pointer; the implementation derives the root with
- * PU_Info_tree_ptr() for REGION verification and physical def/use scanning.
+ * PU_Info_tree_ptr() for boundary verification and physical def/use scanning.
  *
- * All requests and REGION state are preflighted before the first mutation.
- * After commit, managed-image, REGION, and strict gatekeeper verification run
- * together. A reported postcheck failure reverses recorded type assignments
+ * All requests and PU boundaries are preflighted before the first mutation.
+ * After commit, image, boundary, and strict gatekeeper verification run
+ * together. A reported write or postcheck failure reverses type assignments
  * and asserts restored image/REGION validity. Optional result is cleared on
  * entry and reports attempted/rollback counts on that FALSE path. This is not
  * general exception recovery: allocation/assertion failures are uncaught, and
@@ -393,10 +421,11 @@ DSL_IR_Refine_Native_Value_Types
     if (result != NULL)
         *result = local_result;
     WN *tree = pu_info == NULL ? NULL : PU_Info_tree_ptr(pu_info);
-    if (pu_info == NULL || tree == NULL) {
+    if (pu_info == NULL || tree == NULL || Current_PU_Info != pu_info ||
+        !DSL_IR_Retype_Current_PU_Is(PU_Info_proc_sym(pu_info))) {
         return DSL_IR_Retype_Report
                    (diagnostic, "DSL-SHAPE-RETYPE-002", 0,
-                    "PU or its WHIRL tree is unavailable");
+                    "active PU or its WHIRL tree is unavailable");
     }
     if (requests == NULL || request_count == 0) {
         if (result != NULL)
@@ -405,20 +434,41 @@ DSL_IR_Refine_Native_Value_Types
                    (diagnostic, "DSL-SHAPE-RETYPE-001", 0,
                     "empty request array");
     }
-    if (!DSL_Region_Verify_PU(pu_info, diagnostic))
+    if (!DSL_validate_active_pu_boundaries(pu_info, tree, diagnostic))
         return DSL_IR_Retype_Report
                    (diagnostic, "DSL-SHAPE-RETYPE-006", 0,
-                    "active REGION image is invalid before retyping");
+                    "active PU boundary is invalid before retyping");
 
-    /* Preflight every value so the type transaction cannot partially apply. */
-    std::vector<DSL_IR_RETYPE_JOURNAL> journals(request_count);
+    /* Resolve the entire batch before using any PU-local ST index. */
+    const ST_IDX owner_pu_st = PU_Info_proc_sym(pu_info);
     for (UINT32 i = 0; i < request_count; ++i) {
+        const DSL_IR_VALUE_TYPE_REFINEMENT_REQUEST &request = requests[i];
+        if (request.value_id == DSL_IR_VALUE_INVALID_ID ||
+            request.expected_old_ty == request.refined_ty)
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-001", request.value_id,
+                        "request is malformed or has no type change");
+        DSL_IR_VALUE_RECORD value;
+        if (!DSL_IR_Image_Get_Value(request.value_id, &value))
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-003", request.value_id,
+                        "logical value does not exist");
+        if (request.owner_pu_st != owner_pu_st ||
+            !DSL_IR_Image_Value_Belongs_To_PU(value, owner_pu_st))
+            return DSL_IR_Retype_Report
+                       (diagnostic, "DSL-SHAPE-RETYPE-002", request.value_id,
+                        "logical value or request is not owned by the active PU");
         for (UINT32 prior = 0; prior < i; ++prior) {
             if (requests[prior].value_id == requests[i].value_id)
                 return DSL_IR_Retype_Report
                            (diagnostic, "DSL-SHAPE-RETYPE-001",
                             requests[i].value_id, "duplicate value request");
         }
+    }
+
+    /* Build the full physical def/use journal before the first write. */
+    std::vector<DSL_IR_RETYPE_JOURNAL> journals(request_count);
+    for (UINT32 i = 0; i < request_count; ++i) {
         if (!DSL_IR_Retype_Preflight
                  (pu_info, requests[i], diagnostic, &journals[i]))
             return FALSE;
@@ -432,10 +482,24 @@ DSL_IR_Refine_Native_Value_Types
 
     /* Apply WN, ST, and logical-image type changes as one transaction. */
     local_result.request_count = request_count;
+    const char *fail_after_write =
+        getenv("OPEN64_DSL_SHAPE_RETYPE_TEST_FAIL_AFTER_WRITE");
+    unsigned long writes_remaining = 0;
+    if (fail_after_write != NULL && fail_after_write[0] >= '1' &&
+        fail_after_write[0] <= '9') {
+        char *end = NULL;
+        writes_remaining = strtoul(fail_after_write, &end, 10);
+        if (*end != '\0')
+            writes_remaining = 0;
+    }
+    UINT32 attempted_count = 0;
+    BOOL committed = TRUE;
     for (UINT32 i = 0; i < request_count; ++i) {
-        DSL_IR_Retype_Apply
-            (&journals[i], journals[i].request.expected_old_ty,
-             journals[i].request.refined_ty);
+        ++attempted_count;
+        if (!DSL_IR_Retype_Apply(&journals[i], &writes_remaining)) {
+            committed = FALSE;
+            break;
+        }
         ++local_result.updated_st_count;
         local_result.updated_wn_count += 1 + journals[i].reads.size();
         ++local_result.updated_value_count;
@@ -444,30 +508,30 @@ DSL_IR_Refine_Native_Value_Types
     DSL_GATEKEEPER_RESULT gatekeeper_result;
     const char *force_post_failure =
         getenv("OPEN64_DSL_SHAPE_RETYPE_TEST_POSTFAIL");
-    BOOL valid = (force_post_failure == NULL ||
+    BOOL valid = committed && (force_post_failure == NULL ||
                   strcmp(force_post_failure, "1") != 0) &&
                  DSL_IR_Image_Validate(diagnostic) &&
-                 DSL_Region_Verify_PU(pu_info, diagnostic) &&
+                 DSL_validate_active_pu_boundaries(pu_info, tree, diagnostic) &&
                  DSL_Gatekeeper_Verify_PU_Mode
                      (pu_info, DSL_GATEKEEPER_STRICT, diagnostic,
                       &gatekeeper_result);
     if (!valid) {
         /* Reverse order restores the exact pre-transaction type graph. */
-        for (UINT32 i = request_count; i != 0; --i) {
+        for (UINT32 i = attempted_count; i != 0; --i) {
             DSL_IR_RETYPE_JOURNAL &journal = journals[i - 1];
-            DSL_IR_Retype_Apply
-                (&journal, journal.request.refined_ty,
-                 journal.request.expected_old_ty);
+            DSL_IR_Retype_Rollback(journal);
             ++local_result.rollback_count;
         }
         FmtAssert(DSL_IR_Image_Validate(diagnostic) &&
-                  DSL_Region_Verify_PU(pu_info, diagnostic),
+                  DSL_validate_active_pu_boundaries(pu_info, tree, diagnostic),
                   ("DSL shape retype rollback failed"));
         if (result != NULL)
             *result = local_result;
         return DSL_IR_Retype_Report
                    (diagnostic, "DSL-SHAPE-RETYPE-007", 0,
-                    "strict post-verification failed; transaction rolled back");
+                    committed ?
+                    "strict post-verification failed; transaction rolled back" :
+                    "retype write failed; transaction rolled back");
     }
     if (result != NULL)
         *result = local_result;
